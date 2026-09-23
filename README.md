@@ -3,10 +3,10 @@
 **A personal AI assistant that runs entirely on your own machine.**
 
 You need no API key and pay for no tokens, and no prompt leaves your machine unless
-you allow it. Meru loads open-weight models into your computer's memory and keeps
+you allow it. *Meru* (मेरु) loads open-weight models into your computer's memory and keeps
 them there, so a question costs only electricity.
 
-> **Meru** (मेरु) is the cosmic mountain that the sun, moon and stars turn around.
+> Meru is the cosmic mountain that the sun, moon and stars turn around.
 > This assistant takes the name because it works the same way: it stays in one
 > place, on your machine, and your notes, tools and daily routine turn around it.
 

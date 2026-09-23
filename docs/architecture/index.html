@@ -7,30 +7,30 @@
 <title>Meru architecture: an AI assistant that stays on your machine</title>
 <style>
   /* One file, no external fonts or scripts, so it opens from disk and offline.
-     Body 18px/1.7 over a 64ch measure. Figures, tables and code break out to 960px. */
+     Body 18px/1.7 in one 800px column; figures, tables and code share its edges. */
   :root {
-    --measure: 64ch;
-    --wide: 960px;
+    --measure: 800px;
+    --wide: 800px;
     --sans: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     --mono: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
     --bg: #ffffff; --panel: #f8f9fa; --ink: #202124; --ink-2: #3c4043;
     --ink-3: #5f6368; --rule: #dadce0; --accent: #1a73e8; --accent-2: #b06000;
-    --warn: #c5221f; --code-bg: #f1f3f4; --band: #f1f3f4;
+    --warn: #c5221f; --code-bg: #f1f3f4; --band: #f1f3f4; --meru: #0E7C7B;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
       --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
-      --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e;
+      --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
     --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
-    --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e;
+    --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -47,7 +47,7 @@
   }
   .wrap > * { grid-column: 2; }
   .wrap > figure, .wrap > .tbl, .wrap > pre, .wrap > .codewrap {
-    grid-column: 1 / -1; width: min(100%, var(--wide)); justify-self: center;
+    grid-column: 2; width: 100%; min-width: 0;
   }
 
   header.top { padding: 64px 0 28px; border-bottom: 1px solid var(--rule); }
@@ -156,13 +156,15 @@
     figure, pre, table, .num-strip, .toc { break-inside: avoid; }
     .copy-btn { display: none; }
   }
+  .meru-name { color: var(--meru); }
+  .meru-name i { font-style: italic; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
 <header class="top">
-  <h1>Meru: an AI assistant that stays on your machine</h1>
+  <h1><span class="meru-name"><i>Meru</i> (<span lang="hi">मेरु</span>)</span>: an AI assistant that stays on your machine</h1>
   <p class="standfirst">Meru answers questions, searches your files and calls your tools with models that run on the same machine as your data. This page covers how the parts fit: two programs, three model jobs, one store, one guarded path to outside tools, and the traces that show where each second went.</p>
   <p class="truth"><a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> is the source of truth. We generate this page from it; where the two disagree, the markdown wins and this page has a bug.</p>
   <p class="byline">Amit Arora · September 2026 · the design, written before the code · code samples in Go</p>

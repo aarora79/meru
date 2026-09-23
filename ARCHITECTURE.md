@@ -1,5 +1,8 @@
 # Meru — Architecture
 
+*Meru* (मेरु) is a personal AI assistant that runs on a machine you control. This
+document describes how it works and why.
+
 > We wrote this design before the code. If the code and this file disagree, one of
 > them has a bug; say which.
 
