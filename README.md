@@ -14,7 +14,9 @@ them there, so a question costs only electricity.
 
 ## What it is
 
-Meru is two Go programs, shipped as native binaries. `merud` is a daemon: it runs in
+Meru is two Go programs, shipped as native binaries: small, easy to install on any
+platform, and light enough to run many copies on one server
+([why Go](ARCHITECTURE.md#why-go)). `merud` is a daemon: it runs in
 the background, keeps the models loaded, owns your index and memory, talks to MCP
 (Model Context Protocol) servers and runs scheduled jobs. `meru` is the command-line
 client; it connects to the daemon over a local socket and starts in milliseconds.

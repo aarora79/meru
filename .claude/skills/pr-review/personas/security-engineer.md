@@ -14,7 +14,7 @@ PR justifies it.
 
 ### 1. Data leaving the machine
 **Mistake:** an HTTP client, DNS lookup or exporter that can reach a non-loopback host;
-a hosted-model SDK in `go.mod`; an update check.
+a cloud-model SDK in `go.mod`; an update check.
 **Rule:** model traffic goes only to Ollama on loopback, and OTLP only to a loopback
 endpoint; `merud` refuses to start otherwise. A2A agents and Streamable HTTP MCP servers
 may reach another host only when config marks them `network = true`. Validate by parsing
@@ -71,7 +71,7 @@ spans carry no prompt/response text unless `capture_content = true`.
 
 ### 8. Dependencies
 **Mistake:** a new module with known vulns, an unused module, or one that drags in a
-hosted-model client.
+cloud-model client.
 **Rule:** `govulncheck` clean for reachable code; a stated reason for each new module;
 prefer the standard library.
 

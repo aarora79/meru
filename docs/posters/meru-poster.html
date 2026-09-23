@@ -23,7 +23,7 @@
 body{background:#8d8d8d;font-family:'Space Grotesk',-apple-system,'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
 .page{
   width:794px;height:1123px;background:var(--paper);position:relative;overflow:hidden;
-  padding:20px 28px 9px;display:flex;flex-direction:column;gap:8.5px;margin:0 auto 24px;
+  padding:20px 28px 9px;display:flex;flex-direction:column;gap:8px;margin:0 auto 24px;
   background-image:radial-gradient(var(--ink) .6px,transparent .6px);background-size:16px 16px;
 }
 .page::before{content:"";position:absolute;inset:0;background:var(--paper);opacity:.955;z-index:0}
@@ -35,7 +35,7 @@ p{font-size:10.6px;line-height:1.33}
 .mono,.eyebrow,.chip,.tail,.k,code{font-family:'JetBrains Mono',Menlo,monospace}
 code{font-size:.9em}
 .eyebrow{font-size:7.6px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
-.card{background:var(--card);border:2.4px solid var(--ink);border-radius:11px;box-shadow:4px 4px 0 var(--ink);padding:9px 12px}
+.card{background:var(--card);border:2.4px solid var(--ink);border-radius:11px;box-shadow:4px 4px 0 var(--ink);padding:8px 12px}
 .card>h2{display:flex;align-items:center;gap:7px;margin-bottom:5px}
 .chip{flex:none;width:19px;height:19px;border-radius:6px;background:var(--ink);color:var(--card);
   font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700}
@@ -111,6 +111,23 @@ tr:last-child td{border-bottom:none}
 .foot .qr img{width:92px;height:92px;display:block;border:2.2px solid var(--ink);border-radius:8px}
 .grow{flex:1}
 .split{display:grid;grid-template-columns:1.05fr 1fr;gap:12px;align-items:start}
+.dg svg{width:100%;height:auto;display:block}
+.dg .bx0{fill:var(--card);stroke:var(--ink);stroke-width:2}
+.dg .bxt{fill:var(--teal-w);stroke:var(--ink);stroke-width:2.2}
+.dg .bxc{fill:var(--coral-w);stroke:var(--ink);stroke-width:2}
+.dg .bxa{fill:var(--amber-w);stroke:var(--ink);stroke-width:2}
+.dg .bxd{fill:var(--card);stroke:var(--ink);stroke-width:1.8;stroke-dasharray:5 4}
+.dg .edge{fill:#F4F8F5;stroke:var(--teal-d);stroke-width:2.4;stroke-dasharray:9 6}
+.dg .ttl{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12.5px;fill:var(--ink)}
+.dg .mn{font-family:'JetBrains Mono',Menlo,monospace;font-weight:700;fill:var(--ink)}
+.dg .sm{font-family:'Space Grotesk',sans-serif;font-size:10.5px;fill:#3E4A48}
+.dg .lab{font-family:'JetBrains Mono',Menlo,monospace;font-size:10.5px;font-weight:700;letter-spacing:1.6px;fill:var(--teal-d)}
+.dg .ln{stroke:var(--ink);stroke-width:1.8;fill:none}
+.dg .lnc{stroke:var(--coral);stroke-width:2.2;fill:none}
+.dg .lnd{stroke:var(--ink);stroke-width:1.6;fill:none;stroke-dasharray:4 3}
+.dg .lnx{stroke:var(--coral);stroke-width:2.4;fill:none;stroke-dasharray:6 4}
+.dg .cr{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:11px;fill:#B23A18}
+.appr td:first-child{font-family:'JetBrains Mono',Menlo,monospace;font-weight:700;white-space:nowrap;color:var(--teal-d);width:1%}
 @page{size:A4;margin:0}
 @media print{
   body{background:#fff}
@@ -128,7 +145,7 @@ tr:last-child td{border-bottom:none}
     <div class="grow">
       <div class="eyebrow">Meru &#183; personal AI assistant &#183; written in Go &#183; pre-alpha</div>
       <h1 style="margin-top:6px">An AI assistant on<br><span class="hl">your own machine</span></h1>
-      <p class="sub">Meru loads open-weight models into your computer&#8217;s memory and keeps them there. You need no API key and pay for no tokens, so a question costs you electricity. No prompt leaves your machine unless you allow it.</p>
+      <p class="sub">Meru runs open-weight models on a machine you control. You need no API key and pay for no tokens, so a question costs electricity, and the model on your disk in 2026 still runs in 2031. No prompt leaves the machine unless you allow it.</p>
       <div class="name">
         <svg width="46" height="40" viewBox="0 0 46 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <ellipse cx="23" cy="17" rx="21" ry="6" fill="none" stroke="#0A5453" stroke-width="1.4" stroke-dasharray="3 2.4"/>
@@ -144,78 +161,148 @@ tr:last-child td{border-bottom:none}
     <div class="qr">
       <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE5klEQVR4nO3dMW7kNhiA0XGQK0yVOvc/UOpUcwBXhlMn+QREAQmSnve6XSxkjdcfaOgHxY/vr88H8He//OPPgDCgWTEgCAOCMCAIA4IwIAgDgjAgCAOCMCAIA4IwIAgDgjAg/Pq46fnb748TvP78Y8h17n7eq697dZ279zn7+7/b/az6XFYMCMKAIAwIwoAgDAjCgCAMGDHHmD03uOvuc/TZc4nZ11l1/Z/683DFigFBGBCEAUEYEIQBQRgQhAEz5xhXZj+nn32dVfsoVs1PRn3eU34erlgxIAgDgjAgCAOCMCAIA4IwYMUc4xS7vfdpt/t5N1YMCMKAIAwIwoAgDAjCgCAMCG83xxj1Hqq784TZ52bs9nVPZ8WAIAwIwoAgDAjCgCAMCMKAFXOM3Z6Lj9rPsGoeMtuqucpurBgQhAFBGBCEAUEYEIQBQRgwc45xyvuLdttfccq//6k/D1esGBCEAUEYEIQBQRgQhAFBGBA+vr8+6+/fzqpzuGdf33ul/h8rBgRhQBAGBGFAEAYEYUAQBozYj3HK/oFTzpe4+96q0+cbz8nft1H3acWAIAwIwoAgDAjCgCAMCMKAEXOM2fsQrng/0p6eN+cJo+Yns+cwVgwIwoAgDAjCgCAMCMKAIAyYuR9jt/0Mo+7n7nWunLJvZNW5Ga9F87ErVgwIwoAgDAjCgCAMCMKAIAyYeT7GqufNp8xJTnneP/v+T5kLWTEgCAOCMCAIA4IwIAgDgjBgxTnfq55n373+qnnFXbudI75qLjH7/8uKAUEYEIQBQRgQhAFBGBCEASPeK3Vlt/OhT3/ev2p/yylek79vVgwIwoAgDAjCgCAMCMKAIAxYcT7G6c/7R81PVt3/3TnS7P0wz8nnbIxixYAgDAjCgCAMCMKAIAwIwoCZ+zFOee/Qqn0Oq95/dcpc5bnZ+R5WDAjCgCAMCMKAIAwIwoAgDFhxzvfscyRO/7qnvD/qNfmcCudjwAH8KgVBGBCEAUEYEIQBQRiw036MU86Tvvt1Z89VVn3e56Jz0FftJ7FiQBAGBGFAEAYEYUAQBgRhwMzzMWY/17/7nqir66+aP6zaN3L6Po0rzseABfwqBUEYEIQBwoD/xooBQRiw4r1Su52Pccr5DKe8b2q2VXMnKwYEYUAQBgRhQBAGBGFAEAaMmGPstm/h9PnJKKfPPV6b7UuxYkAQBgRhQBAGBGFAEAYEYcDM/Rin2O15v/Mu9twnY8WAIAwIwoAgDAjCgCAMCMKAmedj7GbU+Riz72f2+SGr9oG8Fu17GcWKAUEYEIQBQRgQhAFBGBCEASPmGLu9F2jV/GHUeeSj7mfUOeiz39M1m/MxYCK/SkEQBgRhQBAGBGFAEAbMnGNc+annZ8/ehzDKbt+3Ufc5e3+LFQOCMCAIA4IwIAgDgjAgCANWzDF2M3sfwm7noI/yWjSfWfUeMysGBGFAEAYEYUAQBgRhQBAGhLebY+x2jsRdp89DTtnfYsWAIAwIwoAgDAjCgCAMCMKA8PH99fm4492ef6+aG5x+nvrp/19WDAjCgCAMCMKAIAwIwoAgDJi5H+OU5+67zWF2e//V6T8PT+djwDx+lYIgDAjCgCAMCMKAIAwYsR8D3oEVA4IwIAgDgjAgCAOCMCAIA4IwIAgDgjAgCAOCMCAIA4IwIAgDHv/2F5K6MMnPtFasAAAAAElFTkSuQmCC" alt="QR code to github.com/aarora79/meru">
       <div class="fine" style="margin-top:4px;text-align:center">github.com/aarora79/meru</div>
+      <div class="fine" style="margin-top:3px;text-align:center;line-height:1.25">Architecture in three levels:<br><b class="mono" style="color:var(--teal-d)">aarora79.github.io/meru/</b></div>
     </div>
   </div>
 
-  <div class="tiles">
-    <div class="tile"><div class="n">~50 ms</div><div class="l">For the <span class="mono">meru</span> client to start. The model is already loaded.</div></div>
-    <div class="tile"><div class="n">~2 GB</div><div class="l">To download the default <span class="mono">lite</span> profile. Runs on 16&#8239;GB of RAM.</div></div>
-    <div class="tile"><div class="n">0</div><div class="l">Code paths to a hosted model. The engine talks only to loopback.</div></div>
-    <div class="tile"><div class="n">1</div><div class="l">Function, <span class="mono">dispatch</span>, that every tool and agent call passes through.</div></div>
-  </div>
-
   <div class="card">
-    <h2><span class="chip">01</span>Two programs, because big models load slowly<span class="tail">merud + meru &#183; Unix socket</span></h2>
-    <div class="lanes">
-      <div class="lane">
-        <h3>merud &#183; always running</h3>
-        <div class="step"><b>1</b><span>Keeps each model loaded in Ollama and warms every tier at startup.</span></div>
-        <div class="step"><b>2</b><span>Owns the store, the MCP and A2A connections, and the scheduler.</span></div>
-        <div class="step"><b>3</b><span>Runs the agent loop and emits metrics and traces.</span></div>
-      </div>
-      <div class="lane b">
-        <h3>meru &#183; thin client</h3>
-        <div class="step"><b>1</b><span>Connects to <span class="mono">~/.meru/merud.sock</span>.</span></div>
-        <div class="step"><b>2</b><span>Sends your question and streams the answer back as it arrives.</span></div>
-        <div class="step"><b>3</b><span>Exits. It holds no model and no store logic.</span></div>
-      </div>
+    <h2><span class="chip">01</span>Everything runs inside the dashed line<span class="tail">the parts of Meru</span></h2>
+    <div class="dg">
+<svg viewBox="0 0 710 488" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The parts of Meru. A dashed line marks your machine. You type into meru, which passes the question to merud. merud holds the scheduler, the agent loop and dispatch. The agent loop uses local models, your data and skills. Dispatch reaches other agents over A2A and tools over MCP. An optional dashboard runs locally. Only tools you allow reach internet services outside the line.">
+  <defs>
+    <marker id="dk" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker>
+    <marker id="dc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#E4552F"/></marker>
+  </defs>
+
+  <!-- your machine -->
+  <rect x="3" y="3" width="704" height="402" rx="14" class="edge"/>
+  <text x="18" y="25" class="lab">YOUR MACHINE</text>
+
+  <!-- you and meru -->
+  <rect x="26" y="58" width="90" height="34" rx="17" class="bx0"/>
+  <text x="71" y="80" class="ttl" text-anchor="middle" font-size="13.5">you</text>
+  <path d="M71 92 L71 124" class="ln" marker-end="url(#dk)"/>
+  <rect x="10" y="126" width="124" height="88" rx="9" class="bx0"/>
+  <text x="72" y="151" class="mn" font-size="15" text-anchor="middle">meru</text>
+  <text x="72" y="170" class="sm" text-anchor="middle">chat, or one question</text>
+  <text x="72" y="186" class="sm" text-anchor="middle">starts in ~50 ms,</text>
+  <text x="72" y="201" class="sm" text-anchor="middle">streams the answer</text>
+  <text x="72" y="236" class="sm" text-anchor="middle">local socket</text>
+  <text x="72" y="251" class="sm" text-anchor="middle">to merud</text>
+
+  <!-- merud -->
+  <rect x="150" y="36" width="236" height="290" rx="11" class="bxt"/>
+  <text x="164" y="58" class="mn" font-size="15">merud</text>
+  <text x="222" y="58" class="sm">runs in the background</text>
+
+  <rect x="166" y="70" width="204" height="50" rx="8" class="bxa"/>
+  <text x="178" y="91" class="ttl">scheduler</text>
+  <text x="178" y="109" class="sm">jobs from config.toml</text>
+  <path d="M268 120 L268 142" class="ln" marker-end="url(#dk)"/>
+
+  <rect x="166" y="144" width="204" height="56" rx="8" class="bx0"/>
+  <text x="178" y="166" class="ttl">agent loop</text>
+  <text x="178" y="185" class="sm">routes, searches, answers</text>
+  <path d="M268 200 L268 222" class="ln" marker-end="url(#dk)"/>
+
+  <rect x="166" y="224" width="204" height="88" rx="8" class="bxc"/>
+  <text x="178" y="245" class="mn" font-size="13.5">dispatch</text>
+  <text x="178" y="264" class="sm">checks each tool call,</text>
+  <text x="178" y="280" class="sm">asks before risky calls,</text>
+  <text x="178" y="296" class="sm">logs every call</text>
+
+  <path d="M134 172 L164 172" class="ln" marker-end="url(#dk)"/>
+
+  <!-- dashboard -->
+  <path d="M268 326 L268 346" class="lnd" marker-end="url(#dk)"/>
+  <rect x="166" y="348" width="204" height="46" rx="9" class="bxd"/>
+  <text x="178" y="367" class="ttl">dashboard (optional)</text>
+  <text x="178" y="384" class="sm">Grafana, local only</text>
+
+  <!-- local models -->
+  <rect x="424" y="36" width="268" height="78" rx="9" class="bx0"/>
+  <text x="436" y="55" class="ttl">local models &#183; Ollama</text>
+  <text x="680" y="55" class="sm" text-anchor="end">lite or full</text>
+  <rect x="436" y="66" width="76" height="36" rx="6" class="bxt"/>
+  <text x="474" y="89" class="mn" font-size="12" text-anchor="middle">fast</text>
+  <rect x="520" y="66" width="76" height="36" rx="6" class="bxt"/>
+  <text x="558" y="89" class="mn" font-size="12" text-anchor="middle">main</text>
+  <rect x="604" y="66" width="76" height="36" rx="6" class="bxt"/>
+  <text x="642" y="89" class="mn" font-size="12" text-anchor="middle">embed</text>
+
+  <!-- your data -->
+  <rect x="424" y="124" width="268" height="112" rx="9" class="bx0"/>
+  <text x="436" y="143" class="ttl">your data</text>
+  <text x="680" y="143" class="sm" text-anchor="end">plain files</text>
+  <rect x="436" y="153" width="118" height="38" rx="6" class="bxa"/>
+  <text x="445" y="168" class="ttl" font-size="11">your folders</text>
+  <text x="445" y="183" class="sm" font-size="10">notes, docs, PDFs</text>
+  <rect x="562" y="153" width="118" height="38" rx="6" class="bxa"/>
+  <text x="571" y="168" class="ttl" font-size="11">memory files</text>
+  <text x="571" y="183" class="sm" font-size="10">Markdown, by kind</text>
+  <rect x="436" y="195" width="118" height="38" rx="6" class="bxa"/>
+  <text x="445" y="210" class="ttl" font-size="11">transcripts</text>
+  <text x="445" y="225" class="sm" font-size="10">one per chat</text>
+  <rect x="562" y="195" width="118" height="38" rx="6" class="bxa"/>
+  <text x="571" y="210" class="ttl" font-size="11">search index</text>
+  <text x="571" y="225" class="sm" font-size="10">SQLite, rebuildable</text>
+
+  <!-- skills -->
+  <rect x="424" y="246" width="268" height="50" rx="9" class="bx0"/>
+  <text x="436" y="265" class="ttl">skills</text>
+  <text x="680" y="265" class="sm" text-anchor="end">+ yours</text>
+  <text x="436" y="285" class="sm">writing &#183; explainer &#183; poster-making</text>
+
+  <!-- other agents -->
+  <rect x="424" y="306" width="268" height="36" rx="9" class="bx0"/>
+  <text x="436" y="329" class="ttl">other agents &#183; A2A</text>
+  <text x="680" y="329" class="sm" text-anchor="end">off until allowed</text>
+
+  <!-- tools -->
+  <rect x="424" y="350" width="268" height="46" rx="9" class="bxc"/>
+  <text x="436" y="368" class="ttl">tools &#183; MCP</text>
+  <text x="680" y="368" class="sm" text-anchor="end">+ more</text>
+  <text x="436" y="386" class="sm">web search &#183; Gmail &#183; Calendar &#183; Drive</text>
+
+  <!-- agent loop reaches models, data, skills; dispatch reaches agents and tools -->
+  <path d="M370 156 L421 84" class="ln" marker-end="url(#dk)"/>
+  <path d="M370 172 L421 180" class="ln" marker-end="url(#dk)"/>
+  <path d="M370 188 L421 266" class="ln" marker-end="url(#dk)"/>
+  <path d="M370 252 L421 322" class="lnc" marker-end="url(#dc)"/>
+  <path d="M370 284 L421 370" class="lnc" marker-end="url(#dc)"/>
+
+  <!-- internet, outside your machine -->
+  <path d="M600 396 L600 432" class="lnx" marker-end="url(#dc)"/>
+  <text x="590" y="425" class="cr" text-anchor="end">only tools you allow</text>
+  <rect x="512" y="434" width="180" height="48" rx="24" class="bx0"/>
+  <text x="602" y="455" class="ttl" text-anchor="middle">internet services</text>
+  <text x="602" y="472" class="sm" text-anchor="middle">search engine, Google</text>
+
+  <text x="8" y="433" class="ttl" font-size="12">Inside the line: the models, your data and the assistant.</text>
+  <text x="8" y="452" class="sm" font-size="11">Black arrows stay on the machine. Coral arrows leave merud</text>
+  <text x="8" y="468" class="sm" font-size="11">through dispatch, and only the tools you allow cross the line.</text>
+</svg>
     </div>
-    <div class="handoff">The <code>full</code> profile&#8217;s ~18&#8239;GB main model takes many seconds to load from disk, so the daemon holds it and the client stays thin.</div>
-    <pre style="margin-top:6px"><span class="p">$</span> meru <span class="s">"what did I change in the portfolio repo this week?"</span>
-<span class="p">$</span> meru chat                    <span class="c"># interactive terminal UI</span>
-<span class="p">$</span> meru index ~/notes ~/repos   <span class="c"># build the local knowledge index</span>
-<span class="p">$</span> meru memory list             <span class="c"># what it knows about you, in plain text</span></pre>
   </div>
 
   <div class="card">
-    <h2><span class="chip">02</span>Pick the profile your memory can hold<span class="tail">lite is the default</span></h2>
+    <h2><span class="chip">02</span>Pick the profile your machine can hold<span class="tail">lite is the default</span></h2>
     <table>
       <tr><th>Tier</th><th>Job</th><th><span style="color:var(--teal-d)">lite</span> (default)</th><th>full</th></tr>
       <tr><td class="n">fast</td><td>routing, query rewrites</td><td class="lite">MiniCPM5-2B, 1.6&#8239;GB</td><td>same</td></tr>
       <tr><td class="n">main</td><td>reasoning, choosing tools</td><td class="lite">same model as <span class="mono">fast</span></td><td><span class="mono">qwen3.8:27b</span>, ~18&#8239;GB at 4-bit</td></tr>
-      <tr><td class="n">embed</td><td>vectors for the index</td><td class="lite"><span class="mono">nomic-embed-text</span>, 768 dims</td><td><span class="mono">qwen3-embedding:0.6b</span>, 1024 dims</td></tr>
-      <tr><td class="n">RAM</td><td>hardware</td><td class="lite">16&#8239;GB; a CPU is enough</td><td>Apple silicon, 32&#8239;GB+, or a 24&#8239;GB GPU</td></tr>
+      <tr><td class="n">embed</td><td>vectors for search</td><td class="lite"><span class="mono">nomic-embed-text</span>, 768 dims</td><td><span class="mono">qwen3-embedding:0.6b</span>, 1024 dims</td></tr>
+      <tr><td class="n">needs</td><td>hardware</td><td class="lite">16&#8239;GB of RAM; a CPU is enough</td><td>Apple silicon with 32&#8239;GB+, or a ~24&#8239;GB GPU</td></tr>
     </table>
-    <p class="fine" style="margin-top:5px">Code asks for a tier, and <span class="mono">config.toml</span> maps each tier to a model. Meru won&#8217;t run 120B models: at 4-bit one needs about 60&#8239;GB and leaves even a 64&#8239;GB machine swapping.</p>
+    <p class="fine" style="margin-top:5px"><b>Platforms:</b> macOS on Apple silicon (tested), Linux, including cloud VMs such as EC2, and Windows 10+ (untested at first).</p>
   </div>
 
   <div class="card">
-    <h2><span class="chip">03</span>Five steps in a loop we wrote<span class="tail">no agent framework</span></h2>
-    <div class="five">
-      <div class="q"><div class="k">1 &#183; Route</div><div class="a">The <span class="mono">fast</span> model picks: answer, search your files, call tools, or both.</div></div>
-      <div class="q"><div class="k">2 &#183; Context</div><div class="a">Prompt, skills, memories and chunks, each under a token budget.</div></div>
-      <div class="q"><div class="k">3 &#183; Main</div><div class="a">The <span class="mono">main</span> model streams its answer to you as it writes.</div></div>
-      <div class="q"><div class="k">4 &#183; Dispatch</div><div class="a">Tool calls go through one function. Independent calls run at the same time.</div></div>
-      <div class="q"><div class="k">5 &#183; Repeat</div><div class="a">Until the model answers without a tool call, or hits the cap of 8 rounds.</div></div>
-    </div>
-    <p class="fine" style="margin-top:5px">The allowlist, audit log, context budget and confirmation prompts all live in this loop, where you can read them. Ctrl-C cancels the whole turn.</p>
-  </div>
-
-  <div class="card">
-    <h2><span class="chip">04</span>Why run it yourself<span class="tail">three reasons, in order</span></h2>
-    <div class="three">
-      <div class="q"><div class="k">Privacy you can check</div><div class="a">Your email, notes, money and calendar stay on your machine, out of anyone&#8217;s training data.</div></div>
-      <div class="q"><div class="k">No cost per question</div><div class="a">Indexing ten years of notes or a daily brief costs nothing once you own the hardware.</div></div>
-      <div class="q"><div class="k">It keeps working</div><div class="a">No rate limits or price changes. The model on your disk in 2026 still runs in 2031.</div></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="chip">05</span>The rules the code keeps<span class="tail">from the privacy boundary</span></h2>
+    <h2><span class="chip">03</span>The rules the code keeps<span class="tail">from the privacy boundary</span></h2>
     <div class="cols2">
-      <div class="li"><b>&#9632;</b><span><i>No hosted-model code path.</i> The one model client talks to Ollama and refuses any URL off loopback.</span></div>
-      <div class="li"><b>&#9632;</b><span><i>No telemetry leaves the machine.</i> Meru measures itself locally; no crash reports or update checks.</span></div>
-      <div class="li"><b>&#9632;</b><span><i>Deny by default.</i> MCP tools and A2A skills start switched off; you allow them one at a time.</span></div>
+      <div class="li"><b>&#9632;</b><span><i>Local models only.</i> The one model client talks to Ollama on this machine and refuses any other URL.</span></div>
+      <div class="li"><b>&#9632;</b><span><i>No telemetry leaves the machine.</i> Meru measures itself locally, sends no crash reports and never checks for updates.</span></div>
+      <div class="li"><b>&#9632;</b><span><i>Deny by default.</i> A new MCP server or A2A agent gives the model nothing until you allow tools by name.</span></div>
       <div class="li"><b>&#9632;</b><span><i>Loopback unless you say so.</i> A remote server or agent needs <span class="mono">network = true</span> in its entry.</span></div>
       <div class="li"><b>&#9632;</b><span><i>Every external action logged.</i> Review them all with <span class="mono">meru log</span>.</span></div>
       <div class="li warnli"><b>!</b><span><i>No sandbox.</i> MCP servers run with your permissions, so add only ones you trust.</span></div>
@@ -232,138 +319,139 @@ tr:last-child td{border-bottom:none}
 <section class="page" id="back">
 
   <div class="card">
-    <h2><span class="chip">06</span>Two searches, merged by rank<span class="tail">BM25 + sqlite-vec + reciprocal-rank fusion</span></h2>
-    <p style="margin-bottom:6px">Vector search misses exact strings such as ticker symbols and error codes. BM25 keyword ranking catches those strings and misses paraphrase. Meru runs both inside SQLite and merges the two ranked lists in Go.</p>
-    <div class="chart"><svg viewBox="0 0 700 248" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid search pipeline and reciprocal-rank fusion scores"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker></defs>
-<rect x="0" y="30" width="78" height="34" rx="6" fill="#FFFDF7" stroke="#14181C" stroke-width="2"/>
-<text x="39.0" y="51.0" class="bx" text-anchor="middle" fill="#14181C">query</text>
-<line x1="78" y1="42" x2="104" y2="22" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<rect x="106" y="6" width="92" height="30" rx="6" fill="#D9ECEA" stroke="#0A5453" stroke-width="2"/>
-<text x="152.0" y="19.0" class="bx" text-anchor="middle" fill="#14181C">embed</text>
-<text x="152.0" y="31.0" class="bs" text-anchor="middle" fill="#14181C">embed tier</text>
-<line x1="198" y1="21" x2="222" y2="21" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<rect x="224" y="6" width="150" height="30" rx="6" fill="#D9ECEA" stroke="#0A5453" stroke-width="2"/>
-<text x="299.0" y="19.0" class="bx" text-anchor="middle" fill="#14181C">chunk_vec</text>
-<text x="299.0" y="31.0" class="bs" text-anchor="middle" fill="#14181C">sqlite-vec · top 50</text>
-<line x1="78" y1="52" x2="222" y2="72" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<rect x="224" y="58" width="150" height="30" rx="6" fill="#FBEDD0" stroke="#14181C" stroke-width="2"/>
-<text x="299.0" y="71.0" class="bx" text-anchor="middle" fill="#14181C">chunk_fts</text>
-<text x="299.0" y="83.0" class="bs" text-anchor="middle" fill="#14181C">FTS5 · BM25 · top 50</text>
-<line x1="374" y1="21" x2="404" y2="40" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<line x1="374" y1="73" x2="404" y2="54" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<rect x="406" y="28" width="110" height="38" rx="6" fill="#14181C" stroke="#14181C" stroke-width="2"/>
-<text x="461.0" y="45.0" class="bx" text-anchor="middle" fill="#FFFDF7">rrf() in Go</text>
-<text x="461.0" y="57.0" class="bs" text-anchor="middle" fill="#FFFDF7">one pure function</text>
-<line x1="516" y1="47" x2="540" y2="47" stroke="#14181C" stroke-width="1.8" marker-end="url(#ah)"/>
-<rect x="542" y="28" width="158" height="38" rx="6" fill="#FFFDF7" stroke="#14181C" stroke-width="2"/>
-<text x="621.0" y="45.0" class="bx" text-anchor="middle" fill="#14181C">top 10 chunks</text>
-<text x="621.0" y="57.0" class="bs" text-anchor="middle" fill="#14181C">text + source path</text>
-<text x="0" y="106" class="cl">RRF SCORE, K = 60 · RANKS INVENTED, SCORES COMPUTED</text>
-<line x1="258.6" y1="120" x2="258.6" y2="230" class="cg"/>
-<text x="258.6" y="242" class="ct" text-anchor="middle">0.01</text>
-<line x1="367.1" y1="120" x2="367.1" y2="230" class="cg"/>
-<text x="367.1" y="242" class="ct" text-anchor="middle">0.02</text>
-<line x1="475.7" y1="120" x2="475.7" y2="230" class="cg"/>
-<text x="475.7" y="242" class="ct" text-anchor="middle">0.03</text>
-<text x="0" y="131" class="cn">chunk A</text>
-<text x="56" y="131" class="ct">vec #1 · kw #1</text>
-<rect x="150" y="120" width="356.0" height="15" rx="3" fill="#0E7C7B"/>
-<text x="513.0" y="131" class="cv">0.0328</text>
-<text x="564.0" y="131" class="cf">first in both</text>
-<text x="0" y="153" class="cn">chunk B</text>
-<text x="56" y="153" class="ct">vec #3 · kw #2</text>
-<rect x="150" y="142" width="347.5" height="15" rx="3" fill="#0E7C7B"/>
-<text x="504.5" y="153" class="cv">0.0320</text>
-<text x="555.5" y="153" class="cf">never first</text>
-<text x="0" y="175" class="cn">chunk C</text>
-<text x="56" y="175" class="ct">vec #20 · kw #15</text>
-<rect x="150" y="164" width="280.5" height="15" rx="3" fill="#0E7C7B"/>
-<text x="437.5" y="175" class="cv">0.0258</text>
-<text x="488.5" y="175" class="cf">lower in both</text>
-<text x="0" y="197" class="cn">chunk D</text>
-<text x="56" y="197" class="ct">kw #1</text>
-<rect x="150" y="186" width="178.0" height="15" rx="3" fill="#E4552F"/>
-<text x="335.0" y="197" class="cv">0.0164</text>
-<text x="386.0" y="197" class="cf">exact ticker, keyword only</text>
-<text x="0" y="219" class="cn">chunk E</text>
-<text x="56" y="219" class="ct">vec #1</text>
-<rect x="150" y="208" width="178.0" height="15" rx="3" fill="#E4552F"/>
-<text x="335.0" y="219" class="cv">0.0164</text>
-<text x="386.0" y="219" class="cf">paraphrase, vector only</text>
-<line x1="150" y1="116" x2="150" y2="226.5" stroke="#14181C" stroke-width="1.8"/>
+    <h2><span class="chip">04</span>One turn, five steps, in a loop we wrote<span class="tail">no agent framework &#183; traced locally</span></h2>
+    <div class="five">
+      <div class="q"><div class="k">1 &#183; Route</div><div class="a"><span class="mono">fast</span> rewrites the question, picks a route.</div></div>
+      <div class="q"><div class="k">2 &#183; Context</div><div class="a">Skills, memories, hits, history, each on a budget.</div></div>
+      <div class="q"><div class="k">3 &#183; Main</div><div class="a"><span class="mono">main</span> streams the answer to you, or asks for a tool.</div></div>
+      <div class="q"><div class="k">4 &#183; Dispatch</div><div class="a">Checks, asks if needed, runs and logs each call.</div></div>
+      <div class="q"><div class="k">5 &#183; Repeat</div><div class="a">Until the answer needs no tool, or 8 rounds.</div></div>
+    </div>
+    <p class="fine" style="margin-top:5px"><span class="mono">merud</span> traces each step with OpenTelemetry and sends the data only to a loopback endpoint, such as the bundled Grafana, with no prompt text unless you opt in.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="chip">05</span>Two searches, merged by rank<span class="tail">BM25 + sqlite-vec + reciprocal-rank fusion</span></h2>
+    <p style="margin-bottom:6px">Each turn searches your files, your memories and past chat summaries. Keyword search (BM25) finds exact strings such as tickers, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
+    <div class="chart"><svg viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid search pipeline and reciprocal-rank fusion scores"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker></defs>
+
+<text x="0" y="12" class="cl">RRF SCORE = Σ 1/(60 + RANK) · RANKS INVENTED, SCORES COMPUTED</text>
+<line x1="258.6" y1="26" x2="258.6" y2="121" class="cg"/>
+<text x="258.6" y="133" class="ct" text-anchor="middle">0.01</text>
+<line x1="367.1" y1="26" x2="367.1" y2="121" class="cg"/>
+<text x="367.1" y="133" class="ct" text-anchor="middle">0.02</text>
+<line x1="475.7" y1="26" x2="475.7" y2="121" class="cg"/>
+<text x="475.7" y="133" class="ct" text-anchor="middle">0.03</text>
+<text x="0" y="37" class="cn">chunk A</text>
+<text x="56" y="37" class="ct">vec #1 · kw #1</text>
+<rect x="150" y="26" width="356.0" height="14" rx="3" fill="#0E7C7B"/>
+<text x="513.0" y="37" class="cv">0.0328</text>
+<text x="564.0" y="37" class="cf">first in both</text>
+<text x="0" y="56" class="cn">chunk B</text>
+<text x="56" y="56" class="ct">vec #3 · kw #2</text>
+<rect x="150" y="45" width="347.5" height="14" rx="3" fill="#0E7C7B"/>
+<text x="504.5" y="56" class="cv">0.0320</text>
+<text x="555.5" y="56" class="cf">never first</text>
+<text x="0" y="75" class="cn">chunk C</text>
+<text x="56" y="75" class="ct">vec #20 · kw #15</text>
+<rect x="150" y="64" width="280.5" height="14" rx="3" fill="#0E7C7B"/>
+<text x="437.5" y="75" class="cv">0.0258</text>
+<text x="488.5" y="75" class="cf">lower in both</text>
+<text x="0" y="94" class="cn">chunk D</text>
+<text x="56" y="94" class="ct">kw #1</text>
+<rect x="150" y="83" width="178.0" height="14" rx="3" fill="#E4552F"/>
+<text x="335.0" y="94" class="cv">0.0164</text>
+<text x="386.0" y="94" class="cf">exact ticker, keyword only</text>
+<text x="0" y="113" class="cn">chunk E</text>
+<text x="56" y="113" class="ct">vec #1</text>
+<rect x="150" y="102" width="178.0" height="14" rx="3" fill="#E4552F"/>
+<text x="335.0" y="113" class="cv">0.0164</text>
+<text x="386.0" y="113" class="cf">paraphrase, vector only</text>
+<line x1="150" y1="22" x2="150" y2="118.5" stroke="#14181C" stroke-width="1.8"/>
 </svg></div>
-    <p class="fine" style="margin-top:4px">Fusion ignores the two lists&#8217; scales and uses position: <span class="mono">score = &#931; 1/(60 + rank)</span>. B ranks third and second, and scores almost twice as high as D or E.</p>
   </div>
 
   <div class="card">
-    <h2><span class="chip">07</span>Every tool and agent call passes one function<span class="tail">dispatch &#183; deny by default</span></h2>
+    <h2><span class="chip">06</span>Every tool call passes one function<span class="tail">dispatch &#183; deny by default</span></h2>
     <div class="flow">
-      <div class="f"><b>allowlist</b>Does config allow this tool by name?</div><div class="ar">&#8594;</div>
-      <div class="f"><b>confirm?</b>Ask you first, if config says so.</div><div class="ar">&#8594;</div>
-      <div class="f dark"><b>call</b>MCP server or A2A agent, with a timeout.</div><div class="ar">&#8594;</div>
-      <div class="f"><b>tool_calls</b>Write the audit row.</div><div class="ar">&#8594;</div>
-      <div class="f"><b>span + metrics</b>Record time and outcome.</div>
+      <div class="f"><b>allow?</b>If not: denied.</div><div class="ar">&#8594;</div>
+      <div class="f"><b>confirm?</b>If so: ask you.</div><div class="ar">&#8594;</div>
+      <div class="f dark"><b>call</b>MCP, A2A or built-in.</div><div class="ar">&#8594;</div>
+      <div class="f"><b>tool_calls</b>Log every outcome.</div><div class="ar">&#8594;</div>
+      <div class="f"><b>span</b>Time and result.</div>
     </div>
-    <div class="split">
-      <p style="font-size:9.4px">No other code path reaches a server or an agent. A server that offers 40 tools gives the model none until you allow them by name. Any MCP server you already run works with no new code. Each allowed A2A agent skill becomes one more tool, <span class="mono">a2a.&lt;agent&gt;.&lt;skill&gt;</span>, with the same checks.</p>
-      <pre>[[mcp.servers]]
-name    = <span class="s">"obsidian"</span>
-command = <span class="s">"..."</span>               <span class="c"># stdio child</span>
-allow   = [<span class="s">"read"</span>, <span class="s">"search"</span>]  <span class="c"># the rest: off</span>
-confirm = []                  <span class="c"># ask me each call</span></pre>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="chip">08</span>Delete meru.db and Meru rebuilds it<span class="tail">files are the source of truth</span></h2>
-    <div class="lanes">
-      <div class="lane">
-        <h3>Files &#183; the truth</h3>
-        <div class="step"><b>&#9632;</b><span>Your folders: notes, docs, PDFs, repos.</span></div>
-        <div class="step"><b>&#9632;</b><span><span class="mono">~/.meru/sessions/</span>: one JSONL file per session, append-only.</span></div>
-        <div class="step"><b>&#9632;</b><span><span class="mono">config.toml</span> and <span class="mono">skills/</span>, markdown you can edit.</span></div>
-      </div>
-      <div class="lane b">
-        <h3>~/.meru/meru.db &#183; the index</h3>
-        <div class="step"><b>&#9632;</b><span><span class="mono">chunks</span>, <span class="mono">chunk_fts</span> and <span class="mono">chunk_vec</span>, from your folders.</span></div>
-        <div class="step"><b>&#9632;</b><span><span class="mono">messages</span> and <span class="mono">message_fts</span>, replayed from the sessions.</span></div>
-        <div class="step"><b>&#9632;</b><span><span class="mono">tool_calls</span>: the audit log, one readable row per call, with its trace ID.</span></div>
-      </div>
-    </div>
-    <div class="handoff">One SQLite file through <code>ncruces/go-sqlite3</code>, with <code>sqlite-vec</code> built in, so the build needs no C compiler and no second database.</div>
-  </div>
-
-  <div class="card">
-    <h2><span class="chip">09</span>Traces and metrics that stay on your machine<span class="tail">OpenTelemetry &#183; loopback only</span></h2>
     <div class="split">
       <div>
-        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Export stays off until you set <span class="mono">observability.otlp_endpoint</span>.</span></div>
-        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span><span class="mono">merud</span> refuses to start if that endpoint isn&#8217;t loopback.</span></div>
-        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Spans leave out prompt text unless you set <span class="mono">capture_content = true</span>.</span></div>
-        <div class="li"><b>&#9632;</b><span>The <span class="mono">grafana/otel-lgtm</span> stack binds to 127.0.0.1, with reporting off.</span></div>
+        <table class="appr">
+          <tr><td>approve once</td><td>This call runs. The next one asks again.</td></tr>
+          <tr><td>this session</td><td>No more asking about that tool until the chat ends.</td></tr>
+          <tr><td>deny</td><td>The call doesn&#8217;t run, and the model hears that you said no.</td></tr>
+        </table>
+        <p class="fine" style="margin-top:4px"><span class="mono">configure</span>, the built-in tool that edits config, asks every time. Scripts and scheduled jobs have no one to ask, so <span class="mono">dispatch</span> denies.</p>
       </div>
-      <pre>meru.turn          <span class="c">route, iterations, outcome</span>
-&#9500;&#9472;&#9472; meru.route     <span class="c">fast-tier call</span>
-&#9500;&#9472;&#9472; meru.retrieve  <span class="c">vector, fts, fusion</span>
-&#9500;&#9472;&#9472; gen_ai.chat    <span class="s">main</span>
-&#9500;&#9472;&#9472; mcp.tool_call  <span class="s">obsidian.search</span>
-&#9492;&#9472;&#9472; gen_ai.chat    <span class="s">main</span> <span class="c">final answer</span></pre>
+      <pre>[[mcp.servers]]
+name    = <span class="s">"gmail"</span>
+command = <span class="s">"..."</span>          <span class="c"># stdio child</span>
+allow   = [<span class="s">"search"</span>, <span class="s">"read"</span>, <span class="s">"send"</span>] <span class="c"># rest: off</span>
+confirm = [<span class="s">"send"</span>]         <span class="c"># ask me first</span></pre>
     </div>
   </div>
 
   <div class="card">
-    <h2><span class="chip">10</span>Shipping order<span class="tail">each milestone useful by itself</span></h2>
+    <h2><span class="chip">07</span>Memory is a folder of Markdown files<span class="tail">~/.meru/memory/ &#183; one fact per file</span></h2>
+    <div class="split" style="grid-template-columns:auto 1fr">
+      <pre>me/           <span class="c">who you are</span>
+preferences/  <span class="c">how you like things done</span>
+projects/     <span class="c">work, goals, deadlines</span>
+people/       <span class="c">people you mention</span>
+reference/    <span class="c">where things live</span>
+other/        <span class="c">anything else</span></pre>
+      <div>
+        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Each file carries its date and source chat. Delete the file and Meru forgets it.</span></div>
+        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>The model saves one with the built-in <span class="mono">remember</span> tool, through <span class="mono">dispatch</span>.</span></div>
+        <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Each chat ends with a short summary, so &#8220;what did we decide last week?&#8221; finds it.</span></div>
+        <div class="li"><b>&#9632;</b><span>Files hold the truth. The SQLite index, <span class="mono">meru.db</span>, rebuilds from them.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="chip">08</span>Setup takes one command<span class="tail">meru setup &#183; skills &#183; jobs</span></h2>
+    <div class="lanes">
+      <div class="lane">
+        <h3>meru setup &#183; first run</h3>
+        <div class="step"><b>1</b><span>Checks for Ollama and prints the install command if needed.</span></div>
+        <div class="step"><b>2</b><span>Downloads the <span class="mono">lite</span> or <span class="mono">full</span> models, your pick.</span></div>
+        <div class="step"><b>3</b><span>Writes <span class="mono">config.toml</span> and asks which folders to index.</span></div>
+        <div class="step"><b>4</b><span>Offers starter MCP servers (web search, Gmail, Drive). It adds each for you, or shows you what to paste.</span></div>
+        <div class="step"><b>5</b><span>Answers a test question.</span></div>
+      </div>
+      <div class="lane b">
+        <h3>Skills and jobs</h3>
+        <div class="step"><b>&#9632;</b><span><span class="mono">writing</span>, <span class="mono">explainer</span> and <span class="mono">poster-making</span> ship built in; each loads only when needed.</span></div>
+        <div class="step"><b>&#9632;</b><span>Skills are Markdown in <span class="mono">~/.meru/skills/</span>. Your edits win.</span></div>
+        <pre style="margin-top:4px">[[jobs]]
+name     = <span class="s">"morning-brief"</span>
+schedule = <span class="s">"0 7 * * 1-5"</span>  <span class="c"># weekdays 7:00</span>
+prompt   = <span class="s">"Brief me on today..."</span></pre>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="card">
+    <h2><span class="chip">09</span>Shipping order<span class="tail">each milestone useful by itself</span></h2>
     <div class="gates">
-      <div class="gate"><div class="g">v0.1</div><div class="h">It talks</div><div class="t">A cold <span class="mono">meru "hello"</span> streams a first token in under 1&#8239;s.</div></div>
+      <div class="gate"><div class="g">v0.1</div><div class="h">It talks</div><div class="t"><span class="mono">meru "hello"</span> shows a first token in under 1&#8239;s.</div></div>
       <div class="gate"><div class="g">v0.2</div><div class="h">It knows your files</div><div class="t">It answers from a local note and cites the file.</div></div>
       <div class="gate"><div class="g">v0.3</div><div class="h">It can do things</div><div class="t">It answers by calling an MCP server you already run.</div></div>
-      <div class="gate"><div class="g">v0.4</div><div class="h">It&#8217;s yours</div><div class="t">It recalls something from last week without a reminder.</div></div>
+      <div class="gate"><div class="g">v0.4</div><div class="h">It knows you</div><div class="t">It recalls something from last week without a reminder.</div></div>
       <div class="gate"><div class="g">v0.5</div><div class="h">It acts unprompted</div><div class="t">A morning brief arrives without you asking.</div></div>
     </div>
   </div>
 
   <div class="warn">
-    <div class="fine"><b>Pre-alpha, design phase.</b> This poster describes the design in ARCHITECTURE.md, which the code will follow. The 50&#8239;ms start and the first-token target are design goals that no one has measured yet. Model sizes come from the model publishers. Panel 06 uses made-up ranks to show the formula; the scores follow from it.</div>
+    <div class="fine"><b>Pre-alpha, design phase.</b> The code will follow ARCHITECTURE.md. The 50&#8239;ms start and first-token target are unmeasured goals; panel 05&#8217;s ranks are made up.</div>
   </div>
 
   <div class="foot">
@@ -372,8 +460,9 @@ confirm = []                  <span class="c"># ask me each call</span></pre>
     </div>
     <div class="grow">
       <div class="eyebrow">Read the design, follow the build</div>
-      <p class="fine" style="margin-top:3px">github.com/aarora79/meru &#8212; README.md, ARCHITECTURE.md, ROADMAP.md<br>
-      Amit Arora &#183; MIT license &#183; macOS, Linux, Windows &#183; Ollama on loopback &#183; Go binaries you can copy to another machine and run.</p>
+      <p class="fine" style="margin-top:3px">Code: github.com/aarora79/meru &#8212; README.md, ARCHITECTURE.md, ROADMAP.md<br>
+      Architecture in three levels: <b class="mono" style="color:var(--teal-d)">aarora79.github.io/meru/</b><br>
+      Amit Arora &#183; MIT license &#183; Ollama on loopback &#183; Go binaries you can copy to another machine and run.</p>
     </div>
   </div>
 

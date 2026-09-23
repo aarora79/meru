@@ -16,7 +16,7 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
    to A2A agents and MCP servers you mark as remote in config. Meru measures itself,
    but no telemetry leaves the machine, and the codebase has no path that sends a
-   prompt to a hosted model.
+   prompt to a cloud model.
    MCP servers are separate programs: one you add, such as web search or Gmail, can
    reach the network on its own (see [MCP](#mcp)).
 2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
@@ -32,8 +32,8 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 5. **Fast or unused.** People stop asking an assistant that makes them wait. The
    process model below exists to keep answers quick.
 6. **Simple wins every time.** Pick the design with fewer moving parts, even if it is
-   slower or less general, until a measurement says otherwise. The owner is learning
-   Go through this project, so write code a Go newcomer can follow.
+   slower or less general, until a measurement says otherwise. Write code that a
+   developer new to Go can follow.
 
 ---
 
@@ -41,6 +41,44 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 
 Meru is written in **Go**. `meru` and `merud` build as native binaries that you can
 copy to another machine and run, with no interpreter or virtualenv.
+
+### Why Go
+
+We chose Go over Python, the usual language for AI tools, for these reasons:
+
+1. **A small footprint.** Each program is one binary, typically tens of megabytes. A
+   Python app ships an interpreter, a virtual environment and its packages, often
+   hundreds of megabytes. `merud` never stops running, so its idle memory matters,
+   and the `meru` client starts in milliseconds instead of waiting on Python imports.
+2. **Easy distribution.** One command builds for macOS, Linux or Windows, on Intel or
+   ARM. Installing Meru means copying a file: no Python version to match, no
+   dependency conflicts, and a container image that holds little more than the
+   binary.
+3. **Room to scale.** Meru serves one person, but nothing stops one server from
+   running many Merus. A company, a school or a home lab could give each person their
+   own `merud`, all sharing one Ollama on the same GPU server. At that point the
+   overhead of each daemon multiplies, and a lean compiled daemon lets one server hold
+   many more people than an interpreted one would. The models dominate the cost on a
+   single laptop; across a rack of servers, Meru's own overhead adds up.
+4. **Concurrency built in.** A turn streams tokens, runs tool calls in parallel, keeps
+   MCP connections open, and shares the process with the scheduler and the indexer.
+   Goroutines and `context` cancellation handle that directly, without Python's
+   global interpreter lock.
+5. **Fewer dependencies.** Go's standard library covers HTTP, JSON, Unix sockets,
+   cancellation, structured logging and embedding files in the binary. Fewer
+   third-party packages means less supply-chain risk, which matters for a tool that
+   reads your mail.
+6. **Errors caught before it runs.** Static types and the compiler catch mistakes that
+   Python finds only at runtime, which suits a daemon that runs for weeks.
+7. **It keeps building.** Go's compatibility promise means code written today still
+   compiles years from now, which matches the goal that Meru keeps working without
+   anyone's permission.
+8. **The ecosystem is already Go.** Ollama is written in Go, and the official MCP SDK,
+   the A2A SDK, OpenTelemetry and Bubble Tea all have first-class Go libraries.
+
+The trade-off: Python has the stronger libraries for machine learning and PDF
+parsing. That is one reason models run in Ollama rather than inside Meru, and why PDF
+extraction is still an open question.
 
 Three things stay outside the binaries:
 
@@ -381,7 +419,7 @@ type Engine interface {
 
 **`OllamaEngine` is the only implementation.** It talks to Ollama over HTTP on
 loopback and refuses to start if the configured URL points anywhere else. It is the
-codebase's only HTTP client for a model runtime, and it can't reach a hosted model.
+codebase's only HTTP client for a model runtime, and it can't reach a cloud model.
 
 Each model writes tool calls in its own format; Ollama converts them to structured
 JSON, and the engine converts that JSON to Meru's own types. The agent loop never
@@ -856,7 +894,7 @@ sequenceDiagram
 ```
 
 Agents are deny-by-default too. Meru can reach only the agents in config, and only
-the skills in `allow` become tools. An agent on another machine may use a hosted
+the skills in `allow` become tools. An agent on another machine may use a cloud
 model, so your data would leave the machine. Reaching one takes `network = true`;
 without it, `merud` refuses any agent URL that isn't loopback. For long tasks, Meru
 uses the protocol's streaming updates, with the same per-call timeout as a tool.
@@ -987,7 +1025,7 @@ them.
 
 ## Privacy boundary
 
-- The codebase contains no path to a hosted model. The engine talks only to a model
+- The codebase contains no path to a cloud model. The engine talks only to a model
   runtime on loopback.
 - You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
   HTTP server needs `network = true` in its config entry.
@@ -1006,7 +1044,7 @@ them.
 - **Not a chat app clone.** No accounts, sync or mobile client.
 - **Not a training framework.** Meru runs weights; it doesn't produce them.
 - **Not multi-user.** One machine and one person, which keeps the design simple.
-- **No cloud fallback.** Calling a hosted API when the local model struggles would
+- **No cloud fallback.** Calling a cloud AI service when the local model struggles would
   break principle 1.
 - **Not an agent framework.** The loop exists to serve Meru, and we won't package it
   as a library.
@@ -1033,11 +1071,12 @@ We'll settle these with working code and measurements.
 
 ### Resolved
 
-- **Language:** Go, for native binaries you can redistribute.
+- **Language:** Go, for a small footprint, easy distribution, room to scale, built-in
+  concurrency and fewer dependencies (see [Why Go](#why-go)).
 - **Platforms:** macOS on Apple silicon first, Linux supported, Windows untested at
   first. Cloud servers such as EC2 count as "a machine you control".
 - **Agent harness:** our own loop plus the official MCP and A2A Go SDKs. We looked at
-  Eino and ADK Go. ADK Go pulls a hosted-model client into the dependency tree, and
+  Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and
   neither saves much once the allowlist, audit and budget logic are ours.
 - **Model runtime:** Ollama on loopback for now (see open question 4).
 - **Models:** the `lite` profile by default (MiniCPM5-2B + `nomic-embed-text`), and

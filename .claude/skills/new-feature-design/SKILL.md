@@ -10,7 +10,7 @@ metadata:
 # New Feature Design
 
 Use this skill when the user wants to design a Meru feature. Write the design so an
-implementer can build from it and the owner, who is learning Go through this project, can
+implementer can build from it and a developer new to Go can
 learn from it.
 
 Every document this skill writes (issue, LLD, review, testing plan and summary) follows
@@ -309,7 +309,7 @@ a question the owner will ask.
 ## 13. Non-negotiables check
 | Rule | Holds? | How |
 |------|--------|-----|
-| No hosted-model code path | | |
+| No cloud-model code path | | |
 | No telemetry off the machine, update check or crash reporting; OTLP loopback only | | |
 | Deny-by-default for tools and agents | | |
 | Every external action goes through `dispatch` and lands in `tool_calls` | | |
@@ -317,7 +317,7 @@ a question the owner will ask.
 ## 14. New dependencies
 | Module | Why the standard library is not enough | Pulls in |
 |--------|----------------------------------------|----------|
-Write "None" if there are none. Check that no dependency brings in a hosted-model client or sends data off the machine.
+Write "None" if there are none. Check that no dependency brings in a cloud-model client or sends data off the machine.
 
 ## 15. Simplest version that works
 {The smallest change that meets the acceptance criteria. What it leaves out, and what
@@ -542,7 +542,7 @@ issue with `gh issue create --title ... --body-file .scratchpad/{folder}/github-
 - Simple wins. If a section has nothing to say, write "None" and move on.
 - Don't design ahead of the roadmap. A v0.4 feature proposed during v0.1 gets a design
   note and no implementation plan.
-- Don't propose a frontend, cloud service, auth layer, second user, or hosted model
+- Don't propose a frontend, cloud service, auth layer, second user, or cloud model
   fallback. ARCHITECTURE.md lists them as non-goals.
 - Mermaid for diagrams, Go for pseudo-code, TOML for config, SQL for schema.
 - Never announce a feature by growing README.md; put details in ARCHITECTURE.md (if the

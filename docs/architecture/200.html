@@ -226,7 +226,7 @@
 
 <p>Meru answers questions, searches your notes and calls tools you already use, such as your calendar or email. Every model it runs sits on the same machine as your files: a Mac first, a Linux box or a cloud server you rent. Windows 10 and later should work but is untested at first.</p>
 
-<p>An assistant that reads your notes, mail and brokerage account could leak all three. A <b>hosted model</b>, one that runs on another company's servers, would see every prompt. Meru has no code that talks to one. It runs open-weight models through <b>Ollama</b>, a free program that serves models on your own computer, and reaches Ollama over <b>loopback</b>, the 127.0.0.1 address that never leaves the machine. Tools you add run as separate programs, and one such as web search or Gmail can reach the network on its own (see <a href="#tools">Tools over MCP</a>).</p>
+<p>An assistant that reads your notes, mail and brokerage account could leak all three. A <b>cloud model</b>, one that runs on another company's servers, would see every prompt. Meru has no code that talks to one. It runs open-weight models through <b>Ollama</b>, a free program that serves models on your own computer, and reaches Ollama over <b>loopback</b>, the 127.0.0.1 address that never leaves the machine. Tools you add run as separate programs, and one such as web search or Gmail can reach the network on its own (see <a href="#tools">Tools over MCP</a>).</p>
 
 <!-- ============================================================ -->
 <h2 id="two-programs">Two programs: merud and meru</h2>
@@ -237,6 +237,8 @@
   <li><b><code>merud</code></b> is a <b>daemon</b>, a program that runs in the background all the time. It keeps the models loaded, owns your stored data, holds the connections to tools, runs scheduled jobs and runs the <b>agent loop</b>, the code that turns a question into an answer.</li>
   <li><b><code>meru</code></b> is the client you type into. It reaches <code>merud</code> through a <b>Unix socket</b>, a file (<code>~/.meru/merud.sock</code>) that two local programs talk through. It starts in about 50 ms, prints the answer as the model writes it, and exits.</li>
 </ul>
+
+<p><b>Why Go.</b> Both programs are written in Go rather than Python, the usual language for AI tools. Each builds into one file of tens of megabytes that runs on macOS, Linux or Windows with nothing else installed; a Python app would also need an interpreter and its packages. <code>merud</code> runs all day, so its small memory use matters, and it matters more when one server runs a Meru for each of many people, sharing one Ollama. Go also runs streaming, parallel tool calls and background jobs side by side without extra machinery, and its standard library covers most of what Meru needs, so Meru depends on fewer outside packages. <a href="300.html#why-go">Level 300</a> lists all the reasons and the trade-off.</p>
 
 <p><code>meru "..."</code> asks one question and prints plain text, so it works in scripts. <code>meru chat</code> keeps a conversation open in the terminal until you quit. On a cloud server you run <code>meru</code> over SSH. After a reboot the operating system restarts <code>merud</code>: <code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service on Windows.</p>
 
@@ -758,7 +760,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <ul>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
-  <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a hosted model, so that setting means consent for your data to leave.</li>
+  <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave.</li>
   <li><b>One door.</b> MCP tools, A2A agents and the built-in tools (<code>remember</code>, <code>write_file</code>, <code>configure</code>) all go through <code>dispatch</code>. No other code reaches them. The built-in tools need no allow entry: the model always sees all three.</li>
 </ul>
 
@@ -871,7 +873,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <h2 id="privacy">The privacy rules</h2>
 
 <ul>
-  <li>The code has no path to a hosted model. The engine talks only to Ollama on loopback.</li>
+  <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
   <li>No telemetry leaves your machine. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>

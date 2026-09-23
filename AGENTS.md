@@ -6,9 +6,10 @@ resident daemon (`merud`) that keeps open-weight models warm in Ollama, plus a t
 native binaries you can redistribute. macOS on Apple silicon is the primary platform;
 Linux is supported; Windows should work but isn't tested at first.
 
-The owner is **learning Go by building Meru.** Write every piece of code so that
-someone who has never written Go can follow it, and explain it in `docs/coding-notes/`
-(see [Explaining the code](#explaining-the-code)).
+Write every piece of code so that a developer new to Go can follow it, and explain
+it in `docs/coding-notes/` (see [Explaining the code](#explaining-the-code)). Many
+readers and contributors will come from Python, and code that reads plainly is also
+easier to review.
 
 ## Read first
 
@@ -72,7 +73,7 @@ as built-in skills under `internal/skills/builtin/`. Update those by copying fro
 
 ## Non-negotiables
 
-1. **No hosted-model code path.** The code must not contain one at all, whether behind
+1. **No cloud-model code path.** The code must not contain one at all, whether behind
    a flag or switched off. If you find yourself adding an HTTP client for a model
    provider, stop and raise it instead. The only model HTTP traffic goes to Ollama on
    loopback.

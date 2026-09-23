@@ -76,8 +76,8 @@ description argues for the exception and the Chief Architect accepts it.
 
 **Non-negotiables (AGENTS.md)**
 
-- [ ] **No hosted-model code path.** No HTTP client, SDK (software development kit) or
-      config key that could reach a hosted model. Model traffic goes only to Ollama on loopback. Grep the diff for new
+- [ ] **No cloud-model code path.** No HTTP client, SDK (software development kit) or
+      config key that could reach a cloud model. Model traffic goes only to Ollama on loopback. Grep the diff for new
       `http.Client`, `http.NewRequest`, provider SDK imports and non-loopback URLs.
 - [ ] **No telemetry leaves the machine.** No update check, crash reporting or phone-home. OTLP (OpenTelemetry
       Protocol) export stays off until config sets an endpoint, and `merud` refuses a
@@ -102,7 +102,7 @@ description argues for the exception and the Chief Architect accepts it.
       its default and meaning. No concrete model names in code.
 - [ ] `merud` can rebuild anything it writes to SQLite from files (JSONL transcripts,
       config, indexed sources). SQLite is a projection, never the only copy.
-- [ ] Comments explain the code for a Go beginner (see Go Mentor).
+- [ ] Comments explain the code for a developer new to Go (see Go Mentor).
 - [ ] PR prose follows the `writing` skill: code comments, docs, coding notes, commit
       messages and the PR description (see Go Mentor).
 - [ ] `docs/coding-notes/` has a new or updated explainer for new or changed code.
@@ -166,7 +166,7 @@ pad with "N/A".
 
 | Item | Status | Details |
 | --- | --- | --- |
-| No hosted-model code path | {PASS/FAIL} | |
+| No cloud-model code path | {PASS/FAIL} | |
 | No telemetry off the machine; OTLP loopback-only; no content in spans by default | {PASS/FAIL/N/A} | |
 | Deny-by-default tools and agents; loopback-only `merud` | {PASS/FAIL/N/A} | |
 | All external actions through `dispatch` + `tool_calls` | {PASS/FAIL/N/A} | |
@@ -219,7 +219,7 @@ Tell the user the verdict, list blockers, and give the path to `review.md`.
 - **Simple wins every time.** A smaller diff with fewer moving parts beats a clever one.
   Flag abstractions, interfaces or packages the change doesn't need yet.
 - **Build to the milestone.** Code for a later ROADMAP milestone is scope creep.
-- **The owner is learning Go.** Phrase findings so they teach: say what's wrong, why it
+- **Readers may be new to Go.** Phrase findings so they teach: say what's wrong, why it
   matters in Go, and show the idiomatic fix.
 - **Credit good work** alongside the problems.
 
