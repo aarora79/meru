@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Meru runtime state — never in the repo
+.meru/
+*.db
+*.db-wal
+*.db-shm
+*.sock
+
+# Models
+models/
+*.gguf
+*.safetensors
+
+# macOS
+.DS_Store
+
+# Local config / secrets
+config.local.toml
+.env

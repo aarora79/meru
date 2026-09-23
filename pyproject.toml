@@ -1,0 +1,26 @@
+[project]
+name = "meru"
+version = "0.0.1"
+description = "A personal AI assistant that runs entirely on your own machine"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "Amit Arora" }]
+keywords = ["ai", "assistant", "local", "on-device", "mlx", "apple-silicon", "mcp", "rag"]
+
+dependencies = []
+
+[project.scripts]
+meru = "meru.cli:main"
+merud = "meru.daemon:main"
+
+[project.urls]
+Homepage = "https://github.com/aarora79/meru"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
