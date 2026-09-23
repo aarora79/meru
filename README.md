@@ -82,8 +82,10 @@ call.
 
 ## Docs
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — how it's put together and why
-- [docs/architecture/index.html](docs/architecture/index.html) — the same design as an illustrated page
+- Architecture, in three levels ([web pages](https://aarora79.github.io/meru/architecture/)):
+  - [100: the big picture](docs/architecture/100.md)
+  - [200: how it works](docs/architecture/200.md)
+  - [300: the full design](ARCHITECTURE.md), the design contract
 - [docs/posters/](docs/posters/) — the Meru poster
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents

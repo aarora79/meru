@@ -12,7 +12,11 @@ someone who has never written Go can follow it, and explain it in `docs/coding-n
 
 ## Read first
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — the design contract, written ahead of the code.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — the design contract (level 300), written ahead
+  of the code. [docs/architecture/100.md](docs/architecture/100.md) and
+  [200.md](docs/architecture/200.md) explain the same design at gentler levels.
+  **Change ARCHITECTURE.md first**, then carry the change into 200, 100 and their
+  HTML pages (`docs/architecture/*.html`) in the same PR.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
 - [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
@@ -229,8 +233,8 @@ In `.claude/skills/`:
   low-level design, a review and a test plan to `.scratchpad/`.
 - **`pr-review`** — multi-persona review of a PR, including a Go-mentor check that
   the comments and coding notes explain the change.
-- **`explainer`** — build a self-contained HTML explainer. Used for
-  `docs/architecture/index.html`; regenerate it when ARCHITECTURE.md changes.
+- **`explainer`** — build a self-contained HTML explainer. Used for the pages in
+  `docs/architecture/`; update them when the Markdown they mirror changes.
 - **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
 
 ## Commands

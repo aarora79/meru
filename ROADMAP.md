@@ -38,7 +38,7 @@ token in under a second, and the dashboard shows the timing.
   session, or deny
 - A2A client: remote agent skills exposed as tools through the same `dispatch`
 - `meru setup` and `meru mcp add`: a catalog of starter servers (web search, fetch,
-  Gmail, Calendar, Drive, Obsidian), added for you or by copy-paste
+  Gmail, Calendar, Drive and Docs, Obsidian), added for you or by copy-paste
 - Built-in `configure` tool that always asks; secrets in `~/.meru/secrets.toml`
 - `meru tools list` / `meru log`
 
@@ -59,7 +59,7 @@ token in under a second, and the dashboard shows the timing.
 **Done when:** it recalls something from last week without a reminder.
 
 ## v0.5 — It acts unprompted
-- Job definitions (prompt + cron) in the store
+- Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
 - Digests, notifications, `meru brief`
 

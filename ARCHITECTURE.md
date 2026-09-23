@@ -3,6 +3,11 @@
 *Meru* (मेरु) is a personal AI assistant that runs on a machine you control. This
 document describes how it works and why.
 
+This is the level-300 document: the full design, for people building Meru. For a
+shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
+[level 200](docs/architecture/200.md) (how it works). All three are also
+[web pages](https://aarora79.github.io/meru/architecture/).
+
 > We wrote this design before the code. If the code and this file disagree, one of
 > them has a bug; say which.
 
@@ -11,11 +16,14 @@ document describes how it works and why.
 1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
    to A2A agents and MCP servers you mark as remote in config. Meru sends no
    telemetry, and the codebase has no path that sends a prompt to a hosted model.
+   MCP servers are separate programs: one you add, such as web search or Gmail, can
+   reach the network on its own (see [MCP](#mcp)).
 2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
    everything in the database from your files and config. Delete `meru.db` and it
    re-indexes.
-3. **You can inspect everything.** Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn,
-   so you can find out why it said something and why it took so long.
+3. **You can inspect everything.** Memories and skills are Markdown files, and
+   answers cite the files they drew on. Meru traces and times every turn, so you can
+   find out why it said something and why it took so long.
 4. **Few, narrow abstractions.** One engine interface, one store, one agent loop we
    own, and two wire protocols: MCP (Model Context Protocol) for tools and A2A
    (Agent2Agent) for other agents. Broad LLM frameworks change their APIs every few
@@ -112,6 +120,7 @@ flowchart TB
         DB[("meru.db<br/>sqlite + vec + fts5<br/>(projection)")]
         CFG["config.toml"]
         SKD["skills/"]
+        MEMD["memory/"]
     end
 
     subgraph ext["MCP servers (separate processes)"]
@@ -198,7 +207,7 @@ sequenceDiagram
     L->>S: append user line to session JSONL
     L->>F: rewrite the query and pick a route
     F-->>L: route = search + tools
-    L->>S: hybrid search over chunks and memories
+    L->>S: hybrid search: chunks, memories, session summaries
     S-->>L: top chunks, relevant memories
     L->>L: build context within budgets
     L->>M: context + schemas of allowed tools
@@ -278,7 +287,7 @@ and arguments and offers three choices:
 
   ```toml
   [builtin]
-  confirm = ["write_file"]   # add "remember" to approve each new memory
+  confirm = ["write_file"]   # the shipped default; add "remember" to approve each new memory
   ```
 
   The built-in tools are `remember`, `write_file` and `configure`. `configure`
@@ -412,7 +421,10 @@ order.
    allowlist, asks you to confirm if config lists the tool under `confirm`, calls the
    MCP server, A2A agent or built-in tool (such as `remember`), writes the
    `tool_calls` row, and records the span and metrics. If you say no, the call
-   doesn't run and its outcome is `declined`. No other code path reaches a server,
+   doesn't run and its outcome is `declined`. A call to a tool outside the allowlist
+   doesn't run either; its outcome is `denied`, and it still gets a `tool_calls` row,
+   so a model that keeps reaching for forbidden tools shows up in the log. No other
+   code path reaches a server,
    agent or built-in tool. Independent calls run at the same time (`errgroup`), each
    with its own timeout.
 5. **Repeat** from step 3 with the tool results, until the model answers without
@@ -492,7 +504,7 @@ loses at most the line being written. The database keeps a copy for search and f
 | `tool_calls` | audit log: every MCP, A2A and built-in tool call, with `kind` (`mcp`, `a2a` or `builtin`), args, result, duration, approval choice, trace ID | `sessions/*.jsonl` |
 | `memories` | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` | vector and keyword indexes over memories | memories |
-| `jobs` / `job_runs` | scheduled jobs and their results | `config.toml` / job logs |
+| `jobs` / `job_runs` | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
 | `meta` | schema version, embedding model name and vector size | config |
 
 `tool_calls` is mandatory. An assistant with tools that change things needs a record
@@ -528,6 +540,11 @@ mtime and content hash change.
 ### How hybrid search works
 
 SQLite does both searches; our code merges the results.
+
+Each turn searches three sources: file chunks, memories and the summaries of past
+sessions. Each source gets the same keyword and meaning search, `rrf` merges the
+results within that source, and each source has its own share of the context
+budget, so one busy source can't crowd out the others.
 
 | Piece | Comes from |
 | --- | --- |
@@ -747,9 +764,10 @@ its command or URL, and it proposes an entry with every tool in `confirm`.
 
 **Config changes always ask.** The built-in `configure` tool, which edits
 `config.toml`, goes through `dispatch` and asks you every time, and offers only
-"approve once" and "deny". A session approval isn't available for it, and you can't
-add it to an allow-without-asking list. Config grants lasting trust, so the model
-can't grant any to itself.
+"approve once" and "deny". A session approval isn't available for it, and
+`builtin.confirm` can't switch the prompt off. Config grants lasting trust, so the
+model can't grant any to itself. (Built-in tools need no allowlist entry: the model
+always sees `remember`, `write_file` and `configure`.)
 
 **Secrets stay out of config.** API keys and sign-in tokens go in
 `~/.meru/secrets.toml`, readable only by you (file mode `0600`), and config entries
@@ -846,7 +864,18 @@ uses the protocol's streaming updates, with the same per-call timeout as a tool.
 
 ## Scheduler
 
-A job is a prompt plus a cron expression. `merud` runs it through the same agent loop
+A job is a prompt plus a cron expression, declared in `config.toml`:
+
+```toml
+[[jobs]]
+name     = "morning-brief"
+schedule = "0 7 * * 1-5"          # 7:00 on weekdays
+prompt   = "Brief me on today's calendar, unread email and anything due this week."
+output   = "notification"          # or "digest", or a file path
+```
+
+Each run is a session with its own transcript, so a job's work lands in the same log
+and traces as your questions. `merud` runs it through the same agent loop
 as a question you type, and sends the output to a digest, a file or a notification.
 Jobs don't stream, since no one is watching, and nobody can approve a tool call, so
 `dispatch` denies every tool in the `confirm` list during a job.
@@ -920,7 +949,7 @@ for the rest.
 | `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | server, tool, outcome (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
 | `meru.tool.duration` | histogram | server, tool | tool latency |
-| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | (v0.2) retrieval cost |
+| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | retrieval cost (v0.2; memories stage v0.4) |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
 

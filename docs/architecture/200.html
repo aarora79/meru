@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Amit Arora">
+<title>Meru architecture 200: how it works</title>
+<style>
+  /* One file, no external fonts or scripts, so it opens from disk and offline.
+     Theme, column and figure styles match 300.html so the three levels read as one set. */
+  :root {
+    --measure: 800px;
+    --wide: 800px;
+    --sans: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --bg: #ffffff; --panel: #f8f9fa; --ink: #202124; --ink-2: #3c4043;
+    --ink-3: #5f6368; --rule: #dadce0; --accent: #1a73e8; --accent-2: #b06000;
+    --warn: #c5221f; --code-bg: #f1f3f4; --band: #f1f3f4; --meru: #0E7C7B;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+      --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+      --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+    --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+    --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 18px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr min(var(--measure), 100%) 1fr;
+    padding: 0 16px 96px;
+  }
+  .wrap > * { grid-column: 2; min-width: 0; }
+  .wrap > figure, .wrap > .tbl, .wrap > pre, .wrap > .codewrap {
+    grid-column: 2; width: 100%; min-width: 0;
+  }
+
+  /* ===== Level switcher: shared by index.html, 200.html and 300.html =====
+     Markup:
+       <nav class="levels" aria-label="Architecture levels">
+         <span class="levels-label">Level</span>
+         <ol>
+           <li><a href="index.html">100</a></li>
+           <li><a href="200.html" aria-current="page">200</a></li>
+           <li><a href="300.html">300</a></li>
+         </ol>
+       </nav>
+     Mark the current page with aria-current="page". Uses --meru, --rule, --ink-2, --ink-3, --bg. */
+  .levels { display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+            padding: 20px 0 0; font-family: var(--sans); font-size: 15px; line-height: 1; }
+  .levels-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+                  text-transform: uppercase; color: var(--ink-3); }
+  .levels ol { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; }
+  .levels li { display: flex; align-items: center; margin: 0; }
+  .levels li + li::before { content: "·"; color: var(--ink-3); padding: 0 6px; }
+  .levels a { display: block; padding: 6px 12px; border-radius: 999px; border: 1px solid transparent;
+              color: var(--ink-2); font-weight: 600; text-decoration: none;
+              font-variant-numeric: tabular-nums; }
+  .levels a:hover { color: var(--meru); border-color: var(--rule); }
+  .levels a[aria-current="page"] { background: var(--meru); border-color: var(--meru); color: var(--bg); }
+  /* ===== end level switcher ===== */
+
+  /* ===== Aside callout: shared, a tinted box with a --meru left border =====
+     Markup: <aside class="aside"><p><b>Title.</b> Text.</p></aside> */
+  .aside { border-left: 4px solid var(--meru); background: var(--panel);
+           background: color-mix(in srgb, var(--meru) 9%, var(--bg));
+           padding: 14px 18px; margin: 24px 0; border-radius: 0 8px 8px 0;
+           font-size: 16px; line-height: 1.6; color: var(--ink-2); }
+  .aside p { margin: 0 0 10px; }
+  .aside p:last-child { margin-bottom: 0; }
+  .aside b { color: var(--ink); }
+  /* ===== end aside ===== */
+
+  header.top { padding: 28px 0 24px; border-bottom: 1px solid var(--rule); }
+  h1 { font-size: clamp(32px, 4.6vw, 42px); line-height: 1.16; font-weight: 700;
+       letter-spacing: -0.021em; margin: 0 0 16px; }
+  .standfirst { font-size: 21px; line-height: 1.55; color: var(--ink-2); margin: 0 0 18px; }
+  .byline, figcaption, .note { font-size: 14.5px; line-height: 1.55; color: var(--ink-3); }
+  h2 { font-size: 28px; line-height: 1.25; font-weight: 700; letter-spacing: -0.015em;
+       margin: 60px 0 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 21px; line-height: 1.35; font-weight: 600; margin: 36px 0 10px; }
+  p { margin: 0 0 18px; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  ul, ol { margin: 0 0 18px; padding-left: 24px; }
+  li { margin-bottom: 8px; }
+  strong, b { font-weight: 600; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); color: var(--ink); padding: 18px 20px; border-radius: 8px;
+        overflow-x: auto; border: 1px solid var(--rule); font-size: 14.5px; line-height: 1.65;
+        margin: 0 0 22px; font-family: var(--mono); }
+  pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+  .codewrap { position: relative; margin: 0 0 22px; }
+  .codewrap > pre { margin: 0; }
+  .copy-btn { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center;
+    gap: 6px; font: 500 12.5px/1 var(--sans); color: var(--ink-3); background: var(--bg);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; cursor: pointer;
+    opacity: 0; transition: opacity .12s, color .12s, border-color .12s; }
+  .codewrap:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+  .copy-btn:hover, .copy-btn.done { color: var(--accent); border-color: var(--accent); opacity: 1; }
+  @media (hover: none) { .copy-btn { opacity: 1; } }
+
+  .toc { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
+         padding: 18px 24px; margin: 32px 0; font-size: 16px; }
+  .toc ol { margin: 0; padding-left: 22px; columns: 2 260px; column-gap: 32px; }
+  .toc li { margin-bottom: 6px; break-inside: avoid; }
+
+  figure { margin: 32px 0; }
+  .figbox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px;
+            background: var(--bg); padding: 12px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { margin-top: 10px; max-width: var(--measure); }
+  figcaption b { color: var(--ink-2); }
+
+  .tbl { overflow-x: auto; margin: 0 0 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; line-height: 1.55;
+          font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th { font-size: 13px; font-weight: 600; color: var(--ink-3); text-transform: uppercase;
+             letter-spacing: 0.05em; border-bottom: 2px solid var(--rule); }
+  tbody tr:nth-child(even) td { background: var(--panel); }
+  td:first-child code { white-space: nowrap; }
+  td.num-col { text-align: right; font-family: var(--mono); font-size: 14.5px; }
+
+  footer.end { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule);
+               font-size: 14.5px; color: var(--ink-3); }
+
+  /* SVG paint: every diagram uses these, so one drawing serves both themes. */
+  svg text { font-family: var(--sans); }
+  svg .mono { font-family: var(--mono); }
+  .t1 { fill: var(--ink); } .t2 { fill: var(--ink-2); } .t3 { fill: var(--ink-3); }
+  .ta { fill: var(--accent); } .ta2 { fill: var(--accent-2); } .tw { fill: var(--warn); }
+  .b  { fill: var(--panel); stroke: var(--rule); stroke-width: 1.5; }
+  .bg { fill: none; stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .ba { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+  .ba2 { fill: var(--bg); stroke: var(--accent-2); stroke-width: 1.6; }
+  .bw { fill: none; stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .band { fill: var(--band); }
+  .ln { stroke: var(--ink-3); stroke-width: 1.4; fill: none; }
+  .lna { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+  .lnd { stroke: var(--ink-3); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .life { stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .mk { fill: var(--ink-3); } .mka { fill: var(--accent); } .mka2 { fill: var(--accent-2); }
+  .lna2 { stroke: var(--accent-2); stroke-width: 1.6; fill: none; }
+  .lnd2 { stroke: var(--accent-2); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  /* A background-coloured outline keeps a label readable where it crosses a lifeline. */
+  .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+
+  @media (max-width: 700px) {
+    body { font-size: 17px; line-height: 1.65; }
+    h2 { font-size: 24px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .standfirst { font-size: 19px; }
+    pre { font-size: 13px; padding: 14px 16px; }
+    table { font-size: 15px; }
+    figure svg { min-width: 640px; }
+  }
+  @media print {
+    body { font-size: 11pt; background: #fff; color: #000; }
+    figure, pre, table, .toc { break-inside: avoid; }
+    .copy-btn { display: none; }
+  }
+  .meru-name { color: var(--meru); }
+  .meru-name i { font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="levels" aria-label="Architecture levels">
+  <span class="levels-label">Level</span>
+  <ol>
+    <li><a href="index.html" title="The big picture">100</a></li>
+    <li><a href="200.html" aria-current="page" title="How it works">200</a></li>
+    <li><a href="300.html" title="The full design">300</a></li>
+  </ol>
+</nav>
+
+<header class="top">
+  <h1><span class="meru-name"><i>Meru</i> (<span lang="hi">मेरु</span>)</span>: how it works</h1>
+  <p class="standfirst">Meru is a personal AI assistant that runs on a machine you control. This page explains each of its parts in plain words, for readers who want to understand the system without building it.</p>
+  <aside class="aside"><p><b>Three levels.</b> <a href="index.html">Level 100</a> gives the big picture. This page is level 200. <a href="300.html">Level 300</a>, generated from <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>, is the full design; where the two disagree, level 300 wins.</p></aside>
+  <p class="byline">Amit Arora · September 2026 · the design, written before the code</p>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#what-meru-is">What Meru is</a></li>
+    <li><a href="#two-programs">Two programs: merud and meru</a></li>
+    <li><a href="#end-to-end">A question, end to end</a></li>
+    <li><a href="#models">Models: three jobs, two profiles</a></li>
+    <li><a href="#where-data-lives">Where data lives</a></li>
+    <li><a href="#hybrid-search">Finding things: hybrid search</a></li>
+    <li><a href="#memory">Memory</a></li>
+    <li><a href="#skills">Skills</a></li>
+    <li><a href="#tools">Tools over MCP, other agents over A2A</a></li>
+    <li><a href="#jobs">Scheduled jobs</a></li>
+    <li><a href="#setup">First run and setup</a></li>
+    <li><a href="#what-you-can-see">What you can see</a></li>
+    <li><a href="#privacy">The privacy rules</a></li>
+    <li><a href="#next">Where to go next</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="what-meru-is">What Meru is</h2>
+
+<p>Meru answers questions, searches your notes and calls tools you already use, such as your calendar or email. Every model it runs sits on the same machine as your files: a Mac first, a Linux box or a cloud server you rent. Windows 10 and later should work but is untested at first.</p>
+
+<p>An assistant that reads your notes, mail and brokerage account could leak all three. A <b>hosted model</b>, one that runs on another company's servers, would see every prompt. Meru has no code that talks to one. It runs open-weight models through <b>Ollama</b>, a free program that serves models on your own computer, and reaches Ollama over <b>loopback</b>, the 127.0.0.1 address that never leaves the machine. Tools you add run as separate programs, and one such as web search or Gmail can reach the network on its own (see <a href="#tools">Tools over MCP</a>).</p>
+
+<!-- ============================================================ -->
+<h2 id="two-programs">Two programs: merud and meru</h2>
+
+<p>A tool that loaded a model for each question would make you wait every time: the larger main model weighs about 18 GB and takes many seconds to read from disk. So Meru runs as two programs.</p>
+
+<ul>
+  <li><b><code>merud</code></b> is a <b>daemon</b>, a program that runs in the background all the time. It keeps the models loaded, owns your stored data, holds the connections to tools, runs scheduled jobs and runs the <b>agent loop</b>, the code that turns a question into an answer.</li>
+  <li><b><code>meru</code></b> is the client you type into. It reaches <code>merud</code> through a <b>Unix socket</b>, a file (<code>~/.meru/merud.sock</code>) that two local programs talk through. It starts in about 50 ms, prints the answer as the model writes it, and exits.</li>
+</ul>
+
+<p><code>meru "..."</code> asks one question and prints plain text, so it works in scripts. <code>meru chat</code> keeps a conversation open in the terminal until you quit. On a cloud server you run <code>meru</code> over SSH. After a reboot the operating system restarts <code>merud</code>: <code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service on Windows.</p>
+
+<figure id="fig-overview">
+<div class="figbox">
+<svg viewBox="0 0 800 470" role="img" aria-labelledby="f1t f1d">
+  <title id="f1t">System overview</title>
+  <desc id="f1d">Two short-lived clients, meru one-shot and meru chat, talk to merud over a Unix socket. Inside merud, the agent loop sends model requests over loopback HTTP to Ollama, which holds the fast, main and embed models. The scheduler feeds the agent loop. The agent loop hands tool calls to dispatch, which checks the allowlist, asks you when needed and logs every call, then reaches MCP servers and other agents over A2A. The agent loop reads and writes files under ~/.meru: transcripts, memory, skills, config and the meru.db index. Timing data goes to an optional dashboard on the same machine.</desc>
+  <defs>
+    <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
+    <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+  </defs>
+
+  <!-- clients -->
+  <rect x="12" y="40" width="136" height="164" rx="10" class="bg"/>
+  <text x="22" y="62" class="t3" font-size="10.5" font-weight="600">CLIENTS · short-lived</text>
+  <rect x="22" y="74" width="116" height="52" rx="7" class="b"/>
+  <text x="34" y="96" class="t1 mono" font-size="13">meru "…"</text>
+  <text x="34" y="114" class="t3" font-size="11.5">one question</text>
+  <rect x="22" y="138" width="116" height="52" rx="7" class="b"/>
+  <text x="34" y="160" class="t1 mono" font-size="13">meru chat</text>
+  <text x="34" y="178" class="t3" font-size="11.5">conversation</text>
+  <path d="M148 96 L214 96" class="lna" marker-end="url(#f1b)"/>
+  <text x="171" y="84" class="t3" font-size="10.5" text-anchor="middle">Unix</text>
+  <text x="171" y="114" class="t3" font-size="10.5" text-anchor="middle">socket</text>
+
+  <!-- merud -->
+  <rect x="196" y="20" width="384" height="290" rx="12" class="ba"/>
+  <text x="214" y="44" class="ta" font-size="13" font-weight="700">merud · always running</text>
+  <rect x="216" y="62" width="344" height="60" rx="8" class="ba"/>
+  <text x="232" y="86" class="t1" font-size="14" font-weight="600">agent loop</text>
+  <text x="232" y="107" class="t2" font-size="12">route → search → main model → tools → answer</text>
+
+  <rect x="216" y="168" width="150" height="56" rx="8" class="b"/>
+  <text x="230" y="192" class="t1" font-size="13" font-weight="600">scheduler</text>
+  <text x="230" y="211" class="t3" font-size="11.5">prompts on a timer</text>
+  <path d="M290 168 L290 124" class="ln" marker-end="url(#f1a)"/>
+
+  <rect x="410" y="168" width="150" height="56" rx="8" class="ba2"/>
+  <text x="424" y="190" class="t1 mono" font-size="13" font-weight="600">dispatch</text>
+  <text x="424" y="208" class="t3" font-size="11">allowlist · confirm · log</text>
+  <path d="M486 122 L486 166" class="ln" marker-end="url(#f1a)"/>
+
+  <rect x="410" y="244" width="150" height="50" rx="8" class="b"/>
+  <text x="424" y="265" class="t1" font-size="12.5" font-weight="600">timing</text>
+  <text x="424" y="283" class="t3" font-size="11">traces + metrics</text>
+
+  <!-- ollama -->
+  <rect x="620" y="36" width="168" height="124" rx="10" class="b"/>
+  <text x="634" y="58" class="t1" font-size="13" font-weight="700">Ollama</text>
+  <text x="634" y="76" class="t3 mono" font-size="11">127.0.0.1:11434</text>
+  <rect x="632" y="90" width="46" height="34" rx="5" class="ba"/>
+  <text x="655" y="112" class="t1 mono" font-size="11" text-anchor="middle">fast</text>
+  <rect x="683" y="90" width="46" height="34" rx="5" class="ba"/>
+  <text x="706" y="112" class="t1 mono" font-size="11" text-anchor="middle">main</text>
+  <rect x="734" y="90" width="46" height="34" rx="5" class="ba"/>
+  <text x="757" y="112" class="t1 mono" font-size="11" text-anchor="middle">embed</text>
+  <text x="634" y="146" class="t3" font-size="11">loopback · all kept loaded</text>
+  <path d="M560 92 L618 92" class="lna" marker-end="url(#f1b)"/>
+
+  <!-- tools and agents -->
+  <rect x="620" y="176" width="168" height="112" rx="10" class="b"/>
+  <text x="634" y="198" class="t1" font-size="13" font-weight="700">outside programs</text>
+  <rect x="632" y="208" width="144" height="32" rx="6" class="b"/>
+  <text x="644" y="229" class="t2" font-size="12">MCP servers (tools)</text>
+  <rect x="632" y="246" width="144" height="32" rx="6" class="b"/>
+  <text x="644" y="267" class="t2" font-size="12">other agents (A2A)</text>
+  <path d="M560 186 L618 224" class="lna" marker-end="url(#f1b)"/>
+  <path d="M560 200 L618 262" class="lna" marker-end="url(#f1b)"/>
+
+  <!-- files -->
+  <rect x="12" y="340" width="520" height="104" rx="10" class="b"/>
+  <text x="26" y="362" class="t1 mono" font-size="13" font-weight="700">~/.meru/</text>
+  <text x="104" y="362" class="t3" font-size="11.5">files on disk</text>
+  <rect x="26" y="374" width="116" height="54" rx="6" class="ba"/>
+  <text x="36" y="396" class="t1" font-size="12" font-weight="600">transcripts</text>
+  <text x="36" y="414" class="t3" font-size="11">one per session</text>
+  <rect x="150" y="374" width="116" height="54" rx="6" class="ba"/>
+  <text x="160" y="396" class="t1" font-size="12" font-weight="600">memory</text>
+  <text x="160" y="414" class="t3" font-size="11">one file per fact</text>
+  <rect x="274" y="374" width="116" height="54" rx="6" class="ba"/>
+  <text x="284" y="396" class="t1" font-size="12" font-weight="600">skills · config</text>
+  <text x="284" y="414" class="t3" font-size="11">what you set</text>
+  <rect x="398" y="374" width="120" height="54" rx="6" class="b"/>
+  <text x="408" y="396" class="t1 mono" font-size="12" font-weight="600">meru.db</text>
+  <text x="408" y="414" class="t3" font-size="11">rebuildable index</text>
+  <path d="M388 124 L388 336" class="ln" marker-end="url(#f1a)"/>
+  <text x="382" y="328" class="t3" font-size="10.5" text-anchor="end">read, write</text>
+
+  <!-- observability -->
+  <rect x="620" y="340" width="168" height="104" rx="10" class="bg"/>
+  <text x="634" y="362" class="t1" font-size="13" font-weight="700">dashboard</text>
+  <text x="634" y="382" class="t3" font-size="11">optional · off by default</text>
+  <text x="634" y="400" class="t3" font-size="11">loopback only</text>
+  <text x="634" y="420" class="t3" font-size="11">Grafana</text>
+  <path d="M500 294 L500 324 L600 324 L600 392 L618 392" class="lnd" marker-end="url(#f1a)"/>
+
+  <text x="12" y="464" class="t3" font-size="11.5">Everything runs on one machine. Servers and agents elsewhere need network = true in their config entry.</text>
+</svg>
+</div>
+<figcaption><b>Figure 1.</b> Two arrows leave <code>merud</code> for programs it doesn't own: one to Ollama, and one from <code>dispatch</code> to tools and other agents. Each passes through one place in the code, and the privacy rules sit in those two places.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="end-to-end">A question, end to end</h2>
+
+<p>A <b>turn</b> runs from your question to the finished answer. A <b>session</b> is one conversation, a run of turns that share one transcript file. Four parts do the work:</p>
+
+<ul>
+  <li>The <b>fast model</b> acts as the <b>router</b>. It rewrites your question into a better search query and picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It also picks which <b>skills</b>, files of instructions for one kind of task, to load.</li>
+  <li>The <b>main model</b> chooses tools and writes the answer.</li>
+  <li><b><code>dispatch</code></b> is the one function every tool call passes through. It checks the call against your config, asks you when config says to, runs it and logs it.</li>
+  <li>An <b>MCP server</b> is a separate program that offers tools, such as a brokerage server's <code>get_portfolio</code>.</li>
+</ul>
+
+<figure id="fig-turns">
+<div class="figbox">
+<svg viewBox="0 0 816 1690" role="img" aria-labelledby="f2t f2d">
+  <title id="f2t">A question, end to end: two turns of one session</title>
+  <desc id="f2d">Sequence diagram with seven participants: you, the meru client, merud, the store, the models, dispatch and an MCP server. Turn 1: you ask what changed in your portfolio this week. merud writes the question to the transcript, the fast model picks the route search plus tools, merud searches files, memories and session summaries, and the main model, given the context and allowed tools, asks for get_portfolio. Dispatch finds it allowed and not on the confirm list, calls the MCP server, gets the holdings, logs the call and returns the result. The main model answers, and merud streams the answer with citations to you. Turn 2: you ask to sell half of the one that dropped most. merud loads the session history, the fast model picks the route tools, and the main model asks for place_order. Dispatch finds it on the confirm list and asks you through the client: approve once, for this session, or deny. You approve once, dispatch calls place_order, the server reports the order placed, dispatch logs the call and the approval, and the main model answers.</desc>
+  <defs>
+    <marker id="sqa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
+    <marker id="sqb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+    <marker id="sqc" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka2"/></marker>
+  </defs>
+  <g font-size="13" font-weight="600">
+    <rect x="2.0" y="12" width="100" height="40" rx="7" class="b"/>
+  <text x="52" y="37" class="t1" text-anchor="middle">you</text>
+  <rect x="110.0" y="12" width="100" height="48" rx="7" class="b"/>
+  <text x="160" y="33" class="t1 mono" text-anchor="middle">meru</text>
+  <text x="160" y="50" class="t3" font-size="11" font-weight="400" text-anchor="middle">client</text>
+  <rect x="232.0" y="12" width="100" height="48" rx="7" class="ba"/>
+  <text x="282" y="33" class="t1 mono" text-anchor="middle">merud</text>
+  <text x="282" y="50" class="t3" font-size="11" font-weight="400" text-anchor="middle">agent loop</text>
+  <rect x="354.0" y="12" width="100" height="48" rx="7" class="b"/>
+  <text x="404" y="33" class="t1" text-anchor="middle">store</text>
+  <text x="404" y="50" class="t3" font-size="11" font-weight="400" text-anchor="middle">files + index</text>
+  <rect x="476.0" y="12" width="100" height="48" rx="7" class="b"/>
+  <text x="526" y="33" class="t1" text-anchor="middle">models</text>
+  <text x="526" y="50" class="t3" font-size="11" font-weight="400" text-anchor="middle">fast · main</text>
+  <rect x="598.0" y="12" width="100" height="40" rx="7" class="ba2"/>
+  <text x="648" y="37" class="t1 mono" text-anchor="middle">dispatch</text>
+  <rect x="714.0" y="12" width="100" height="40" rx="7" class="b"/>
+  <text x="764" y="37" class="t1" text-anchor="middle">MCP server</text>
+  </g>
+    <line x1="52" y1="52" x2="52" y2="1654" class="life"/>
+  <line x1="160" y1="60" x2="160" y2="1654" class="life"/>
+  <line x1="282" y1="60" x2="282" y2="1654" class="life"/>
+  <line x1="404" y1="60" x2="404" y2="1654" class="life"/>
+  <line x1="526" y1="60" x2="526" y2="1654" class="life"/>
+  <line x1="648" y1="52" x2="648" y2="1654" class="life"/>
+  <line x1="764" y1="52" x2="764" y2="1654" class="life"/>
+  <g font-size="12">
+    <rect x="0" y="98" width="816" height="28" class="band"/>
+  <text x="12" y="117" class="ta" font-size="12.5" font-weight="700">Turn 1 · starts a new session</text>
+  <text x="106.0" y="151" class="t2 halo" text-anchor="middle">&quot;what changed in my</text>
+  <text x="106.0" y="166" class="t2 halo" text-anchor="middle">portfolio this week?&quot;</text>
+  <path d="M52 173 L158 173" class="ln" marker-end="url(#sqa)"/>
+  <text x="221.0" y="200" class="t2 halo" text-anchor="middle">question</text>
+  <path d="M160 207 L280 207" class="ln" marker-end="url(#sqa)"/>
+  <text x="343.0" y="234" class="t2 halo" text-anchor="middle">write question to transcript</text>
+  <path d="M282 241 L402 241" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="268" class="t2 halo" text-anchor="middle">fast: pick a route</text>
+  <path d="M282 275 L524 275" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="302" class="t2 halo" text-anchor="middle">route = search + tools</text>
+  <path d="M526 309 L284 309" class="lnd" marker-end="url(#sqa)"/>
+  <text x="343.0" y="336" class="t2 halo" text-anchor="middle">search files, memories</text>
+  <text x="343.0" y="351" class="t2 halo" text-anchor="middle">and session summaries</text>
+  <path d="M282 358 L402 358" class="ln" marker-end="url(#sqa)"/>
+  <text x="343.0" y="385" class="t2 halo" text-anchor="middle">best matches</text>
+  <path d="M404 392 L284 392" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="419" class="t2 halo" text-anchor="middle">main: context + allowed tools</text>
+  <path d="M282 426 L524 426" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="453" class="t2 halo" text-anchor="middle">call get_portfolio</text>
+  <path d="M526 460 L284 460" class="lnd" marker-end="url(#sqa)"/>
+  <text x="465.0" y="487" class="t2 halo" text-anchor="middle">get_portfolio</text>
+  <path d="M282 494 L646 494" class="ln" marker-end="url(#sqa)"/>
+  <rect x="550.0" y="508" width="196" height="24" rx="5" class="ba2"/>
+  <text x="648" y="524" class="t1" text-anchor="middle">allowed · not on confirm list</text>
+  <text x="706.0" y="559" class="t1 halo" text-anchor="middle">get_portfolio</text>
+  <path d="M648 566 L762 566" class="lna" marker-end="url(#sqb)"/>
+  <text x="706.0" y="593" class="t2 halo" text-anchor="middle">holdings</text>
+  <path d="M764 600 L650 600" class="lnd" marker-end="url(#sqa)"/>
+  <text x="526.0" y="627" class="t2 halo" text-anchor="middle">log the call</text>
+  <path d="M648 634 L406 634" class="ln" marker-end="url(#sqa)"/>
+  <text x="465.0" y="661" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M648 668 L284 668" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="695" class="t2 halo" text-anchor="middle">main: context + result</text>
+  <path d="M282 702 L524 702" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="729" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M526 736 L284 736" class="lnd" marker-end="url(#sqa)"/>
+  <text x="221.0" y="763" class="t2 halo" text-anchor="middle">stream answer</text>
+  <path d="M282 770 L162 770" class="lnd" marker-end="url(#sqa)"/>
+  <text x="106.0" y="797" class="t2 halo" text-anchor="middle">answer with</text>
+  <text x="106.0" y="812" class="t2 halo" text-anchor="middle">citations</text>
+  <path d="M160 819 L54 819" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="0" y="847" width="816" height="28" class="band"/>
+  <text x="12" y="866" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
+  <text x="106.0" y="900" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
+  <text x="106.0" y="915" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
+  <path d="M52 922 L158 922" class="ln" marker-end="url(#sqa)"/>
+  <text x="221.0" y="949" class="t2 halo" text-anchor="middle">question</text>
+  <path d="M160 956 L280 956" class="ln" marker-end="url(#sqa)"/>
+  <text x="343.0" y="983" class="t2 halo" text-anchor="middle">load this session&#x27;s history</text>
+  <path d="M282 990 L402 990" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1017" class="t2 halo" text-anchor="middle">fast: pick a route</text>
+  <path d="M282 1024 L524 1024" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1051" class="t2 halo" text-anchor="middle">route = tools</text>
+  <path d="M526 1058 L284 1058" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1085" class="t2 halo" text-anchor="middle">main: context with turn 1 + tools</text>
+  <path d="M282 1092 L524 1092" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1119" class="t2 halo" text-anchor="middle">call place_order</text>
+  <path d="M526 1126 L284 1126" class="lnd" marker-end="url(#sqa)"/>
+  <text x="465.0" y="1153" class="t2 halo" text-anchor="middle">place_order</text>
+  <path d="M282 1160 L646 1160" class="ln" marker-end="url(#sqa)"/>
+  <rect x="558.0" y="1174" width="180" height="24" rx="5" class="ba2"/>
+  <text x="648" y="1190" class="t1" text-anchor="middle">allowed · on confirm list</text>
+  <text x="404.0" y="1225" class="t2 halo" text-anchor="middle">ask about place_order(…)</text>
+  <path d="M648 1232 L162 1232" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="106.0" y="1259" class="t2 halo" text-anchor="middle">approve once ·</text>
+  <text x="106.0" y="1274" class="t2 halo" text-anchor="middle">for this session ·</text>
+  <text x="106.0" y="1289" class="t2 halo" text-anchor="middle">deny?</text>
+  <path d="M160 1296 L54 1296" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="106.0" y="1323" class="t1 halo" text-anchor="middle">approve once</text>
+  <path d="M52 1330 L158 1330" class="lna2" marker-end="url(#sqc)"/>
+  <text x="404.0" y="1357" class="t1 halo" text-anchor="middle">approved once</text>
+  <path d="M160 1364 L646 1364" class="lna2" marker-end="url(#sqc)"/>
+  <text x="706.0" y="1391" class="t1 halo" text-anchor="middle">place_order</text>
+  <path d="M648 1398 L762 1398" class="lna" marker-end="url(#sqb)"/>
+  <text x="706.0" y="1425" class="t2 halo" text-anchor="middle">order placed</text>
+  <path d="M764 1432 L650 1432" class="lnd" marker-end="url(#sqa)"/>
+  <text x="526.0" y="1459" class="t2 halo" text-anchor="middle">log the call and the approval</text>
+  <path d="M648 1466 L406 1466" class="ln" marker-end="url(#sqa)"/>
+  <text x="465.0" y="1493" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M648 1500 L284 1500" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1527" class="t2 halo" text-anchor="middle">main: context + result</text>
+  <path d="M282 1534 L524 1534" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1561" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M526 1568 L284 1568" class="lnd" marker-end="url(#sqa)"/>
+  <text x="221.0" y="1595" class="t2 halo" text-anchor="middle">stream answer</text>
+  <path d="M282 1602 L162 1602" class="lnd" marker-end="url(#sqa)"/>
+  <text x="106.0" y="1629" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M160 1636 L54 1636" class="lnd" marker-end="url(#sqa)"/>
+  </g>
+  <text x="12" y="1678" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the approval.</text>
+</svg>
+</div>
+<figcaption><b>Figure 2.</b> Both turns follow the same path until <code>dispatch</code>. Only turn 2 stops for you, because <code>place_order</code> sits on the server's confirm list and <code>get_portfolio</code> doesn't.</figcaption>
+</figure>
+
+<p><b>Turn 1.</b> You ask what changed in your portfolio. <code>merud</code> writes the question to the transcript, and the router picks "search and call tools". <code>merud</code> searches your files, your memories and the summaries of past sessions, then gives the main model the best matches, your question and a description of each tool you allowed. The model asks for <code>get_portfolio</code>, which is allowed and needs no yes from you, so <code>dispatch</code> calls it and logs the call. The model reads the holdings and writes an answer that cites the files it used.</p>
+
+<p><b>Turn 2.</b> You type "sell half of the one that dropped most". <code>merud</code> loads this session's earlier questions and answers, newest first, until their share of the prompt fills. The router reads them too, so it can rewrite "the one that dropped most" into a query that names the stock. The model asks for <code>place_order</code>, which sits on the server's <b>confirm list</b>, the tools that need your yes on every call. So <code>dispatch</code> stops and asks.</p>
+
+<p>Within a turn the main model either asks for a tool or answers. Each time it asks, <code>merud</code> runs the tool and hands back the result. The turn ends when the model answers, or after 8 rounds (a config setting). When the route leaves tools out, <code>merud</code> sends no tool descriptions, and a model can't call a tool it hasn't seen.</p>
+
+<h3 id="approving">Approving a tool call</h3>
+
+<div class="tbl"><table>
+  <thead><tr><th>Choice</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td>Approve once</td><td>This call runs. The next call to the same tool asks again.</td></tr>
+    <tr><td>Approve for this session</td><td>This call runs, and Meru stops asking about that tool, whatever its arguments, until the session ends.</td></tr>
+    <tr><td>Deny</td><td>The call doesn't run. The model hears that you said no, so it can answer without the tool or ask you what to do.</td></tr>
+  </tbody>
+</table></div>
+
+<p><code>merud</code> writes your choice to the transcript. A session approval never reaches the config file; to stop Meru asking about a tool for good, you take it off the confirm list yourself. When nobody can answer, as in a script or a scheduled job, <code>dispatch</code> denies the call.</p>
+
+<!-- ============================================================ -->
+<h2 id="models">Models: three jobs, two profiles</h2>
+
+<p>Meru gives models three jobs, called <b>tiers</b>. The code asks for a tier, and the config file names the model that fills it.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Tier</th><th>Job</th></tr></thead>
+  <tbody>
+    <tr><td><code>fast</code></td><td>routing, rewriting queries, trivial answers</td></tr>
+    <tr><td><code>main</code></td><td>reasoning, choosing tools, writing the answer</td></tr>
+    <tr><td><code>embed</code></td><td>turning text into embeddings for search</td></tr>
+  </tbody>
+</table></div>
+
+<p>An <b>embedding</b> is a list of numbers that stands for a text's meaning. Two passages that say the same thing in different words get lists that sit close together.</p>
+
+<p>Two <b>profiles</b>, sets of models for the tiers, ship with Meru:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th></th><th><code>lite</code> (the default)</th><th><code>full</code></th></tr></thead>
+  <tbody>
+    <tr><td>Chat models</td><td>MiniCPM5-2B (1.6 GB) fills both <code>fast</code> and <code>main</code></td><td>MiniCPM5-2B for <code>fast</code>, Qwen 3.8 27B (about 18 GB) for <code>main</code></td></tr>
+    <tr><td>Embedding model</td><td><code>nomic-embed-text</code> (about 260 MB)</td><td><code>qwen3-embedding:0.6b</code></td></tr>
+    <tr><td>Needs</td><td>16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon</td><td>Apple silicon with 32 GB (64 GB is comfortable), or a GPU with about 24 GB</td></tr>
+  </tbody>
+</table></div>
+
+<p><code>merud</code> loads every tier at startup and asks Ollama to keep them loaded, so no question waits for a model. Switching embedding models makes every stored embedding useless, since each model makes lists of a different length. The index records which model made its embeddings, and when config names a different one, <code>merud</code> rebuilds them from your files.</p>
+
+<!-- ============================================================ -->
+<h2 id="where-data-lives">Where data lives</h2>
+
+<p><b>Files hold the truth, and the database is an index built from them.</b> Delete the database and <code>merud</code> rebuilds it. The files are:</p>
+
+<ul>
+  <li>the folders you ask Meru to index: notes, documents, PDFs, code;</li>
+  <li>session transcripts in <code>~/.meru/sessions/</code>, one file per session;</li>
+  <li>memories in <code>~/.meru/memory/</code>, one Markdown file per fact;</li>
+  <li><code>config.toml</code> and the <code>skills/</code> folder.</li>
+</ul>
+
+<p>A transcript is a <b>JSON Lines</b> file: one small JSON record per line, one line per event. <code>merud</code> adds lines and never rewrites old ones, so a crash loses at most the line it was writing, and <code>grep</code> or <code>tail -f</code> can read it. Two lines from turn 1:</p>
+
+<pre><code>{"ts":"2026-09-23T10:15:03Z","type":"tool_call","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}</code></pre>
+
+<p>The index is one SQLite file, <code>~/.meru/meru.db</code>. It holds your files cut into pieces, with a keyword index and an embedding for each piece; every message and tool call; your memories; and your scheduled jobs with the outcome of each run. Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
+
+<figure id="fig-storage">
+<div class="figbox">
+<svg viewBox="0 0 800 380" role="img" aria-labelledby="f3t f3d">
+  <title id="f3t">Files as truth, SQLite as a rebuildable index</title>
+  <desc id="f3d">On the left, the files that hold the truth: your folders, session transcripts, memory files, and config.toml with skills. On the right, the meru.db index. The indexer splits and embeds your folders into file pieces with keyword and meaning indexes. Replaying the transcripts fills messages and tool calls. Embedding the memory files fills memories with keyword and meaning indexes. Reading config fills jobs and settings.</desc>
+  <defs>
+    <marker id="f3a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+  </defs>
+  <text x="12" y="26" class="ta" font-size="12" font-weight="700">FILES · the truth</text>
+  <text x="484" y="26" class="t3" font-size="12" font-weight="700">~/.meru/meru.db · rebuildable</text>
+
+  <rect x="12" y="44" width="270" height="60" rx="8" class="ba"/>
+  <text x="28" y="68" class="t1" font-size="14" font-weight="600">your folders</text>
+  <text x="28" y="89" class="t3" font-size="12">notes, documents, PDFs, code</text>
+
+  <rect x="12" y="124" width="270" height="60" rx="8" class="ba"/>
+  <text x="28" y="148" class="t1 mono" font-size="13">sessions/*.jsonl</text>
+  <text x="28" y="169" class="t3" font-size="12">one transcript per session</text>
+
+  <rect x="12" y="204" width="270" height="60" rx="8" class="ba"/>
+  <text x="28" y="228" class="t1 mono" font-size="13">memory/&lt;kind&gt;/*.md</text>
+  <text x="28" y="249" class="t3" font-size="12">one Markdown file per fact</text>
+
+  <rect x="12" y="284" width="270" height="60" rx="8" class="ba"/>
+  <text x="28" y="308" class="t1 mono" font-size="13">config.toml · skills/</text>
+  <text x="28" y="329" class="t3" font-size="12">models, tools, jobs, skill files</text>
+
+  <rect x="470" y="36" width="318" height="318" rx="12" class="bg"/>
+
+  <rect x="484" y="44" width="290" height="60" rx="8" class="b"/>
+  <text x="500" y="68" class="t1" font-size="14" font-weight="600">file pieces (chunks)</text>
+  <text x="500" y="89" class="t3" font-size="12">keyword index + embeddings</text>
+
+  <rect x="484" y="124" width="290" height="60" rx="8" class="b"/>
+  <text x="500" y="148" class="t1" font-size="14" font-weight="600">messages · tool calls</text>
+  <text x="500" y="169" class="t3" font-size="12">each with its trace ID</text>
+
+  <rect x="484" y="204" width="290" height="60" rx="8" class="b"/>
+  <text x="500" y="228" class="t1" font-size="14" font-weight="600">memories</text>
+  <text x="500" y="249" class="t3" font-size="12">keyword index + embeddings</text>
+
+  <rect x="484" y="284" width="290" height="60" rx="8" class="b"/>
+  <text x="500" y="308" class="t1" font-size="14" font-weight="600">jobs · settings</text>
+  <text x="500" y="329" class="t3" font-size="12">embedding model name, schema version</text>
+
+  <path d="M282 74 L482 74" class="lna" marker-end="url(#f3a)"/>
+  <text x="382" y="66" class="t2" font-size="12" text-anchor="middle">split + embed</text>
+  <path d="M282 154 L482 154" class="lna" marker-end="url(#f3a)"/>
+  <text x="382" y="146" class="t2" font-size="12" text-anchor="middle">replay</text>
+  <path d="M282 234 L482 234" class="lna" marker-end="url(#f3a)"/>
+  <text x="382" y="226" class="t2" font-size="12" text-anchor="middle">embed</text>
+  <path d="M282 314 L482 314" class="lna" marker-end="url(#f3a)"/>
+  <text x="382" y="306" class="t2" font-size="12" text-anchor="middle">read</text>
+
+  <text x="12" y="372" class="t3" font-size="11.5">Delete meru.db and merud rebuilds every box on the right from the files on the left.</text>
+</svg>
+</div>
+<figcaption><b>Figure 3.</b> Every arrow runs one way, left to right. If the index breaks, you delete it and lose no history.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="hybrid-search">Finding things: hybrid search</h2>
+
+<p>The indexer cuts each file into <b>chunks</b> along its own structure: Markdown by heading, code by function, PDFs by page. It re-reads a file only when its timestamp and contents change.</p>
+
+<p>Each common way to search misses one kind of question:</p>
+
+<ul>
+  <li><b>Search by meaning</b> compares embeddings. It finds a note about "Nvidia's quarterly results" when you ask about earnings, but can miss an exact string such as a ticker.</li>
+  <li><b>Keyword search</b> ranks chunks with <b>BM25</b>, the standard formula for how well a passage's words match the query's. It finds "NVDA" every time, and misses a note that uses other words.</li>
+</ul>
+
+<p>Meru runs both, takes the top 50 from each, and merges the two lists. Their scores use different scales, so adding them would let one list drown the other. <b>Reciprocal-rank fusion</b> (RRF) ignores the scores and uses only each chunk's place: a chunk earns 1 ÷ (60 + its place) from every list it appears in, and the amounts add up.</p>
+
+<p>Take the query "NVDA results". Suppose keyword search returns <code>trades.md</code>, <code>earnings.md</code>, <code>watchlist.md</code>, and meaning search returns <code>earnings.md</code>, <code>chip-stocks.md</code>, <code>trades.md</code>:</p>
+
+<figure id="fig-search">
+<div class="figbox">
+<svg viewBox="0 0 800 400" role="img" aria-labelledby="f4t f4d">
+  <title id="f4t">Hybrid search: two ranked lists merged by rank</title>
+  <desc id="f4d">The query NVDA results runs as a keyword search and a meaning search. Keyword search ranks trades.md first, earnings.md second and watchlist.md third. Meaning search ranks earnings.md first, chip-stocks.md second and trades.md third. Each place earns one divided by sixty plus the place. Reciprocal-rank fusion adds the amounts: earnings.md scores 0.0325, trades.md 0.0323, chip-stocks.md 0.0161 and watchlist.md 0.0159.</desc>
+  <defs>
+    <marker id="f4a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+    <marker id="f4b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka2"/></marker>
+  </defs>
+  <rect x="12" y="12" width="236" height="34" rx="8" class="b"/>
+  <text x="26" y="34" class="t3" font-size="12">query</text>
+  <text x="72" y="34" class="t1 mono" font-size="13" font-weight="600">NVDA results</text>
+
+  <!-- keyword list -->
+  <text x="12" y="76" class="ta" font-size="12" font-weight="700">KEYWORD SEARCH · BM25</text>
+  <rect x="12" y="86" width="236" height="32" rx="6" class="ba"/>
+  <text x="24" y="107" class="t3 mono" font-size="12">1</text><text x="42" y="107" class="t1 mono" font-size="12.5">trades.md</text><text x="236" y="107" class="t3 mono" font-size="12" text-anchor="end">1/61</text>
+  <rect x="12" y="124" width="236" height="32" rx="6" class="ba"/>
+  <text x="24" y="145" class="t3 mono" font-size="12">2</text><text x="42" y="145" class="t1 mono" font-size="12.5">earnings.md</text><text x="236" y="145" class="t3 mono" font-size="12" text-anchor="end">1/62</text>
+  <rect x="12" y="162" width="236" height="32" rx="6" class="ba"/>
+  <text x="24" y="183" class="t3 mono" font-size="12">3</text><text x="42" y="183" class="t1 mono" font-size="12.5">watchlist.md</text><text x="236" y="183" class="t3 mono" font-size="12" text-anchor="end">1/63</text>
+
+  <!-- meaning list -->
+  <text x="12" y="232" class="ta2" font-size="12" font-weight="700">MEANING SEARCH · EMBEDDINGS</text>
+  <rect x="12" y="242" width="236" height="32" rx="6" class="ba2"/>
+  <text x="24" y="263" class="t3 mono" font-size="12">1</text><text x="42" y="263" class="t1 mono" font-size="12.5">earnings.md</text><text x="236" y="263" class="t3 mono" font-size="12" text-anchor="end">1/61</text>
+  <rect x="12" y="280" width="236" height="32" rx="6" class="ba2"/>
+  <text x="24" y="301" class="t3 mono" font-size="12">2</text><text x="42" y="301" class="t1 mono" font-size="12.5">chip-stocks.md</text><text x="236" y="301" class="t3 mono" font-size="12" text-anchor="end">1/62</text>
+  <rect x="12" y="318" width="236" height="32" rx="6" class="ba2"/>
+  <text x="24" y="339" class="t3 mono" font-size="12">3</text><text x="42" y="339" class="t1 mono" font-size="12.5">trades.md</text><text x="236" y="339" class="t3 mono" font-size="12" text-anchor="end">1/63</text>
+
+  <!-- merged list -->
+  <text x="532" y="116" class="t1" font-size="12" font-weight="700">MERGED BY RANK (RRF)</text>
+  <rect x="532" y="126" width="256" height="34" rx="6" class="b"/>
+  <text x="544" y="148" class="t3 mono" font-size="12">1</text><text x="562" y="148" class="t1 mono" font-size="12.5" font-weight="600">earnings.md</text><text x="776" y="148" class="t1 mono" font-size="12.5" text-anchor="end">0.0325</text>
+  <rect x="532" y="166" width="256" height="34" rx="6" class="b"/>
+  <text x="544" y="188" class="t3 mono" font-size="12">2</text><text x="562" y="188" class="t1 mono" font-size="12.5" font-weight="600">trades.md</text><text x="776" y="188" class="t1 mono" font-size="12.5" text-anchor="end">0.0323</text>
+  <rect x="532" y="206" width="256" height="34" rx="6" class="b"/>
+  <text x="544" y="228" class="t3 mono" font-size="12">3</text><text x="562" y="228" class="t1 mono" font-size="12.5">chip-stocks.md</text><text x="776" y="228" class="t1 mono" font-size="12.5" text-anchor="end">0.0161</text>
+  <rect x="532" y="246" width="256" height="34" rx="6" class="b"/>
+  <text x="544" y="268" class="t3 mono" font-size="12">4</text><text x="562" y="268" class="t1 mono" font-size="12.5">watchlist.md</text><text x="776" y="268" class="t1 mono" font-size="12.5" text-anchor="end">0.0159</text>
+
+  <!-- keyword lines (blue) -->
+  <path d="M248 102 C390 102 390 183 530 183" class="lna" marker-end="url(#f4a)"/>
+  <path d="M248 140 C390 140 390 143 530 143" class="lna" marker-end="url(#f4a)"/>
+  <path d="M248 178 C390 178 390 263 530 263" class="lna" marker-end="url(#f4a)"/>
+  <!-- meaning lines (amber) -->
+  <path d="M248 258 C390 258 390 150 530 150" class="lna2" marker-end="url(#f4b)"/>
+  <path d="M248 296 C390 296 390 223 530 223" class="lna2" marker-end="url(#f4b)"/>
+  <path d="M248 334 C390 334 390 190 530 190" class="lna2" marker-end="url(#f4b)"/>
+
+  <text x="12" y="386" class="t3" font-size="11.5">Each place earns 1 ÷ (60 + place). A chunk's score is the sum over the lists it appears in.</text>
+</svg>
+</div>
+<figcaption><b>Figure 4.</b> <code>earnings.md</code> takes first place without topping the keyword list, because both lists rank it high. <code>chip-stocks.md</code> never names the ticker and still gets in through the meaning search.</figcaption>
+</figure>
+
+<div class="tbl"><table>
+  <thead><tr><th>Chunk</th><th>Keyword place</th><th>Meaning place</th><th>Sum</th><th>Score</th></tr></thead>
+  <tbody>
+    <tr><td><code>earnings.md</code></td><td class="num-col">2</td><td class="num-col">1</td><td><code>1/62 + 1/61</code></td><td class="num-col">0.0325</td></tr>
+    <tr><td><code>trades.md</code></td><td class="num-col">1</td><td class="num-col">3</td><td><code>1/61 + 1/63</code></td><td class="num-col">0.0323</td></tr>
+    <tr><td><code>chip-stocks.md</code></td><td class="num-col">—</td><td class="num-col">2</td><td><code>1/62</code></td><td class="num-col">0.0161</td></tr>
+    <tr><td><code>watchlist.md</code></td><td class="num-col">3</td><td class="num-col">—</td><td><code>1/63</code></td><td class="num-col">0.0159</td></tr>
+  </tbody>
+</table></div>
+
+<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and the main model cites those paths. The sizes 50 and 10 are starting values in config.</p>
+
+<p>Each turn runs this search over three sources: file chunks, memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
+
+<!-- ============================================================ -->
+<h2 id="memory">Memory</h2>
+
+<p>Meru remembers facts about you between sessions. Each memory is a small Markdown file, one fact per file, in a folder named for its kind:</p>
+
+<pre><code>~/.meru/memory/
+  me/            who you are: role, family, where you live
+  preferences/   how you like things done
+  projects/      ongoing work, goals, deadlines
+  people/        people you mention and how they relate to you
+  reference/     where things live: accounts, URLs, tools
+  other/         anything worth keeping that fits no folder above</code></pre>
+
+<pre><code>---
+created: 2026-09-23
+source: session 2026-09-23T101502-7f3a
+---
+Prefers index funds over individual stocks for retirement accounts.</code></pre>
+
+<p>The header names the session the fact came from, so you can read the exchange that produced it. To make Meru forget, delete the file or run <code>meru memory forget</code>. A new folder becomes a new kind with no code change.</p>
+
+<ul>
+  <li><b>Saving.</b> The model calls <code>remember</code>, a <b>built-in tool</b> that <code>merud</code> provides itself. The call goes through <code>dispatch</code>, so it lands in the log. Memories save without asking unless you add <code>remember</code> to the built-in confirm list, which ships holding only <code>write_file</code>.</li>
+  <li><b>Recall.</b> Every turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges the three with RRF. Recall runs on every route, so a preference such as "always ask before trading" reaches the model on the turn that trades.</li>
+  <li><b>Episodes.</b> When a session ends, the fast model writes a one- or two-sentence summary into the transcript, and Meru embeds it. "What did we decide about the portfolio last week?" then finds the right session.</li>
+</ul>
+
+<p>If Meru believes something wrong about you, you find the file and fix it. You could not check or correct a memory stored only as numbers.</p>
+
+<!-- ============================================================ -->
+<h2 id="skills">Skills</h2>
+
+<p>A skill is a Markdown file of instructions at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>, with a name and a short description of when to use it. The prompt carries only names and descriptions. <code>merud</code> loads a skill's full text when the router picks it, so adding skills barely grows the prompt.</p>
+
+<p>Three skills ship inside the program:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>writing</code></td><td>plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
+    <tr><td><code>explainer</code></td><td>builds a self-contained web page that teaches a topic, with diagrams</td></tr>
+    <tr><td><code>poster-making</code></td><td>builds a printable one-page poster as HTML, plus PNG and PDF when a browser is available</td></tr>
+  </tbody>
+</table></div>
+
+<p>On first run <code>merud</code> copies them to <code>~/.meru/skills/</code>. It never overwrites a skill you've edited, and <code>meru skills reset &lt;name&gt;</code> restores the shipped one. You add a skill by dropping in a folder. Skills that make files use the built-in <code>write_file</code> tool, which writes only inside <code>~/meru-output/</code> unless you change it, and asks you before each write. These skills work best on the <code>full</code> profile; the 2B model writes weaker pages.</p>
+
+<!-- ============================================================ -->
+<h2 id="tools">Tools over MCP, other agents over A2A</h2>
+
+<p><b>MCP</b> (Model Context Protocol) is an open standard for programs that offer tools to an assistant. Meru is an MCP client. It either starts a local server and talks over its input and output (<b>stdio</b>), or connects to a server already running at a URL (<b>Streamable HTTP</b>). <b>A2A</b> (Agent2Agent) is an open standard for handing a task to another agent. The model sees each allowed agent skill as one more tool, named <code>a2a.&lt;agent&gt;.&lt;skill&gt;</code>.</p>
+
+<p>Both follow the same rules, set per server or agent in <code>config.toml</code>:</p>
+
+<ul>
+  <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list.</li>
+  <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
+  <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a hosted model, so that setting means consent for your data to leave.</li>
+  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools (<code>remember</code>, <code>write_file</code>, <code>configure</code>) all go through <code>dispatch</code>. No other code reaches them. The built-in tools need no allow entry: the model always sees all three.</li>
+</ul>
+
+<figure id="fig-dispatch">
+<div class="figbox">
+<svg viewBox="0 0 800 318" role="img" aria-labelledby="f5t f5d">
+  <title id="f5t">What dispatch does with a tool call</title>
+  <desc id="f5d">The model asks for a tool. Dispatch checks the allow list; a tool not on it is refused. An allowed tool not on the confirm list runs. An allowed tool on the confirm list asks you: approve once or for this session and it runs; deny and it is declined and the model is told. Every outcome, refused, declined or run, is logged as a transcript line and a tool_calls row with the tool, arguments, result, time taken, approval and trace ID.</desc>
+  <defs>
+    <marker id="f5a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
+    <marker id="f5b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+    <marker id="f5c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka2"/></marker>
+  </defs>
+  <!-- row 1 -->
+  <rect x="12" y="40" width="140" height="56" rx="8" class="b"/>
+  <text x="26" y="63" class="t1" font-size="13" font-weight="600">model asks</text>
+  <text x="26" y="82" class="t3" font-size="11.5">for a tool</text>
+  <rect x="196" y="40" width="140" height="56" rx="8" class="ba2"/>
+  <text x="210" y="63" class="t1" font-size="13" font-weight="600">on allow list?</text>
+  <text x="210" y="82" class="t3" font-size="11.5">set in config</text>
+  <rect x="380" y="40" width="148" height="56" rx="8" class="ba2"/>
+  <text x="394" y="63" class="t1" font-size="13" font-weight="600">on confirm list?</text>
+  <text x="394" y="82" class="t3" font-size="11.5">set in config</text>
+  <rect x="596" y="40" width="192" height="56" rx="8" class="ba"/>
+  <text x="610" y="63" class="t1" font-size="13" font-weight="600">run the call</text>
+  <text x="610" y="82" class="t3" font-size="11.5">MCP server, agent or built-in</text>
+
+  <path d="M152 68 L194 68" class="ln" marker-end="url(#f5a)"/>
+  <path d="M336 68 L378 68" class="ln" marker-end="url(#f5a)"/>
+  <text x="357" y="60" class="t2" font-size="11" text-anchor="middle">yes</text>
+  <path d="M528 56 L594 56" class="lna" marker-end="url(#f5b)"/>
+  <text x="560" y="49" class="t2" font-size="11" text-anchor="middle">no</text>
+
+  <!-- row 2 -->
+  <rect x="196" y="150" width="140" height="56" rx="8" class="b"/>
+  <text x="210" y="173" class="t1" font-size="13" font-weight="600">refused</text>
+  <text x="210" y="192" class="t3" font-size="11.5">outcome: denied</text>
+  <path d="M266 96 L266 148" class="ln" marker-end="url(#f5a)"/>
+  <text x="274" y="126" class="t2" font-size="11">no</text>
+
+  <rect x="380" y="150" width="148" height="56" rx="8" class="ba2"/>
+  <text x="394" y="173" class="t1" font-size="13" font-weight="600">ask you</text>
+  <text x="394" y="192" class="t3" font-size="11.5">once · session · deny</text>
+  <path d="M454 96 L454 148" class="ln" marker-end="url(#f5a)"/>
+  <text x="462" y="126" class="t2" font-size="11">yes</text>
+
+  <path d="M528 164 L560 164 L560 84 L594 84" class="lna2" marker-end="url(#f5c)"/>
+  <text x="566" y="128" class="t2" font-size="11">approve</text>
+
+  <rect x="596" y="150" width="148" height="56" rx="8" class="b"/>
+  <text x="610" y="173" class="t1" font-size="13" font-weight="600">declined</text>
+  <text x="610" y="192" class="t3" font-size="11.5">the model is told</text>
+  <path d="M528 194 L594 194" class="lna2" marker-end="url(#f5c)"/>
+  <text x="560" y="214" class="t2" font-size="11" text-anchor="middle">deny</text>
+
+  <!-- log -->
+  <rect x="12" y="246" width="776" height="44" rx="8" class="ba"/>
+  <text x="28" y="273" class="t1" font-size="12.5"><tspan font-weight="700">logged, every outcome:</tspan> transcript line + tool_calls row · tool, arguments, result, time, approval, trace ID</text>
+  <path d="M266 206 L266 244" class="ln" marker-end="url(#f5a)"/>
+  <path d="M670 206 L670 244" class="ln" marker-end="url(#f5a)"/>
+  <path d="M770 96 L770 244" class="ln" marker-end="url(#f5a)"/>
+
+  <text x="12" y="24" class="t3" font-size="11.5">Inside dispatch · the only path from the model to anything outside merud</text>
+  <text x="12" y="312" class="t3" font-size="11.5">Scripts and scheduled jobs have no one to ask, so a tool on the confirm list is denied there.</text>
+</svg>
+</div>
+<figcaption><b>Figure 5.</b> Two lists in your config decide every call, and all three outcomes end in the same log, so a refused or declined call leaves the same trail as one that ran.</figcaption>
+</figure>
+
+<p><code>dispatch</code> logs every call to the transcript and the <code>tool_calls</code> table, and <code>meru log</code> shows them. A call to a tool you didn't allow doesn't run, but it still gets a row, so a model that keeps reaching for forbidden tools shows up in the log. An assistant that can place orders or send email needs a record you can read afterwards.</p>
+
+<p>Meru doesn't confine MCP servers. Each runs as an ordinary program with your permissions and can read files or reach the network on its own. The allowlist decides which tools the model may call; the server decides what each call does. Adding a server means trusting it, as with any program you install.</p>
+
+<!-- ============================================================ -->
+<h2 id="jobs">Scheduled jobs</h2>
+
+<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so <code>dispatch</code> denies every tool on a confirm list, and the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
+
+<!-- ============================================================ -->
+<h2 id="setup">First run and setup</h2>
+
+<p>The first time you run <code>meru</code>, or whenever you run <code>meru setup</code>, Meru walks you through five steps in the terminal:</p>
+
+<ol>
+  <li><b>Ollama.</b> Meru checks that Ollama runs, and if not, prints the install command.</li>
+  <li><b>Models.</b> You pick <code>lite</code> or <code>full</code>, and Meru downloads them.</li>
+  <li><b>Your files.</b> Meru writes its config and built-in skills to <code>~/.meru/</code> and asks which folders to index.</li>
+  <li><b>Tools.</b> Meru offers its starter MCP servers one at a time. You can skip any.</li>
+  <li><b>A test question</b>, so you see it work.</li>
+</ol>
+
+<p>The starter catalog covers web search, web page fetch, Gmail, Calendar, Drive and Docs, and Obsidian. Each entry knows how to install its server, what it needs (a URL, an API key or a Google sign-in), and safe starting lists: reading allowed, anything that sends, deletes or shares on the confirm list. For each server you pick <b>"Do it for me"</b>, where Meru asks for what the server needs and writes the config block after you approve it, or <b>"Show me how"</b>, where Meru prints the block and you paste it in. Later, <code>meru mcp add gmail</code> or "connect my Gmail" in chat offers the same choice. For a server outside the catalog, Meru proposes an entry with every tool on the confirm list.</p>
+
+<p>The built-in <code>configure</code> tool, which edits <code>config.toml</code>, asks every time and offers only "approve once" or "deny". No setting turns that prompt off, so the model can't grant itself lasting trust. API keys go in <code>~/.meru/secrets.toml</code>, readable only by you, and <code>merud</code> strips them from transcripts and logs.</p>
+
+<!-- ============================================================ -->
+<h2 id="what-you-can-see">What you can see</h2>
+
+<p>Meru times every stage of a turn with <b>OpenTelemetry</b>, the open standard for timing and counting what software does. A <b>trace</b> follows one turn and splits it into timed steps: routing, search, each model call, each tool call. A slow answer then shows which step took the time. A <b>metric</b> adds numbers up across turns, such as tokens per model or how often a tool fails.</p>
+
+<ul>
+  <li>Export stays off until you set an address in config, and <code>merud</code> refuses to start if that address isn't on loopback.</li>
+  <li>Traces carry token counts, times, model names and tool names, and no prompt or answer text unless you switch it on.</li>
+  <li>The repo ships one container, <code>grafana/otel-lgtm</code>, that stores the data and shows a ready-made Meru dashboard in Grafana, listening on 127.0.0.1 only.</li>
+</ul>
+
+<p>The trace ID ties the two views together: a slow step in Grafana leads to the exact messages and tool calls in the log, and back.</p>
+
+<!-- ============================================================ -->
+<h2 id="privacy">The privacy rules</h2>
+
+<ul>
+  <li>The code has no path to a hosted model. The engine talks only to Ollama on loopback.</li>
+  <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>network = true</code> in its config entry.</li>
+  <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
+  <li>Meru sends no telemetry or crash reports and never checks for updates. Its timing data goes only to loopback, without your text unless you opt in.</li>
+  <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
+  <li><code>meru log</code> and the <code>tool_calls</code> table show every action Meru took outside itself.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="next">Where to go next</h2>
+
+<ul>
+  <li><a href="index.html">Level 100</a>: the big picture in two diagrams.</li>
+  <li><a href="300.html">Level 300</a>, generated from <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>: the full design, with the engine interface, database tables, metric names, config keys and open questions.</li>
+  <li><a href="https://github.com/aarora79/meru/blob/main/ROADMAP.md">ROADMAP.md</a>: the five milestones, in shipping order.</li>
+  <li><a href="https://github.com/aarora79/meru/blob/main/README.md">README.md</a>: commands and hardware.</li>
+  <li><a href="../posters/meru-poster.html">The Meru poster</a>: the design on one printable page.</li>
+</ul>
+
+<footer class="end">
+  <p>Markdown twin: <a href="https://github.com/aarora79/meru/blob/main/docs/architecture/200.md">docs/architecture/200.md</a> · <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> · <a href="https://github.com/aarora79/meru/blob/main/ROADMAP.md">Roadmap</a> · <a href="../posters/meru-poster.html">Poster</a></p>
+  <p>Amit Arora · Meru</p>
+</footer>
+
+</div>
+<script>
+// Copy control on every code block. The page's only script; with it off, code stays selectable.
+document.querySelectorAll('pre').forEach(function (pre) {
+  var wrap = document.createElement('div');
+  wrap.className = 'codewrap';
+  pre.parentNode.insertBefore(wrap, pre);
+  wrap.appendChild(pre);
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy-btn';
+  btn.setAttribute('aria-label', 'Copy this code to the clipboard');
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy</span>';
+  wrap.appendChild(btn);
+  btn.addEventListener('click', function () {
+    var text = pre.innerText;
+    function done() {
+      btn.querySelector('span').textContent = 'Copied';
+      btn.classList.add('done');
+      setTimeout(function () {
+        btn.querySelector('span').textContent = 'Copy';
+        btn.classList.remove('done');
+      }, 1200);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else { fallback(); }
+  });
+});
+</script>
+</body>
+</html>
