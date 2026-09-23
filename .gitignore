@@ -1,14 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-dist/
-build/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
 
 # Meru runtime state — never in the repo
 .meru/
@@ -28,3 +23,7 @@ models/
 # Local config / secrets
 config.local.toml
 .env
+
+# Design and review scratch space (skills write here)
+.scratchpad/
+

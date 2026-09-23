@@ -1,68 +1,112 @@
 # Meru — Architecture
 
-> Design document. Written before the implementation, deliberately. If the code and
-> this file disagree, that's a bug in one of them — say which.
+> We wrote this design before the code. If the code and this file disagree, one of
+> them has a bug; say which.
 
 ## Principles
 
-1. **On-device is a boundary, not a marketing claim.** Network egress is denied by
-   default and allowlisted per MCP server. There is no telemetry, and there is no
-   code path that sends a prompt to a hosted model.
-2. **Files are the source of truth; SQLite is a projection.** Everything in the
-   database can be rebuilt from your files and config. Delete `meru.db` and re-index.
-3. **Inspectable over clever.** Memory is readable rows. Skills are markdown files.
-   Retrieved context is cited. You can always answer "why did it say that?"
-4. **Narrow abstractions.** One thin engine protocol, one store, one tool protocol
-   (MCP). Broad LLM framework abstractions rot within a release cycle.
-5. **Latency is a feature.** If it isn't instant it won't get used, and the whole
-   process model below exists to serve that.
+1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
+   to A2A agents and MCP servers you mark as remote in config. Meru sends no
+   telemetry, and the codebase has no path that sends a prompt to a hosted model.
+2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
+   everything in the database from your files and config. Delete `meru.db` and it
+   re-indexes.
+3. **You can inspect everything.** Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn,
+   so you can find out why it said something and why it took so long.
+4. **Few, narrow abstractions.** One engine interface, one store, one agent loop we
+   own, and two wire protocols: MCP (Model Context Protocol) for tools and A2A
+   (Agent2Agent) for other agents. Broad LLM frameworks change their APIs every few
+   releases, and we don't want to chase them.
+5. **Fast or unused.** People stop asking an assistant that makes them wait. The
+   process model below exists to keep answers quick.
+6. **Simple wins every time.** Pick the design with fewer moving parts, even if it is
+   slower or less general, until a measurement says otherwise. The owner is learning
+   Go through this project, so write code a Go newcomer can follow.
+
+---
+
+## Language and distribution
+
+Meru is written in **Go**. `meru` and `merud` build as native binaries that you can
+copy to another machine and run, with no interpreter or virtualenv.
+
+Three things stay outside the binaries:
+
+- **Ollama**, which runs the models (see [Engine layer](#engine-layer)).
+- **The observability stack**, which you can skip (see [Observability](#observability)).
+- **MCP servers and A2A agents**, which run as their own processes.
+
+The store uses `ncruces/go-sqlite3`, a Go library that runs SQLite compiled to
+WebAssembly, with `sqlite-vec` built in. It needs no cgo (Go's bridge to C code), so
+a plain `go build` works without a C compiler (see [Storage](#storage)), and one
+command builds for another platform: `GOOS=linux GOARCH=amd64 go build ./...`.
+
+### Platforms
+
+Every part Meru depends on runs on all three major desktop and server systems:
+Ollama, SQLite, Go's Unix sockets (Windows 10 and later has them too) and the
+OpenTelemetry stack.
+
+| Platform | Status | Restarts `merud` after a reboot |
+| --- | --- | --- |
+| macOS, Apple silicon | supported and tested; the development machine is a Mac Studio (M4 Max, 64 GB) | `launchd` |
+| Linux, x86-64 or arm64 (home servers, cloud VMs such as EC2) | supported | `systemd` |
+| Windows 10 and later | should work; not tested at first | a Windows service |
+
+Code must not assume one platform: build paths with `filepath`, find the home
+directory with `os.UserHomeDir`, and keep platform-specific code behind Go build tags
+in as few files as possible.
+
+**On a cloud server** such as EC2, Meru still sends no prompt to a model provider,
+but your notes, email and transcripts live on that server. Meru's promise is "a
+machine you control"; where that machine sits is your call. You'd run `meru` over SSH,
+because it reaches `merud` through a local socket.
 
 ---
 
 ## The shape: daemon + thin client
 
-The central constraint: **a 30B MoE at 4-bit is ~17 GB and takes 20–30 s to load.**
-A conventional CLI that spawns, loads, answers and exits is unusable. So Meru splits:
+A command-line tool that starts, loads a model, answers and exits would be too slow:
+the `full` profile's main model is ~18 GB at 4-bit and takes many seconds to load
+from disk. So Meru has two programs:
 
-- **`merud`** — long-lived. Holds models resident, owns the store, maintains MCP
-  connections, runs the scheduler.
-- **`meru`** — thin client over a Unix domain socket at `~/.meru/merud.sock`.
-  Starts in ~50 ms, streams tokens back, exits.
+- **`merud`** runs all the time. It keeps models loaded in Ollama, owns the store,
+  holds the MCP and A2A connections, runs the scheduler and the agent loop, and emits
+  metrics and traces.
+- **`meru`** is a thin client. It connects to `merud` over a Unix socket at
+  `~/.meru/merud.sock`, starts in ~50 ms, streams the answer back and exits.
 
-The useful consequence: **the resident-model requirement and the proactive-assistant
-requirement are the same component.** Once `merud` exists to keep weights warm, the
-scheduler is nearly free. This is why it's built first rather than retrofitted.
+A daemon that keeps models warm can also run scheduled jobs for almost no extra
+work. That is why we build `merud` first and add the scheduler to it later.
 
 ```mermaid
 flowchart TB
-    subgraph client["client processes (ephemeral)"]
+    subgraph client["client processes (short-lived)"]
         CLI["meru — one-shot"]
-        TUI["meru chat — TUI"]
+        TUI["meru chat — terminal UI"]
     end
 
-    subgraph daemon["merud — resident"]
+    subgraph daemon["merud — always running"]
         RPC["socket server<br/>~/.meru/merud.sock"]
-        ORCH["orchestrator<br/>plan → retrieve → tools → answer"]
+        LOOP["agent loop<br/>route → retrieve → tools → answer"]
         SCHED["scheduler<br/>cron jobs, briefs"]
-
-        subgraph engines["engine layer"]
-            EP["Engine protocol"]
-            MLX["MLXEngine (default)"]
-            OLL["OllamaEngine (fallback)"]
-        end
-
-        subgraph models["resident models"]
-            FAST["fast ~4B<br/>route, rewrite, classify"]
-            MAIN["main ~30B MoE<br/>reasoning"]
-            EMB["embed ~0.6B"]
-        end
-
+        EP["Engine interface<br/>OllamaEngine"]
+        DISP["dispatch<br/>allowlist · confirm · audit · trace"]
         MCPC["MCP client pool"]
+        A2AC["A2A client"]
         SKILLS["skill registry"]
+        OTEL["OTel SDK<br/>metrics + traces"]
+    end
+
+    subgraph ollama["ollama — local, loopback only"]
+        FAST["fast"]
+        MAIN["main"]
+        EMB["embed"]
     end
 
     subgraph store["~/.meru/"]
-        DB[("meru.db<br/>sqlite + vec + fts5")]
+        SESS["sessions/*.jsonl<br/>transcripts (source of truth)"]
+        DB[("meru.db<br/>sqlite + vec + fts5<br/>(projection)")]
         CFG["config.toml"]
         SKD["skills/"]
     end
@@ -73,136 +117,552 @@ flowchart TB
         S3["gmail / calendar"]
     end
 
+    subgraph agents["other agents (A2A)"]
+        AG1["local agent"]
+    end
+
+    subgraph obs["observability — optional, loopback only"]
+        COL["OTLP endpoint<br/>127.0.0.1:4318"]
+        GRAF["Grafana · Prometheus · Tempo"]
+    end
+
     CLI --> RPC
     TUI --> RPC
-    RPC --> ORCH
-    SCHED --> ORCH
-    ORCH --> EP
-    EP --> MLX & OLL
-    MLX --> FAST & MAIN & EMB
-    ORCH --> MCPC
-    ORCH --> SKILLS
-    ORCH <--> DB
-    SKILLS --> SKD
+    RPC --> LOOP
+    SCHED --> LOOP
+    LOOP --> EP
+    EP -- "HTTP 127.0.0.1:11434" --> FAST & MAIN & EMB
+    LOOP --> DISP
+    DISP --> MCPC & A2AC
     MCPC --> S1 & S2 & S3
+    A2AC --> AG1
+    LOOP --> SKILLS
+    SKILLS --> SKD
+    LOOP --> SESS
+    SESS -. "indexed into" .-> DB
+    LOOP <--> DB
+    LOOP -.-> OTEL
+    OTEL -- "OTLP/HTTP" --> COL
+    COL --> GRAF
 ```
+
+### Terminal UI
+
+`meru chat` uses [Bubble Tea](https://github.com/charmbracelet/bubbletea), a Go
+library for interactive terminal apps. A Bubble Tea program has three parts: a model
+struct that holds the screen's state, an `Update` function that turns each event (a
+key press, a window resize, a streamed token) into a new state, and a `View` function
+that draws the state as text. The client reads tokens from the socket in a goroutine
+and passes each one to the program with `program.Send`, so the answer grows on screen
+as it arrives.
+
+`meru chat` also uses Bubbles, from the same authors, for the text input and the
+scrolling answer pane. We'll add Glamour (markdown rendering) or Lip Gloss (styling)
+only if plain text proves hard to read.
+
+Answers always stream: `meru chat` and one-shot `meru` both show text as the model
+writes it. When `dispatch` needs your approval, `meru chat` shows the tool name and
+arguments with three choices: approve once, approve for this session, or deny (see
+[Approving a tool call](#approving-a-tool-call)).
+
+The UI code holds no model or store logic; it draws what `merud` sends. One-shot
+`meru "..."` doesn't use Bubble Tea at all: it prints the stream as plain text, which
+also keeps it usable in scripts and pipes.
+
+---
+
+## A question, end to end
+
+The diagram below follows two turns of one conversation. The first turn searches
+your files and calls a read-only tool. The second turn builds on the first and calls
+a tool that changes something, so Meru asks you before it runs. Later sections
+explain each step in detail.
+
+```mermaid
+sequenceDiagram
+    actor U as you
+    participant C as meru (client)
+    participant L as merud: agent loop
+    participant S as store
+    participant F as fast model
+    participant M as main model
+    participant D as dispatch
+    participant T as MCP server
+
+    Note over U,T: Turn 1 starts a new session
+    U->>C: "what changed in my portfolio this week?"
+    C->>L: new session + question
+    L->>S: append user line to session JSONL
+    L->>F: rewrite the query and pick a route
+    F-->>L: route = search + tools
+    L->>S: hybrid search over chunks and memories
+    S-->>L: top chunks, relevant memories
+    L->>L: build context within budgets
+    L->>M: context + schemas of allowed tools
+    M-->>L: tool call robinhood.get_portfolio
+    L->>D: dispatch
+    D->>D: allowlist ✓ · not in confirm list
+    D->>T: get_portfolio
+    T-->>D: holdings
+    D->>S: tool_call + tool_result lines, tool_calls row
+    D-->>L: result
+    L->>M: context + tool result
+    M-->>L: answer, no tool call
+    L-->>C: stream tokens
+    C-->>U: answer with citations
+    L->>S: append assistant line
+
+    Note over U,T: Turn 2 continues the same session
+    U->>C: "sell half of the one that dropped most"
+    C->>L: same session + question
+    L->>S: load this session's recent messages
+    L->>F: rewrite the query and pick a route
+    F-->>L: route = tools
+    L->>S: recall memories
+    S-->>L: relevant memories
+    L->>M: context (with turn 1) + tool schemas
+    M-->>L: tool call robinhood.place_order
+    L->>D: dispatch
+    D->>D: allowlist ✓ · place_order is in confirm list
+    D-->>C: ask: place_order(...)?
+    C-->>U: approve once · for this session · deny?
+    U->>C: approve once
+    C->>D: approved once
+    D->>T: place_order
+    T-->>D: order placed
+    D->>S: tool_call + tool_result lines, tool_calls row
+    D-->>L: result
+    L->>M: context + tool result
+    M-->>L: answer, no tool call
+    L-->>C: stream tokens
+    C-->>U: answer
+    L->>S: append assistant line
+```
+
+### Who decides what
+
+| Decision | Made by | How |
+| --- | --- | --- |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the question and the history, and returns a route, a rewritten query and the skills to load |
+| Which tools the model may use | you, in `config.toml` | Only tools in each server's `allow` list reach the model; the rest don't exist to it |
+| Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks |
+| Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in the server's `confirm` list, unless you already approved that tool for this session |
+| When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (config, default 8) |
+
+When the route leaves tools out, `merud` sends the model no tool schemas at all. The
+model can't call a tool it hasn't seen, and the prompt stays shorter.
+
+### Approving a tool call
+
+When `dispatch` reaches a tool in the `confirm` list, the client shows the tool's name
+and arguments and offers three choices:
+
+| Choice | What happens |
+| --- | --- |
+| Approve once | This call runs. The next call to the same tool asks again. |
+| Approve for this session | This call runs, and `dispatch` skips the prompt for that tool until the session ends. The approval covers the tool, whatever its arguments. |
+| Deny | The call doesn't run. Its outcome is `declined`, and the model hears that you said no, so it can answer without the tool or ask you what to do. |
+
+- **Each choice is recorded.** `merud` appends an `approval` line to the transcript,
+  and replay copies the choice into the call's `tool_calls` row:
+
+  ```json
+  {"ts":"2026-09-23T10:17:21Z","type":"approval","server":"robinhood","tool":"place_order","choice":"once","trace_id":"9c2e…"}
+  ```
+
+- **Built-in tools have their own confirm list.** Built-ins such as `remember` belong
+  to no server entry, so `config.toml` gives them one section:
+
+  ```toml
+  [builtin]
+  confirm = ["write_file"]   # add "remember" to approve each new memory
+  ```
+
+  The built-in tools are `remember`, `write_file` and `configure`. `configure`
+  always asks, whatever this list says (see [First run and setup](#first-run-and-setup)).
+
+  In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
+  `server = "meru"`.
+- **Session approvals stay inside the running `merud`.** They end with the session and never
+  reach `config.toml`. To stop Meru asking about a tool for good, remove it from the
+  `confirm` list yourself; config stays the one place that grants lasting trust.
+- **One-shot `meru "..."`** asks on the terminal with the same three choices. Its
+  session ends with the answer, so "for this session" covers only this question. When
+  nothing can answer the prompt, because standard input isn't a terminal (a script or
+  a pipe), the call is denied.
+- **Scheduled jobs** have no one to ask, so `dispatch` denies every tool in the
+  `confirm` list and the job's output says which calls it skipped.
+
+### How a conversation continues
+
+- **A session is one transcript file.** `meru chat` keeps one session open until you
+  quit. Each `meru "..."` one-shot starts a new session.
+- **Each turn starts with the session's history.** `merud` loads your earlier
+  questions and Meru's earlier answers from this session, newest first, until the
+  history budget is full. Older turns drop out of the prompt but stay in the
+  transcript, where search can still find them.
+- **Earlier tool results stay out of the history.** The answer that used a result
+  already carries what mattered from it, and raw results can run to thousands of
+  tokens. The transcript keeps the full results.
+- **The router sees the history too**, so a follow-up like "sell half of the one that
+  dropped most" gets rewritten into a query that names the stock.
+  This works because turn 1's answer named the stocks and their moves; the router
+  reads answers, not the raw tool results behind them.
 
 ---
 
 ## Model tiers
 
-Budget ~45 GB of the 64 GB for weights and KV cache; the rest keeps the machine
-usable. At that ceiling, **MoE architecture matters more than parameter count.**
+Meru gives models three jobs, called tiers. Code depends on the tiers; `config.toml`
+says which model fills each one.
 
-| Tier | Role | Size @ 4-bit | Resident |
-|---|---|---|---|
-| `fast` | routing, query rewrite, classification, trivial answers | ~3 GB | yes |
-| `main` | reasoning, synthesis, tool selection | ~17 GB | yes |
-| `embed` | index + query embeddings | ~1 GB | yes |
-| `heavy` | optional escalation for hard problems | ~40 GB | on demand, evicts `main` |
+| Tier | Job |
+| --- | --- |
+| `fast` | routing, query rewrites, classification, trivial answers |
+| `main` | reasoning, writing the answer, choosing tools |
+| `embed` | embeddings for the index and for queries |
 
-Total steady-state ≈ 21 GB, leaving ~43 GB free.
+Two profiles ship in `config.toml`. **`lite` is the default.**
 
-**What does not fit:** a 120B MoE at 4-bit is ~60 GB. It will swap and thrash. Don't.
+| Tier | `lite` (default) | `full` |
+| --- | --- | --- |
+| `fast` | `hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M` (1.6 GB) | same |
+| `main` | same model as `fast` | `qwen3.8:27b` (~18 GB, 4-bit) |
+| `embed` | `nomic-embed-text` (~260 MB, 768 dims) | `qwen3-embedding:0.6b` (1024 dims) |
+| Hardware | 16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon | Apple silicon with 32 GB (64 GB comfortable), or a GPU with ~24 GB of memory |
 
-Concrete model choices live in `config.toml`, not here — they change faster than this
-document should. The tiers are the contract; the weights are configuration.
+- **`lite`** uses two small models. It downloads in a couple of
+  minutes and runs on almost any computer. One model fills both `fast` and `main`, so
+  only two models sit in memory.
+- **`full`** swaps in Qwen 3.8 27B, a dense model built for agent and tool work, and
+  a stronger embedding model. On Apple silicon, Ollama also offers the
+  `qwen3.8:27b-mlx` tag, which runs the same model on its MLX backend; we'll measure
+  which tag is faster.
+
+`merud` keeps each model loaded by asking Ollama for `keep_alive: -1`, and warms every
+tier at startup. Ollama must allow enough models in memory at once
+(`OLLAMA_MAX_LOADED_MODELS`, 3 for `full`).
+
+A new embedding model makes vectors of a different size, and every stored vector
+goes stale. The store records the embedding model's name and vector size. When
+either stops matching config, `merud` rebuilds the vectors from your files (see
+[Storage](#storage)).
+
+A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
+no room and makes it swap. Meru won't support models that size.
 
 ---
 
 ## Engine layer
 
-Deliberately small. Four methods, one dataclass of options:
+The interface has four methods:
 
+```go
+type Engine interface {
+    Generate(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (Completion, error)
+    Stream(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (iter.Seq2[Delta, error], error)
+    Embed(ctx context.Context, texts []string) ([]Vector, error)
+    Info(ctx context.Context) (ModelInfo, error)
+}
 ```
-Engine (protocol)
-  ├── generate(messages, tools, opts)  -> Completion
-  ├── stream(messages, tools, opts)    -> Iterator[Delta]
-  ├── embed(texts)                     -> list[Vector]
-  └── info()                           -> ModelInfo
-```
 
-Implementations: `MLXEngine` (default on Apple silicon — materially faster than the
-alternatives for the same weights) and `OllamaEngine` (zero-setup fallback, also the
-escape hatch for any model MLX hasn't got a conversion for).
+**`OllamaEngine` is the only implementation.** It talks to Ollama over HTTP on
+loopback and refuses to start if the configured URL points anywhere else. It is the
+codebase's only HTTP client for a model runtime, and it can't reach a hosted model.
 
-Tool-call parsing normalizes per-model formats into one internal shape at this
-boundary, so the orchestrator never sees a model-specific token.
+Each model writes tool calls in its own format; Ollama converts them to structured
+JSON, and the engine converts that JSON to Meru's own types. The agent loop never
+sees a model-specific token. Each `Completion` also carries Ollama's counters
+(`prompt_eval_count`, `eval_count`, `load_duration`, `prompt_eval_duration`,
+`eval_duration`), which feed [Observability](#observability).
+
+Two engines may come later, behind the same interface:
+
+- **`LlamaCppEngine`** would compile llama.cpp into `merud` through cgo, using the
+  GPU (Metal on a Mac, CUDA on NVIDIA). Meru would then need no Ollama install, but it would have
+  to parse each model's tool-call format itself.
+- **`MLXEngine`**, if MLX gets usable C or Go bindings and runs faster enough than
+  llama.cpp to justify a second backend.
+
+---
+
+## Agent loop
+
+We write the agent loop ourselves; we looked at Eino and ADK Go and chose not to use
+a framework. The loop is small, and every rule Meru enforces lives inside it: the
+allowlist, the audit log, the context budget and confirmation prompts. We want that
+code where we can read it, not inside another project's callbacks. The only
+third-party code in the loop is the official MCP Go SDK and the A2A Go SDK.
+
+A turn has five steps. [A question, end to end](#a-question-end-to-end) shows them in
+order.
+
+1. **Route.** The `fast` model rewrites the query, picks the skills to load, and picks
+   one of four routes: answer directly, search your files first (RAG,
+   retrieval-augmented generation), call tools, or search and call tools.
+2. **Build the context.** System prompt, skill descriptions, relevant memories,
+   retrieved chunks, this session's history and the allowed tools' schemas, each
+   within its own token budget.
+3. **Call `main`.** Stream text to the client as it arrives. Tool-call arguments also
+   arrive in pieces; buffer each call until it is complete.
+4. **Dispatch tools.** Every call goes through one function, `dispatch`. It checks the
+   allowlist, asks you to confirm if config lists the tool under `confirm`, calls the
+   MCP server, A2A agent or built-in tool (such as `remember`), writes the
+   `tool_calls` row, and records the span and metrics. If you say no, the call
+   doesn't run and its outcome is `declined`. No other code path reaches a server,
+   agent or built-in tool. Independent calls run at the same time (`errgroup`), each
+   with its own timeout.
+5. **Repeat** from step 3 with the tool results, until the model answers without
+   calling a tool or the loop hits its iteration cap (config, default 8).
+
+A `context.Context` runs through the whole turn. If the client disconnects or you
+press Ctrl-C, `merud` cancels the turn: generation stops, in-flight tool calls are
+dropped, and their `tool_calls` rows record the cancellation.
 
 ---
 
 ## Storage
 
-One SQLite file: `~/.meru/meru.db`. Extensions: `sqlite-vec` for vectors, built-in
-FTS5 for keyword.
+Meru keeps two kinds of data, with one rule between them: **files hold the truth,
+and the database indexes them.** Delete `meru.db` and `merud` rebuilds it.
 
-| Table | Holds |
-|---|---|
-| `documents` | indexed source files: path, mtime, hash, type |
-| `chunks` | chunked text + metadata, FK to document |
-| `chunk_vec` | vector index over chunks (sqlite-vec) |
-| `chunk_fts` | FTS5 index over chunks |
-| `memories` | durable facts: text, kind, source, created, last_used |
-| `conversations` / `messages` | history, for context and for `meru log` |
-| `tool_calls` | audit trail: every MCP call, args, result, duration |
-| `jobs` / `job_runs` | scheduler definitions and outcomes |
+```mermaid
+flowchart LR
+    subgraph truth["source of truth (files)"]
+        NOTES["your folders<br/>notes, docs, PDFs, repos"]
+        SESS["~/.meru/sessions/<br/>one JSONL file per session"]
+        MEM["~/.meru/memory/<br/>one Markdown file per memory"]
+        CFG["config.toml · skills/"]
+    end
 
-`tool_calls` is not optional. An assistant with write-capable tools needs a ledger
-you can read after the fact.
+    subgraph proj["projection (rebuildable)"]
+        DB[("~/.meru/meru.db")]
+        CH["chunks + chunk_fts + chunk_vec"]
+        MSG["messages + message_fts"]
+        TC["tool_calls"]
+        MM["memories + memory_fts + memory_vec"]
+    end
+
+    NOTES -- "indexer: chunk + embed" --> CH
+    SESS -- "replay" --> MSG
+    SESS -- "replay" --> TC
+    MEM -- "indexer: embed" --> MM
+    CH & MSG & TC & MM --- DB
+```
+
+### Session transcripts
+
+Each session is one JSON Lines (JSONL) file: one JSON object per line, one line per
+event. `merud` appends a line as each event happens and never rewrites old ones.
+
+```text
+~/.meru/sessions/2026/09/2026-09-23T101502-7f3a.jsonl
+```
+
+```json
+{"ts":"2026-09-23T10:15:02Z","type":"user","text":"what changed in my portfolio this week?","trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:03Z","type":"tool_call","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:04Z","type":"tool_result","ok":true,"ms":812,"result":{…},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Reviewed the week's portfolio changes; two positions fell more than 5%."}
+```
+
+You can `grep`, `tail -f` or back up these files with no special tools, and a crash
+loses at most the line being written. The database keeps a copy for search and for
+`meru log`.
+
+### The database
+
+`~/.meru/meru.db` is one SQLite file, opened through `ncruces/go-sqlite3` with
+`sqlite-vec` built in. FTS5, SQLite's built-in full-text search, handles keywords;
+`sqlite-vec` handles vectors.
+
+| Table | Holds | Rebuilt from |
+| --- | --- | --- |
+| `documents` | indexed source files: path, mtime, hash, type | your folders |
+| `chunks` | pieces of each file's text, plus metadata and the parent document | your folders |
+| `chunk_vec` | one vector per chunk (sqlite-vec) | chunks, re-embedded |
+| `chunk_fts` | keyword index over chunks (FTS5) | chunks |
+| `sessions` / `messages` | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
+| `session_vec` | one vector per session summary, for "what did we decide last week" | session summaries |
+| `message_fts` | keyword index over messages, for "what did we say about X" | messages |
+| `tool_calls` | audit log: every MCP, A2A and built-in tool call, with `kind` (`mcp`, `a2a` or `builtin`), args, result, duration, approval choice, trace ID | `sessions/*.jsonl` |
+| `memories` | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
+| `memory_vec` / `memory_fts` | vector and keyword indexes over memories | memories |
+| `jobs` / `job_runs` | scheduled jobs and their results | `config.toml` / job logs |
+| `meta` | schema version, embedding model name and vector size | config |
+
+`tool_calls` is mandatory. An assistant with tools that change things needs a record
+you can read afterwards. `messages` and `tool_calls` store the trace ID of their turn,
+so you can jump from a slow trace in Grafana to the rows it produced, and back.
+
+### Why this driver and this vector store
+
+- **`ncruces/go-sqlite3` + `sqlite-vec`.** No cgo, no C compiler, and vectors live in
+  the same file as everything else. One query can join vector hits, keyword hits and
+  document metadata.
+- **Search compares against every vector.** `sqlite-vec` has no approximate index. For
+  a personal index of up to a few hundred thousand chunks, that should stay inside the
+  latency budget, and `meru.retrieval.duration` will show when it doesn't. The first
+  fix is smaller vectors (int8, or fewer dimensions), not another database.
+- **Rejected:** `chromem-go` (pure Go, but a second store we can't join with keyword
+  search), LanceDB and DuckDB (both need cgo and do more than we need), Qdrant and
+  Chroma (extra server processes).
 
 ---
 
 ## Retrieval
 
-Hybrid, because neither half is sufficient alone — vectors miss exact identifiers,
-BM25 misses paraphrase.
+Vector search misses exact strings such as ticker symbols and error codes. BM25, the
+standard keyword-ranking formula, misses paraphrase. Meru runs both.
+
+[A question, end to end](#a-question-end-to-end) shows where retrieval sits in a turn.
+
+The indexer splits files along their structure: markdown by heading, code by
+function or type, PDFs by page with layout kept. It re-indexes a file only when its
+mtime and content hash change.
+
+### How hybrid search works
+
+SQLite does both searches; our code merges the results.
+
+| Piece | Comes from |
+| --- | --- |
+| Keyword search, ranked by BM25 | FTS5 (`ORDER BY rank`, where `rank` is BM25) |
+| Similarity search, ranked by distance | `sqlite-vec` (`embedding MATCH ? AND k = ?`) |
+| Merging the two lists | our Go code: reciprocal-rank fusion |
 
 ```mermaid
-sequenceDiagram
-    participant U as meru (CLI)
-    participant D as merud
-    participant F as fast model
-    participant S as store
-    participant M as main model
-    participant T as MCP servers
-
-    U->>D: "what changed in my portfolio this week?"
-    D->>F: rewrite query, pick route
-    F-->>D: {route: tools+rag, queries: [...]}
-    D->>S: vector search  ⟂  FTS5 search
-    S-->>D: two ranked lists
-    D->>D: reciprocal-rank fusion → top-k
-    D->>S: relevant memories
-    D->>M: system + skills + memories + context + tool schemas
-    M-->>D: tool call: get_portfolio
-    D->>T: dispatch (allowlist checked, logged)
-    T-->>D: result
-    D->>M: tool result
-    M-->>D: streamed answer + citations
-    D-->>U: stream
+flowchart LR
+    Q["query"] --> E["embed<br/>(embed tier)"]
+    E --> V["vector query<br/>chunk_vec · top 50"]
+    Q --> K["keyword query<br/>chunk_fts · top 50"]
+    V --> R["rrf() in Go"]
+    K --> R
+    R --> T["top 10 chunk IDs"]
+    T --> C["load text + source path<br/>from chunks / documents"]
 ```
 
-Chunking is structure-aware: markdown by heading, code by symbol, PDF by page with
-layout retained. Re-index is incremental on mtime + content hash.
+`merud` runs the vector query and the keyword query one after the other, then merges the two
+ranked lists with reciprocal-rank fusion (RRF). BM25 scores and vector distances use
+different scales, so RRF ignores them and uses each chunk's position in each list:
+
+```text
+score(chunk) = Σ over lists  1 / (60 + rank of chunk in that list)
+```
+
+A chunk near the top of either list scores well, and one near the top of both scores
+best. The constant 60 is the usual choice; it keeps the gap between rank 1 and rank 2
+small.
+
+```go
+// rrf merges ranked lists of chunk IDs into one score per chunk.
+func rrf(lists ...[]int64) map[int64]float64 {
+    const k = 60
+    scores := map[int64]float64{}
+    for _, list := range lists {
+        for rank, id := range list {
+            scores[id] += 1.0 / float64(k+rank+1)
+        }
+    }
+    return scores
+}
+```
+
+SQLite could do the merge in one query with window functions and a full outer join.
+We merge in Go instead:
+
+- Two short queries and one small function are easier to read than one dense query.
+- `rrf` is a pure function, so a table-driven test covers it without a database.
+- Each stage gets its own timing in `meru.retrieval.duration` (`vector`, `fts`,
+  `fusion`).
+- Memory retrieval reuses `rrf` with a third list ranked by recency.
+
+The extra query costs microseconds, because SQLite runs inside `merud`.
+
+**Schema detail.** `chunk_fts` is an FTS5 *external content* table
+(`content='chunks'`). It indexes the text in `chunks` without storing a second copy,
+and its `rowid` equals the chunk ID. `chunk_vec` uses the same chunk ID as its key, so
+both lists name chunks the same way and the merge needs no lookup.
+
+The list sizes (50 from each search, top 10 after the merge) are starting values in
+`config.toml`. We'll tune them against real questions.
 
 ---
 
 ## Memory
 
-Memory is **explicit and writable by hand.** The model writes facts through a tool
-call; each is one row with text, kind (`identity` / `preference` / `project` /
-`reference`), provenance, and timestamps. Retrieval is by embedding similarity plus
-recency, capped at a fixed context budget.
+Each memory is a small Markdown file you can read, edit or delete by hand. The files
+hold the truth; the database indexes them so Meru can search them, and rebuilds from
+them if you delete it.
 
-`meru memory list | add | forget` operates on it directly. If Meru believes something
-wrong about you, you can find the row and delete it. An opaque vector blob you cannot
-audit is not memory, it's a liability.
+### Layout
+
+One file per memory, and one folder per kind:
+
+```text
+~/.meru/memory/
+  me/            who you are: role, family, where you live
+  preferences/   how you like things done
+  projects/      ongoing work, goals, deadlines
+  people/        people you mention and how they relate to you
+  reference/     where things live: accounts, URLs, tools
+  other/         anything worth keeping that fits no folder above
+```
+
+```markdown
+---
+created: 2026-09-23
+source: session 2026-09-23T101502-7f3a
+---
+Prefers index funds over individual stocks for retirement accounts.
+```
+
+- **The folder is the kind.** No `kind:` field can disagree with the path, and you can
+  browse by kind in a file manager or with `ls`.
+- **One fact per file**, so forgetting a memory means deleting one file. You can do
+  that by hand, or `meru memory forget` does it.
+- **`other/` holds anything that fits no other folder.** If it fills up with one kind
+  of thing, create a new folder for that kind; Meru picks it up with no code change.
+- **The frontmatter records when and where** each memory came from, so you can trace
+  it back to the session that produced it.
+
+Meru keeps no index file. The database already indexes the files, and
+`meru memory list` shows them.
+
+### Facts and episodes
+
+- **Facts** (semantic memory) stay true over time: everything in the folders above.
+- **Episodes** (what happened when) already live in the session transcripts, so
+  memory files don't copy them. When a session ends, `merud` asks the `fast` model for
+  a one- or two-sentence summary and appends it to the transcript as a `summary`
+  line. The indexer embeds those summaries, so "what did we decide about the
+  portfolio last week?" finds the right session.
+
+### How Meru uses them
+
+1. **Indexing.** The indexer treats `~/.meru/memory/` like any folder you index: each
+   file gets a vector and a keyword entry. It picks up hand edits through the usual
+   mtime and content-hash check.
+2. **Recall.** Each turn searches memories by meaning and by keyword, adds a third
+   list ranked by recency, and merges all three with `rrf`. The top results go into
+   the context, up to the memory budget. Recall runs on every route, including
+   tools-only turns, because a preference such as "always ask before trading" matters
+   most when tools run.
+3. **Saving.** The model saves a memory by calling the built-in `remember` tool with
+   a folder and the text. The call goes through `dispatch` like any other tool, so it
+   lands in `tool_calls` and the transcript. Memories save without asking; add
+   `remember` to `builtin.confirm` in `config.toml` if you want to approve each one.
+4. **Your commands.** `meru memory list | add | forget` work on the files.
+
+If Meru believes something wrong about you, you can find the file and fix or delete
+it. A vector blob you can't read would leave you no way to audit or correct it.
 
 ---
 
 ## Skills
 
-Markdown with YAML frontmatter, in `~/.meru/skills/<name>/SKILL.md`:
+A skill is a markdown file with YAML frontmatter, at `~/.meru/skills/<name>/SKILL.md`:
 
 ```markdown
 ---
@@ -211,84 +671,361 @@ description: Review holdings through a valuation lens. Use when asked about
   positions, concentration, or whether to buy or sell.
 ---
 
-<the actual instructions, loaded only when triggered>
+<the instructions, loaded only when the skill is chosen>
 ```
 
-**Progressive disclosure:** only `name` and `description` sit in the system prompt.
-The body loads when the router selects the skill. This keeps the context budget flat
-as the skill count grows.
+The system prompt carries only each skill's `name` and `description`. `merud` loads
+the body when the router picks the skill, so adding skills barely grows the prompt.
 
-Because skills are just files, they're portable — the same directory can serve Meru
-and any other agent that reads this format.
+Skills are plain files, so any other agent that reads this format can use the same
+directory.
+
+### Built-in skills
+
+Meru ships with three skills, taken from the owner's `my-ai-assets` repo:
+
+| Skill | What it does |
+| --- | --- |
+| `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
+| `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
+| `poster-making` | Builds a printable one-page poster as HTML, and PNG and PDF when a browser is available |
+
+- **They ship inside the binary** (Go's `embed` package) and live in the repo under
+  `internal/skills/builtin/`. On first run, `merud` copies each one to
+  `~/.meru/skills/<name>/` unless that folder already exists.
+- **Your copy wins.** `merud` never overwrites a skill you've edited. To get the
+  shipped version back, run `meru skills reset <name>`.
+- **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
+  counts, whether you wrote it or copied it from elsewhere.
+- **Skills that make files need somewhere to put them.** The built-in `write_file`
+  tool writes only inside `~/meru-output/` (configurable). It can't touch any other
+  path, and it goes through `dispatch` like every tool. To render a poster to PNG or
+  PDF, Meru needs Chrome or Chromium installed; without one it produces the HTML only.
+- **These skills want the `full` profile.** The `lite` model can run them, but a 2B
+  model writes weaker explainers and posters.
+
+---
+
+## First run and setup
+
+The first time you run `meru`, or any time you run `meru setup`, Meru walks you
+through setup in the terminal. Nothing in it needs you to know how MCP works.
+
+1. **Ollama.** Meru checks that Ollama is running. If it isn't, Meru prints the one
+   install command for your platform and waits.
+2. **Models.** You pick `lite` (the default) or `full`, and Meru downloads the models
+   with a progress bar.
+3. **Your files.** Meru writes `config.toml`, `prompt.md` and the built-in skills to
+   `~/.meru/`, then asks which folders to index (for example `~/notes`).
+4. **Tools.** Meru offers the starter MCP servers, one at a time, and you pick a path
+   for each (see below). You can skip any of them and add them later.
+5. **A test question.** Meru answers one question so you see it working.
+
+### Adding an MCP server
+
+Meru carries a small catalog of known servers in the binary: web search, web page
+fetch, Gmail, Calendar, Drive and Docs, and Obsidian. Each catalog entry lists the
+install command, what the server needs (a URL, an API key, or a Google sign-in), and
+a safe starting `allow` and `confirm` list: reading allowed, anything that sends,
+deletes or shares in `confirm`.
+
+For each server, you choose one of two paths:
+
+- **"Do it for me."** Meru asks only for what the server needs, one question at a
+  time: "Paste your Brave Search API key", or "A browser window will open; sign in to
+  Google". Then it shows you the exact config block it will add, and writes it only
+  after you approve.
+- **"Show me how."** Meru prints the config block and any install command, and names
+  the file to paste them into. Nothing changes until you do it yourself.
+
+Outside setup, you can run `meru mcp add gmail`, or ask in chat ("connect my Gmail")
+and get the same two paths. A server that isn't in the catalog works too: give Meru
+its command or URL, and it proposes an entry with every tool in `confirm`.
+
+**Config changes always ask.** The built-in `configure` tool, which edits
+`config.toml`, goes through `dispatch` and asks you every time, and offers only
+"approve once" and "deny". A session approval isn't available for it, and you can't
+add it to an allow-without-asking list. Config grants lasting trust, so the model
+can't grant any to itself.
+
+**Secrets stay out of config.** API keys and sign-in tokens go in
+`~/.meru/secrets.toml`, readable only by you (file mode `0600`), and config entries
+refer to them by name. `merud` redacts them from transcripts, logs and spans.
 
 ---
 
 ## MCP
 
-Meru is a **client**, not a server host. It connects to MCP servers over stdio and
-SSE, declared in `config.toml`, and merges their tools into one namespace with
-per-server prefixes.
+Meru is an MCP **client**; it hosts no servers. `config.toml` lists the servers, and
+Meru merges their tools into one set of names, prefixed per server. It supports the
+two transports in the current MCP spec, both provided by the official Go SDK:
 
-This is the highest-leverage decision in the project: every MCP server you already
-run becomes a Meru capability with no code written.
+- **stdio:** `merud` starts the server as a child process and talks to it over
+  stdin and stdout. Most local servers work this way.
+- **Streamable HTTP:** `merud` connects to a server that is already running, at a
+  URL. It replaced the older HTTP+SSE transport in the 2025 spec, so Meru doesn't
+  support SSE.
+
+Every MCP server you already run becomes a Meru capability with no new code.
 
 ```toml
 [[mcp.servers]]
 name    = "obsidian"
-command = "..."
+command = "..."                   # stdio: merud starts this process
 allow   = ["read", "search"]     # tool-level allowlist
-network = false                   # egress denied
+confirm = []                      # allowed tools that still need a yes per call
+
+[[mcp.servers]]
+name    = "calendar"
+url     = "http://127.0.0.1:8123/mcp"   # Streamable HTTP: server already running
+allow   = ["list_events"]
+network = false                          # true only if the URL isn't loopback
 ```
 
-Tool exposure is **deny-by-default**. A server offering 40 tools contributes zero
+A server entry has either `command` or `url`. `merud` refuses a Streamable HTTP URL
+that isn't loopback unless the entry says `network = true`, the same rule A2A agents
+follow.
+
+Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
+
+Meru doesn't confine MCP servers. Each one runs as an ordinary process with your
+user's permissions, and can read files or reach the network by itself. Adding a
+server to config is a trust decision: Meru decides which tools the model may call,
+and the server decides what each call does.
+
+---
+
+## Other agents (A2A)
+
+Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work.
+As with MCP, Meru is only a client; it doesn't serve A2A. The client comes from the
+A2A project's Go SDK.
+
+The model sees each allowed agent skill as one more tool, named
+`a2a.<agent>.<skill>`, that takes a message and returns the agent's answer. The call
+goes through the same `dispatch` function as MCP tools, so it gets the same allowlist
+check, confirmation, `tool_calls` row (with `kind = "a2a"`) and trace span.
+
+```toml
+[[a2a.agents]]
+name    = "research"
+url     = "http://127.0.0.1:9100"   # Meru reads the agent card from here
+allow   = ["summarize"]              # skills from the agent card
+confirm = []
+network = false                      # true only if the agent isn't on loopback
+```
+
+```mermaid
+sequenceDiagram
+    participant M as main model
+    participant L as agent loop
+    participant D as dispatch
+    participant A as research agent (A2A)
+
+    M-->>L: tool call a2a.research.summarize {message}
+    L->>D: dispatch
+    D->>D: allowlist ✓ · confirm? · open span
+    D->>A: A2A message/stream
+    A-->>D: task updates … final artifact
+    D->>D: write tool_calls row (kind=a2a) · close span
+    D-->>L: result text
+    L->>M: tool result
+```
+
+Agents are deny-by-default too. Meru can reach only the agents in config, and only
+the skills in `allow` become tools. An agent on another machine may use a hosted
+model, so your data would leave the machine. Reaching one takes `network = true`;
+without it, `merud` refuses any agent URL that isn't loopback. For long tasks, Meru
+uses the protocol's streaming updates, with the same per-call timeout as a tool.
 
 ---
 
 ## Scheduler
 
-Jobs are prompts plus a cron expression, run by `merud` against the same
-orchestrator a human query uses. Output goes to a digest, a file, or a notification.
-`launchd` keeps `merud` alive across reboots; the scheduler lives inside the daemon
-rather than in `launchd` so jobs share the warm model and the same audit trail.
+A job is a prompt plus a cron expression. `merud` runs it through the same agent loop
+as a question you type, and sends the output to a digest, a file or a notification.
+Jobs don't stream, since no one is watching, and nobody can approve a tool call, so
+`dispatch` denies every tool in the `confirm` list during a job.
+The operating system's service manager (`launchd`, `systemd` or a Windows service)
+restarts `merud` after a reboot. The scheduler lives inside `merud`, not in the
+service manager, so jobs use the loaded models and land in the same audit log and
+traces.
+
+---
+
+## Observability
+
+Every stage of a turn emits OpenTelemetry (OTel) metrics and traces: routing,
+retrieval, each model call and each tool call. A dashboard can then show where a slow
+answer spent its time, how many tokens it used, and which tool failed.
+
+### Local only
+
+Meru still sends no telemetry. Observability data goes only to an endpoint you run on
+this machine:
+
+- The OTLP (OpenTelemetry Protocol) exporter stays **off until you set
+  `observability.otlp_endpoint`.** Without an endpoint, `merud` uses no-op providers,
+  and instrumentation costs almost nothing.
+- `merud` **refuses to start if the endpoint isn't a loopback address.** No setting
+  sends metrics or traces anywhere else.
+- **Spans carry no prompt or response text** unless you set `capture_content = true`.
+  They always carry token counts, durations, model names and tool names, which reveal
+  nothing about what you asked.
+
+```toml
+[observability]
+otlp_endpoint    = "http://127.0.0.1:4318"   # OTLP/HTTP; loopback only; unset = off
+metrics_interval = "10s"
+traces           = true
+capture_content  = false                     # prompt/response text in spans
+```
+
+### Traces
+
+Each turn produces one trace, whether it came from the CLI or a scheduled job:
+
+```text
+meru.turn                         route, iterations, outcome
+├── meru.route                    fast-tier call
+├── meru.retrieve                 vector, fts, fusion (v0.2); memories (v0.4)
+├── gen_ai.chat  main             one span per model call in the loop
+├── mcp.tool_call  obsidian.search
+└── gen_ai.chat  main             final answer
+```
+
+Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
+`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`).
+Tool spans follow the MCP semantic conventions and add `meru.tool.server` and
+`meru.tool.allowed`. `merud` writes each trace ID to `messages` and `tool_calls`.
+
+### Metrics
+
+Metrics use the standard GenAI names where a convention exists, and `meru.*` names
+for the rest.
+
+| Metric | Type | Attributes | Answers |
+| --- | --- | --- | --- |
+| `gen_ai.client.token.usage` | histogram | model, tier, `gen_ai.token.type` (input/output) | tokens per call |
+| `gen_ai.client.operation.duration` | histogram | model, tier, operation | model call latency |
+| `gen_ai.server.time_to_first_token` | histogram | model, tier | the v0.1 "first token < 1 s" target |
+| `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
+| `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
+| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency |
+| `meru.turn.iterations` | histogram | route | loop depth |
+| `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
+| `meru.tool.calls` | counter | server, tool, outcome (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
+| `meru.tool.duration` | histogram | server, tool | tool latency |
+| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | (v0.2) retrieval cost |
+| `meru.rpc.active_streams` | up-down counter | — | open client sessions |
+| `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
+
+The OTel Go runtime package adds heap, garbage-collection and goroutine metrics.
+
+Token counts come from Ollama's counters on each response; Meru doesn't estimate
+them. `merud` measures time to first token from the start of the request to the
+first streamed text, so it includes time spent waiting in the queue and reading the
+prompt.
+
+**Keep attribute values to small, fixed sets** such as model, tier, server, tool,
+route and outcome. Session IDs, file paths and text belong on spans, never on
+metrics.
+
+### The stack
+
+`merud` speaks plain OTLP/HTTP, so any OTLP backend works. The reference setup is one
+container, **`grafana/otel-lgtm`**, which bundles an OTel Collector, Prometheus,
+Tempo and Grafana. The repo ships its compose file and a ready-made Meru dashboard.
+The compose file:
+
+- binds ports to `127.0.0.1` only (4318 for OTLP, 3000 for Grafana);
+- turns off Grafana's own reporting and update checks:
+  `GF_ANALYTICS_REPORTING_ENABLED=false`, `GF_ANALYTICS_CHECK_FOR_UPDATES=false`,
+  `GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false`.
+
+To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), point
+`otlp_endpoint` at the Collector. `merud` needs no change.
+
+`merud` writes application logs to a local file with `log/slog` and doesn't export
+them.
 
 ---
 
 ## Privacy boundary
 
-- No hosted-model code path exists. Not disabled — absent.
-- MCP servers are allowlisted per tool; egress is opt-in per server.
-- No telemetry, no crash reporting, no update check.
+- The codebase contains no path to a hosted model. The engine talks only to a model
+  runtime on loopback.
+- You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
+  HTTP server needs `network = true` in its config entry.
+- Meru doesn't sandbox MCP servers. They run with your permissions, so choose them as
+  carefully as any program you install.
+- Meru sends no telemetry or crash reports and never checks for updates.
+  Observability export is off by default, goes only to loopback, and leaves out prompt
+  text unless you opt in.
 - The store is a plain file. Back it up or delete it; it's yours.
-- `meru log` and the `tool_calls` table make every external action reviewable.
+- `meru log` and the `tool_calls` table let you review every external action.
 
 ---
 
 ## Deliberate non-goals
 
-- **Not a chat app clone.** No accounts, no sync, no mobile client.
-- **Not a training framework.** Meru runs weights; it does not produce them.
-- **Not multi-user.** One machine, one person. That assumption buys a lot of simplicity.
-- **Not cloud-fallback-capable.** Adding "just call an API when the local model
-  struggles" would quietly dissolve principle #1.
+- **Not a chat app clone.** No accounts, sync or mobile client.
+- **Not a training framework.** Meru runs weights; it doesn't produce them.
+- **Not multi-user.** One machine and one person, which keeps the design simple.
+- **No cloud fallback.** Calling a hosted API when the local model struggles would
+  break principle 1.
+- **Not an agent framework.** The loop exists to serve Meru, and we won't package it
+  as a library.
 
 ---
 
 ## Open questions
 
-Carried forward, to be resolved with working code rather than argument:
+We'll settle these with working code and measurements.
 
-1. **Router quality.** Can a ~4B model reliably choose between direct answer / RAG /
-   tools? If not, the fast tier moves to ~8B and the memory budget shifts.
-2. **Context assembly order.** Skills, memories and retrieved chunks compete for the
-   same window. Needs a measured budget policy, not a guessed one.
-3. **Model eviction.** When `heavy` loads, `main` must unload cleanly and reload fast.
-   Worth measuring before committing to the tier design.
-4. **TUI framework.** Textual is the obvious choice; confirm streaming feels right.
-5. **PDF extraction.** Layout-aware extraction locally is still the weak link.
-6. **Agent harness.** Unresolved, and the highest-impact open item. If Meru is built on
-   an existing agent SDK rather than a hand-rolled loop, then the orchestrator, the tool
-   loop and possibly the engine layer above are replaced by that harness — and Meru
-   becomes retrieval + memory + skills + scheduling layered on top of it. That is a
-   smaller, better project *if* the harness can be pointed at a local model endpoint and
-   carries no hosted-model dependency. Decide this before writing v0.1.
+1. **Router quality.** In `lite`, a 2B model both routes and answers. Can it choose
+   between a direct answer, RAG and tools? `meru.turn.*` metrics by route will show.
+   If it can't, `lite` gets a separate, larger `main`.
+2. **Context order.** Skills, memories and retrieved chunks compete for the same
+   window. `meru.context.tokens` will supply the numbers to set a budget per section.
+3. **PDF extraction.** Local tools that keep a PDF's layout are weak, and Go has fewer
+   of them than Python. We may need a cgo library or an external tool.
+4. **Leaving Ollama.** An embedded llama.cpp engine would make `merud` self-contained,
+   but Meru would take over tool-call parsing and loading models. Decide once v0.3
+   works on Ollama and we can measure the cost.
+5. **WASM SQLite speed.** `ncruces/go-sqlite3` runs slower than native SQLite. In
+   v0.2, measure indexing and search on a real notes folder before building further
+   on it.
+
+### Resolved
+
+- **Language:** Go, for native binaries you can redistribute.
+- **Platforms:** macOS on Apple silicon first, Linux supported, Windows untested at
+  first. Cloud servers such as EC2 count as "a machine you control".
+- **Agent harness:** our own loop plus the official MCP and A2A Go SDKs. We looked at
+  Eino and ADK Go. ADK Go pulls a hosted-model client into the dependency tree, and
+  neither saves much once the allowlist, audit and budget logic are ours.
+- **Model runtime:** Ollama on loopback for now (see open question 4).
+- **Models:** the `lite` profile by default (MiniCPM5-2B + `nomic-embed-text`), and
+  `full` for Apple silicon with 32 GB or more, or a ~24 GB GPU (`qwen3.8:27b` +
+  `qwen3-embedding:0.6b`).
+- **Storage:** JSONL transcripts as the source of truth; SQLite via
+  `ncruces/go-sqlite3` with `sqlite-vec` as the index. No separate vector database.
+- **Hybrid search:** FTS5 BM25 plus `sqlite-vec` similarity, merged in Go with
+  reciprocal-rank fusion.
+- **Built-in skills:** `writing`, `explainer` and `poster-making` ship in the binary
+  and are copied to `~/.meru/skills/` on first run; your edits always win.
+- **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each
+  added "for you" (with approval of the exact config block) or by copy-paste.
+- **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, in `meru chat`
+  only. Answers always stream.
+- **Tool approvals:** approve once, approve for this session, or deny. Session
+  approvals never touch config; lasting trust comes only from editing the `confirm`
+  list. With no one to ask (scripts, scheduled jobs), `dispatch` denies.
+- **Memory:** one Markdown file per memory under `~/.meru/memory/<kind>/`, no index
+  file; session summaries in the transcripts serve as episodic memory. Memories save
+  without asking, through the `remember` tool and `dispatch`.
+- **Other agents:** an A2A client, through the same `dispatch` path as MCP tools.
+- **Isolation:** no sandbox. Meru runs as an ordinary user process, and the tool and
+  agent allowlists do the controlling.

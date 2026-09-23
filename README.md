@@ -2,75 +2,91 @@
 
 **A personal AI assistant that runs entirely on your own machine.**
 
-No API keys. No tokens billed. No prompt leaves the device unless you explicitly
-allow it to. Meru loads open-weight models into your Mac's unified memory and keeps
-them there, so asking it something costs you electricity and nothing else.
+You need no API key and pay for no tokens, and no prompt leaves your machine unless
+you allow it. Meru loads open-weight models into your computer's memory and keeps
+them there, so a question costs only electricity.
 
-> **Meru** (मेरु) — the cosmic mountain of Hindu, Buddhist and Jain cosmology: the
-> axis around which the sun, moon and stars revolve. The fixed point you orient by.
+> **Meru** (मेरु) is the cosmic mountain that the sun, moon and stars turn around.
+> This assistant takes the name because it works the same way: it stays in one
+> place, on your machine, and your notes, tools and daily routine turn around it.
 
 ---
 
 ## What it is
 
-Meru is a resident daemon plus a thin CLI. The daemon holds the model in memory,
-owns your index and your memory store, talks to MCP servers, and runs scheduled
-work. The CLI is a socket client that starts in milliseconds.
+Meru is two Go programs, shipped as native binaries. `merud` is a daemon: it runs in
+the background, keeps the models loaded, owns your index and memory, talks to MCP
+(Model Context Protocol) servers and runs scheduled jobs. `meru` is the command-line
+client; it connects to the daemon over a local socket and starts in milliseconds.
 
 ```
+$ meru setup                       # first run: models, folders, MCP servers
 $ meru "what did I change in the portfolio repo this week?"
-$ meru chat                        # interactive TUI
+$ meru chat                        # interactive terminal UI
 $ meru index ~/notes ~/repos       # build the local knowledge index
 $ meru memory list                 # what it knows about you, in plain text
 $ meru skills list                 # what it knows how to do
-$ meru brief                       # today's proactive digest
+$ meru brief                       # today's digest, prepared in advance
 ```
 
 ## What it does
 
 | Capability | What it means |
-|---|---|
-| **Local inference** | MLX on Apple silicon, Ollama as fallback. Pluggable engine layer |
-| **RAG over your files** | Hybrid retrieval (vector + BM25) over notes, docs, PDFs, repos — with citations |
-| **MCP tool calling** | Meru is an MCP *client*. Point it at servers you already run and it inherits them |
-| **Persistent memory** | Facts it learns about you, stored as readable rows you can inspect and edit |
-| **Skills** | Markdown + frontmatter, progressively disclosed. Portable, greppable, yours |
-| **Proactive daemon** | Scheduled jobs and briefs — it can surface things you didn't ask for |
+| --- | --- |
+| **Local models** | Models run in Ollama on your machine, and the daemon keeps them loaded |
+| **Search over your files** | Keyword (BM25) and meaning-based search over notes, docs, PDFs and repos, with citations |
+| **MCP tools** | `meru setup` offers web search, Gmail, Calendar, Drive and more, and adds each one for you or shows you what to paste |
+| **Other agents** | Meru hands tasks to agents you've allowed, over A2A (Agent2Agent) |
+| **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete |
+| **Skills** | Markdown files of instructions, loaded only when a question needs them. Ships with `writing`, `explainer` and `poster-making` |
+| **Scheduled jobs** | Briefs and other jobs run on a schedule, so Meru can tell you things before you ask |
+| **Observability** | OpenTelemetry metrics and traces for every question: tokens, time taken and tool calls, shown in a local Grafana |
 
-## Why on-device
+## Why your own machine
 
-Three reasons, in order of how much they actually matter:
+Three reasons, most important first:
 
-1. **Privacy is structural, not promised.** An assistant worth having reads your
-   email, your notes, your finances, your calendar. On-device means that data
-   physically cannot be someone else's training corpus.
-2. **No marginal cost.** Indexing a decade of notes, re-running a brief every
-   morning, letting a daemon think in the background — all free once the hardware
-   is bought. That changes what you're willing to build.
-3. **It keeps working.** No deprecation notices, no rate limits, no outage, no
-   pricing change. The model on your disk in 2026 still runs in 2031.
+1. **Privacy you can check.** An assistant worth having reads your email, notes,
+   finances and calendar. On a machine you control, that data can't end up in
+   anyone's training set.
+2. **No cost per question.** Indexing ten years of notes or running a brief every
+   morning costs nothing once you own the hardware, which changes what you're
+   willing to build.
+3. **It keeps working.** No deprecation notices, rate limits, outages or price
+   changes. The model on your disk in 2026 still runs in 2031.
 
 ## Hardware
 
-Developed on a **Mac Studio, M4 Max, 64 GB**. That number drives the model choices —
-see [ARCHITECTURE.md](ARCHITECTURE.md#model-tiers). The short version: at 64 GB,
-**Mixture-of-Experts models are the unlock**, not larger dense ones. A ~30B MoE with
-~3B active parameters gives you near-70B quality at near-8B speed for ~17 GB.
+Meru runs wherever Ollama and Go do:
 
-Meru should run on any Apple silicon Mac with 32 GB or more; smaller machines work
-with smaller model tiers. Linux + CUDA is not supported today but the engine layer
-is deliberately shaped to allow it.
+- **macOS on Apple silicon:** supported and tested. Developed on a Mac Studio, M4 Max,
+  64 GB.
+- **Linux:** supported, including home servers and cloud VMs such as EC2.
+- **Windows 10 and later:** should work; not tested at first.
+
+Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tiers)):
+
+- **`lite` (default):** MiniCPM5-2B and `nomic-embed-text`, about 2 GB of downloads.
+  Needs 16 GB of RAM and runs on a CPU, faster with a GPU or Apple silicon.
+- **`full`:** Qwen 3.8 27B and `qwen3-embedding:0.6b`. Needs Apple silicon with
+  32 GB (64 GB is comfortable), or a GPU with about 24 GB of memory.
+
+On a cloud server, Meru still sends no prompt to a model provider, but your data
+lives on that server. The promise is "a machine you control"; where it sits is your
+call.
 
 ## Status
 
-**Pre-alpha. Design phase.** The architecture is written down; the code is being
-built against it. See [ROADMAP.md](ROADMAP.md) for what exists and what's next.
+**Pre-alpha, design phase.** We wrote the architecture first, and the code follows it.
+[ROADMAP.md](ROADMAP.md) lists what exists and what comes next.
 
 ## Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how it's put together and why
+- [docs/architecture/index.html](docs/architecture/index.html) — the same design as an illustrated page
+- [docs/posters/](docs/posters/) — the Meru poster
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
-- [CLAUDE.md](CLAUDE.md) — repo conventions for AI coding agents
+- [AGENTS.md](AGENTS.md) — repo rules for AI coding agents
 
 ## License
 
