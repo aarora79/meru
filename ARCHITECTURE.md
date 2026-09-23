@@ -14,8 +14,9 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 ## Principles
 
 1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
-   to A2A agents and MCP servers you mark as remote in config. Meru sends no
-   telemetry, and the codebase has no path that sends a prompt to a hosted model.
+   to A2A agents and MCP servers you mark as remote in config. Meru measures itself,
+   but no telemetry leaves the machine, and the codebase has no path that sends a
+   prompt to a hosted model.
    MCP servers are separate programs: one you add, such as web search or Gmail, can
    reach the network on its own (see [MCP](#mcp)).
 2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
@@ -894,8 +895,8 @@ answer spent its time, how many tokens it used, and which tool failed.
 
 ### Local only
 
-Meru still sends no telemetry. Observability data goes only to an endpoint you run on
-this machine:
+Meru collects this data about itself, and none of it leaves your machine. It goes
+only to an endpoint you run on this machine:
 
 - The OTLP (OpenTelemetry Protocol) exporter stays **off until you set
   `observability.otlp_endpoint`.** Without an endpoint, `merud` uses no-op providers,
@@ -992,9 +993,9 @@ them.
   HTTP server needs `network = true` in its config entry.
 - Meru doesn't sandbox MCP servers. They run with your permissions, so choose them as
   carefully as any program you install.
-- Meru sends no telemetry or crash reports and never checks for updates.
-  Observability export is off by default, goes only to loopback, and leaves out prompt
-  text unless you opt in.
+- No telemetry leaves the machine. Meru's own metrics and traces are off by default,
+  go only to loopback when on, and leave out prompt text unless you opt in. Meru
+  sends no crash reports and never checks for updates.
 - The store is a plain file. Back it up or delete it; it's yours.
 - `meru log` and the `tool_calls` table let you review every external action.
 

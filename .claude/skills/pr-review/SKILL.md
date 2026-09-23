@@ -79,7 +79,7 @@ description argues for the exception and the Chief Architect accepts it.
 - [ ] **No hosted-model code path.** No HTTP client, SDK (software development kit) or
       config key that could reach a hosted model. Model traffic goes only to Ollama on loopback. Grep the diff for new
       `http.Client`, `http.NewRequest`, provider SDK imports and non-loopback URLs.
-- [ ] **No telemetry.** No update check, crash reporting or phone-home. OTLP (OpenTelemetry
+- [ ] **No telemetry leaves the machine.** No update check, crash reporting or phone-home. OTLP (OpenTelemetry
       Protocol) export stays off until config sets an endpoint, and `merud` refuses a
       non-loopback one. Prompt/response text stays out of spans unless
       `capture_content = true`.
@@ -167,7 +167,7 @@ pad with "N/A".
 | Item | Status | Details |
 | --- | --- | --- |
 | No hosted-model code path | {PASS/FAIL} | |
-| No telemetry; OTLP loopback-only; no content in spans by default | {PASS/FAIL/N/A} | |
+| No telemetry off the machine; OTLP loopback-only; no content in spans by default | {PASS/FAIL/N/A} | |
 | Deny-by-default tools and agents; loopback-only `merud` | {PASS/FAIL/N/A} | |
 | All external actions through `dispatch` + `tool_calls` | {PASS/FAIL/N/A} | |
 | New dependencies justified | {PASS/FAIL/N/A} | {module: reason} |

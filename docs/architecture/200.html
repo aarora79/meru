@@ -874,7 +874,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li>The code has no path to a hosted model. The engine talks only to Ollama on loopback.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
-  <li>Meru sends no telemetry or crash reports and never checks for updates. Its timing data goes only to loopback, without your text unless you opt in.</li>
+  <li>No telemetry leaves your machine. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table show every action Meru took outside itself.</li>
 </ul>

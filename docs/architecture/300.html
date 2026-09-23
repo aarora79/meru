@@ -249,7 +249,7 @@
 <p>Six principles shape every choice below:</p>
 
 <ol>
-  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config. Meru sends no telemetry, and the codebase has no path that sends a prompt to a hosted model. MCP servers are separate programs: one you add, such as web search or Gmail, can reach the network on its own (see <a href="#mcp">Tools over MCP</a>).</li>
+  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a hosted model. MCP servers are separate programs: one you add, such as web search or Gmail, can reach the network on its own (see <a href="#mcp">Tools over MCP</a>).</li>
   <li><b>Files are the source of truth; SQLite is a projection.</b> Meru can rebuild everything in the database from your files and config. Delete <code>meru.db</code> and it re-indexes.</li>
   <li><b>You can inspect everything.</b> Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn, so you can find out why it said something and why it took so long.</li>
   <li><b>Few, narrow abstractions.</b> One engine interface, one store, one agent loop we own, and two wire protocols: <b>MCP</b> (Model Context Protocol) for tools and <b>A2A</b> (Agent2Agent) for other agents. Broad frameworks for large language models change their APIs every few releases, and we don't want to chase them.</li>
@@ -1233,7 +1233,7 @@ output   = "notification"          # or "digest", or a file path</code></pre>
 
 <h3>Local only</h3>
 
-<p>Meru still sends no telemetry. Observability data goes only to an endpoint you run on this machine:</p>
+<p>Meru collects this data about itself, and none of it leaves your machine. It goes only to an endpoint you run on this machine:</p>
 
 <ul>
   <li>The <b>OTLP</b> (OpenTelemetry Protocol) exporter stays <b>off until you set <code>observability.otlp_endpoint</code>.</b> Without an endpoint, <code>merud</code> uses no-op providers, and instrumentation costs almost nothing.</li>
@@ -1353,7 +1353,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>The codebase contains no path to a hosted model. The engine talks only to a model runtime on loopback.</li>
   <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
-  <li>Meru sends no telemetry or crash reports and never checks for updates. Observability export is off by default, goes only to loopback, and leaves out prompt text unless you opt in.</li>
+  <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>The store is a plain file you can back up or delete.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
 </ul>

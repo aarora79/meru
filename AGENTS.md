@@ -76,10 +76,10 @@ as built-in skills under `internal/skills/builtin/`. Update those by copying fro
    a flag or switched off. If you find yourself adding an HTTP client for a model
    provider, stop and raise it instead. The only model HTTP traffic goes to Ollama on
    loopback.
-2. **No telemetry, update checks or crash reports, ever.** OpenTelemetry export
-   doesn't count as telemetry, because it goes only to a loopback endpoint the user
-   runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and response
-   text stay out of spans unless `capture_content = true`.
+2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
+   Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
+   the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
+   response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `network = true`.

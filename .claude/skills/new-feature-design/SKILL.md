@@ -310,7 +310,7 @@ a question the owner will ask.
 | Rule | Holds? | How |
 |------|--------|-----|
 | No hosted-model code path | | |
-| No telemetry, update check or crash reporting; OTLP loopback only | | |
+| No telemetry off the machine, update check or crash reporting; OTLP loopback only | | |
 | Deny-by-default for tools and agents | | |
 | Every external action goes through `dispatch` and lands in `tool_calls` | | |
 
