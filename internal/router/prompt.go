@@ -18,14 +18,52 @@ type option struct {
 }
 
 // options lists the four choices in prompt order. Small models lean on the
-// description text, so each one says when to pick it.
+// description text, so each one names the kinds of question that belong to
+// it and says what it excludes, to push it apart from its neighbours.
+//
+// The order and the letters were measured (docs/fast-router.md,
+// "Calibration"): A to D in this order beat every other order tried, and
+// beat the words "direct", "search", "tools" and "both", which the
+// tokenizer splits.
 //
 // A [...]T{...} literal is an array whose length the compiler counts.
 var options = [...]option{
-	{"A", RouteDirect, "Answer from what you already know. No files or tools needed."},
-	{"B", RouteSearch, "The answer is in the user's own notes, documents or repositories. Retrieve first."},
-	{"C", RouteTools, "The answer needs a tool: live data, an external service, or an action."},
-	{"D", RouteSearchTools, "Both: retrieve from the user's files and call a tool."},
+	{"A", RouteDirect, "General knowledge, chit-chat, maths, coding or writing help. Needs nothing about the user and nothing recent or live."},
+	{"B", RouteSearch, "Look in the user's own saved notes, documents, code repos or past chats. Nothing live, no action."},
+	{"C", RouteTools, "Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) or an action (send, book, create, schedule). Nothing from the user's notes."},
+	{"D", RouteSearchTools, "Needs the user's notes or files AND a live lookup or an action."},
+}
+
+// example is one worked question in the prompt and the route it takes.
+type example struct {
+	question string
+	route    Route
+}
+
+// examples shows the model two questions per route. They lifted accuracy on
+// the labelled set more than any wording change did. None of them repeats a
+// question in testdata/routes.jsonl, so the held-out score stays honest.
+// Keep them short: the router runs on every turn.
+var examples = [...]example{
+	{"what's the boiling point of water in Denver", RouteDirect},
+	{"fix the grammar: me and him was late", RouteDirect},
+	{"what did I note about the gym contract", RouteSearch},
+	{"which of my scripts use ffmpeg", RouteSearch},
+	{"is it windy in Chicago now", RouteTools},
+	{"move my Monday standup to 10", RouteTools},
+	{"text Maya the gate code from my notes", RouteSearchTools},
+	{"does the hotel in my trip notes have rooms free", RouteSearchTools},
+}
+
+// letterFor returns the prompt letter for route r, or "" if r is none of the
+// four.
+func letterFor(r Route) string {
+	for _, o := range options {
+		if o.route == r {
+			return o.letter
+		}
+	}
+	return ""
 }
 
 // routeForLetter maps a token from the model to a route. It trims spaces
@@ -43,9 +81,16 @@ func routeForLetter(token string) (r Route, ok bool) {
 }
 
 // buildMessages turns a turn into the messages sent to the fast model: the
-// system prompt, if there is one, then a user message that holds the history,
-// the question and the lettered options, and ends with "Answer: " so the
-// next token is the letter.
+// system prompt, if there is one, then a user message that holds the lettered
+// options, the examples, the history and the question, and ends with
+// "Answer: " so the next token is the letter.
+//
+// The fixed part (options and examples) comes first and the parts that
+// change each turn come last. Ollama reuses the work it did on a prompt's
+// opening tokens when the next prompt starts the same way, so the fixed part
+// costs almost nothing after the first turn. The order also helped
+// accuracy: with the options first, the question sits right before the
+// answer cue.
 //
 // History goes newest first, so the turns most likely to matter sit closest
 // to the question. Only user and assistant messages go in; tool results are
@@ -55,7 +100,16 @@ func buildMessages(turn Turn) []engine.Message {
 	// every append.
 	var b strings.Builder
 
-	b.WriteString("Conversation so far:\n")
+	b.WriteString("Decide how to answer the user's next question.\n\n")
+	for _, o := range options {
+		b.WriteString(o.letter + " = " + o.description + "\n")
+	}
+	b.WriteString("\nExamples:\n")
+	for _, e := range examples {
+		b.WriteString(e.question + " -> " + letterFor(e.route) + "\n")
+	}
+
+	b.WriteString("\nConversation so far:\n")
 	n := 0
 	for i := len(turn.History) - 1; i >= 0; i-- {
 		m := turn.History[i]
@@ -71,11 +125,7 @@ func buildMessages(turn Turn) []engine.Message {
 
 	b.WriteString("\nQuestion:\n")
 	b.WriteString(turn.Question)
-	b.WriteString("\n\nPick the best way to answer it.\n\n")
-	for _, o := range options {
-		b.WriteString(o.letter + " = " + o.description + "\n")
-	}
-	b.WriteString("\nReply with one letter and nothing else.\nAnswer: ")
+	b.WriteString("\n\nReply with one letter and nothing else.\nAnswer: ")
 
 	var msgs []engine.Message
 	if turn.SystemPrompt != "" {

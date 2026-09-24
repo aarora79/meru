@@ -7,7 +7,8 @@
 // the full design in docs/fast-router.md.
 //
 // What it doesn't do: rewrite the query or pick skills (those need generated
-// text and stay in their own call), fit the temperature (a later calibration
-// command), or treat an unclear answer as an error. An unsure model gets the
-// fallback route and an outcome that says why.
+// text and stay in their own call), fit the temperature at run time (the
+// test harness behind `make router-eval` fits it offline and the value goes
+// in config), or treat an unclear answer as an error. An unsure model gets
+// the fallback route and an outcome that says why.
 package router

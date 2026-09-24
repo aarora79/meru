@@ -78,7 +78,7 @@ func defaults() Config {
 		},
 		Router: Router{
 			TopLogProbs:   20,
-			Temperature:   1.0,
+			Temperature:   1.25,
 			MinConfidence: 0.45,
 			Fallback:      "search+tools",
 		},
