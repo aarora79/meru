@@ -263,7 +263,7 @@ func millis(ms int64) string {
 // file: wrapping first and linking each piece keeps a link from spanning a
 // line break, which some terminals draw badly.
 func (m *Model) sourcesBlock(t *exchange, width int) string {
-	cited := rpc.Cited(t.answer, t.sources, len(t.tools) > 0)
+	cited := rpc.Cited(t.answer, t.sources)
 	if len(cited) == 0 {
 		return ""
 	}

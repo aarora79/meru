@@ -475,9 +475,8 @@ The same path as a reading list, in order:
    prompter's `approve` (`approve.go`), then prints each `token` event's text as it
    arrives. Tool calls show on standard error as dim lines, `→` when a call starts
    and `✓` or `✗` when it ends. When a `sources` event came, it prints `Sources:`
-   after the answer, with the sources `rpc.Cited` finds cited in it. When the
-   answer cites none, it prints all of them, unless the turn called a tool: then
-   the answer may come from the tool, and it prints none.
+   after the answer, with the sources `rpc.Cited` finds cited in it. An answer
+   that cites none gets no list.
 2. **`internal/rpc/client.go` → `Do`** connects to the socket, writes the request
    as one JSON line, and reads events back until `done` or `error`. For an
    `approval` event it calls `approve` and writes the `Reply` line.

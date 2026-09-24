@@ -79,11 +79,9 @@ way:
 - **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Budget",
   lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
   this way.
-- **`Cited(answer, sources, usedTools)`** finds the `[1]` and `[1, 3]` marks
-  in the answer with a regular expression and returns the sources they name.
-  When the answer cites none, it returns them all, because the model still
-  read them. A turn that called a tool is the exception: its answer may come
-  from the tool's result, so no marks means no sources.
+- **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
+  answer with a regular expression and returns the sources they name. No
+  marks means no sources: the model decides when a source matters.
 - **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
   `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
 - **`Hyperlink(url, text)`** wraps text in the OSC 8 escape codes, `ESC ] 8 ; ;

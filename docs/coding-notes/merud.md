@@ -251,8 +251,7 @@ default:
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
   as `[1] ~/notes/garden.md, "Budget", lines 3–5`. `rpc.Cited` picks those
-  lines; when the answer cites no number, it lists every excerpt the model
-  read, unless the turn called a tool, whose result may be the whole answer.
+  lines; an answer that cites no number gets no list.
   When standard output is a styled terminal (`look.links`), each line is a
   link to its file (`rpc.FileURL`, `rpc.Hyperlink`); a pipe gets plain text.
 - Tool calls show on standard error as dim lines, `→ notes.search

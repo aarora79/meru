@@ -48,12 +48,12 @@ func (c Citation) String() string {
 const citeMarks = `\[(\d+(?:\s*,\s*\d+)*)\]`
 
 // Cited returns the sources that answer cites by number, in the order of
-// sources. When the answer cites none of them, as a small model sometimes
-// forgets to, it returns all of them: the answer was still written with
-// those excerpts in front of the model. The exception is a turn that called
-// tools (usedTools): its answer may come from a tool's result, so an
-// answer that cites no excerpt gets no sources.
-func Cited(answer string, sources []Citation, usedTools bool) []Citation {
+// sources. An answer that cites none gets none: the model decides when a
+// source matters, and a list of excerpts it didn't use only adds noise
+// under a general answer. Before, such an answer listed every excerpt, in
+// case a small model had forgotten to cite; in use that printed sources
+// under answers that never touched them.
+func Cited(answer string, sources []Citation) []Citation {
 	re := regexp.MustCompile(citeMarks)
 	cited := map[int]bool{}
 	for _, m := range re.FindAllStringSubmatch(answer, -1) {
@@ -69,9 +69,6 @@ func Cited(answer string, sources []Citation, usedTools bool) []Citation {
 		if cited[s.N] {
 			out = append(out, s)
 		}
-	}
-	if len(out) == 0 && !usedTools {
-		return sources
 	}
 	return out
 }

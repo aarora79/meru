@@ -40,8 +40,7 @@ func TestAskSources(t *testing.T) {
 	}{
 		{"cited", "It is 4,200 dollars [1].", srcs,
 			"It is 4,200 dollars [1].\n\nSources:\n[1] ~/notes/garden.md, \"Budget\", lines 1–4\n"},
-		{"none cited lists all", "It is 4,200 dollars.", srcs,
-			"It is 4,200 dollars.\n\nSources:\n[1] ~/notes/garden.md, \"Budget\", lines 1–4\n[2] ~/notes/trip.md, line 2\n"},
+		{"none cited lists none", "It is 4,200 dollars.", srcs, "It is 4,200 dollars.\n"},
 		{"no sources", "Paris.", nil, "Paris.\n"},
 	}
 	for _, tt := range tests {

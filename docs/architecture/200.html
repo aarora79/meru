@@ -738,7 +738,7 @@
   </tbody>
 </table></div>
 
-<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and numbers them in the prompt. The main model cites them as <code>[1]</code>, <code>[2]</code>, and <code>meru</code> prints the cited files under the answer. When the answer cites nothing, <code>meru</code> lists every excerpt the model read, unless the turn called a tool: then the answer may come from the tool, and <code>meru</code> lists none. The prompt also names the folders Meru indexes, so the model doesn't claim it can't see your files while it reads them. The sizes 50 and 10 are constants in the code, not settings; we'll tune them once we have measurements.</p>
+<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and numbers them in the prompt. The main model cites them as <code>[1]</code>, <code>[2]</code>, and <code>meru</code> prints the cited files under the answer. An answer that cites nothing gets no list: the model decides when a source matters. The prompt also names the folders Meru indexes, so the model doesn't claim it can't see your files while it reads them. The sizes 50 and 10 are constants in the code, not settings; we'll tune them once we have measurements.</p>
 
 <p>Meru stores each embedding as a plain row in <code>meru.db</code> and compares the question with every one. On the development machine that takes 13 ms over 10,000 chunks and about 150 ms over 100,000, fast enough for a personal index.</p>
 

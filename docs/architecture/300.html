@@ -1142,14 +1142,14 @@ func rrf(lists ...[]int64) map[int64]float64 {
 
 <p>The system prompt names the folders in <code>[index] folders</code> on every turn, says that Meru searches them before it answers, and says the model can't open or list files itself. With no folders set, it tells the model that Meru hasn't indexed anything yet and where you add folders. Without this note a small model answers "I don't have access to your files" while it reads excerpts from them, and can't say what Meru indexes.</p>
 
-<p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites. When it cites none, as a small model sometimes forgets to, they list every source the prompt held, with one exception: on a turn that called a tool, they list none. That answer may come from the tool's result, and in a live test an answer built from an Obsidian search listed ten unrelated repo files as its sources.</p>
+<p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites, and an answer that cites none gets no list: the model decides when a source matters. An earlier rule listed every excerpt when the answer cited none, in case a small model forgot to cite; in use it printed ten unrelated files under general answers and under an answer built from an Obsidian search.</p>
 
 <pre><code>The Q3 budget for the garden project is 4,200 dollars [1].
 
 Sources:
 [1] ~/notes/garden.md, "Budget", lines 3–5</code></pre>
 
-<p>With a tiny index, every chunk lands in the top 10, so an answer that cites nothing and called no tool lists every file. A minimum fused score, or keeping fewer than 10 chunks, would trim that list; choosing either waits for measurements (see <a href="#open-questions">Open questions</a>).</p>
+<p>With a tiny index, every chunk lands in the top 10. A minimum fused score, or keeping fewer than 10 chunks, would shorten the prompt; choosing either waits for measurements (see <a href="#open-questions">Open questions</a>).</p>
 
 <!-- ============================================================ -->
 <h2 id="memory">Memory you can read and edit</h2>
@@ -1798,7 +1798,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><b>PDF extraction.</b> v0.2 reads each page's plain text with a pure-Go library and keeps no layout, so tables and columns come out as running text. A scanned PDF with no text layer yields nothing. Local tools that keep layout are weak, and Go has fewer of them than Python; better extraction may need a cgo library or an external tool.</li>
   <li><b>Leaving Ollama.</b> An embedded llama.cpp engine would make <code>merud</code> self-contained, but Meru would take over tool-call parsing and loading models. v0.3's tool calls work through Ollama's parser; decide once we can measure what taking it over would cost.</li>
   <li><b>WebAssembly SQLite speed (answered in v0.2).</b> <code>ncruces/go-sqlite3</code> runs SQLite as WebAssembly, slower than native SQLite, so v0.2 measured it before building on it. On the development machine with 768-dimension vectors, 100,000 chunks index in 6.1 s, a file replaces in about 6 ms, a vector search takes 147 ms and a keyword search 90 ms; at 10,000 chunks the searches take 13 ms and 9 ms (see <a href="#why-this-driver-and-this-vector-store">Why this driver and this vector store</a>). That fits a personal index. If search must get faster, use fewer dimensions or compute distances in Go.</li>
-  <li><b>How many sources to show.</b> Each search keeps the top 10 chunks, and with a tiny index that is every chunk. When the model cites nothing on a turn without tool calls, the clients list every source the prompt held, which can be every file you indexed (see <a href="#citations">Citations</a>). A minimum fused score or fewer than 10 chunks would fix it; measurements from real questions will pick one.</li>
+  <li><b>How many excerpts to keep.</b> Each search keeps the top 10 chunks, and with a tiny index that is every chunk, so the prompt carries excerpts that don't help. The clients list only the sources an answer cites (see <a href="#citations">Citations</a>), so this costs prompt length, not a noisy list. A minimum fused score or fewer than 10 chunks would fix it; measurements from real questions will pick one.</li>
 </ol>
 
 <!-- ============================================================ -->

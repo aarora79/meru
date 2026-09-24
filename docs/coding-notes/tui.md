@@ -411,8 +411,7 @@ stats; "stopped"; or the error box.
 The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
 turn's `sources` field. It waits until the answer is finished, because
 `rpc.Cited` needs the whole text to see which numbers it cites; when it cites
-none, the block lists every excerpt the model read, unless the turn called a
-tool, in which case the block stays empty. `Citation.String`, shared
+none, the block stays empty. `Citation.String`, shared
 with `meru`, writes each line, and each wraps to the screen width.
 
 The answer stays raw while it streams for two reasons. Half-written Markdown renders

@@ -992,11 +992,11 @@ Meru indexes.
 Before the first token, `merud` sends the client a `sources` event that lists each
 excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
-same list under the answer. Both list only the sources the answer cites. When it
-cites none, as a small model sometimes forgets to, they list every source the prompt
-held, with one exception: on a turn that called a tool, they list none. That
-answer may come from the tool's result, and in a live test an answer built from an
-Obsidian search listed ten unrelated repo files as its sources.
+same list under the answer. Both list only the sources the answer cites, and an
+answer that cites none gets no list: the model decides when a source matters. An
+earlier rule listed every excerpt when the answer cited none, in case a small model
+forgot to cite; in use it printed ten unrelated files under general answers and
+under an answer built from an Obsidian search.
 
 ```text
 The Q3 budget for the garden project is 4,200 dollars [1].
@@ -1005,10 +1005,9 @@ Sources:
 [1] ~/notes/garden.md, "Budget", lines 3–5
 ```
 
-With a tiny index, every chunk lands in the top 10, so an answer that cites nothing
-and called no tool lists every file. A minimum fused score, or keeping fewer than 10
-chunks, would trim that list; choosing either waits for measurements (see [Open
-questions](#open-questions)).
+With a tiny index, every chunk lands in the top 10. A minimum fused score, or
+keeping fewer than 10 chunks, would shorten the prompt; choosing either waits for
+measurements (see [Open questions](#open-questions)).
 
 ---
 
@@ -1660,12 +1659,11 @@ We'll settle these with working code and measurements.
    [Why this driver and this vector store](#why-this-driver-and-this-vector-store)).
    That fits a personal index. If search must get faster, use fewer dimensions or
    compute distances in Go.
-6. **How many sources to show.** Each search keeps the top 10 chunks, and with a
-   tiny index that is every chunk. When the model cites nothing on a turn without
-   tool calls, the clients list every source the prompt held, which can be every
-   file you indexed (see
-   [Citations](#citations)). A minimum fused score or fewer than 10 chunks would
-   fix it; measurements from real questions will pick one.
+6. **How many excerpts to keep.** Each search keeps the top 10 chunks, and with a
+   tiny index that is every chunk, so the prompt carries excerpts that don't help.
+   The clients list only the sources an answer cites (see [Citations](#citations)),
+   so this costs prompt length, not a noisy list. A minimum fused score or fewer
+   than 10 chunks would fix it; measurements from real questions will pick one.
 
 ### Resolved
 
