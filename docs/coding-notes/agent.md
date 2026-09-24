@@ -1,7 +1,7 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -133,6 +133,24 @@ transcript, because the agent already holds every fact the row needs: the
 session, the source, the final route and the tool-call count. `merud` would
 have to reopen the session file after each turn to find them.
 
+### The Profile interface
+
+```go
+type Profile interface {
+    Profile() ([]memory.Memory, error)
+}
+```
+
+The profile is what Meru knows about you: the memory files in `me/` and
+`preferences/` (`rpc.ProfileKinds()`). `merud` passes `profileAdapter`, which
+reads those two folders with `memory.Store.ListKind`. Tests pass
+`fakeProfile`. A `nil` Profile leaves the section out.
+
+`Profile` may return memories and an error together, when one file can't be
+read and the rest can. The agent logs the error as a warning and uses what it
+got. A folder it can't read at all gives no memories, and the turn goes on
+without the section.
+
 ### New and filesNote
 
 `New` builds the system prompt once and adds `filesNote(cfg.Index.Folders)` to
@@ -158,6 +176,59 @@ traveller.
 `New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.
+
+### The profile section (profile.go)
+
+`New` keeps the configured prompt with `whoIsWho` in `a.system`, and the files
+note in `a.filesNote`. On each turn, `prompt` puts the profile between them:
+
+```text
+<system prompt>
+
+<whoIsWho>
+
+What you know about the user:
+- Name is Amit Arora
+- Works on the AI registry team at Example Corp
+- Likes short answers
+
+<filesNote>
+```
+
+The profile follows `whoIsWho`, so the rule that "I" means the user and the
+facts about who the user is sit side by side. Without them, the 2B model read a
+visa letter and guessed that you were the co-applicant it named.
+
+`formatProfile` builds the section, and it is a plain function so the tests can
+call it with any memories:
+
+- **Order.** `me` first, then `preferences`, oldest first inside each, so your
+  name, usually the first fact saved, leads. `Created` holds only a date, so the
+  file's modification time breaks a tie between two facts from one day, and the
+  ID breaks any tie left.
+- **One line each.** `strings.Fields` splits a fact at every run of spaces and
+  line breaks, and joining the pieces with one space gives one line.
+- **The cap.** The section holds at most 2,000 characters, header included. When
+  the facts hold more, `formatProfile` walks them newest first and keeps each one
+  that still fits, so a newer fact, which more often corrects an older one, wins.
+  It returns how many it left out, and `profileSection` logs that at debug.
+- **Empty means nothing.** With no facts, the section is `""` and the prompt has
+  no header. `meru chat` is the one that tells you Meru doesn't know you yet.
+
+`profileSection` reads the files on every turn, so a hand edit shows in the next
+answer. Reading 20 files takes about 0.6 ms, too little to earn a cache. It
+records the section's size as `meru.context.tokens` with section `memories`.
+
+### The remember rule
+
+A third rule gives tools to a turn that asks Meru to remember something. The
+router can send "remember that my name is Amit" to `direct`, which offers no
+tools, and the model then says it will remember and saves nothing. So when the
+question holds `remember` as a whole word, the route has no tools, and the
+tools on offer include `remember`, `withTools` adds them, as for a tool server.
+`asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
+count. A wrong guess, such as "do you remember the budget?", costs a prompt
+that holds the tool schemas; the model need not call any.
 
 ### Handle
 
@@ -547,6 +618,11 @@ the transcript file. `TestEndToEndToolRound` does the same with the real
 `OllamaEngine` against the fake Ollama, which answers the first chat request
 with a tool call and the second with text. It checks the events and what the
 second request sent Ollama: the call, its result and the tool schema.
+
+`profile_test.go` checks `formatProfile` (order, one line per fact, the cap
+keeping the newest, empty), where the section sits in the system prompt, that
+an empty or unreadable profile leaves the header out without failing the
+turn, and which questions the remember rule gives tools.
 
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each

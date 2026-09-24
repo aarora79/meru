@@ -98,7 +98,7 @@ func TestTurnRowAndAssistantLine(t *testing.T) {
 			}
 			turns := &fakeTurns{}
 			router := &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}}
-			a := New(cfg, eng, router, search, tools, turns, quietLog())
+			a := New(cfg, eng, router, search, tools, turns, nil, quietLog())
 
 			evs, err := run(context.Background(), a, rpc.Request{Text: tt.question, Source: rpc.SourceTUI})
 			if err != nil {
@@ -144,7 +144,7 @@ func TestTurnRowAndAssistantLine(t *testing.T) {
 func TestTurnRowFailureKeepsTheAnswer(t *testing.T) {
 	cfg := testConfig(t)
 	turns := &fakeTurns{err: errors.New("disk full")}
-	a := New(cfg, &fakeEngine{pieces: []string{"ok"}}, &fakeRouter{dec: Decision{Route: "direct"}}, nil, nil, turns, quietLog())
+	a := New(cfg, &fakeEngine{pieces: []string{"ok"}}, &fakeRouter{dec: Decision{Route: "direct"}}, nil, nil, turns, nil, quietLog())
 	evs, err := run(context.Background(), a, rpc.Request{Text: "q"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -161,7 +161,7 @@ func TestTurnRowFailureKeepsTheAnswer(t *testing.T) {
 func TestNoTurnRowWithoutAnAnswer(t *testing.T) {
 	turns := &fakeTurns{}
 	eng := &fakeEngine{streamErr: errors.New("model gone")}
-	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "direct"}}, nil, nil, turns, quietLog())
+	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "direct"}}, nil, nil, turns, nil, quietLog())
 	if _, err := run(context.Background(), a, rpc.Request{Text: "q"}); err == nil {
 		t.Fatal("Handle succeeded, want the model's error")
 	}

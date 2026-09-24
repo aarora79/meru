@@ -310,6 +310,9 @@ func TestHeaderDropsUsageFirst(t *testing.T) {
 		}
 		hasUsage := strings.Contains(h, "1h:")
 		hasSizes := strings.Contains(h, "(11698 vectors, 84 MB)")
+		if strings.Contains(h, "7 memories") != hasSizes {
+			t.Errorf("width %d: the memory count and the sizes must go together: %q", width, h)
+		}
 		if hasUsage && !hasSizes {
 			t.Errorf("width %d: usage kept but sizes dropped: %q", width, h)
 		}

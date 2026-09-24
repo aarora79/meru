@@ -42,6 +42,16 @@ const (
 	// OpUsage asks how much Meru has been used. The reply is one "usage"
 	// event and "done".
 	OpUsage Op = "usage"
+	// OpMemoryList asks for every memory file. The reply is one "memories"
+	// event and "done".
+	OpMemoryList Op = "memory_list"
+	// OpMemoryAdd saves Request.Text as a new memory of Request.Kind, such
+	// as "me" or "preferences". The reply is one "memories" event holding
+	// the new memory, and "done".
+	OpMemoryAdd Op = "memory_add"
+	// OpMemoryForget deletes the memory whose ID is Request.ID, such as
+	// "me/name-amit-arora.md". The reply is "done".
+	OpMemoryForget Op = "memory_forget"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -68,6 +78,10 @@ type Request struct {
 	Path string `json:"path,omitempty"`
 	// Limit caps how many rows OpLog returns. Zero means merud's default.
 	Limit int `json:"limit,omitempty"`
+	// Kind is the memory's folder for OpMemoryAdd, and ID names the memory
+	// for OpMemoryForget.
+	Kind string `json:"kind,omitempty"`
+	ID   string `json:"id,omitempty"`
 }
 
 // EventType names what an Event carries.
@@ -105,6 +119,8 @@ const (
 	EventLog EventType = "log"
 	// EventUsage answers OpUsage, in Usage.
 	EventUsage EventType = "usage"
+	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories.
+	EventMemories EventType = "memories"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -149,6 +165,8 @@ type Event struct {
 	Log     []LogEntry   `json:"log,omitempty"`
 	// Usage is set on a "usage" event.
 	Usage []UsageWindow `json:"usage,omitempty"`
+	// Memories is set on a "memories" event.
+	Memories []MemoryInfo `json:"memories,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -211,6 +229,12 @@ type IndexStatus struct {
 	Vectors   int `json:"vectors"`
 	// DBBytes is the size on disk of meru.db plus its -wal and -shm files.
 	DBBytes int64 `json:"db_bytes,omitempty"`
+	// Memories counts the memory files, and Profile the ones in the kinds
+	// that go into every prompt ("me" and "preferences"). A Profile of 0
+	// means Meru knows nothing about the user yet. Both are -1 when merud
+	// couldn't read the memory folder.
+	Memories int `json:"memories"`
+	Profile  int `json:"profile"`
 	// Scanning is true while a scan of the folders runs.
 	Scanning bool `json:"scanning,omitempty"`
 	// LastScan is what the last finished scan did, and LastScanAt when it
@@ -364,4 +388,24 @@ type UsageWindow struct {
 	Docs int `json:"docs"`
 	// ToolCalls counts the tool calls those turns made.
 	ToolCalls int `json:"tool_calls"`
+}
+
+// ProfileKinds returns the memory kinds whose files go into every prompt:
+// who the user is, and how they like things done. Memories of other kinds
+// come back only when a search finds them. It returns a new slice each call,
+// so no caller can change the list for another.
+func ProfileKinds() []string { return []string{"me", "preferences"} }
+
+// MemoryInfo is one memory file, as the memory ops show it.
+type MemoryInfo struct {
+	// ID is the file's path inside ~/.meru/memory, such as
+	// "me/name-amit-arora.md"; OpMemoryForget takes it.
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+	// Created is the date in the file's frontmatter (YYYY-MM-DD), "" when
+	// the file has none. Source says where it came from, such as
+	// "meru setup user" or "session 2026-09-24T144512-cdc3".
+	Created string `json:"created,omitempty"`
+	Source  string `json:"source,omitempty"`
 }

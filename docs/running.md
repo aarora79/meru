@@ -104,7 +104,7 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools`, `log`, `usage`, `setup` or `mcp`. Without quotes, `meru` reads that word as
+`index`, `tools`, `log`, `usage`, `setup`, `memory` or `mcp`. Without quotes, `meru` reads that word as
 a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
 notebook?`.
 
@@ -119,19 +119,21 @@ In `meru chat`:
 | PgUp, PgDn | scroll |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
+| `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
-index and the session on the left:
+index, the memories and the session on the left:
 
 ```text
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · session 101500-ab12
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories · session 101500-ab12
 ```
 
 The index part counts the files Meru searches, the vectors it holds for them, and
-the size of `meru.db` on disk; `· indexing` follows while a scan runs. On the
-right, a wide terminal shows the last hour's use, such as
+the size of `meru.db` on disk; `· indexing` follows while a scan runs. Then comes
+the number of memories, and `· no profile` while Meru knows nothing about you. On
+the right, a wide terminal shows the last hour's use, such as
 `1h: 4 questions · 18k in · 2.1k out`, then whether `merud` is running. A
-narrow one drops the last hour first, then the vectors and size.
+narrow one drops the last hour first, then the vectors, size and memory count.
 
 Any other line that starts with `/` stays in the input box, and the bottom line
 lists the commands `meru chat` knows.
@@ -148,6 +150,55 @@ without the link. A pipe or a file gets plain text.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
+
+### Tell Meru about you
+
+Meru puts what it knows about you into every prompt: your name, your work, where
+you live and how you like answers. Without it, the model can't tell whether "Sam"
+in a letter is you or someone you know. Tell it once:
+
+```sh
+meru setup user
+```
+
+It asks one short question at a time, and Enter skips any of them:
+
+```text
+Answer a few questions about you. Press Enter to skip one.
+Your name: Amit Arora
+What you do, your role and where you work: staff engineer at Acme
+Where you live (a city is enough): Boston
+Anything else Meru should always know about you? One fact per line; an empty line ends.
+> I have two kids
+>
+How you like answers, for example "short, with bullet points": short, with bullet points
+
+Saved:
+  me/name-amit-arora.md  Name: Amit Arora
+  ...
+```
+
+Each answer becomes one memory, a Markdown file under `~/.meru/memory/me/` or
+`~/.meru/memory/preferences/` that you can read and edit. Run it again to add
+more; when Meru already knows something, it asks whether to keep that or start
+over. `meru setup` offers this step too, when `merud` is running.
+
+To see, add or delete memories by hand:
+
+```sh
+meru memory list                        # every memory, grouped by kind
+meru memory list me                     # one kind
+meru memory add me I have two kids      # save one; prints its ID
+meru memory forget me/i-have-two-kids.md
+```
+
+You can also tell Meru in chat: "remember that I work on the registry team".
+The model saves it with its `remember` tool, which shows as a tool line like any
+other.
+
+In `meru chat`, `/me` shows what Meru knows about you. While it knows nothing,
+the empty chat says so and the header shows `no profile`; both go away within
+half a minute of the first memory.
 
 ### When Meru wants to run a tool
 
@@ -404,7 +455,7 @@ search working, and re-embeds your files.
 
 ### meru setup
 
-`meru setup` walks through a first run in five short steps:
+`meru setup` walks through a first run in six short steps:
 
 1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
    install command for your system and waits while you start it.
@@ -415,7 +466,9 @@ search working, and re-embeds your files.
    writes the file. With one already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
 4. **Tools.** It offers each server in the catalog, one at a time (see below).
-5. **A test question.** If `merud` is running, it asks one question and prints
+5. **About you.** If `merud` is running, it offers `meru setup user` (see
+   [Tell Meru about you](#tell-meru-about-you)).
+6. **A test question.** If `merud` is running, it asks one question and prints
    the answer. If not, it tells you how to start `merud`.
 
 ### meru mcp add

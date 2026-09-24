@@ -69,6 +69,26 @@ Three backends exist, which is what earns an interface here.
 session, where the question came from, and two functions: `Append` writes a line to
 the transcript, and `Approve` asks the user. A nil `Approve` means nobody can answer.
 
+**SessionFrom.** `Backend.Call` takes no session, but the `remember` tool needs one:
+each memory file records the chat it came from. Rather than add a parameter every
+backend would carry for one tool, `Dispatch` puts the call's session on the
+context it hands the backend, and a backend reads it back:
+
+```go
+type sessionKey struct{}
+
+func SessionFrom(ctx context.Context) string {
+    s, _ := ctx.Value(sessionKey{}).(string)
+    return s
+}
+```
+
+`context.WithValue` returns a copy of a context that carries one extra value
+under a key. The key is a private struct type, so no other package can read or
+overwrite the value by mistake. `ctx.Value` returns `any`, and the `, ok` form of
+the type assertion gives `""` instead of a panic when there is no session, as
+outside a call.
+
 ### dispatcher.go: the Dispatcher
 
 ```go
@@ -129,8 +149,8 @@ A job (`Source == "job"`) and a client with no `Approve` function can't say yes,
 those calls end `declined` without a prompt. An answer the prompt didn't offer
 counts as deny. Each answer gets an `approval` line in the transcript.
 
-**The span.** `Dispatch` starts a `meru.dispatch` span and passes its `ctx` to the
-backend, so the MCP pool's `tools/call <tool>` span nests under it. The span
+**The span.** `Dispatch` starts a `meru.dispatch` span and passes its `ctx`, with
+the session added, to the backend, so the MCP pool's `tools/call <tool>` span nests under it. The span
 carries `gen_ai.tool.name`, `meru.tool.kind`, `meru.tool.server`,
 `meru.tool.outcome` and `meru.tool.approval`. Arguments and results go on it only
 when `capture_content = true`.
@@ -160,7 +180,8 @@ be a secret.
 - **Interfaces** — `Backend` and `Recorder`. More in
   [go-basics/interfaces.md](go-basics/interfaces.md).
 - **`sync.Mutex`** — guards the backend list and the session approvals.
-- **context** — cancellation, and `context.WithoutCancel` for the row. More in
+- **context** — cancellation, `context.WithoutCancel` for the row, and
+  `context.WithValue` for the session. More in
   [go-basics/context.md](go-basics/context.md).
 - **errors.Is** — sorts a failed call into `timeout` or `cancelled`. More in
   [go-basics/errors.md](go-basics/errors.md).
@@ -179,7 +200,9 @@ go test -race -run MCP ./cmd/merud/
 `TestDispatchOutcomes` runs one table row per outcome. `TestSessionApproval` walks
 a series of calls through the approval rules. `TestRedaction` plants a secret in
 the arguments and the error text and checks it reaches no line, row or prompt.
-`TestMCPBackend` runs the backend against a real MCP server on 127.0.0.1.
+`TestSessionOnContext` checks that a backend reads the call's session with
+`SessionFrom`. `TestMCPBackend` runs the backend against a real MCP server on
+127.0.0.1.
 
 ## Why it's built this way
 
@@ -190,6 +213,8 @@ the arguments and the error text and checks it reaches no line, row or prompt.
 - **No Go errors out of Dispatch.** The agent loop would only turn an error into
   text for the model. `Dispatch` does it once, so every caller gets the same
   wording and the same records.
+- **The session on the context, not in the interface.** One tool needs it, so
+  one small function beats a new parameter on every backend's `Call`.
 - **Session approvals in memory.** Writing them to disk would make them outlive the
   session, which ARCHITECTURE.md rules out. Config stays the one place that grants
   lasting trust.

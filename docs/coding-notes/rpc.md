@@ -135,8 +135,9 @@ the caller's context closes the connection.
 
 ### server.go
 
-`serveConn` answers `ping` itself and hands `ask`, `index` and
-`index_status` to the handler. Any other op gets an `unknown op` error.
+`serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
+`tools`, `log`, `usage` and the memory ops (`memory_list`, `memory_add`,
+`memory_forget`) to the handler. Any other op gets an `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,
 so `Listen` checks what is there first:

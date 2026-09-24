@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user` and `meru memory` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -31,7 +31,8 @@ flowchart TB
         D --> ST["store.Open(meru.db, embed model, size)"]
         ST --> RT["ReplayTurns: rebuild turns if empty"]
         RT --> IX["index.New"]
-        IX --> G2["errgroup"]
+        IX --> MO["memory.Open(~/.meru/memory)"]
+        MO --> G2["errgroup"]
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
         G2 --> WA["watch the folders"]
@@ -79,7 +80,7 @@ Then three jobs run side by side in an **errgroup** from
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
+g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 return g.Wait()
@@ -94,7 +95,14 @@ they search whatever the index holds so far.
 
 `handler` sends each request to the right place: `ask` to the agent, `index`
 and `index_status` to the index service, `tools` and `log` to the tool service,
-and `usage` to `handleUsage`. The rpc server answers `ping` itself.
+the three memory ops to the memory service, and `usage` to `handleUsage`. The
+rpc server answers `ping` itself.
+
+**Memory.** Before the tools, `serve` opens the memory folder with
+`memory.Open(<home>/memory)`, which creates the six default kind folders. One
+`*memory.Store` then reaches three places: the built-in `remember` tool
+(through `newToolService` and `builtin.New`), the agent (through
+`profileAdapter`, the agent's `Profile`), and the memory service.
 
 **Usage.** Right after `openStore`, `replayTurns` calls `store.ReplayTurns`,
 which fills the `turns` table from the session transcripts when the table is
@@ -164,8 +172,44 @@ it loads that model once. A failure says which model and suggests
   the size of `meru.db` with its `-wal` and `-shm` files (`DBBytes`, from
   `store.DiskBytes`), whether a scan runs, and the last full scan's report.
 
+`handleStatus` also fills `Memories` and `Profile` from the memory service:
+how many memory files there are, and how many sit in `me/` and `preferences/`.
+Both are -1 when the memory folder can't be read. A `Profile` of 0 tells `meru
+chat` that Meru doesn't know you yet.
+
 `searchAdapter` joins the agent's `Searcher` interface to `retrieve.Search`
 over the store, the way `routerAdapter` joins the router.
+
+### merud: memory.go
+
+`memoryService` answers the three ops that `meru memory` and `meru setup user`
+send:
+
+| Op | What it does | Reply |
+| --- | --- | --- |
+| `memory_list` | `memory.Store.List` | one `memories` event with every memory |
+| `memory_add` | `memory.Store.Add(req.Kind, req.Text, "meru")` | one `memories` event with the new memory |
+| `memory_forget` | `memory.Store.Forget(req.ID)` | `done` |
+
+`memoryInfo` copies each `memory.Memory` into `rpc.MemoryInfo`, with `Created`
+as `YYYY-MM-DD`, or `""` for a file you wrote by hand. `handleForget` turns
+`memory.ErrNotFound` and `memory.ErrBadID` into messages that say how to find
+the right ID, and `errors.Is` finds them through the wrapping.
+
+A memory you add through the client gets the source `meru`. `Request.Source`
+can't say whether it came from `meru setup user` or `meru memory add`: it is a
+metric attribute with three fixed values. `meru` still tells your own facts
+apart from the model's, which carry `session <id>`.
+
+These ops don't go through `dispatch`. They are your own commands
+(ARCHITECTURE.md, "Memory", "Your commands"), like editing a file by hand. The
+model's way to save a memory, the `remember` tool, does go through `dispatch`,
+so every memory the model writes lands in `tool_calls` and the transcript.
+
+`profileAdapter` gives the agent the profile. It reads the `me` and
+`preferences` folders with `memory.Store.ListKind`, and no others. Reading
+every folder took 13 ms per turn with 500 other memories; the two folders take
+about 0.6 ms for 20 files, so there is no cache.
 
 ### merud: backends.go
 
@@ -189,6 +233,10 @@ case flags.Arg(0) == "log":
     err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 case flags.NArg() == 1 && flags.Arg(0) == "usage":
     err = usageCmd(ctx, *socket, stdout)
+case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
+    err = setupUserCmd(ctx, *socket, terminal(stdout))
+case flags.Arg(0) == "memory":
+    err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
 default:
     p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
     err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
@@ -197,7 +245,7 @@ default:
 
 - `meru "question"` and `meru question words` both work; the words are joined.
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
-  `usage`, `setup` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
+  `usage`, `setup`, `memory` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
   command only as the one word, so `meru usage of semicolons` asks a question.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
@@ -352,12 +400,69 @@ install step and the `secrets.toml` lines, and writes nothing; `k` skips.
 writes `config.toml` only when none exists. Rewriting an existing one would
 drop your comments, so setup tells you what to change instead.
 
+Step 5 offers `meru setup user` when `merud` answers a ping, and says to run it
+later when it doesn't: the answers go to `merud`, which owns the memory folder.
+
 `config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
 works on the Meru home in `/tmp/x`, the same one `merud -config
 /tmp/x/config.toml` uses.
 
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
+
+### meru: user.go
+
+`meru setup user` tells Meru who you are. It first lists the memories of the
+profile kinds, `rpc.ProfileKinds()`, which `merud` puts into every prompt. When
+there are some, it asks whether to keep them and add more (the default) or to
+forget them all first. Then it asks five things, and Enter skips any of them:
+your name, your work, where you live, any other facts (one per line, until an
+empty line), and how you like answers. Each answer becomes one memory through
+`OpMemoryAdd`, of kind `me`, or `preferences` for the last one, and saves as soon
+as you type it.
+
+Answers save as `Label: answer`, such as `Name: Amit Arora` or
+`Lives in: Boston`. The label says what the fact is, and the prompt section they
+land in says whose it is, so each reads as a fact about you in the third person.
+A full sentence such as "The user's name is Amit Arora" says the same in more
+words, and an answer like "staff engineer at Acme" doesn't fit one without
+rewording. The free lines save as you typed them: the client has no model to
+turn "I have two kids" around, and the system prompt already tells the model
+that "I" means you.
+
+At the end it prints each memory's ID and text, and says that `meru memory list`
+shows them and that you can also tell Meru things in chat.
+
+### meru: memory.go
+
+`meru memory` has three words:
+
+```text
+$ meru memory list
+me
+  me/name-amit-arora.md         Name: Amit Arora  2026-09-24 · meru setup user
+
+preferences
+  preferences/answers-short.md  Answers: short  2026-09-24 · meru setup user
+
+$ meru memory add me I have two kids
+Saved me/i-have-two-kids.md
+$ meru memory forget me/i-have-two-kids.md
+Forgot me/i-have-two-kids.md: I have two kids
+```
+
+`list [kind]` groups the memories by kind, the profile kinds first, and dims
+each one's date and source. `add <kind> <text...>` joins the words, as a
+question does. `forget <id>` looks the memory up first, because `merud`'s reply
+to a forget carries no text, and fails with a pointer to `meru memory list` when
+no memory has that ID.
+
+`listMemories`, `addMemory` and `forgetMemory` are the three calls to `merud`,
+shared with `meru setup user`. `merud` names the files and writes them; the
+client never touches `~/.meru/memory/` and never imports `internal/memory`.
+
+`memory_test.go` runs both commands against an in-process server that keeps its
+memories in a slice, so each test can check what `merud` would hold afterwards.
 
 ## Go ideas used here
 
@@ -393,6 +498,10 @@ question gets its answer while the startup scan waits inside `Embed`, a new
 vector size makes the next start embed every file again, and the index ops
 answer, refuse a folder outside `[index]`, and explain an empty config.
 
+`memory_test.go` drives the memory ops over the socket: add, list, the counts
+in the index status, the profile in the next question's system prompt, each
+refusal, and forget.
+
 ## Why it's built this way
 
 - **`run` returns instead of exiting.** `os.Exit` skips deferred calls and
@@ -401,11 +510,16 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
 - **`meru` stays thin.** It imports only `rpc`, `tui`, `config` (for the
   default socket path), and `catalog` and `secrets` (for setup), and starts in
   milliseconds. `meru tools` and `meru log` format what `merud` sends; `merud`
-  decides what is allowed and reads the audit log.
+  decides what is allowed and reads the audit log. `meru memory` and `meru
+  setup user` send requests too: `merud` owns the memory folder, so one program
+  writes it.
 - **A deny when nobody can answer.** A script can't approve a tool call, and a
   call that runs unseen is worse than an answer without the tool.
 - **The scan runs in the background.** A first scan of a big folder can take
   minutes of embedding; `merud` shouldn't sit silent for that long.
+- **merud owns the memory folder.** `meru` never touches `~/.meru/memory`;
+  it asks `merud`, so one process writes the files, and the thin client stays
+  free of storage code.
 - **Folders come from config only.** `meru index <folder>` rescans a folder
   you already listed; it can't add one. One place decides what `merud` may
   read.

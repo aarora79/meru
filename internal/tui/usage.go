@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/aarora79/meru/internal/rpc"
@@ -20,22 +19,6 @@ type usageBox struct {
 	loading bool
 	windows []rpc.UsageWindow
 	err     string // why merud gave no numbers
-}
-
-// closeUsage closes the usage box and gives the input its cursor back.
-func (m *Model) closeUsage() {
-	m.usageBox = nil
-	m.input.Focus()
-}
-
-// usageKey handles one key while the usage box is open: Esc or q closes
-// it, and every other key does nothing, so typing can't leak into the
-// input behind it. Update handles Ctrl-C and Ctrl-D before this, as it
-// does for the approval box.
-func (m *Model) usageKey(msg tea.KeyMsg) {
-	if msg.Type == tea.KeyEsc || (msg.Type == tea.KeyRunes && string(msg.Runes) == "q") {
-		m.closeUsage()
-	}
 }
 
 // applyUsage takes in one usage reply. The header keeps the windows for its
@@ -85,8 +68,7 @@ func lastHour(windows []rpc.UsageWindow) string {
 }
 
 // usageBoxView draws the usage box for a pane width columns wide and
-// height rows tall, and pads it to that height so the screen keeps its
-// shape:
+// height rows tall (see boxPane):
 //
 //	╭───────────────────────────────────────────────────────────────╮
 //	│ Usage                                                         │
@@ -99,8 +81,7 @@ func lastHour(windows []rpc.UsageWindow) string {
 //	╰───────────────────────────────────────────────────────────────╯
 func (m *Model) usageBoxView(width, height int) string {
 	b := m.usageBox
-	// The margin, border and padding take answerIndent plus four columns.
-	avail := max(width-answerIndent-4, 1)
+	avail := boxRoom(width)
 
 	var body []string
 	switch {
@@ -111,28 +92,7 @@ func (m *Model) usageBoxView(width, height int) string {
 	default:
 		body = m.usageTableLines(rpc.UsageTable(b.windows), avail)
 	}
-	inner := len("Usage")
-	for _, l := range body {
-		inner = max(inner, ansi.StringWidth(l))
-	}
-	// The note may be wider than the table; it gets the width the pane
-	// allows, and wraps inside it.
-	inner = min(max(inner, ansi.StringWidth(rpc.UsageNote)), avail)
-
-	lines := []string{m.style.brand.Render("Usage"), ""}
-	for _, l := range body {
-		lines = append(lines, ansi.Truncate(l, inner, "…"))
-	}
-	lines = append(lines, "", m.style.dim.Render(ansi.Wrap(rpc.UsageNote, inner, "")))
-	box := m.style.usageBox.Width(inner + 2).Render(strings.Join(lines, "\n"))
-
-	// A blank line above the box, as above the first turn, then blank
-	// lines to fill the pane. A pane too short for the box shows its top.
-	out := append([]string{""}, strings.Split(box, "\n")...)
-	for len(out) < height {
-		out = append(out, "")
-	}
-	return strings.Join(out[:height], "\n")
+	return m.boxPane("Usage", body, rpc.UsageNote, width, height)
 }
 
 // usageTableLines lines up the table's cells in columns: labels on the

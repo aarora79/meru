@@ -183,7 +183,8 @@ func (d *Dispatcher) find(name string) Backend {
 //     "denied" and doesn't run;
 //  2. writes the tool_call line to the transcript;
 //  3. asks the user when the tool needs a yes (see approve);
-//  4. runs the call on the backend, which enforces its own timeout;
+//  4. runs the call on the backend, which enforces its own timeout, with
+//     the call's session on ctx (see SessionFrom);
 //  5. cuts the result for the model and removes secrets from it;
 //  6. writes the tool_result line, for every call, whatever its outcome;
 //  7. writes the tool_calls row;
@@ -306,7 +307,8 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 	}
 
 	callStart := time.Now()
-	res, err := b.Call(ctx, c.Name, c.Args)
+	// The backend gets the session on ctx; see SessionFrom.
+	res, err := b.Call(withSession(ctx, c.Session), c.Name, c.Args)
 	ran = time.Since(callStart)
 	switch {
 	case err == nil && res.IsError:

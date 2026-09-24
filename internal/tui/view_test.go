@@ -86,10 +86,12 @@ func TestViewGolden(t *testing.T) {
 		// approval, when set, opens the approval box after the events.
 		approval *rpc.Approval
 		// index and usage, when set, arrive as status and usage replies
-		// before anything else; usageBox then types /usage.
+		// before anything else; usageBox then types /usage, and meBox
+		// types /me and answers it with profileFixture.
 		index    *rpc.IndexStatus
 		usage    []rpc.UsageWindow
 		usageBox bool
+		meBox    bool
 	}{
 		{name: "approval", width: 80, q: "Email Sam the garden budget", approval: mail,
 			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
@@ -110,10 +112,15 @@ func TestViewGolden(t *testing.T) {
 		{name: "sources", width: 80, q: "What is the Q3 budget for the garden project?", evs: []rpc.Event{session, search, sources, tok("The Q3 budget for the garden project is 4,200 dollars [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 		// The header at three widths: everything; the usage dropped; then
-		// the vectors and size dropped too.
-		{name: "header-wide", width: 120, height: 8, index: bigIndex, usage: usageFixture},
-		{name: "header", width: 80, height: 8, index: bigIndex, usage: usageFixture},
+		// the vectors, size and memory count dropped too.
+		{name: "header-wide", width: 130, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "header", width: 100, height: 8, index: bigIndex, usage: usageFixture},
 		{name: "header-narrow", width: 60, height: 8, index: bigIndex, usage: usageFixture},
+		// merud knows nothing about the user: the nudge under the hint,
+		// and the marker in the header.
+		{name: "no-profile", width: 80, height: 12, index: noProfileIndex},
+		{name: "me", width: 80, height: 20, index: bigIndex, meBox: true},
+		{name: "me-narrow", width: 40, height: 24, index: bigIndex, meBox: true},
 		{name: "usage", width: 80, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 		{name: "usage-narrow", width: 40, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 	}
@@ -129,6 +136,9 @@ func TestViewGolden(t *testing.T) {
 			}
 			if tt.usageBox {
 				m, _ = update(t, m, typeText("/usage"), press(tea.KeyEnter), usageMsg{windows: tt.usage, answered: true})
+			}
+			if tt.meBox {
+				m, _ = update(t, m, typeText("/me"), press(tea.KeyEnter), meMsg{memories: profileFixture})
 			}
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))
@@ -154,8 +164,19 @@ func TestViewGolden(t *testing.T) {
 	}
 }
 
-// bigIndex is an index status with numbers of a realistic size.
-var bigIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 11698, DBBytes: 88_080_384}
+// bigIndex is an index status with numbers of a realistic size, from a
+// user who has told Meru about themselves.
+var bigIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 11698, DBBytes: 88_080_384, Memories: 7, Profile: 3}
+
+// noProfileIndex is bigIndex before the user has told Meru anything.
+var noProfileIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 11698, DBBytes: 88_080_384}
+
+// profileFixture is the profile part of merud's answer to OpMemoryList.
+var profileFixture = []rpc.MemoryInfo{
+	{ID: "me/name-amit-arora.md", Kind: "me", Text: "Name: Amit Arora"},
+	{ID: "preferences/answers-short.md", Kind: "preferences", Text: "Answers: short, with bullet points"},
+	{ID: "me/work.md", Kind: "me", Text: "Work: staff engineer on the registry team at Acme, in the platform group"},
+}
 
 // usageFixture is a usage reply with every window, in merud's order.
 var usageFixture = []rpc.UsageWindow{
@@ -255,7 +276,9 @@ func TestHeaderDocCount(t *testing.T) {
 func TestHeaderIndexing(t *testing.T) {
 	m := testModel(nil, newFakeSender())
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
-	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Vectors: 11698, Scanning: true}})
+	// -1 memories: this merud couldn't count them, so the header says
+	// nothing about them.
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Vectors: 11698, Scanning: true, Memories: -1, Profile: -1}})
 	if h := m.header(); !strings.Contains(h, "2637 docs (11698 vectors) · indexing") {
 		t.Errorf("header = %q, want the count and the indexing marker", h)
 	}

@@ -1,5 +1,6 @@
 // This file holds `meru setup` and `meru mcp add`: the terminal flows that
-// write config.toml and secrets.toml for you. See ARCHITECTURE.md, "First
+// write config.toml and secrets.toml for you. `meru setup user` lives in
+// user.go. See ARCHITECTURE.md, "First
 // run and setup" and "Adding an MCP server".
 //
 // Both flows run in the thin client, because they talk to a person, not to
@@ -323,8 +324,8 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 }
 
 // setupCmd runs `meru setup`: check Ollama, download the models, write
-// config.toml if there is none, offer the catalog servers, and ask merud a
-// test question when it runs.
+// config.toml if there is none, offer the catalog servers, offer `meru
+// setup user`, and ask merud a test question when it runs.
 func setupCmd(ctx context.Context, socket string, c *console) error {
 	configPath := configPathFor(socket)
 	_, statErr := os.Stat(configPath)
@@ -373,8 +374,14 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		}
 	}
 
-	fmt.Fprintln(c.out, "\n5. A test question")
-	if ping(ctx, socket, io.Discard) != nil {
+	fmt.Fprintln(c.out, "\n5. About you")
+	merudUp := ping(ctx, socket, io.Discard) == nil
+	if err := c.offerProfile(ctx, socket, merudUp); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(c.out, "\n6. A test question")
+	if !merudUp {
 		fmt.Fprintln(c.out, "merud isn't running. Start it with `merud &`, then ask it something: meru \"hello\"")
 		return nil
 	}
@@ -388,6 +395,20 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		fmt.Fprintln(c.out, "Restart merud to load the new config: pkill merud; merud &")
 	}
 	return nil
+}
+
+// offerProfile asks whether to run `meru setup user` now, when merud is up
+// to save the answers. Without merud it says to run it later.
+func (c *console) offerProfile(ctx context.Context, socket string, merudUp bool) error {
+	if !merudUp {
+		fmt.Fprintln(c.out, "Once merud runs, tell Meru who you are with meru setup user.")
+		return nil
+	}
+	ok, err := c.yes("Tell Meru who you are, so it can tell you apart from people in your files?", true)
+	if err != nil || !ok {
+		return err
+	}
+	return setupUserCmd(ctx, socket, c)
 }
 
 // waitForOllama checks that Ollama answers at baseURL. When it doesn't, it

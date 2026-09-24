@@ -362,9 +362,10 @@ and arguments and offers the choices `merud` sends, at most these three:
   confirm = []   # the shipped default; from v0.4, add "remember" or "write_file" here
   ```
 
-  v0.3 has one built-in tool, `configure`, which always asks, whatever this list
-  says (see [First run and setup](#first-run-and-setup)). `remember` and
-  `write_file` arrive with memory and skills in v0.4.
+  The built-in tools are `configure`, which always asks, whatever this list says
+  (see [First run and setup](#first-run-and-setup)), and `remember`, which saves
+  a memory without asking unless you list it here. `write_file` arrives with
+  skills later in v0.4.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -514,9 +515,10 @@ order.
    the question, with an earlier question appended on a follow-up. No model
    rewrites the query. The `tools` route searches too: the router sends some
    questions about your files there, and an answer from the files beats one from
-   the model alone. Two rules then adjust the route (see [Routing](#routing)): a
-   `direct` question that names an indexed folder becomes `search`, and a
-   question that names a connected tool server gets tools. From v0.4, a separate
+   the model alone. Three rules then adjust the route (see [Routing](#routing)):
+   a `direct` question that names an indexed folder becomes `search`, a
+   question that names a connected tool server gets tools, and so does a
+   question that says "remember". From v0.4, a separate
    short call picks the skills to load.
 2. **Build the context.** System prompt, skill descriptions, relevant memories,
    retrieved chunks, this session's history and, on the `tools` and `search+tools`
@@ -605,7 +607,7 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
-Two rules override the router, in this order. The first: when it picks `direct` and
+Three rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
 in the prompt, the router sent "what database does Meru use to store its index?" to
@@ -627,6 +629,11 @@ router sent "Search my Obsidian vault for notes mentioning 'AI'" to `search` at
 0.65; with no tools offered, the model said it couldn't search the vault. With the
 rule it listed the vaults, searched one and answered. A wrong guess costs a prompt
 that holds the tool schemas.
+
+The third: when the question holds "remember" as a whole word and the route offers
+no tools, the loop adds them, so the model can call `remember`. "Remember that I
+work on the registry team" reads like chit-chat to the router, and a `direct` turn
+would answer "noted" and save nothing.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
 135 questions, 40 of them held out, and fits the temperature. At 1.25 the
@@ -1064,6 +1071,16 @@ Meru keeps no index file. The database already indexes the files, and
 
 ### How Meru uses them
 
+0. **Your profile, in every prompt.** Every file in `me/` and `preferences/` goes
+   into the system prompt of every turn, under "What you know about the user",
+   up to 2,000 characters; past that, the newest files win and the rest wait
+   for recall. These are the facts Meru should never have to search for: your
+   name, your work, where you live, how you like answers. Without them, the
+   model can't tell whether "Sam" in a letter is you or someone you know.
+   `meru setup user` asks for them one at a time and saves each as a memory,
+   and you can add more in chat ("remember that I work on the registry team").
+   While both folders are empty, `meru chat` says Meru doesn't know you yet and
+   points at `meru setup user`.
 1. **Indexing.** The indexer treats `~/.meru/memory/` like any folder you index: each
    file gets a vector and a keyword entry. It picks up hand edits through the usual
    mtime and content-hash check.
@@ -1076,7 +1093,8 @@ Meru keeps no index file. The database already indexes the files, and
    a folder and the text. The call goes through `dispatch` like any other tool, so it
    lands in `tool_calls` and the transcript. Memories save without asking; add
    `remember` to `builtin.confirm` in `config.toml` if you want to approve each one.
-4. **Your commands.** `meru memory list | add | forget` work on the files.
+4. **Your commands.** `meru memory list | add | forget` work on the files,
+   through `merud`, which owns the memory folder.
 
 If Meru believes something wrong about you, you can find the file and fix or delete
 it. A vector blob you can't read would leave you no way to audit or correct it.
@@ -1152,7 +1170,10 @@ own the first time you run `meru`.
    skills yet.
 4. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
-5. **A test question.** When `merud` runs, Meru asks it one question so you see it
+5. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
+   name, your work, where you live and how you like answers, and saves each as a
+   memory (see [Memory](#memory)).
+6. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new server or a new
    `config.toml` takes a restart of `merud`.
 
