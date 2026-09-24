@@ -287,8 +287,10 @@ help line.
 return strings.Join([]string{m.header(), rule, m.conversation.View(), input, m.help.View(m.keys)}, "\n")
 ```
 
-`header` puts the name, profile, model and a short session ID on the left and the
-connection status on the right. When the terminal is narrow, the details shrink with
+`header` puts the name, profile, model, the number of documents in the search index
+(`68 docs`) and a short session ID on the left, and the connection status on the
+right. The document count stays out until `merud` has answered once, so the header
+never shows a zero it hasn't checked. When the terminal is narrow, the details shrink with
 an ellipsis, then disappear.
 
 `renderTurn` draws one turn. Under the "Meru" label come the tool lines first, one
@@ -395,8 +397,13 @@ context and marks the screen idle at once. The goroutine may still deliver an ev
 or two before it notices, so `handleEvent` and `handleDone` drop any message whose
 turn isn't the one streaming now.
 
-`pingCmd` is the other command. It pings `merud` once when the chat opens, with a
-two-second timeout, and returns a `pingMsg` that sets the header's status.
+`pingCmd` is the other command. It asks `merud` for its index status, with a
+two-second timeout, and returns a `pingMsg`. The answer does two jobs: it shows that
+`merud` is up, and it carries the document count for the header. The chat runs it
+when it opens and again after each answer, because the watcher indexes new files
+while `merud` runs. A later version can put more in the same line, such as the count
+of memory files and the size of `meru.db`, by adding them to the status `merud`
+sends.
 
 **Approvals cross from the goroutine to `Update`.** When a tool call needs your
 approval, `merud` sends an `approval` event. `rpc.Do` doesn't hand that event to the

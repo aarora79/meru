@@ -211,8 +211,9 @@ as it arrives.
 `meru chat` also uses Bubbles, from the same authors, for the text input and the
 scrolling answer pane, and two more Charm libraries for its look:
 
-- **Lip Gloss** styles the screen: a header with the profile, model, session and
-  whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
+- **Lip Gloss** styles the screen: a header with the profile, model, the number
+  of documents in the search index, the session and whether `merud` is
+  reachable; "You" and "Meru" labels; a route badge on each
   answer, amber when the router fell back; and a stats line with time to first
   token, tokens per second and total time. Colors adapt to light and dark
   terminals, and `NO_COLOR` turns them off.

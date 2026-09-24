@@ -33,8 +33,9 @@ func (m Model) View() string {
 	return strings.Join([]string{m.header(), rule, m.conversation.View(), input, helpLine}, "\n")
 }
 
-// header draws the top line: the name, the setup details and the session on
-// the left, and whether merud is reachable on the right. When the line is
+// header draws the top line: the name, the setup details (profile, main
+// model, documents in the index) and the session on the left, and whether
+// merud is reachable on the right. When the line is
 // too narrow, the details shrink first, then disappear.
 func (m Model) header() string {
 	brand := m.style.brand.Render("Meru मेरु")
@@ -50,7 +51,7 @@ func (m Model) header() string {
 	}
 
 	var parts []string
-	for _, p := range []string{m.info.Profile, m.info.Model, shortSession(m.session)} {
+	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index), shortSession(m.session)} {
 		if p != "" {
 			parts = append(parts, p)
 		}
@@ -303,4 +304,17 @@ func tidy(s string) string {
 		lines[i] = strings.TrimRight(l, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// docCount writes how many documents the search index holds, such as
+// "68 docs" or "1 doc". It returns "" before merud has answered, so the
+// header leaves the part out rather than show a wrong zero.
+func docCount(ix *rpc.IndexStatus) string {
+	if ix == nil {
+		return ""
+	}
+	if ix.Documents == 1 {
+		return "1 doc"
+	}
+	return fmt.Sprintf("%d docs", ix.Documents)
 }

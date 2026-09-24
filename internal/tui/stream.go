@@ -103,29 +103,40 @@ func approveVia(send sender, turn int) rpc.ApproveFunc {
 	}
 }
 
-// pingTimeout bounds how long the opening ping waits for merud.
+// pingTimeout bounds how long a status check waits for merud.
 const pingTimeout = 2 * time.Second
 
-// pingMsg reports the opening ping's result: err is nil when merud answered.
+// pingMsg reports a status check's result: err is nil when merud answered,
+// and index holds what the search index held then. index is nil when merud
+// answered without it.
 type pingMsg struct {
-	err error
+	err   error
+	index *rpc.IndexStatus
 }
 
-// pingCmd returns a command that pings merud once, so the header can say
-// whether it is up before the user asks anything.
+// pingCmd returns a command that asks merud once what its index holds. The
+// answer says two things for the header: that merud is up, and how many
+// documents it can search. The chat runs it at start and after each
+// answer, because the watcher indexes new files while merud runs.
 func pingCmd(ask askFunc) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		// defer runs cancel when this function returns, freeing the timer.
 		defer cancel()
-		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpPing}, nil) {
+		var index *rpc.IndexStatus
+		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpIndexStatus}, nil) {
 			if err != nil {
 				return pingMsg{err: err}
 			}
-			if ev.Type == rpc.EventDone {
-				return pingMsg{}
+			switch ev.Type {
+			case rpc.EventStatus:
+				index = ev.Status
+			case rpc.EventDone:
+				return pingMsg{index: index}
+			case rpc.EventError:
+				return pingMsg{err: errors.New(ev.Error)}
 			}
 		}
-		return pingMsg{err: errors.New("merud sent no reply to ping")}
+		return pingMsg{err: errors.New("merud sent no reply")}
 	}
 }

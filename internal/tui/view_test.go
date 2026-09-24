@@ -196,6 +196,46 @@ func TestHeaderStatus(t *testing.T) {
 	}
 }
 
+// TestHeaderDocCount checks the index's document count in the header: left
+// out until merud answers, then updated by each status check, and kept when
+// a later check fails.
+func TestHeaderDocCount(t *testing.T) {
+	m := testModel(nil, newFakeSender())
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	if h := m.header(); strings.Contains(h, "doc") {
+		t.Errorf("header before any status = %q, want no doc count", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 68}})
+	if h := m.header(); !strings.Contains(h, "68 docs") {
+		t.Errorf("header = %q, want 68 docs", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 1}})
+	if h := m.header(); !strings.Contains(h, "· 1 doc") || strings.Contains(h, "1 docs") {
+		t.Errorf("header = %q, want 1 doc", h)
+	}
+	m, _ = update(t, m, pingMsg{err: errors.New("no socket")})
+	if h := m.header(); !strings.Contains(h, "1 doc") {
+		t.Errorf("header after a failed check = %q, want the last count kept", h)
+	}
+}
+
+// TestPingCmdReadsIndexStatus checks that the status check asks for the
+// index status and hands its numbers to the model.
+func TestPingCmdReadsIndexStatus(t *testing.T) {
+	f := &fakeMerud{events: []rpc.Event{
+		{Type: rpc.EventStatus, Status: &rpc.IndexStatus{Documents: 68, Chunks: 900}},
+		{Type: rpc.EventDone},
+	}}
+	msg := pingCmd(f.ask)()
+	pm, ok := msg.(pingMsg)
+	if !ok || pm.err != nil || pm.index == nil || pm.index.Documents != 68 {
+		t.Fatalf("pingCmd = %+v, want 68 documents and no error", msg)
+	}
+	if len(f.reqs) != 1 || f.reqs[0].Op != rpc.OpIndexStatus {
+		t.Errorf("requests = %+v, want one index_status", f.reqs)
+	}
+}
+
 // TestStatsLine checks the numbers under a finished answer.
 func TestStatsLine(t *testing.T) {
 	tests := []struct {

@@ -125,6 +125,9 @@ type Model struct {
 	ask  askFunc // sends a request to merud
 	send sender  // puts stream events back into the program
 	info Info    // what the header shows
+	// index is what merud's search index held at the last status check;
+	// nil until one answers. The header shows its document count.
+	index *rpc.IndexStatus
 
 	look  look
 	style styles
@@ -214,7 +217,8 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 }
 
 // Init returns the commands Bubble Tea runs first: blink the cursor, and
-// ping merud so the header can say whether it is up.
+// ask merud what its index holds, so the header can say whether it is up
+// and how many documents it searches.
 func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
@@ -243,6 +247,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.link = linkDown
 		}
+		if msg.index != nil {
+			m.index = msg.index
+		}
 		return m, nil
 	case eventMsg:
 		m.handleEvent(msg)
@@ -252,7 +259,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case turnDoneMsg:
 		m.handleDone(msg)
-		return m, nil
+		// Check merud again: the answer may have come while it indexed new
+		// files, and a turn that failed may mean merud went away.
+		return m, pingCmd(m.ask)
 	case spinner.TickMsg:
 		// Returning no command lets the spinner stop ticking when idle.
 		if !m.streaming {

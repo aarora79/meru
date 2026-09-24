@@ -444,7 +444,7 @@
 
 <p><code>meru chat</code> also uses Bubbles, from the same authors, for the text input and the scrolling answer pane, and two more Charm libraries for its look:</p>
 <ul>
-  <li><b>Lip Gloss</b> styles the screen: a header with the profile, model, session and whether <code>merud</code> is reachable; "You" and "Meru" labels; a route badge on each answer, amber when the router fell back; and a stats line with time to first token, tokens per second and total time. Colors adapt to light and dark terminals, and <code>NO_COLOR</code> turns them off.</li>
+  <li><b>Lip Gloss</b> styles the screen: a header with the profile, model, the number of documents in the search index, the session and whether <code>merud</code> is reachable; "You" and "Meru" labels; a route badge on each answer, amber when the router fell back; and a stats line with time to first token, tokens per second and total time. Colors adapt to light and dark terminals, and <code>NO_COLOR</code> turns them off.</li>
   <li><b>Glamour</b> renders each finished answer as Markdown: headings, lists, and code blocks with syntax highlighting. While the answer streams, the screen shows the raw text with a cursor, because half-written Markdown renders wrong.</li>
 </ul>
 <p>The stats come from the <code>done</code> event that ends each reply, which carries the turn's timings and token counts.</p>
