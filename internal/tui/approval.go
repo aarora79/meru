@@ -37,8 +37,9 @@ func (m *Model) openApproval(msg approvalRequestMsg) {
 	selected := max(slices.Index(msg.approval.Choices, rpc.ChoiceDeny), 0)
 	m.approval = &pendingApproval{ask: msg.approval, reply: msg.reply, selected: selected}
 	// The approval box needs the keys and the conversation it sits in, so
-	// it closes an open usage box.
+	// it closes an open /usage or /me box.
 	m.usageBox = nil
+	m.meBox = nil
 	m.input.Blur() // hide the cursor: the input takes no text while the box is open
 	m.refresh()
 }

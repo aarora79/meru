@@ -250,7 +250,7 @@ func TestSetupFirstRun(t *testing.T) {
 	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", "/srv/papers"}) {
 		t.Errorf("config = profile %q, folders %q", cfg.Profile, cfg.Index.Folders)
 	}
-	for _, want := range []string{"Ollama isn't answering", "must be an absolute path", "merud isn't running"} {
+	for _, want := range []string{"Ollama isn't answering", "must be an absolute path", "meru setup user", "merud isn't running"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -273,7 +273,8 @@ func TestSetupExistingConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, out, ran := scripted("n\n" + strings.Repeat("k\n", 6))
+	// No download, skip each server, and no to setup user.
+	c, out, ran := scripted("n\n" + strings.Repeat("k\n", 6) + "n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}

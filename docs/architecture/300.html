@@ -1426,6 +1426,7 @@ network = false                          # true only if the URL isn't loopback</
   <li><b>Models.</b> With no <code>config.toml</code> yet, you pick <code>lite</code> (the default) or <code>full</code>. Meru names the profile's models and, after a yes, downloads each with <code>ollama pull</code>, which draws its own progress bar.</li>
   <li><b>Your files.</b> Meru asks which folders to index (for example <code>~/notes</code>) and writes a short <code>config.toml</code> with the profile and the folders. It writes the file only when none exists: rewriting yours would drop your comments, so for an existing file setup says what to edit instead. <code>merud</code> creates the rest of <code>~/.meru/</code> when it starts; setup doesn't write <code>prompt.md</code> or the built-in skills yet.</li>
   <li><b>Tools.</b> Meru offers the catalog's servers, one at a time, and you pick a path for each (see below). You can skip any of them and add them later.</li>
+  <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
   <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new server or a new <code>config.toml</code> takes a restart of <code>merud</code>.</li>
 </ol>
 

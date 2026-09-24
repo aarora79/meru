@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; `meru setup user` and `meru memory` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -189,6 +189,10 @@ case flags.Arg(0) == "log":
     err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 case flags.NArg() == 1 && flags.Arg(0) == "usage":
     err = usageCmd(ctx, *socket, stdout)
+case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
+    err = setupUserCmd(ctx, *socket, terminal(stdout))
+case flags.Arg(0) == "memory":
+    err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
 default:
     p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
     err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
@@ -197,7 +201,7 @@ default:
 
 - `meru "question"` and `meru question words` both work; the words are joined.
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
-  `usage`, `setup` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
+  `usage`, `setup`, `memory` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
   command only as the one word, so `meru usage of semicolons` asks a question.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
@@ -352,12 +356,69 @@ install step and the `secrets.toml` lines, and writes nothing; `k` skips.
 writes `config.toml` only when none exists. Rewriting an existing one would
 drop your comments, so setup tells you what to change instead.
 
+Step 5 offers `meru setup user` when `merud` answers a ping, and says to run it
+later when it doesn't: the answers go to `merud`, which owns the memory folder.
+
 `config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
 works on the Meru home in `/tmp/x`, the same one `merud -config
 /tmp/x/config.toml` uses.
 
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
+
+### meru: user.go
+
+`meru setup user` tells Meru who you are. It first lists the memories of the
+profile kinds, `rpc.ProfileKinds()`, which `merud` puts into every prompt. When
+there are some, it asks whether to keep them and add more (the default) or to
+forget them all first. Then it asks five things, and Enter skips any of them:
+your name, your work, where you live, any other facts (one per line, until an
+empty line), and how you like answers. Each answer becomes one memory through
+`OpMemoryAdd`, of kind `me`, or `preferences` for the last one, and saves as soon
+as you type it.
+
+Answers save as `Label: answer`, such as `Name: Amit Arora` or
+`Lives in: Boston`. The label says what the fact is, and the prompt section they
+land in says whose it is, so each reads as a fact about you in the third person.
+A full sentence such as "The user's name is Amit Arora" says the same in more
+words, and an answer like "staff engineer at Acme" doesn't fit one without
+rewording. The free lines save as you typed them: the client has no model to
+turn "I have two kids" around, and the system prompt already tells the model
+that "I" means you.
+
+At the end it prints each memory's ID and text, and says that `meru memory list`
+shows them and that you can also tell Meru things in chat.
+
+### meru: memory.go
+
+`meru memory` has three words:
+
+```text
+$ meru memory list
+me
+  me/name-amit-arora.md         Name: Amit Arora  2026-09-24 · meru setup user
+
+preferences
+  preferences/answers-short.md  Answers: short  2026-09-24 · meru setup user
+
+$ meru memory add me I have two kids
+Saved me/i-have-two-kids.md
+$ meru memory forget me/i-have-two-kids.md
+Forgot me/i-have-two-kids.md: I have two kids
+```
+
+`list [kind]` groups the memories by kind, the profile kinds first, and dims
+each one's date and source. `add <kind> <text...>` joins the words, as a
+question does. `forget <id>` looks the memory up first, because `merud`'s reply
+to a forget carries no text, and fails with a pointer to `meru memory list` when
+no memory has that ID.
+
+`listMemories`, `addMemory` and `forgetMemory` are the three calls to `merud`,
+shared with `meru setup user`. `merud` names the files and writes them; the
+client never touches `~/.meru/memory/` and never imports `internal/memory`.
+
+`memory_test.go` runs both commands against an in-process server that keeps its
+memories in a slice, so each test can check what `merud` would hold afterwards.
 
 ## Go ideas used here
 
@@ -401,7 +462,9 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
 - **`meru` stays thin.** It imports only `rpc`, `tui`, `config` (for the
   default socket path), and `catalog` and `secrets` (for setup), and starts in
   milliseconds. `meru tools` and `meru log` format what `merud` sends; `merud`
-  decides what is allowed and reads the audit log.
+  decides what is allowed and reads the audit log. `meru memory` and `meru
+  setup user` send requests too: `merud` owns the memory folder, so one program
+  writes it.
 - **A deny when nobody can answer.** A script can't approve a tool call, and a
   call that runs unseen is worse than an answer without the tool.
 - **The scan runs in the background.** A first scan of a big folder can take

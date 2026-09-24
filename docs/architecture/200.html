@@ -884,13 +884,14 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
 
-<p><code>meru setup</code> walks you through five steps in the terminal. You can run it again at any time; v0.3 doesn't start it for you the first time you run <code>meru</code>.</p>
+<p><code>meru setup</code> walks you through six steps in the terminal. You can run it again at any time; v0.3 doesn't start it for you the first time you run <code>meru</code>.</p>
 
 <ol>
   <li><b>Ollama.</b> Meru checks that Ollama runs, and if not, prints the install step and waits.</li>
   <li><b>Models.</b> You pick <code>lite</code> or <code>full</code>, and Meru downloads the models with <code>ollama pull</code>.</li>
   <li><b>Your files.</b> Meru asks which folders to index and writes a short <code>config.toml</code>. It never rewrites a config file you already have, because that would drop your comments; it tells you what to edit instead.</li>
   <li><b>Tools.</b> Meru offers its starter MCP servers one at a time. You can skip any.</li>
+  <li><b>About you</b>, when <code>merud</code> runs: your name, your work, where you live and how you like answers, each saved as a memory. <code>meru setup user</code> asks the same.</li>
   <li><b>A test question</b>, when <code>merud</code> runs, so you see it work.</li>
 </ol>
 
