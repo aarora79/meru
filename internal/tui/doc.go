@@ -12,6 +12,11 @@
 // each finished answer as Markdown. See ARCHITECTURE.md, "The shape" ->
 // "Terminal UI".
 //
+// When merud asks whether a tool call may run, the same goroutine sends the
+// question into the loop and waits; Update shows an approval box and sends
+// the user's choice back on a channel. See ARCHITECTURE.md, "Approving a
+// tool call".
+//
 // The package holds no model or store logic; it draws what merud sends. It
-// also leaves out, for now: mouse scrolling, and tool approval prompts (v0.3).
+// leaves out mouse scrolling.
 package tui

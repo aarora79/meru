@@ -99,8 +99,8 @@ meru what is the capital of France          # quotes are optional
 meru chat                                   # a conversation in the terminal
 ```
 
-Quotes are optional unless the question starts with the word `ping`, `chat` or
-`index`. Without quotes, `meru` reads that word as a command: write
+Quotes are optional unless the question starts with the word `ping`, `chat`,
+`index`, `tools` or `log`. Without quotes, `meru` reads that word as a command: write
 `meru "index cards or a notebook?"`, not `meru index cards or a notebook?`.
 
 In `meru chat`:
@@ -118,6 +118,86 @@ going until you quit, so later questions see the earlier ones.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
+
+### When Meru wants to run a tool
+
+While it answers, the model may call a tool, such as a search of your notes. `meru`
+shows each call on standard error, dimmed, as it starts and ends:
+
+```text
+→ notes.search {"query":"garden budget"}
+✓ notes.search 120 ms
+```
+
+A tool in a `confirm` list asks you first. `meru` shows the tool's name and
+arguments and waits:
+
+```text
+Meru wants to run mail.send (mcp) with:
+  {
+    "to": "sam@example.com",
+    "subject": "Garden budget"
+  }
+Run mail.send? [o]nce  [s]ession  [d]eny:
+```
+
+Type `o` to run this call, `s` to run it and every later call to the tool in this
+session, or `d` to refuse; the whole word works too. A one-shot session ends with
+the answer, so `s` covers only this question. A refused call shows as
+`✗ mail.send declined`, and the model answers without it. Ctrl-C stops the question.
+
+When standard input isn't a terminal, as in a script or a pipe, nobody can answer, so
+`meru` denies the call and prints one line saying so. Tool lines and the prompt go to
+standard error, so `meru "..." > answer.txt` saves only the answer.
+
+`meru chat` shows the same calls as dim lines inside Meru's reply, and asks in a box
+in the conversation. Press `o`, `s` or `d`, or pick with ← and → and press Enter.
+The box opens with deny selected, so a stray Enter can't approve a call. While the
+box is open, the input box takes no typing.
+
+### See which tools the model may use
+
+```sh
+meru tools          # meru tools list does the same
+```
+
+```text
+notes  mcp · stdio · connected
+  notes.search  asks first
+  notes.read
+  2 of 5 tools allowed
+  warning: allow lists "serch", but notes offers no such tool
+
+meru  builtin · connected
+  remember
+  write_file    asks first
+  configure     always asks
+  3 of 3 tools allowed
+```
+
+Each block is one tool source: an MCP server, another agent, or Meru's built-in
+tools. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
+asks whatever the config says. A source `merud` couldn't reach shows
+`not connected` and the reason. A warning names each `allow` entry the source
+doesn't offer, most often a typo. With no sources, `meru tools` says how to
+add one.
+
+### See what tools ran
+
+```sh
+meru log            # the last 20 tool calls, newest first
+meru log -n 50      # the last 50
+meru log -v         # each call's result under it
+```
+
+```text
+2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {"to":"sam@example.com"}
+2026-09-24 10:16:02  101500-ab12  mcp  notes.search  ok        -     120 ms  {"query":"garden"}
+```
+
+The columns are the local time, the session, the kind of tool, the tool, how the
+call ended, what you chose when asked (`-` when nobody was asked), how long it took,
+and its arguments, cut to fit one line.
 
 ## 6. Change settings
 

@@ -43,6 +43,8 @@ type fakeMerud struct {
 	reqs   []rpc.Request
 	events []rpc.Event
 	err    error // yielded after the events, like a dropped connection
+	// choices records the user's answer to each approval event.
+	choices []rpc.Choice
 	// block makes the reply wait for cancellation after the events, like a
 	// model that is still generating.
 	block bool
@@ -50,10 +52,21 @@ type fakeMerud struct {
 
 // ask is the fake askFunc. Tests call the stream command in one goroutine at
 // a time, so reqs needs no lock.
-func (f *fakeMerud) ask(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Event, error] {
+func (f *fakeMerud) ask(ctx context.Context, req rpc.Request, approve rpc.ApproveFunc) iter.Seq2[rpc.Event, error] {
 	f.reqs = append(f.reqs, req)
 	return func(yield func(rpc.Event, error) bool) {
 		for _, ev := range f.events {
+			// Like rpc.Do, hand an approval event to approve instead of
+			// the loop, and keep the answer for the test to check.
+			if ev.Type == rpc.EventApproval {
+				c, err := approve(ctx, *ev.Approval)
+				if err != nil {
+					yield(rpc.Event{}, err)
+					return
+				}
+				f.choices = append(f.choices, c)
+				continue
+			}
 			if !yield(ev, nil) {
 				return
 			}

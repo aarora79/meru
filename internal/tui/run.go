@@ -20,8 +20,8 @@ import (
 // fills the header. It returns when the user quits (nil) or when ctx is
 // cancelled or the terminal fails (an error).
 func Run(ctx context.Context, socket string, info Info) error {
-	ask := func(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Event, error] {
-		return rpc.Do(ctx, socket, req, nil)
+	ask := func(ctx context.Context, req rpc.Request, approve rpc.ApproveFunc) iter.Seq2[rpc.Event, error] {
+		return rpc.Do(ctx, socket, req, approve)
 	}
 
 	// The model needs a way to Send into the program, but the program is

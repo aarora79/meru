@@ -6,6 +6,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
@@ -62,6 +63,17 @@ func TestViewGolden(t *testing.T) {
 		{N: 2, Path: "~/notes/plants.md", StartLine: 1, EndLine: 9, Score: 0.016},
 	}}
 
+	toolCall := func(id, name, args string) rpc.Event {
+		return rpc.Event{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: id, Name: name, Kind: "mcp", Args: json.RawMessage(args)}}
+	}
+	toolResult := func(id, name, outcome string, ms int64) rpc.Event {
+		return rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: id, Name: name, Kind: "mcp", Outcome: outcome, DurationMillis: ms}}
+	}
+	tools := rpc.Event{Type: rpc.EventRoute, Route: "tools", Confidence: 0.82}
+	mailArgs := `{"to":"sam@example.com","subject":"Garden budget","body":"The Q3 budget is 4,200 dollars."}`
+	mail := &rpc.Approval{ID: "1", Name: "mail.send", Kind: "mcp", Args: json.RawMessage(mailArgs),
+		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny}}
+
 	tests := []struct {
 		name   string
 		width  int
@@ -70,7 +82,18 @@ func TestViewGolden(t *testing.T) {
 		done   bool
 		err    error
 		height int
+		// approval, when set, opens the approval box after the events.
+		approval *rpc.Approval
 	}{
+		{name: "approval", width: 80, q: "Email Sam the garden budget", approval: mail,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+				toolCall("2", "mail.send", mailArgs)}},
+		{name: "tools", width: 80, q: "Email Sam the garden budget", done: true,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+				toolCall("2", "mail.send", mailArgs), toolResult("2", "mail.send", "declined", 0),
+				tok("I found the budget, 4,200 dollars, but didn't send the email."), stats}},
+		{name: "approval-narrow", width: 40, q: "Email Sam", approval: mail,
+			evs: []rpc.Event{session, tools, toolCall("2", "mail.send", mailArgs)}},
 		{name: "empty", width: 80},
 		{name: "waiting", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct}},
 		{name: "streaming", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct, tok("Meru is a personal "), tok("assistant that runs")}},
@@ -90,6 +113,9 @@ func TestViewGolden(t *testing.T) {
 			m := screen(t, tt.width, height, tt.q, tt.evs, tt.done, tt.err)
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))
+			}
+			if tt.approval != nil {
+				m, _ = update(t, m, approvalRequestMsg{turn: m.turn, approval: *tt.approval, reply: make(chan rpc.Choice, 1)})
 			}
 			view := m.View()
 

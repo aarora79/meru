@@ -1,8 +1,8 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2
-**Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui)
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Milestone:** v0.1; sources under answers in v0.2; tool lines and the approval box in v0.3
+**Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
 
@@ -40,6 +40,31 @@ Meru  direct · 0.91
 ╰──────────────────────────────────────────────────────────────────────────╯
 enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll
 ```
+
+When the model calls a tool, a dim line inside the Meru message tracks it. When the
+tool is one you asked to approve first, an amber box opens under that line and waits
+for your answer:
+
+```text
+Meru  tools · 0.82
+  ✓ notes.search · 120 ms
+  → mail.send
+  ╭─────────────────────────────────────────────╮
+  │ Run mail.send?  mcp                         │
+  │ {                                           │
+  │   "to": "sam@example.com",                  │
+  │   "subject": "Garden budget",               │
+  │   "body": "The Q3 budget is 4,200 dollars." │
+  │ }                                           │
+  │                                             │
+  │  o once   s this session  [d deny]          │
+  ╰─────────────────────────────────────────────╯
+...
+o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
+```
+
+Once the call ends, its line changes to `✓ mail.send · 80 ms`, or to
+`✗ mail.send · declined` when you said no.
 
 In colour, the header's name and the input border are Meru's teal. The "You" label and
 the bar beside your question are blue, and the "Meru" label is green, so a glance tells
@@ -134,6 +159,7 @@ type Model struct {
 	streaming bool
 	turn      int
 	cancel    context.CancelFunc
+	approval  *pendingApproval // the tool call waiting for an answer, or nil
 	// ...
 }
 ```
@@ -152,6 +178,8 @@ type exchange struct {
 	route      string
 	confidence float64
 	fallback   bool
+	sources    []rpc.Citation
+	tools      []toolCall // the turn's tool calls, in order
 	answer     string    // raw text, grown token by token
 	err        string
 	stats      rpc.Event // the closing "done" event and its stats
@@ -200,6 +228,16 @@ help line and the behaviour come from one place.
 | Up (on the input's first line) | put the last question back | same |
 | PgUp / PgDn | scroll the conversation | same |
 
+While the approval box is open, the keys answer it instead, and typing doesn't reach
+the input:
+
+| Key | What it does |
+|---|---|
+| o, s, d | approve once, approve for this session, deny; only the choices `merud` offers work |
+| ← / → then Enter | move the selection, then pick it |
+| Ctrl-C | stop the turn; the call doesn't run |
+| Ctrl-D | quit |
+
 The input is a multi-line text area. Enter sends, so the text area's "new line" key is
 set to Ctrl-J. `layout` grows the box by one row per line, up to five, and gives the
 conversation the rows that are left.
@@ -230,6 +268,9 @@ never to store a context in a struct.
 - `session`: remember the ID. `submit` sends it with every later question, so `merud`
   continues the same conversation.
 - `route`: keep the route, its confidence, and whether the router fell back.
+- `sources`: keep the excerpts for the list under the answer.
+- `tool_call`: add a tool line. `tool_result`: `finishTool` finds the line with the
+  same ID and fills in the outcome and the time.
 - `token`: add the text to the answer.
 - `done`: keep the stats for the line under the answer.
 - `error`: mark the turn failed and keep the message.
@@ -250,9 +291,13 @@ return strings.Join([]string{m.header(), rule, m.conversation.View(), input, m.h
 connection status on the right. When the terminal is narrow, the details shrink with
 an ellipsis, then disappear.
 
-`renderTurn` draws one turn. What goes under the "Meru" label depends on the state:
+`renderTurn` draws one turn. Under the "Meru" label come the tool lines first, one
+per call, dim, drawn by `toolText`: `→ notes.search` while the call runs, then
+`✓ notes.search · 120 ms` or `✗ mail.send · declined`. On the newest turn, the
+approval box follows them while it is open. What comes next depends on the state:
 
-- waiting for the first token: the spinner and "thinking…";
+- waiting for the first token: the spinner and "thinking…", unless the approval box
+  already says what Meru waits for;
 - streaming: the raw text, wrapped, with a teal `▍` at the end;
 - finished or stopped: the answer rendered as Markdown;
 
@@ -352,9 +397,75 @@ turn isn't the one streaming now.
 `pingCmd` is the other command. It pings `merud` once when the chat opens, with a
 two-second timeout, and returns a `pingMsg` that sets the header's status.
 
+**Approvals cross from the goroutine to `Update`.** When a tool call needs your
+approval, `merud` sends an `approval` event. `rpc.Do` doesn't hand that event to the
+loop; it calls the `ApproveFunc` it was given and waits for a choice to write back.
+That call happens on the stream goroutine, which can't draw a box or read a key.
+Only `Update` can. `approveVia` bridges the two:
+
+```go
+func approveVia(send sender, turn int) rpc.ApproveFunc {
+	return func(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
+		reply := make(chan rpc.Choice, 1)
+		send.Send(approvalRequestMsg{turn: turn, approval: a, reply: reply})
+		select {
+		case c := <-reply:
+			return c, nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+}
+```
+
+The function makes a channel, sends it to `Update` inside an `approvalRequestMsg`,
+and blocks. `select` waits for whichever comes first: `Update` putting your choice on
+the channel, or the turn's context ending because you pressed Ctrl-C
+([go-basics/select.md](go-basics/select.md)). The channel is *buffered* with room for
+one value, so `Update` can put the choice there and move on without waiting, even if
+the goroutine already gave up. `Update` must never block, or the whole screen would
+freeze.
+
+```mermaid
+sequenceDiagram
+    participant D as merud
+    participant G as Stream goroutine
+    participant M as Update
+    participant U as You
+    D-->>G: approval event
+    G->>M: approvalRequestMsg + reply channel (program.Send)
+    Note over G: blocks on select
+    M->>U: approval box
+    U->>M: s
+    M->>G: session (reply channel)
+    G->>D: Reply{choice: session}
+    D-->>G: tool_result, tokens, done
+```
+
 `sender` is an interface (a list of methods a type must have) with one method,
 `Send`. `*tea.Program` has that method, so it fits. The tests pass a fake that pushes
 messages onto a channel instead ([go-basics/channels.md](go-basics/channels.md)).
+
+### approval.go
+
+`openApproval` runs when an `approvalRequestMsg` reaches `Update`. It stores the
+request in `m.approval`, hides the input's cursor, and redraws. A request from a turn
+that has stopped, or one with no choices, gets "deny" at once: nobody could see it,
+so nobody could agree to it. The box opens with "deny" selected, so an Enter meant
+for the input can't approve a call by accident.
+
+While `m.approval` is set, `handleKey` sends every key except Ctrl-C and Ctrl-D to
+`approvalKey`. A choice's letter picks it; ← and → move the selection and Enter
+picks it. Other keys do nothing, so text you type can't slip into the next question.
+`closeApproval` puts the choice on the reply channel, clears `m.approval` and gives
+the input its cursor back. `stopTurn` calls it with "deny", so Ctrl-C, Ctrl-D and a
+dropped connection all close the box.
+
+`approvalBoxView` draws the box: the name and kind, the arguments as indented JSON
+(`rpc.ArgsLines`, at most ten lines), and the choices merud offered. Square brackets
+mark the selected choice, so the selection shows with colour off too. `View` swaps
+the help line for `approvalKeys`, a slice of key bindings with the two methods the
+help component needs, so the bottom line lists the keys that answer the box.
 
 ### run.go
 
@@ -382,7 +493,10 @@ screen, so your shell history comes back untouched when you quit.
 - **Type switch**: branch on the concrete type inside an interface value. More in
   [go-basics/type-switches.md](go-basics/type-switches.md).
 - **Channels**: the fake sender in the tests hands messages between goroutines on a
-  channel. More in [go-basics/channels.md](go-basics/channels.md).
+  channel, and each approval carries a buffered channel for its answer. More in
+  [go-basics/channels.md](go-basics/channels.md).
+- **`select`**: `approveVia` waits for the answer or for Ctrl-C, whichever comes
+  first. More in [go-basics/select.md](go-basics/select.md).
 - **Value and pointer receivers**: `Update` works on a copy; helpers change that copy
   through a pointer.
 - **Interfaces by method set**: `*tea.Program` satisfies `sender`, and `keyMap`
@@ -402,8 +516,9 @@ go test -race ./internal/tui/...
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
 streaming, a finished Markdown answer, a fallback route, an answer with sources, an
-error, a stopped answer, and a 40-column terminal. After a deliberate change to the look, rewrite them and read
-the diff:
+error, a stopped answer, a 40-column terminal, tool lines, and the approval box at 80
+and 40 columns. After a deliberate change to the look, rewrite them and read the
+diff:
 
 ```sh
 go test ./internal/tui -update
@@ -420,7 +535,22 @@ Ask for a list and a code sample, then a follow-up that only makes sense with th
 first answer in mind. Press Ctrl-C during a long answer to stop it, and Ctrl-D to
 leave. Run it again with `NO_COLOR=1` to see the plain version.
 
+`approval_test.go` runs a turn in its own goroutine against a fake `merud` that asks
+about one tool call. It checks each key (o, s, d, capitals, ←/→ with Enter, a choice
+not offered), that typing stays out of the input while the box is open, that Ctrl-C
+closes the box and stops the turn, and that a request from a stopped turn gets
+"deny" at once.
+
 ## Why it's built this way
+
+**Why a channel for the answer and not a field on the model?** The stream goroutine
+and `Update` run at the same time. A shared field would need a lock, and the
+goroutine would have to poll it. A channel hands the choice over once and wakes the
+goroutine the moment it arrives.
+
+**Why does the box open on "deny"?** You may be typing the next question when the
+box appears. Enter would then pick whatever is selected, and approving by accident is
+worse than denying by accident: a denied call can be asked again.
 
 **Why Bubble Tea over a plain read-print loop?** A loop that reads a line and prints
 the reply works until you want to type while an answer streams, resize the window, or

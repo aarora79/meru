@@ -1,0 +1,30 @@
+Meru मेरु lite · minicpm5:2b · session 101500-ab12                     ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+You
+  │ Email Sam the garden budget
+
+Meru  tools · 0.82
+  ✓ notes.search · 120 ms
+  → mail.send
+  ╭─────────────────────────────────────────────╮
+  │ Run mail.send?  mcp                         │
+  │ {                                           │
+  │   "to": "sam@example.com",                  │
+  │   "subject": "Garden budget",               │
+  │   "body": "The Q3 budget is 4,200 dollars." │
+  │ }                                           │
+  │                                             │
+  │  o once   s this session  [d deny]          │
+  ╰─────────────────────────────────────────────╯
+
+
+
+
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+o once · s this session · d deny · ←/→ enter choose · ctrl+c stop

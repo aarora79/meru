@@ -77,6 +77,9 @@ type exchange struct {
 	// search or found nothing.
 	sources []rpc.Citation
 
+	// tools lists the turn's tool calls in the order merud reported them.
+	tools []toolCall
+
 	answer string    // the answer's raw text, grown token by token
 	err    string    // why the turn failed, for stateFailed
 	stats  rpc.Event // the closing "done" event and its stats; zero if none came
@@ -85,6 +88,25 @@ type exchange struct {
 	// renderedWidth the width it was drawn for. A resize redraws it.
 	rendered      string
 	renderedWidth int
+}
+
+// toolCall is one tool call as the turn shows it: from its "tool_call"
+// event, and from its "tool_result" event once that arrives.
+type toolCall struct {
+	id      string
+	name    string // the full name, such as "notes.search"
+	outcome string // "" while the call runs, then "ok", "declined" and so on
+	millis  int64  // how long the call took, from "tool_result"
+}
+
+// pendingApproval is a tool call waiting for the user's answer.
+type pendingApproval struct {
+	ask rpc.Approval
+	// reply takes the choice back to the stream goroutine, which waits on
+	// it in approveVia. It has room for one value, so sending never blocks.
+	reply chan rpc.Choice
+	// selected is the index in ask.Choices that Enter picks; ←/→ move it.
+	selected int
 }
 
 // link says whether merud answered last time we heard from it.
@@ -133,6 +155,10 @@ type Model struct {
 	// cancel stops the current turn's request. Calling it closes the socket,
 	// which tells merud to stop generating.
 	cancel context.CancelFunc
+	// approval is the tool call waiting for the user's answer, or nil.
+	// While it is set, the approval box shows and the keys answer it
+	// instead of typing into the input.
+	approval *pendingApproval
 }
 
 // newModel builds the starting screen: an empty conversation and a focused
@@ -221,6 +247,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
+	case approvalRequestMsg:
+		m.openApproval(msg)
+		return m, nil
 	case turnDoneMsg:
 		m.handleDone(msg)
 		return m, nil
@@ -257,6 +286,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.stopTurn()
 		m.current().state = stateStopped
 		m.refresh()
+		return m, nil
+	case m.approval != nil:
+		// The approval box has the keys until the user answers it.
+		m.approvalKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
@@ -329,6 +362,14 @@ func (m *Model) handleEvent(msg eventMsg) {
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
 	case rpc.EventSources:
 		cur.sources = ev.Sources
+	case rpc.EventToolCall:
+		if ev.Tool != nil {
+			cur.tools = append(cur.tools, toolCall{id: ev.Tool.ID, name: ev.Tool.Name})
+		}
+	case rpc.EventToolResult:
+		if ev.Tool != nil {
+			cur.finishTool(*ev.Tool)
+		}
 	case rpc.EventToken:
 		cur.answer += ev.Text
 	case rpc.EventDone:
@@ -370,12 +411,29 @@ func (m *Model) current() *exchange {
 	return &m.turns[len(m.turns)-1]
 }
 
-// stopTurn cancels the running turn, if any, and marks the screen idle.
+// finishTool records how the call t ended on the tool line it started. A
+// result with no matching call, which a well-behaved merud never sends, gets
+// a line of its own.
+func (e *exchange) finishTool(t rpc.ToolEvent) {
+	// Search from the newest call back: a result most often ends the call
+	// that started last.
+	for i := len(e.tools) - 1; i >= 0; i-- {
+		if e.tools[i].id == t.ID && e.tools[i].outcome == "" {
+			e.tools[i].outcome, e.tools[i].millis = t.Outcome, t.DurationMillis
+			return
+		}
+	}
+	e.tools = append(e.tools, toolCall{id: t.ID, name: t.Name, outcome: t.Outcome, millis: t.DurationMillis})
+}
+
+// stopTurn cancels the running turn, if any, closes any open approval box,
+// and marks the screen idle.
 func (m *Model) stopTurn() {
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
 	}
+	m.closeApproval(rpc.ChoiceDeny)
 	m.streaming = false
 }
 
