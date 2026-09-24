@@ -348,7 +348,8 @@
 <p>A <b>turn</b> runs from your question to the finished answer. A <b>session</b> is one conversation, a run of turns that share one transcript file. Four parts do the work:</p>
 
 <ul>
-  <li>The <b>fast model</b> acts as the <b>router</b>. It rewrites your question into a better search query and picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It also picks which <b>skills</b>, files of instructions for one kind of task, to load.</li>
+  <li>The <b>fast model</b> acts as the <b>router</b>. It rewrites your question into a better search query and picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It also picks which <b>skills</b>, files of instructions for one kind of task, to load.
+    <p style="margin: 8px 0 0">The router doesn't write its choice out as text, which a small model can garble. It labels the four routes A to D, asks for a single letter, and reads how likely the model thought each letter was. The most likely letter wins, and its likelihood is the router's confidence. When the router isn't confident enough, Meru searches your files and allows tools, which costs a little more but never leaves a question without the context it needs. (<a href="300.html#routing">Level 300</a> and the <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">router design note</a> have the details.)</p></li>
   <li>The <b>main model</b> chooses tools and writes the answer.</li>
   <li><b><code>dispatch</code></b> is the one function every tool call passes through. It checks the call against your config, asks you when config says to, runs it and logs it.</li>
   <li>An <b>MCP server</b> is a separate program that offers tools, such as a brokerage server's <code>get_portfolio</code>.</li>

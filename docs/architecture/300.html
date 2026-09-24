@@ -633,7 +633,7 @@
 <div class="tbl"><table>
   <thead><tr><th>Decision</th><th>Made by</th><th>How</th></tr></thead>
   <tbody>
-    <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the question and the history, and returns a route, a rewritten query and the skills to load.</td></tr>
+    <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. A separate short call rewrites the query and picks the skills to load.</td></tr>
     <tr><td>Which tools the model may use</td><td>you, in <code>config.toml</code></td><td>Only tools in each server's <code>allow</code> list reach the model; the rest don't exist to it.</td></tr>
     <tr><td>Which tool to call, with what arguments</td><td>the <code>main</code> model</td><td>It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks.</td></tr>
     <tr><td>Whether a call runs without asking</td><td>you, in <code>config.toml</code> and at the prompt</td><td><code>dispatch</code> stops and asks when the tool is in the server's <code>confirm</code> list, unless you already approved that tool for this session.</td></tr>
@@ -713,6 +713,8 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p><code>merud</code> keeps each model loaded by asking Ollama for <code>keep_alive: -1</code>, and warms every tier at startup. Ollama must allow enough models in memory at once: <code>OLLAMA_MAX_LOADED_MODELS</code> set to 3 for <code>full</code>.</p>
 
+<p>The <code>fast</code> tier needs a runtime that reports log probabilities, because <a href="#routing">routing</a> reads them. Ollama added them in v0.12.11; <code>merud</code> reads <code>/api/version</code> at startup and refuses to start on anything older, naming both versions. Routing costs no extra model: the <code>fast</code> model is already loaded.</p>
+
 <p>A new embedding model makes vectors of a different size, and every stored vector goes stale. The store records the embedding model's name and vector size. When either stops matching config, <code>merud</code> rebuilds the vectors from your files.</p>
 
 <p>A 120B model at 4-bit needs about 60 GB, which leaves even the 64 GB development machine no room and makes it swap. Meru won't support models that size.</p>
@@ -732,6 +734,8 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <p><b><code>OllamaEngine</code> is the only implementation.</b> It talks to Ollama over HTTP on loopback and refuses to start if the configured URL points anywhere else. It is the codebase's only HTTP client for a model runtime, and it can't reach a cloud model, so principle 1 holds whatever config says.</p>
 
 <p>Each model writes tool calls in its own format. Ollama converts them to structured JSON, and the engine converts that JSON to Meru's own types, so the agent loop never sees a model-specific token. Each <code>Completion</code> also carries Ollama's counters (<code>prompt_eval_count</code>, <code>eval_count</code>, <code>load_duration</code>, <code>prompt_eval_duration</code>, <code>eval_duration</code>), which feed the metrics described in <a href="#observability">Seeing where the time went</a>.</p>
+
+<p>For <a href="#routing">routing</a>, <code>Options</code> gains two fields, <code>LogProbs</code> and <code>TopLogProbs</code>, and <code>Completion</code> gains <code>LogProbs</code>: for each generated position, the chosen token and the alternatives the model weighed, each with its log probability. Both default to off, so other callers see no change, and the interface keeps its four methods.</p>
 
 <p>Two engines may come later, behind the same interface:</p>
 <ul>
@@ -1085,7 +1089,7 @@ description: Review holdings through a valuation lens. Use when asked about
 <p>A turn has five steps. <a href="#fig-end-to-end">Figure 2</a> in <a href="#end-to-end">A question, end to end</a> shows them in order.</p>
 
 <ol>
-  <li><b>Route.</b> The <code>fast</code> model rewrites the query, picks the skills to load, and picks one of four routes: answer directly, search your files first (RAG), call tools, or search and call tools.</li>
+  <li><b>Route.</b> The <code>fast</code> model picks one of four routes: answer directly, search your files first (RAG, retrieval-augmented generation), call tools, or search and call tools. It picks by classification, reading one decoded token's probabilities (see <a href="#routing">Routing</a>). A separate short generation call rewrites the query and picks the skills to load.</li>
   <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and the allowed tools' schemas, each within its own token budget.</li>
   <li><b>Call <code>main</code>.</b> Stream text to the client as it arrives. Tool-call arguments also arrive in pieces; buffer each call until it is complete.</li>
   <li><b>Dispatch tools.</b> Every call goes through one function, <code>dispatch</code>. It checks the allowlist, asks you to confirm if config lists the tool under <code>confirm</code>, calls the MCP server, A2A agent or built-in tool (such as <code>remember</code>), writes the <code>tool_calls</code> row, and records the call's timing span and metrics. If you say no, the call doesn't run and its outcome is <code>declined</code>. A call to a tool outside the allowlist doesn't run either; its outcome is <code>denied</code>, and it still gets a <code>tool_calls</code> row, so a model that keeps reaching for forbidden tools shows up in the log. No other code path reaches a server, agent or built-in tool. Independent calls run at the same time (<code>errgroup</code>, Go's helper for running calls together and collecting their errors), each with its own timeout.</li>
@@ -1093,6 +1097,92 @@ description: Review holdings through a valuation lens. Use when asked about
 </ol>
 
 <p>A <code>context.Context</code>, Go's value for carrying a cancel signal and a deadline, runs through the whole turn. If the client disconnects or you press Ctrl-C, <code>merud</code> cancels the turn: generation stops, <code>merud</code> drops in-flight tool calls, and their <code>tool_calls</code> rows record the cancellation.</p>
+
+<h3 id="routing">Routing</h3>
+
+<p>A small model asked to write its route as JSON (JavaScript Object Notation) fails in three ways: it writes broken JSON, invents a fifth route, or answers wrong with no sign that it was unsure. So the router doesn't ask for text. It treats the route as a classification and reads the answer from the model's probabilities:</p>
+
+<ol>
+  <li>The prompt gives the question, the session history and four lettered options (A = answer directly, B = search, C = tools, D = search and tools), each with a one-line description, and ends with <code>Answer: </code>.</li>
+  <li><code>merud</code> asks Ollama for one token with log probabilities (<code>num_predict = 1</code>, <code>logprobs = true</code>, <code>top_logprobs = 20</code>).</li>
+  <li>The router keeps the alternatives whose text is one of the four letters, turns each log probability back into a probability, divides by a fitted temperature, and normalizes the four so they sum to 1.</li>
+  <li>The most likely letter is the route, and its probability is the confidence.</li>
+</ol>
+
+<figure id="fig-routing">
+<div class="figbox">
+<svg viewBox="0 0 960 312" role="img" aria-labelledby="frt frd">
+  <title id="frt">Routing: one token, four probabilities</title>
+  <desc id="frd">The question and the session history go into a prompt with four lettered options, A answer directly, B search, C tools, D search and tools, ending with Answer. Ollama runs the fast model for one token with log probabilities: num_predict 1, logprobs true, top_logprobs 20. The router keeps the alternatives that are the letters A to D, turns each log probability back into a probability, divides by the temperature and normalizes the four to sum to 1. It then checks whether the confidence is at least min_confidence. If yes, the most likely letter is the route, its probability is the confidence, and the outcome is ok. If no, the router takes the fallback route search+tools, with outcome low_confidence, or degraded when fewer than two letters appeared.</desc>
+  <defs>
+    <marker id="fra" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
+    <marker id="frb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+    <marker id="frc" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka2"/></marker>
+  </defs>
+
+  <rect x="16" y="24" width="212" height="112" rx="8" class="b"/>
+  <text x="30" y="48" class="t1" font-size="14" font-weight="600">prompt</text>
+  <text x="30" y="70" class="t2" font-size="12.5">question + history</text>
+  <text x="30" y="90" class="t2 mono" font-size="11.5">A answer · B search</text>
+  <text x="30" y="108" class="t2 mono" font-size="11.5">C tools · D search+tools</text>
+  <text x="30" y="126" class="t3" font-size="12">ends with <tspan class="mono">Answer: </tspan></text>
+
+  <path d="M228 80 L250 80" class="ln" marker-end="url(#fra)"/>
+
+  <rect x="252" y="24" width="212" height="112" rx="8" class="b"/>
+  <text x="266" y="48" class="t1" font-size="14" font-weight="600">Ollama, <tspan class="mono">fast</tspan> model</text>
+  <text x="266" y="70" class="t2" font-size="12.5">one token, with log probabilities</text>
+  <text x="266" y="90" class="t2 mono" font-size="11.5">num_predict = 1</text>
+  <text x="266" y="108" class="t2 mono" font-size="11.5">logprobs = true</text>
+  <text x="266" y="126" class="t2 mono" font-size="11.5">top_logprobs = 20</text>
+
+  <path d="M464 80 L486 80" class="ln" marker-end="url(#fra)"/>
+
+  <rect x="488" y="24" width="212" height="112" rx="8" class="b"/>
+  <text x="502" y="48" class="t1" font-size="14" font-weight="600">four probabilities</text>
+  <text x="502" y="70" class="t2" font-size="12.5">keep the letters A–D</text>
+  <text x="502" y="90" class="t2" font-size="12.5">exp, ÷ temperature</text>
+  <text x="502" y="110" class="t2" font-size="12.5">normalize to sum to 1</text>
+
+  <path d="M700 80 L722 80" class="ln" marker-end="url(#fra)"/>
+
+  <rect x="724" y="24" width="220" height="112" rx="8" class="b"/>
+  <text x="738" y="48" class="t1" font-size="14" font-weight="600">sure enough?</text>
+  <text x="738" y="70" class="t2" font-size="12.5">confidence ≥</text>
+  <text x="738" y="90" class="t2 mono" font-size="11.5">min_confidence</text>
+  <text x="738" y="110" class="t2" font-size="12.5">and at least two letters</text>
+
+  <path d="M780 136 L780 166 L476 166 L476 206" class="lna" marker-end="url(#frb)"/>
+  <text x="628" y="158" class="ta halo" font-size="12.5" font-weight="600" text-anchor="middle">yes</text>
+  <path d="M890 136 L890 206" class="lna2" marker-end="url(#frc)"/>
+  <text x="902" y="176" class="ta2 halo" font-size="12.5" font-weight="600">no</text>
+
+  <rect x="252" y="208" width="448" height="86" rx="8" class="ba"/>
+  <text x="268" y="233" class="t1" font-size="14" font-weight="600">route = the most likely letter</text>
+  <text x="268" y="255" class="t2" font-size="12.5">confidence = its probability</text>
+  <text x="268" y="277" class="t2" font-size="12.5">outcome <tspan class="mono">ok</tspan></text>
+
+  <rect x="724" y="208" width="220" height="86" rx="8" class="ba2"/>
+  <text x="738" y="233" class="t1" font-size="14" font-weight="600">fallback: <tspan class="mono">search+tools</tspan></text>
+  <text x="738" y="255" class="t2" font-size="12">outcome <tspan class="mono">low_confidence</tspan></text>
+  <text x="738" y="277" class="t2" font-size="12">or <tspan class="mono">degraded</tspan> (&lt; 2 letters)</text>
+
+</svg>
+</div>
+<figcaption><b>Figure 5.</b> The router reads a route instead of asking for one. It never parses text the model wrote, and when the four probabilities don't point clearly at one letter, it takes the route that can't leave a turn short of context.</figcaption>
+</figure>
+
+<p>The model decodes one token, so routing costs a prompt evaluation and nothing more, and it can't name a route that doesn't exist. When the confidence falls below <code>min_confidence</code>, or fewer than two letters appear at all, the router takes the fallback route, <code>search+tools</code>. That's the one route that can't fail a turn for lack of context: an unsure router spends tokens rather than guesses.</p>
+
+<pre><code>[router]
+top_logprobs   = 20             # Ollama's cap
+temperature    = 1.0            # raw; fit later from labelled turns
+min_confidence = 0.45           # below this, take the fallback
+fallback       = "search+tools"</code></pre>
+
+<p>The router lives in <code>internal/router</code> as one function, <code>Decide</code>, which returns the route, its confidence, the full distribution and an outcome (<code>ok</code>, <code>low_confidence</code> or <code>degraded</code>). A model that answers unclearly isn't an error; <code>Decide</code> returns the fallback and says why. Small models are overconfident, so <code>min_confidence</code> means little until a temperature is fitted from about 200 labelled turns.</p>
+
+<p>The full design, with the prompt contract, tests and calibration plan, is in <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>.</p>
 
 <!-- ============================================================ -->
 <h2 id="mcp">Tools over MCP</h2>
@@ -1227,7 +1317,7 @@ network = false                      # true only if the agent isn't on loopback<
   <text x="16" y="462" class="t3" font-size="11.5">The agent's URL must be loopback unless its config entry says network = true. Long tasks use A2A streaming updates, under the same per-call timeout as a tool.</text>
 </svg>
 </div>
-<figcaption><b>Figure 5.</b> To the model, a remote agent is one more tool. Everything that makes the call safe to audit happens in the two boxes on the <code>dispatch</code> line, the same boxes an MCP call passes through.</figcaption>
+<figcaption><b>Figure 6.</b> To the model, a remote agent is one more tool. Everything that makes the call safe to audit happens in the two boxes on the <code>dispatch</code> line, the same boxes an MCP call passes through.</figcaption>
 </figure>
 
 <p>Agents are deny-by-default too. Meru can reach only the agents in config, and only the skills in <code>allow</code> become tools. An agent on another machine may use a cloud model, so your data would leave the machine. Reaching one takes <code>network = true</code>; without it, <code>merud</code> refuses any agent URL that isn't loopback. For long tasks, Meru uses the protocol's streaming updates, with the same per-call timeout as a tool.</p>
@@ -1274,7 +1364,7 @@ capture_content  = false                     # prompt/response text in spans</co
 <div class="figbox">
 <svg viewBox="0 0 960 350" role="img" aria-labelledby="f6t f6d">
   <title id="f6t">Trace tree for one turn</title>
-  <desc id="f6d">The root span meru.turn carries route, iterations and outcome. Its children are meru.route for the fast-tier call; meru.retrieve, covering vector and fts search and fusion from v0.2 and memories from v0.4; gen_ai.chat main, one span per model call in the loop; mcp.tool_call obsidian.search; and a final gen_ai.chat main for the answer. The same trace ID is written to the messages and tool_calls rows.</desc>
+  <desc id="f6d">The root span meru.turn carries route, iterations and outcome. Its children are meru.route, the one-token route pick, carrying decision, confidence and outcome; meru.retrieve, covering vector and fts search and fusion from v0.2 and memories from v0.4; gen_ai.chat main, one span per model call in the loop; mcp.tool_call obsidian.search; and a final gen_ai.chat main for the answer. The same trace ID is written to the messages and tool_calls rows.</desc>
   <defs>
     <marker id="f6a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -1293,7 +1383,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <path d="M40 104 L64 104" class="ln"/>
     <rect x="64" y="86" width="300" height="36" rx="6" class="b"/>
     <text x="78" y="109" class="t1 mono" font-size="12.5">meru.route</text>
-    <text x="384" y="109" class="t2">fast-tier call</text>
+    <text x="384" y="109" class="t2">one-token route pick: decision, confidence, outcome</text>
 
     <path d="M40 152 L64 152" class="ln"/>
     <rect x="64" y="134" width="300" height="36" rx="6" class="b"/>
@@ -1318,7 +1408,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <text x="16" y="340" class="t3" font-size="11.5">Model spans follow the OTel GenAI conventions; tool spans follow the MCP conventions. No prompt text unless capture_content = true.</text>
 </svg>
 </div>
-<figcaption><b>Figure 6.</b> One turn with one tool call. The trace ID on the root span also sits on the rows the turn wrote, so a slow bar in Grafana leads to the exact <code>tool_calls</code> row, and a row leads back to its timing.</figcaption>
+<figcaption><b>Figure 7.</b> One turn with one tool call. The trace ID on the root span also sits on the rows the turn wrote, so a slow bar in Grafana leads to the exact <code>tool_calls</code> row, and a row leads back to its timing.</figcaption>
 </figure>
 
 <p>Model spans follow the OTel GenAI semantic conventions (<code>gen_ai.operation.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>). Tool spans follow the MCP semantic conventions and add <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. <code>merud</code> writes each trace ID to <code>messages</code> and <code>tool_calls</code>.</p>
@@ -1335,6 +1425,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>gen_ai.server.time_to_first_token</code></td><td>histogram</td><td>model, tier</td><td>the v0.1 "first token &lt; 1 s" target</td></tr>
     <tr><td><code>gen_ai.server.time_per_output_token</code></td><td>histogram</td><td>model, tier</td><td>decode speed</td></tr>
     <tr><td><code>meru.engine.load.duration</code></td><td>histogram</td><td>model</td><td>cold loads Ollama had to do (should be ~0)</td></tr>
+    <tr><td><code>meru.route.decisions</code></td><td>counter</td><td>route, outcome (ok/low_confidence/degraded)</td><td>how often each route wins, and how often the router is unsure</td></tr>
     <tr><td><code>meru.turn.duration</code></td><td>histogram</td><td>route, source (cli/tui/job), outcome</td><td>end-to-end latency</td></tr>
     <tr><td><code>meru.turn.iterations</code></td><td>histogram</td><td>route</td><td>loop depth</td></tr>
     <tr><td><code>meru.context.tokens</code></td><td>histogram</td><td>section (system/skills/memories/chunks/history/tools)</td><td>data for the context budget policy</td></tr>
@@ -1404,7 +1495,7 @@ capture_content  = false                     # prompt/response text in spans</co
 <p>We'll settle these with working code and measurements.</p>
 
 <ol>
-  <li><b>Router quality.</b> In <code>lite</code>, a 2B model both routes and answers. Can it choose between a direct answer, RAG and tools? <code>meru.turn.*</code> metrics by route will show. If it can't, <code>lite</code> gets a separate, larger <code>main</code>.</li>
+  <li><b>Router quality.</b> The router no longer has to write valid output; it reads probabilities (see <a href="#routing">Routing</a>). The open question is whether a 2B model's probabilities separate the four routes well enough to act on. <code>meru.route.decisions</code> by outcome, and a temperature fitted from labelled turns, will show. If they don't, <code>lite</code> gets a larger <code>fast</code> model.</li>
   <li><b>Context order.</b> Skills, memories and retrieved chunks compete for the same window. <code>meru.context.tokens</code> will supply the numbers to set a budget per section.</li>
   <li><b>PDF extraction.</b> Local tools that keep a PDF's layout are weak, and Go has fewer of them than Python. We may need a cgo library or an external tool.</li>
   <li><b>Leaving Ollama.</b> An embedded llama.cpp engine would make <code>merud</code> self-contained, but Meru would take over tool-call parsing and loading models. Decide once v0.3 works on Ollama and we can measure the cost.</li>
@@ -1423,6 +1514,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
     <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 32 GB or more, or a ~24 GB GPU (<code>qwen3.8:27b</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>
     <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> with <code>sqlite-vec</code> as the index. No separate vector database.</td></tr>
+    <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>).</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus <code>sqlite-vec</code> similarity, merged in Go with reciprocal-rank fusion.</td></tr>
     <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code> and <code>poster-making</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> runs on first use and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste.</td></tr>
