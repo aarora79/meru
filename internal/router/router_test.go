@@ -198,20 +198,65 @@ func TestBuildMessages(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Question:\nWhat did I write about Go?",
-		"A = Answer from what you already know.",
-		"B = The answer is in the user's own notes",
-		"C = The answer needs a tool",
-		"D = Both",
+		"A = General knowledge",
+		"B = Look in the user's own saved notes",
+		"C = Live, recent or outside data",
+		"D = Needs the user's notes or files AND",
+		"Examples:\nwhat's the boiling point of water in Denver -> A\n",
+		"text Maya the gate code from my notes -> D\n",
 	} {
 		if !strings.Contains(user, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, user)
 		}
+	}
+	// The fixed part (options, examples) comes before the parts that change.
+	if strings.Index(user, "Examples:") > strings.Index(user, "Conversation so far:") {
+		t.Errorf("options and examples should come before the history:\n%s", user)
 	}
 
 	// No system prompt and no history: one message, history marked empty.
 	msgs = buildMessages(Turn{Question: "hi"})
 	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "Conversation so far:\n(none)\n") {
 		t.Errorf("messages = %+v", msgs)
+	}
+
+	// Two different turns share every token up to the history, so Ollama
+	// can reuse its work on that prefix from one turn to the next.
+	other := buildMessages(Turn{Question: "something else"})[0].Content
+	prefix := msgs[0].Content[:strings.Index(msgs[0].Content, "Conversation so far:")]
+	if !strings.HasPrefix(other, prefix) {
+		t.Errorf("the fixed prefix changed between turns")
+	}
+}
+
+func TestExamplesCoverEveryRoute(t *testing.T) {
+	count := map[Route]int{}
+	for _, e := range examples {
+		if letterFor(e.route) == "" {
+			t.Errorf("example %q has route %q, which has no letter", e.question, e.route)
+		}
+		count[e.route]++
+	}
+	for _, o := range options {
+		if count[o.route] == 0 {
+			t.Errorf("no example for route %s", o.route)
+		}
+	}
+	if letterFor("web") != "" {
+		t.Error(`letterFor("web") should be empty`)
+	}
+	// Examples must not repeat a labelled question, or the held-out score
+	// in eval_integration_test.go would flatter the router.
+	rows, err := loadLabelled("testdata/routes.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		for _, e := range examples {
+			if strings.EqualFold(r.Q, e.question) {
+				t.Errorf("example %q is also a labelled question", e.question)
+			}
+		}
 	}
 }
 

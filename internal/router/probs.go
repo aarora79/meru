@@ -15,9 +15,10 @@ import (
 //
 // Ollama reports each token's natural logarithm. math.Exp turns it back into
 // a probability. Dividing the log probability by a temperature above 1
-// flattens the distribution; small models are overconfident, and a fitted
-// value for a 2B model usually lands between 2 and 2.5. Temperature never
-// changes which route wins, only how sure the router claims to be.
+// flattens the distribution, and one below 1 sharpens it. `make router-eval`
+// fits the value on labelled questions; with the current prompt MiniCPM5-2B
+// needs 1.25. Temperature never changes which route wins, only how sure the
+// router claims to be.
 //
 // When two tokens map to the same route, such as "A" and " A", their
 // probabilities add: both are ways of saying A.

@@ -104,8 +104,8 @@ func (r realRouter) Decide(ctx context.Context, question string, history []engin
 }
 
 // observedAgent builds an agent over a fake engine whose Generate answers
-// the router with "A" (direct) at about 0.86, and whose Stream writes
-// secretAnswer. Every part logs to log.
+// the router with "A" (direct) at about 0.78 after the default temperature
+// of 1.25, and whose Stream writes secretAnswer. Every part logs to log.
 func observedAgent(t *testing.T, log *slog.Logger) (*Agent, config.Config) {
 	t.Helper()
 	cfg := testConfig(t)
@@ -315,8 +315,8 @@ func TestTurnSpanTree(t *testing.T) {
 			t.Errorf("meru.route lacks %s", key)
 		}
 	}
-	if v, _ := attrOf(route, "meru.route.p.direct"); v.AsFloat64() < 0.8 {
-		t.Errorf("meru.route.p.direct = %v, want above 0.8", v.AsFloat64())
+	if v, _ := attrOf(route, "meru.route.p.direct"); v.AsFloat64() < 0.7 {
+		t.Errorf("meru.route.p.direct = %v, want above 0.7", v.AsFloat64())
 	}
 
 	var first bool
