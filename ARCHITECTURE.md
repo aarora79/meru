@@ -717,6 +717,7 @@ files with mode `0600`, so only you can read them.
 | `sessions` / `messages` (v0.4) | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
+| `summary_fts` (v0.4) | keyword index over session summaries | session summaries |
 | `tool_calls` | audit log: every MCP, A2A and built-in tool call, with its call ID, session, `kind` (`mcp`, `a2a` or `builtin`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
 | `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
@@ -726,9 +727,9 @@ files with mode `0600`, so only you can read them.
 
 v0.2 built `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`, and v0.3
 added `tool_calls`. Each other table arrives with the milestone marked beside it.
-Replaying transcripts into `messages` and `message_fts` waits for v0.4, where
-session summaries need it; until then the JSONL files are the only copy of a
-conversation.
+v0.4 replays the transcripts into `sessions`, `messages` and their indexes: at
+startup, after each turn and after each summary. `sessions` records how many bytes
+of each file it has read, so a replay reads only the lines added since the last one.
 
 `tool_calls` is mandatory. An assistant with tools that change things needs a record
 you can read afterwards. `dispatch` writes a row as each call ends, and `meru log`
@@ -739,7 +740,8 @@ no `tool_result` line, because `merud` stopped mid-call, gets the outcome
 can jump from a slow trace in Grafana to the rows it produced, and back.
 
 When the embedding model's name or vector size in `meta` stops matching config, the
-store deletes every row of `chunk_vec` and keeps `documents` and `chunks`. Keyword
+store deletes every row of `chunk_vec` and `session_vec` and keeps `documents` and
+`chunks`. The summarizer embeds the summaries again. Keyword
 search keeps working while the indexer re-embeds. The store reports the gap by
 counting chunks that lack a vector (`NeedsReembed`), so the count stays right if
 `merud` stops halfway through.
@@ -1066,8 +1068,12 @@ Meru keeps no index file. The database already indexes the files, and
 - **Episodes** (what happened when) already live in the session transcripts, so
   memory files don't copy them. When a session ends, `merud` asks the `fast` model for
   a one- or two-sentence summary and appends it to the transcript as a `summary`
-  line. The indexer embeds those summaries, so "what did we decide about the
-  portfolio last week?" finds the right session.
+  line. A session ends when it has had no question for `[agent] summary_idle` (30
+  minutes by default); a session that goes on later gets a new summary, and the
+  newest wins. `merud` embeds each summary into `session_vec`, so "what did we
+  decide about the portfolio last week?" finds the right session. On the routes that
+  search files, the prompt gets up to three past sessions under "From earlier
+  conversations", each with its date, summary and best-matching message.
 
 ### How Meru uses them
 
@@ -1472,7 +1478,10 @@ rpc.request                       op, source, question length
 A turn on the `direct` route has no `meru.search`, unless the question names an
 indexed folder. A turn on `direct` or `search` has no tool spans, and one
 `gen_ai.chat main`. The calls of one round run at the same time, so their
-`meru.dispatch` spans overlap. v0.4 adds memories under `meru.retrieve`.
+`meru.dispatch` spans overlap. v0.4 adds memories under `meru.retrieve`, and a
+`meru.retrieve.sessions` span under `meru.turn` for past sessions. Each session
+summary is a trace of its own: `meru.summarize`, with the fast model's
+`gen_ai.chat` inside.
 
 Indexing has traces of its own, apart from any turn. A scan of every folder is one
 `meru.index.scan` span (folders, whether it re-embeds, and the counts it ends with),
@@ -1528,10 +1537,10 @@ for the rest.
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |
 | `meru.turn.iterations` | histogram | route | loop depth |
-| `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
+| `meru.context.tokens` | histogram | section (system/skills/memories/sessions/chunks/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
-| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | retrieval cost (v0.2; memories stage v0.4) |
+| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories/sessions) | retrieval cost (v0.2; memories and sessions stages v0.4) |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
 

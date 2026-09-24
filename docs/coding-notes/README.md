@@ -39,8 +39,9 @@ Read them in this order; each builds on the ones before it.
 18. [builtin](builtin.md): merud's built-in tools, `configure` and `remember`
 19. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
 20. [memory](memory.md): one Markdown file per memory, and the profile in every prompt
-21. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-22. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+21. [summarize](summarize.md): session summaries, written when a session goes quiet, for recall by episode
+22. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+23. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 

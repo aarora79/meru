@@ -73,8 +73,13 @@ const noResults = "A search of the user's files found nothing relevant to this q
 // Searcher finds the excerpts from the user's files that best answer query,
 // best first. merud passes an adapter around retrieve.Search; tests pass a
 // fake. It fails when the embedding or the store fails.
+//
+// SearchSessions finds the n past sessions that best match query, best
+// first, leaving out the session excludeSession; merud's adapter calls
+// retrieve.SearchSessions. See earlier.go.
 type Searcher interface {
 	Search(ctx context.Context, query string) ([]retrieve.Result, error)
+	SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error)
 }
 
 // Router picks a route for one turn. The agent defines the interface with
@@ -310,6 +315,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				return err
 			}
 		}
+		// Past sessions join the files' section: no numbers, no sources event.
+		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
 	msgs := a.prompt(ctx, history, question, files, len(specs) > 0)
@@ -738,8 +745,9 @@ func shortPath(home, p string) string {
 // files. The profile sits right after whoIsWho, so the rule that "I" means
 // the user and the facts about who the user is read together.
 //
-// files is the "From your files" section for a turn that searched, or ""
-// for one that didn't. tools is true on a turn that offers tools.
+// files is the "From your files" section for a turn that searched, then
+// "From earlier conversations" when past sessions match, or "" for a turn
+// that didn't search. tools is true on a turn that offers tools.
 // est_tokens is characters divided by four, a rough rule for English text;
 // the model's own count arrives with its answer.
 func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string, tools bool) []engine.Message {

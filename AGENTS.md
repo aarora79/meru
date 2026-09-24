@@ -150,6 +150,7 @@ internal/
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer (v0.4 groundwork)
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
+  summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
   agent/             one turn: route, build the prompt, run tool rounds, stream the answer
   transcript/        append-only JSONL session files
   rpc/               newline-delimited JSON over the Unix socket: client and server

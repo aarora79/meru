@@ -39,6 +39,7 @@ var forbiddenClientPackages = []struct {
 	{"internal/store", "merud owns the store"},
 	{"internal/retrieve", "retrieval runs in merud next to the store"},
 	{"internal/memory", "merud owns memory"},
+	{"internal/summarize", "merud writes the session summaries with the fast model"},
 	{"internal/mcp", "merud owns the MCP clients"},
 	{"internal/dispatch", "every tool call goes through dispatch in merud"},
 	{"internal/builtin", "the built-in tools run in merud, through dispatch"},

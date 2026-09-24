@@ -263,6 +263,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 
 type Searcher interface {
     Search(ctx context.Context, query string) ([]retrieve.Result, error)
+    SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error) // v0.4
 }
 
 // internal/index/indexer.go
@@ -276,7 +277,9 @@ type Sink interface {
 
 The same pattern again. `cmd/merud` passes `searchAdapter`, which calls
 `retrieve.Search` on the store with the fixed list sizes (50, 50, 10), as the
-agent's `Searcher`; a nil `Searcher` turns search off. It passes the
+agent's `Searcher`; a nil `Searcher` turns search off. From v0.4 the same
+adapter calls `retrieve.SearchSessions`, which recalls past sessions for the
+"From earlier conversations" section. It passes the
 `*store.Store` itself as the indexer's `Sink`. Each package's tests pass a fake
 instead, so neither needs a database file or a model.
 

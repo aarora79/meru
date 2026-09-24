@@ -2,7 +2,7 @@
 
 **Code:** `internal/obs/` (`doc.go`, `obs.go`, `instruments.go`, `setup.go`, `spans.go`,
 `log.go`, `obs_test.go`, `log_test.go`)
-**Milestone:** v0.1
+**Milestone:** v0.1; the `sessions` section and stage in v0.4
 **Architecture:** [Observability](../../ARCHITECTURE.md#observability)
 
 ## What it does
@@ -104,6 +104,10 @@ and tool names come from config, so they form a small set, with one exception: a
 denied call names a tool the model made up. `RecordToolCall` reports those names
 as `other`, so a model that invents names can't grow the series without end.
 
+v0.4 adds `sessions` to two bounded sets: the prompt sections of
+`meru.context.tokens`, for the "From earlier conversations" section, and the
+retrieval stages of `meru.retrieval.duration`, for the recall of past sessions.
+
 Three functions (v0.3) feed the "Meru usage" dashboard, which shows the same
 trends as `meru usage`:
 
@@ -152,7 +156,8 @@ its log lines and transcript lines share.
 
 ### spans.go
 
-Both the router and the agent call a model, so the `gen_ai.chat` span lives here:
+The router, the agent and the summarizer all call a model, so the `gen_ai.chat`
+span lives here:
 
 ```go
 ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "fast", Model: m, MaxTokens: 1})

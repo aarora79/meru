@@ -120,10 +120,11 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 
 // serve does the work between reading config and shutting down: telemetry,
 // the engine, the runtime check, claiming the socket, warming the models,
-// opening the store, and then three jobs side by side until ctx is
-// cancelled: answering requests, the startup scan of the [index] folders,
-// and the file watcher. Questions get answers while the first scan runs;
-// they search whatever the index holds so far.
+// opening the store and replaying the transcripts into it, and then four
+// jobs side by side until ctx is cancelled: answering requests, the
+// startup scan of the [index] folders, the file watcher, and the session
+// summarizer. Questions get answers while the first scan runs; they search
+// whatever the index holds so far.
 func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
 	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
 	if err != nil {
@@ -185,7 +186,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 			log.Warn("close store", "err", err)
 		}
 	}()
-	replayTurns(ctx, st, filepath.Join(cfg.Dir, "sessions"), log)
+	sessionsDir := filepath.Join(cfg.Dir, "sessions")
+	replayTurns(ctx, st, sessionsDir, log)
+	replaySessions(ctx, st, sessionsDir, log)
 	ix, err := index.New(cfg.Index, st, eng, log)
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
@@ -207,7 +210,12 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	defer tools.Close()
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, profileAdapter{mem: mem}, log)
+	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem}, log)
+	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
+	if err != nil {
+		return err
+	}
 	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
@@ -220,6 +228,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
+	g.Go(func() error { sum.Run(gctx); return nil })
 	return g.Wait()
 }
 

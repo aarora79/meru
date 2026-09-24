@@ -156,6 +156,22 @@ func TestGenerateRequestDefaults(t *testing.T) {
 	}
 }
 
+func TestGenerateNoThink(t *testing.T) {
+	// NoThink sends "think": false and asks for no log probabilities.
+	f := newFakeOllama(t, map[string]route{"/api/chat": {200, `{"message":{"content":"ok"},"done":true}`}})
+	e := newTestEngine(t, f, "")
+	if _, err := e.Generate(context.Background(), nil, nil, Options{Model: "m", NoThink: true}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	body := f.body(t, "/api/chat")
+	if body["think"] != false {
+		t.Errorf("request think = %#v, want false", body["think"])
+	}
+	if v, ok := body["logprobs"]; ok {
+		t.Errorf("request has logprobs = %v, want it left out", v)
+	}
+}
+
 func TestGenerateToolsAndToolCalls(t *testing.T) {
 	reply := `{"message":{"role":"assistant","content":"","tool_calls":[
 		{"id":"abc","function":{"index":0,"name":"get_weather","arguments":{"city":"Paris"}}}]},

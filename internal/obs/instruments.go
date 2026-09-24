@@ -70,8 +70,8 @@ var (
 	sources       = []string{"cli", "tui", "job"}
 	turnOutcomes  = []string{"ok", "error", "cancelled"}
 	routeOutcomes = []string{"ok", "low_confidence", "degraded"}
-	sections      = []string{"system", "skills", "memories", "chunks", "history", "tools"}
-	stages        = []string{"vector", "fts", "fusion", "memories"}
+	sections      = []string{"system", "skills", "memories", "sessions", "chunks", "history", "tools"}
+	stages        = []string{"vector", "fts", "fusion", "memories", "sessions"}
 	toolKinds     = []string{"mcp", "a2a", "builtin"}
 	toolOutcomes  = []string{"ok", "error", "denied", "declined", "cancelled", "timeout"}
 )
