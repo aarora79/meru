@@ -187,6 +187,17 @@ func RecordContextTokens(ctx context.Context, section string, tokens int) {
 		metric.WithAttributes(attr(keySection, bounded(section, sections...))))
 }
 
+// RecordRetrieval records meru.retrieval.duration for one retrieval stage:
+// "vector", "fts", "fusion" or "memories". Any other stage becomes "other".
+func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.retrievalDuration.Record(ctx, d.Seconds(),
+		metric.WithAttributes(attr(keyStage, bounded(stage, stages...))))
+}
+
 // ActiveStreams adds delta (+1 or -1) to meru.rpc.active_streams.
 func ActiveStreams(ctx context.Context, delta int64) {
 	in := load()
