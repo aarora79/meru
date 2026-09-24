@@ -16,7 +16,7 @@ your files first and whether the model may call tools:
 | Route | Searches your files? | Offers tools? |
 | --- | --- | --- |
 | `direct` | no, unless the question names an indexed folder | no |
-| `search` | yes | no |
+| `search` | yes | only the three file tools and the local commands that don't ask |
 | `tools` | yes (the router sends some file questions here, see below) | yes |
 | `search+tools` | yes | yes |
 
@@ -107,6 +107,7 @@ the older tests pass. `SearchSessions` (v0.4) recalls past conversations; see
 type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+    Asks(name string) bool
 }
 ```
 
@@ -117,9 +118,11 @@ transcript lines and the `tool_calls` row, and records the span and metrics.
 The agent only builds the `dispatch.Call` and reads what comes back.
 `Dispatch` returns no error: a call that couldn't run still comes back with
 an outcome (`denied`, `declined`, `error`, `timeout` or `cancelled`) and a
-`Result` whose text tells the model what happened.
+`Result` whose text tells the model what happened. `Asks` says whether a call
+to a tool would ask you first; `toolSpecs` uses it to pick the commands the
+"search" route may offer.
 
-`merud` passes `*dispatch.Dispatcher`, which has these two methods. Tests
+`merud` passes `*dispatch.Dispatcher`, which has these three methods. Tests
 pass `fakeTools`, which answers from a table by tool name. A `nil`
 ToolRunner turns tools off.
 
@@ -455,8 +458,8 @@ show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
 A second rule does the same for tools. When a question names a connected tool
-server, such as "search my obsidian vault", and the route offers at most the
-file tools, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
+server, such as "search my obsidian vault", and the route is `direct` or
+`search`, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
 `search+tools`. `toolServers` reads the server names from the tool names:
 `obsidian` from `obsidian.search_vault`, `research` from
 `a2a.research.summarize`. It leaves out the built-in tools, whose owner,
@@ -650,19 +653,38 @@ for any outcome but `ok`, and `meru chat` draws such a route in amber.
 ### The tool rounds (tools.go)
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
-ToolRunner offers on `tools` and `search+tools`. On `search` it keeps only the
+ToolRunner offers on `tools` and `search+tools`. On `search` it keeps the
 three read-only file tools, `read_file`, `list_folder` and `grep`, which
-`builtin.IsFileTool` names. Ten excerpts can't cover "everything in my work
-folder", and those three read nothing search couldn't. On `direct`, or when
-the ToolRunner is `nil`, it returns `nil`. A model can't call a tool it hasn't
-seen, and the prompt stays shorter.
+`builtin.IsFileTool` names, and the local commands (`cmd.<name>`) for which
+`Asks` says no:
 
-`noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn with
-only the file tools gets `fileToolsNote`: when the excerpts aren't enough, the
-model may read whole files, list folders and grep. Any other turn with tools
-gets `toolsNote`: the model may call the tools, and some calls ask you first.
-A turn with no tools gets neither. `Handle` also records the schemas' size, characters divided by four,
-as `meru.context.tokens` with `section = "tools"`.
+```go
+case "search":
+    var specs []engine.ToolSpec
+    for _, s := range a.tools.Tools() {
+        if builtin.IsFileTool(s.Name) || (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
+            specs = append(specs, s)
+        }
+    }
+    return specs
+```
+
+Ten excerpts can't cover "everything in my work folder", and the three file
+tools read nothing search couldn't. The commands are there because "what
+changed in the meru repo this week?" lands on `search` when `meru` is an
+indexed folder, and a declared `git log` answers it. A command with
+`confirm = true` changes something, so it waits for a tools route. On
+`direct`, or when the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model
+can't call a tool it hasn't seen, and the prompt stays shorter.
+
+`noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn
+whose tools are all file tools or commands, the "search" kinds, gets
+`fileToolsNote` when it has file tools (when the excerpts aren't enough, the
+model may read whole files, list folders and grep) and `commandsNote` when it
+has commands (it may run the `cmd.` tools). Any other turn with tools gets
+`toolsNote`: the model may call the tools, and some calls ask you first. A
+turn with no tools gets none. `Handle` also records the schemas' size,
+characters divided by four, as `meru.context.tokens` with `section = "tools"`.
 
 **The loop.** `converse` runs the rounds:
 
@@ -709,8 +731,8 @@ for {
 1. It gives each call an ID, `call-1`, `call-2` and so on across the turn,
    or the engine's own ID when Ollama sent one, and emits a `tool_call`
    event with the name, the kind and the arguments. `toolKind` reads the
-   kind from the name: `a2a.` in front means an A2A agent, any other dot
-   means an MCP server, and no dot means a built-in tool.
+   kind from the name: `a2a.` in front means an A2A agent, `cmd.` a local
+   command, any other dot an MCP server, and no dot a built-in tool.
 2. It starts every call at once in an `errgroup`, each with a
    `dispatch.Call` holding the ID, name, arguments (`{}` when the model sent
    none), session ID, source, trace ID, `approve`, and `Append`. `Append`

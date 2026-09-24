@@ -34,6 +34,9 @@ type Config struct {
 	Builtin Builtin `toml:"builtin"`
 	// Skills configures the skill registry and the files skills write (v0.4).
 	Skills Skills `toml:"skills"`
+	// Commands lists the local programs the model may run, one tool each
+	// (v0.3). The commands package checks them when merud starts.
+	Commands []Command `toml:"commands"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -201,4 +204,53 @@ type Builtin struct {
 	// Confirm lists built-in tools that ask before each call. Default
 	// ["write_file"].
 	Confirm []string `toml:"confirm"`
+}
+
+// Command is one [[commands]] entry: a program the user declared, which the
+// model sees as the tool "cmd.<name>". The model fills in the parameters;
+// it never writes the command. See ARCHITECTURE.md, "Local commands".
+//
+// Load only parses these entries. commands.New checks them when merud
+// starts, because the rules for placeholders, paths and interpreters live
+// with the code that runs the program.
+type Command struct {
+	// Name makes the tool name "cmd.<name>": letters, digits, - and _.
+	Name string `toml:"name"`
+	// Description tells the model what the command is for.
+	Description string `toml:"description"`
+	// Argv is the program and its arguments. An element may hold "{param}"
+	// placeholders; "{{" and "}}" stand for a literal brace. A leading "~"
+	// means the home directory.
+	Argv []string `toml:"argv"`
+	// Cwd is the folder the program starts in. Empty means the home
+	// directory.
+	Cwd string `toml:"cwd"`
+	// Timeout caps one run, as a Go duration. Empty means 30s; at most 300s.
+	Timeout string `toml:"timeout"`
+	// Confirm makes each call ask the user first.
+	Confirm bool `toml:"confirm"`
+	// EnvAllowlist names environment variables the program gets from
+	// merud's environment, on top of PATH, HOME and LANG.
+	EnvAllowlist []string `toml:"env_allowlist"`
+	// Params declares each placeholder, keyed by its name.
+	Params map[string]CommandParam `toml:"params"`
+}
+
+// CommandParam declares one parameter of a [[commands]] entry.
+type CommandParam struct {
+	// Type is "string", "int", "enum" or "path".
+	Type string `toml:"type"`
+	// Description tells the model what to pass.
+	Description string `toml:"description"`
+	// Under is the folder a path must resolve inside. Path only, and
+	// required for it.
+	Under string `toml:"under"`
+	// Min and Max bound an int. They are pointers so that a missing bound
+	// (nil) differs from a bound of 0.
+	Min *int64 `toml:"min"`
+	Max *int64 `toml:"max"`
+	// Values lists what an enum accepts.
+	Values []string `toml:"values"`
+	// MaxLen caps a string, in bytes. 0 means 4096.
+	MaxLen int `toml:"max_len"`
 }

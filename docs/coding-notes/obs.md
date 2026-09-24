@@ -103,6 +103,9 @@ cancelled before it started) adds to the counter and records no duration. Server
 and tool names come from config, so they form a small set, with one exception: a
 denied call names a tool the model made up. `RecordToolCall` reports those names
 as `other`, so a model that invents names can't grow the series without end.
+The kind is one of `mcp`, `a2a`, `builtin` and `command`, the last for a local
+command, whose server is `meru` and whose tool is `cmd.<name>`: a name from
+config, never its arguments.
 
 v0.4 adds `sessions` to two bounded sets: the prompt sections of
 `meru.context.tokens`, for the "From earlier conversations" section, and the

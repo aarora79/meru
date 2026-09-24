@@ -119,6 +119,11 @@ JSON (`json.RawMessage`):
   many it left out: `… 12 more lines`.
 - **`ArgsLine(args, width)`** squeezes the JSON onto one line with
   `json.Compact`, for a tool line or `meru log`, and cuts it to `width`.
+- **`ArgvLine(argv)`** writes a local command's program and arguments on one
+  line, for `meru tools` and `meru log`. An element that is empty or holds a
+  space, a quote, a backslash or a character that doesn't print gets
+  `strconv.Quote`'s double quotes, so `rg -- "two words"` still reads as two
+  arguments after `--`. It is for people only; `merud` never runs the line.
 - **`Cut(s, width)`** does the cutting. It counts characters (runes), not bytes,
   so it never splits a character such as "é" that takes two bytes.
 

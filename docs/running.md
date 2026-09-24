@@ -319,8 +319,8 @@ meru  builtin · connected
   3 of 3 tools allowed
 ```
 
-Each block is one tool source: an MCP server, another agent, or Meru's built-in
-tools. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
+Each block is one tool source: an MCP server, another agent, Meru's built-in
+tools, or your local commands, each with the program it runs. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
 asks whatever the config says. A source `merud` couldn't reach shows
 `not connected` and the reason. A warning names each `allow` entry the source
 doesn't offer, most often a typo. With no sources, `meru tools` says how to
@@ -341,7 +341,8 @@ meru log -v         # each call's result under it
 
 The columns are the local time, the session, the kind of tool, the tool, how the
 call ended, what you chose when asked (`-` when nobody was asked), how long it took,
-and its arguments, cut to fit one line.
+and its arguments, cut to fit one line. For a local command the last column is the
+program and arguments it ran, such as `git -C /Users/you/repos/meru log --oneline`.
 
 ### See how much you use Meru
 
@@ -557,7 +558,7 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### meru mcp add
 
-An MCP server gives the model tools. Meru knows ten, and `meru mcp list` shows
+An MCP server gives the model tools. Meru knows nine, and `meru mcp list` shows
 them:
 
 ```sh
@@ -569,7 +570,6 @@ meru mcp list
 | `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
 | `fetch` | reading a web page | `uv`, which provides `uvx` |
 | `filesystem` | list, search and read files in the folders you name; writing, editing, moving and making folders ask first | the folders, and Node.js |
-| `shell` | running the programs you allow; each command asks first | the list of programs, and `uv` |
 | `google` | `gmail`, `calendar` and `drive` in one server | a Google OAuth client and `uv`; you sign in to Google on first use |
 | `gmail` | search and read mail; drafting and sending ask first | as for `google` |
 | `calendar` | calendars and events; changing an event asks first | as for `google` |
@@ -656,26 +656,21 @@ When `merud` isn't running, Meru can't try the server. It writes the catalog's
 lists, or an empty `allow` for a server of your own, and the server loads when
 `merud` starts.
 
-#### The filesystem, shell and windows entries
+#### The filesystem and windows entries
 
-These three let the model change your files or run programs. Each one runs as
-you, with no sandbox: an approved call can do anything you can.
+These two let the model change your files or run programs. Each one runs as
+you, with no sandbox: an approved call can do anything you can. The catalog has
+no shell server; to let the model run a program, declare it in `[[commands]]`
+(see [Local commands](#local-commands)).
 
 - **`filesystem`** reads only inside the folders you name. Meru turns `~` into
   your home folder and checks that each folder exists. Reading, listing and
   searching run without asking; `write_file`, `edit_file`, `move_file` and
   `create_directory` ask first.
-- **`shell`** runs [mcp-shell-server](https://github.com/tumf/mcp-shell-server),
-  which runs only the programs in its `ALLOW_COMMANDS` list, with no shell in
-  between. Meru starts you with programs that read and report (`ls`, `cat`,
-  `grep`, `df` and a few more) and asks whether to change the list. An allowed
-  program does whatever its arguments say: `git`, `python` or `bash` in the list
-  can do anything. Every command asks first, and the prompt offers only
-  "once" or "deny": `always_confirm` in the entry means no approval covers the
-  session, so you read each command before it runs.
 - **`windows`** runs [Windows-MCP](https://github.com/CursorTouch/Windows-MCP),
   and only on Windows. Looking at the screen runs without asking. Clicking, typing,
-  PowerShell (every time, like `shell`), files and processes ask first, and the registry tool stays off.
+  PowerShell (every time, with no approval for the session), files and processes
+  ask first, and the registry tool stays off.
   Windows-MCP sends usage data to its makers unless told not to, so the entry
   sets `ANONYMIZED_TELEMETRY = "false"`.
 
@@ -719,6 +714,91 @@ meru tools
 
 `secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
 other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.
+
+### Local commands
+
+To let the model run a program on your machine, declare the whole command in
+`~/.meru/config.toml`. The model picks the command and fills in its parameters;
+it can't add a flag, chain a second program or reach a shell. This one answers
+"what changed in the meru repo this week?":
+
+```toml
+[[commands]]
+name        = "git-log"
+description = "Commits from the past week in one of the user's git repositories"
+argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
+timeout     = "10s"
+
+  [commands.params.repo]
+  type        = "path"
+  under       = "~/repos"
+  description = "The repository's folder, such as meru"
+```
+
+Restart `merud`, then check what the model gets:
+
+```sh
+pkill merud; merud &
+meru tools
+```
+
+```text
+commands  command · connected
+  cmd.git-log
+    runs: git -C {repo} log --since=1.week --oneline
+  1 of 1 tools allowed
+```
+
+Ask, and see what ran:
+
+```sh
+meru "what changed in the meru repo this week?"
+meru log -n 1
+```
+
+```text
+→ cmd.git-log {"repo":"meru"}
+✓ cmd.git-log 25 ms
+…
+2026-09-24 16:04:19  200416-1625  command  meru.cmd.git-log  ok  -  25 ms  git -C /Users/you/repos/meru log --since=1.week --oneline
+```
+
+The rules:
+
+- **Each `{param}` fills one argument.** A value with spaces, quotes or a `;` stays
+  one argument, and `merud` runs the program directly, with no shell. A
+  placeholder inside a longer argument, such as `"--grep={text}"`, works too.
+  Write `{{` and `}}` for a literal brace.
+- **Parameters have types.** `string` takes text up to `max_len` bytes (default
+  4096), and can't start with `-` when it fills a whole argument, so it can't
+  become a flag. `int` takes a whole number, within `min` and `max` if you set
+  them. `enum` takes one of `values`. `path` must exist and, with every link
+  followed, lie inside `under`; `~` works, and a relative path such as `meru`
+  starts at `under`. Every parameter is required.
+- **No shells or interpreters.** `merud` refuses to start when `argv[0]` is `sh`,
+  `bash`, `zsh`, `fish`, `python`, `perl`, `ruby`, `node`, `env`, `pwsh`,
+  `powershell`, `cmd`, `osascript` or the like. A script of your own, named by its
+  path, is fine.
+- **A short environment.** The program gets `PATH`, `HOME` and `LANG`, plus any
+  names in `env_allowlist = ["NAME"]`. It starts in `cwd`, your home folder
+  unless set.
+- **Limits.** `timeout` defaults to `"30s"`, at most `"300s"`; when it passes,
+  `merud` kills the program and everything it started. `merud` keeps the first
+  1 MiB of the output and of the errors.
+- **Asking first.** `confirm = true` makes each run ask, as a tool in a
+  `confirm` list does. Read-only commands can run freely; give anything that
+  changes something `confirm = true`. A scheduled job can't ask, so it skips such
+  a command and its log shows the call as declined.
+- **Routes.** Questions that go to search get the commands without
+  `confirm = true`, so a question about an indexed folder such as `meru` can still
+  run `git log`. The tools routes get every command.
+
+`merud` checks every entry at startup and refuses to start on a bad one, naming
+it: a duplicate name, a placeholder with no parameter, a parameter no placeholder
+uses, a `path` with no `under`, an `under` folder that doesn't exist, a timeout
+over `"300s"`, and so on. A program missing from `PATH` only gets a warning in
+`merud.log`. `config.example.toml` has four starters to copy: `git-log`,
+`git-status`, `search-notes` and `disk-free`.
 
 ## 9. Keep merud running
 

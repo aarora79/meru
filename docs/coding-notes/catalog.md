@@ -20,7 +20,6 @@ offers the model.
 | `brave` | `npx -y @brave/brave-search-mcp-server` | Brave Search API key | `brave_web_search`, `brave_news_search` | none |
 | `fetch` | `uvx mcp-server-fetch` | nothing | `fetch` | none |
 | `filesystem` | `npx -y @modelcontextprotocol/server-filesystem <folders>` | folders | list, search and read files; write, edit, move, make a folder | write, edit, move, make a folder |
-| `shell` | `uvx mcp-shell-server` | the programs to allow (`ALLOW_COMMANDS`) | `shell_execute` | `shell_execute` |
 | `google` | `uvx workspace-mcp --tools gmail calendar drive docs` | Google OAuth client, sign-in | the `gmail`, `calendar` and `drive` lists | theirs too |
 | `gmail` | `uvx workspace-mcp --tools gmail` | Google OAuth client, sign-in | search and read mail, list labels, draft, send | draft, send |
 | `calendar` | `uvx workspace-mcp --tools calendar` | Google OAuth client, sign-in | list calendars and events, free/busy, manage an event | manage an event |
@@ -30,9 +29,16 @@ offers the model.
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
 gives the model nothing. The comment at the top of `catalog.go` names the source
-file each list came from, the version checked, why `shell` uses
-`mcp-shell-server`, and why the Google entries use `workspace-mcp` rather than
-Google's own servers (those run only on Google's machines).
+file each list came from, the version checked, and why the Google entries use
+`workspace-mcp` rather than Google's own servers (those run only on Google's
+machines).
+
+The catalog has no shell server. An earlier version carried `mcp-shell-server`,
+which runs the programs its `ALLOW_COMMANDS` list names. A list of program names
+can't make a shell safe, since `find -exec` or `git -c core.pager=…` runs
+anything, and the real policy sat in the server where `dispatch` couldn't log it.
+`merud` now runs the programs you declare in `[[commands]]` itself; see
+[commands](commands.md).
 
 ## The picture
 
@@ -55,8 +61,8 @@ flowchart LR
 
 An `Entry` holds everything one server needs. `Needs` lists the questions to ask,
 in order. A `Need` has a `Kind`: `api_key` (saved to `secrets.toml` under
-`SecretName`), `path`, `url` or `text` (put in the env variable `Env`; a value
-the entry already has is the default), `folders` (added to the end of `Args`), or
+`SecretName`), `path` or `url` (put in the env variable `Env`; a value the
+entry already has is the default), `folders` (added to the end of `Args`), or
 `note` (something you do yourself, such as signing in to Google). `Requires` sums
 the needs up in a few words for `meru mcp list`, and `OS` names the one system an
 entry runs on, when there is one (`windows`).

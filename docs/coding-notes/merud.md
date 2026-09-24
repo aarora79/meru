@@ -304,8 +304,25 @@ server a probe names, and `probeResult` copies `mcp.ProbeInfo` into
 ### merud: tools.go
 
 `toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
-pool, the A2A client, the built-in tools and the `dispatch.Dispatcher` that joins
-them. Besides `tools` and `log`, it answers the two ops `meru mcp add` uses:
+pool, the A2A client, the built-in tools, the local commands and the
+`dispatch.Dispatcher` that joins them.
+
+`newToolService` checks the `[[commands]]` entries with `commands.New` first,
+before any MCP server starts, so a bad entry stops `merud` with an error that
+names it and leaves nothing to clean up. It then joins the four backends in
+this order:
+
+```go
+s.dispatcher = dispatch.New(
+    []dispatch.Backend{bt, cmds, mcpBackend{pool: pool}, ac},
+    st,
+    dispatch.Options{Redact: s.redact, Log: log},
+)
+```
+
+The first backend to offer a name keeps it, so no MCP server can shadow
+`configure`, and one named `cmd` can't shadow a command. The commands don't
+reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides `tools` and `log`, it answers the two ops `meru mcp add` uses:
 
 | Op | What it does | Reply |
 | --- | --- | --- |
@@ -445,18 +462,23 @@ Run mail.send? [o]nce  [s]ession  [d]eny:
 source: its name, kind, transport and whether `merud` reached it, then the
 tools the model may use, with "asks first" or "always asks" beside those that
 need approval, the count allowed out of the count offered, and a warning for
-each `allow` entry the source doesn't offer. With no source, it says how to
-add one. `toolsText` pads tool names with `%-*s`, whose `*` takes the width
-from the argument list.
+each `allow` entry the source doesn't offer. A local command gets one more
+line, `runs:` and its argv template, from `ToolInfo.Argv`. With no source, it
+says how to add one. `toolsText` pads tool names with `%-*s`, whose `*` takes
+the width from the argument list.
 
 `meru log` sends `OpLog` with `Limit` from `-n` (20 by default) and prints one
 line per call, newest first. `writeLog` lines up the columns with
 `text/tabwriter`, which pads each tab-separated cell to the widest in its
 column. It writes the table into a buffer first, so `-v` can put each call's
-result on its own line under it without breaking the columns.
+result on its own line under it without breaking the columns. `argsCell` fills
+the last column: the arguments as compact JSON cut to 60 characters, or for a
+local command (`kind` "command") the `argv` from the row, written as a command
+line with `rpc.ArgvLine` and cut to 160, since the argv is the audit record.
 
 `rpc.ArgsLines` and `rpc.ArgsLine` format arguments for the prompt and the log,
-so `meru chat` shows them the same way.
+so `meru chat` shows them the same way. `rpc.ArgvLine` joins an argv with spaces
+and quotes an element that holds a space or a quote, for display only.
 
 ### meru: usage.go
 

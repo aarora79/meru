@@ -1,6 +1,7 @@
 // Package catalog is the short list of MCP servers Meru knows how to set up:
-// web search, web page fetch, files in chosen folders, shell commands,
-// Gmail, Calendar, Drive and Docs, Obsidian, and on Windows the desktop.
+// web search, web page fetch, files in chosen folders, Gmail, Calendar,
+// Drive and Docs, Obsidian, and on Windows the desktop. It has no shell
+// server: merud runs the programs you declare in [[commands]] itself.
 // See ARCHITECTURE.md, "Adding an MCP server".
 //
 // Each Entry says how to start the server, what it needs from the user (an

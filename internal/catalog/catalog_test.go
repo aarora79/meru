@@ -54,7 +54,7 @@ func TestEntries(t *testing.T) {
 						t.Error("an api_key Need has no SecretName")
 					}
 					asked[n.SecretName] = true
-				case NeedPath, NeedURL, NeedText:
+				case NeedPath, NeedURL:
 					if n.Env == "" {
 						t.Errorf("a %s Need has no Env", n.Kind)
 					}

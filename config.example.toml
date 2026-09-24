@@ -150,6 +150,64 @@ watch = true
 # confirm = []
 # timeout = "60s"
 
+# Local commands (v0.3): programs the model may run, declared one by one.
+# None by default. See ARCHITECTURE.md, "Local commands".
+#
+# Each [[commands]] entry becomes one tool, "cmd.<name>". The model picks
+# the command and fills in its parameters; it can't add a flag, chain a
+# second program or reach a shell. merud runs argv[0] directly, with no
+# shell, and refuses a shell or script interpreter (sh, bash, python, node,
+# env and the like) as the program. Each {param} placeholder takes one
+# value and stays inside its argv element, even with spaces or quotes in
+# it; write {{ and }} for a literal brace. A leading "~" means your home
+# folder. Parameter types:
+#
+#   string  any text up to max_len bytes (default 4096); it can't start
+#           with "-" when it fills a whole element, so it can't be a flag
+#   int     a whole number, within min and max when set
+#   enum    one of values
+#   path    must exist and, links followed, lie inside under (required);
+#           a relative path starts at under
+#
+# The program gets PATH, HOME, LANG and the names in env_allowlist from
+# merud's environment, nothing else. It starts in cwd (default: your home
+# folder) and is killed, with every process it started, after timeout
+# (default "30s", at most "300s"). merud keeps 1 MiB of each of stdout and
+# stderr. confirm = true asks you before each run; a scheduled job can't
+# ask, so it skips such a command. merud reads this list when it starts,
+# so restart it after a change. `meru tools` shows what each command runs,
+# and `meru log` shows the argv of every run.
+#
+# [[commands]]
+# name        = "git-log"
+# description = "Recent commits in one of the user's repositories"
+# argv        = ["git", "-C", "{repo}", "log", "--oneline", "-n", "20"]
+# timeout     = "10s"
+#   [commands.params.repo]
+#   type  = "path"
+#   under = "~/repos"
+#
+# [[commands]]
+# name        = "git-status"
+# description = "Files changed but not committed in one of the user's repositories"
+# argv        = ["git", "-C", "{repo}", "status", "--short"]
+#   [commands.params.repo]
+#   type  = "path"
+#   under = "~/repos"
+#
+# [[commands]]
+# name        = "search-notes"
+# description = "Full-text search across the user's notes"
+# argv        = ["rg", "--json", "--", "{pattern}", "~/notes"]
+#   [commands.params.pattern]
+#   type        = "string"
+#   description = "The text or regular expression to find"
+#
+# [[commands]]
+# name        = "disk-free"
+# description = "Free space on each mounted disk"
+# argv        = ["df", "-h"]
+
 [builtin]
 # Built-in tools that ask before each call. configure, which edits this
 # file, always asks and offers no approval for the session, whatever this

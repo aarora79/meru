@@ -43,6 +43,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
 | `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file` and the read-only `read_file`, `list_folder` and `grep` | `builtin.go`: `Confirm`, `Call`; then `files.go` |
+| `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
@@ -70,13 +71,14 @@ is also the order to learn the packages in: start at the bottom.
 flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
     merud --> index & retrieve & store
-    merud --> dispatch & mcp & a2a & builtin & secrets
+    merud --> dispatch & mcp & a2a & builtin & commands & secrets
     merud --> memory & skills & summarize
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     tui --> rpc
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
     builtin --> dispatch & catalog & secrets & config & memory & index
+    commands --> dispatch & engine & rpc & config
     summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
     dispatch --> store & transcript & engine & rpc & obs
@@ -97,7 +99,7 @@ flowchart TD
 reads the profile and the skills through them, `builtin` saves memories, and
 `index` copies the memory files into the store. `builtin` imports `index` so the
 file tools apply the indexer's skip rules instead of a copy, and `agent` imports
-`builtin` for `IsFileTool`, which names the tools the `search` route offers. `mcp` doesn't
+`builtin` for `IsFileTool`, which names the file tools the `search` route offers. `mcp` doesn't
 know `dispatch`: `cmd/merud/backends.go` wraps the pool in `mcpBackend`, so the
 pool stays a plain MCP client.
 
@@ -106,7 +108,8 @@ Three things to notice:
 - **`cmd/meru` stays small.** It reaches `rpc`, `tui`, `config` and `loopback`,
   plus `catalog` and `secrets` for `meru setup` and `meru mcp add`, which write
   `config.toml` and `secrets.toml` and talk to no model and no store. It never
-  reaches `engine`, `agent`, `transcript`, `store`, `index`, `dispatch` or `mcp`.
+  reaches `engine`, `agent`, `transcript`, `store`, `index`, `dispatch`, `mcp` or
+  `commands`.
   The client only moves messages; the daemon does the work. A test in
   `internal/policy` fails the build if this ever changes.
 - **`loopback` imports nothing of Meru's.** It sits at the bottom so every package
@@ -311,11 +314,12 @@ turns a `direct` route into `search`.
 type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+    Asks(name string) bool // would a call ask first? picks the "search" route's commands
 }
 
 // internal/dispatch/dispatch.go
 type Backend interface {
-    Kind() string                              // "mcp", "a2a" or "builtin"
+    Kind() string                              // "mcp", "a2a", "builtin" or "command"
     Tools() []engine.ToolSpec                  // allowed tools, by full name
     Confirm(name string) Confirm               // ConfirmNever, ConfirmAsk or ConfirmAlways
     Locate(name string) (server, tool string)  // for rows and metrics
@@ -335,11 +339,15 @@ session, the source, the trace ID, and two functions: `Append`, which writes a
 transcript line through the agent, and `Approve`, the rpc server's
 `ApproveFunc`. `dispatch` never touches the socket or the session file itself.
 
-`Backend` is the one interface with three implementations, which is why it
-exists: `builtin.Tools`, `mcpBackend` (in `cmd/merud/backends.go`, wrapping
-`*mcp.Pool`) and `*a2a.Client`. `cmd/merud/tools.go` builds them in that order in
-`newToolService`. When two backends offer the same name, the first keeps it, so no
-server can shadow `configure`. `Dispatcher.Replace` swaps in a new MCP backend
+`Backend` is the one interface with four implementations, which is why it
+exists: `builtin.Tools`, `*commands.Set`, `mcpBackend` (in
+`cmd/merud/backends.go`, wrapping `*mcp.Pool`) and `*a2a.Client`.
+`cmd/merud/tools.go` builds them in that order in `newToolService`. When two
+backends offer the same name, the first keeps it, so no server can shadow
+`configure` or a `cmd.` tool. `*commands.Set` is also a `dispatch.Auditor`: its
+`AuditArgs` returns the argv a call will run, and `dispatch` records that in
+place of the model's arguments in the `tool_call` line, the approval prompt and
+the row. `Dispatcher.Replace` swaps in a new MCP backend
 after `configure` changes the servers. `dispatch.Recorder`, one method,
 `InsertToolCall`, is how `dispatch` writes the row; `*store.Store` satisfies it.
 
@@ -393,7 +401,7 @@ sequenceDiagram
     M->>E: embedDims: embed one probe text to learn the vector size
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
-    M->>M: newToolService: secrets.Load, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
+    M->>M: newToolService: secrets.Load, commands.New, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     par errgroup, until Ctrl-C, SIGTERM or a server error
@@ -411,12 +419,14 @@ adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`
 and `reloadMCP`).
 
 `newToolService` loads `secrets.toml` first and fails when other users can read
-it, then starts the MCP pool and builds the A2A client, which contacts no agent
-until a turn needs one. It joins the built-in tools, the pool and the A2A client
-in one `Dispatcher`, in that order. Last, `store.ReplayToolCalls` rebuilds
+it, then checks the `[[commands]]` entries with `commands.New`, starts the MCP
+pool and builds the A2A client, which contacts no agent until a turn needs one.
+It joins the built-in tools, the commands, the pool and the A2A client in one
+`Dispatcher`, in that order. Last, `store.ReplayToolCalls` rebuilds
 `tool_calls` from the transcripts, but only when the table is empty, so a deleted
-`meru.db` loses no history. A bad `[[mcp.servers]]` or `[[a2a.agents]]` entry
-stops `merud` here, with a message that names the entry and the key. The probe asks the embedding model rather than config for the vector
+`meru.db` loses no history. A bad `[[commands]]`, `[[mcp.servers]]` or
+`[[a2a.agents]]` entry stops `merud` here, with a message that names the entry
+and the key; a command's program missing from `PATH` only logs a warning. The probe asks the embedding model rather than config for the vector
 size, so a new embedding model can't leave a stale number behind; when the model or
 the size changed, `store.Open` drops the old vectors and the startup scan re-embeds.
 
@@ -567,11 +577,13 @@ and passes the session ID back each time so the conversation continues. Its
 1. **`cmd/meru/tools.go` → `toolsCmd`** sends `tools`. `merud`'s
    **`handleTools`** emits one `tools` event from `Dispatcher.Servers`, which joins
    each backend's `Status`. `toolsText` prints each source, whether `merud`
-   reached it, its allowed tools and which ask first.
+   reached it, its allowed tools and which ask first, and for a local command the
+   argv template it runs.
 2. **`cmd/meru/log.go` → `logCmd`** sends `log` with `-n` as `Limit`.
    **`handleLog`** reads the newest rows with `store.ToolCalls` and cuts each
    result to 300 characters. `writeLog` lines them up with `text/tabwriter`; `-v`
-   adds each result under its row.
+   adds each result under its row. A local command's row shows the argv it ran,
+   as a command line.
 
 ### `meru setup` and `meru mcp add`
 

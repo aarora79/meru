@@ -1,6 +1,7 @@
 // This file holds the helpers both clients use to show a tool call's
 // arguments: ArgsLines for an approval prompt, which has room for several
-// lines, and ArgsLine for a log or status line, which has room for one.
+// lines, ArgsLine for a log or status line, which has room for one, and
+// ArgvLine for a local command's program and arguments.
 
 package rpc
 
@@ -8,7 +9,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -61,4 +64,30 @@ func Cut(s string, width int) string {
 	}
 	runes := []rune(s)
 	return string(runes[:width-1]) + "…"
+}
+
+// ArgvLine writes a command's program and arguments on one line, separated
+// by spaces, as a reader would type them: an element that is empty or holds
+// a space, a quote, a backslash or a character that doesn't print gets Go's
+// double quotes, so each element stays readable as one. The line is for
+// people only; merud never runs it, and runs no shell.
+func ArgvLine(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		plain := a != ""
+		for _, r := range a {
+			if r <= ' ' || r == '"' || r == '\\' || r == '\'' || !unicode.IsPrint(r) {
+				plain = false
+				break
+			}
+		}
+		if plain {
+			parts[i] = a
+		} else {
+			// strconv.Quote wraps the string in double quotes and escapes
+			// quotes, backslashes and characters that don't print.
+			parts[i] = strconv.Quote(a)
+		}
+	}
+	return strings.Join(parts, " ")
 }

@@ -62,6 +62,9 @@ prompt picked 17 of 36.
   Gmail, Calendar, Drive and Docs, Obsidian), added for you or by copy-paste
 - [x] Built-in `configure` tool that always asks; secrets in `~/.meru/secrets.toml`
 - [x] `meru tools list` / `meru log`
+- [x] Local commands: `[[commands]]` entries become `cmd.<name>` tools with typed
+  parameters, run through `dispatch` with no shell; the `tool_calls` row holds the
+  argv. The catalog carries no shell server
 
 **Done when:** it answers a question by calling an MCP server you already run.
 

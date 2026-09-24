@@ -1,6 +1,6 @@
 // This file builds the tools the model may use and answers the tool ops. A
 // toolService owns the secrets, the MCP pool, the A2A client, the built-in
-// tools and the dispatcher that joins them, and swaps in a new MCP pool
+// tools, the local commands and the dispatcher that joins them, and swaps in a new MCP pool
 // when the configure tool changes config.toml or a client asks for a
 // reload. It also answers the probe op, which tries a server before the
 // user adds it.
@@ -18,6 +18,7 @@ import (
 
 	"github.com/aarora79/meru/internal/a2a"
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/commands"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/index"
@@ -50,8 +51,8 @@ type toolService struct {
 	reload  sync.Mutex       // lets one reload run at a time
 }
 
-// newToolService loads secrets.toml, starts the MCP pool and the A2A
-// client, builds the built-in tools over the memory folder mem, with
+// newToolService loads secrets.toml, checks the [[commands]] entries,
+// starts the MCP pool and the A2A client, builds the built-in tools over the memory folder mem, with
 // onRemember to run after remember saves a memory, and over the indexer
 // ix, which the file tools read through, and joins them in one dispatcher
 // that
@@ -59,12 +60,19 @@ type toolService struct {
 // transcripts if the table is empty, so a deleted meru.db loses no history.
 //
 // It fails when secrets.toml can't be read or is readable by others, or
-// when a server or agent entry is wrong; merud then refuses to start, so a
-// bad entry shows at once.
+// when a command, server or agent entry is wrong; merud then refuses to
+// start, so a bad entry shows at once. A command's program missing from
+// PATH is only a warning in the log.
 func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
+	}
+	// The commands come first: they start nothing, so a bad entry stops
+	// merud before any MCP server starts.
+	cmds, err := commands.New(cfg.Commands, log)
+	if err != nil {
+		return nil, fmt.Errorf("commands: %w", err)
 	}
 	pool, err := newPool(ctx, cfg.MCP.Servers, sec, log)
 	if err != nil {
@@ -91,9 +99,10 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// [index] needs a restart anyway.
 	bt := builtin.New(configPath, cfg.Builtin, mem, outputDir, ix, s.reloadMCP, onRemember)
 	// Backend order decides which one keeps a tool name two of them offer:
-	// the built-ins first, so no server can shadow configure.
+	// the built-ins first, so no server can shadow configure, then the
+	// commands, so an MCP server named "cmd" can't shadow one.
 	s.dispatcher = dispatch.New(
-		[]dispatch.Backend{bt, mcpBackend{pool: pool}, ac},
+		[]dispatch.Backend{bt, cmds, mcpBackend{pool: pool}, ac},
 		st,
 		dispatch.Options{Redact: s.redact, Log: log},
 	)
@@ -107,7 +116,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		log.Info("tool_calls rebuilt from transcripts", "calls", n)
 	}
 	log.Info("tools ready", "mcp_servers", len(cfg.MCP.Servers), "a2a_agents", len(agents),
-		"tools", len(s.dispatcher.Tools()))
+		"commands", cmds.Len(), "tools", len(s.dispatcher.Tools()))
 	return s, nil
 }
 

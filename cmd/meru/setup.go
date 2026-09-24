@@ -205,7 +205,7 @@ func (c *console) doIt(ctx context.Context, socket string, e catalog.Entry) (boo
 				return false, nil
 			}
 			pending[n.SecretName] = v
-		case catalog.NeedPath, catalog.NeedURL, catalog.NeedText:
+		case catalog.NeedPath, catalog.NeedURL:
 			if n.Help != "" {
 				fmt.Fprintln(c.out, n.Help)
 			}

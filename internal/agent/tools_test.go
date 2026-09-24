@@ -46,6 +46,7 @@ type fakeResult struct {
 type fakeTools struct {
 	specs   []engine.ToolSpec
 	results map[string]fakeResult
+	asks    map[string]bool // tools that ask first; missing means no
 
 	mu      sync.Mutex // guards calls and choices
 	calls   []dispatch.Call
@@ -53,6 +54,8 @@ type fakeTools struct {
 }
 
 func (f *fakeTools) Tools() []engine.ToolSpec { return f.specs }
+
+func (f *fakeTools) Asks(name string) bool { return f.asks[name] }
 
 func (f *fakeTools) Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome) {
 	f.mu.Lock()
@@ -122,6 +125,12 @@ func toolsAgent(t *testing.T, route string, eng *fakeEngine, tools ToolRunner) *
 func TestToolsOfferedByRoute(t *testing.T) {
 	all := &fakeTools{specs: []engine.ToolSpec{spec("notes.search"), spec("read_file"), spec("remember"), spec("list_folder"), spec("grep")}}
 	noFiles := &fakeTools{specs: []engine.ToolSpec{spec("notes.search")}}
+	// Two commands: git-log reads, git-push asks first.
+	cmds := &fakeTools{
+		specs: []engine.ToolSpec{spec("notes.search"), spec("read_file"), spec("cmd.git-log"), spec("cmd.git-push"), spec("grep")},
+		asks:  map[string]bool{"cmd.git-push": true},
+	}
+	onlyCmds := &fakeTools{specs: []engine.ToolSpec{spec("configure"), spec("cmd.git-log")}}
 	tests := []struct {
 		name  string
 		route string
@@ -132,6 +141,9 @@ func TestToolsOfferedByRoute(t *testing.T) {
 		{"direct offers none", "direct", all, nil, ""},
 		{"search offers the file tools", "search", all, []string{"read_file", "list_folder", "grep"}, fileToolsNote},
 		{"search with no file tools", "search", noFiles, nil, ""},
+		{"search offers commands that don't ask", "search", cmds, []string{"read_file", "cmd.git-log", "grep"}, fileToolsNote + " " + commandsNote},
+		{"search with commands and no file tools", "search", onlyCmds, []string{"cmd.git-log"}, commandsNote},
+		{"tools offers every command", "tools", cmds, []string{"notes.search", "read_file", "cmd.git-log", "cmd.git-push", "grep"}, toolsNote},
 		{"tools offers all", "tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
 		{"search+tools offers all", "search+tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
 		{"no runner", "tools", nil, nil, ""},
@@ -152,9 +164,10 @@ func TestToolsOfferedByRoute(t *testing.T) {
 				t.Errorf("tools offered = %v, want %v", got, tt.want)
 			}
 			system := c.msgs[0].Content
-			for _, note := range []string{toolsNote, fileToolsNote} {
-				if has := strings.Contains(system, note); has != (note == tt.note) {
-					t.Errorf("system prompt holds %q = %v, want %v", note, has, note == tt.note)
+			for _, note := range []string{toolsNote, fileToolsNote, commandsNote} {
+				want := strings.Contains(tt.note, note)
+				if has := strings.Contains(system, note); has != want {
+					t.Errorf("system prompt holds %q = %v, want %v", note, has, want)
 				}
 			}
 		})
@@ -498,6 +511,8 @@ func TestToolKind(t *testing.T) {
 		{"robinhood.get_portfolio", "mcp"},
 		{"remember", "builtin"},
 		{"a2ax.tool", "mcp"},
+		{"cmd.git-log", "command"},
+		{"cmdx.tool", "mcp"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

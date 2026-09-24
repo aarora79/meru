@@ -28,23 +28,41 @@ const toolsNote = "You may call the tools offered with this question when they h
 	"Some calls ask the user first, and the user may say no."
 
 // fileToolsNote replaces toolsNote on a turn that offers only the three
-// file tools, the "search" route. It tells the model when to reach for
+// file tools, and perhaps commands: the "search" route. It tells the model when to reach for
 // them: when the excerpts from search don't hold enough.
 const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
 	"list folders with list_folder, and find every matching line with grep."
 
-// noteFor returns the note for a turn that offers specs: fileToolsNote
-// when they are all file tools, toolsNote otherwise, and "" for none.
+// commandsNote joins the system prompt on a "search" turn that offers
+// local commands. It names them by their prefix, so the model knows the
+// cmd. tools are there to run.
+const commandsNote = "You may also run the cmd. tools offered with this question. " +
+	"Each runs one program the user declared and returns what it printed."
+
+// noteFor returns the note for a turn that offers specs: toolsNote when
+// any is an MCP tool, an A2A skill or a built-in other than the file tools;
+// otherwise fileToolsNote for file tools and commandsNote for commands, the
+// "search" route's two kinds; and "" for none.
 func noteFor(specs []engine.ToolSpec) string {
-	if len(specs) == 0 {
-		return ""
-	}
+	var files, cmds bool
 	for _, s := range specs {
-		if !builtin.IsFileTool(s.Name) {
+		switch {
+		case builtin.IsFileTool(s.Name):
+			files = true
+		case toolKind(s.Name) == dispatch.KindCommand:
+			cmds = true
+		default:
 			return toolsNote
 		}
 	}
-	return fileToolsNote
+	var notes []string
+	if files {
+		notes = append(notes, fileToolsNote)
+	}
+	if cmds {
+		notes = append(notes, commandsNote)
+	}
+	return strings.Join(notes, " ")
 }
 
 // ToolRunner lists the tools the model may use and runs the calls it makes.
@@ -57,6 +75,9 @@ type ToolRunner interface {
 	// that couldn't run comes back as an outcome other than "ok", with a
 	// Result the model can read.
 	Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+	// Asks reports whether a call to the named tool would ask the user
+	// first.
+	Asks(name string) bool
 }
 
 // turn holds what the rounds need to know about the turn they run in.
@@ -75,14 +96,19 @@ type turn struct {
 }
 
 // toolSpecs returns the tool schemas to offer on route: every tool the
-// ToolRunner allows on "tools" and "search+tools", only the three file
-// tools (read_file, list_folder, grep) on "search", and nil on "direct" or
-// when tools are off. A model can't call a tool it hasn't seen, and the
-// prompt stays shorter (ARCHITECTURE.md, "Who decides what").
+// ToolRunner allows on "tools" and "search+tools"; on "search", the three
+// file tools (read_file, list_folder, grep) and the local commands that
+// don't ask first; and nil on "direct" or when tools are off. A model can't
+// call a tool it hasn't seen, and the prompt stays shorter (ARCHITECTURE.md,
+// "Who decides what").
 //
 // "search" gets the file tools because a question such as "write about
 // everything in my work folder" lands there, and ten excerpts can't cover
-// a folder. The tools only read what search could already reach.
+// a folder. The tools only read what search could already reach. It gets
+// the commands that don't ask because the user declared them to report on
+// something, and a question such as "what changed in the meru repo this
+// week?" lands on "search" when meru is an indexed folder. A command that
+// asks first changes something, so it waits for a tools route.
 func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	if a.tools == nil {
 		return nil
@@ -91,13 +117,13 @@ func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	case "tools", "search+tools":
 		return a.tools.Tools()
 	case "search":
-		var files []engine.ToolSpec
+		var specs []engine.ToolSpec
 		for _, s := range a.tools.Tools() {
-			if builtin.IsFileTool(s.Name) {
-				files = append(files, s)
+			if builtin.IsFileTool(s.Name) || (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
+				specs = append(specs, s)
 			}
 		}
-		return files
+		return specs
 	}
 	return nil
 }
@@ -114,12 +140,14 @@ func schemaChars(specs []engine.ToolSpec) int {
 }
 
 // toolKind says which kind of source a tool's full name points at:
-// "a2a.<agent>.<skill>" is an A2A agent, "<server>.<tool>" an MCP server,
-// and a name with no dot a built-in tool.
+// "a2a.<agent>.<skill>" is an A2A agent, "cmd.<name>" a local command,
+// "<server>.<tool>" an MCP server, and a name with no dot a built-in tool.
 func toolKind(name string) string {
 	switch {
 	case strings.HasPrefix(name, "a2a."):
 		return dispatch.KindA2A
+	case strings.HasPrefix(name, "cmd."):
+		return dispatch.KindCommand
 	case strings.Contains(name, "."):
 		return dispatch.KindMCP
 	default:

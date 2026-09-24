@@ -45,6 +45,17 @@ type Ollama struct {
 A **struct** is a named group of fields, like a Python dataclass. The text in
 backticks is the tag. More in [go-basics/struct-tags.md](go-basics/struct-tags.md).
 
+`Commands` holds the `[[commands]]` entries (v0.3): each is a `Command` with a
+name, a description, an `argv`, a `cwd`, a `timeout`, `confirm`, an
+`env_allowlist`, and a `params` table of `CommandParam` values keyed by
+parameter name. The double brackets in `[[commands]]` make a TOML array of
+tables, which the parser decodes into a slice (`[]Command`); each
+`[commands.params.<name>]` becomes one entry of the `Params` map. `Min` and
+`Max` are `*int64`, pointers, so that "no bound" (`nil`) differs from a bound of
+0. `Load` only decodes these entries. The rules for placeholders, paths and
+interpreters live in [commands](commands.md), which checks the entries when
+`merud` starts, as the MCP pool checks `[[mcp.servers]]`.
+
 ### load.go
 
 `Load` starts from a `Config` full of defaults and lets the TOML parser write

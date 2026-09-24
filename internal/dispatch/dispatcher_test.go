@@ -513,6 +513,7 @@ func TestDeniedCallLocation(t *testing.T) {
 		{"a2a.helper.plan", KindA2A, "helper", "plan"},
 		{"web.search.deep", KindMCP, "web", "search.deep"},
 		{"launch_missiles", KindBuiltin, "meru", "launch_missiles"},
+		{"cmd.rm-rf", KindCommand, "meru", "cmd.rm-rf"},
 		{strings.Repeat("x", 500), KindBuiltin, "meru", strings.Repeat("x", maxDeniedName)},
 	}
 	for _, tt := range tests {
@@ -521,6 +522,64 @@ func TestDeniedCallLocation(t *testing.T) {
 			t.Errorf("guessLocation(%.20q) = %s, %s, %.20s; want %s, %s, %.20s",
 				tt.name, kind, server, tool, tt.kind, tt.server, tt.tool)
 		}
+	}
+}
+
+// auditBackend is a fakeBackend that is also an Auditor: it records
+// "audited" arguments in place of the model's, except for "{}".
+type auditBackend struct {
+	fakeBackend
+}
+
+// AuditArgs returns a fixed object, or nil for empty arguments. The
+// struct embeds fakeBackend, so auditBackend gets all of its methods and
+// adds this one.
+func (b *auditBackend) AuditArgs(name string, args json.RawMessage) json.RawMessage {
+	if string(args) == "{}" {
+		return nil
+	}
+	return json.RawMessage(`{"argv": ["prog", "sk-secret-value-123"]}`)
+}
+
+// TestAuditor checks that dispatch records an Auditor's arguments in the
+// tool_call line, the approval prompt and the row, redacted and compacted,
+// and keeps the model's arguments when AuditArgs returns nil.
+func TestAuditor(t *testing.T) {
+	b := &auditBackend{fakeBackend{kind: KindCommand, tools: []string{"cmd.prog"}, confirm: map[string]Confirm{"cmd.prog": ConfirmAsk}}}
+	rec := &fakeRecorder{}
+	redact := func(s string) string { return strings.ReplaceAll(s, "sk-secret-value-123", "[secret:key]") }
+	d := New([]Backend{b}, rec, Options{Redact: redact})
+	s := &sink{}
+	a := &approver{choice: rpc.ChoiceOnce}
+	c := newCall("cmd.prog", s, a)
+	c.Args = json.RawMessage(`{"x":1}`)
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK {
+		t.Fatalf("outcome = %q", out.Outcome)
+	}
+	const want = `{"argv":["prog","[secret:key]"]}`
+	if got := string(rec.rows[0].Args); got != want {
+		t.Errorf("row args = %s, want %s", got, want)
+	}
+	if got := string(s.lines[0].Args); got != want {
+		t.Errorf("tool_call args = %s, want %s", got, want)
+	}
+	if got := string(a.asked[0].Args); got != want {
+		t.Errorf("approval args = %s, want %s", got, want)
+	}
+
+	c = newCall("cmd.prog", &sink{}, a)
+	c.Args = json.RawMessage(`{}`)
+	d.Dispatch(context.Background(), c)
+	if got := string(rec.rows[1].Args); got != "{}" {
+		t.Errorf("with no audit, row args = %s, want the model's", got)
+	}
+}
+
+func TestAsks(t *testing.T) {
+	b := &fakeBackend{kind: KindCommand, tools: []string{"cmd.a", "cmd.b"}, confirm: map[string]Confirm{"cmd.b": ConfirmAsk}}
+	d := New([]Backend{b}, nil, Options{})
+	if d.Asks("cmd.a") || !d.Asks("cmd.b") || !d.Asks("cmd.gone") {
+		t.Errorf("Asks = %v, %v, %v; want false, true, true", d.Asks("cmd.a"), d.Asks("cmd.b"), d.Asks("cmd.gone"))
 	}
 }
 

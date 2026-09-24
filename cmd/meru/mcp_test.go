@@ -374,34 +374,6 @@ func TestMCPAddAsksFolders(t *testing.T) {
 	}
 }
 
-// TestMCPAddShell adds the shell entry with merud down: Enter keeps the
-// starting list of programs, or the user types their own.
-func TestMCPAddShell(t *testing.T) {
-	tests := []struct{ name, answer, want string }{
-		{"keep the list", "", "ls,pwd,cat"},
-		{"own list", "ls,git", "ls,git"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			c, out, _ := scripted("d\n" + tt.answer + "\ny\n")
-			if err := mcpCmd(t.Context(), filepath.Join(dir, "merud.sock"), []string{"add", "shell"}, c); err != nil {
-				t.Fatalf("mcp add: %v\n%s", err, out)
-			}
-			s := loadServers(t, dir)
-			if len(s) != 1 || !strings.HasPrefix(s[0].Env["ALLOW_COMMANDS"], tt.want) {
-				t.Fatalf("servers = %+v", s)
-			}
-			if !slices.Equal(s[0].AlwaysConfirm, []string{"shell_execute"}) {
-				t.Errorf("always_confirm = %q; the command tool must ask every time", s[0].AlwaysConfirm)
-			}
-			if !strings.Contains(out.String(), "no sandbox") {
-				t.Errorf("output doesn't warn that commands run as you:\n%s", out)
-			}
-		})
-	}
-}
-
 func TestMCPErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -465,7 +437,7 @@ func TestMCPList(t *testing.T) {
 	if err := mcpCmd(t.Context(), sock, []string{"list"}, c); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"filesystem", "shell", "google", "needs", "connected · offers 2, 1 allowed",
+	want := []string{"filesystem", "google", "needs", "connected · offers 2, 1 allowed",
 		"not connected: exit status 1", "not loaded yet"}
 	if runtime.GOOS != "windows" {
 		want = append(want, "Windows only")

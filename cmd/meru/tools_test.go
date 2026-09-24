@@ -42,6 +42,11 @@ func TestToolsCommand(t *testing.T) {
 			Tools: []rpc.ToolInfo{{Name: "mail.send", Confirm: true}}},
 		{Name: "meru", Kind: "builtin", Connected: true, Offered: 3,
 			Tools: []rpc.ToolInfo{{Name: "remember"}, {Name: "configure", Confirm: true, AlwaysAsks: true}}},
+		{Name: "commands", Kind: "command", Connected: true, Offered: 2,
+			Tools: []rpc.ToolInfo{
+				{Name: "cmd.git-log", Argv: []string{"git", "-C", "{repo}", "log", "--since=1.week"}},
+				{Name: "cmd.say", Confirm: true, Argv: []string{"say", "hello there"}},
+			}},
 	}
 	want := `notes  mcp · stdio · connected
   notes.search  asks first
@@ -57,6 +62,13 @@ meru  builtin · connected
   remember
   configure     always asks
   2 of 3 tools allowed
+
+commands  command · connected
+  cmd.git-log
+    runs: git -C {repo} log --since=1.week
+  cmd.say       asks first
+    runs: say "hello there"
+  2 of 2 tools allowed
 `
 	tests := []struct {
 		name     string
@@ -106,6 +118,12 @@ func TestLogCommand(t *testing.T) {
 		{Time: at("10:16:02"), Session: "2026-09-24T101500-ab12", Kind: "mcp", Server: "notes", Tool: "search",
 			Args: json.RawMessage(`{"query":"garden"}`), Result: "3 notes\nmatch", Outcome: "ok", DurationMillis: 120},
 	}
+	// A command's row shows the argv it ran, as a reader would type it.
+	cmdEntry := rpc.LogEntry{Time: at("10:18:40"), Session: "2026-09-24T101500-ab12", Kind: "command", Server: "meru",
+		Tool: "cmd.git-log", Outcome: "ok", DurationMillis: 31,
+		Args: json.RawMessage(`{"argv":["git","-C","/home/sam/repos/meru","log","--since=1.week","--oneline"],"params":{"repo":"meru"}}`)}
+	cmdRow := "2026-09-24 10:18:40  101500-ab12  command  meru.cmd.git-log  ok  -  31 ms  " +
+		"git -C /home/sam/repos/meru log --since=1.week --oneline\n"
 	rows := "2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {\"to\":\"sam@example.com\"}\n" +
 		"2026-09-24 10:16:02  101500-ab12  mcp  notes.search  ok        -     120 ms  {\"query\":\"garden\"}\n"
 	verbose := "2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {\"to\":\"sam@example.com\"}\n" +
@@ -125,6 +143,7 @@ func TestLogCommand(t *testing.T) {
 		{"with -n", []string{"log", "-n", "5"}, entries, 0, 5, rows, ""},
 		{"verbose", []string{"log", "-v"}, entries, 0, 20, verbose, ""},
 		{"empty", []string{"log"}, nil, 0, 20, "No tool calls yet.\n", ""},
+		{"command", []string{"log"}, []rpc.LogEntry{cmdEntry}, 0, 20, cmdRow, ""},
 		{"bad -n", []string{"log", "-n", "0"}, entries, 1, 0, "", "usage: meru log"},
 		{"extra word", []string{"log", "mail"}, entries, 1, 0, "", "usage: meru log"},
 	}

@@ -17,9 +17,6 @@
 //     marked deprecated in favour of read_text_file, so the catalog leaves
 //     it out. Meru's MCP client offers the server no roots, so the folders
 //     on the command line are the ones it may use.
-//   - shell: https://github.com/tumf/mcp-shell-server, PyPI mcp-shell-server
-//     1.1.12 (2026-09-19); one tool, shell_execute, from
-//     src/mcp_shell_server/server.py. See "Why mcp-shell-server" below.
 //   - google, gmail, calendar, drive: https://github.com/taylorwilsdon/google_workspace_mcp,
 //     workspace-mcp 1.28.0 (2026-09-21); names from core/tool_tiers.yaml and
 //     the functions in gmail/gmail_tools.py, gcalendar/calendar_tools.py,
@@ -44,13 +41,6 @@
 // They are remote only, at *mcp.googleapis.com, and need an OAuth sign-in
 // that Meru's client doesn't do. workspace-mcp runs on this machine with
 // your own OAuth client, so the catalog keeps it.
-//
-// Why mcp-shell-server for shell: it runs only the programs named in its
-// ALLOW_COMMANDS env variable, runs them with no shell between (it checks
-// each part of a pipeline), and has one tool. Its 2026 releases each fixed
-// a way around the allow list, so someone maintains it. Desktop Commander
-// has 26 tools and sends usage data to its makers unless told not to;
-// mcp-server-commands runs any command at all.
 //
 // Two servers send usage data by default: windows-mcp (to PostHog) and
 // Desktop Commander, which the catalog doesn't carry. The windows entry
@@ -79,10 +69,6 @@ const (
 	NeedPath = "path"
 	// NeedURL asks for a URL and puts it in the entry's env variable Env.
 	NeedURL = "url"
-	// NeedText asks for a line of text, such as a list of commands, and
-	// puts it in the entry's env variable Env. When Env already has a
-	// value, that is the default: Enter keeps it.
-	NeedText = "text"
 	// NeedNote asks nothing; it tells the user something they must do, such
 	// as sign in to Google in a browser.
 	NeedNote = "note"
@@ -100,12 +86,11 @@ const (
 
 // Need is one thing a server needs from the user before it can run.
 type Need struct {
-	// Kind is NeedAPIKey, NeedPath, NeedURL, NeedText, NeedNote or
-	// NeedFolders.
+	// Kind is NeedAPIKey, NeedPath, NeedURL, NeedNote or NeedFolders.
 	Kind string
 	// SecretName is the secrets.toml entry an api_key goes into.
 	SecretName string
-	// Env is the env variable a path, url or text answer goes into.
+	// Env is the env variable a path or url answer goes into.
 	Env string
 	// Prompt is the question, or for a note the thing to do.
 	Prompt string
@@ -223,13 +208,6 @@ const installUV = "uvx downloads the server the first time merud starts it. " +
 const installNode = "npx downloads the server the first time merud starts it. " +
 	"Install Node.js, which provides npx: https://nodejs.org/"
 
-// shellCommands is the shell entry's starting ALLOW_COMMANDS: programs that
-// read and report, and have no option that writes a file or runs another
-// program (sort -o and find -exec do, so both stay out). The user can
-// change the list when adding the entry. Even these can read any file you
-// can, which is why every call asks first.
-const shellCommands = "ls,pwd,cat,head,tail,wc,grep,date,df,du,uname,which"
-
 // Entries returns the catalog, in the order setup offers it. It builds the
 // list on each call, so a caller that changes an entry changes only its
 // own copy.
@@ -290,35 +268,6 @@ func Entries() []Entry {
 			Confirm: []string{"write_file", "edit_file", "create_directory", "move_file"},
 			Install: installNode,
 			Docs:    "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
-		},
-		{
-			Name:  "shell",
-			Title: "Shell commands",
-			Description: "Runs the programs you allow, with no shell in between; each command asks first. " +
-				"An approved command runs as you, with no sandbox, and can read or change anything you can.",
-			Transport: TransportStdio,
-			Command:   "uvx",
-			Args:      []string{"mcp-shell-server"},
-			Env:       map[string]string{"ALLOW_COMMANDS": shellCommands},
-			Needs: []Need{
-				{
-					Kind:   NeedText,
-					Env:    "ALLOW_COMMANDS",
-					Prompt: "Programs the model may run, separated by commas",
-					Help: "Name each program. The server refuses any other, but an allowed program " +
-						"does whatever its arguments say: `find` can run commands with -exec, " +
-						"and `git`, `python` or `bash` can do anything.",
-				},
-				{Kind: NeedNote, Prompt: "Each command asks you first. Read it and approve it once: " +
-					"approving for the session lets the model run any allowed program without asking again."},
-			},
-			Requires: "the programs to allow, and uv",
-			Allow:    []string{"shell_execute"},
-			// shell_execute runs a program as the user, with no sandbox, so
-			// every command asks and no session approval covers the next.
-			AlwaysConfirm: []string{"shell_execute"},
-			Install:       installUV,
-			Docs:          "https://github.com/tumf/mcp-shell-server",
 		},
 		{
 			Name:        "google",

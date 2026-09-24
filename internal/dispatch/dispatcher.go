@@ -159,6 +159,15 @@ func (d *Dispatcher) Replace(kind string, b Backend) {
 	d.backends = append(d.backends, b)
 }
 
+// Asks reports whether a call to the named tool would ask the user before
+// it runs, unless a session approval covers it. A tool no backend offers
+// counts as asking, the safe answer. The agent loop uses it to offer only
+// commands that never ask on the "search" route.
+func (d *Dispatcher) Asks(name string) bool {
+	b := d.find(name)
+	return b == nil || b.Confirm(name) != ConfirmNever
+}
+
 // find returns the backend that owns the tool name, the first one that
 // lists it, as Tools does. It returns nil when no backend offers the tool.
 func (d *Dispatcher) find(name string) Backend {
@@ -206,6 +215,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 	if b != nil {
 		kind = b.Kind()
 		server, tool = b.Locate(c.Name)
+		// b.(Auditor) is a type assertion: ok is true when b also has
+		// the AuditArgs method.
+		if a, ok := b.(Auditor); ok {
+			if audit := a.AuditArgs(c.Name, c.Args); audit != nil {
+				args = d.redactArgs(audit)
+			}
+		}
 	} else {
 		kind, server, tool = guessLocation(c.Name)
 	}
@@ -448,10 +464,14 @@ func (d *Dispatcher) redactArgs(args json.RawMessage) json.RawMessage {
 }
 
 // guessLocation splits the name of a tool no backend offers, for a denied
-// call's row: "a2a.<agent>.<skill>" is an A2A skill, "<server>.<tool>" an
-// MCP tool, and a name with no dot a built-in. The model wrote the name, so
-// guessLocation cuts the tool part to maxDeniedName characters.
+// call's row: "a2a.<agent>.<skill>" is an A2A skill, "cmd.<name>" a local
+// command, "<server>.<tool>" an MCP tool, and a name with no dot a
+// built-in. The model wrote the name, so guessLocation cuts the tool part
+// to maxDeniedName characters.
 func guessLocation(name string) (kind, server, tool string) {
+	if strings.HasPrefix(name, "cmd.") {
+		return KindCommand, "meru", capRunes(name, maxDeniedName)
+	}
 	// strings.CutPrefix returns the rest of the string and whether the
 	// prefix was there.
 	if rest, ok := strings.CutPrefix(name, "a2a."); ok {

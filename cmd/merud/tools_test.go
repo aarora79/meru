@@ -1,12 +1,14 @@
 // This file tests the MCP probe and reload ops over the socket, against a
 // real MCP server over Streamable HTTP and against this test binary run as
-// a stdio server.
+// a stdio server, and the [[commands]] check at startup.
 
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +17,8 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -208,5 +212,39 @@ func TestMCPReloadOp(t *testing.T) {
 		if got := toolNamesOf(mcpServers(t, call(t, d.sock, rpc.Request{Op: rpc.OpTools}))); !slices.Equal(got, s.want) {
 			t.Errorf("%s: tools = %v, want %v", s.name, got, s.want)
 		}
+	}
+}
+
+// TestCommandsAtStartup checks that merud lists a declared command as the
+// "commands" source, and refuses to start on a bad [[commands]] entry,
+// naming it.
+func TestCommandsAtStartup(t *testing.T) {
+	dir := shortDir(t)
+	good := "[[commands]]\nname = \"disk-free\"\nargv = [\"df\", \"-h\"]\n"
+	d := startDaemon(t, dir, good, &fakeEngine{version: "0.13.0"})
+	var found bool
+	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpTools}) {
+		for _, s := range ev.Servers {
+			if s.Name == "commands" && s.Kind == "command" && len(s.Tools) == 1 &&
+				s.Tools[0].Name == "cmd.disk-free" && slices.Equal(s.Tools[0].Argv, []string{"df", "-h"}) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("the tools op doesn't list cmd.disk-free with its argv")
+	}
+	d.stop()
+
+	bad := "[[commands]]\nname = \"shell\"\nargv = [\"bash\", \"-c\", \"{script}\"]\n" +
+		"[commands.params.script]\ntype = \"string\"\n"
+	cfgPath := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
+	err := run(context.Background(), []string{"-config", cfgPath, "-socket", filepath.Join(dir, "d.sock")}, io.Discard, build)
+	if err == nil || !strings.Contains(err.Error(), `command "shell"`) || !strings.Contains(err.Error(), "runs code given as text") {
+		t.Errorf("run = %v, want a refusal naming the command", err)
 	}
 }

@@ -317,10 +317,11 @@ func TestExampleMatchesDefaults(t *testing.T) {
 	}
 }
 
-// TestExampleCommentedBlocks uncomments the sample [[mcp.servers]] and
-// [[a2a.agents]] blocks in config.example.toml and checks that they load,
-// so the samples can't drift from the real keys. A sample starts at a
-// "# [[" line and ends at the first line that isn't "# " plus text.
+// TestExampleCommentedBlocks uncomments the sample [[mcp.servers]],
+// [[a2a.agents]] and [[commands]] blocks in config.example.toml and checks
+// that they load, so the samples can't drift from the real keys. A sample
+// starts at a "# [[" line and ends at the first line that isn't "# " plus
+// text. The commands package checks the [[commands]] samples further.
 func TestExampleCommentedBlocks(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "config.example.toml"))
 	if err != nil {
@@ -343,8 +344,9 @@ func TestExampleCommentedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
 	}
-	if len(cfg.MCP.Servers) != 2 || len(cfg.A2A.Agents) != 1 {
-		t.Errorf("samples hold %d servers and %d agents, want 2 and 1", len(cfg.MCP.Servers), len(cfg.A2A.Agents))
+	if len(cfg.MCP.Servers) != 2 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 4 {
+		t.Errorf("samples hold %d servers, %d agents and %d commands, want 2, 1 and 4",
+			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands))
 	}
 }
 

@@ -295,9 +295,10 @@ type ToolEvent struct {
 	// ID ties a call's events together within the turn.
 	ID string `json:"id"`
 	// Name is the tool's full name, as the model saw it: "<server>.<tool>"
-	// for MCP, "a2a.<agent>.<skill>" for A2A, "<tool>" for a built-in.
+	// for MCP, "a2a.<agent>.<skill>" for A2A, "cmd.<name>" for a local
+	// command, "<tool>" for a built-in.
 	Name string `json:"name"`
-	// Kind is "mcp", "a2a" or "builtin".
+	// Kind is "mcp", "a2a", "builtin" or "command".
 	Kind string `json:"kind"`
 	// Args are the call's arguments as JSON, as the model wrote them. The
 	// model never sees a secret, so they hold none. Set on "tool_call" only.
@@ -312,7 +313,9 @@ type ToolEvent struct {
 type Approval struct {
 	// ID names this question; the Reply must carry it back.
 	ID string `json:"id"`
-	// Name, Kind and Args describe the call, as on ToolEvent.
+	// Name, Kind and Args describe the call, as on ToolEvent, except that
+	// a command's Args hold the program it will run (see
+	// dispatch.Auditor).
 	Name string          `json:"name"`
 	Kind string          `json:"kind"`
 	Args json.RawMessage `json:"args,omitempty"`
@@ -335,10 +338,10 @@ type Reply struct {
 type ApproveFunc func(ctx context.Context, a Approval) (Choice, error)
 
 // ServerInfo is one tool source on a "tools" event: an MCP server, an A2A
-// agent, or merud's built-in tools.
+// agent, merud's built-in tools, or the local commands.
 type ServerInfo struct {
 	Name string `json:"name"`
-	// Kind is "mcp", "a2a" or "builtin".
+	// Kind is "mcp", "a2a", "builtin" or "command".
 	Kind string `json:"kind"`
 	// Transport is "stdio" or "http" for MCP, "http" for A2A, "" for built-ins.
 	Transport string `json:"transport,omitempty"`
@@ -363,6 +366,10 @@ type ToolInfo struct {
 	// session approval can switch that off (the configure tool).
 	Confirm    bool `json:"confirm,omitempty"`
 	AlwaysAsks bool `json:"always_asks,omitempty"`
+	// Argv is a local command's program and arguments as config.toml
+	// declares them, placeholders and all, so `meru tools` can show what
+	// the command runs. Empty for every other tool.
+	Argv []string `json:"argv,omitempty"`
 }
 
 // LogEntry is one row of the tool_calls audit log.

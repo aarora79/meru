@@ -321,7 +321,9 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
   `Walk` and `ReadText`, so a new skip rule reaches search and the tools at
   once, and the model can never read a file search would refuse.
 - **No bash tool.** Meru runs without a sandbox, so it offers three narrow
-  read-only tools instead of a shell.
+  read-only tools instead of a shell. A program you want the model to run goes
+  in `[[commands]]`, whole, with the model filling only typed parameters; see
+  [commands](commands.md).
 - **One folder, checked twice.** `write_file` checks the path itself and then
   works through an `os.Root`. Either guard alone would stop `..` and links; both
   together mean a gap in one doesn't open the disk.

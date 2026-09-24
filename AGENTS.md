@@ -108,8 +108,8 @@ never by editing them in place.
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `network = true`.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
-   session transcript. That covers MCP tools, A2A agents and built-in tools such as
-   `configure` and `remember`. Never add a second path.
+   session transcript. That covers MCP tools, A2A agents, local commands and
+   built-in tools such as `configure` and `remember`. Never add a second path.
 
 ## Shape
 
@@ -149,6 +149,7 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
   builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
+  commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and the safe append to config.toml
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer
@@ -174,7 +175,8 @@ Makefile             `make check` runs everything CI runs
 and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `mcp`, `dispatch`,
-`a2a`, `builtin` or anything else that talks to a model or stores data.
+`a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
+or runs a program.
 `internal/policy` fails the build if that changes, directly or through another
 package. `loopback` imports only the standard library, so any package can use it.
 

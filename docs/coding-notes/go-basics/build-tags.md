@@ -45,6 +45,10 @@ form for platform code.
   this machine. Run them with `go test -tags integration ./...`, and the end-to-end
   one with `go test -tags 'e2e integration' ./test/e2e/...`. CI doesn't, because
   its runners have no model.
+- `internal/commands/group_unix.go` carries `//go:build unix` and
+  `group_other.go` carries `//go:build !unix`. The Unix file puts each program
+  in its own process group, which Windows lacks, so the build picks one file
+  per platform and `GOOS=windows go build` still works.
 - `internal/policy` parses files regardless of tags, so a file behind `e2e`
   still has to follow the rules.
 

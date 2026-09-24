@@ -1,7 +1,8 @@
 # dispatch
 
 **Code:** `internal/dispatch/` (`doc.go`, `dispatch.go`, `dispatcher.go`,
-`dispatcher_test.go`), and `cmd/merud/backends.go` for the MCP backend
+`dispatcher_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
+commands backend lives in [commands](commands.md).
 **Milestone:** v0.3
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
@@ -12,12 +13,13 @@ When the model asks for a tool, the agent loop hands the call to `dispatch`, and
 `dispatch` alone runs it. It finds the tool's owner, asks you when the tool needs a
 yes, runs the call, and records it in three places: the session transcript, the
 `tool_calls` table in `meru.db`, and the tool metrics and span. AGENTS.md makes this
-the one path to every tool, whether MCP, A2A or built-in, so every call leaves the
-same trail.
+the one path to every tool, whether MCP, A2A, built-in or a local command, so every
+call leaves the same trail.
 
-A tool source is a **backend**. There are three: the MCP client pool, the A2A
-client and merud's built-in tools. `dispatch` knows only the `Backend` interface;
-how MCP or A2A works inside stays in their own packages.
+A tool source is a **backend**. There are four: the MCP client pool, the A2A
+client, merud's built-in tools and the local commands. `dispatch` knows only the
+`Backend` interface; how MCP, A2A or a command works inside stays in their own
+packages.
 
 ## The picture
 
@@ -63,7 +65,40 @@ type Backend interface {
 
 An **interface** in Go lists methods; any type that has them all satisfies it, with
 no `implements` keyword. More in [go-basics/interfaces.md](go-basics/interfaces.md).
-Three backends exist, which is what earns an interface here.
+Four backends exist, which is what earns an interface here. `Kind` returns one of
+four constants: `KindMCP`, `KindA2A`, `KindBuiltin` and `KindCommand`.
+
+**Auditor.** A backend may have one more method, `AuditArgs`, which makes it an
+`Auditor`:
+
+```go
+type Auditor interface {
+    AuditArgs(name string, args json.RawMessage) json.RawMessage
+}
+```
+
+The local commands need it. The model sends `{"repo":"meru"}`, but an audit log
+must show the program that ran, `["git","-C","/home/you/repos/meru","log"]`.
+`Dispatch` writes the `tool_call` line before the call runs, so it can't learn the
+argv from the result. Instead it asks up front: after it finds the backend, it
+checks whether the backend is an `Auditor`, and when `AuditArgs` returns something,
+records that in place of the model's arguments, in the `tool_call` line, the
+approval prompt, the row and the span. `nil` keeps the model's arguments.
+
+```go
+if a, ok := b.(Auditor); ok {
+    if audit := a.AuditArgs(c.Name, c.Args); audit != nil {
+        args = d.redactArgs(audit)
+    }
+}
+```
+
+`b.(Auditor)` is a **type assertion** on an interface: `ok` is true when the value
+inside `b` also has the `AuditArgs` method. The backend still gets the model's own
+arguments in `Call`; the audit changes only what gets recorded. A second option
+was a field on `Result` that `dispatch` would prefer for the `tool_result` line and
+the row. It would leave the `tool_call` line and the prompt showing the model's
+arguments, so you would approve `{"repo":"meru"}` without seeing the command.
 
 `Call` carries one tool call: its ID, the tool's full name, the arguments, the
 session, where the question came from, and two functions: `Append` writes a line to
@@ -113,11 +148,14 @@ reaches `config.toml`.
 satisfies it, and the tests pass a fake. Go's rule is to define an interface where
 it's used, with only the methods the user calls.
 
-**Tools and Replace.** `Tools` walks the backends in order and merges their tools.
-When two backends offer the same name, the first keeps it and a warning goes to the
-log. `find`, which picks the backend for a call, walks in the same order, so the
-model always reaches the tool it saw. `Replace` swaps in a new backend of one kind;
-merud calls it after the `configure` tool changes the MCP servers.
+**Tools, Asks and Replace.** `Tools` walks the backends in order and merges their
+tools. When two backends offer the same name, the first keeps it and a warning goes
+to the log. `find`, which picks the backend for a call, walks in the same order, so
+the model always reaches the tool it saw. `Asks` reports whether a tool would ask
+before it runs; the agent loop uses it to offer the "search" route only the
+commands that don't ask. A tool no backend offers counts as asking. `Replace` swaps
+in a new backend of one kind; merud calls it after the `configure` tool changes the
+MCP servers.
 
 **Dispatch.** The function runs eight steps, commented in the code. Four details
 matter:
@@ -153,7 +191,11 @@ counts as deny. Each answer gets an `approval` line in the transcript.
 the session added, to the backend, so the MCP pool's `tools/call <tool>` span nests under it. The span
 carries `gen_ai.tool.name`, `meru.tool.kind`, `meru.tool.server`,
 `meru.tool.outcome` and `meru.tool.approval`. Arguments and results go on it only
-when `capture_content = true`.
+when `capture_content = true`; for a command the arguments are the argv.
+
+**A denied name.** When no backend offers a tool, `guessLocation` splits its name
+for the row: `a2a.` names an agent, `cmd.` a command, a dot an MCP server, and no
+dot a built-in.
 
 ### cmd/merud/backends.go: the MCP backend
 
@@ -177,8 +219,8 @@ be a secret.
 
 ## Go ideas used here
 
-- **Interfaces** — `Backend` and `Recorder`. More in
-  [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Interfaces** — `Backend`, `Auditor` and `Recorder`, and a type assertion
+  to find an `Auditor`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **`sync.Mutex`** — guards the backend list and the session approvals.
 - **context** — cancellation, `context.WithoutCancel` for the row, and
   `context.WithValue` for the session. More in
@@ -201,8 +243,9 @@ go test -race -run MCP ./cmd/merud/
 a series of calls through the approval rules. `TestRedaction` plants a secret in
 the arguments and the error text and checks it reaches no line, row or prompt.
 `TestSessionOnContext` checks that a backend reads the call's session with
-`SessionFrom`. `TestMCPBackend` runs the backend against a real MCP server on
-127.0.0.1.
+`SessionFrom`. `TestAuditor` checks that an Auditor's arguments reach the line,
+the prompt and the row, redacted. `TestMCPBackend` runs the backend against a real
+MCP server on 127.0.0.1.
 
 ## Why it's built this way
 
@@ -215,6 +258,8 @@ the arguments and the error text and checks it reaches no line, row or prompt.
   wording and the same records.
 - **The session on the context, not in the interface.** One tool needs it, so
   one small function beats a new parameter on every backend's `Call`.
+- **An optional interface for the audit.** One backend needs it, so a type
+  assertion beats a new method that three backends would stub out.
 - **Session approvals in memory.** Writing them to disk would make them outlive the
   session, which ARCHITECTURE.md rules out. Config stays the one place that grants
   lasting trust.
