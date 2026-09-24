@@ -63,6 +63,15 @@ const (
 	// OpSkillReset puts the shipped copy of the built-in skill named
 	// Request.ID back in place of the user's. The reply is "done".
 	OpSkillReset Op = "skill_reset"
+	// OpMCPProbe starts the MCP server described by Request.Server for a
+	// moment, lists the tools it offers, and stops it. Nothing is saved.
+	// The reply is one "probe" event and "done".
+	OpMCPProbe Op = "mcp_probe"
+	// OpMCPReload reads config.toml and secrets.toml again and swaps in a
+	// new MCP pool, so a server added or removed takes effect without a
+	// restart. The reply is one "tools" event with the new state, and
+	// "done".
+	OpMCPReload Op = "mcp_reload"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -93,6 +102,8 @@ type Request struct {
 	// for OpMemoryForget.
 	Kind string `json:"kind,omitempty"`
 	ID   string `json:"id,omitempty"`
+	// Server describes the server to probe, for OpMCPProbe.
+	Server *ProbeServer `json:"server,omitempty"`
 }
 
 // EventType names what an Event carries.
@@ -135,6 +146,8 @@ const (
 	EventMemories EventType = "memories"
 	// EventSkills answers OpSkills and OpSkillShow, in Skills.
 	EventSkills EventType = "skills"
+	// EventProbe answers OpMCPProbe, in Probe.
+	EventProbe EventType = "probe"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -184,6 +197,8 @@ type Event struct {
 	// Skills is set on a "skills" event, and on a "route" event that
 	// loaded skills, where each entry carries only its Name.
 	Skills []SkillInfo `json:"skills,omitempty"`
+	// Probe is set on a "probe" event.
+	Probe *ProbeResult `json:"probe,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -437,4 +452,39 @@ type SkillInfo struct {
 	Edited  bool `json:"edited,omitempty"`
 	// Body is the SKILL.md text, on OpSkillShow only.
 	Body string `json:"body,omitempty"`
+}
+
+// ProbeServer is an MCP server to try before it goes into config: the same
+// fields as an [[mcp.servers]] entry, minus the allow lists. Env and Headers
+// values may be "secret:<name>"; merud resolves them from secrets.toml.
+type ProbeServer struct {
+	Name    string            `json:"name"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Network bool              `json:"network,omitempty"`
+}
+
+// ProbeResult is what a probed server offers.
+type ProbeResult struct {
+	// ServerName and ServerVersion are what the server reports about
+	// itself in the MCP handshake.
+	ServerName    string `json:"server_name,omitempty"`
+	ServerVersion string `json:"server_version,omitempty"`
+	// Tools lists every tool it offers, by the server's own name.
+	Tools []ProbeTool `json:"tools"`
+}
+
+// ProbeTool is one tool a probed server offers, with the hints MCP lets a
+// server give about it. A hint the server leaves out is nil: unknown.
+type ProbeTool struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// ReadOnly is the server's readOnlyHint: the tool doesn't change its
+	// environment. Destructive is destructiveHint: it may delete or
+	// overwrite. MCP says both are hints from the server, not promises.
+	ReadOnly    *bool `json:"read_only,omitempty"`
+	Destructive *bool `json:"destructive,omitempty"`
 }
