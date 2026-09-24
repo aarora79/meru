@@ -37,6 +37,12 @@ type Line struct {
 	Text      string    `json:"text,omitempty"`
 	TokensIn  int       `json:"tokens_in,omitempty"`
 	TokensOut int       `json:"tokens_out,omitempty"`
+	// Route is the route the turn took, and Sources the files whose
+	// excerpts went into its prompt, on an assistant line. Ms is the
+	// turn's duration on an assistant line, and the call's on a
+	// tool_result line. The turns table and `meru usage` rebuild from them.
+	Route   string   `json:"route,omitempty"`
+	Sources []string `json:"sources,omitempty"`
 
 	// The fields below belong to the tool lines (v0.3): "tool_call",
 	// "approval" and "tool_result". CallID ties the three lines of one call

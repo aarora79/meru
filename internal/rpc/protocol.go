@@ -39,6 +39,9 @@ const (
 	// first, at most Request.Limit of them. The reply is one "log" event
 	// and "done".
 	OpLog Op = "log"
+	// OpUsage asks how much Meru has been used. The reply is one "usage"
+	// event and "done".
+	OpUsage Op = "usage"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -100,6 +103,8 @@ const (
 	EventTools EventType = "tools"
 	// EventLog answers OpLog, in Log.
 	EventLog EventType = "log"
+	// EventUsage answers OpUsage, in Usage.
+	EventUsage EventType = "usage"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -142,6 +147,8 @@ type Event struct {
 	// Servers is set on a "tools" event and Log on a "log" event.
 	Servers []ServerInfo `json:"servers,omitempty"`
 	Log     []LogEntry   `json:"log,omitempty"`
+	// Usage is set on a "usage" event.
+	Usage []UsageWindow `json:"usage,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -202,6 +209,8 @@ type IndexStatus struct {
 	Documents int `json:"documents"`
 	Chunks    int `json:"chunks"`
 	Vectors   int `json:"vectors"`
+	// DBBytes is the size on disk of meru.db plus its -wal and -shm files.
+	DBBytes int64 `json:"db_bytes,omitempty"`
 	// Scanning is true while a scan of the folders runs.
 	Scanning bool `json:"scanning,omitempty"`
 	// LastScan is what the last finished scan did, and LastScanAt when it
@@ -318,4 +327,41 @@ type LogEntry struct {
 	Approval       string `json:"approval,omitempty"`
 	DurationMillis int64  `json:"duration_ms"`
 	TraceID        string `json:"trace_id,omitempty"`
+}
+
+// The usage windows, in the order a "usage" event lists them. Today, week
+// and month follow merud's local calendar: today starts at midnight, the
+// week on Monday, the month on the 1st. 1h and 30d roll back from now.
+const (
+	Usage1h       = "1h"
+	UsageToday    = "today"
+	UsageWeek     = "week"
+	UsageMonth    = "month"
+	Usage30d      = "30d"
+	UsageLifetime = "all"
+)
+
+// UsageWindow is how much Meru was used in one window of time, counting
+// answered questions only: a turn that failed or was cancelled has no
+// answer line in the transcript, and the numbers must be rebuildable from
+// the transcripts.
+type UsageWindow struct {
+	// Name is one of the Usage* constants.
+	Name string `json:"name"`
+	// Since is when the window starts (RFC 3339); "" for all time.
+	Since string `json:"since,omitempty"`
+	// Sessions counts the sessions with a question in the window.
+	Sessions int `json:"sessions"`
+	// Turns counts the questions answered.
+	Turns int `json:"turns"`
+	// TokensIn and TokensOut sum the main model's prompt and answer tokens
+	// over every model call of those turns.
+	TokensIn  int64 `json:"tokens_in"`
+	TokensOut int64 `json:"tokens_out"`
+	// ActiveMillis sums how long merud spent answering, question to done.
+	ActiveMillis int64 `json:"active_ms"`
+	// Docs counts the distinct files whose excerpts went into a prompt.
+	Docs int `json:"docs"`
+	// ToolCalls counts the tool calls those turns made.
+	ToolCalls int `json:"tool_calls"`
 }
