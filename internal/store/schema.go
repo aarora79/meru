@@ -16,7 +16,7 @@ import (
 // database from schema_version i to i+1. To change the schema, append a
 // step; never edit one that has shipped, because existing databases have
 // already run it. Later milestones add messages and memories this way, as
-// v0.3 added tool_calls.
+// v0.3 added tool_calls and turns.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -86,6 +86,29 @@ func migrations() []string {
 		);
 		CREATE INDEX tool_calls_ts ON tool_calls (ts);
 		CREATE INDEX tool_calls_session ON tool_calls (session);`,
+
+		// 3: turns, one row per answered question (v0.3), for `meru usage`.
+		//
+		// The agent writes a row when a turn writes its answer, and
+		// ReplayTurns rebuilds the table from the transcripts. ts is when
+		// the question arrived. docs holds a JSON array of the absolute
+		// paths whose excerpts went into the prompt, so SQLite's json_each
+		// can count distinct files across rows.
+		`CREATE TABLE turns (
+			id          INTEGER PRIMARY KEY,
+			session     TEXT NOT NULL DEFAULT '',
+			ts          TEXT NOT NULL,
+			source      TEXT NOT NULL DEFAULT '',
+			route       TEXT NOT NULL DEFAULT '',
+			tokens_in   INTEGER NOT NULL DEFAULT 0,
+			tokens_out  INTEGER NOT NULL DEFAULT 0,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			tool_calls  INTEGER NOT NULL DEFAULT 0,
+			docs        TEXT NOT NULL DEFAULT '[]',
+			trace_id    TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX turns_ts ON turns (ts);
+		CREATE INDEX turns_session ON turns (session);`,
 	}
 }
 

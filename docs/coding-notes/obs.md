@@ -104,6 +104,25 @@ and tool names come from config, so they form a small set, with one exception: a
 denied call names a tool the model made up. `RecordToolCall` reports those names
 as `other`, so a model that invents names can't grow the series without end.
 
+Three functions (v0.3) feed the "Meru usage" dashboard, which shows the same
+trends as `meru usage`:
+
+- `RecordSession` adds one to `meru.sessions`, by source, when a turn starts a
+  new session.
+- `RecordTurnUsage` runs once per answered turn. It adds the main model's tokens
+  to `meru.turn.tokens`, a counter by `gen_ai.token.type` (`input` or
+  `output`), route and source, and records the number of files the turn read in
+  `meru.turn.docs`, a histogram by route. A turn that read no file records 0,
+  so the histogram's count is the number of answered turns.
+- Active time needs no new metric: the sum of `meru.turn.duration` already adds
+  up the seconds merud spent answering.
+
+`gen_ai.client.token.usage` counts the same tokens, once per model call and by
+model and tier. A turn with tool rounds makes several calls, and a call doesn't
+know its turn's route or source. `meru.turn.tokens` adds those two labels, and
+it leaves out turns that failed, so its totals match the `turns` table that
+`meru usage` reads.
+
 `RecordModelCall` writes five metrics from one struct. It works out decode speed as
 `EvalDuration / OutputTokens`, using Ollama's own clock, and skips it when either
 number is zero. It skips time to first token for calls that didn't stream. It records
@@ -213,6 +232,9 @@ To see the dashboard, start the stack and point `merud` at it (details in
 docker compose -f deploy/observability/compose.yaml up -d
 # then browse to http://127.0.0.1:3000 (user admin, password admin)
 ```
+
+Grafana opens on the Meru dashboard. The "Meru usage" dashboard, in the same
+folder, shows one bar per day over the last 30 days.
 
 ## Why it's built this way
 

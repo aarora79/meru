@@ -26,6 +26,7 @@ import (
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/store"
 	"github.com/aarora79/meru/internal/transcript"
 )
 
@@ -77,6 +78,13 @@ type Router interface {
 	Decide(ctx context.Context, question string, history []engine.Message) (Decision, error)
 }
 
+// TurnRecorder keeps one row per answered turn for `meru usage`. merud
+// passes *store.Store; tests pass a fake or nil. Every field but the source
+// also sits in the transcript, so the store can rebuild the rows.
+type TurnRecorder interface {
+	InsertTurn(ctx context.Context, t store.Turn) error
+}
+
 // Decision is what the router concluded. See docs/fast-router.md.
 type Decision struct {
 	Route      string  // "direct", "search", "tools" or "search+tools"
@@ -89,9 +97,10 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
-	search      Searcher   // nil turns search off
-	tools       ToolRunner // nil turns tools off
-	maxRounds   int        // model calls per turn, at most; see converse
+	search      Searcher     // nil turns search off
+	tools       ToolRunner   // nil turns tools off
+	turns       TurnRecorder // nil keeps no turn rows
+	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
@@ -107,8 +116,10 @@ type Agent struct {
 // one of cfg.Index.Folders. search may be nil, which turns search off. It
 // offers the model the tools from tools on the "tools" and "search+tools"
 // routes, for at most cfg.Agent.MaxRounds model calls per turn. tools may be
-// nil, which turns tools off. log may be nil, which means no log lines.
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, log *slog.Logger) *Agent {
+// nil, which turns tools off. It writes a row for each answered turn to
+// turns, which may be nil to keep none. log may be nil, which means no log
+// lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
 	}
@@ -129,6 +140,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		router:      router,
 		search:      search,
 		tools:       tools,
+		turns:       turns,
 		maxRounds:   cfg.Agent.MaxRounds,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
@@ -152,6 +164,9 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 // While tool calls run, Handle calls emit from several goroutines at once,
 // and dispatch calls approve from them too. The rpc server's emit takes a
 // lock for each write, so that is safe.
+//
+// A turn that answers also writes a row to the turns table and records
+// the usage metrics; see recordUsage.
 //
 // Handle fails when the request is bad (empty question, unknown session or
 // source), when the transcript can't be written, when a model call fails, or
@@ -209,13 +224,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	sessionID = sess.ID()
+	if req.Session == "" {
+		obs.RecordSession(ctx, source)
+	}
 	if err := emit(rpc.Event{Type: rpc.EventSession, Session: sessionID}); err != nil {
 		return err
 	}
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
-	if err := a.appendLine(ctx, sess, transcript.Line{Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
+	// The user line carries start as its time, so a turns row rebuilt from
+	// the transcript gets the same time as the row written live.
+	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
 		return err
 	}
 
@@ -253,9 +273,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// user's files there, and an answer from the files beats one from the
 	// model alone.
 	var files string
+	var docs []string // the full paths of the files in the prompt, for the transcript
 	if searches(dec.Route) && a.search != nil {
 		var sources []rpc.Citation
-		files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+		files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
 		if err != nil {
 			return err
 		}
@@ -278,16 +299,50 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		span.SetAttributes(attribute.String("meru.answer", rep.text))
 	}
 
-	if err := a.appendLine(ctx, sess, transcript.Line{
+	// The assistant line holds the turn's facts, so `meru usage` can
+	// rebuild from the files: the route after the override rules above,
+	// how long the turn took, and which files it read.
+	answer := transcript.Line{
 		Type:      transcript.TypeAssistant,
 		Text:      rep.text,
 		TokensIn:  rep.usage.PromptTokens,
 		TokensOut: rep.usage.OutputTokens,
+		Route:     route,
+		Ms:        time.Since(start).Milliseconds(),
+		Sources:   docs,
 		TraceID:   traceID,
-	}); err != nil {
+	}
+	if err := a.appendLine(ctx, sess, answer); err != nil {
 		return err
 	}
+	a.recordUsage(ctx, sessionID, source, start, answer, t.calls)
 	return emit(doneEvent(start, rep))
+}
+
+// recordUsage writes the turns row for an answered turn and records
+// meru.turn.tokens and meru.turn.docs. answer is the assistant line just
+// written, and calls the number of tool calls the turn made.
+//
+// A failed insert only logs a warning: the transcript already holds the
+// turn, and the next rebuild of meru.db brings the row back. The insert
+// runs even when the client hung up after the answer: WithoutCancel keeps
+// ctx's values (the trace) and drops its cancel.
+func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, answer transcript.Line, calls int) {
+	obs.RecordTurnUsage(ctx, obs.TurnUsage{
+		Route: answer.Route, Source: source,
+		TokensIn: answer.TokensIn, TokensOut: answer.TokensOut, Docs: len(answer.Sources),
+	})
+	if a.turns == nil {
+		return
+	}
+	err := a.turns.InsertTurn(context.WithoutCancel(ctx), store.Turn{
+		Session: sessionID, Time: start, Source: source, Route: answer.Route,
+		TokensIn: int64(answer.TokensIn), TokensOut: int64(answer.TokensOut),
+		DurationMillis: answer.Ms, ToolCalls: calls, Docs: answer.Sources, TraceID: answer.TraceID,
+	})
+	if err != nil {
+		a.log.WarnContext(ctx, "turn row not written; the transcript still has the turn", "err", err)
+	}
 }
 
 // logStart writes the debug line that opens a turn: which session it asks
@@ -553,16 +608,16 @@ func isFiller(w string) bool {
 }
 
 // searchFiles searches the user's files for query inside a meru.search
-// span. It returns the prompt section to add under the system prompt, and
-// the citations for the "sources" event, numbered as the section numbers
-// them.
+// span. It returns the prompt section to add under the system prompt, the
+// citations for the "sources" event, numbered as the section numbers them,
+// and the cited files' absolute paths, each once, for the transcript.
 //
 // A search that finds nothing, or runs before anything is indexed, gives a
 // short section saying so and no citations. A search that fails for any
 // reason but a cancelled turn is logged and treated the same way: the
 // answer can still come from the model alone. It returns an error only when
 // ctx ends.
-func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, error) {
+func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, []string, error) {
 	ctx, span := obs.Tracer().Start(ctx, "meru.search")
 	defer span.End()
 	start := time.Now()
@@ -571,7 +626,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 	if err != nil {
 		if ctx.Err() != nil {
 			obs.EndSpanErr(ctx, span, err)
-			return "", nil, fmt.Errorf("search: %w", err)
+			return "", nil, nil, fmt.Errorf("search: %w", err)
 		}
 		// The turn goes on without excerpts, so this is a warning, not the
 		// turn's error.
@@ -580,6 +635,14 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 		results = nil
 	}
 
+	// Keep each file's full path for the transcript before shortening it:
+	// the turns table must name a file the same way whoever reads it.
+	var docs []string
+	for _, r := range results {
+		if !slices.Contains(docs, r.Path) {
+			docs = append(docs, r.Path)
+		}
+	}
 	// Show each path as ~/... to the model and to the client: it is shorter,
 	// and the model has no use for the full path.
 	for i := range results {
@@ -601,7 +664,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 	span.SetAttributes(attribute.Int("meru.search.results", len(results)))
 	a.log.DebugContext(ctx, "search done", "results", len(results),
 		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
-	return section, sources, nil
+	return section, sources, docs, nil
 }
 
 // shortPath writes p under the home folder as ~/..., using the OS's path

@@ -184,6 +184,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 			log.Warn("close store", "err", err)
 		}
 	}()
+	replayTurns(ctx, st, filepath.Join(cfg.Dir, "sessions"), log)
 	ix, err := index.New(cfg.Index, st, eng, log)
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
@@ -198,7 +199,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	defer tools.Close()
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, log)
 	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
@@ -208,7 +209,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// too. The scan and the watcher log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	return g.Wait()
@@ -237,10 +238,37 @@ func openStore(ctx context.Context, cfg config.Config, eng engine.Engine, log *s
 	return st, nil
 }
 
+// replayTurns rebuilds the turns table from the transcripts under
+// sessionsDir when the table is empty, as after meru.db was deleted or
+// came from a Meru without it. A failed replay costs `meru usage` some
+// history, not the answer to any question, so it only logs a warning.
+func replayTurns(ctx context.Context, st *store.Store, sessionsDir string, log *slog.Logger) {
+	n, err := st.ReplayTurns(ctx, sessionsDir)
+	if err != nil {
+		log.Warn("rebuild turns from transcripts", "err", err)
+		return
+	}
+	if n > 0 {
+		log.Info("turns rebuilt from transcripts", "turns", n)
+	}
+}
+
+// handleUsage answers OpUsage with one "usage" event: the turns table added
+// up over each usage window, with today, week and month in merud's local
+// time.
+func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) error) error {
+	windows, err := st.Usage(ctx, time.Now())
+	if err != nil {
+		return err
+	}
+	return emit(rpc.Event{Type: rpc.EventUsage, Usage: windows})
+}
+
 // handler returns the rpc.Handler merud serves: questions go to the agent,
-// the index ops to the index service, and the tools and log ops to the tool
-// service. The rpc server answers pings itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService) rpc.Handler {
+// the index ops to the index service, the tools and log ops to the tool
+// service, and the usage op to the store. The rpc server answers pings
+// itself.
+func handler(a *agent.Agent, idx *indexService, tools *toolService, st *store.Store) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -253,6 +281,8 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService) rpc.Handler 
 			return tools.handleTools(emit)
 		case rpc.OpLog:
 			return tools.handleLog(ctx, req.Limit, emit)
+		case rpc.OpUsage:
+			return handleUsage(ctx, st, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

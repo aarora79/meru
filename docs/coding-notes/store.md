@@ -1,8 +1,8 @@
 # store
 
 **Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`,
-`toolcalls.go`)
-**Milestone:** v0.2; `tool_calls` in v0.3
+`toolcalls.go`, `turns.go`)
+**Milestone:** v0.2; `tool_calls` and `turns` in v0.3
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -13,7 +13,8 @@ file (a **document**), the pieces of text the indexer cut each file into
 (**chunks**), one vector per chunk, and a keyword index over the chunk text.
 The indexer writes to it; retrieval reads from it. From v0.3 it also holds
 `tool_calls`, the audit log of every tool call, which `dispatch` writes and
-`meru log` reads.
+`meru log` reads, and `turns`, one row per answered question, which the agent
+writes and `meru usage` adds up.
 
 Everything in the file can be rebuilt from your files, so the store never
 holds the only copy of anything. Delete `meru.db` and `merud` builds it again.
@@ -95,7 +96,8 @@ returns an error, `write` rolls back and nothing changes.
 `migrations()` returns a list of SQL steps. Step `i` takes the database from
 `schema_version` `i` to `i+1`, and `meta` records the version. `migrate` runs
 each step the file hasn't seen, one transaction per step. v0.3 appended step 2
-for `tool_calls`, and later milestones add `messages` and `memories` the same way. A shipped
+for `tool_calls` and step 3 for `turns`, and later milestones add `messages` and
+`memories` the same way. A shipped
 step never changes, because existing files have already run it.
 
 The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
@@ -238,6 +240,61 @@ the outcome `cancelled`. `dispatch` compacts the arguments and cuts times to the
 second, as the transcript does, so a replayed row matches the row written live;
 `TestReplayMatchesLive` checks it.
 
+### turns.go: usage
+
+Migration step 3 creates `turns`: one row per answered question, with its
+session, the time the question arrived, the source (`cli`, `tui` or `job`), the
+route, the main model's tokens in and out, how long the turn took, how many tool
+calls it made, the files it read, and the trace ID. `docs` holds the files as a
+JSON array of absolute paths, such as `["/Users/me/notes/garden.md"]`, and `[]`
+when the turn read none. Indexes on `ts` and `session` keep the sums fast.
+
+`InsertTurn` writes one row through `write`. The agent calls it after it writes
+the answer to the transcript, so a failed or cancelled turn gets no row.
+
+`ReplayTurns` rebuilds the table the way `ReplayToolCalls` does: only when the
+table is empty, one transaction per session file. `turnsOf` makes one row per
+assistant line. The row's time comes from the user line before it, and its tool
+calls count the `tool_call` lines between the two. Transcripts written before
+v0.3 have no route, duration or sources on the assistant line, so those rows
+keep an empty route, 0 ms and no files. A replayed row has no source either:
+the transcript doesn't record one.
+
+`Usage(ctx, now)` adds up the rows over six windows, in the order the
+`rpc.Usage*` constants give: `1h`, `today`, `week`, `month`, `30d` and `all`.
+`windowStarts` works out where each starts, in `now`'s time zone:
+
+```go
+y, m, d := now.Date()
+today := time.Date(y, m, d, 0, 0, 0, 0, loc)
+sinceMonday := (int(now.Weekday()) + 6) % 7
+week := time.Date(y, m, d-sinceMonday, 0, 0, 0, 0, loc)
+```
+
+`time.Date` accepts a day of 0 or less and moves back into the month before, so
+a week that starts in September for a date in October needs no special case.
+It also keeps midnight at midnight on a daylight-saving day, which subtracting
+24-hour days would not.
+
+Each window runs one query. `COUNT(DISTINCT session)` counts sessions and
+`COUNT(*)` questions; `SUM` adds tokens, time and tool calls. The files count
+reads each row's array with `json_each`, which turns one JSON array into one row
+per path, and counts the distinct paths:
+
+```sql
+SELECT COUNT(DISTINCT j.value) FROM turns AS t, json_each(t.docs) AS j WHERE t.ts >= ?1
+```
+
+`ts` is RFC 3339 text in UTC, so comparing it as text compares the times. The
+`all` window runs a second form of the query with no `WHERE`: over every row, a
+plain read of the table beats the `ts` index, and `COUNT(DISTINCT session)` runs
+fastest as its own subquery over the `session` index. SQLite's query planner
+picks one index per query, so the two forms put the session count in different
+places. `BenchmarkUsage` runs `Usage` over 50,000 turns.
+
+`DiskBytes` adds up the sizes of `meru.db`, `meru.db-wal` and `meru.db-shm`;
+a missing file counts as 0. The store keeps its own path for it.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,
@@ -254,7 +311,7 @@ second, as the transcript does, so a replayed row matches the row written live;
 - **Struct embedding** — `ChunkWithDoc` embeds `Chunk`, so `c.Text` works
   without writing `c.Chunk.Text`.
 - **`filepath.WalkDir`** — visits every file under a folder; `ReplayToolCalls`
-  uses it to find the session files. More in [go-basics/filepath.md](go-basics/filepath.md).
+  and `ReplayTurns` use it to find the session files. More in [go-basics/filepath.md](go-basics/filepath.md).
 
 ## Try it
 
@@ -268,7 +325,9 @@ go test -run '^$' -bench . -benchtime 20x ./internal/store/
 of any length. `TestConcurrentReadsDuringWrites` runs four readers against a
 writer and checks no reader ever sees half a write. The benchmark indexes
 10,000 and then 100,000 chunks with 768-number vectors; `-short` skips the
-larger one.
+larger one. `TestUsage` places rows one second either side of each window's
+start, and `TestWindowStarts` checks weeks that start in the month or year
+before.
 
 Measured on an Apple M4 Max (v0.35.6 of the driver), 768 dimensions:
 
@@ -278,6 +337,10 @@ Measured on an Apple M4 Max (v0.35.6 of the driver), 768 dimensions:
 | `ReplaceDocument`, one 100-chunk document | 6 ms | 6 ms |
 | `SearchVector`, k = 50 | 13 ms | 147 ms |
 | `SearchKeyword`, k = 50, 8 common words | 9 ms | 90 ms |
+
+`Usage` over 50,000 turns, a year of a question every ten minutes, takes about
+46 ms on the same machine. Most of that goes to counting distinct files in the
+`all` window; the five shorter windows take under 15 ms together.
 
 Search time grows with the index, because both searches read every
 candidate. Write time doesn't change with size. The keyword figure is the worst case: the test
@@ -299,6 +362,13 @@ vocabulary has 33 words, so each query word matches most chunks.
   replacing one document took 186 ms instead of 6 ms. First-time indexing and re-embedding after a model change matter
   more than a few milliseconds of search, so the vectors sit in a plain
   table. `meru.retrieval.duration` will show when search needs more.
+- **Add up the rows on each request.** Keeping running totals per day would
+  answer faster, but it is a second copy of the same facts that could drift
+  from the rows. Summing 50,000 rows takes under 50 ms, and a person asks for
+  usage a few times a day.
+- **Files as JSON in one column.** A `turn_docs` table with one row per file
+  would count faster, but the JSON array keeps one row per turn and reads well
+  in the `sqlite3` shell. Only the `all` window pays for it.
 - **Counting instead of a flag for re-embedding.** A flag in `meta` would need
   someone to clear it at the right moment. Comparing the chunk and vector
   counts can't go stale.

@@ -259,7 +259,7 @@ router's prompt can name them.
 
 ```go
 // internal/agent/agent.go
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, log *slog.Logger) *Agent
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent
 
 type Searcher interface {
     Search(ctx context.Context, query string) ([]retrieve.Result, error)
@@ -375,7 +375,7 @@ sequenceDiagram
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
     M->>M: newToolService: secrets.Load, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
-    M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher)
+    M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     par errgroup, until Ctrl-C, SIGTERM or a server error
         M->>R: Serve(listener, handler) — questions to the agent, index ops to the indexer, tool ops to the tool service
