@@ -130,6 +130,12 @@ The stack keeps its data on this machine:
   and Pyroscope send by default.
 - `merud` itself refuses any `otlp_endpoint` that isn't a loopback address.
 
+Metrics, traces and Grafana's state live in the Docker volume `lgtm-data`.
+Prometheus keeps metrics for 400 days (`PROMETHEUS_EXTRA_ARGS` in the compose file),
+so the usage dashboard can show a month's trend; its default of 15 days would cut
+that in half. Only data from after you set `otlp_endpoint` is there. For all-time
+numbers, `meru usage` reads the `turns` table instead.
+
 Stop the stack with `docker compose -f deploy/observability/compose.yaml down`. Add
 `-v` to delete the stored metrics and traces too.
 
