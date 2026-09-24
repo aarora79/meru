@@ -148,6 +148,13 @@ and that the user lists folders under `[index] folders` in
 access to your files" while it read excerpts from them, and couldn't say what
 Meru had indexed.
 
+Before the files note comes `whoIsWho`: the person asking is the user, the files
+are theirs, and "I", "me" and "my" in a question mean the user, never the model.
+It joins every system prompt, a custom one from config too. Without it, the 2B
+model read "did I visit Amsterdam?" as a question about Meru, and answered that
+Meru had no record of a visit while the excerpts named the user as the
+traveller.
+
 `New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.

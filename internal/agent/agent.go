@@ -42,6 +42,15 @@ const citeRule = "Below, under \"From your files\", are numbered excerpts from t
 	"in square brackets, like [1]. Cite only the numbers listed there. " +
 	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
 
+// whoIsWho joins the system prompt on every turn, whatever prompt config
+// sets. Without it, a small model read "did I visit Amsterdam?" as a
+// question about Meru and answered that Meru had no record of a visit,
+// while the excerpts in front of it named the user as the traveller. The
+// user's files are about the user, so "I" in a question points at them.
+const whoIsWho = "The person asking is the user, and the files are theirs. " +
+	"In a question, \"I\", \"me\" and \"my\" mean the user, never you. " +
+	"When an excerpt names a person, that is often the user."
+
 // filesNote joins the system prompt on every turn and tells the model which
 // folders Meru searches. Without it a small model answers "I don't have
 // access to your files" even while it reads excerpts from them, and can't say
@@ -132,7 +141,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
-	system += "\n\n" + filesNote(cfg.Index.Folders)
+	system += "\n\n" + whoIsWho + "\n\n" + filesNote(cfg.Index.Folders)
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
