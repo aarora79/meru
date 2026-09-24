@@ -127,8 +127,8 @@ if searches(dec.Route) && a.search != nil {
 msgs := a.prompt(ctx, history, question, files)
 ```
 
-- **What it searches for.** The router doesn't rewrite queries yet, so
-  `searchQuery` uses the question. On a follow-up it adds the session's last
+- **What it searches for.** No model rewrites the query, so `searchQuery`
+  uses the question. On a follow-up it adds the session's last
   question after it, because "and the one after that?" finds nothing alone.
   The question goes first: keyword search keeps only a query's first 32 words.
 - **What the model sees.** `retrieve.Format` numbers the excerpts `[1]`,

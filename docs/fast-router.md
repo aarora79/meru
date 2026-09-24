@@ -75,11 +75,14 @@ that emits single letters as their own tokens, which the startup probe checks.
 
 **In scope.** The route decision, and only that.
 
-**Out of scope, on purpose.** The query rewrite and the skills to load stay in the
-generation call they live in today. A rewrite needs generated text, so it cannot come
-from a single token. Skill selection could become a second classification, but one
-decision per call means one call per decision, and nobody has measured that the
-current path is a problem. Revisit when there is a number.
+**Out of scope, on purpose.** No model rewrites the query. Search uses the question
+itself, and on a follow-up `merud` appends the session's previous question, which
+needs no model call (see
+[How a conversation continues](../ARCHITECTURE.md#how-a-conversation-continues)).
+A rewrite would need generated text, a second model call on every search turn;
+nobody has measured that search needs one. Skill selection arrives in v0.4 as its own
+short call. It could become a second classification, but one decision per call means
+one call per decision. Revisit either when there is a number.
 
 This keeps the change small: one new path, one prompt, one parser.
 
@@ -371,7 +374,7 @@ Per [AGENTS.md](../AGENTS.md), ARCHITECTURE.md changes first and the level 200 a
 pages follow in the same pull request.
 
 1. **[Agent loop](../ARCHITECTURE.md#agent-loop), step 1** — say the router returns a
-   route by classification and the rewrite stays a generation call.
+   route by classification, and nothing else.
 2. **[Who decides what](../ARCHITECTURE.md#who-decides-what)** — the row for the route
    decision gains "reads the probability of each route letter from one decoded token".
 3. **[Engine layer](../ARCHITECTURE.md#engine-layer)** — note the two new `Options`

@@ -28,12 +28,16 @@ easier to review.
 
 ## Status
 
-Pre-alpha, **v0.1**: `merud` and `meru` answer questions with local models, stream
+Pre-alpha, **v0.2**: `merud` and `meru` answer questions with local models, stream
 the answer, keep JSONL session transcripts and route each question with the
-one-token router. Work goes milestone by milestone ([ROADMAP.md](ROADMAP.md)).
-Don't build v0.2+ features (store, MCP, A2A, memory, skills, scheduler) ahead of
-the milestone that owns them. [docs/running.md](docs/running.md) shows how to build
-and run Meru.
+one-token router. v0.2 adds the SQLite store, the folder indexer with its watcher
+and `meru index`, hybrid retrieval on the search routes, and citations: a `sources`
+event and a `Sources:` list in both clients. The MCP client pool, memory files and
+skill registry exist as groundwork for v0.3 and v0.4; nothing in a turn calls them
+yet. Work goes milestone
+by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features
+(`dispatch`, A2A, the scheduler) ahead of the milestone that owns them.
+[docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):
 
@@ -41,7 +45,11 @@ Decided (details in ARCHITECTURE.md):
 - **Models:** Ollama on loopback. `lite` profile by default (MiniCPM5-2B +
   `nomic-embed-text`); `full` profile uses `qwen3.8:27b` + `qwen3-embedding:0.6b`.
 - **Storage:** JSONL session transcripts are the source of truth; SQLite via
-  `ncruces/go-sqlite3` + `sqlite-vec` (no cgo) is the rebuildable index.
+  `ncruces/go-sqlite3` (no cgo) is the rebuildable index. Vectors sit in a plain
+  table and vec1, bundled with the driver, supplies the distance function.
+- **Indexing:** only the folders in `[index] folders`, nothing by default. The
+  indexer skips secrets, hidden files, build folders and ignored files, and never
+  follows a symlink.
 - **Memory:** one Markdown file per memory under `~/.meru/memory/<kind>/`, indexed
   into SQLite; session summaries in the transcripts serve as episodic memory.
 - **Protocols:** MCP client for tools, A2A client for other agents.
@@ -116,13 +124,19 @@ The repo as it stands. Each package has a `doc.go` and a note in
 
 ```text
 cmd/
-  merud/             the daemon: config, engine, router, socket, agent loop
-  meru/              the thin client: one question, `meru chat`, `meru ping`
+  merud/             the daemon: config, engine, router, store, indexer, socket, agent loop
+  meru/              the thin client: one question, `meru chat`, `meru ping`, `meru index`
   fakeollama/        a fake Ollama server for end-to-end tests
 internal/
   config/            config.toml: defaults, profiles, validation
   engine/            the Engine interface and OllamaEngine (chat, stream, embed, info)
   router/            the one-token route classifier (docs/fast-router.md)
+  store/             meru.db: documents, chunks, vectors and the keyword index
+  retrieve/          hybrid search: vector + keyword, merged by reciprocal-rank fusion
+  index/             reads [index] folders into the store: skip rules, chunking, watching
+  mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists (v0.3 groundwork)
+  skills/            loads SKILL.md folders; ships writing and explainer (v0.4 groundwork)
+  memory/            one Markdown file per memory under memory/<kind>/ (v0.4 groundwork)
   agent/             one turn: route, build the prompt, stream the answer
   transcript/        append-only JSONL session files
   rpc/               newline-delimited JSON over the Unix socket: client and server
@@ -140,10 +154,10 @@ Makefile             `make check` runs everything CI runs
 ```
 
 **Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`
-and `loopback`, never `engine`, `transcript`, `agent` or anything that talks to a
-model or stores data. `internal/policy` fails the build if that changes, directly
-or through another package. `loopback` imports only the standard library, so any
-package can use it.
+and `loopback`, never `engine`, `transcript`, `agent`, `store`, `retrieve`,
+`index`, `memory`, `mcp` or anything else that talks to a model or stores data.
+`internal/policy` fails the build if that changes, directly or through another
+package. `loopback` imports only the standard library, so any package can use it.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
 import it.
@@ -216,8 +230,11 @@ or tool results at info level.
 
 **Dependencies.** Standard library first. Each new module needs a reason in the PR
 description. Expected ones: `modelcontextprotocol/go-sdk`, the A2A Go SDK,
-`ncruces/go-sqlite3` + `sqlite-vec-go-bindings`, OpenTelemetry Go, a TOML parser,
-`golang.org/x/sync`, and Bubble Tea with Bubbles for the `meru chat` terminal UI.
+`ncruces/go-sqlite3` (with its bundled vec1 and FTS5), OpenTelemetry Go, a TOML
+parser, `golang.org/x/sync` (for `errgroup`, which runs `merud`'s server, startup
+scan and watcher side by side), Bubble Tea with Bubbles for the `meru chat`
+terminal UI, and for the indexer `fsnotify`, `golang.org/x/net/html` and
+`ledongthuc/pdf`.
 
 ## Writing comments
 
@@ -273,6 +290,7 @@ make lint             # staticcheck
 make vuln             # govulncheck
 make sec              # gosec
 make build            # binaries for five platforms in bin/
+make router-eval      # score the router on labelled questions against local Ollama
 go run ./cmd/merud    # run the daemon from source
 go run ./cmd/meru "..."
 ```

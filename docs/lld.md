@@ -4,7 +4,9 @@ This page is a map of Meru's code for someone new to Go. It shows how the code i
 organized, the few interfaces that hold it together, and the path one question
 takes through the functions, so you know which file to open next.
 [ARCHITECTURE.md](../ARCHITECTURE.md) explains *why* Meru is built this way; this
-page explains *where* each part lives. It describes v0.1.
+page explains *where* each part lives. It describes v0.2: the v0.1 question path,
+plus the store, the indexer and hybrid search, and the groundwork packages for
+tools, skills and memory.
 
 You need three Go ideas to follow it:
 
@@ -20,24 +22,30 @@ You need three Go ideas to follow it:
   packages, so each side can be tested with a fake.
   ([more](coding-notes/go-basics/interfaces.md))
 
-## 1. Two programs, eleven packages
+## 1. Two programs and their packages
 
 Meru builds two programs from `cmd/`. Everything else is a package under
 `internal/`, which Go allows only code inside this repo to import.
 
 | Package | What it does | Start reading at |
 | --- | --- | --- |
-| `cmd/merud` | the daemon: starts everything and serves questions | `main.go`: `main`, `run`, `serve` |
-| `cmd/meru` | the client you type into | `main.go`: `run`, `ask`, `ping` |
+| `cmd/merud` | the daemon: starts everything, serves questions and the index ops | `main.go`: `main`, `run`, `serve`, then `index.go` |
+| `cmd/meru` | the client you type into | `main.go`: `run`, `ask`, `ping`, then `index.go` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
+| `internal/store` | `meru.db`: documents, chunks, vectors and the keyword index | `store.go`: `Open`, then `documents.go` and `search.go` |
+| `internal/retrieve` | hybrid search: vector and keyword, merged by reciprocal-rank fusion | `search.go`: `Search`, then `rrf.go` and `format.go` |
+| `internal/index` | reads `[index] folders` into the store: skip rules, chunking, watching | `indexer.go`: `Scan`, then `skip.go` and `watch.go` |
 | `internal/agent` | runs one turn, from question to answer | `agent.go`: `Handle` |
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
 | `internal/rpc` | the socket protocol between `meru` and `merud` | `protocol.go`, then `client.go` and `server.go` |
 | `internal/obs` | OpenTelemetry metrics and traces | `obs.go` |
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour) | `run.go`: `Run`, then `model.go` and `view.go` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
+| `internal/mcp` | the MCP client pool: starts or connects to servers, keeps allowed tools (v0.3 groundwork) | `pool.go`: `NewPool`, then `call.go` |
+| `internal/skills` | loads `SKILL.md` folders and installs the built-in skills (v0.4 groundwork) | `skills.go`: `Load`, then `builtin.go` |
+| `internal/memory` | one Markdown file per memory under `memory/<kind>/` (v0.4 groundwork) | `memory.go`: `Open`, `Add`, `List` |
 
 Three more packages exist only for testing: `internal/policy` (tests that enforce
 Meru's rules), `internal/testutil/fakeollama` and `cmd/fakeollama` (a fake Ollama
@@ -51,10 +59,15 @@ is also the order to learn the packages in: start at the bottom.
 ```mermaid
 flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
+    merud --> index & retrieve & store
     meru["cmd/meru"] --> tui & rpc & config
     tui --> rpc
-    agent --> transcript & engine & rpc & obs & config
+    agent --> transcript & engine & rpc & obs & config & retrieve
     router --> engine & obs & config
+    index --> store & engine & obs & config
+    retrieve --> store & engine & obs
+    store --> engine
+    mcp --> engine & obs & loopback
     transcript --> engine
     rpc --> obs
     obs --> config & loopback
@@ -62,17 +75,24 @@ flowchart TD
     engine --> loopback
 ```
 
-Two things to notice:
+`skills` and `memory` import only the standard library, so they sit off the graph.
+Nothing imports `mcp`, `skills` or `memory` yet; `dispatch` and the agent loop pick
+them up in v0.3 and v0.4.
+
+Three things to notice:
 
 - **`cmd/meru` stays small.** It reaches `rpc`, `tui` and `config`, and never
-  `engine`, `agent` or `transcript`. The client only moves messages; the daemon
+  `engine`, `agent`, `transcript`, `store` or `index`. The client only moves messages; the daemon
   does the work. A test in `internal/policy` fails the build if this ever changes.
 - **`loopback` imports nothing of Meru's.** It sits at the bottom so every package
   that talks to an address can use the same check.
+- **`store` imports only `engine`,** for the `Vector` type. It reads no files and
+  calls no model: `index` hands it finished chunks and vectors, and `retrieve`
+  merges its two searches.
 
-## 3. The five interfaces and types that hold it together
+## 3. The interfaces and types that hold it together
 
-Most of the code is plain functions and structs. Five definitions connect the
+Most of the code is plain functions and structs. A few definitions connect the
 packages; learn these and the rest reads easily.
 
 ### `engine.Engine`: the only door to a model
@@ -98,20 +118,24 @@ err := range stream`. ([more](coding-notes/go-basics/iterators.md))
 ```go
 // internal/rpc/protocol.go
 type Request struct {
-    Op      Op     // "ask" or "ping"
+    Op      Op     // "ask", "ping", "index" or "index_status"
     Session string // empty starts a new conversation
     Text    string // the question
     Source  Source // "cli", "tui" or "job"
+    Path    string // for "index": one folder or file; empty means every folder
 }
 
 type Event struct {
-    Type       EventType // "session", "route", "token", "done" or "error"
+    Type       EventType    // see the list below
     Session    string
-    Text       string
+    Text       string       // token text, or one progress line
     Route      string
     Confidence float64
-    Fallback   bool   // route event: the router wasn't sure and fell back
+    Fallback   bool         // route event: the router wasn't sure and fell back
     Error      string
+    Sources    []Citation   // sources event: the numbered excerpts the answer may cite
+    Report     *IndexReport // report event: what one index run did
+    Status     *IndexStatus // status event: what the index holds
 
     // Stats, on the "done" event that ends an ask:
     TTFTMillis     int64 // question received to first token, routing included
@@ -123,11 +147,21 @@ type Event struct {
 ```
 
 `meru` sends one `Request`, as one line of JSON. `merud` answers with a stream of
-`Event`s, one per line: first `session`, then `route` (with `Fallback` set when the
-router wasn't sure), then one `token` per piece of the answer, and finally `done` or
-`error`. The `done` that ends an ask carries the turn's timings and token counts,
-which `meru chat` shows under each answer. Fields are only ever added, so an older
-client reads a newer `merud` without trouble.
+`Event`s, one per line, and every reply ends with `done` or `error`:
+
+| Op | Events, in order |
+| --- | --- |
+| `ask` | `session`; `route` (with `Fallback` set when the router wasn't sure); `sources` when the turn searched your files and found something; one `token` per piece of the answer; `done` with the turn's stats |
+| `ping` | `done` |
+| `index` | zero or more `progress` lines; one `report`; `done` |
+| `index_status` | one `status`; `done` |
+
+`meru index` sends `index`, and `meru index -status` sends `index_status`. A
+`Citation` holds the number the answer cites, the path (as `~/…` under your home
+folder), the heading, the line range or PDF page, and the fused score. The `done`
+that ends an ask carries the turn's timings and token counts, which `meru chat`
+shows under each answer. Fields are only ever added, so an older client reads a
+newer `merud` without trouble.
 
 ### `rpc.Handler`: what the server calls for each request
 
@@ -156,6 +190,31 @@ The agent doesn't import `internal/router`; it only knows this small interface.
 `cmd/merud` joins the two with a tiny adapter, `routerAdapter`, that calls
 `router.Decide`. That keeps the agent testable with a fake router.
 
+### `agent.Searcher` and `index.Sink`: how v0.2 reaches the store
+
+```go
+// internal/agent/agent.go
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, log *slog.Logger) *Agent
+
+type Searcher interface {
+    Search(ctx context.Context, query string) ([]retrieve.Result, error)
+}
+
+// internal/index/indexer.go
+type Sink interface {
+    Document(ctx context.Context, path string) (doc store.Document, ok bool, err error)
+    ReplaceDocument(ctx context.Context, doc store.Document, chunks []store.Chunk, vecs []engine.Vector) error
+    DeleteDocument(ctx context.Context, path string) error
+    Paths(ctx context.Context, prefix string) ([]string, error)
+}
+```
+
+The same pattern again. `cmd/merud` passes `searchAdapter`, which calls
+`retrieve.Search` on the store with the fixed list sizes (50, 50, 10), as the
+agent's `Searcher`; a nil `Searcher` turns search off. It passes the
+`*store.Store` itself as the indexer's `Sink`. Each package's tests pass a fake
+instead, so neither needs a database file or a model.
+
 ### `config.Config`: settings, checked once
 
 ```go
@@ -168,6 +227,7 @@ type Config struct {
     Router        Router        // the router's four settings
     Observability Observability // OTLPEndpoint and friends
     Log           Log           // Level: "debug", "info", "warn" or "error"
+    Index         Index         // Folders, Ignore, MaxFileMB, ChunkTokens, OverlapTokens, Watch
     Dir           string        // Meru's home, usually ~/.meru
 }
 ```
@@ -193,18 +253,39 @@ sequenceDiagram
     M->>E: checkRuntime: Info() → Ollama 0.12.11 or later?
     M->>R: Listen(socket) — refuses if another merud answers
     M->>E: warm(): one tiny call per model, so they load now
-    M->>M: build agent.New(...) and routerAdapter
-    M->>R: Serve(listener, agent.Handle) — runs until Ctrl-C or SIGTERM
+    M->>E: embedDims: embed one probe text to learn the vector size
+    M->>M: openStore: store.Open(meru.db, embed model, vector size)
+    M->>M: index.New(cfg.Index, store, engine)
+    M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter)
+    M->>M: newIndexService(indexer, store, folders)
+    par errgroup, until Ctrl-C, SIGTERM or a server error
+        M->>R: Serve(listener, handler) — questions to the agent, index ops to the indexer
+    and
+        M->>M: startupScan: Scan, or Reembed after an embed model change
+    and
+        M->>M: watch: re-index files as they change
+    end
 ```
 
-All of this is in `cmd/merud/main.go` (`run` and `serve`) and `cmd/merud/runtime.go`
-(`checkRuntime` and `warm`). `signal.NotifyContext` turns Ctrl-C into a cancelled
-`context.Context`, and every step watches that context, so `merud` stops cleanly
-wherever it is. ([more on context](coding-notes/go-basics/context.md))
+All of this is in `cmd/merud/main.go` (`run` and `serve`), `cmd/merud/runtime.go`
+(`checkRuntime` and `warm`) and `cmd/merud/index.go` (`startupScan`, `watch` and the
+adapters). The probe asks the embedding model rather than config for the vector
+size, so a new embedding model can't leave a stale number behind; when the model or
+the size changed, `store.Open` drops the old vectors and the startup scan re-embeds.
+
+The three last steps run side by side in an `errgroup` (from `golang.org/x/sync`),
+so `merud` answers questions while the first scan is still running. The group
+cancels the other two if `Serve` fails; the scan and the watcher log their own
+errors and never stop the server. A scan and a `meru index` run take turns, so two
+walks never race over the same files. `signal.NotifyContext` turns Ctrl-C into a
+cancelled `context.Context`, and every step watches that context, so `merud` stops
+cleanly wherever it is. ([more on context](coding-notes/go-basics/context.md))
 
 ## 5. One question, function by function
 
-Follow `meru "what is the capital of France?"` through the code:
+Follow `meru "what is the capital of France?"` through the code. A question
+about your notes takes the same path, plus one search step when the route asks
+for it:
 
 ```mermaid
 sequenceDiagram
@@ -226,7 +307,11 @@ sequenceDiagram
     E-->>RT: Completion with log probabilities
     RT-->>A: Decision{Route, Confidence, Outcome}
     A-->>U: emit route event
-    A->>A: buildMessages(system prompt, history, question)
+    opt route is search or search+tools
+        A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
+        A-->>U: emit sources event
+    end
+    A->>A: buildMessages(system prompt + excerpts, history, question)
     A->>E: Stream(messages)
     loop each piece of the answer
         E-->>A: Delta{Text}
@@ -240,7 +325,9 @@ sequenceDiagram
 The same path as a reading list, in order:
 
 1. **`cmd/meru/main.go` → `ask`** builds a `Request` and calls `rpc.Do`, then prints
-   each `token` event's text as it arrives.
+   each `token` event's text as it arrives. When a `sources` event came, it prints
+   `Sources:` after the answer, with the sources `rpc.Cited` finds cited in it, or
+   all of them when the answer cites none.
 2. **`internal/rpc/client.go` → `Do`** connects to the socket, writes the request
    as one JSON line, and reads events back until `done` or `error`.
 3. **`internal/rpc/server.go` → `serveConn`** reads the request and calls the
@@ -249,13 +336,23 @@ The same path as a reading list, in order:
    reads the history, saves the question, asks for a route, builds the prompt,
    streams the answer and saves it, then emits a `done` event with the turn's
    stats (`doneEvent`). Each step is a short function below `Handle`, with its own
-   span and debug line: `openSession`, `appendLine`, `route`, `prompt` and `answer`.
+   span and debug line: `openSession`, `appendLine`, `route`, `searchFiles`,
+   `prompt` and `answer`.
 5. **`internal/router/router.go` → `Decide`** writes the A-to-D prompt (`prompt.go`),
    asks the fast model for one token, and turns the log probabilities into a route
    (`probs.go`).
-6. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
+6. **`internal/agent/agent.go` → `searchFiles`**, only when the route is `search`
+   or `search+tools`, calls **`internal/retrieve/search.go` → `Search`** with the
+   query from `searchQuery`: the question, plus the session's previous question on a
+   follow-up. No model rewrites it. `Search` embeds the query, runs
+   `store.SearchVector` and `store.SearchKeyword`, merges the two lists with `rrf`
+   (50 hits from each, 10 kept), and loads the top chunks with `store.Chunks`. `retrieve.Format`
+   numbers them, and the agent puts them under the system prompt and sends the
+   same numbered list to the client as a `sources` event. A failed search is logged
+   and the turn answers without your files.
+7. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
    Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
-7. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
+8. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
    session file; `History` reads the file back into messages.
 
 Along the way, `internal/obs` records the timings and token counts, and each stage
@@ -269,6 +366,23 @@ the spans record nothing, but each question still gets a trace ID for the log.
 `internal/tui` sends the `Request`, draws the events on screen with Lip Gloss
 instead of printing them, renders the finished answer as Markdown with Glamour,
 and passes the session ID back each time so the conversation continues.
+
+### `meru index`, function by function
+
+1. **`cmd/meru/index.go` → `indexCmd`** parses `-status` (or `--status`) and an
+   optional path, which it makes absolute, because `merud` runs in another folder.
+2. **`cmd/merud/main.go` → `handler`** sends `index` and `index_status` to the
+   `indexService` in `cmd/merud/index.go`.
+3. **`handleIndex`** refuses when `[index] folders` is empty, or when the path sits
+   outside every folder, and names the config file to change. Otherwise **`run`**
+   waits for its turn, then calls **`index.Indexer.Scan`** (or `Reembed` after an
+   embedding model change) for every folder, or **`IndexPaths`** for one path, and
+   emits `progress` lines and one `report`.
+4. **`handleStatus`** reads `store.Stats` and the last scan's report, and emits one
+   `status`.
+
+The indexer records a `meru.index.scan` span for a full scan and a `meru.index.file`
+span for each file, in traces of their own (ARCHITECTURE.md, "Traces").
 
 ## 6. Where errors and cancellation go
 

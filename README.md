@@ -13,10 +13,13 @@ config: MCP (Model Context Protocol) servers such as web search or Gmail, and ot
 agents over A2A (Agent2Agent). Meru allows none of their tools until you name them,
 and logs every call.
 
-> **Status: pre-alpha, v0.1.** `merud` and `meru` answer questions with local models,
+> **Status: pre-alpha, v0.2.** `merud` and `meru` answer questions with local models,
 > stream the answer, keep session transcripts and pick a route with the one-token
-> router. Search over your files, tools, memory and scheduled jobs come in later
-> milestones; [ROADMAP.md](ROADMAP.md) lists them in order.
+> router. `merud` indexes the folders you list, searches them by keyword and by
+> meaning, and the answer cites the files it used. Tools, memory and scheduled jobs
+> come in later milestones; the code for the MCP client, memory files and skills
+> exists as groundwork, but no turn uses it yet. [ROADMAP.md](ROADMAP.md) lists the
+> milestones in order.
 
 ---
 
@@ -28,19 +31,28 @@ jobs. `meru` is the command-line client; it connects to the daemon over a local
 socket and starts in milliseconds. Go builds each program into one file that runs on
 macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
 
-Working in v0.1:
+Working in v0.2:
 
 ```
 $ meru "what is the capital of France?"   # one question, answer streamed as text
+$ meru "what is the Q3 garden budget?"    # searches your folders, then lists Sources:
 $ meru chat                                # interactive terminal UI
 $ meru ping                                # is merud running?
+$ meru index                               # rescan the folders under [index] folders
+$ meru index ~/notes/work                  # rescan one folder or file inside them
+$ meru index -status                       # what the index holds
 ```
+
+`merud` reads `[index] folders` in `~/.meru/config.toml` when it starts, so restart
+it after changing the list. Quote a question that starts with the word `ping`,
+`chat` or `index`, or `meru` reads that word as a command.
+[docs/running.md](docs/running.md#7-index-your-files) shows the setup and the
+`Sources:` output.
 
 Planned for later milestones:
 
 ```
 $ meru setup                       # first run: models, folders, MCP servers (v0.3)
-$ meru index ~/notes ~/repos       # build the local knowledge index (v0.2)
 $ meru memory list                 # what it knows about you, in plain text (v0.4)
 $ meru skills list                 # what it knows how to do (v0.4)
 $ meru brief                       # today's digest, prepared in advance (v0.5)

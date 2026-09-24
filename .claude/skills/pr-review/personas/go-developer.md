@@ -6,8 +6,8 @@
 ## Scope
 
 `cmd/`, `internal/`, `*_test.go`, `go.mod`. Standard library first. AGENTS.md lists the
-expected modules: the MCP Go SDK, the A2A Go SDK, the SQLite driver (`ncruces/go-sqlite3`
-+ `sqlite-vec`, no cgo), OpenTelemetry Go, a TOML parser, `golang.org/x/sync` and Bubble
+expected modules: the MCP Go SDK, the A2A Go SDK, the SQLite driver (`ncruces/go-sqlite3`,
+no cgo, with FTS5 and vec1's distance function over a plain vector table), OpenTelemetry Go, a TOML parser, `golang.org/x/sync` and Bubble
 Tea for the TUI.
 
 ## What to check

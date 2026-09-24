@@ -372,8 +372,8 @@ func searches(route string) bool {
 	return route == "search" || route == "search+tools"
 }
 
-// searchQuery is the text a turn searches for. The router doesn't rewrite
-// queries yet, so it is the question itself; on a follow-up it also holds
+// searchQuery is the text a turn searches for. No model rewrites the query,
+// so it is the question itself; on a follow-up it also holds
 // the session's last question, because "and the one after that?" means
 // nothing to a search on its own. The current question comes first: keyword
 // search keeps only a query's first words.
