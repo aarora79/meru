@@ -4,24 +4,28 @@
 
 **A personal AI assistant that runs entirely on your own machine.**
 
-You need no API key and pay for no tokens, and no prompt leaves your machine unless
-you allow it. *Meru* (मेरु) loads open-weight models into your computer's memory and keeps
-them there, so a question costs only electricity.
+Meru runs local models only. Its code has no path to a cloud AI model, not even a
+disabled one. It loads open-weight models into your computer's memory and keeps them
+there, so a question needs no API key and costs only electricity.
 
-> Meru is the cosmic mountain that the sun, moon and stars turn around.
-> This assistant takes the name because it works the same way: it stays in one
-> place, on your machine, and your notes, tools and daily routine turn around it.
+Two kinds of program can reach beyond your machine, and only once you add them to
+config: MCP (Model Context Protocol) servers such as web search or Gmail, and other
+agents over A2A (Agent2Agent). Meru allows none of their tools until you name them,
+and logs every call.
+
+> **Status: pre-alpha, design phase.** We wrote the architecture first, and the code
+> follows it. The commands below show the planned interface; no binary exists yet.
+> [ROADMAP.md](ROADMAP.md) lists the milestones.
 
 ---
 
 ## What it is
 
-Meru is two Go programs, shipped as native binaries: small, easy to install on any
-platform, and light enough to run many copies on one server
-([why Go](ARCHITECTURE.md#why-go)). `merud` is a daemon: it runs in
-the background, keeps the models loaded, owns your index and memory, talks to MCP
-(Model Context Protocol) servers and runs scheduled jobs. `meru` is the command-line
-client; it connects to the daemon over a local socket and starts in milliseconds.
+Meru is two Go programs. `merud` is a daemon: it runs in the background, keeps the
+models loaded, owns your index and memory, talks to MCP servers and runs scheduled
+jobs. `meru` is the command-line client; it connects to the daemon over a local
+socket and starts in milliseconds. Go builds each program into one file that runs on
+macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
 
 ```
 $ meru setup                       # first run: models, folders, MCP servers
@@ -37,27 +41,58 @@ $ meru brief                       # today's digest, prepared in advance
 
 | Capability | What it means |
 | --- | --- |
-| **Local models** | Models run in Ollama on your machine, and the daemon keeps them loaded |
-| **Search over your files** | Keyword (BM25) and meaning-based search over notes, docs, PDFs and repos, with citations |
-| **MCP tools** | `meru setup` offers web search, Gmail, Calendar, Drive and more, and adds each one for you or shows you what to paste |
-| **Other agents** | Meru hands tasks to agents you've allowed, over A2A (Agent2Agent) |
-| **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete |
-| **Skills** | Markdown files of instructions, loaded only when a question needs them. Ships with `writing` and `explainer` |
-| **Scheduled jobs** | Briefs and other jobs run on a schedule, so Meru can tell you things before you ask |
-| **Observability** | OpenTelemetry metrics and traces for every question: tokens, time taken and tool calls, shown in a local Grafana |
+| **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
+| **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
+| **MCP tools** | `meru setup` offers web search, Gmail, Calendar, Drive and other servers, and either adds each one for you or shows you what to paste. |
+| **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
+| **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
+| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing` and `explainer`. |
+| **Scheduled jobs** | Meru runs briefs and other jobs on a schedule, so it can tell you things before you ask. |
+| **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces, and shows them in Grafana on your machine. |
 
 ## Why your own machine
 
-Three reasons, most important first:
+Four reasons, most important first:
 
-1. **Privacy you can check.** An assistant worth having reads your email, notes,
-   finances and calendar. On a machine you control, that data can't end up in
-   anyone's training set.
-2. **No cost per question.** Indexing ten years of notes or running a brief every
-   morning costs nothing once you own the hardware, which changes what you're
-   willing to build.
+1. **Privacy you can check.** Meru reads your email, notes, finances and calendar.
+   On a machine you control, none of it ends up in anyone's training set.
+2. **No cost per question.** Once you own the hardware, indexing ten years of notes
+   or running a brief every morning adds nothing to any bill.
 3. **It keeps working.** No deprecation notices, rate limits, outages or price
-   changes. The model on your disk in 2026 still runs in 2031.
+   changes. The model on your disk today still runs a year from now.
+4. **You can inspect everything.** Your files are the source of truth, and the
+   database is a copy Meru rebuilds from them: delete `meru.db` and Meru re-indexes.
+   Memories and skills are Markdown files you can read, edit or delete.
+
+Many assistants offer local models as one option next to cloud ones. Meru supports
+local models only.
+
+## Why an enterprise would care
+
+I built Meru for myself, and its design fits a common company problem: staff want
+an assistant, and the data they would use it on can't leave the building.
+
+- **The data stays put.** Meru runs on a laptop, a virtual desktop or a server in
+  your own account, and reads email, documents, code and notes without sending any of
+  it to a model provider. It can work on material that policy or regulation keeps
+  in-house.
+- **Every action is logged.** Each server's tools stay off until you allow them,
+  risky ones ask before they run, and every call goes into an audit table and the
+  session transcript. One function, `dispatch`, does all of this, so a reviewer
+  checks one code path.
+- **You can measure it.** For every question, Meru sends OpenTelemetry metrics and
+  traces (tokens, time, which tool ran and which failed) to a collector you run, so
+  usage and failures show up on a dashboard.
+- **It installs anywhere.** Meru ships as native binaries, with no interpreter to
+  install. It runs on employee laptops, virtual desktops, servers on your own network
+  and machines with no internet connection.
+- **No per-question bill.** You pay for the hardware you already own, so indexing
+  ten years of records or running a daily brief for every employee depends on how
+  much hardware you have.
+
+Meru serves one person on one machine by design. A company would also want central
+control over who may use which tools, and a summary of what the agents did, without
+collecting anyone's data. The design leaves room for that; none of it exists yet.
 
 ## Hardware
 
@@ -79,11 +114,6 @@ On a cloud server, Meru still sends no prompt to a model provider, but your data
 lives on that server. The promise is "a machine you control"; where it sits is your
 call.
 
-## Status
-
-**Pre-alpha, design phase.** We wrote the architecture first, and the code follows it.
-[ROADMAP.md](ROADMAP.md) lists what exists and what comes next.
-
 ## Docs
 
 - Architecture, in three levels ([web pages](https://aarora79.github.io/meru/architecture/)):
@@ -97,3 +127,9 @@ call.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## The name
+
+*Meru* (मेरु) is the cosmic mountain that the sun, moon and stars turn around. This
+assistant takes the name because it works the same way: it stays in one place, on
+your machine, and your notes, tools and daily routine turn around it.
