@@ -35,7 +35,7 @@ the timing.
   fusion in Go
 - [x] Citations in answers: a `sources` event, and a `Sources:` list in `meru` and
   `meru chat`
-- [x] Router calibration: a labelled set of 121 questions and `make router-eval`
+- [x] Router calibration: a labelled set of 135 questions and `make router-eval`
 
 **Done when:** it answers a question about a local note and cites the file.
 
@@ -46,8 +46,9 @@ dollars … [1]", citing `garden.md`, with its first token at 565 ms.
 
 With 768-dimension vectors on the same machine, the store indexes 100,000 chunks in
 6.1 s, replaces a 100-chunk file in about 6 ms, and searches them in 147 ms by
-vector and 90 ms by keyword. The calibrated router picks
-the labelled route for 28 of 36 held-out questions (17 before) in about 28 ms.
+vector and 90 ms by keyword. The calibrated router, told which folders you index,
+picks the labelled route for 32 of 40 held-out questions in about 28 ms; the v0.1
+prompt picked 17 of 36.
 
 ## v0.3 — It can do things
 - MCP client: stdio + Streamable HTTP transports

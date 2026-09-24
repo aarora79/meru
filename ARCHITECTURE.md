@@ -307,8 +307,8 @@ sequenceDiagram
 
 | Decision | Made by | How |
 | --- | --- | --- |
-| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. From v0.4, a separate short call picks the skills to load |
-| What to search for | `merud`, with no model | The question as you typed it. On a follow-up, `merud` appends the session's previous question, because "and the one after that?" finds nothing on its own |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder. From v0.4, a separate short call picks the skills to load |
+| What to search for | `merud`, with no model | The question as you typed it. On a follow-up, `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's `allow` list reach the model; the rest don't exist to it |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in the server's `confirm` list, unless you already approved that tool for this session |
@@ -372,9 +372,11 @@ and arguments and offers three choices:
 - **The router sees the history too**, so it can tell that a follow-up like "sell
   half of the one that dropped most" needs tools. It picks a route and nothing else;
   no model rewrites the follow-up.
-- **Search adds the previous question.** On the search routes, `merud` searches for
-  the new question with the session's previous question appended, so "and the one
-  after that?" still finds the right files.
+- **Search adds an earlier question.** On the search routes, `merud` searches for
+  the new question with the session's latest earlier question appended, so "and the
+  one after that?" still finds the right files. It skips earlier questions made only
+  of filler words, so "search again" after "try that again" still carries the
+  subject from before them.
 - **The `main` model resolves the reference.** It reads turn 1's answer in the
   history, which named the stocks and their moves, and works out which one dropped
   most. It reads answers, not the raw tool results behind them.
@@ -482,9 +484,12 @@ order.
    files first (RAG, retrieval-augmented generation), call tools, or search and call
    tools. It picks by classification, reading one decoded token's probabilities (see
    [Routing](#routing)). On the search routes, `merud` then searches your files for
-   the question, with the session's previous question appended on a follow-up. No
-   model rewrites the query. From v0.4, a separate short call picks the skills to
-   load.
+   the question, with an earlier question appended on a follow-up. No model
+   rewrites the query. Until tools arrive in v0.3, the `tools` route searches too:
+   the router sends some questions about your files there, and an answer from the
+   files beats one from the model alone. When the router picks `direct` for a
+   question that names an indexed folder, `merud` searches anyway (see
+   [Routing](#routing)). From v0.4, a separate short call picks the skills to load.
 2. **Build the context.** System prompt, skill descriptions, relevant memories,
    retrieved chunks, this session's history and the allowed tools' schemas, each
    within its own token budget.
@@ -515,10 +520,13 @@ classification and reads the answer from the model's probabilities:
 
 1. The prompt opens with four lettered options (A = answer directly, B = search,
    C = tools, D = search and tools) and two examples per route. Each option's
-   description names the questions that belong to it and the ones that don't. The
+   description names the questions that belong to it and the ones that don't.
+   Option B also names the folders in `[index] folders` and says that questions
+   about projects kept there, by name, are B. Without that line the model can't
+   tell that "meru" in "what database does meru use" is your own project. The
    session history and the question come last, and the prompt ends with
-   `Answer: `. The fixed part never changes, so Ollama reuses its work on it from
-   the previous turn.
+   `Answer: `. The fixed part, folders included, stays the same from turn to turn,
+   so Ollama reuses its work on it from the previous turn.
 2. `merud` asks Ollama's `/api/chat` for one token with log probabilities
    (`num_predict = 1`, `logprobs = true`, `top_logprobs = 20`) and with thinking
    off (`think = false`). A thinking model such as MiniCPM5 otherwise spends its
@@ -547,8 +555,19 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
+One rule overrides the router. When it picks `direct` and the question names an
+indexed folder as a whole word, such as "meru" for `~/repos/meru`, the agent loop
+changes the route to `search`. Even with the folders in the prompt, the router sent
+"what database does Meru use to store its index?" to `direct` at 0.621, and the
+model made up an answer. A wrong guess costs one search of about 50 ms, and the
+model uses only the excerpts that help. The turn's route event, log line and span
+show `search`; the `meru.route` span and metric still record what the router
+chose. The rule matches the last part of each folder path, in any case, and skips
+names under three letters. "hey meru, what's the capital of France" searches too,
+because the assistant shares its name with the folder.
+
 `make router-eval` scores the router against the local Ollama on a labelled set of
-121 questions, 36 of them held out, and fits the temperature. At 1.25 the
+135 questions, 40 of them held out, and fits the temperature. At 1.25 the
 probabilities sit close to calibrated, so `min_confidence = 0.45` means what it
 says. Refit after any change to the prompt, the examples or the `fast` model.
 
@@ -797,8 +816,10 @@ plain text with no layout.
 
 SQLite does both searches; our code merges the results.
 
-A search runs only on the `search` and `search+tools` routes. Its query is the
-question, with the session's previous question appended on a follow-up (see
+A search runs on the `search` and `search+tools` routes, and in v0.2 on `tools`
+as well, until tools arrive in v0.3. It also runs on a `direct` question that
+names an indexed folder (see [Routing](#routing)). Its query is the question, with an earlier
+question appended on a follow-up (see
 [How a conversation continues](#how-a-conversation-continues)).
 
 In v0.2 a turn searches file chunks. From v0.4 it also searches memories and the
@@ -879,6 +900,13 @@ measurements from real questions.
 files", with a rule that tells the model to cite each excerpt it uses as `[1]`,
 `[2]` and so on, and never to invent one. When a search finds nothing, the prompt
 says so instead, and the model answers without citing files.
+
+The system prompt names the folders in `[index] folders` on every turn, says that
+Meru searches them before it answers, and says the model can't open or list files
+itself. With no folders set, it tells the model that Meru hasn't indexed anything
+yet and where you add folders. Without this note a small model answers "I don't
+have access to your files" while it reads excerpts from them, and can't say what
+Meru indexes.
 
 Before the first token, `merud` sends the client a `sources` event that lists each
 excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
@@ -1256,7 +1284,7 @@ rpc.request                       op, source, question length
     └── meru.transcript.append    the assistant line
 ```
 
-A turn on the `direct` or `tools` route has no `meru.search`. Later milestones add
+A turn on the `direct` route has no `meru.search`, unless the question names an indexed folder. Later milestones add
 spans under `meru.turn`: memories under `meru.retrieve` (v0.4), one `gen_ai.chat`
 per model call in the tool loop, and `tools/call <tool>` for each tool (v0.3).
 
@@ -1385,15 +1413,17 @@ transcript lines hold. No level writes question or answer text. With
 We'll settle these with working code and measurements.
 
 1. **Router quality.** The router reads probabilities instead of parsing text (see
-   [Routing](#routing)). A labelled set of 121 questions and `make router-eval`
+   [Routing](#routing)). A labelled set of 135 questions and `make router-eval`
    measure it. On the development machine with MiniCPM5-2B, a prompt that puts
-   contrastive option text and two examples per route ahead of the turn picks the
-   labelled route for 28 of 36 held-out questions, up from 17. It misses a search
-   or tool the question needs on 2 of 36, down from 6, and takes about 28 ms per
-   warm decision. At a fitted temperature of 1.25 the probabilities are close to
-   calibrated (expected calibration error 0.04 over all 121 rows), so
-   `min_confidence = 0.45` means what it says. The weak spot is tools recall
-   (0.44): the model answers questions about recent events from memory. Next:
+   contrastive option text, the indexed folders and two examples per route ahead
+   of the turn picks the labelled route for 32 of 40 held-out questions, and takes
+   about 28 ms per warm decision. The v0.1 prompt picked 17 of 36. Naming the
+   folders lifted held-out search recall from 8 of 12 to 11 of 12. At a
+   temperature of 1.25 the probabilities are close to calibrated (expected
+   calibration error 0.065 over all 135 rows), so `min_confidence = 0.45` means
+   what it says. The weak spot is tools recall (4 of 9 held out): the model answers
+   questions about recent events from memory, and sends requests such as "text
+   alex that I'm on my way" to search. Next:
    label real turns from transcripts, refit, and decide whether `lite` needs a
    larger `fast` model for tool-heavy use.
 2. **Context order.** Skills, memories and retrieved chunks compete for the same
@@ -1440,8 +1470,9 @@ We'll settle these with working code and measurements.
   to search and tools when unsure ([docs/fast-router.md](docs/fast-router.md)).
   Temperature 1.25 and `min_confidence = 0.45`, fitted with `make router-eval`.
 - **Hybrid search:** FTS5 BM25 plus vector distance over every stored vector,
-  merged in Go with reciprocal-rank fusion. The query is the question, plus the
-  session's previous question on a follow-up; no model call rewrites it. List sizes
+  merged in Go with reciprocal-rank fusion. The query is the question, plus on a
+  follow-up the session's latest earlier question that isn't only filler words; no
+  model call rewrites it. List sizes
   are constants (50, 50, 10) until measurements say otherwise.
 - **Indexing:** only the folders in `[index] folders`, nothing by default; secrets,
   hidden files, build folders and ignored files skipped; symlinks never followed;

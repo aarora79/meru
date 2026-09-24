@@ -41,9 +41,10 @@ Meru  direct · 0.91
 enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll
 ```
 
-In colour, the name, the "You" label, the question's bar and the input border are
-Meru's teal; "● connected" is green and "● merud not running" red; a route the router
-fell back to is amber; errors sit in a red box.
+In colour, the header's name and the input border are Meru's teal. The "You" label and
+the bar beside your question are blue, and the "Meru" label is green, so a glance tells
+you who wrote what. "● connected" is green and "● merud not running" red; a route the
+router fell back to is amber; errors sit in a red box.
 
 Bubble Tea, the library we build on, runs one loop. A message arrives, `Update` turns
 the old state into a new one, `View` draws the new state, and Bubble Tea repaints the
@@ -306,12 +307,12 @@ A Lip Gloss *style* describes how to draw text: colour, bold, borders, padding.
 ```go
 question: r.NewStyle().
 	Border(lipgloss.NormalBorder(), false, false, false, true).
-	BorderForeground(teal).
+	BorderForeground(blue).
 	PaddingLeft(1).
 	MarginLeft(answerIndent),
 ```
 
-That style draws the teal bar to the left of each question: a border on the left side
+That style draws the blue bar to the left of each question: a border on the left side
 only (the four booleans are top, right, bottom, left), one space of padding, and two
 columns of margin.
 

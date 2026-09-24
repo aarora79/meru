@@ -82,10 +82,13 @@ func routeForLetter(token string) (r Route, ok bool) {
 
 // buildMessages turns a turn into the messages sent to the fast model: the
 // system prompt, if there is one, then a user message that holds the lettered
-// options, the examples, the history and the question, and ends with
-// "Answer: " so the next token is the letter.
+// options, the user's indexed folders, the examples, the history and the
+// question, and ends with "Answer: " so the next token is the letter.
 //
-// The fixed part (options and examples) comes first and the parts that
+// The folders matter because the model can't otherwise tell that "meru" in
+// "what database does meru use" names one of the user's own projects.
+//
+// The fixed part (options, folders and examples) comes first and the parts that
 // change each turn come last. Ollama reuses the work it did on a prompt's
 // opening tokens when the next prompt starts the same way, so the fixed part
 // costs almost nothing after the first turn. The order also helped
@@ -102,7 +105,12 @@ func buildMessages(turn Turn) []engine.Message {
 
 	b.WriteString("Decide how to answer the user's next question.\n\n")
 	for _, o := range options {
-		b.WriteString(o.letter + " = " + o.description + "\n")
+		b.WriteString(o.letter + " = " + o.description)
+		if o.route == RouteSearch && len(turn.Folders) > 0 {
+			b.WriteString(" The user's files are in " + strings.Join(turn.Folders, ", ") +
+				"; questions about projects kept there, by name, are B.")
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString("\nExamples:\n")
 	for _, e := range examples {

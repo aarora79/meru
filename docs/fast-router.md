@@ -35,8 +35,8 @@ A route decision is a classification, so read it from the logits instead of pars
 prose.
 
 1. Prompt the `fast` model with one lettered option per route, each with a
-   description, two worked examples per route, then the session history and the
-   question.
+   description, the folders Meru indexes, two worked examples per route, then the
+   session history and the question.
 2. Ask Ollama for **one** token with log probabilities, with thinking turned off
    (`think: false`). A thinking model otherwise spends that token starting its hidden
    reasoning.
@@ -51,7 +51,7 @@ from a fixed set of letters rather than from whatever it wrote.
 
 ```mermaid
 flowchart LR
-    Q["question + history"] --> P["build prompt<br/>A–D, examples, then the turn"]
+    Q["question + history"] --> P["build prompt<br/>A–D, folders, examples, then the turn"]
     P --> O["Ollama /api/chat<br/>num_predict 1<br/>logprobs true, think false"]
     O --> T["top_logprobs at position 0"]
     T --> F["keep A–D<br/>exp, temperature, normalise"]
@@ -76,8 +76,9 @@ that emits single letters as their own tokens, which the startup probe checks.
 **In scope.** The route decision, and only that.
 
 **Out of scope, on purpose.** No model rewrites the query. Search uses the question
-itself, and on a follow-up `merud` appends the session's previous question, which
-needs no model call (see
+itself, and on a follow-up `merud` appends the session's latest earlier question
+that isn't only filler words such as "try the last question again". That needs no
+model call (see
 [How a conversation continues](../ARCHITECTURE.md#how-a-conversation-continues)).
 A rewrite would need generated text, a second model call on every search turn;
 nobody has measured that search needs one. Skill selection arrives in v0.4 as its own
@@ -97,7 +98,7 @@ a description, because small models lean on the label text.
 Decide how to answer the user's next question.
 
 A = General knowledge, chit-chat, maths, coding or writing help. Needs nothing about the user and nothing recent or live.
-B = Look in the user's own saved notes, documents, code repos or past chats. Nothing live, no action.
+B = Look in the user's own saved notes, documents, code repos or past chats. Nothing live, no action. The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.
 C = Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) or an action (send, book, create, schedule). Nothing from the user's notes.
 D = Needs the user's notes or files AND a live lookup or an action.
 
@@ -134,13 +135,20 @@ Each part earned its place on the labelled set (see [Calibration](#calibration))
 - **Contrastive descriptions.** Each option names the questions that belong to it
   and says what it excludes. "Email inbox" and "calendar" sit under C, because
   they are live services, not notes.
+- **Folders on B's line.** When `[index] folders` lists any, B's line names them
+  as `config.toml` writes them, and says that questions about projects kept there,
+  by name, are B. `merud` passes them in `Turn.Folders`. Without the line the model
+  sent "what database does meru use" to `direct` with 0.902 confidence, because
+  nothing told it that "meru" is one of the user's own projects. The folders change
+  only when config does, so the line sits in the fixed part and Ollama's reuse
+  still works. With no folders the line is left out.
 - **Two examples per route.** None repeats a question in the labelled set, and a
   unit test checks that.
 - **Letters A to D in route order.** Every other order tried did worse, and so did
   the words `direct`, `search`, `tools` and `both`, which the tokenizer splits.
 
-The prompt costs about 256 tokens for a question with no history, against about
-120 before these changes.
+The prompt costs about 256 tokens for a question with no history and no folders,
+against about 120 before these changes.
 
 ### Tokeniser detail
 
@@ -292,11 +300,14 @@ spend tokens rather than guess.
 `make router-eval` scores the router against the local Ollama. It needs the fast
 model pulled, and skips otherwise.
 
-**The labelled set.** `internal/router/testdata/routes.jsonl` holds 121 questions
+**The labelled set.** `internal/router/testdata/routes.jsonl` holds 135 questions
 written the way a user types them, about 30 per route, each with its route and a
-reason. Some are follow-ups that carry a `history` of earlier turns. A fixed rule
-splits it: of every ten rows with the same route, the 3rd, 6th and 9th go to a
-held-out set of 36 rows, and the other 85 form the fit set. Tune on the fit set and
+reason. Some are follow-ups that carry a `history` of earlier turns. The harness
+gives every row the same folders, `~/notes`, `~/repos/meru` and
+`~/repos/portfolio` (`evalFolders`), so a row can ask about "meru" by name the way
+a user asks about their own project. A fixed rule splits the set: of every ten rows
+with the same route, the 3rd, 6th and 9th go to a held-out set of 40 rows, and the
+other 95 form the fit set. Tune on the fit set and
 report the held-out numbers.
 
 **The report.** The harness sends every question through `Decide` with the shipped
@@ -309,8 +320,8 @@ share of turns that *missed* (the route lacks a search or a tool the question ne
 a fallback never misses) and latency at p50 and p95.
 
 **Temperature.** A sweep from 0.5 to 5 picks the value with the lowest ECE over all
-121 rows. Temperature never changes the top pick, so fitting it on every row leaks
-nothing into the accuracy numbers. The held-out set alone, at 36 rows, gives an ECE
+135 rows. Temperature never changes the top pick, so fitting it on every row leaks
+nothing into the accuracy numbers. The held-out set alone, at 40 rows, gives an ECE
 too jumpy to fit on.
 
 **Threshold.** A sweep of `min_confidence` shows the fallback rate, accuracy and
@@ -398,7 +409,10 @@ pages follow in the same pull request.
 - Refit the temperature and the threshold on labelled turns from real transcripts
   once there are enough of them.
 - `tools` has the weakest recall: the model still answers questions about recent
-  events, such as last night's score or the latest release, from memory.
+  events, such as last night's score or the latest release, from memory, and sends
+  requests such as "text alex that I'm on my way" to `search`. In v0.2 the agent
+  searches on the `tools` route as well, so a question about the user's files that
+  lands there still gets excerpts.
 - Measure whether skill selection should become a second classification. Needs a
   number first.
 
@@ -453,3 +467,46 @@ MiniCPM5-2B at Q4_K_M, held-out set of 36 questions.
   only the history and the question.
 - **Full profile.** The `full` profile uses the same fast model, so these numbers
   cover it too.
+
+## Notes from the folder line
+
+Measured with `make router-eval` on the development machine: Ollama 0.34.0,
+MiniCPM5-2B at Q4_K_M, temperature 1.25, `min_confidence = 0.45`. The labelled set
+grew from 121 to 135 rows. The 14 new rows are 11 `search` questions and 3 `direct`
+look-alikes. The `search` rows ask about the user's projects by name ("what
+database does meru use", "what files can you see") or ask to retry ("try the last
+question again", "search again, I think it's in there"). The look-alikes ask the
+same kind of thing about someone else's project: "what database does wordpress
+use", "what is sqlite good for", "what language is kubernetes written in".
+
+| | old prompt, 121 rows | old prompt, 135 rows | folders on B's line, 135 rows |
+| --- | --- | --- | --- |
+| fit top-pick accuracy | 0.859 | 0.811 | 0.874 |
+| fit accuracy (after fallback) | 0.859 | 0.800 | 0.884 |
+| held-out top pick | 28 of 36 (0.778) | 30 of 40 (0.750) | 32 of 40 (0.800) |
+| held-out search recall | 0.778 | 0.667 (8 of 12) | 0.917 (11 of 12) |
+| held-out tools recall | 0.444 | 0.444 | 0.444 (4 of 9) |
+| fallback rate, fit / held-out | 0.035 / 0.139 | 0.042 / 0.125 | 0.011 / 0.025 |
+| ECE over all rows | 0.043 | 0.061 | 0.065 |
+
+- **Two placements that lost.** A separate line after the options that said
+  questions about those projects are "B or D" pushed 10 fit `search` rows to
+  `search+tools`, and held-out top pick fell to 29 of 40. The same line saying
+  only "B" pulled requests to text or send into `search`: 28 of 40. The shipped
+  version adds the folders to B's own line.
+- **What got worse.** Held-out `tools` requests now go to `search` rather than
+  `search+tools`: 4 of the 9, such as "text alex that I'm on my way". The router
+  also falls back less, and a fallback never misses, so the held-out missed rate
+  rose from 0.056 to 0.175. In v0.2 the
+  agent searches on `tools` as well, and no route calls tools yet, so these misses
+  cost nothing until v0.3.
+- **Temperature.** The sweep's lowest ECE over all rows is now at T = 1.10
+  (0.050), against 0.065 at 1.25. The gap is small, so the default stays at 1.25.
+- **A rule after the router.** Even with the folder line, the router sent "what
+  database does Meru use to store its index?" to `direct` at 0.621, and the model
+  made up an answer. So the agent loop, outside this package, changes a `direct`
+  route to `search` when the question names an indexed folder as a whole word,
+  such as "meru" for `~/repos/meru`. A wrong guess costs one search of about
+  50 ms. The `meru.route` span and `meru.route.decisions` still record what the
+  router chose; the turn's route event, log line and span show `search`. See
+  [docs/coding-notes/agent.md](coding-notes/agent.md).

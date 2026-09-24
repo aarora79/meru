@@ -44,8 +44,13 @@ func (l labelled) turn() Turn {
 			engine.Message{Role: engine.RoleUser, Content: h.Q},
 			engine.Message{Role: engine.RoleAssistant, Content: h.A})
 	}
-	return Turn{History: hist, Question: l.Q}
+	return Turn{History: hist, Question: l.Q, Folders: evalFolders}
 }
+
+// evalFolders stands in for the user's [index] folders on every labelled
+// row, so rows can ask about "meru" or "portfolio" by name the way a user
+// asks about their own projects.
+var evalFolders = []string{"~/notes", "~/repos/meru", "~/repos/portfolio"}
 
 // loadLabelled reads a JSONL file of labelled questions, one JSON object per
 // line. It fails on a bad line or on a route that isn't one of the four.

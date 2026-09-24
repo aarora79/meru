@@ -227,6 +227,20 @@ func TestBuildMessages(t *testing.T) {
 	if !strings.HasPrefix(other, prefix) {
 		t.Errorf("the fixed prefix changed between turns")
 	}
+	if strings.Contains(prefix, "The user's files are in") {
+		t.Errorf("a turn with no folders should not name any:\n%s", prefix)
+	}
+
+	// Folders join option B's line, inside the fixed part.
+	user = buildMessages(Turn{Question: "what database does meru use", Folders: []string{"~/notes", "~/repos/meru"}})[0].Content
+	want := "own saved notes, documents, code repos or past chats. Nothing live, no action. " +
+		"The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.\n"
+	if !strings.Contains(user, want) {
+		t.Errorf("prompt lacks the folders on option B's line:\n%s", user)
+	}
+	if strings.Index(user, "~/repos/meru") > strings.Index(user, "Examples:") {
+		t.Errorf("folders should sit in the fixed part, before the examples:\n%s", user)
+	}
 }
 
 func TestExamplesCoverEveryRoute(t *testing.T) {

@@ -20,7 +20,7 @@ reads how likely the model thought each of the letters A, B, C and D was.
 
 ```mermaid
 flowchart LR
-    T["Turn<br/>question + history"] --> P["buildMessages<br/>options A–D, examples,<br/>then the turn, ends 'Answer: '"]
+    T["Turn<br/>question, history, folders"] --> P["buildMessages<br/>options A–D, folders, examples,<br/>then the turn, ends 'Answer: '"]
     P --> G["engine.Generate<br/>MaxTokens 1, LogProbs, TopLogProbs 20"]
     G --> L["log probabilities<br/>at position 0"]
     L --> F["probs<br/>keep A–D, exp(lp / T), normalise"]
@@ -54,6 +54,19 @@ then the history newest first, then the question, and ends with `Answer: ` so
 the model's next token is a letter. The fixed part comes first for two reasons
 the labelled set measured: accuracy rose, and Ollama can reuse its work on a
 prompt opening it saw on the last turn, so the longer prompt still runs faster.
+
+When `Turn.Folders` holds the `[index] folders`, B's line gains one more
+sentence:
+
+```text
+The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.
+```
+
+Without it the model can't tell that "meru" in "what database does meru use"
+names the user's own project, and it answered `direct`. `merud` fills
+`Turn.Folders` from config, in `routerAdapter` in `cmd/merud/main.go`. Config
+changes only when `merud` restarts, so the line stays the same from turn to turn
+and counts as part of the fixed part.
 
 `routeForLetter` trims spaces and ignores case. A tokenizer may emit `A`, ` A` or
 `a` for the same answer; all three map to `direct`. `AB`, `Alpha` and `1` map to
@@ -179,11 +192,13 @@ make router-eval
 ```
 
 The last two need Ollama running with the fast model pulled. The second routes
-seven questions and prints each distribution. `make router-eval` scores all 121
+seven questions and prints each distribution. `make router-eval` scores all 135
 labelled questions and prints the report, a temperature sweep and a
-`min_confidence` sweep. On the development machine (Ollama 0.34, MiniCPM5-2B at
-Q4_K_M) the router picked the labelled route for 28 of 36 held-out questions,
-up from 17 with the v0.1 prompt, at about 28 ms per warm decision. See
+`min_confidence` sweep. It gives every row the folders in `evalFolders`
+(`~/notes`, `~/repos/meru`, `~/repos/portfolio`). On the development machine
+(Ollama 0.34, MiniCPM5-2B at Q4_K_M) the router picked the labelled route for 32
+of 40 held-out questions, at about 28 ms per warm decision. Without the folder
+line it picked 30 of 40. See
 [Calibration](../fast-router.md#calibration) and the notes at the end of that
 page.
 

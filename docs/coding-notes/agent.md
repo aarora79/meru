@@ -15,9 +15,9 @@ whether the turn looks in your files first:
 
 | Route | Searches your files? |
 | --- | --- |
-| `direct` | no |
+| `direct` | no, unless the question names an indexed folder |
 | `search` | yes |
-| `tools` | no (tools arrive in v0.3; until then it answers directly) |
+| `tools` | yes in v0.2 (tools arrive in v0.3; until then it searches, see below) |
 | `search+tools` | yes |
 
 ## The picture
@@ -36,7 +36,7 @@ sequenceDiagram
     A->>T: Append user line
     A->>R: Decide(question, history)
     A-->>S: emit route
-    opt route is search or search+tools
+    opt route isn't direct, or the question names an indexed folder
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
     end
@@ -78,6 +78,25 @@ passes `searchAdapter`, which calls `retrieve.Search` over the store; tests pass
 `fakeSearcher`, which returns fixed results. A `nil` Searcher turns search off,
 which is what most of the older tests pass.
 
+### New and filesNote
+
+`New` builds the system prompt once and adds `filesNote(cfg.Index.Folders)` to
+the end of it, so every turn tells the model which folders Meru searches:
+
+```text
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. You can't open or list files yourself.
+```
+
+With no folders, the note says instead that Meru hasn't indexed any files yet
+and that the user lists folders under `[index] folders` in
+`~/.meru/config.toml`. Without the note a small model answered "I don't have
+access to your files" while it read excerpts from them, and couldn't say what
+Meru had indexed.
+
+`New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
+path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
+three letters, which match too many ordinary words, and keeps each name once.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
@@ -112,8 +131,32 @@ show up twice in the prompt.
 
 ### searchFiles
 
-On the two search routes, `Handle` calls `searchFiles` between routing and the
-prompt:
+On every route but `direct`, `Handle` calls `searchFiles` between routing and
+the prompt. `searches(route)` is `route != "direct"`. Until tools arrive in
+v0.3, `tools` searches too: the router sends some questions about your files to
+`tools`, and an answer from the files beats one from the model alone.
+
+One rule runs first. When the router says `direct` and the question names an
+indexed folder, the route becomes `search`:
+
+```go
+if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+    dec.Route = "search"
+}
+```
+
+`namesFolder` splits the question into words with `words` and looks for one of
+the folder names. It matches whole words and ignores case, so "Meru" and
+"meru's" match `meru` and "merudaemon" doesn't. Even with the folders in its
+prompt, the router sent "what database does Meru use to store its index?" to
+`direct` at 0.621, and the model made up an answer. A wrong guess costs one
+search of about 50 ms, and the model uses only the excerpts that help. "hey
+meru, what's the capital of France" searches too, because the assistant shares
+its name with the folder. The `route` event, the turn's log line and its span
+show `search`, with a debug line that says why; the router's own `meru.route`
+span and metric keep what the router chose.
+
+Then the search:
 
 ```go
 if searches(dec.Route) && a.search != nil {
@@ -128,9 +171,16 @@ msgs := a.prompt(ctx, history, question, files)
 ```
 
 - **What it searches for.** No model rewrites the query, so `searchQuery`
-  uses the question. On a follow-up it adds the session's last
-  question after it, because "and the one after that?" finds nothing alone.
-  The question goes first: keyword search keeps only a query's first 32 words.
+  uses the question. On a follow-up it adds one earlier question after it,
+  because "and the one after that?" finds nothing alone. It walks back from the
+  newest and takes the first one that `namesSubject`: a question with at least
+  one word that `isFiller` doesn't list. The filler list holds short common
+  words and the words people use to retry, such as try, again, search, check,
+  last, question, docs, files and notes. So "search again i think it is
+  specified", after "try the last question again now", after "what database
+  does meru use", searches for `search again i think it is specified` and `what
+  database does meru use`. The question goes first: keyword search keeps only a
+  query's first 32 words.
 - **What the model sees.** `retrieve.Format` numbers the excerpts `[1]`,
   `[2]` and so on, each under a citation line with its file, heading and
   lines. `searchFiles` puts `citeRule` in front of them, which tells the model
@@ -239,6 +289,11 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   [go-basics/errors.md](go-basics/errors.md).
 - **`strings.Builder`** — collects the answer without copying it on every piece.
 - **Range over a function** — `for delta, err := range stream`.
+- **A function as an argument** — `words` hands `strings.FieldsFunc` a small
+  function that says where to split: at any rune that isn't a letter, a digit
+  or a hyphen, so "personal-knowledge-base" stays one word.
+- **`switch` with a list of cases** — `isFiller` lists its words in one `case`,
+  and the switch returns true when `w` matches any of them.
 
 ## Try it
 
@@ -246,10 +301,12 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 go test -race ./internal/agent/...
 ```
 
-`search_test.go` checks the search step: the two search routes add the
-excerpts and send `sources` before the tokens, `direct` and `tools` never
-search, an empty or failed search still answers, and a follow-up searches with
-the last question too.
+`search_test.go` checks the search step: the search routes and `tools` add
+the excerpts and send `sources` before the tokens, `direct` doesn't search
+unless the question names an indexed folder, an empty or failed search still
+answers, and `TestSearchQuery` checks which earlier question joins the query.
+`TestFilesNote` checks the folders reach the system prompt, and
+`TestFolderNames` checks the names the folder rule matches.
 
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and

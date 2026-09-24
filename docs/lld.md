@@ -188,7 +188,9 @@ type Router interface {
 
 The agent doesn't import `internal/router`; it only knows this small interface.
 `cmd/merud` joins the two with a tiny adapter, `routerAdapter`, that calls
-`router.Decide`. That keeps the agent testable with a fake router.
+`router.Decide`. That keeps the agent testable with a fake router. The adapter
+also holds `[index] folders` and passes them in `router.Turn.Folders`, so the
+router's prompt can name them.
 
 ### `agent.Searcher` and `index.Sink`: how v0.2 reaches the store
 
@@ -214,6 +216,11 @@ The same pattern again. `cmd/merud` passes `searchAdapter`, which calls
 agent's `Searcher`; a nil `Searcher` turns search off. It passes the
 `*store.Store` itself as the indexer's `Sink`. Each package's tests pass a fake
 instead, so neither needs a database file or a model.
+
+`New` also reads `cfg.Index.Folders` twice. It adds `filesNote` to the system
+prompt, which names the folders Meru searches, or says that none are set yet.
+And it keeps each folder's last path part, such as `meru`, for the rule that
+turns a `direct` route into `search`.
 
 ### `config.Config`: settings, checked once
 
@@ -307,7 +314,7 @@ sequenceDiagram
     E-->>RT: Completion with log probabilities
     RT-->>A: Decision{Route, Confidence, Outcome}
     A-->>U: emit route event
-    opt route is search or search+tools
+    opt route isn't direct, or a direct question names an indexed folder
         A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
         A-->>U: emit sources event
     end
@@ -340,11 +347,14 @@ The same path as a reading list, in order:
    `prompt` and `answer`.
 5. **`internal/router/router.go` → `Decide`** writes the A-to-D prompt (`prompt.go`),
    asks the fast model for one token, and turns the log probabilities into a route
-   (`probs.go`).
-6. **`internal/agent/agent.go` → `searchFiles`**, only when the route is `search`
-   or `search+tools`, calls **`internal/retrieve/search.go` → `Search`** with the
-   query from `searchQuery`: the question, plus the session's previous question on a
-   follow-up. No model rewrites it. `Search` embeds the query, runs
+   (`probs.go`). The prompt names the `[index] folders` on option B's line.
+   Back in `Handle`, a `direct` route becomes `search` when the question names an
+   indexed folder as a whole word (`namesFolder`).
+6. **`internal/agent/agent.go` → `searchFiles`**, on every route but `direct`
+   (`searches`; until tools arrive in v0.3, `tools` searches too), calls
+   **`internal/retrieve/search.go` → `Search`** with the query from `searchQuery`:
+   the question, plus on a follow-up the session's latest earlier question that
+   isn't only filler words (`namesSubject`). No model rewrites it. `Search` embeds the query, runs
    `store.SearchVector` and `store.SearchKeyword`, merges the two lists with `rrf`
    (50 hits from each, 10 kept), and loads the top chunks with `store.Chunks`. `retrieve.Format`
    numbers them, and the agent puts them under the system prompt and sends the

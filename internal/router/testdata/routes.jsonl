@@ -119,3 +119,17 @@
 {"q": "pull up my notes for the design review and email them to her", "route": "search+tools", "why": "follow-up; the user's notes plus sending email", "history": [{"q": "what's on my calendar tomorrow?", "a": "10am design review with Priya, 2pm dentist."}]}
 {"q": "where are my packages? the tracking numbers are in my notes", "route": "search+tools", "why": "the user's notes plus live tracking"}
 {"q": "look up the current price of everything on my shopping list note", "route": "search+tools", "why": "the user's note plus live prices"}
+{"q": "what database does meru use", "route": "search", "why": "meru is one of the user's indexed folders"}
+{"q": "what language is meru written in", "route": "search", "why": "meru is one of the user's indexed folders"}
+{"q": "what is the default chunk size in meru's indexer", "route": "search", "why": "a detail of the user's own project"}
+{"q": "how does the portfolio site get deployed", "route": "search", "why": "portfolio is one of the user's indexed folders"}
+{"q": "what model does meru run by default", "route": "search", "why": "a detail of the user's own project"}
+{"q": "what documents do you have indexed", "route": "search", "why": "asks what the user's files hold"}
+{"q": "try the last question again", "route": "search", "why": "retry of a question about the user's project", "history": [{"q": "what database does meru use to store its index", "a": "I'm not sure which database Meru uses."}]}
+{"q": "search again, I think it's in there", "route": "search", "why": "asks to look in the user's files again", "history": [{"q": "what port does the portfolio dev server use", "a": "The excerpts don't say which port it uses."}]}
+{"q": "check my docs this time", "route": "search", "why": "asks to look in the user's files", "history": [{"q": "what's the retry limit in the meru router", "a": "Routers often retry two or three times."}]}
+{"q": "is that in the architecture doc?", "route": "search", "why": "follow-up about the user's own document", "history": [{"q": "does meru have a sandbox", "a": "Your files say Meru runs as an ordinary user process with no sandbox."}]}
+{"q": "what files can you see", "route": "search", "why": "asks what the user's files hold"}
+{"q": "what database does wordpress use", "route": "direct", "why": "general knowledge; wordpress isn't the user's project"}
+{"q": "what is sqlite good for", "route": "direct", "why": "general knowledge, even though the user's project uses it"}
+{"q": "what language is kubernetes written in", "route": "direct", "why": "general knowledge"}

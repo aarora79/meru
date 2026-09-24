@@ -201,7 +201,7 @@ for a PDF). `meru` lists only the sources the answer cites. When the answer cite
 none, it lists every source the prompt held, which with a small index can be every
 file. `meru chat` shows the same list under each answer. A question the router
 answers directly, such as "what is the capital of France?", gets no search and no
-list.
+list, unless it names one of your folders, such as "meru" for `~/repos/meru`.
 
 **What it skips.** `merud` reads Markdown, plain text, HTML, PDF and source code.
 It never reads symlinks, hidden files and folders, secret files such as `.env`,

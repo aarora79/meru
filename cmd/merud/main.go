@@ -287,21 +287,22 @@ func newRouter(cfg config.Config, eng engine.Engine, log *slog.Logger) (agent.Ro
 		return nil, fmt.Errorf("router: %w", err)
 	}
 	rc.Log = log
-	return routerAdapter{eng: eng, cfg: rc}, nil
+	return routerAdapter{eng: eng, cfg: rc, folders: cfg.Index.Folders}, nil
 }
 
 // routerAdapter lets router.Decide serve as an agent.Router. The two packages
 // don't import each other, so this small type in main joins them.
 type routerAdapter struct {
-	eng engine.Engine
-	cfg router.Config
+	eng     engine.Engine
+	cfg     router.Config
+	folders []string // [index] folders; the router's prompt names them
 }
 
 // Decide asks the router for this turn's route and copies the result into the
 // agent's own Decision type. router.Decide records the meru.route span and
 // metric itself.
 func (r routerAdapter) Decide(ctx context.Context, question string, history []engine.Message) (agent.Decision, error) {
-	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question})
+	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question, Folders: r.folders})
 	if err != nil {
 		return agent.Decision{}, err
 	}

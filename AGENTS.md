@@ -31,7 +31,7 @@ easier to review.
 Pre-alpha, **v0.2**: `merud` and `meru` answer questions with local models, stream
 the answer, keep JSONL session transcripts and route each question with the
 one-token router. v0.2 adds the SQLite store, the folder indexer with its watcher
-and `meru index`, hybrid retrieval on the search routes, and citations: a `sources`
+and `meru index`, hybrid retrieval on every route but `direct`, and citations: a `sources`
 event and a `Sources:` list in both clients. The MCP client pool, memory files and
 skill registry exist as groundwork for v0.3 and v0.4; nothing in a turn calls them
 yet. Work goes milestone

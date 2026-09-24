@@ -11,8 +11,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -37,6 +39,20 @@ const citeRule = "Below, under \"From your files\", are numbered excerpts from t
 	"When they help answer the question, answer from them and cite each excerpt you use by its number " +
 	"in square brackets, like [1]. Cite only the numbers listed there. " +
 	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
+
+// filesNote joins the system prompt on every turn and tells the model which
+// folders Meru searches. Without it a small model answers "I don't have
+// access to your files" even while it reads excerpts from them, and can't say
+// what it has indexed.
+func filesNote(folders []string) string {
+	if len(folders) == 0 {
+		return "Meru hasn't indexed any of the user's files yet. " +
+			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
+	}
+	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
+		"When a question needs them, Meru searches first and puts the best excerpts below. " +
+		"You can't open or list files yourself."
+}
 
 // noResults stands in for the excerpts when a search finds nothing, or when
 // nothing is indexed yet, so the model answers without pretending it looked.
@@ -74,6 +90,7 @@ type Agent struct {
 	router      Router
 	search      Searcher // nil turns search off
 	models      config.Models
+	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
 	system      string       // system prompt
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
@@ -81,10 +98,11 @@ type Agent struct {
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
 }
 
-// New returns an Agent that answers with eng, routes with router, searches
-// the user's files with search on the "search" and "search+tools" routes,
-// and keeps transcripts under cfg.Dir/sessions. search may be nil, which
-// turns search off. log may be nil, which means no log lines.
+// New returns an Agent that answers with eng, routes with router, and keeps
+// transcripts under cfg.Dir/sessions. It searches the user's files with
+// search on every route but "direct", and on a direct question that names
+// one of cfg.Index.Folders. search may be nil, which turns search off. log
+// may be nil, which means no log lines.
 func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
@@ -98,6 +116,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
+	system += "\n\n" + filesNote(cfg.Index.Folders)
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
@@ -105,6 +124,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 		router:      router,
 		search:      search,
 		models:      cfg.Models,
+		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
@@ -188,6 +208,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err != nil {
 		return err
 	}
+	// The router can't always tell that a question names one of the user's
+	// own projects: "what database does meru use" can look like general
+	// knowledge. When a direct question names an indexed folder, search
+	// anyway. A wrong guess costs one search of about 50 ms.
+	if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+		a.log.DebugContext(ctx, "route changed to search: the question names an indexed folder",
+			"confidence", dec.Confidence)
+		dec.Route = "search"
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
@@ -196,8 +225,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// The "search" and "search+tools" routes look in the user's files
-	// first. Tools arrive in v0.3; until then "tools" answers directly.
+	// Every route but "direct" looks in the user's files first. Tools
+	// arrive in v0.3; until then "tools" searches too, because the router
+	// sends some questions about the user's files there, and an answer from
+	// the files beats one from the model alone.
 	var files string
 	if searches(dec.Route) && a.search != nil {
 		var sources []rpc.Citation
@@ -367,23 +398,93 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
-// searches reports whether a route looks in the user's files.
+// searches reports whether a route looks in the user's files. In v0.2 that
+// is every route but "direct"; see Handle.
 func searches(route string) bool {
-	return route == "search" || route == "search+tools"
+	return route != "direct"
+}
+
+// folderNames returns the last part of each folder, in lower case, such as
+// "meru" for "~/repos/meru". Names under three letters are left out, because
+// they match too many ordinary words.
+func folderNames(folders []string) []string {
+	var names []string
+	for _, f := range folders {
+		n := strings.ToLower(filepath.Base(filepath.FromSlash(f)))
+		if utf8.RuneCountInString(n) >= 3 && !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// namesFolder reports whether question holds one of names as a whole word,
+// ignoring case: "meru's" and "Meru" match "meru", "merudaemon" doesn't.
+func namesFolder(question string, names []string) bool {
+	for _, w := range words(question) {
+		if slices.Contains(names, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// words splits text into lower-case words at every rune that isn't a letter,
+// a digit or a hyphen, so "personal-knowledge-base" stays one word.
+func words(text string) []string {
+	// FieldsFunc splits text at every rune for which the function returns
+	// true.
+	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-'
+	})
 }
 
 // searchQuery is the text a turn searches for. No model rewrites the query,
-// so it is the question itself; on a follow-up it also holds
-// the session's last question, because "and the one after that?" means
-// nothing to a search on its own. The current question comes first: keyword
-// search keeps only a query's first words.
+// so it is the question itself plus the session's latest earlier question
+// that names a subject, because "and the one after that?" means nothing to a
+// search on its own. The current question comes first: keyword search keeps
+// only a query's first words.
+//
+// An earlier question made only of filler, such as "try the last question
+// again", names no subject, so the walk skips it and keeps going back.
+// Without the skip, "search again" after "try again" searched for those
+// words alone and found nothing on the subject.
 func searchQuery(question string, history []engine.Message) string {
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == engine.RoleUser {
+		if history[i].Role == engine.RoleUser && namesSubject(history[i].Content) {
 			return question + "\n" + history[i].Content
 		}
 	}
 	return question
+}
+
+// namesSubject reports whether text holds at least one word that isn't
+// filler, so it can steer a search.
+func namesSubject(text string) bool {
+	for _, w := range words(text) {
+		if !isFiller(w) {
+			return true
+		}
+	}
+	return false
+}
+
+// isFiller reports whether w is a word that says nothing about a subject:
+// short common words, and the words people use to ask for a retry or a
+// search. The list is short on purpose; a word missing from it only means
+// an earlier question joins the query when it could have been skipped.
+func isFiller(w string) bool {
+	switch w {
+	case "a", "an", "the", "and", "or", "but", "so", "is", "are", "was", "were", "be",
+		"it", "its", "this", "that", "there", "here", "i", "im", "me", "my", "you", "your",
+		"we", "do", "does", "did", "can", "could", "would", "will", "please", "ok", "okay",
+		"to", "in", "on", "of", "for", "at", "about", "again", "try", "retry", "search",
+		"look", "check", "find", "last", "previous", "question", "answer", "now", "think",
+		"sure", "time", "once", "more", "docs", "files", "notes", "what", "how", "why",
+		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned":
+		return true
+	}
+	return false
 }
 
 // searchFiles searches the user's files for query inside a meru.search
