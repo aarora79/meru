@@ -297,7 +297,52 @@ file by hand. The model's way to write a file, `write_file`, does.
 
 `mcpBackend` joins the MCP pool to `dispatch`, and `mcpServerConfigs` turns the
 `[[mcp.servers]]` entries into the pool's settings, secrets resolved. Both are
-described in [dispatch.md](dispatch.md).
+described in [dispatch.md](dispatch.md). `probeConfig` does the same for the one
+server a probe names, and `probeResult` copies `mcp.ProbeInfo` into
+`rpc.ProbeResult`. The `mcp` package doesn't import `rpc`, so `main` joins them.
+
+### merud: tools.go
+
+`toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
+pool, the A2A client, the built-in tools and the `dispatch.Dispatcher` that joins
+them. Besides `tools` and `log`, it answers the two ops `meru mcp add` uses:
+
+| Op | What it does | Reply |
+| --- | --- | --- |
+| `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
+| `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
+
+**Probe.** `handleProbe` loads `secrets.toml` from disk each time instead of using
+the copy it holds, because `meru mcp add` may have saved the server's key a moment
+before. The probe calls no tool and the model never sees what it finds, so it
+skips `dispatch`: like the memory ops, it is a command you run. The error text
+goes through `Redact` before it leaves, in case a server echoes a key back.
+
+**Reload.** `reloadMCP` is the path the `configure` tool already used. It loads
+`config.toml` and `secrets.toml`, builds a new pool from the servers config lists
+now, swaps it into the dispatcher with `Replace`, and closes the old pool:
+
+```go
+s.mu.Lock()
+old := s.pool
+s.pool, s.secrets = pool, sec
+s.mu.Unlock()
+s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
+old.Close()
+```
+
+The new pool has no memory of the old one, so a server you added appears, one you
+changed restarts with its new settings, and one you removed is gone. `old.Close()`
+stops every child the old pool started, the removed server's included. A config
+that fails to load, or a bad server entry, returns the error before anything
+changes, and the old pool keeps running. `reload`, a second mutex, lets one
+reload run at a time.
+
+`handleReload` passes `context.WithoutCancel(ctx)`: a context with the request's
+values but none of its cancellation. A client that hangs up mid-reload then can't
+leave `merud` with a pool whose servers all failed to start.
+`TestMCPReloadStopsOldChildren` runs the test binary as a stdio server, changes
+and then removes it, and checks each old process is gone.
 
 ### meru: main.go
 

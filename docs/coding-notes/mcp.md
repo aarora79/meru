@@ -1,8 +1,9 @@
 # mcp
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
-and the tests `config_test.go`, `pool_test.go`, `call_test.go`, `headers_test.go`,
-`stdio_test.go`, `stdio_unix_test.go`, `testserver_test.go`)
+`probe.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
+`headers_test.go`, `stdio_test.go`, `stdio_unix_test.go`, `probe_test.go`,
+`probe_unix_test.go`, `testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
 [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4
@@ -20,6 +21,11 @@ config, keeps each server's allowed tools, and renames them `<server>.<tool>`.
 reads `Pool.Tools` for the prompt and calls `Pool.Call` to run a tool. `dispatch`
 owns the confirmation prompt, the `tool_calls` row and the metrics; see
 [dispatch.md](dispatch.md).
+
+`Probe` is the one piece outside the Pool. It starts a server for a moment, lists
+every tool it offers with the hints the server gives, and stops it. `meru mcp add`
+uses it, through merud, to show you a new server's tools before you pick which to
+allow.
 
 The package speaks both transports in the current MCP spec, through the official
 Go SDK (`github.com/modelcontextprotocol/go-sdk`):
@@ -199,6 +205,64 @@ copy. It adds them only for the server's own host: a server marked
 `network = true` may redirect elsewhere, and the key must not follow. More on
 clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md).
 
+### probe.go
+
+`Probe(ctx, cfg, log)` answers "what does this server offer?" before the server
+goes into config. It returns a `ProbeInfo`: the name and version the server gives
+in the handshake, and every tool it offers, sorted by name.
+
+```go
+cfg.Allow, cfg.Confirm, cfg.Timeout = nil, nil, 0
+if err := cfg.Validate(); err != nil {
+    return ProbeInfo{}, err
+}
+```
+
+`cfg` arrives as a copy, since Go passes structs by value, so clearing the allow
+and confirm lists touches nothing the caller holds. What's left for `Validate` to
+check is how to reach the server: the name, `command` or `url`, the loopback rule,
+and the header and env names. An empty allow list was always valid; it gives the
+model nothing.
+
+`Probe` reaches the server with `dialTransport` and `newClient`, the same two
+functions the Pool uses, so a probe sees what the Pool would see: the same trimmed
+environment for a stdio child, and the same loopback redirect rule and headers for
+Streamable HTTP. It then runs the handshake and `listTools` under one 30-second
+limit (`connectTimeout`). A first `npx -y` or `uvx` run downloads the server
+before it starts, so a timeout says that, and says to try again.
+
+**Hints.** MCP lets a server annotate each tool. `Probe` copies two of the
+annotations into `ProbeTool`, as `*bool` so "not given" stays apart from
+"false":
+
+- `ReadOnly`, from `readOnlyHint`: the tool changes nothing. The Go SDK decodes
+  this one into a plain `bool`, so a missing hint reads as `false`, which is also
+  MCP's default. `ReadOnly` is nil only when the tool has no annotations at all.
+- `Destructive`, from `destructiveHint`: the tool may delete or overwrite. The SDK
+  keeps it as a pointer, so nil means the server left it out.
+
+MCP calls both hints from the server, not promises. Meru uses them only to
+propose which tools to allow and which to confirm; you decide.
+
+**No stray processes.** The child must end whatever happens, so the cleanup comes
+in two `defer`s, which run last-in, first-out when `Probe` returns:
+
+```go
+procCtx, stop := context.WithCancel(context.Background())
+defer stop()
+...
+cs, err := newClient(log).Connect(cctx, t, nil)
+if err != nil { ... } // the SDK closes the connection itself
+defer func() { _ = cs.Close() }()
+```
+
+`cs.Close` closes the child's stdin and waits for it to exit; `stop` kills it if
+it hasn't. `probe_unix_test.go` proves it: a test server that never answers the
+handshake, and one that answers it but never lists its tools, both leave no
+process behind once `Probe` gives up.
+
+The probe calls no tool, so it doesn't go through `dispatch`.
+
 ### call.go
 
 `Call` does four things in order:
@@ -254,21 +318,24 @@ failed: `tool_error` (the convention's name), or Meru's `denied`, `unavailable` 
   [go-basics/type-switches.md](go-basics/type-switches.md).
 - **Iterators** — `cs.Tools` pages through the server's tool list. More in
   [go-basics/iterators.md](go-basics/iterators.md).
-- **Build tags** — `stdio_unix_test.go` runs only on Unix-like systems. More in
-  [go-basics/build-tags.md](go-basics/build-tags.md).
+- **Build tags** — `stdio_unix_test.go` and `probe_unix_test.go` run only on
+  Unix-like systems. More in [go-basics/build-tags.md](go-basics/build-tags.md).
 
 ## Try it
 
 ```sh
 go test -race ./internal/mcp/...
 go test -race -run TestCrashedServerRestarts -v ./internal/mcp/
+go test -race -run TestProbe -v ./internal/mcp/
 ```
 
 The tests start one test server, written with the same SDK, three ways: in memory,
 as a stdio child, and over Streamable HTTP on 127.0.0.1. The stdio child is the
 test binary itself. `TestMain` checks the `MERU_MCP_TESTSERVER` variable; when it
 is set, the binary serves MCP instead of running tests. Go's own `os/exec` tests
-use the same trick, and it needs no build step.
+use the same trick, and it needs no build step. The variable's value picks a
+behaviour: `1` serves the tools, `hang` never answers, and `hanglist` answers the
+handshake but never lists its tools. The last two drive the probe timeout tests.
 
 ## Why it's built this way
 
@@ -284,3 +351,9 @@ use the same trick, and it needs no build step.
   `errgroup`; we'll add it if startup time turns out to hurt.
 - **A trimmed environment.** Passing merud's whole environment is the default in
   `os/exec`, and it would give every server every secret merud can see.
+- **Probe with the Pool's own code.** `Probe` could have been a small client of
+  its own. Sharing `dialTransport` and `newClient` means a server that passes a
+  probe starts the same way in the Pool, environment and headers included.
+- **`mcp` returns its own `ProbeInfo`.** The package imports nothing from `rpc`,
+  so it stays a plain MCP client. `cmd/merud` copies the result into
+  `rpc.ProbeResult`, field for field.

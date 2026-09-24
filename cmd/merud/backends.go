@@ -1,6 +1,7 @@
 // This file connects the MCP client pool to dispatch: mcpBackend lets
 // dispatch reach the pool's tools, and mcpServerConfigs turns the
 // [[mcp.servers]] entries of config.toml into the pool's settings.
+// probeConfig and probeResult do the same for a server the user probes.
 
 package main
 
@@ -139,6 +140,49 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 		return nil, err
 	}
 	return out, nil
+}
+
+// probeConfig turns the server a client wants to probe into the pool's
+// settings, passing each env and header value through resolve as
+// mcpServerConfigs does. It leaves the checks to mcp.Probe. It fails,
+// naming the key, when a secret can't be found, and never puts a value in
+// the error.
+func probeConfig(ps rpc.ProbeServer, resolve func(string) (string, error)) (mcp.ServerConfig, error) {
+	c := mcp.ServerConfig{
+		Name:    ps.Name,
+		Command: ps.Command,
+		Args:    ps.Args,
+		URL:     ps.URL,
+		Network: ps.Network,
+	}
+	var err error
+	if c.Env, err = resolveAll(ps.Env, resolve); err != nil {
+		return mcp.ServerConfig{}, fmt.Errorf("mcp server %q: env %w", ps.Name, err)
+	}
+	if c.Headers, err = resolveAll(ps.Headers, resolve); err != nil {
+		return mcp.ServerConfig{}, fmt.Errorf("mcp server %q: headers %w", ps.Name, err)
+	}
+	return c, nil
+}
+
+// probeResult copies what mcp.Probe found into the shape the socket
+// carries. The two types match field for field; mcp doesn't import rpc, so
+// main joins them.
+func probeResult(info mcp.ProbeInfo) *rpc.ProbeResult {
+	out := &rpc.ProbeResult{
+		ServerName:    info.ServerName,
+		ServerVersion: info.ServerVersion,
+		Tools:         make([]rpc.ProbeTool, 0, len(info.Tools)), // [] rather than null in the JSON
+	}
+	for _, t := range info.Tools {
+		out.Tools = append(out.Tools, rpc.ProbeTool{
+			Name:        t.Name,
+			Description: t.Description,
+			ReadOnly:    t.ReadOnly,
+			Destructive: t.Destructive,
+		})
+	}
+	return out
 }
 
 // resolveAll returns a copy of m with every value passed through resolve,

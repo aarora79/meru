@@ -1218,8 +1218,9 @@ own the first time you run `meru`.
    name, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
 6. **A test question.** When `merud` runs, Meru asks it one question so you see it
-   working. Otherwise it tells you how to start `merud`. A new server or a new
-   `config.toml` takes a restart of `merud`.
+   working. Otherwise it tells you how to start `merud`. A new `config.toml`
+   takes a restart of `merud`; a new server doesn't (see
+   [MCP](#mcp)).
 
 ### Adding an MCP server
 
@@ -1257,12 +1258,26 @@ when the copy loads and its servers pass the same checks `merud` runs.
 
 Outside setup, `meru mcp add gmail` offers the same two paths, and
 `meru mcp list-catalog` lists the entries. A server that isn't in the catalog works
-too: `meru mcp add <name> -- <command> [args...]`, or `--url <url>`. Its entry
-starts with an empty `allow` list. Nobody knows a server's tool names until `merud`
-connects to it, and a guess would either miss or allow a tool nobody has read. So
-the entry gives the model nothing at first; after a restart, `meru tools` lists
-what the server offers, and you add the tools you want to `allow`. A URL off this
-machine gets `network = true`, because you typed it on purpose.
+too: `meru mcp add <name> -- <command> [args...]`, or `--url <url>`. Nobody knows
+a server's tool names until something connects to it, and a guess would either
+miss or allow a tool nobody has read. So `meru` asks `merud` to **probe** the
+server first: `merud` starts it for a moment (or connects, for a URL), lists every
+tool it offers, and stops it. The probe uses the same code, trimmed environment,
+loopback rule and resolved secrets as the pool, calls no tool, and saves nothing.
+It gives up after 30 seconds; a first `npx -y` or `uvx` run downloads the server,
+so the error says to try again.
+
+For each tool the probe reports two MCP hints, when the server gives them:
+`readOnlyHint` (the tool changes nothing) and `destructiveHint` (it may delete or
+overwrite). From them `meru` proposes a split: read-only tools go in `allow`, and
+tools that may change something go in `allow` and `confirm`, so each call asks
+first. You edit the proposal before `meru` writes the entry. MCP calls these hints,
+not promises: a server can mislabel a tool, so the proposal is a starting point and
+you make the call. A URL off this machine gets `network = true`, because you typed
+it on purpose.
+
+After it writes the entry, `meru` asks `merud` to reload its MCP servers, so the new
+tools work without a restart.
 
 In chat, "connect my Gmail" works too: the model calls the built-in `configure`
 tool, which adds a catalog entry, or a custom one from a name and a command or URL.
@@ -1334,9 +1349,21 @@ that isn't loopback unless the entry says `network = true`, the same rule A2A ag
 follow. `env` and `headers` values may name a secret as `secret:<name>` (see
 [Adding an MCP server](#adding-an-mcp-server)).
 
-`merud` reads the servers when it starts. The one exception is `configure`: after
-it adds a server, `merud` builds a new pool from the new config and swaps it in
-while it runs. `meru tools` lists each server, whether `merud` reached it, the
+`merud` reads the servers when it starts, and again on a **reload**: after
+`configure` adds a server, and when a client sends the `mcp_reload` op, as
+`meru mcp add` does. A reload reads `config.toml` and `secrets.toml`, builds a new
+pool from the servers config lists now, swaps it in, and closes the old one, which
+stops its child processes. So a server you add, change or remove takes effect
+without a restart. A config that doesn't load, or a bad server entry, fails the
+reload with an error that names the problem, and the old pool keeps running.
+
+`merud` can also **probe** a server that isn't in config yet (the `mcp_probe` op):
+start it, list every tool with its `readOnlyHint` and `destructiveHint`, and stop
+it (see [Adding an MCP server](#adding-an-mcp-server)). A probe needs no allow list,
+since it calls no tool, and the model never sees what it finds. It is a user
+command, like the memory ops, so it doesn't go through `dispatch`.
+
+`meru tools` lists each server, whether `merud` reached it, the
 tools the model may use and which of them ask first, and warns about each `allow`
 entry the server doesn't offer, most often a typo.
 
@@ -1748,8 +1775,10 @@ We'll settle these with working code and measurements.
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` checks Ollama, pulls the models, writes a first
   `config.toml`, and offers a catalog of MCP servers, each added "for you" (with
-  approval of the exact config block) or by copy-paste. A server outside the
-  catalog starts with an empty `allow` list.
+  approval of the exact config block) or by copy-paste. For a server outside the
+  catalog, `merud` probes it first, and `meru` proposes `allow` and `confirm`
+  from the tools' read-only and destructive hints. A reload makes the server
+  work without a restart.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream.

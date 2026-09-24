@@ -298,8 +298,8 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 }
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
-// the index ops to the index service, the tools and log ops to the tool
-// service, the memory ops to the memory service, the skill ops to the skill
+// the index ops to the index service, the tools, log and MCP probe and
+// reload ops to the tool service, the memory ops to the memory service, the skill ops to the skill
 // service, and the usage op to the store. The rpc server answers pings
 // itself.
 func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, st *store.Store) rpc.Handler {
@@ -315,6 +315,10 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 			return tools.handleTools(emit)
 		case rpc.OpLog:
 			return tools.handleLog(ctx, req.Limit, emit)
+		case rpc.OpMCPProbe:
+			return tools.handleProbe(ctx, req, emit)
+		case rpc.OpMCPReload:
+			return tools.handleReload(ctx, emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, emit)
 		case rpc.OpMemoryList:

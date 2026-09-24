@@ -122,15 +122,8 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 		log = slog.New(slog.DiscardHandler)
 	}
 	p := &Pool{
-		log: log,
-		// Implementation is how Meru introduces itself in the MCP handshake.
-		// Capabilities is empty on purpose: Meru offers servers no roots, no
-		// sampling and no elicitation, so a server can't read the user's
-		// folders or ask Meru's model for anything.
-		client: mcp.NewClient(&mcp.Implementation{Name: "meru"}, &mcp.ClientOptions{
-			Logger:       log,
-			Capabilities: &mcp.ClientCapabilities{},
-		}),
+		log:            log,
+		client:         newClient(log),
 		dial:           dial,
 		byName:         make(map[string]*server, len(servers)),
 		reconnectAfter: defaultReconnectAfter,
@@ -154,6 +147,18 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 		}
 	}
 	return p, nil
+}
+
+// newClient returns the MCP client the Pool and Probe connect with. The
+// Implementation is how Meru introduces itself in the MCP handshake.
+// Capabilities is empty on purpose: Meru offers servers no roots, no
+// sampling and no elicitation, so a server can't read the user's folders or
+// ask Meru's model for anything.
+func newClient(log *slog.Logger) *mcp.Client {
+	return mcp.NewClient(&mcp.Implementation{Name: "meru"}, &mcp.ClientOptions{
+		Logger:       log,
+		Capabilities: &mcp.ClientCapabilities{},
+	})
 }
 
 // dialTransport builds the real transport for cfg: a child process for a

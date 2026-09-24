@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,9 +28,17 @@ type echoArgs struct {
 }
 
 // startMCPServer runs an MCP server with three tools (echo, fail and
-// delete) over Streamable HTTP, and stops it when the test ends. It
-// returns the server's URL.
+// delete, which carries a destructive hint) over Streamable HTTP, and
+// stops it when the test ends. It returns the server's URL.
 func startMCPServer(t *testing.T) string {
+	t.Helper()
+	url, _ := startMCPServerAuth(t)
+	return url
+}
+
+// startMCPServerAuth is startMCPServer that also returns a function that
+// reports the last Authorization header the server received.
+func startMCPServerAuth(t *testing.T) (url string, lastAuth func() string) {
 	t.Helper()
 	srv := sdk.NewServer(&sdk.Implementation{Name: "test"}, nil)
 	sdk.AddTool(srv, &sdk.Tool{Name: "echo", Description: "Say it back."},
@@ -40,13 +49,27 @@ func startMCPServer(t *testing.T) string {
 		func(_ context.Context, _ *sdk.CallToolRequest, _ echoArgs) (*sdk.CallToolResult, any, error) {
 			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "nope"}}}, nil, nil
 		})
-	sdk.AddTool(srv, &sdk.Tool{Name: "delete", Description: "Delete a thing."},
+	yes := true
+	sdk.AddTool(srv, &sdk.Tool{Name: "delete", Description: "Delete a thing.",
+		Annotations: &sdk.ToolAnnotations{DestructiveHint: &yes}},
 		func(_ context.Context, _ *sdk.CallToolRequest, _ echoArgs) (*sdk.CallToolResult, any, error) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil, nil
 		})
-	ts := httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil))
+	var mu sync.Mutex // guards auth
+	var auth string
+	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = r.Header.Get("Authorization")
+		mu.Unlock()
+		h.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
-	return ts.URL + "/mcp"
+	return ts.URL + "/mcp", func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return auth
+	}
 }
 
 func TestMCPBackend(t *testing.T) {
