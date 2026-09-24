@@ -95,6 +95,7 @@ func warm(ctx context.Context, eng engine.Engine, m config.Models, log *slog.Log
 	hello := []engine.Message{{Role: engine.RoleUser, Content: "hi"}}
 	for _, model := range chat {
 		start := time.Now()
+		log.DebugContext(ctx, "warming", "model", model)
 		_, err := eng.Generate(ctx, hello, nil, engine.Options{Model: model, MaxTokens: 1})
 		if err != nil {
 			return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", model, err, model)
@@ -103,6 +104,7 @@ func warm(ctx context.Context, eng engine.Engine, m config.Models, log *slog.Log
 	}
 
 	start := time.Now()
+	log.DebugContext(ctx, "warming", "model", m.Embed)
 	if _, err := eng.Embed(ctx, []string{"hi"}); err != nil {
 		return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", m.Embed, err, m.Embed)
 	}

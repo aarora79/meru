@@ -1000,8 +1000,9 @@ Meru collects this data about itself, and none of it leaves your machine. It goe
 only to an endpoint you run on this machine:
 
 - The OTLP (OpenTelemetry Protocol) exporter stays **off until you set
-  `observability.otlp_endpoint`.** Without an endpoint, `merud` uses no-op providers,
-  and instrumentation costs almost nothing.
+  `observability.otlp_endpoint`.** Without an endpoint, metrics go to a no-op
+  provider and spans record nothing. Each span still gets a trace ID, so the log and
+  the transcript can name the turn. Instrumentation then costs almost nothing.
 - `merud` **refuses to start if the endpoint isn't a loopback address.** No setting
   sends metrics or traces anywhere else.
 - **Spans carry no prompt or response text** unless you set `capture_content = true`.
@@ -1018,21 +1019,36 @@ capture_content  = false                     # prompt/response text in spans
 
 ### Traces
 
-Each turn produces one trace, whether it came from the CLI or a scheduled job:
+Each turn produces one trace. A question over the socket starts at `rpc.request`;
+a scheduled job (v0.5) starts at `meru.turn`. In v0.1 a turn looks like this:
 
 ```text
-meru.turn                         route, iterations, outcome
-├── meru.route                    one-token route pick: decision, confidence, outcome
-├── meru.retrieve                 vector, fts, fusion (v0.2); memories (v0.4)
-├── gen_ai.chat  main             one span per model call in the loop
-├── mcp.tool_call  obsidian.search
-└── gen_ai.chat  main             final answer
+rpc.request                       op, source, question length
+└── meru.turn                     route, source, session, iterations, outcome
+    ├── meru.session              new or opened; history turns and messages
+    ├── meru.transcript.append    the user line
+    ├── meru.route                decision, confidence, outcome, meru.route.p.<route>
+    │   └── gen_ai.chat  fast     one token with log probabilities
+    │       └── POST /api/chat    HTTP status
+    ├── meru.prompt               messages, characters, estimated tokens
+    ├── gen_ai.chat  main         the streamed answer; first_token event
+    │   └── POST /api/chat        HTTP status, thinking chunks
+    └── meru.transcript.append    the assistant line
 ```
 
+Later milestones add spans under `meru.turn`: `meru.retrieve` (vector, fts, fusion
+in v0.2; memories in v0.4), one `gen_ai.chat` per model call in the tool loop, and
+`mcp.tool_call` for each tool (v0.3).
+
 Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
-`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`).
-Tool spans follow the MCP semantic conventions and add `meru.tool.server` and
-`meru.tool.allowed`. `merud` writes each trace ID to `messages` and `tool_calls`.
+`gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.input_tokens`,
+`gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`) and add `meru.tier`
+plus Ollama's own timings: `meru.ollama.load_ms`, `meru.ollama.prompt_eval_ms` and
+`meru.ollama.eval_ms`. The HTTP spans follow the OTel HTTP conventions. A failed
+span records the error and sets its status to Error; a cancelled one gets a
+`cancelled` event instead. Tool spans follow the MCP semantic conventions and add
+`meru.tool.server` and `meru.tool.allowed`. `merud` writes each trace ID to the
+session transcript, `messages` and `tool_calls`, and to every log line of the turn.
 
 ### Metrics
 
@@ -1082,8 +1098,23 @@ The compose file:
 To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), point
 `otlp_endpoint` at the Collector. `merud` needs no change.
 
-`merud` writes application logs to a local file with `log/slog` and doesn't export
-them.
+### Logs
+
+`merud` writes `key=value` lines with `log/slog` to `merud.log` in its home folder,
+and doesn't export them. `[log] level` picks how much it writes; `merud -v` forces
+`debug`.
+
+- **`info`** (the default): startup settings, each model warm-up, shutdown, and one
+  `turn` line per turn with its route, outcome, total time, time to first token and
+  token counts.
+- **`debug`**: adds a line for each stage of a turn: the request, the session, the
+  history, each transcript write, the route with its whole distribution, the
+  prompt's size, each Ollama call (status, time to headers, first token, Ollama's
+  own timings, tokens per second) and the reply.
+
+Every line of a turn carries its `trace_id`, the same ID the trace and the
+transcript lines hold. No level writes question or answer text. With
+`capture_content = true`, the debug lines add the first 200 characters of each.
 
 ---
 

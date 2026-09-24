@@ -78,8 +78,9 @@ input always gives the same route.
 
 ### router.go
 
-`Decide` starts a `meru.route` span, asks the engine for one token, and hands the
-reply to `decide`:
+`Decide` starts a `meru.route` span. `ask` sends the routing prompt for one token
+inside a `gen_ai.chat` span (tier `fast`), and `Decide` hands the reply to
+`decide`:
 
 ```go
 if len(p) < 2 {
@@ -99,9 +100,21 @@ turn for lack of context.
 `Decide` returns an error only when the model call fails or the config is
 invalid. An unsure model isn't an error. `Decide` then records
 `meru.route.decisions` through `obs.RecordRoute` and sets `meru.route.decision`,
-`meru.route.confidence` and `meru.route.outcome` on the span. The whole
-distribution goes on the span only when `capture_content` is on, because it
-says something about the question.
+`meru.route.confidence` and `meru.route.outcome` on the span, plus one number per
+route: `meru.route.p.direct`, `meru.route.p.search`, `meru.route.p.tools` and
+`meru.route.p.search+tools`. They are numbers about the router, never the
+question's text, so they go on every span. The metric keeps only route and
+outcome, because a probability would make a new series for every value.
+
+At debug level `Decide` writes one line to `cfg.Log` with the route, the
+confidence, the outcome, the whole distribution and the time taken:
+
+```text
+msg=route route=tools confidence=0.958 outcome=ok probs="direct=0.005 search=0.001 tools=0.958 search+tools=0.036" model=… ms=10 trace_id=…
+```
+
+`Config.Log` is optional. `ConfigFrom` leaves it nil, and `logger` turns nil into
+a logger that writes nothing, so tests need no logger. `merud` sets it to its own.
 
 `ConfigFrom` builds a `Config` from the `[router]` table in `config.toml` and the
 fast model's name, and checks every value: `top_logprobs` 1 to 20, `temperature`

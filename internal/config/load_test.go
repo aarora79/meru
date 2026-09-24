@@ -4,6 +4,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +92,9 @@ otlp_endpoint = "http://[::1]:4318"
 metrics_interval = "1m"
 traces = false
 capture_content = true
+
+[log]
+level = "debug"
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -103,6 +107,7 @@ capture_content = true
 		Agent:         Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief."},
 		Router:        Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct"},
 		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
+		Log:           Log{Level: "debug"},
 	}
 	cfg.Dir = ""
 	if cfg != want {
@@ -139,6 +144,9 @@ func TestLoadErrors(t *testing.T) {
 		{"otlp all interfaces", "[observability]\notlp_endpoint = \"http://0.0.0.0:4318\"", "observability.otlp_endpoint"},
 		{"interval bad", "[observability]\nmetrics_interval = \"often\"", "observability.metrics_interval"},
 		{"interval zero", "[observability]\nmetrics_interval = \"0s\"", "observability.metrics_interval"},
+		{"log level unknown", "[log]\nlevel = \"loud\"", `log.level "loud" is unknown`},
+		{"log level empty", "[log]\nlevel = \"\"", `log.level "" is unknown`},
+		{"log level upper case", "[log]\nlevel = \"DEBUG\"", `log.level "DEBUG" is unknown`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -215,6 +223,28 @@ func TestExampleMatchesDefaults(t *testing.T) {
 	cfg.Dir = ""
 	if cfg != want {
 		t.Errorf("example config:\n got %+v\nwant %+v", cfg, want)
+	}
+}
+
+// TestLogLevel checks each [log] level name and the slog level it maps to.
+func TestLogLevel(t *testing.T) {
+	tests := []struct {
+		name string
+		want slog.Level
+		ok   bool
+	}{
+		{"debug", slog.LevelDebug, true},
+		{"info", slog.LevelInfo, true},
+		{"warn", slog.LevelWarn, true},
+		{"error", slog.LevelError, true},
+		{"trace", 0, false},
+		{"", 0, false},
+	}
+	for _, tt := range tests {
+		got, ok := LogLevel(tt.name)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("LogLevel(%q) = %v, %v; want %v, %v", tt.name, got, ok, tt.want, tt.ok)
+		}
 	}
 }
 

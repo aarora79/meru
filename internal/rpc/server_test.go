@@ -5,6 +5,7 @@ package rpc
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -41,10 +43,22 @@ func quietLog() *slog.Logger {
 // returns the socket path.
 func startServer(t *testing.T, h Handler) string {
 	t.Helper()
+	path, stop := startServerLog(t, h, quietLog())
+	t.Cleanup(stop)
+	return path
+}
+
+// startServerLog is startServer with the server's logger chosen by the
+// test. It returns the socket path and a stop function that shuts the
+// server down and waits for every connection to finish. The test must call
+// stop, at most once.
+func startServerLog(t *testing.T, h Handler, log *slog.Logger) (string, func()) {
+	t.Helper()
 	path := socketPath(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	ln, err := Listen(ctx, path)
 	if err != nil {
+		cancel()
 		t.Fatalf("Listen: %v", err)
 	}
 	// A channel passes values between goroutines. Here it only signals
@@ -52,16 +66,85 @@ func startServer(t *testing.T, h Handler) string {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := Serve(ctx, ln, h, quietLog()); err != nil {
+		if err := Serve(ctx, ln, h, log); err != nil {
 			t.Errorf("Serve: %v", err)
 		}
 	}()
-	t.Cleanup(func() {
+	stop := func() {
 		cancel()
 		<-done
-	})
-	return path
+	}
+	return path, stop
 }
+
+// TestDebugLog checks the server's debug lines for a question that
+// succeeds, one that fails, and one whose client hangs up, and that none of
+// them holds the question's text.
+func TestDebugLog(t *testing.T) {
+	var buf bytes.Buffer // written only by the connection goroutines, read after stop
+	var mu sync.Mutex    // guards buf
+	log := slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	}), &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	path, stop := startServerLog(t, func(ctx context.Context, req Request, emit func(Event) error) error {
+		switch req.Session {
+		case "fail":
+			return errors.New("model fell over")
+		case "hang":
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return emit(Event{Type: EventToken, Text: "ok"})
+	}, log)
+
+	if _, err := collect(context.Background(), path, Request{Op: OpAsk, Text: "secret words", Source: SourceCLI}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := collect(context.Background(), path, Request{Op: OpAsk, Text: "secret words", Session: "fail"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	_, _ = collect(ctx, path, Request{Op: OpAsk, Text: "secret words", Session: "hang"})
+	cancel()
+	// Stop only after the hung-up request has logged, or the reason would
+	// read "merud stopping".
+	for range 100 {
+		mu.Lock()
+		logged := strings.Contains(buf.String(), "rpc cancelled")
+		mu.Unlock()
+		if logged {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	stop()
+
+	out := buf.String()
+	for _, want := range []string{
+		`msg="rpc request" op=ask source=cli session="" question_chars=12`,
+		`msg="rpc done sent" ms=`,
+		`msg="rpc error sent" ms=`,
+		`err="model fell over"`,
+		`msg="rpc cancelled" reason="client hung up"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "secret") {
+		t.Errorf("log holds the question text:\n%s", out)
+	}
+}
+
+// writerFunc turns a function into an io.Writer, the way http.HandlerFunc
+// turns one into an http.Handler.
+type writerFunc func(p []byte) (int, error)
+
+// Write calls f.
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 // collect runs one request and returns every event, or the first error.
 func collect(ctx context.Context, path string, req Request) ([]Event, error) {

@@ -30,7 +30,7 @@ func TestIntegrationOllama(t *testing.T) {
 	model := envOr("MERU_TEST_FAST_MODEL", "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M")
 	embedModel := envOr("MERU_TEST_EMBED_MODEL", "nomic-embed-text")
 
-	e, err := NewOllama(baseURL, "5m", embedModel, nil)
+	e, err := NewOllama(baseURL, "5m", embedModel, nil, nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}

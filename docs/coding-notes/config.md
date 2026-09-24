@@ -106,6 +106,11 @@ return errors.Join(errs...)
 read and change the outer function's variables (`errs` here). `errors.Join`
 glues the errors together and returns `nil` when the list is empty.
 
+`[log] level` must be `debug`, `info`, `warn` or `error`. `LogLevel` turns the
+name into the `slog.Level` `merud` logs at, and returns `false` for any other
+name, so `validate` and `merud`'s `openLog` share one list. `merud -v` sets
+`cfg.Log.Level` to `debug` after `Load` returns, so the flag beats the file.
+
 ### loopback.go
 
 `checkLoopbackURL` refuses any Ollama or OTLP address that could reach another

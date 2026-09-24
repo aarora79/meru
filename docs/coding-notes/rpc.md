@@ -147,6 +147,19 @@ One more guard: once `ctx` is cancelled, `serveConn` sets the connection's
 deadline to now. A client that stopped reading can't then hold a write, and
 its goroutine, open forever.
 
+**The trace starts here.** For an `ask`, `serveConn` starts an `rpc.request`
+span before it calls the handler. It is the root of the question's trace: the
+agent's `meru.turn` and everything under it nest inside it, and every log line
+the turn writes gets its `trace_id`. The span carries `meru.rpc.op`,
+`meru.source` and `meru.question.chars`, the question's length, never its text.
+
+At debug level `serveConn` writes `rpc ping` for a ping, `rpc request` when a
+question arrives, and one closing line: `rpc done sent`, `rpc error sent` with
+the error, or `rpc cancelled` with the reason. To tell a hang-up from a
+shutdown it keeps the server's own context as `serverCtx`: if that one is
+cancelled too, `merud` is stopping; if not, the client hung up. A cancel also
+adds a `cancelled` event to the span.
+
 ## Go ideas used here
 
 - **Goroutines and `sync.WaitGroup`** — one goroutine per connection, all
@@ -169,7 +182,9 @@ go test -race ./internal/rpc/...
 ```
 
 `TestClientDisconnectCancelsHandler` hangs up mid-answer and checks that the
-handler's context ends with `context.Canceled`.
+handler's context ends with `context.Canceled`. `TestDebugLog` runs a question
+that succeeds, one that fails and one whose client hangs up, and checks each
+debug line and that none holds the question.
 
 ## Why it's built this way
 

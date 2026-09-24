@@ -106,7 +106,10 @@ opens on the Meru dashboard. Its panels show:
 - Go runtime memory and goroutines.
 
 Traces go to Tempo: in Grafana, choose Explore, then Tempo, and search for service
-`merud`.
+`merud` and span name `rpc.request`. To open the trace behind a line in
+`merud.log`, paste the line's `trace_id` into the TraceQL box.
+[docs/running.md](../docs/running.md), "See one question's trace", describes the
+spans.
 
 The stack keeps its data on this machine:
 

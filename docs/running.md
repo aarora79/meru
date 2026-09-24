@@ -114,6 +114,32 @@ Restart `merud` after editing the file. It checks every value at startup and
 refuses to start on a typo, an unknown key or a bad value, naming the key. It also
 refuses any Ollama or metrics address that isn't on this machine.
 
+### How much merud logs
+
+`merud` writes to `~/.meru/merud.log`. By default it writes its startup settings,
+each model warm-up, one line per question, and a line when it stops:
+
+```text
+level=INFO msg=turn session=2026-09-24T020539-1f53 route=tools source=tui outcome=ok ms=796 ttft_ms=594 tokens_in=85 tokens_out=142 trace_id=be9e7312…
+```
+
+To see where a question's time went, start `merud` with `-v`, or set the level in
+the config file:
+
+```toml
+[log]
+level = "debug"   # "debug", "info" (the default), "warn" or "error"
+```
+
+At `debug`, each stage of a question adds a line: the request, the session and its
+history, the route with the probability of each route, the prompt's size, each call
+to Ollama (time to headers, time to the first token, how many chunks the model
+spent thinking, Ollama's load, prompt and answer times, tokens per second) and the
+reply. Every line of one question carries the same `trace_id`, so
+`grep be9e7312 ~/.meru/merud.log` shows that question alone. The log never holds
+your questions or answers, unless you also set `capture_content = true` under
+`[observability]`; then the debug lines add the first 200 characters of each.
+
 To run a second, separate Meru, for example to try settings, give it its own home:
 
 ```sh
@@ -151,6 +177,23 @@ time to first token, turn duration, tokens per second, router decisions and mode
 loads. Everything stays on this machine. [deploy/README.md](../deploy/README.md)
 explains each panel and how to stop the stack.
 
+### See one question's trace
+
+Each question also sends a trace: one span for each stage, nested so you can see
+which stage took the time.
+
+1. In Grafana, open **Explore** and pick the **Tempo** data source.
+2. To list recent questions, choose **Search**, set **Service Name** to `merud` and
+   **Span Name** to `rpc.request`, then run the query.
+3. To find the question behind a log line, copy the line's `trace_id`, choose
+   **TraceQL**, paste the ID into the query box and run it.
+
+The trace shows `rpc.request` at the top, `meru.turn` under it, and then the
+session, the route and its model call, the prompt, the answer's model call and the
+two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
+load, prompt and answer times; the answer's span has a `first_token` event. Spans
+carry no question or answer text unless `capture_content = true`.
+
 ## 9. Troubleshooting
 
 | What you see | What it means and what to do |
@@ -162,7 +205,8 @@ explains each panel and how to stop the stack.
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `config.example.toml` shows the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
-| Anything else | Read `~/.meru/merud.log`. |
+| Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
+| Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
 ## 10. Uninstall
 

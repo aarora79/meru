@@ -47,9 +47,11 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	noop := func(context.Context) error { return nil }
 
 	if cfg.OTLPEndpoint == "" {
-		// Export is off. OpenTelemetry's global providers start as no-ops,
-		// so there is nothing to install. Keep capture_content anyway, so
-		// CaptureContent reports what config says.
+		// Export is off. OpenTelemetry's global meter provider starts as a
+		// no-op, so metrics need nothing installed. Traces get the ID-only
+		// provider, so the log still has trace IDs. Keep capture_content
+		// too, so CaptureContent reports what config says.
+		otel.SetTracerProvider(idOnlyProvider())
 		current.Store(&state{captureContent: cfg.CaptureContent})
 		return noop, nil
 	}
@@ -132,6 +134,8 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	otel.SetMeterProvider(meterProvider)
 	if tracerProvider != nil {
 		otel.SetTracerProvider(tracerProvider)
+	} else {
+		otel.SetTracerProvider(idOnlyProvider())
 	}
 	current.Store(&state{inst: inst, captureContent: cfg.CaptureContent})
 
@@ -146,6 +150,18 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 		return err
 	}
 	return shutdown, nil
+}
+
+// idOnlyProvider returns a tracer provider that records and exports nothing
+// but still gives every span a random trace ID. merud installs it when trace
+// export is off, so each turn's log lines and transcript lines still share
+// one ID that a grep can follow.
+//
+// NeverSample makes the SDK drop every span at the start: it builds only the
+// span's IDs and returns a span that ignores attributes and events, which
+// costs a few hundred nanoseconds per span.
+func idOnlyProvider() *sdktrace.TracerProvider {
+	return sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.NeverSample()))
 }
 
 // loopbackURL parses endpoint and returns it when its host is a loopback

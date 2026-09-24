@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `agent_test.go`, `observe_test.go`)
 **Milestone:** v0.1
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end)
 
@@ -25,8 +25,8 @@ sequenceDiagram
     participant E as Engine (main)
     S->>A: request
     A->>T: New or Open session
-    A-->>S: emit session
     A->>T: History(history_turns)
+    A-->>S: emit session
     A->>T: Append user line
     A->>R: Decide(question, history)
     A-->>S: emit route
@@ -58,7 +58,11 @@ real router in a small adapter.
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
-straight to `rpc.Serve`. Its steps follow the diagram. Two details:
+straight to `rpc.Serve`. Its steps follow the diagram, and each is a short
+method that opens its own span under `meru.turn` and writes one debug line:
+`openSession` (`meru.session`), `appendLine` (`meru.transcript.append`),
+`route` (the router's `meru.route`), `prompt` (`meru.prompt`) and `answer`
+(`gen_ai.chat`). Two details:
 
 **The turn span and metrics are recorded in one deferred function.**
 
@@ -76,7 +80,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 `err` is a **named result**: the deferred function reads the error `Handle`
 returns, from any of its `return` statements, and records
 `ok`, `error` or `cancelled`. `context.WithoutCancel` keeps the trace but drops
-the cancel, so a cancelled turn still gets its metric.
+the cancel, so a cancelled turn still gets its metric. The same function
+writes the turn's one info line, `logTurn`.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
@@ -112,6 +117,9 @@ for delta, err := range stream {
 - The last delta carries Ollama's token counts, which go into the transcript
   line and the metrics. Meru never estimates them.
 - If `emit` fails, the client has gone, and the turn stops.
+- The first piece of text adds a `first_token` event to the span, with
+  `meru.ttft_ms`. At the end, `obs.ChatResult` puts the token counts and
+  Ollama's timings on the span.
 
 `answer` returns a small `reply` struct: the text, the usage counters, and
 `firstToken`, the moment the first text arrived. Once the assistant line is in
@@ -140,9 +148,17 @@ unanswered question out of later prompts.
 
 ### What it logs
 
-One `turn` line per turn in `merud.log`: session ID, route, source, outcome,
-milliseconds and the error, if any. Never the question or the answer. Spans
-carry the text only when `capture_content = true`.
+At info level, one `turn` line per turn in `merud.log`: session ID, route,
+source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
+the error when there is one. At debug level each stage adds a line: `turn
+started`, `session created` or `session opened`, `history loaded`,
+`transcript appended` (twice), `prompt built` and `answer finished`.
+
+Every line goes through `a.log.DebugContext(ctx, ...)` or `InfoContext`, so the
+log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
+(`question_chars`, `answer_chars`) and never the text. With
+`capture_content = true`, `turn started` and `answer finished` add the first
+200 characters, and the `meru.turn` span gets the whole question and answer.
 
 ## Go ideas used here
 
@@ -165,6 +181,13 @@ go test -race ./internal/agent/...
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and
 the transcript file.
+
+`observe_test.go` runs turns through the socket server, the agent and the real
+router over a fake engine. It records spans with `tracetest.SpanRecorder` and
+checks the tree (`rpc.request` → `meru.turn` → one span per stage), the key
+attributes and the `first_token` event. It logs into a buffer and checks each
+debug line, the trace ID on every line, and that neither the spans nor the log
+hold the question or answer until `capture_content` is on.
 
 ## Why it's built this way
 

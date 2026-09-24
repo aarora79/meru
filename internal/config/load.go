@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -85,6 +86,7 @@ func defaults() Config {
 			MetricsInterval: "10s",
 			Traces:          true,
 		},
+		Log: Log{Level: "info"},
 	}
 }
 
@@ -196,6 +198,10 @@ func validate(cfg Config) error {
 		add("observability.metrics_interval %q must be a positive duration such as \"10s\"", o.MetricsInterval)
 	}
 
+	if _, ok := LogLevel(cfg.Log.Level); !ok {
+		add("log.level %q is unknown; use \"debug\", \"info\", \"warn\" or \"error\"", cfg.Log.Level)
+	}
+
 	// errors.Join returns nil when errs is empty.
 	return errors.Join(errs...)
 }
@@ -211,4 +217,21 @@ func checkKeepAlive(s string) error {
 		return nil
 	}
 	return fmt.Errorf("%q must be a number of seconds (\"-1\" keeps models loaded) or a duration such as \"30m\"", s)
+}
+
+// LogLevel turns a [log] level name into the slog level merud logs at. It
+// returns false for a name it doesn't know, so validate can refuse it.
+func LogLevel(name string) (slog.Level, bool) {
+	switch name {
+	case "debug":
+		return slog.LevelDebug, true
+	case "info":
+		return slog.LevelInfo, true
+	case "warn":
+		return slog.LevelWarn, true
+	case "error":
+		return slog.LevelError, true
+	default:
+		return 0, false
+	}
 }

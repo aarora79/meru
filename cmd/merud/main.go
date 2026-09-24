@@ -4,10 +4,11 @@
 //
 // Usage:
 //
-//	merud [-config path] [-socket path]
+//	merud [-config path] [-socket path] [-v]
 //
 // merud logs to merud.log next to its config file and stops cleanly on
-// SIGINT (Ctrl-C) or SIGTERM.
+// SIGINT (Ctrl-C) or SIGTERM. -v logs at debug level, whatever [log] level
+// says: a line for each stage of each turn, tagged with the turn's trace ID.
 package main
 
 import (
@@ -51,11 +52,12 @@ func main() {
 //
 // buildEngine is a parameter, not a direct call, so tests can run the whole
 // daemon over a fake engine.
-func run(ctx context.Context, args []string, stderr io.Writer, buildEngine func(config.Config) (engine.Engine, error)) error {
+func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engineBuilder) error {
 	flags := flag.NewFlagSet("merud", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "", "config file (default ~/.meru/config.toml)")
 	socketPath := flags.String("socket", "", "Unix socket to listen on (default merud.sock next to the config file)")
+	verbose := flags.Bool("v", false, "log at debug level, overriding [log] level")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -75,6 +77,9 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine func(
 	if err != nil {
 		return err
 	}
+	if *verbose {
+		cfg.Log.Level = "debug"
+	}
 	if *socketPath == "" {
 		*socketPath = filepath.Join(cfg.Dir, "merud.sock")
 	}
@@ -82,13 +87,21 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine func(
 		return fmt.Errorf("create %s: %w", cfg.Dir, err)
 	}
 
-	log, closeLog, err := openLog(filepath.Join(cfg.Dir, "merud.log"))
+	log, closeLog, err := openLog(filepath.Join(cfg.Dir, "merud.log"), cfg.Log.Level)
 	if err != nil {
 		return err
 	}
 	defer closeLog()
+	otlp := cfg.Observability.OTLPEndpoint
+	if otlp == "" {
+		otlp = "off"
+	}
 	log.Info("merud starting", "config", *configPath, "profile", cfg.Profile,
-		"fast", cfg.Models.Fast, "main", cfg.Models.Main, "embed", cfg.Models.Embed)
+		"fast", cfg.Models.Fast, "main", cfg.Models.Main, "embed", cfg.Models.Embed,
+		"base_url", cfg.Ollama.BaseURL, "keep_alive", cfg.Ollama.KeepAlive,
+		"history_turns", cfg.Agent.HistoryTurns, "otlp", otlp,
+		"traces", cfg.Observability.Traces, "capture_content", cfg.Observability.CaptureContent,
+		"log_level", cfg.Log.Level)
 
 	err = serve(ctx, cfg, *socketPath, log, buildEngine)
 	if err != nil {
@@ -102,7 +115,7 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine func(
 // serve does the work between reading config and shutting down: telemetry,
 // the engine, the runtime check, claiming the socket, warming the models and
 // then answering requests until ctx is cancelled.
-func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.Logger, buildEngine func(config.Config) (engine.Engine, error)) error {
+func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
 	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
 	if err != nil {
 		return fmt.Errorf("observability: %w", err)
@@ -117,7 +130,7 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 		}
 	}()
 
-	eng, err := buildEngine(cfg)
+	eng, err := buildEngine(cfg, log)
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}
@@ -143,7 +156,7 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 		return err
 	}
 
-	rt, err := newRouter(cfg, eng)
+	rt, err := newRouter(cfg, eng, log)
 	if err != nil {
 		_ = ln.Close()
 		return err
@@ -154,31 +167,43 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 }
 
 // openLog opens (or creates) the log file at path for appending, with mode
-// 0600, and returns a slog logger that writes key=value lines to it. The
-// returned func closes the file.
-func openLog(path string) (*slog.Logger, func(), error) {
+// 0600, and returns a slog logger that writes key=value lines at level and
+// above. level is a [log] level name that config has already checked. Lines
+// logged with a context that holds a span gain its trace_id (see
+// obs.LogHandler). The returned func closes the file.
+func openLog(path, level string) (*slog.Logger, func(), error) {
+	lv, ok := config.LogLevel(level)
+	if !ok {
+		return nil, nil, fmt.Errorf("log level %q is unknown", level)
+	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600) // #nosec G304 -- merud.log inside the Meru home, not user input
 	if err != nil {
 		return nil, nil, fmt.Errorf("open log %s: %w", path, err)
 	}
-	log := slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	return log, func() { _ = f.Close() }, nil
+	text := slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv})
+	return slog.New(obs.LogHandler(text)), func() { _ = f.Close() }, nil
 }
+
+// engineBuilder is the type of newEngine: it builds the engine from config,
+// giving it merud's logger. Naming the type keeps run's signature short.
+type engineBuilder func(config.Config, *slog.Logger) (engine.Engine, error)
 
 // newEngine builds the engine merud answers with: an OllamaEngine on the
 // loopback address from config, which also knows the embed model for Embed.
 // A nil *http.Client makes the engine use its own default client.
-func newEngine(cfg config.Config) (engine.Engine, error) {
-	return engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil)
+func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
+	return engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil, log)
 }
 
 // newRouter builds the router the agent asks for each turn's route: the
-// one-token classifier in internal/router, running on the fast model.
-func newRouter(cfg config.Config, eng engine.Engine) (agent.Router, error) {
+// one-token classifier in internal/router, running on the fast model and
+// writing its debug lines to log.
+func newRouter(cfg config.Config, eng engine.Engine, log *slog.Logger) (agent.Router, error) {
 	rc, err := router.ConfigFrom(cfg.Router, cfg.Models.Fast)
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
+	rc.Log = log
 	return routerAdapter{eng: eng, cfg: rc}, nil
 }
 

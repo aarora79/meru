@@ -1,6 +1,10 @@
 // This file holds OllamaEngine, the one Engine Meru ships. It talks to
 // Ollama's native HTTP API on loopback: /api/chat for answers, /api/embed for
 // vectors, and /api/version plus /api/ps for Info.
+//
+// Each HTTP call gets its own client span (named like "POST /api/chat") and,
+// at debug level, log lines with its status, timings and the runtime's
+// counters. Neither ever carries message text.
 
 package engine
 
@@ -13,12 +17,18 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/aarora79/meru/internal/loopback"
+	"github.com/aarora79/meru/internal/obs"
 )
 
 // maxStreamLine is the longest single NDJSON line we accept from a stream,
@@ -40,6 +50,7 @@ type OllamaEngine struct {
 	keepAlive  json.RawMessage // keep_alive as Ollama wants it, or nil to leave it out
 	embedModel string          // model Embed uses; empty makes Embed fail
 	client     *http.Client
+	log        *slog.Logger // debug lines for each call; never message text
 }
 
 // This line checks at compile time that *OllamaEngine has every Engine
@@ -55,8 +66,9 @@ var _ Engine = (*OllamaEngine)(nil)
 //
 // embedModel names the model Embed uses. client may be nil, which means a
 // plain http.Client with no overall timeout: calls end when their context
-// ends, because a long answer can take minutes to stream.
-func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client) (*OllamaEngine, error) {
+// ends, because a long answer can take minutes to stream. log may be nil,
+// which means no log lines; merud passes its own logger.
+func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client, log *slog.Logger) (*OllamaEngine, error) {
 	if err := loopback.CheckURL(baseURL); err != nil {
 		return nil, fmt.Errorf("ollama base URL: %w", err)
 	}
@@ -78,11 +90,16 @@ func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client) (*Oll
 		return errors.New("ollama sent a redirect; Meru doesn't follow redirects")
 	}
 
+	if log == nil {
+		log = obs.Discard()
+	}
+
 	return &OllamaEngine{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		keepAlive:  ka,
 		embedModel: embedModel,
 		client:     c,
+		log:        log,
 	}, nil
 }
 
@@ -135,7 +152,11 @@ func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []Too
 	if err != nil {
 		return Completion{}, err
 	}
-	resp, err := e.do(ctx, http.MethodPost, "/api/chat", body)
+	start := time.Now()
+	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/chat", body)
+	// defer runs span.End() when Generate returns, on every path.
+	defer span.End()
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(opts, false))
 	if err != nil {
 		return Completion{}, err
 	}
@@ -143,11 +164,13 @@ func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []Too
 
 	var r chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return Completion{}, fmt.Errorf("ollama /api/chat: decode reply: %w", ctxErr(ctx, err))
+		return Completion{}, e.fail(ctx, span, start, "/api/chat",
+			fmt.Errorf("ollama /api/chat: decode reply: %w", ctxErr(ctx, err)))
 	}
 	if r.Error != "" {
-		return Completion{}, fmt.Errorf("ollama /api/chat: %s", r.Error)
+		return Completion{}, e.fail(ctx, span, start, "/api/chat", fmt.Errorf("ollama /api/chat: %s", r.Error))
 	}
+	e.logDone(ctx, opts.Model, start, r.usage(), r.DoneReason)
 	return Completion{
 		Text:       r.Message.Content,
 		ToolCalls:  fromChatToolCalls(r.Message.ToolCalls),
@@ -175,8 +198,13 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 	if err != nil {
 		return nil, err
 	}
-	resp, err := e.do(ctx, http.MethodPost, "/api/chat", body)
+	start := time.Now()
+	// The span stays open while the caller reads the stream; the sequence
+	// below ends it when the stream ends.
+	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/chat", body)
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(opts, true))
 	if err != nil {
+		span.End()
 		return nil, err
 	}
 
@@ -190,8 +218,21 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 			return
 		}
 		used = true
+		// Deferred calls run last-in, first-out: the body closes, then the
+		// span ends.
+		defer span.End()
 		defer resp.Body.Close()
 
+		// fail logs err, marks the span, and hands err to the caller's loop.
+		fail := func(err error) {
+			yield(Delta{}, e.fail(ctx, span, start, "/api/chat", err))
+		}
+
+		first := true // no text has arrived yet
+		// thinking counts the chunks that carried only hidden reasoning. A
+		// thinking model can spend seconds on them before its first word,
+		// so the count explains a slow first token in the log.
+		thinking := 0
 		sc := bufio.NewScanner(resp.Body)
 		sc.Buffer(make([]byte, 0, 64<<10), maxStreamLine)
 		for sc.Scan() {
@@ -201,11 +242,11 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 			}
 			var r chatResponse
 			if err := json.Unmarshal(line, &r); err != nil {
-				yield(Delta{}, fmt.Errorf("ollama stream: decode line: %w", err))
+				fail(fmt.Errorf("ollama stream: decode line: %w", err))
 				return
 			}
 			if r.Error != "" {
-				yield(Delta{}, fmt.Errorf("ollama stream: %s", r.Error))
+				fail(fmt.Errorf("ollama stream: %s", r.Error))
 				return
 			}
 			d := Delta{Text: r.Message.Content, ToolCalls: fromChatToolCalls(r.Message.ToolCalls)}
@@ -213,23 +254,33 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 				d.Done = true
 				d.DoneReason = r.DoneReason
 				d.Usage = r.usage()
+				span.SetAttributes(attribute.Int("meru.ollama.thinking_chunks", thinking))
+				e.logDone(ctx, opts.Model, start, d.Usage, d.DoneReason, "thinking_chunks", thinking)
 				yield(d, nil)
 				return
 			}
 			if d.Text == "" && len(d.ToolCalls) == 0 {
+				if r.Message.Thinking != "" {
+					thinking++
+				}
 				continue
+			}
+			if first {
+				first = false
+				e.log.DebugContext(ctx, "ollama first token", "model", opts.Model,
+					"ms", time.Since(start).Milliseconds(), "thinking_chunks", thinking)
 			}
 			if !yield(d, nil) {
 				return
 			}
 		}
 		if err := sc.Err(); err != nil {
-			yield(Delta{}, fmt.Errorf("ollama stream: read: %w", ctxErr(ctx, err)))
+			fail(fmt.Errorf("ollama stream: read: %w", ctxErr(ctx, err)))
 			return
 		}
 		// The body ended without a done line: Ollama died or the
 		// connection dropped.
-		yield(Delta{}, fmt.Errorf("ollama stream: ended before done: %w", ctxErr(ctx, io.ErrUnexpectedEOF)))
+		fail(fmt.Errorf("ollama stream: ended before done: %w", ctxErr(ctx, io.ErrUnexpectedEOF)))
 	}
 	return seq, nil
 }
@@ -249,7 +300,11 @@ func (e *OllamaEngine) Embed(ctx context.Context, texts []string) ([]Vector, err
 	if err != nil {
 		return nil, fmt.Errorf("ollama /api/embed: encode request: %w", err)
 	}
-	resp, err := e.do(ctx, http.MethodPost, "/api/embed", body)
+	start := time.Now()
+	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/embed", body)
+	defer span.End()
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/embed", body,
+		[]any{"model", e.embedModel, "texts", len(texts)})
 	if err != nil {
 		return nil, err
 	}
@@ -257,10 +312,12 @@ func (e *OllamaEngine) Embed(ctx context.Context, texts []string) ([]Vector, err
 
 	var r embedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, fmt.Errorf("ollama /api/embed: decode reply: %w", ctxErr(ctx, err))
+		return nil, e.fail(ctx, span, start, "/api/embed",
+			fmt.Errorf("ollama /api/embed: decode reply: %w", ctxErr(ctx, err)))
 	}
 	if len(r.Embeddings) != len(texts) {
-		return nil, fmt.Errorf("ollama /api/embed: sent %d texts, got %d vectors", len(texts), len(r.Embeddings))
+		return nil, e.fail(ctx, span, start, "/api/embed",
+			fmt.Errorf("ollama /api/embed: sent %d texts, got %d vectors", len(texts), len(r.Embeddings)))
 	}
 	return r.Embeddings, nil
 }
@@ -331,44 +388,114 @@ func (e *OllamaEngine) chatBody(msgs []Message, tools []ToolSpec, opts Options, 
 // out has type any, Go's name for "a value of any type". json.Decode fills
 // it through the pointer the caller passes.
 func (e *OllamaEngine) getJSON(ctx context.Context, path string, out any) error {
-	resp, err := e.do(ctx, http.MethodGet, path, nil)
+	start := time.Now()
+	ctx, span := e.startSpan(ctx, http.MethodGet, path, nil)
+	defer span.End()
+	resp, err := e.do(ctx, span, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("ollama %s: decode reply: %w", path, ctxErr(ctx, err))
+		return e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: decode reply: %w", path, ctxErr(ctx, err)))
 	}
 	return nil
+}
+
+// startSpan starts the client span for one HTTP call to Ollama, named like
+// "POST /api/chat" as the OpenTelemetry HTTP conventions suggest. The caller
+// ends it once the response body is read.
+func (e *OllamaEngine) startSpan(ctx context.Context, method, path string, body []byte) (context.Context, trace.Span) {
+	return obs.Tracer().Start(ctx, method+" "+path,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("http.request.method", method),
+			attribute.String("url.full", e.baseURL+path),
+			attribute.Int("http.request.body.size", len(body)),
+		))
 }
 
 // do sends one request and returns the response when the status is 2xx. On
 // any other status it reads the body, closes it and returns an *APIError.
 // The caller must close the body of a response it gets back.
 //
+// do records the status on span and, at debug level, logs one line with
+// the method, path, status, the time until the response headers arrived
+// (headers_ms), and logArgs, the caller's extra key/value pairs. A failure
+// is logged and marked on span as well.
+//
 // http.NewRequestWithContext ties the request to ctx: cancelling ctx aborts
 // the connection, including a stream in progress.
-func (e *OllamaEngine) do(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+func (e *OllamaEngine) do(ctx context.Context, span trace.Span, method, path string, body []byte, logArgs []any) (*http.Response, error) {
+	start := time.Now()
 	var rd io.Reader
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, e.baseURL+path, rd)
 	if err != nil {
-		return nil, fmt.Errorf("ollama %s: build request: %w", path, err)
+		return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: build request: %w", path, err))
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ollama %s: %w", path, err)
+		return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: %w", path, err))
 	}
+	span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		defer resp.Body.Close()
-		return nil, apiError(path, resp)
+		return nil, e.fail(ctx, span, start, path, apiError(path, resp))
 	}
+	// append(a, b...) adds every item of b to a; the ... spreads the slice.
+	args := append([]any{"method", method, "path", path, "status", resp.StatusCode,
+		"headers_ms", time.Since(start).Milliseconds()}, logArgs...)
+	e.log.DebugContext(ctx, "ollama http", args...)
 	return resp, nil
+}
+
+// fail logs a failed call at debug level, marks its span, and returns err
+// unchanged so the caller can return it in one line. The error text holds
+// Ollama's own message, such as "model not found", when Ollama sent one.
+// Logging at debug and returning the error is deliberate: the caller decides
+// what the user sees, and the debug line adds the call's timing.
+func (e *OllamaEngine) fail(ctx context.Context, span trace.Span, start time.Time, path string, err error) error {
+	obs.EndSpanErr(ctx, span, err)
+	e.log.DebugContext(ctx, "ollama error", "path", path,
+		"ms", time.Since(start).Milliseconds(), "err", err)
+	return err
+}
+
+// chatLogArgs returns the request settings the "ollama http" line shows for
+// a chat call: the model, whether it streams, the token cap and whether it
+// asked for log probabilities.
+func chatLogArgs(opts Options, stream bool) []any {
+	return []any{"model", opts.Model, "stream", stream,
+		"num_predict", opts.MaxTokens, "logprobs", opts.LogProbs}
+}
+
+// logDone writes the debug line that closes a chat call: its whole time and
+// the counters Ollama reported. load_ms, prompt_eval_ms and eval_ms split
+// Ollama's time into loading the model, reading the prompt and writing the
+// answer; tokens_per_s is the writing speed. extra holds more key/value
+// pairs for the end of the line.
+func (e *OllamaEngine) logDone(ctx context.Context, model string, start time.Time, u Usage, reason string, extra ...any) {
+	tps := 0.0
+	// Below a millisecond the runtime's clock says little: a one-token
+	// answer can report a few microseconds and a speed in the millions.
+	if u.EvalDuration >= time.Millisecond {
+		// Round to one decimal place; more digits would be noise.
+		tps = math.Round(float64(u.OutputTokens)/u.EvalDuration.Seconds()*10) / 10
+	}
+	args := []any{"model", model,
+		"ms", time.Since(start).Milliseconds(),
+		"prompt_tokens", u.PromptTokens, "output_tokens", u.OutputTokens,
+		"load_ms", u.LoadDuration.Milliseconds(),
+		"prompt_eval_ms", u.PromptEvalDuration.Milliseconds(),
+		"eval_ms", u.EvalDuration.Milliseconds(),
+		"tokens_per_s", tps, "done_reason", reason}
+	e.log.DebugContext(ctx, "ollama done", append(args, extra...)...)
 }
 
 // apiError builds an *APIError from a failed response. Ollama sends

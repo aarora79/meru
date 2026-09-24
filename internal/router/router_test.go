@@ -358,7 +358,7 @@ func TestDecideAgainstFakeOllama(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	eng, err := engine.NewOllama(srv.URL, "-1", "", srv.Client())
+	eng, err := engine.NewOllama(srv.URL, "-1", "", srv.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}

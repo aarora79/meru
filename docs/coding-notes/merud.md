@@ -19,8 +19,8 @@ These are Meru's two programs. In Go, a folder under `cmd/` with
 ```mermaid
 flowchart TB
     subgraph merud["merud startup"]
-        F["parse -config, -socket"] --> L["config.Load"]
-        L --> G["open merud.log"]
+        F["parse -config, -socket, -v"] --> L["config.Load"]
+        L --> G["open merud.log at [log] level"]
         G --> O["obs.Setup"]
         O --> E["build engine"]
         E --> V["check Ollama version ≥ 0.12.11"]
@@ -50,7 +50,8 @@ stop()
 
 Everything else lives in `run`, which tests can call. `run` takes the engine
 builder as a parameter, so `TestRunServesAndStops` runs the whole daemon over
-a fake engine.
+a fake engine. `TestRunLogLevel` does the same with and without `-v`, and
+checks what `merud.log` holds at each level.
 
 `serve` claims the socket **before** warming the models. Warming the `full`
 profile's main model can take a minute, and a second `merud` should fail at
@@ -61,11 +62,22 @@ Shutdown needs no special code. The cancelled context makes `rpc.Serve` close
 the listener, cancel every open turn, wait for them and return. The deferred
 telemetry shutdown then gets a fresh five-second context to send its last batch.
 
-**Two seams wait for other packages.** Each is marked `TODO(coordinator)`:
+**The log.** `openLog` opens `merud.log` for appending and builds the logger
+every package shares. `-v` sets the level to `debug`, whatever `[log] level`
+says. The text handler goes inside `obs.LogHandler`, which adds the turn's
+`trace_id` to each line logged with a span in its context:
 
-- `newEngine` returns an error until the Ollama engine lands.
-- `newRouter` returns `fallbackRouter`, which always picks the configured
-  fallback route with outcome `degraded`, until the router lands.
+```go
+text := slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv})
+return slog.New(obs.LogHandler(text)), func() { _ = f.Close() }, nil
+```
+
+The first line `run` writes is `merud starting`, with the settings that decide
+how a turn runs: the profile, each tier's model, Ollama's address and
+`keep_alive`, `history_turns`, the OTLP endpoint (or `off`), and the log level.
+`serve` passes the same logger to the engine (`newEngine`), the router
+(`newRouter` sets `router.Config.Log`), the agent and the socket server.
+`engineBuilder` names the engine builder's type, so tests can pass a fake.
 
 ### merud: runtime.go
 
@@ -75,7 +87,8 @@ than 0.12.11, the first release that reports log probabilities.
 `0.9.99`, which a plain string comparison gets wrong.
 
 `warm` sends a one-token request to each chat model and one embedding
-request. When `fast` and `main` name the same model, as in the `lite` profile,
+request, and logs `warmed` with the time each took. At debug level the
+engine's own lines show each call's status and Ollama's load time. When `fast` and `main` name the same model, as in the `lite` profile,
 it loads that model once. A failure says which model and suggests
 `ollama pull`.
 
@@ -115,7 +128,8 @@ Until `chat.go` exists, `runChat` is `nil` and `meru chat` prints
 - **`flag.FlagSet`** — the standard library's command-line flag parser. A
   `FlagSet` of our own, rather than the global one, lets tests call `run` many
   times.
-- **Functions as values** — `run` takes `buildEngine func(config.Config) (engine.Engine, error)`.
+- **Functions as values** — `run` takes `buildEngine engineBuilder`, a named
+  type for `func(config.Config, *slog.Logger) (engine.Engine, error)`.
 - **`defer`** — closes the log file and flushes telemetry on every exit path.
   More in [go-basics/defer.md](go-basics/defer.md).
 - **Errors up to `main`** — every function returns its error; only `main`
@@ -125,7 +139,7 @@ Until `chat.go` exists, `runChat` is `nil` and `meru chat` prints
 
 ```sh
 go test -race ./cmd/...
-go run ./cmd/merud -config /tmp/meru-test/config.toml   # fails until the engine is wired in
+go run ./cmd/merud -v -config /tmp/meru-test/config.toml   # -v: debug lines in /tmp/meru-test/merud.log
 go run ./cmd/meru ping
 go run ./cmd/meru "hello"
 ```

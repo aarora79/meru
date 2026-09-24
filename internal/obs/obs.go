@@ -56,8 +56,10 @@ func Setup(ctx context.Context, cfg config.Observability) (shutdown func(context
 	return setup(ctx, cfg)
 }
 
-// Tracer returns the tracer every Meru span comes from. Before Setup, or with
-// traces off, it is OpenTelemetry's no-op tracer.
+// Tracer returns the tracer every Meru span comes from. Before Setup it is
+// OpenTelemetry's no-op tracer. After Setup with traces off, its spans record
+// nothing but still carry a fresh trace ID, which merud writes to its log and
+// to the session transcript (see setup.go).
 func Tracer() trace.Tracer {
 	return otel.Tracer("github.com/aarora79/meru")
 }
@@ -78,10 +80,11 @@ type ModelCall struct {
 // the engine: meru imports rpc, rpc imports obs, and the thin client must not
 // depend on the engine (AGENTS.md, "Shape").
 type Usage struct {
-	PromptTokens int
-	OutputTokens int
-	LoadDuration time.Duration // time the runtime spent loading the model
-	EvalDuration time.Duration // time the runtime spent writing the answer
+	PromptTokens       int
+	OutputTokens       int
+	LoadDuration       time.Duration // time the runtime spent loading the model
+	PromptEvalDuration time.Duration // time the runtime spent reading the prompt; spans only
+	EvalDuration       time.Duration // time the runtime spent writing the answer
 }
 
 // RecordModelCall records gen_ai.client.token.usage,

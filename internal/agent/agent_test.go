@@ -34,6 +34,8 @@ type fakeEngine struct {
 	// block, when true, makes the stream wait for ctx to end after the
 	// first piece, to test cancellation.
 	block bool
+	// gen is what Generate returns, for tests that run the real router.
+	gen engine.Completion
 
 	mu    sync.Mutex // guards calls
 	calls []streamCall
@@ -71,8 +73,13 @@ func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []
 	}, nil
 }
 
+// Generate returns f.gen, the canned completion the real router reads, or
+// an error when the test set none.
 func (f *fakeEngine) Generate(context.Context, []engine.Message, []engine.ToolSpec, engine.Options) (engine.Completion, error) {
-	return engine.Completion{}, errors.New("not used")
+	if f.gen.LogProbs == nil {
+		return engine.Completion{}, errors.New("not used")
+	}
+	return f.gen, nil
 }
 
 func (f *fakeEngine) Embed(context.Context, []string) ([]engine.Vector, error) {

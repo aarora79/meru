@@ -167,6 +167,7 @@ type Config struct {
     Agent         Agent         // MaxRounds, HistoryTurns, SystemPrompt
     Router        Router        // the router's four settings
     Observability Observability // OTLPEndpoint and friends
+    Log           Log           // Level: "debug", "info", "warn" or "error"
     Dir           string        // Meru's home, usually ~/.meru
 }
 ```
@@ -186,8 +187,9 @@ sequenceDiagram
 
     M->>C: Load(path)
     C-->>M: Config (defaults + file, all checked)
+    M->>M: openLog(merud.log, level) — -v forces debug
     M->>O: Setup(cfg.Observability)
-    M->>E: NewOllama(base URL, keep_alive, embed model)
+    M->>E: NewOllama(base URL, keep_alive, embed model, logger)
     M->>E: checkRuntime: Info() → Ollama 0.12.11 or later?
     M->>R: Listen(socket) — refuses if another merud answers
     M->>E: warm(): one tiny call per model, so they load now
@@ -246,8 +248,8 @@ The same path as a reading list, in order:
 4. **`internal/agent/agent.go` → `Handle`** runs the turn: it opens the session,
    reads the history, saves the question, asks for a route, builds the prompt,
    streams the answer and saves it, then emits a `done` event with the turn's
-   stats (`doneEvent`). Each step is a short function below `Handle`: `session`,
-   `route`, `buildMessages` and `answer`.
+   stats (`doneEvent`). Each step is a short function below `Handle`, with its own
+   span and debug line: `openSession`, `appendLine`, `route`, `prompt` and `answer`.
 5. **`internal/router/router.go` → `Decide`** writes the A-to-D prompt (`prompt.go`),
    asks the fast model for one token, and turns the log probabilities into a route
    (`probs.go`).
@@ -256,8 +258,12 @@ The same path as a reading list, in order:
 7. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
    session file; `History` reads the file back into messages.
 
-Along the way, `internal/obs` records the timings and token counts. When no
-metrics endpoint is set, those calls do nothing.
+Along the way, `internal/obs` records the timings and token counts, and each stage
+opens a span under one trace per question: `rpc.request` at the root, `meru.turn`
+under it, and a span for each step (ARCHITECTURE.md, "Observability" → "Traces").
+With `merud -v`, each stage also writes a debug line to `merud.log` that carries
+the trace's ID. When no metrics endpoint is set, the metric calls do nothing and
+the spans record nothing, but each question still gets a trace ID for the log.
 
 `meru chat` takes the same path. The only difference is at the ends:
 `internal/tui` sends the `Request`, draws the events on screen with Lip Gloss

@@ -1,6 +1,7 @@
 # obs
 
-**Code:** `internal/obs/` (`doc.go`, `obs.go`, `instruments.go`, `setup.go`, `obs_test.go`)
+**Code:** `internal/obs/` (`doc.go`, `obs.go`, `instruments.go`, `setup.go`, `spans.go`,
+`log.go`, `obs_test.go`, `log_test.go`)
 **Milestone:** v0.1
 **Architecture:** [Observability](../../ARCHITECTURE.md#observability)
 
@@ -12,6 +13,10 @@ into OpenTelemetry (OTel) metrics: numbers such as "this turn took 1.2 s" or "th
 used 120 input tokens". It can also hand out a tracer for spans, the timed steps inside
 one turn. When config names an endpoint, `obs` sends both to it over OTLP (the
 OpenTelemetry Protocol) on HTTP. The endpoint must be on this machine.
+
+It also holds the helpers that tie the log to the traces: a `slog` handler that
+stamps each log line with its turn's trace ID, the `gen_ai.chat` span every model
+call gets, and one function that marks a span failed or cancelled.
 
 ## The picture
 
@@ -100,8 +105,8 @@ calls paid for a cold load.
 
 `Setup` runs once when `merud` starts:
 
-1. With no endpoint, it stores `capture_content` and returns a shutdown function that
-   does nothing.
+1. With no endpoint, it installs the ID-only tracer provider (below), stores
+   `capture_content` and returns a shutdown function that does nothing.
 2. `loopbackURL` checks the endpoint. It accepts a literal loopback address
    (`127.0.0.1`, `::1`) and the name `localhost`, and only when every address
    `localhost` resolves to is loopback. It refuses every other name without looking
@@ -110,7 +115,56 @@ calls paid for a cold load.
    `noProxy`, so an `HTTPS_PROXY` variable can't route the data off the machine.
 4. It installs the providers with `otel.SetMeterProvider` and `otel.SetTracerProvider`,
    starts the Go runtime metrics (heap, garbage collection, goroutines) and stores the
-   new state.
+   new state. With `traces = false` it installs the ID-only tracer provider instead.
+
+`idOnlyProvider` is a tracer provider whose sampler, `NeverSample`, drops every span
+as it starts. A dropped span ignores attributes and events and is never exported,
+but it still has a random trace ID. So with export off, each turn keeps an ID that
+its log lines and transcript lines share.
+
+### spans.go
+
+Both the router and the agent call a model, so the `gen_ai.chat` span lives here:
+
+```go
+ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "fast", Model: m, MaxTokens: 1})
+defer span.End()
+...
+obs.ChatResult(span, usage, comp.DoneReason)
+```
+
+`StartChat` sets the GenAI names (`gen_ai.operation.name`, `gen_ai.request.model`,
+`gen_ai.request.max_tokens`) and `meru.tier`. `ChatResult` adds the token counts,
+the finish reason and Ollama's own timings in milliseconds (`meru.ollama.load_ms`,
+`meru.ollama.prompt_eval_ms`, `meru.ollama.eval_ms`). Those three say whether a
+slow call spent its time loading the model, reading the prompt or writing.
+
+`EndSpanErr(ctx, span, err)` is the one way a span ends badly. A cancel (the user
+pressed Ctrl-C) adds a `cancelled` event and leaves the status alone, because it
+isn't a fault. Any other error goes through `span.RecordError`, which adds an
+`exception` event, and sets the status to Error.
+
+### log.go
+
+`LogHandler` wraps the `slog` handler `merud` writes with:
+
+```go
+func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
+    if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
+        r.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
+    }
+    return h.next.Handle(ctx, r)
+}
+```
+
+Code that logs with `log.DebugContext(ctx, ...)` passes the context along, and the
+handler reads the current span out of it. So every line of a turn carries
+`trace_id=...` without any caller adding it. A plain `log.Debug(...)` has no
+context and gets no ID.
+
+`Preview` cuts a text to 200 characters for the debug log. Callers use it only when
+`CaptureContent()` is true. `Discard` returns a logger that writes nothing, for
+packages whose logger is optional.
 
 The shutdown function it returns sets `current` back to nil, then flushes both
 providers so the last batch reaches the collector.
@@ -128,6 +182,9 @@ providers so the last batch reaches the collector.
   values that use variables from the function that made them.
 - **Generics in tests** — `histPoint[N int64 | float64]` in `obs_test.go` works for
   integer and float histograms alike.
+- **Interfaces** — `traceHandler` satisfies `slog.Handler` by having its four
+  methods; there is no "implements" keyword. More in
+  [go-basics/interfaces.md](go-basics/interfaces.md).
 
 ## Try it
 
@@ -136,8 +193,9 @@ go test -race ./internal/obs/...
 ```
 
 The tests read metrics with the SDK's `ManualReader`, read spans with `tracetest`'s
-in-memory exporter, and run the real exporters against an `httptest` server on
-127.0.0.1.
+in-memory exporter and span recorder, and run the real exporters against an
+`httptest` server on 127.0.0.1. `log_test.go` logs into a buffer and checks that
+the trace ID appears only on lines logged with a span in their context.
 
 To see the dashboard, start the stack and point `merud` at it (details in
 [deploy/README.md](../../deploy/README.md)):
@@ -160,6 +218,12 @@ provider exists and connect them later. That hookup works only for the first
 provider installed, which makes tests that each want a fresh provider awkward.
 Building the handles in `Setup` from a provider we hold keeps each test separate, and
 the no-op path stays one nil check.
+
+**Trace IDs with export off.** The owner's first question about a slow turn comes
+from `merud.log`, usually with no collector running. Without trace IDs, the debug
+lines of two turns running at once would mix with nothing to tell them apart. The
+`NeverSample` provider gives every turn an ID for the cost of two random numbers
+and exports nothing.
 
 **Refusing names instead of resolving them.** Resolving `metrics.example.com` and
 checking the answer would accept a name that points at 127.0.0.1 today and at a

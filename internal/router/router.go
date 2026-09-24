@@ -7,7 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -62,6 +65,9 @@ type Config struct {
 	Temperature   float64 // above 0; 1.0 leaves the probabilities as the model gave them
 	MinConfidence float64 // 0 to 1; a winner below this takes the fallback
 	Fallback      Route   // the route to take when the model is unsure
+	// Log receives one debug line per decision. Nil means no log lines.
+	// ConfigFrom leaves it nil; merud sets it to its own logger.
+	Log *slog.Logger
 }
 
 // ConfigFrom builds a Config from the [router] table and the fast model's
@@ -141,8 +147,11 @@ type Decision struct {
 // fallback route and says why in Outcome, so the caller can carry on and the
 // metrics can record it.
 //
-// Decide records a "meru.route" span and the meru.route.decisions metric.
+// Decide records a "meru.route" span with a gen_ai.chat span under it for
+// the model call, the meru.route.decisions metric, and a debug log line
+// with the whole distribution.
 func Decide(ctx context.Context, eng engine.Engine, cfg Config, turn Turn) (Decision, error) {
+	start := time.Now()
 	// Start returns a new ctx that carries the span, so spans started
 	// further down (the model call) nest under it. defer ends the span when
 	// Decide returns, on every path.
@@ -154,17 +163,9 @@ func Decide(ctx context.Context, eng engine.Engine, cfg Config, turn Turn) (Deci
 		return Decision{}, err
 	}
 
-	// One token with log probabilities: the model pays for reading the
-	// prompt and decoding one letter, nothing more.
-	comp, err := eng.Generate(ctx, buildMessages(turn), nil, engine.Options{
-		Model:       cfg.Model,
-		MaxTokens:   1,
-		LogProbs:    true,
-		TopLogProbs: cfg.TopLogProbs,
-	})
+	comp, err := ask(ctx, eng, cfg, turn)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "route model call failed")
+		obs.EndSpanErr(ctx, span, err)
 		return Decision{}, fmt.Errorf("route: %w", err)
 	}
 
@@ -176,12 +177,58 @@ func Decide(ctx context.Context, eng engine.Engine, cfg Config, turn Turn) (Deci
 		attribute.Float64("meru.route.confidence", d.Confidence),
 		attribute.String("meru.route.outcome", string(d.Outcome)),
 	)
-	// The distribution says something about the question, so it goes on the
-	// span only when the user turned content capture on.
-	if obs.CaptureContent() {
-		span.SetAttributes(attribute.String("meru.route.probs", formatProbs(d.Probs)))
+	// One number per route, such as meru.route.p.direct = 0.21. The four
+	// probabilities are numbers about the router, not text from the user,
+	// so they go on every span. A route missing from the distribution is 0.
+	for _, o := range options {
+		span.SetAttributes(attribute.Float64("meru.route.p."+string(o.route), d.Probs[o.route]))
 	}
+	logger(cfg).DebugContext(ctx, "route", "route", d.Route,
+		"confidence", round3(d.Confidence), "outcome", d.Outcome,
+		"probs", formatProbs(d.Probs), "model", cfg.Model,
+		"ms", time.Since(start).Milliseconds())
 	return d, nil
+}
+
+// ask sends the routing prompt to the fast model and returns its one-token
+// completion, inside a gen_ai.chat span. One token with log probabilities
+// means the model pays for reading the prompt and decoding one letter,
+// nothing more.
+func ask(ctx context.Context, eng engine.Engine, cfg Config, turn Turn) (engine.Completion, error) {
+	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "fast", Model: cfg.Model, MaxTokens: 1})
+	defer span.End()
+	comp, err := eng.Generate(ctx, buildMessages(turn), nil, engine.Options{
+		Model:       cfg.Model,
+		MaxTokens:   1,
+		LogProbs:    true,
+		TopLogProbs: cfg.TopLogProbs,
+	})
+	if err != nil {
+		obs.EndSpanErr(ctx, span, err)
+		return engine.Completion{}, err
+	}
+	u := comp.Usage
+	obs.ChatResult(span, obs.Usage{
+		PromptTokens: u.PromptTokens, OutputTokens: u.OutputTokens,
+		LoadDuration: u.LoadDuration, PromptEvalDuration: u.PromptEvalDuration,
+		EvalDuration: u.EvalDuration,
+	}, comp.DoneReason)
+	return comp, nil
+}
+
+// logger returns cfg.Log, or a logger that writes nothing when it is nil,
+// so a Config built in a test needs no logger.
+func logger(cfg Config) *slog.Logger {
+	if cfg.Log == nil {
+		return obs.Discard()
+	}
+	return cfg.Log
+}
+
+// round3 rounds p to three decimal places for the log line, where more
+// digits would be noise.
+func round3(p float64) float64 {
+	return math.Round(p*1000) / 1000
 }
 
 // decide reads a Decision out of a finished completion. It is Decide

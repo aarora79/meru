@@ -1,6 +1,9 @@
 // This file is the server half of the protocol: the code merud uses to listen
 // on the Unix socket, read each client's Request, hand it to a Handler, and
 // write the Handler's Events back as newline-delimited JSON.
+//
+// Each question gets an rpc.request span, the root of its trace, and at
+// debug level a log line when it arrives and one when it ends.
 
 package rpc
 
@@ -17,6 +20,10 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/obs"
 )
@@ -131,6 +138,9 @@ func Serve(ctx context.Context, ln net.Listener, h Handler, log *slog.Logger) er
 
 // serveConn reads one Request from conn, answers it and closes conn.
 func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) {
+	// serverCtx is cancelled only when merud stops. The ctx below is also
+	// cancelled when the client hangs up; comparing the two says which.
+	serverCtx := ctx
 	defer conn.Close()
 	obs.ActiveStreams(ctx, 1)
 	defer obs.ActiveStreams(ctx, -1)
@@ -166,6 +176,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 
 	switch req.Op {
 	case OpPing:
+		log.DebugContext(ctx, "rpc ping")
 		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk:
@@ -174,6 +185,23 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
 		return
 	}
+
+	// The span below is the root of this question's trace: the agent's
+	// meru.turn span and everything under it nest inside it, and the
+	// logger's trace_id comes from it. The question's text never goes on
+	// it, only its length in characters.
+	start := time.Now()
+	chars := utf8.RuneCountInString(req.Text)
+	ctx, span := obs.Tracer().Start(ctx, "rpc.request",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("meru.rpc.op", string(req.Op)),
+			attribute.String("meru.source", string(req.Source)),
+			attribute.Int("meru.question.chars", chars),
+		))
+	defer span.End()
+	log.DebugContext(ctx, "rpc request", "op", req.Op, "source", req.Source,
+		"session", req.Session, "question_chars", chars)
 
 	// The client sends nothing after its Request, so the next read returns
 	// only when the client hangs up. watchHangup turns that into a cancel.
@@ -204,14 +232,24 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	}
 
 	herr := h(ctx, req, emit)
+	ms := time.Since(start).Milliseconds()
 	switch {
 	case ctx.Err() != nil:
 		// The client left or merud is stopping. Nobody is reading a final
 		// event, so don't send one.
+		reason := "client hung up"
+		if serverCtx.Err() != nil {
+			reason = "merud stopping"
+		}
+		span.AddEvent("cancelled", trace.WithAttributes(attribute.String("meru.cancel.reason", reason)))
+		log.DebugContext(ctx, "rpc cancelled", "reason", reason, "ms", ms)
 	case herr != nil:
+		obs.EndSpanErr(ctx, span, herr)
 		_ = write(Event{Type: EventError, Error: herr.Error()})
+		log.DebugContext(ctx, "rpc error sent", "ms", ms, "err", herr)
 	default:
 		_ = write(done)
+		log.DebugContext(ctx, "rpc done sent", "ms", ms)
 	}
 }
 

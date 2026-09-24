@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
@@ -51,15 +51,19 @@ type Agent struct {
 	engine      engine.Engine
 	router      Router
 	models      config.Models
-	historyN    int    // earlier turns to put in the prompt
-	system      string // system prompt
-	sessionsDir string // where transcripts live, usually ~/.meru/sessions
-	log         *slog.Logger
+	historyN    int          // earlier turns to put in the prompt
+	system      string       // system prompt
+	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
+	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
 }
 
 // New returns an Agent that answers with eng, routes with router and keeps
-// transcripts under cfg.Dir/sessions.
+// transcripts under cfg.Dir/sessions. log may be nil, which means no log
+// lines.
 func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) *Agent {
+	if log == nil {
+		log = obs.Discard()
+	}
 	system := cfg.Agent.SystemPrompt
 	if system == "" {
 		system = DefaultSystemPrompt
@@ -87,6 +91,11 @@ func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) 
 // source), when the transcript can't be written, when a model call fails, or
 // when ctx is cancelled. A cancelled turn writes no assistant line.
 //
+// Each stage runs in its own span under one meru.turn span, and at debug
+// level logs a line tagged with the turn's trace ID. The info log gets one
+// "turn" line when the turn ends. No span or log line carries the question
+// or answer text unless capture_content is on.
+//
 // err is a named result, so the deferred function below can read the final
 // error and record the turn's outcome whichever return statement ran.
 func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) (err error) {
@@ -102,6 +111,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	ctx, span := obs.Tracer().Start(ctx, "meru.turn")
 	var route, sessionID string
+	var rep reply // the answer's stats, filled once the model has answered
 	iterations := 0
 	defer func() {
 		outcome := outcomeOf(ctx, err)
@@ -112,9 +122,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Int("meru.turn.iterations", iterations),
 			attribute.String("meru.turn.outcome", outcome),
 		)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-		}
+		obs.EndSpanErr(ctx, span, err)
 		span.End()
 		// The turn's ctx may be cancelled by now. WithoutCancel keeps its
 		// values (the trace) but drops the cancel, so the metric still records.
@@ -122,15 +130,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			Route: route, Source: source, Outcome: outcome,
 			Duration: time.Since(start), Iterations: iterations,
 		})
-		// Only the error, never the question or answer, goes in the log.
-		a.log.Info("turn", "session", sessionID, "route", route, "source", source,
-			"outcome", outcome, "ms", time.Since(start).Milliseconds(), "err", err)
+		a.logTurn(ctx, start, sessionID, route, source, outcome, rep, err)
 	}()
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.question", question))
 	}
+	a.logStart(ctx, req.Session, source, question)
 
-	sess, err := a.session(req.Session)
+	sess, history, err := a.openSession(ctx, req.Session)
 	if err != nil {
 		return err
 	}
@@ -139,14 +146,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// Read the history before writing this turn's question, so the question
-	// isn't in it twice.
-	history, err := sess.History(a.historyN)
-	if err != nil {
-		return err
-	}
 	traceID := traceIDOf(span)
-	if err := sess.Append(transcript.Line{Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
+	if err := a.appendLine(ctx, sess, transcript.Line{Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
 		return err
 	}
 
@@ -165,9 +166,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// v0.1 answers every route directly: search arrives in v0.2 and tools in
 	// v0.3. The route is still recorded above, so the metrics show how often
 	// each one would have run.
-	msgs := buildMessages(a.system, history, question)
+	msgs := a.prompt(ctx, history, question)
 	iterations = 1
-	rep, err := a.answer(ctx, msgs, emit)
+	rep, err = a.answer(ctx, msgs, emit)
 	if err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		span.SetAttributes(attribute.String("meru.answer", rep.text))
 	}
 
-	if err := sess.Append(transcript.Line{
+	if err := a.appendLine(ctx, sess, transcript.Line{
 		Type:      transcript.TypeAssistant,
 		Text:      rep.text,
 		TokensIn:  rep.usage.PromptTokens,
@@ -185,6 +186,36 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	return emit(doneEvent(start, rep))
+}
+
+// logStart writes the debug line that opens a turn: which session it asks
+// to continue (empty for a new one), where it came from, and how long the
+// question is. The question's first 200 characters join the line only when
+// capture_content is on.
+func (a *Agent) logStart(ctx context.Context, session, source, question string) {
+	args := []any{"session", session, "source", source, "question_chars", utf8.RuneCountInString(question)}
+	if obs.CaptureContent() {
+		args = append(args, "question", obs.Preview(question))
+	}
+	a.log.DebugContext(ctx, "turn started", args...)
+}
+
+// logTurn writes the one info line each turn gets. ttft_ms counts from when
+// Handle started to the first token of the answer, so it includes routing;
+// it is 0 when no text arrived. err joins the line only when the turn failed.
+func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, outcome string, rep reply, err error) {
+	var ttft int64
+	if !rep.firstToken.IsZero() {
+		ttft = rep.firstToken.Sub(start).Milliseconds()
+	}
+	args := []any{"session", sessionID, "route", route, "source", source,
+		"outcome", outcome, "ms", time.Since(start).Milliseconds(), "ttft_ms", ttft,
+		"tokens_in", rep.usage.PromptTokens, "tokens_out", rep.usage.OutputTokens}
+	if err != nil {
+		args = append(args, "err", err)
+	}
+	// Only the error, never the question or answer, goes in this line.
+	a.log.InfoContext(ctx, "turn", args...)
 }
 
 // doneEvent builds the "done" event that ends a turn, with the turn's stats.
@@ -214,17 +245,75 @@ type reply struct {
 	firstToken time.Time
 }
 
-// session opens the session named id, or starts a new one when id is empty.
-func (a *Agent) session(id string) (*transcript.Session, error) {
+// openSession opens the session named id, or starts a new one when id is
+// empty, and reads its history, inside a meru.session span. It returns the
+// session and up to historyN earlier turns as model messages.
+//
+// It reads the history before the turn writes its question, so the
+// question isn't in it twice.
+func (a *Agent) openSession(ctx context.Context, id string) (*transcript.Session, []engine.Message, error) {
+	ctx, span := obs.Tracer().Start(ctx, "meru.session")
+	defer span.End()
+	start := time.Now()
+
+	var sess *transcript.Session
+	var err error
+	msg := "session opened"
 	if id == "" {
-		return transcript.New(a.sessionsDir)
+		msg = "session created"
+		sess, err = transcript.New(a.sessionsDir)
+	} else {
+		sess, err = transcript.Open(a.sessionsDir, id)
 	}
-	return transcript.Open(a.sessionsDir, id)
+	if err != nil {
+		obs.EndSpanErr(ctx, span, err)
+		return nil, nil, err
+	}
+	span.SetAttributes(
+		attribute.String("meru.session.id", sess.ID()),
+		attribute.Bool("meru.session.new", id == ""),
+	)
+	a.log.DebugContext(ctx, msg, "session", sess.ID(), "ms", time.Since(start).Milliseconds())
+
+	start = time.Now()
+	history, err := sess.History(a.historyN)
+	if err != nil {
+		obs.EndSpanErr(ctx, span, err)
+		return nil, nil, err
+	}
+	// History holds a user and an assistant message per turn.
+	turns := len(history) / 2
+	span.SetAttributes(
+		attribute.Int("meru.history.turns", turns),
+		attribute.Int("meru.history.messages", len(history)),
+	)
+	a.log.DebugContext(ctx, "history loaded", "session", sess.ID(), "turns", turns,
+		"messages", len(history), "ms", time.Since(start).Milliseconds())
+	return sess, history, nil
+}
+
+// appendLine writes l to the session's transcript inside a
+// meru.transcript.append span. The span and the log line name the line's
+// type and length, never its text.
+func (a *Agent) appendLine(ctx context.Context, sess *transcript.Session, l transcript.Line) error {
+	ctx, span := obs.Tracer().Start(ctx, "meru.transcript.append", trace.WithAttributes(
+		attribute.String("meru.transcript.type", l.Type),
+		attribute.String("meru.session.id", sess.ID()),
+	))
+	defer span.End()
+	start := time.Now()
+	if err := sess.Append(l); err != nil {
+		obs.EndSpanErr(ctx, span, err)
+		return err
+	}
+	a.log.DebugContext(ctx, "transcript appended", "type", l.Type,
+		"chars", utf8.RuneCountInString(l.Text), "ms", time.Since(start).Milliseconds())
+	return nil
 }
 
 // route asks the router for this turn's route. The router records the
-// meru.route span and the meru.route.decisions metric itself, so the agent
-// records neither.
+// meru.route span, its debug line and the meru.route.decisions metric
+// itself, so the agent records none of them.
 func (a *Agent) route(ctx context.Context, question string, history []engine.Message) (Decision, error) {
 	dec, err := a.router.Decide(ctx, question, history)
 	if err != nil {
@@ -233,29 +322,46 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
+// prompt builds the messages for the main model inside a meru.prompt span,
+// and reports their size. est_tokens is characters divided by four, a rough
+// rule for English text; the model's own count arrives with its answer.
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string) []engine.Message {
+	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
+	defer span.End()
+	msgs := buildMessages(a.system, history, question)
+	chars := 0
+	for _, m := range msgs {
+		chars += utf8.RuneCountInString(m.Content)
+	}
+	span.SetAttributes(
+		attribute.Int("meru.prompt.messages", len(msgs)),
+		attribute.Int("meru.prompt.chars", chars),
+		attribute.Int("meru.prompt.est_tokens", chars/4),
+	)
+	a.log.DebugContext(ctx, "prompt built", "messages", len(msgs), "chars", chars, "est_tokens", chars/4)
+	return msgs
+}
+
 // answer streams the main model's reply to msgs, sends each piece through
 // emit as a "token" event, and returns the whole text with the runtime's
 // usage counters and the first token's arrival time. It records one
-// gen_ai.chat span and the model-call metrics.
+// gen_ai.chat span, with a first_token event, and the model-call metrics.
 func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc.Event) error) (reply, error) {
 	model := a.models.Main
-	ctx, span := obs.Tracer().Start(ctx, "gen_ai.chat", trace.WithSpanKind(trace.SpanKindClient))
+	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()
-	span.SetAttributes(
-		attribute.String("gen_ai.operation.name", "chat"),
-		attribute.String("gen_ai.request.model", model),
-		attribute.String("meru.tier", "main"),
-	)
 
 	start := time.Now()
 	var ttft time.Duration   // time to first token; zero until text arrives
 	var firstToken time.Time // when that token arrived
 	var usage engine.Usage
+	var doneReason string
 	var text strings.Builder
 
-	// fail marks the span as failed and returns err with context added.
+	// fail marks the span as failed or cancelled and returns err with
+	// context added.
 	fail := func(err error) (reply, error) {
-		span.SetStatus(codes.Error, err.Error())
+		obs.EndSpanErr(ctx, span, err)
 		return reply{}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
@@ -272,6 +378,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 			if ttft == 0 {
 				firstToken = time.Now()
 				ttft = firstToken.Sub(start)
+				span.AddEvent("first_token", trace.WithAttributes(attribute.Int64("meru.ttft_ms", ttft.Milliseconds())))
 			}
 			text.WriteString(delta.Text)
 			if err := emit(rpc.Event{Type: rpc.EventToken, Text: delta.Text}); err != nil {
@@ -280,6 +387,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 		}
 		if delta.Done {
 			usage = delta.Usage
+			doneReason = delta.DoneReason
 		}
 	}
 	// A stream can end early without an error when ctx is cancelled.
@@ -287,18 +395,23 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 		return fail(err)
 	}
 
-	span.SetAttributes(
-		attribute.Int("gen_ai.usage.input_tokens", usage.PromptTokens),
-		attribute.Int("gen_ai.usage.output_tokens", usage.OutputTokens),
-	)
+	ou := obs.Usage{
+		PromptTokens: usage.PromptTokens, OutputTokens: usage.OutputTokens,
+		LoadDuration: usage.LoadDuration, PromptEvalDuration: usage.PromptEvalDuration,
+		EvalDuration: usage.EvalDuration,
+	}
+	obs.ChatResult(span, ou, doneReason)
 	obs.RecordModelCall(ctx, obs.ModelCall{
 		Tier: "main", Model: model, Operation: "chat",
-		Duration: time.Since(start), TimeToFirstToken: ttft,
-		Usage: obs.Usage{
-			PromptTokens: usage.PromptTokens, OutputTokens: usage.OutputTokens,
-			LoadDuration: usage.LoadDuration, EvalDuration: usage.EvalDuration,
-		},
+		Duration: time.Since(start), TimeToFirstToken: ttft, Usage: ou,
 	})
+	args := []any{"model", model, "ms", time.Since(start).Milliseconds(),
+		"ttft_ms", ttft.Milliseconds(), "tokens_in", usage.PromptTokens,
+		"tokens_out", usage.OutputTokens, "answer_chars", utf8.RuneCountInString(text.String())}
+	if obs.CaptureContent() {
+		args = append(args, "answer", obs.Preview(text.String()))
+	}
+	a.log.DebugContext(ctx, "answer finished", args...)
 	return reply{text: text.String(), usage: usage, firstToken: firstToken}, nil
 }
 

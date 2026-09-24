@@ -22,6 +22,8 @@ type Config struct {
 	Router Router `toml:"router"`
 	// Observability controls OpenTelemetry export. Off unless an endpoint is set.
 	Observability Observability `toml:"observability"`
+	// Log sets how much merud writes to merud.log.
+	Log Log `toml:"log"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -77,4 +79,13 @@ type Observability struct {
 	Traces bool `toml:"traces"`
 	// CaptureContent puts prompt and response text into spans. Off by default.
 	CaptureContent bool `toml:"capture_content"`
+}
+
+// Log controls merud.log.
+type Log struct {
+	// Level is the lowest level merud writes: "debug", "info" (the default),
+	// "warn" or "error". At "info" merud writes one line per turn plus its
+	// startup and shutdown lines; "debug" adds a line for each stage of a
+	// turn. merud's -v flag forces "debug".
+	Level string `toml:"level"`
 }

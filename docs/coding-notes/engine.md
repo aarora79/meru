@@ -1,6 +1,7 @@
 # engine
 
-**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `loopback.go`, `version.go`)
+**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `loopback.go`, `version.go`,
+`observe_test.go`)
 **Milestone:** v0.1
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -58,7 +59,8 @@ test sees it. `loopback.IsURL` wraps it for callers that want a yes or no.
 
 `NewOllama` checks the URL, turns `keep_alive` into the JSON Ollama accepts, and
 copies the HTTP client so it can refuse redirects. A redirect could bounce a
-prompt to another host.
+prompt to another host. Its last argument is a `*slog.Logger` for debug lines;
+nil means no lines.
 
 ```go
 if n, err := strconv.Atoi(s); err == nil {
@@ -101,6 +103,35 @@ status outside 200–299 it reads Ollama's `{"error": "..."}` body and returns a
 `*APIError`. Callers can find that error with `errors.As`, for example to spot a
 404 for a model that isn't pulled. See [go-basics/http-clients.md](go-basics/http-clients.md).
 
+### What each call logs and traces
+
+Each HTTP call gets a client span from `startSpan`, named like `POST /api/chat`,
+with `http.request.method`, `url.full` and the body's size. It nests under the
+caller's span: the router's or the agent's `gen_ai.chat`. `do` adds
+`http.response.status_code` and writes one debug line:
+
+```text
+msg="ollama http" method=POST path=/api/chat status=200 headers_ms=29 model=… stream=true num_predict=0 logprobs=false
+```
+
+`headers_ms` is the time until Ollama's response headers arrived. A streaming
+call then logs `ollama first token`, with the time since the request started
+and `thinking_chunks`: how many chunks carried only hidden reasoning before the
+first word. A thinking model can spend seconds there, and this count is how the
+log shows it. Every chat call ends with `ollama done`, which holds Ollama's
+counters: `prompt_tokens`, `output_tokens`, `load_ms`, `prompt_eval_ms`,
+`eval_ms` and `tokens_per_s`. The streaming span also gets
+`meru.ollama.thinking_chunks`.
+
+A failed call goes through `fail`, which marks the span through
+`obs.EndSpanErr` and logs `ollama error` with the path, the time and the error,
+Ollama's own message included. `fail` returns the error too, so the caller
+still decides what the user sees; the debug line adds only the timing.
+
+The stream's span stays open while the caller reads the stream, and the
+iterator ends it when the stream ends. No span or log line holds a message's
+text.
+
 ### ollama_wire.go
 
 Ollama's own JSON shapes (`chatRequest`, `chatResponse`, `wireLogProb`, …) and the
@@ -138,8 +169,9 @@ user knows what they have and what to install.
 go test -race ./internal/engine/
 ```
 
-The unit tests start a fake Ollama with `httptest` and need no model. To run
-against the real Ollama:
+The unit tests start a fake Ollama with `httptest` and need no model.
+`observe_test.go` checks the span, the status attribute and each debug line,
+and that no message text reaches either. To run against the real Ollama:
 
 ```sh
 go test -tags integration -v -run Integration ./internal/engine/

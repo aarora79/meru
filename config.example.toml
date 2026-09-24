@@ -55,3 +55,11 @@ otlp_endpoint    = ""            # for example "http://127.0.0.1:4318"
 metrics_interval = "10s"         # how often metrics are sent
 traces           = true          # send traces too, when an endpoint is set
 capture_content  = false         # put prompt and answer text into spans
+
+[log]
+# How much merud writes to merud.log, next to this file. "info" writes one
+# line per turn plus startup and shutdown. "debug" adds a line for each stage
+# of a turn (session, route, prompt, each Ollama call), tagged with the turn's
+# trace ID. Neither level writes question or answer text unless
+# capture_content is on. Also "warn" or "error". `merud -v` forces "debug".
+level = "info"

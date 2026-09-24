@@ -71,7 +71,7 @@ func (f *fakeOllama) body(t *testing.T, path string) map[string]any {
 // newTestEngine builds an engine pointed at the fake server.
 func newTestEngine(t *testing.T, f *fakeOllama, keepAlive string) *OllamaEngine {
 	t.Helper()
-	e, err := NewOllama(f.srv.URL, keepAlive, "nomic-embed-text", f.srv.Client())
+	e, err := NewOllama(f.srv.URL, keepAlive, "nomic-embed-text", f.srv.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestContextCancellation(t *testing.T) {
 	t.Cleanup(srv.Close)
 	t.Cleanup(func() { close(release) })
 
-	e, err := NewOllama(srv.URL, "", "embed", srv.Client())
+	e, err := NewOllama(srv.URL, "", "embed", srv.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestNewOllama(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewOllama(tt.baseURL, tt.keepAlive, "", nil)
+			_, err := NewOllama(tt.baseURL, tt.keepAlive, "", nil, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewOllama(%q, %q) error = %v, wantErr %v", tt.baseURL, tt.keepAlive, err, tt.wantErr)
 			}
@@ -500,7 +500,7 @@ func TestNewOllama(t *testing.T) {
 func TestGenerateRefusesRedirect(t *testing.T) {
 	srv := httptest.NewServer(http.RedirectHandler("http://127.0.0.1:1/elsewhere", http.StatusFound))
 	t.Cleanup(srv.Close)
-	e, err := NewOllama(srv.URL, "", "", srv.Client())
+	e, err := NewOllama(srv.URL, "", "", srv.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}

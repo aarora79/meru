@@ -180,7 +180,10 @@ func TestNoOpBeforeSetup(t *testing.T) {
 // TestSetupWithoutEndpoint checks that an empty endpoint keeps export off but
 // still honours capture_content.
 func TestSetupWithoutEndpoint(t *testing.T) {
-	t.Cleanup(func() { current.Store(nil) })
+	t.Cleanup(func() {
+		current.Store(nil)
+		otel.SetTracerProvider(tracenoop.NewTracerProvider())
+	})
 	tests := []struct {
 		capture bool
 	}{{false}, {true}}
@@ -197,6 +200,15 @@ func TestSetupWithoutEndpoint(t *testing.T) {
 		}
 		if load() != nil {
 			t.Error("instruments exist with no endpoint, want none")
+		}
+		// Spans record nothing but still carry a trace ID for the log.
+		_, span := Tracer().Start(context.Background(), "meru.turn")
+		span.End()
+		if span.IsRecording() {
+			t.Error("span records with no endpoint, want a dropped span")
+		}
+		if !span.SpanContext().HasTraceID() {
+			t.Error("span has no trace ID with no endpoint, want one for the log")
 		}
 	}
 }

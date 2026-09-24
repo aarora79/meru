@@ -32,7 +32,7 @@ func TestIntegrationDecide(t *testing.T) {
 	baseURL := envOr("MERU_TEST_OLLAMA", "http://127.0.0.1:11434")
 	model := envOr("MERU_TEST_FAST_MODEL", "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M")
 
-	eng, err := engine.NewOllama(baseURL, "5m", "", nil)
+	eng, err := engine.NewOllama(baseURL, "5m", "", nil, nil)
 	if err != nil {
 		t.Fatalf("NewOllama: %v", err)
 	}

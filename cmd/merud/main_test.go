@@ -169,17 +169,22 @@ func shortDir(t *testing.T) string {
 	return dir
 }
 
-func TestRunServesAndStops(t *testing.T) {
+// serveOneQuestion runs merud with extra flags over a fake engine: it waits
+// for a ping, asks one question, checks the answer, and shuts merud down. It
+// returns merud's home directory.
+func serveOneQuestion(t *testing.T, extra ...string) string {
+	t.Helper()
 	dir := shortDir(t)
 	sock := filepath.Join(dir, "d.sock")
 	cfgPath := filepath.Join(dir, "config.toml") // absent: defaults
 	eng := &fakeEngine{version: "0.13.0"}
-	build := func(config.Config) (engine.Engine, error) { return eng, nil }
+	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return eng, nil }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, []string{"-config", cfgPath, "-socket", sock}, io.Discard, build) }()
+	args := append([]string{"-config", cfgPath, "-socket", sock}, extra...)
+	go func() { done <- run(ctx, args, io.Discard, build) }()
 
 	// Wait for merud to answer a ping.
 	up := false
@@ -219,15 +224,71 @@ func TestRunServesAndStops(t *testing.T) {
 		t.Fatal("run didn't return after cancel")
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, "merud.log")); err != nil {
-		t.Errorf("no log file: %v", err)
-	}
 	if _, err := os.Stat(sock); err == nil {
 		t.Error("socket file left behind after shutdown")
+	}
+	return dir
+}
+
+func TestRunServesAndStops(t *testing.T) {
+	dir := serveOneQuestion(t)
+	if _, err := os.Stat(filepath.Join(dir, "merud.log")); err != nil {
+		t.Errorf("no log file: %v", err)
 	}
 	sessions, _ := filepath.Glob(filepath.Join(dir, "sessions", "*", "*", "*.jsonl"))
 	if len(sessions) != 1 {
 		t.Errorf("found %d session files, want 1", len(sessions))
+	}
+}
+
+// TestRunLogLevel checks what merud.log holds at the default info level and
+// with -v: info has the startup, turn and shutdown lines only; -v adds a
+// debug line for each stage, each tagged with the turn's trace ID, and still
+// no question text.
+func TestRunLogLevel(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantDebug bool
+	}{
+		{"info by default", nil, false},
+		{"-v forces debug", []string{"-v"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := serveOneQuestion(t, tt.args...)
+			raw, err := os.ReadFile(filepath.Join(dir, "merud.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			log := string(raw)
+			if got := strings.Contains(log, "level=DEBUG"); got != tt.wantDebug {
+				t.Errorf("log has debug lines = %v, want %v:\n%s", got, tt.wantDebug, log)
+			}
+			if strings.Contains(log, "ping?") {
+				t.Errorf("log holds the question text:\n%s", log)
+			}
+			for _, want := range []string{"msg=\"merud starting\"", "msg=turn ", "msg=\"merud stopped\""} {
+				if !strings.Contains(log, want) {
+					t.Errorf("log lacks %s:\n%s", want, log)
+				}
+			}
+			for line := range strings.Lines(log) {
+				if strings.Contains(line, "msg=turn ") && !strings.Contains(line, "trace_id=") {
+					t.Errorf("turn line has no trace_id: %s", line)
+				}
+				if strings.Contains(line, "err=<nil>") {
+					t.Errorf("line logs a nil error: %s", line)
+				}
+			}
+			if tt.wantDebug {
+				for _, want := range []string{"msg=\"rpc request\"", "msg=\"prompt built\"", "msg=route "} {
+					if !strings.Contains(log, want) {
+						t.Errorf("debug log lacks %s:\n%s", want, log)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -239,13 +300,13 @@ func TestRunStartupErrors(t *testing.T) {
 	}
 	good := filepath.Join(dir, "config.toml")
 	sock := filepath.Join(dir, "e.sock")
-	okEngine := func(config.Config) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
-	oldEngine := func(config.Config) (engine.Engine, error) { return &fakeEngine{version: "0.5.0"}, nil }
+	okEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
+	oldEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.5.0"}, nil }
 
 	tests := []struct {
 		name  string
 		args  []string
-		build func(config.Config) (engine.Engine, error)
+		build engineBuilder
 		want  string
 	}{
 		{"bad config", []string{"-config", badCfg, "-socket", sock}, okEngine, "profile"},
@@ -266,6 +327,6 @@ func TestRunStartupErrors(t *testing.T) {
 
 // failEngine stands in for an engine that can't be built, so run must report
 // the failure instead of starting.
-func failEngine(config.Config) (engine.Engine, error) {
+func failEngine(config.Config, *slog.Logger) (engine.Engine, error) {
 	return nil, errors.New("boom")
 }
