@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`), `cmd/meru/` (`main.go`, `index.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -153,6 +153,12 @@ it loads that model once. A failure says which model and suggests
 
 `searchAdapter` joins the agent's `Searcher` interface to `retrieve.Search`
 over the store, the way `routerAdapter` joins the router.
+
+### merud: backends.go
+
+`mcpBackend` joins the MCP pool to `dispatch`, and `mcpServerConfigs` turns the
+`[[mcp.servers]]` entries into the pool's settings, secrets resolved. Both are
+described in [dispatch.md](dispatch.md).
 
 ### meru: main.go
 

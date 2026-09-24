@@ -30,6 +30,8 @@ const (
 	metricContextTokens     = "meru.context.tokens"
 	metricActiveStreams     = "meru.rpc.active_streams"
 	metricRetrievalDuration = "meru.retrieval.duration"
+	metricToolCalls         = "meru.tool.calls"
+	metricToolDuration      = "meru.tool.duration"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -44,6 +46,11 @@ const (
 	keyOutcome   = "meru.outcome"
 	keySection   = "meru.section"
 	keyStage     = "meru.stage"
+	// The tool keys match the attributes on the meru.dispatch span, so a
+	// dashboard can join a metric to its traces.
+	keyToolKind   = "meru.tool.kind"
+	keyToolServer = "meru.tool.server"
+	keyToolName   = "gen_ai.tool.name"
 )
 
 // other replaces any attribute value outside its allowed set. It keeps a
@@ -62,6 +69,8 @@ var (
 	routeOutcomes = []string{"ok", "low_confidence", "degraded"}
 	sections      = []string{"system", "skills", "memories", "chunks", "history", "tools"}
 	stages        = []string{"vector", "fts", "fusion", "memories"}
+	toolKinds     = []string{"mcp", "a2a", "builtin"}
+	toolOutcomes  = []string{"ok", "error", "denied", "declined", "cancelled", "timeout"}
 )
 
 // operationNames maps Meru's own operation words to the values the GenAI
@@ -125,6 +134,8 @@ type instruments struct {
 	contextTokens     metric.Int64Histogram
 	activeStreams     metric.Int64UpDownCounter
 	retrievalDuration metric.Float64Histogram
+	toolCalls         metric.Int64Counter
+	toolDuration      metric.Float64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -200,6 +211,17 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of one retrieval stage: vector search, keyword search, fusion or memory recall."),
 		metric.WithExplicitBucketBoundaries(retrievalBuckets...))
+	keep(err)
+	in.toolCalls, err = meter.Int64Counter(metricToolCalls,
+		metric.WithUnit("{call}"),
+		metric.WithDescription("Tool calls through dispatch, by server, tool and outcome."))
+	keep(err)
+	// Tool calls range from a local file write to a slow web fetch, the
+	// same spread as model calls, so they share the duration edges.
+	in.toolDuration, err = meter.Float64Histogram(metricToolDuration,
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of one tool call that ran, without the wait for the user's approval."),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	keep(err)
 
 	if err := errors.Join(errs...); err != nil {
