@@ -58,6 +58,18 @@ $ git clone https://github.com/aarora79/meru.git && cd meru
 $ go install ./cmd/merud ./cmd/meru                    # into ~/go/bin
 $ merud &                                              # loads the models and listens
 $ meru "what is the capital of France?"
+$ meru chat                                            # a conversation in the terminal
+```
+
+To update to the latest code, rebuild both programs and restart `merud`, so the
+daemon and the client match. `-v` writes a line for each stage of every question
+to `~/.meru/merud.log`:
+
+```
+$ git pull
+$ go install ./cmd/merud ./cmd/meru
+$ pkill merud; merud -v &
+$ meru chat
 ```
 
 [docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,

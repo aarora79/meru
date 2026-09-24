@@ -194,7 +194,25 @@ two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
 load, prompt and answer times; the answer's span has a `first_token` event. Spans
 carry no question or answer text unless `capture_content = true`.
 
-## 9. Troubleshooting
+## 9. Update to a newer version
+
+From your clone of the repo, pull the latest code, rebuild both programs and
+restart `merud`:
+
+```sh
+git pull
+go install ./cmd/merud ./cmd/meru
+pkill merud; merud -v &
+meru chat
+```
+
+`merud` keeps running the old program until you restart it, and `meru` talks to
+whichever `merud` is running, so restart it every time you rebuild. `-v` turns on
+the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off for
+the shorter log. If `merud` runs as a service, restart it with the service
+manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
+
+## 10. Troubleshooting
 
 | What you see | What it means and what to do |
 | --- | --- |
@@ -208,7 +226,7 @@ carry no question or answer text unless `capture_content = true`.
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
-## 10. Uninstall
+## 11. Uninstall
 
 ```sh
 rm ~/go/bin/merud ~/go/bin/meru
