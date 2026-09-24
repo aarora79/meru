@@ -1,7 +1,7 @@
 # merud and meru
 
 **Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -301,6 +301,36 @@ described in [dispatch.md](dispatch.md). `probeConfig` does the same for the one
 server a probe names, and `probeResult` copies `mcp.ProbeInfo` into
 `rpc.ProbeResult`. The `mcp` package doesn't import `rpc`, so `main` joins them.
 
+`mcpBackend` also has a `ConnectMissing` method, one line that calls
+`pool.ConnectMissing`. That method makes it a `dispatch.Connector`, so the agent
+loop's one try per turn at a server that isn't connected reaches the pool (see
+[mcp.md](mcp.md)). Go has no `implements` keyword: a type satisfies an interface
+by having its methods, and `Dispatcher.ConnectMissing` checks for the method at
+run time.
+
+`mcpStatus` turns the pool's `[]mcp.ServerStatus` into the rows `meru mcp`
+prints:
+
+```go
+row := rpc.MCPStatus{
+    Name:      st.Name,
+    Transport: st.Transport,
+    State:     rpc.MCPConnected,
+    URL:       st.URL,
+    Tools:     st.Offered,
+    Allowed:   st.Listed,
+    Confirm:   st.Confirms,
+}
+if !st.Connected {
+    row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+}
+```
+
+A server that isn't connected gets `Tools = -1`, which the client draws as `—`:
+with no tool list, any count would be a guess. `Allowed` and `Confirm` come from
+config, so they show either way. The line inside the `if` sets three fields at
+once, in the order the line names them.
+
 ### merud: tools.go
 
 `toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
@@ -322,12 +352,21 @@ s.dispatcher = dispatch.New(
 
 The first backend to offer a name keeps it, so no MCP server can shadow
 `configure`, and one named `cmd` can't shadow a command. The commands don't
-reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides `tools` and `log`, it answers the two ops `meru mcp add` uses:
+reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides
+`tools` and `log`, it answers the two ops `meru mcp add` uses, and the one behind
+`meru mcp` and `/mcp`:
 
 | Op | What it does | Reply |
 | --- | --- | --- |
 | `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
 | `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
+| `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order |
+
+**Status.** `handleMCPStatus` takes the current pool under `s.mu`, since a reload
+may swap it, and reads `pool.Status()`. That reads what the pool holds and sends
+nothing to any server, so `meru mcp` answers at once while a server is down.
+`TestMCPStatusOp` builds a pool with one server up and one that answers 503,
+checks both rows, and checks that the op sent the down server no request.
 
 **Probe.** `handleProbe` loads `secrets.toml` from disk each time instead of using
 the copy it holds, because `meru mcp add` may have saved the server's key a moment
@@ -394,7 +433,7 @@ default:
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
-  as `[1] ~/notes/garden.md, "Budget", lines 3–5`. `rpc.Cited` picks those
+  as `[1] ~/notes/garden.md, "Planting", lines 3–5`. `rpc.Cited` picks those
   lines; an answer that cites no number gets no list.
   When standard output is a styled terminal (`look.links`), each line is a
   link to its file (`rpc.FileURL`, `rpc.Hyperlink`); a pipe gets plain text.
@@ -436,7 +475,7 @@ and writes the answer back. For one-shot `meru`, that function is the
 Meru wants to run mail.send (mcp) with:
   {
     "to": "sam@example.com",
-    "subject": "Garden budget"
+    "subject": "Garden plan"
   }
 Run mail.send? [o]nce  [s]ession  [d]eny:
 ```
@@ -531,6 +570,7 @@ type console struct {
     readSecret    func() (string, error)
     run           func(ctx context.Context, name string, args ...string) error
     ollamaVersion func(ctx context.Context, baseURL string) (string, error)
+    answers       func(ctx context.Context, rawURL string) bool
 }
 ```
 
@@ -540,18 +580,24 @@ type console struct {
   progress bar. More in [go-basics/os-exec.md](go-basics/os-exec.md).
 - `ollamaVersion` makes one `GET /api/version` with `net/http`. The client may
   not import the engine, and one plain call is all the check needs.
+- `answers` is `urlAnswers` from `probe.go`: does anything accept a TCP
+  connection at a server's URL within a second?
 
 `offer` shows one server and asks for a path: `d` runs `doIt`; `s` prints the
 block, the install step and the `secrets.toml` lines, and writes nothing; `k`
 skips. `doIt` goes in this order:
 
-1. Ask for what the entry needs: each key without echo, and the folders for
-   `filesystem` when they didn't come on the command line.
+1. Ask for what the entry needs: each key without echo, and a note for each
+   thing you do yourself. An entry with `Start`, such as `google`, prints the
+   command that starts the server; Meru never runs it.
 2. Ping `merud`. When it answers, save the keys to `secrets.toml` now, because
    `merud` starts the server in the next step and reads them from there.
 3. Try the server (`probeAndPick` in `probe.go`, below) and let the user pick
    its tools. Without `merud`, skip this: a catalog entry keeps its own lists,
-   and a server of your own gets an empty `allow`.
+   and a server of your own gets an empty `allow`. For an entry with `Start`,
+   `doIt` first calls `c.answers(ctx, e.URL)`. When nothing answers, it skips the
+   probe, keeps the catalog's lists, and says `merud` connects on the next
+   question after you start the server.
 4. Show the block and write it after a yes.
 5. Send `mcp_reload` (`reload` in `mcp.go`), so the server works without a
    restart, and print its state as `meru tools` would.
@@ -570,20 +616,26 @@ works on the Meru home in `/tmp/x`, the same one `merud -config
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
 
-Setup offers each catalog entry that runs on this system (`setupEntries`), so
-`windows` shows up only on Windows.
+Setup offers each catalog entry, in catalog order: `google`, `brave`,
+`obsidian`.
 
 ### meru: mcp.go
 
-`mcpCmd` reads the words after `meru mcp`. `addEntry` turns the words after
-`add` into a `catalog.Entry`:
+`mcpCmd` reads the words after `meru mcp`. With no words, or `status`, it calls
+`mcpStatus`, which sends `mcp_status` and prints the rows with `tui.MCPTable`, the
+same function the chat's `/mcp` box uses, so the two views can't drift apart.
+`--json` prints the rows as a JSON array instead. `rows` starts as
+`[]rpc.MCPStatus{}` so that a config with no servers prints `[]`; a nil slice
+would print `null`.
+
+`addEntry` turns the words after `add` into a `catalog.Entry`:
 
 | Words | Entry |
 | --- | --- |
 | `stdio <name> -- <command> [args...]` | `catalog.Custom`, a server `merud` starts |
-| `http <name> <url> [--network]` | `catalog.Custom` with a URL; a URL off this machine needs `--network` |
+| `http <name> <url> [--remote]` | `catalog.Custom` with a URL; a URL off this machine needs `--remote` |
 | `<name> -- <command>`, `<name> --url <url>` | the older forms, read as `stdio` and `http` |
-| `<catalog-name> [args...]` | `catalog.Find`, then `Entry.WithArgs` for the folders `filesystem` takes |
+| `<catalog-name>` | `catalog.Find`; any word after the name is an error |
 
 `mcpList` prints the catalog, then each server in `config.toml` with what
 `merud` says about it (from `tools`): connected or not, how many tools it offers,
@@ -606,6 +658,12 @@ Env values go as written, so `secret:brave_api_key` stays a reference and
 `merud` looks up the key. When the probe fails (a missing program, a timeout on
 a first `npx` download), it prints `merud`'s reason and offers `r` to try again,
 `w` to write the entry anyway, or `c` to cancel.
+
+`urlAnswers(ctx, rawURL)` dials the URL's host and port over TCP, with a
+one-second limit, and closes the connection at once. It sends no request, so it
+says only that something listens there; the probe finds out what. `doIt` asks it
+before it probes a server the user runs, because a probe of nothing would fail
+after its own timeout.
 
 `propose` gives each tool a state: `off`, `ask` (allowed, in `confirm`) or
 `allow`. The three are constants numbered by `iota`, which counts up from 0
@@ -630,7 +688,9 @@ state, so a typo in the third word doesn't leave the first two applied.
 
 `mcp_test.go` runs each command against `fakeMerud`, a few lines that speak the
 socket protocol by hand: read one JSON request, write events. It records the ops
-it saw, so a test can check that a write ends with `mcp_reload`.
+it saw, so a test can check that a write ends with `mcp_reload`. `TestMCPStatus`
+checks the table from `meru mcp` and `meru mcp status`, reads `--json` back into
+the same structs, and checks the output with no servers and with `merud` down.
 
 ### meru: user.go
 

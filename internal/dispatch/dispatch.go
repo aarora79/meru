@@ -92,6 +92,16 @@ type Auditor interface {
 	AuditArgs(name string, args json.RawMessage) json.RawMessage
 }
 
+// Connector is an extra method a Backend may have. ConnectMissing tries
+// once to reach each of the backend's servers that isn't connected, and
+// returns when every try has ended. The agent loop calls it, through
+// Dispatcher.ConnectMissing, at the start of a turn that offers tools and
+// before it lists them. The MCP backend is the one Connector: merud never
+// retries an MCP server in the background (ARCHITECTURE.md, "MCP").
+type Connector interface {
+	ConnectMissing(ctx context.Context)
+}
+
 // Result is what a tool call hands back to the model.
 type Result struct {
 	// Text is the result as the model reads it.

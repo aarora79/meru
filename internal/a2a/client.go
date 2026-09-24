@@ -140,7 +140,7 @@ func New(_ context.Context, agents []AgentConfig, log *slog.Logger) (*Client, er
 // newHTTPClient returns the HTTP client for one agent. It adds the entry's
 // headers to every request and follows no redirects.
 //
-// Unless cfg.Network is true, its dialer refuses any address that isn't
+// Unless cfg.Remote is true, its dialer refuses any address that isn't
 // loopback. The config check covers only the card's URL; the card itself
 // names the URL the calls go to, and this check covers that URL too, after
 // DNS, so a card on loopback can't send Meru's messages off the machine.
@@ -152,7 +152,7 @@ func newHTTPClient(cfg AgentConfig) *http.Client {
 	// settings (connection pool sizes, TLS and HTTP/2 set-up) so this
 	// client can change a few without touching the shared one.
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	if !cfg.Network {
+	if !cfg.Remote {
 		dialer.Control = refuseNonLoopback
 		t.Proxy = nil
 	}
@@ -181,7 +181,7 @@ func refuseNonLoopback(_, address string, _ syscall.RawConn) error {
 	// Unmap turns an IPv4 address written as IPv6 (::ffff:127.0.0.1) back
 	// into plain IPv4, so the loopback test sees it for what it is.
 	if err != nil || !ip.Unmap().IsLoopback() {
-		return fmt.Errorf("%w: %s (set network = true to allow an agent on another machine)", errNotLoopback, address)
+		return fmt.Errorf("%w: %s (set remote = true to allow an agent on another machine)", errNotLoopback, address)
 	}
 	return nil
 }

@@ -14,7 +14,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -42,6 +41,8 @@ func scripted(input string) (c *console, out *bytes.Buffer, ran *[]string) {
 			return nil
 		},
 		ollamaVersion: func(context.Context, string) (string, error) { return "0.12.11", nil },
+		// Nothing answers at a server's URL unless a test says so.
+		answers: func(context.Context, string) bool { return false },
 	}
 	c.readSecret = c.line
 	return c, out, ran
@@ -146,11 +147,11 @@ func TestMCPListCatalog(t *testing.T) {
 func TestMCPAddAlreadyThere(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"),
-		[]byte("[[mcp.servers]]\nname = \"fetch\"\ncommand = \"uvx\"\n"), 0o600); err != nil {
+		[]byte("[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, out, _ := scripted("")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "fetch"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "already has") {
@@ -168,7 +169,7 @@ func TestSetupFirstRun(t *testing.T) {
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
 		"~/notes, /srv/papers\n" +
-		strings.Repeat("k\n", len(setupEntries(runtime.GOOS))) // skip each catalog server
+		strings.Repeat("k\n", len(catalog.Entries())) // skip each catalog server
 	c, out, ran := scripted(input)
 	checks := 0
 	c.ollamaVersion = func(context.Context, string) (string, error) {
@@ -219,7 +220,7 @@ func TestSetupExistingConfig(t *testing.T) {
 	}
 
 	// No download, skip each server, and no to setup user.
-	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(setupEntries(runtime.GOOS))) + "n\n")
+	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}

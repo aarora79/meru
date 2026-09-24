@@ -9,9 +9,9 @@ disabled one. It loads open-weight models into your computer's memory and keeps 
 there, so a question needs no API key and costs only electricity.
 
 Two kinds of program can reach beyond your machine, and only once you add them to
-config: MCP (Model Context Protocol) servers such as web search or Gmail, and other
-agents over A2A (Agent2Agent). Meru allows none of their tools until you name them,
-and logs every call.
+config: MCP (Model Context Protocol) servers, such as Gmail and Calendar, web search
+or your Obsidian notes, and other agents over A2A (Agent2Agent). Meru allows none of
+their tools until you name them, and logs every call.
 
 > **Status: pre-alpha, v0.3.** `merud` and `meru` answer questions with local models,
 > stream the answer, keep session transcripts and pick a route with the one-token
@@ -40,16 +40,17 @@ Working in v0.3:
 ```
 $ meru setup                               # Ollama, models, folders, MCP servers
 $ meru "what is the capital of France?"   # one question, answer streamed as text
-$ meru "what is the Q3 garden budget?"    # searches your folders, then lists Sources:
+$ meru "when do I sow the tomatoes?"      # searches your folders, then lists Sources:
 $ meru "search my obsidian vault for AI"  # calls the tools you allowed; asks first when config says so
 $ meru chat                                # interactive terminal UI
 $ meru ping                                # is merud running?
 $ meru index                               # rescan the folders under [index] folders
 $ meru index ~/notes/work                  # rescan one folder or file inside them
 $ meru index -status                       # what the index holds
+$ meru mcp                                 # each MCP server: connected or not, and its tool counts
 $ meru mcp list                            # the server catalog, and your servers with their state
 $ meru mcp add brave                       # add a catalog server: do it for me, or show me how
-$ meru mcp add filesystem ~/notes          # a catalog server that takes folders
+$ meru mcp add google                      # a server you run; Meru prints the command that starts it
 $ meru mcp add stdio notes -- npx -y some-mcp  # any other server: Meru tries it and proposes its tools
 $ meru mcp remove notes                    # take a server out of config.toml
 $ meru tools                               # each server, its allowed tools, which ask first
@@ -120,7 +121,7 @@ rules for changing the code.
 | --- | --- |
 | **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
 | **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
-| **MCP tools** | `meru setup` offers web search, Gmail, Calendar, Drive and other servers, and either adds each one for you or shows you what to paste. |
+| **MCP tools** | `meru setup` offers three servers: `google` for Gmail, Calendar and Drive, `brave` for web search and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
 | **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing` and `explainer`. |
@@ -131,7 +132,7 @@ rules for changing the code.
 
 Four reasons, most important first:
 
-1. **Privacy you can check.** Meru reads your email, notes, finances and calendar.
+1. **Privacy you can check.** Meru reads your email, notes and calendar.
    On a machine you control, none of it ends up in anyone's training set.
 2. **No cost per question.** Once you own the hardware, indexing ten years of notes
    or running a brief every morning adds nothing to any bill.

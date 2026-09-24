@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -275,15 +274,6 @@ func entryFor(a configureArgs) (catalog.Entry, error) {
 		if !ok {
 			return catalog.Entry{}, fmt.Errorf("configure: %q is not in the catalog; the catalog has %s",
 				a.Catalog, strings.Join(catalog.Names(), ", "))
-		}
-		if !e.RunsOn(runtime.GOOS) {
-			return catalog.Entry{}, fmt.Errorf("configure: %s runs only on %s", e.Name, e.OS)
-		}
-		// An entry that takes folders, such as filesystem, gets them on the
-		// command line; configure has no field for them, so WithArgs(nil)
-		// fails and names the terminal command.
-		if _, err := e.WithArgs(nil); err != nil {
-			return catalog.Entry{}, fmt.Errorf("configure: %w. Ask the user to run that in a terminal", err)
 		}
 		return e, nil
 	case a.Name == "":

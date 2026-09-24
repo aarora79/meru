@@ -70,10 +70,10 @@ func TestReplaySessionsIsIncremental(t *testing.T) {
 		t.Fatal(err)
 	}
 	appendLines(t, sess,
-		transcript.Line{TS: at(10, 0, 0), Type: transcript.TypeUser, Text: "what is the garden budget?", TraceID: "t1"},
+		transcript.Line{TS: at(10, 0, 0), Type: transcript.TypeUser, Text: "when do I sow the tomatoes?", TraceID: "t1"},
 		transcript.Line{TS: at(10, 0, 1), Type: transcript.TypeToolCall, CallID: "c1", Kind: "builtin", Tool: "remember"},
 		transcript.Line{TS: at(10, 0, 2), Type: transcript.TypeToolResult, CallID: "c1", Outcome: "ok"},
-		transcript.Line{TS: at(10, 0, 3), Type: transcript.TypeAssistant, Text: "It is 400 dollars.", TraceID: "t1"},
+		transcript.Line{TS: at(10, 0, 3), Type: transcript.TypeAssistant, Text: "On 12 April.", TraceID: "t1"},
 	)
 
 	n, err := s.ReplaySessions(ctx, dir)
@@ -92,15 +92,15 @@ func TestReplaySessionsIsIncremental(t *testing.T) {
 
 	// New lines, a summary among them: only they are read.
 	appendLines(t, sess,
-		transcript.Line{TS: at(10, 40, 0), Type: transcript.TypeSummary, Text: "Set the garden budget at 400 dollars."},
+		transcript.Line{TS: at(10, 40, 0), Type: transcript.TypeSummary, Text: "Chose two raised beds for the garden."},
 		transcript.Line{TS: at(11, 0, 0), Type: transcript.TypeUser, Text: "and the seeds?"},
-		transcript.Line{TS: at(11, 0, 2), Type: transcript.TypeAssistant, Text: "Seeds cost 30."},
+		transcript.Line{TS: at(11, 0, 2), Type: transcript.TypeAssistant, Text: "Next week."},
 	)
 	if n, err := s.ReplaySession(ctx, dir, sess.ID()); err != nil || n != 3 {
 		t.Fatalf("ReplaySession = %d, %v; want 3", n, err)
 	}
 	got = loadSession(t, s, sess.ID())
-	if got.Turns != 2 || !got.Last.Equal(at(11, 0, 2)) || got.Summary != "Set the garden budget at 400 dollars." ||
+	if got.Turns != 2 || !got.Last.Equal(at(11, 0, 2)) || got.Summary != "Chose two raised beds for the garden." ||
 		!got.SummaryTime.Equal(at(10, 40, 0)) {
 		t.Errorf("session after the new lines = %+v", got)
 	}
@@ -266,10 +266,10 @@ func TestSessionSearches(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	dir := t.TempDir()
-	garden := newSession(t, s, dir, at(9, 0, 0), "what should the garden budget be?", "Set the garden budget at 400 dollars.")
-	taxes := newSession(t, s, dir, at(10, 0, 0), "when are taxes due?", "Taxes are due in April.")
-	current := newSession(t, s, dir, at(11, 0, 0), "garden budget again", "Asked about the garden budget again.")
-	for i, id := range []string{garden, taxes, current} {
+	garden := newSession(t, s, dir, at(9, 0, 0), "how many raised beds should the garden have?", "Chose two raised beds for the garden.")
+	library := newSession(t, s, dir, at(10, 0, 0), "when does the library close?", "The library closes at 6 pm on Saturdays.")
+	current := newSession(t, s, dir, at(11, 0, 0), "garden beds again", "Asked about the garden beds again.")
+	for i, id := range []string{garden, library, current} {
 		ss := loadSession(t, s, id)
 		if err := s.SetSessionVector(ctx, id, ss.Summary, unit(i)); err != nil {
 			t.Fatal(err)
@@ -277,10 +277,10 @@ func TestSessionSearches(t *testing.T) {
 	}
 
 	vec, err := s.SearchSessionVector(ctx, unit(1), current, 5)
-	if err != nil || len(vec) != 2 || vec[0].Session != taxes || vec[1].Session != garden {
-		t.Errorf("SearchSessionVector = %+v, %v; want taxes, then garden", vec, err)
+	if err != nil || len(vec) != 2 || vec[0].Session != library || vec[1].Session != garden {
+		t.Errorf("SearchSessionVector = %+v, %v; want library, then garden", vec, err)
 	}
-	sum, err := s.SearchSummaryKeyword(ctx, "garden budget", current, 5)
+	sum, err := s.SearchSummaryKeyword(ctx, "garden beds", current, 5)
 	if err != nil || len(sum) != 1 || sum[0].Session != garden {
 		t.Errorf("SearchSummaryKeyword = %+v, %v; want garden alone", sum, err)
 	}
@@ -289,7 +289,7 @@ func TestSessionSearches(t *testing.T) {
 		t.Fatalf("SearchMessageKeyword = %+v, %v; want one garden message", msgs, err)
 	}
 	loaded, err := s.Messages(ctx, []int64{msgs[0].MessageID, 9999})
-	if err != nil || len(loaded) != 1 || loaded[0].Role != "user" || loaded[0].Text != "what should the garden budget be?" {
+	if err != nil || len(loaded) != 1 || loaded[0].Role != "user" || loaded[0].Text != "how many raised beds should the garden have?" {
 		t.Errorf("Messages = %+v, %v", loaded, err)
 	}
 	// Excluding nothing finds the current session too.

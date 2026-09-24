@@ -400,7 +400,7 @@ func TestRecordRetrieval(t *testing.T) {
 	RecordRetrieval(ctx, "fts", time.Millisecond)
 	RecordRetrieval(ctx, "fts", time.Millisecond)
 	RecordRetrieval(ctx, "fusion", 50*time.Microsecond)
-	RecordRetrieval(ctx, "notes/budget.md", time.Millisecond)
+	RecordRetrieval(ctx, "notes/launch.md", time.Millisecond)
 	got := collect(t, reader)
 
 	m := got[metricRetrievalDuration]

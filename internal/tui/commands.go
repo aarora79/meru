@@ -11,7 +11,7 @@ import (
 
 // commandList names the slash commands the chat understands, for the line
 // that answers an unknown one.
-const commandList = "/new, /usage, /me"
+const commandList = "/new, /usage, /me, /mcp"
 
 // command runs a line that starts with "/" instead of sending it as a
 // question:
@@ -20,7 +20,9 @@ const commandList = "/new, /usage, /me"
 //     conversation so far;
 //   - /usage opens the usage box and asks merud for the numbers;
 //   - /me opens a box with what Meru knows about the user, the memories
-//     merud puts into every prompt.
+//     merud puts into every prompt;
+//   - /mcp opens a box with each MCP server's state, the table `meru mcp`
+//     prints.
 //
 // Any other command leaves the text in the input, so the user can fix a
 // typo, and shows one dim line with the commands the chat knows.
@@ -44,6 +46,12 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		m.meBox = &meBox{loading: true}
 		m.input.Blur()
 		return m, meCmd(m.ask)
+	case "/mcp":
+		m.input.Reset()
+		m.layout()
+		m.mcpBox = &mcpBox{loading: true}
+		m.input.Blur()
+		return m, mcpCmd(m.ask)
 	}
 	m.notice = "unknown command " + name + " · commands: " + commandList
 	return m, nil

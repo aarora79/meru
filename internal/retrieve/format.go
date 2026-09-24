@@ -11,7 +11,7 @@ import (
 
 // Cite returns the citation line for result r, numbered n:
 //
-//	[1] notes/budget.md, "Q3 budget", lines 12–40
+//	[1] notes/launch.md, "Q3 launch", lines 12–40
 //
 // The heading appears when the chunk has one. Text files give a line range
 // (or "line 7" for one line) and PDFs give a page. The path is the one the

@@ -85,7 +85,7 @@ func TestProbeRefuses(t *testing.T) {
 		{"no name", ServerConfig{Command: "x"}, "name is empty"},
 		{"neither command nor url", ServerConfig{Name: "t"}, "set command"},
 		{"both command and url", ServerConfig{Name: "t", Command: "x", URL: "http://127.0.0.1:1/mcp"}, "not both"},
-		{"url off this machine", ServerConfig{Name: "t", URL: "http://example.com/mcp"}, "network = true"},
+		{"url off this machine", ServerConfig{Name: "t", URL: "http://example.com/mcp"}, "remote = true"},
 		{"bad header name", ServerConfig{Name: "t", URL: "http://127.0.0.1:1/mcp", Headers: map[string]string{"a b": "c"}}, "not a valid header name"},
 		{"command missing", ServerConfig{Name: "t", Command: filepath.Join(t.TempDir(), "no-such-server")}, `mcp server "t": connect`},
 		{"nothing listening", ServerConfig{Name: "t", URL: "http://127.0.0.1:1/mcp"}, `mcp server "t": connect`},

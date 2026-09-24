@@ -24,8 +24,8 @@ import (
 // notes share no word with the question, so keyword search ranks the
 // garden note first and it becomes excerpt [1].
 const (
-	gardenFact     = "The Q3 budget for the garden project is 4,200 dollars."
-	gardenQuestion = "What is the Q3 budget for the garden project?"
+	gardenFact     = "The garden project sows tomatoes on 12 April."
+	gardenQuestion = "When does the garden project sow tomatoes?"
 	secretValue    = "PRIVATE-MARKER-NUMBER-NINE" // low entropy, so secret scanners see a marker, not a key
 )
 
@@ -53,7 +53,7 @@ func notesFolder(t *testing.T) string {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"garden.md":  "# Garden\n\n## Budget\n\n" + gardenFact + "\n",
+		"garden.md":  "# Garden\n\n## Planting\n\n" + gardenFact + "\n",
 		"recipes.md": "# Recipes\n\nPancakes need eggs, milk and flour.\n",
 		"travel.md":  "# Travel\n\nFlight to Lisbon departs Tuesday morning.\n",
 		"empty.md":   "",
@@ -138,7 +138,7 @@ func TestAnswerCitesLocalNote(t *testing.T) {
 	// secret and never counts.
 	waitForStatus(t, s.home, "4 files", "Scanning:   no")
 
-	const answer = "The Q3 budget for the garden project is 4,200 dollars [1]."
+	const answer = "The garden project sows tomatoes on 12 April [1]."
 	s.fake.enqueue(t, fastModel, searchRoute())
 	s.fake.enqueue(t, mainModel, fakeollama.Reply{Text: answer})
 	res := runMeru(t, s.home, gardenQuestion)
@@ -158,7 +158,7 @@ func TestAnswerCitesLocalNote(t *testing.T) {
 	}
 
 	// meru prints the answer, then the file it cites, and only that file.
-	wantOut := answer + "\n\nSources:\n[1] " + filepath.Join(notes, "garden.md") + `, "Garden > Budget"`
+	wantOut := answer + "\n\nSources:\n[1] " + filepath.Join(notes, "garden.md") + `, "Garden > Planting"`
 	if !strings.HasPrefix(res.stdout, wantOut) {
 		t.Errorf("stdout = %q\nwant it to start with %q", res.stdout, wantOut)
 	}
@@ -182,8 +182,8 @@ func TestIndexFollowsChanges(t *testing.T) {
 	// search puts the new text in the prompt. Each try asks again; the
 	// unscripted router is unsure, so merud takes the search+tools
 	// fallback, which searches.
-	const newFact = "The Q3 budget for the garden project is 5,000 dollars."
-	if err := os.WriteFile(filepath.Join(notes, "garden.md"), []byte("# Garden\n\n## Budget\n\n"+newFact+"\n"), 0o600); err != nil {
+	const newFact = "The garden project sows tomatoes on 20 April."
+	if err := os.WriteFile(filepath.Join(notes, "garden.md"), []byte("# Garden\n\n## Planting\n\n"+newFact+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, indexTimeout, "the changed note in the prompt", func() bool {

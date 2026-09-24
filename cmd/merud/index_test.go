@@ -138,7 +138,7 @@ func notesDir(t *testing.T, dir string, files map[string]string) string {
 
 func TestQuestionsDuringStartupScan(t *testing.T) {
 	dir := shortDir(t)
-	notes := notesDir(t, dir, map[string]string{"slow.md": "# Slow\n\n" + holdMarker + " garden budget"})
+	notes := notesDir(t, dir, map[string]string{"slow.md": "# Slow\n\n" + holdMarker + " garden plan"})
 	eng := &fakeEngine{version: "0.13.0", hold: make(chan struct{})}
 	d := startDaemon(t, dir, indexConfig(notes), eng)
 
@@ -151,7 +151,7 @@ func TestQuestionsDuringStartupScan(t *testing.T) {
 	// A question still gets its answer. The fake router is unsure, so the
 	// turn takes the fallback route and searches the empty index.
 	var answer strings.Builder
-	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "what is the budget?"}) {
+	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "when do I sow the tomatoes?"}) {
 		if ev.Type == rpc.EventToken {
 			answer.WriteString(ev.Text)
 		}
@@ -178,7 +178,7 @@ func TestQuestionsDuringStartupScan(t *testing.T) {
 
 	// Now search finds the note, and the turn lists it as a source.
 	var sources []rpc.Citation
-	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "garden budget"}) {
+	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "garden plan"}) {
 		if ev.Type == rpc.EventSources {
 			sources = ev.Sources
 		}

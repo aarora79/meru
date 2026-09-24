@@ -30,8 +30,20 @@ func TestEntries(t *testing.T) {
 			if e.Title == "" || e.Description == "" || e.Docs == "" || e.Install == "" || e.Requires == "" {
 				t.Error("Title, Description, Docs, Install and Requires must all be set")
 			}
-			if e.Transport != TransportStdio || e.Command == "" {
-				t.Errorf("transport %q, command %q: every starter server runs over stdio", e.Transport, e.Command)
+			switch e.Transport {
+			case TransportStdio:
+				if e.Command == "" || e.URL != "" || e.Start != "" {
+					t.Errorf("stdio entry: command %q, url %q, start %q; want a command only", e.Command, e.URL, e.Start)
+				}
+			case TransportHTTP:
+				// merud never starts an HTTP server, so the entry must say
+				// how the user does, and carry no env merud couldn't set.
+				if e.URL == "" || e.Command != "" || e.Start == "" || len(e.Env) > 0 || e.Remote {
+					t.Errorf("http entry: url %q, command %q, start %q, env %v, remote %v; want a loopback url and a start command",
+						e.URL, e.Command, e.Start, e.Env, e.Remote)
+				}
+			default:
+				t.Errorf("transport %q is neither stdio nor http", e.Transport)
 			}
 			if len(e.Allow) == 0 {
 				t.Error("allow is empty; the entry would give the model nothing")
@@ -58,7 +70,7 @@ func TestEntries(t *testing.T) {
 					if n.Env == "" {
 						t.Errorf("a %s Need has no Env", n.Kind)
 					}
-				case NeedNote, NeedFolders:
+				case NeedNote:
 				default:
 					t.Errorf("unknown Need kind %q", n.Kind)
 				}
@@ -94,7 +106,7 @@ func TestBlocksLoad(t *testing.T) {
 	}
 	for i, s := range cfg.MCP.Servers {
 		e := entries[i]
-		if s.Name != e.Name || s.Command != e.Command || !slices.Equal(s.Args, e.Args) ||
+		if s.Name != e.Name || s.Command != e.Command || s.URL != e.URL || !slices.Equal(s.Args, e.Args) ||
 			!slices.Equal(s.Allow, e.Allow) || len(s.Env) != len(e.Env) {
 			t.Errorf("server %d read back as %+v, want the %s entry", i, s, e.Name)
 		}
@@ -109,7 +121,7 @@ func TestCustom(t *testing.T) {
 		name, target string
 		args         []string
 		wantURL      bool
-		wantNetwork  bool
+		wantRemote   bool
 	}{
 		{"notes", "/usr/local/bin/notes-mcp", []string{"--vault", "a b"}, false, false},
 		{"local", "http://127.0.0.1:8123/mcp", nil, true, false},
@@ -118,8 +130,8 @@ func TestCustom(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := Custom(tt.name, tt.target, tt.args)
-			if (e.URL != "") != tt.wantURL || e.Network != tt.wantNetwork {
-				t.Errorf("Custom = %+v, want url %v network %v", e, tt.wantURL, tt.wantNetwork)
+			if (e.URL != "") != tt.wantURL || e.Remote != tt.wantRemote {
+				t.Errorf("Custom = %+v, want url %v remote %v", e, tt.wantURL, tt.wantRemote)
 			}
 			if len(e.Allow) != 0 {
 				t.Errorf("allow = %v, want empty", e.Allow)
@@ -137,7 +149,7 @@ func TestCustom(t *testing.T) {
 				t.Fatal(err)
 			}
 			s := cfg.MCP.Servers[0]
-			if s.Command != e.Command || s.URL != e.URL || !slices.Equal(s.Args, e.Args) || s.Network != e.Network {
+			if s.Command != e.Command || s.URL != e.URL || !slices.Equal(s.Args, e.Args) || s.Remote != e.Remote {
 				t.Errorf("read back %+v, want %+v", s, e)
 			}
 		})
@@ -171,7 +183,7 @@ func TestAppendServerKeepsFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e, _ := Find("fetch")
+	e, _ := Find("brave")
 	if err := AppendServer(path, Block(e)); err != nil {
 		t.Fatalf("AppendServer: %v", err)
 	}
@@ -201,15 +213,15 @@ func TestAppendServerKeepsFile(t *testing.T) {
 }
 
 func TestAppendServerRefuses(t *testing.T) {
-	fetch, _ := Find("fetch")
+	brave, _ := Find("brave")
 	tests := []struct {
 		name     string
 		existing string // config.toml before the append; "" means no file
 		block    string
 		wantErr  string
 	}{
-		{"duplicate name", Block(fetch), Block(fetch), "already has"},
-		{"broken config", "profile = \"huge\"\n", Block(fetch), "fix config.toml"},
+		{"duplicate name", Block(brave), Block(brave), "already has"},
+		{"broken config", "profile = \"huge\"\n", Block(brave), "fix config.toml"},
 		{"not toml", "", "[[mcp.servers]\nname = ", "server block"},
 		{"no server", "", "profile = \"lite\"\n", "holds 0 servers"},
 		{"wildcard", "", "[[mcp.servers]]\nname = \"w\"\ncommand = \"x\"\nallow = [\"*\"]\n", "wildcards"},
@@ -244,16 +256,35 @@ func TestAppendServerRefuses(t *testing.T) {
 }
 
 func TestSecretNames(t *testing.T) {
-	gmail, _ := Find("gmail")
-	want := []string{"google_oauth_client_id", "google_oauth_client_secret"}
-	if got := gmail.SecretNames(); !slices.Equal(got, want) {
+	obsidian, _ := Find("obsidian")
+	want := []string{"obsidian_api_key"}
+	if got := obsidian.SecretNames(); !slices.Equal(got, want) {
 		t.Errorf("SecretNames = %v, want %v", got, want)
 	}
-	fetch, _ := Find("fetch")
-	if got := fetch.SecretNames(); len(got) != 0 {
-		t.Errorf("fetch SecretNames = %v, want none", got)
+	// google's OAuth client goes to the server the user starts, never
+	// through Meru.
+	google, _ := Find("google")
+	if got := google.SecretNames(); len(got) != 0 {
+		t.Errorf("google SecretNames = %v, want none", got)
 	}
 	if _, ok := Find("nope"); ok {
 		t.Error("Find found an entry that doesn't exist")
+	}
+}
+
+// TestCatalogIsThreeServers pins the catalog to the three servers the docs
+// draw their examples from, in the order setup offers them.
+func TestCatalogIsThreeServers(t *testing.T) {
+	if got, want := Names(), []string{"google", "brave", "obsidian"}; !slices.Equal(got, want) {
+		t.Errorf("Names() = %v, want %v", got, want)
+	}
+	google, _ := Find("google")
+	if google.URL != "http://127.0.0.1:8000/mcp" || !strings.Contains(google.Start, "uvx workspace-mcp --transport streamable-http") {
+		t.Errorf("google = url %q, start %q", google.URL, google.Start)
+	}
+	for _, tool := range []string{"send_gmail_message", "manage_event"} {
+		if !slices.Contains(google.Confirm, tool) {
+			t.Errorf("google confirm lacks %s, which sends or changes something", tool)
+		}
 	}
 }

@@ -64,13 +64,13 @@ func TestSourceLinks(t *testing.T) {
 	m.look.links = true
 	m.home = "/Users/u"
 	ex := &exchange{
-		answer: "It is 4,200 dollars [1].",
-		sources: []rpc.Citation{{N: 1, Path: "~/notes/a long folder name/garden budget notes.md",
-			Heading: "Budget for the vegetable garden", StartLine: 3, EndLine: 5}},
+		answer: "On 12 April [1].",
+		sources: []rpc.Citation{{N: 1, Path: "~/notes/a long folder name/garden plan notes.md",
+			Heading: "Planting the vegetable garden", StartLine: 3, EndLine: 5}},
 	}
 	const width = 40
 	block := m.sourcesBlock(ex, width)
-	const url = "file:///Users/u/notes/a%20long%20folder%20name/garden%20budget%20notes.md"
+	const url = "file:///Users/u/notes/a%20long%20folder%20name/garden%20plan%20notes.md"
 	lines := strings.Split(block, "\n")
 	if len(lines) < 3 {
 		t.Fatalf("want the source to wrap over several lines:\n%s", block)

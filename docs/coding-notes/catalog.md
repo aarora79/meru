@@ -1,8 +1,7 @@
 # catalog
 
-**Code:** `internal/catalog/` (`doc.go`, `catalog.go`, `args.go`, `block.go`,
-`append.go`, `remove.go`, and the tests `catalog_test.go`, `args_test.go` and
-`remove_test.go`)
+**Code:** `internal/catalog/` (`doc.go`, `catalog.go`, `block.go`, `append.go`,
+`remove.go`, and the tests `catalog_test.go` and `remove_test.go`)
 **Milestone:** v0.3
 **Architecture:** [Adding an MCP server](../../ARCHITECTURE.md#adding-an-mcp-server),
 [MCP](../../ARCHITECTURE.md#mcp)
@@ -10,26 +9,22 @@
 ## What it does
 
 The catalog is the short list of MCP servers Meru knows how to set up, built into
-the binary. Each entry says how to start the server, what it needs from you, and
+the binary. Each entry says how to reach the server, what it needs from you, and
 which of its tools the model may use at first. Three things use it: `meru setup`,
 `meru mcp` (add, list and remove), and the built-in `configure` tool that `merud`
 offers the model.
 
-| Name | Server | Needs | Allowed | Asks first |
-| --- | --- | --- | --- | --- |
-| `brave` | `npx -y @brave/brave-search-mcp-server` | Brave Search API key | `brave_web_search`, `brave_news_search` | none |
-| `fetch` | `uvx mcp-server-fetch` | nothing | `fetch` | none |
-| `filesystem` | `npx -y @modelcontextprotocol/server-filesystem <folders>` | folders | list, search and read files; write, edit, move, make a folder | write, edit, move, make a folder |
-| `google` | `uvx workspace-mcp --tools gmail calendar drive docs` | Google OAuth client, sign-in | the `gmail`, `calendar` and `drive` lists | theirs too |
-| `gmail` | `uvx workspace-mcp --tools gmail` | Google OAuth client, sign-in | search and read mail, list labels, draft, send | draft, send |
-| `calendar` | `uvx workspace-mcp --tools calendar` | Google OAuth client, sign-in | list calendars and events, free/busy, manage an event | manage an event |
-| `drive` | `uvx workspace-mcp --tools drive docs` | Google OAuth client, sign-in | search and read files and Docs, create and edit a doc | create, edit |
-| `obsidian` | `uvx mcp-obsidian` | Local REST API plugin key | list, read and search notes, append to a note | append |
-| `windows` | `uvx windows-mcp serve`, Windows only | nothing | see the screen, list apps, click, type, PowerShell, files, processes | all but the six read-only ones |
+It holds three servers, one for each kind of example the docs use, in this order:
+
+| Name | Server | Transport | Needs | Allowed | Asks first |
+| --- | --- | --- | --- | --- | --- |
+| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, send mail, list and change events, search Drive, read a doc | send mail, change an event |
+| `brave` | `npx -y @brave/brave-search-mcp-server` | stdio | Brave Search API key | `brave_web_search`, `brave_news_search` | none |
+| `obsidian` | `uvx mcp-obsidian` | stdio | Local REST API plugin key | list, read and search notes, append to a note | append |
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
 gives the model nothing. The comment at the top of `catalog.go` names the source
-file each list came from, the version checked, and why the Google entries use
+file each list came from, the version checked, and why the `google` entry uses
 `workspace-mcp` rather than Google's own servers (those run only on Google's
 machines).
 
@@ -46,7 +41,6 @@ anything, and the real policy sat in the server where `dispatch` couldn't log it
 flowchart LR
     entries["Entries()<br/>Find(name)"] --> e["Entry"]
     custom["Custom(name, command or url, args)"] --> e
-    args["WithArgs(folders)"] --> e
     e -- "Block(e)" --> text["[[mcp.servers]] text"]
     text -- "AppendServer(path, text)" --> tmp["temporary copy<br/>next to config.toml"]
     tmp -- "config.Load + CheckServers" --> ok{"loads?"}
@@ -62,10 +56,14 @@ flowchart LR
 An `Entry` holds everything one server needs. `Needs` lists the questions to ask,
 in order. A `Need` has a `Kind`: `api_key` (saved to `secrets.toml` under
 `SecretName`), `path` or `url` (put in the env variable `Env`; a value the
-entry already has is the default), `folders` (added to the end of `Args`), or
-`note` (something you do yourself, such as signing in to Google). `Requires` sums
-the needs up in a few words for `meru mcp list`, and `OS` names the one system an
-entry runs on, when there is one (`windows`).
+entry already has is the default), or `note` (something you do yourself, such as
+starting a server or signing in to Google). `Requires` sums the needs up in a few
+words for `meru mcp list`.
+
+`Remote` lets `merud` connect to a URL off this machine. `Start` holds the command
+that starts a server you run; `meru mcp add` prints it, and nothing in Meru runs
+it. `Env` belongs to stdio entries only: `merud` sets it when it starts the child,
+and a `url` entry has none, because `merud` starts no process for it.
 
 `Entries` builds the list fresh on every call:
 
@@ -82,26 +80,28 @@ A package-level `var` would let one caller change the list for every other calle
 No caller can change what a function returns to the next caller, which follows
 the "no package-level mutable state" rule in AGENTS.md.
 
-One Google Workspace server covers Gmail, Calendar, Drive and Docs. The `google`
-entry runs it once for all four. The `gmail`, `calendar` and `drive` entries each
-run it with one service, so you can add only what you want, and each asks Google
-for its own permissions and no more. Six small functions (`gmailAllow`,
-`gmailConfirm` and so on) return the lists; `google` joins them with
-`slices.Concat`. They are functions so that no two entries share a slice.
+`google` is the one `url` entry. The server's README calls stdio legacy, and its
+OAuth 2.1 mode needs HTTP, so you run it and `merud` connects to it. The command
+lives in one constant, so the entry's `Start`, its first note and its `Install`
+text all print the same line:
 
-### args.go
+```go
+const googleStart = "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
+    "uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
+```
 
-`RunsOn(goos)` reports whether an entry works on a system; `meru mcp list` and
-setup use it to show `windows` only on Windows.
+The OAuth client ID and secret go in the server's environment when you start it,
+so the entry has no `api_key` need and nothing of Google's passes through
+`secrets.toml`. The server offers 120-odd tools. `--tools` limits the process to
+four services, and `Allow` names eight tools from them; `send_gmail_message` and
+`manage_event` sit in `Confirm`.
 
-`WithArgs(args)` fills in the words typed after an entry's name. For an entry
-with a `folders` need, each word goes through `ExpandFolder`, which turns `~` into
-the home folder (`merud` starts the server with no shell to do that), makes the
-path absolute and checks that it is a folder. The folders go on the end of
-`Args`, and the need goes away, since nothing is left to ask. An entry without
-that need refuses any args. The built-in `configure` tool calls `WithArgs(nil)`
-on the entry it adds, so `filesystem` from chat fails with the command to type
-instead.
+The catalog once held six more entries: a web page reader, a server for files in
+chosen folders, a Windows desktop server, and three that each ran the Google
+server with one service. With them went `NeedFolders`, `WithArgs`, `ExpandFolder`,
+`Entry.OS`, `RunsOn` and the file `args.go`. A catalog entry now takes no words
+after its name. `always_confirm` stays in `Entry` and in config, with no catalog
+entry that uses it today.
 
 `SecretNames` lists the `secrets.toml` entries an entry uses, from both its env
 and its Needs. `configure` checks them before it writes anything.
@@ -111,15 +111,19 @@ and its Needs. `configure` checks them before it writes anything.
 `Block` writes an entry as the text you would type into `config.toml`:
 
 ```toml
-# Web page fetch: Reads a web page and hands it to the model as Markdown.
-# Docs: https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
+# Web search (Brave Search): Searches the web and the news with the Brave Search API.
+# Docs: https://github.com/brave/brave-search-mcp-server
 [[mcp.servers]]
-name    = "fetch"
-command = "uvx"
-args    = ["mcp-server-fetch"]
-allow   = ["fetch"]
+name    = "brave"
+command = "npx"
+args    = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
+env     = { BRAVE_API_KEY = "secret:brave_api_key" }
+allow   = ["brave_web_search", "brave_news_search"]
 confirm = []
 ```
+
+For a `url` entry, `Block` writes `url` in place of `command` and `args`, and
+`remote = true` when the entry has `Remote`.
 
 It builds the text by hand instead of through the TOML encoder, to put a comment
 on top and keep the keys in reading order. `quote` escapes strings the TOML way.
@@ -129,8 +133,8 @@ refuses.
 `Custom` makes an entry for a server outside the catalog, with an empty `allow`
 list. `meru mcp add` fills the list from the probe (see the merud note); an entry
 written with an empty list says in a comment to run `meru tools` and name the
-tools. A URL that isn't loopback gets `network = true`; `meru mcp add http`
-refuses such a URL unless you pass `--network`.
+tools. A URL that isn't loopback gets `remote = true`; `meru mcp add http`
+refuses such a URL unless you pass `--remote`.
 
 ### append.go
 
@@ -193,8 +197,9 @@ through byte for byte. `TestAppendServerRefuses` feeds duplicates, wildcards and
 broken blocks, and checks that the file stays as it was. `TestRemoveServer`
 removes the first, middle and last of three servers (one with a sub-table and a
 multi-line array) and checks every other line stays; `TestAppendThenRemove`
-gets back the file it started with. `TestWithArgsFolders` covers `~`, a missing
-folder and a file given as a folder.
+gets back the file it started with. `TestCatalogIsThreeServers` checks the
+names and their order, `google`'s URL and start command, and that its sending
+and changing tools ask first.
 
 ## Why it's built this way
 

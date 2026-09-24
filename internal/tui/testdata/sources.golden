@@ -2,12 +2,12 @@ Meru मेरु lite · minicpm5:2b · session 101500-ab12                    
 ────────────────────────────────────────────────────────────────────────────────
 
 You
-  │ What is the Q3 budget for the garden project?
+  │ When does the garden project sow tomatoes?
 
 Meru  search · 0.88
-  The Q3 budget for the garden project is 4,200 dollars [1].
+  The garden project sows tomatoes on 12 April [1].
   Sources
-  [1] ~/notes/garden.md, "Budget", lines 3–5
+  [1] ~/notes/garden.md, "Planting", lines 3–5
   0.8s to first token · 40.0 tok/s · 2.4s
 
 
@@ -27,4 +27,4 @@ Meru  search · 0.88
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /new /usage /me
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp

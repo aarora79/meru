@@ -96,16 +96,22 @@ overlap_tokens = 50
 watch = true
 
 # MCP servers (v0.3): programs that give the model tools. None by default.
-# `meru mcp add <name>` writes an entry for you, and `meru mcp list`
-# lists the servers it knows. See ARCHITECTURE.md, "MCP".
+# `meru mcp add <name>` writes an entry for you, `meru mcp list` lists the
+# servers it knows, and `meru mcp` shows each one's state. See
+# ARCHITECTURE.md, "MCP".
 #
 # Each [[mcp.servers]] entry has either command (merud starts the server
 # and talks to it over stdin and stdout) or url (a Streamable HTTP server
-# that already runs). Tools are deny-by-default: the model gets only the
-# tools allow names, one by one, with no wildcards. A tool in confirm asks
-# you before each call, and must also be in allow. merud reads this list
-# when it starts, so restart it after a change; `meru tools` shows what
-# each server offers and what the model gets.
+# that you start and run; merud only connects to it). Tools are
+# deny-by-default: the model gets only the tools allow names, one by one,
+# with no wildcards. A tool in confirm asks you before each call, and must
+# also be in allow. merud reads this list when it starts, so restart it
+# after a change; `meru tools` shows what each server offers and what the
+# model gets.
+#
+# merud connects to each server once when it starts. A server that isn't
+# connected gets one more try at the start of each turn that offers tools,
+# and nothing retries in the background.
 #
 # A stdio server:
 #
@@ -113,20 +119,22 @@ watch = true
 # name    = "brave"                  # letters, digits, - and _; tools become "brave.<tool>"
 # command = "npx"                    # run as is, with no shell
 # args    = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
-# env     = { BRAVE_API_KEY = "secret:brave_api_key" }   # "secret:" values come from secrets.toml
+# env     = { BRAVE_API_KEY = "secret:brave_api_key" }   # stdio only; "secret:" values come from secrets.toml
 # allow   = ["brave_web_search", "brave_news_search"]
 # confirm = []
 # timeout = "60s"                    # longest one call may take; the default
 #
-# A Streamable HTTP server:
+# A Streamable HTTP server. env isn't allowed here, because merud doesn't
+# start the server; send a key with headers instead.
 #
 # [[mcp.servers]]
-# name    = "calendar"
-# url     = "http://127.0.0.1:8123/mcp"
-# headers = { Authorization = "secret:calendar_token" }  # sent on every request
-# network = false                    # true lets url point at another machine
-# allow   = ["list_events", "create_event"]
-# confirm = ["create_event"]         # asks before each call
+# name    = "google"
+# url     = "http://127.0.0.1:8000/mcp"
+# headers = { Authorization = "secret:google_token" }  # sent on every request
+# remote  = false                    # true lets merud connect to a url on another machine;
+#                                    # it says nothing about what the server itself reaches
+# allow   = ["search_gmail_messages", "send_gmail_message"]
+# confirm = ["send_gmail_message"]   # asks before each call
 # always_confirm = []                # asks before every call, with no approval for the session
 #
 # Secrets: API keys and tokens live in secrets.toml next to this file, one
@@ -139,12 +147,13 @@ watch = true
 # Other agents (v0.3) that Meru may hand a task to over A2A (Agent2Agent).
 # None by default. Each allowed skill, named by the ID on the agent's card,
 # becomes a tool called "a2a.<name>.<skill>". url must be loopback unless
-# network = true. See ARCHITECTURE.md, "Other agents (A2A)".
+# remote = true, which covers only where merud connects. See
+# ARCHITECTURE.md, "Other agents (A2A)".
 #
 # [[a2a.agents]]
 # name    = "research"
 # url     = "http://127.0.0.1:9000"  # where merud reads the agent card
-# network = false
+# remote  = false
 # headers = { Authorization = "secret:research_token" }
 # allow   = ["summarize"]
 # confirm = []

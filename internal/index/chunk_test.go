@@ -136,13 +136,13 @@ func TestChunkTextLines(t *testing.T) {
 func TestChunkMarkdown(t *testing.T) {
 	src := `Intro before any heading.
 
-# Budget
+# Garden
 
-The yearly budget.
+The garden plan.
 
-## Q3
+## Spring
 
-Spend on hardware.
+Sow in trays.
 
 ` + "```sh" + `
 # not a heading, inside a fence
@@ -150,11 +150,11 @@ Spend on hardware.
 make build
 ` + "```" + `
 
-### Hardware
+### Tomatoes
 
-Laptops.
+Six plants.
 
-## Q4 ##
+## Autumn ##
 
 Nothing yet.
 
@@ -176,10 +176,10 @@ Text.
 	}
 	want := []row{
 		{"", 1, 1, "Intro before any heading."},
-		{"Budget", 3, 5, "# Budget"},
-		{"Budget > Q3", 7, 15, "## Q3"},
-		{"Budget > Q3 > Hardware", 17, 19, "### Hardware"},
-		{"Budget > Q4", 21, 23, "## Q4 ##"},
+		{"Garden", 3, 5, "# Garden"},
+		{"Garden > Spring", 7, 15, "## Spring"},
+		{"Garden > Spring > Tomatoes", 17, 19, "### Tomatoes"},
+		{"Garden > Autumn", 21, 23, "## Autumn ##"},
 		// "# Empty" has no text of its own, so it makes no chunk.
 		{"Empty > Under empty", 27, 29, "## Under empty"},
 	}

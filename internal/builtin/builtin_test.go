@@ -33,10 +33,10 @@ func TestConfigure(t *testing.T) {
 		wantServer string // the server config.toml must hold afterwards
 	}{
 		{
-			name:       "catalog entry with no secret",
-			args:       `{"action":"add_mcp_server","catalog":"fetch"}`,
-			wantText:   "Allowed tools: fetch",
-			wantServer: "fetch",
+			name:       "catalog entry with no secret, which the user starts",
+			args:       `{"action":"add_mcp_server","catalog":"google"}`,
+			wantText:   "Meru only connects to it",
+			wantServer: "google",
 		},
 		{
 			name:       "catalog entry with its secret",
@@ -47,9 +47,8 @@ func TestConfigure(t *testing.T) {
 		},
 		{
 			name:     "catalog entry that asks first",
-			args:     `{"action":"add_mcp_server","catalog":"gmail"}`,
-			secrets:  map[string]string{"google_oauth_client_id": "fake-id-0123456789", "google_oauth_client_secret": "fake-secret-0123456789"},
-			wantText: "These ask the user before each call: draft_gmail_message, send_gmail_message",
+			args:     `{"action":"add_mcp_server","catalog":"google"}`,
+			wantText: "These ask the user before each call: send_gmail_message, manage_event",
 		},
 		{
 			name:    "missing secret",
@@ -68,12 +67,11 @@ func TestConfigure(t *testing.T) {
 			wantText:   "allows no tools yet",
 			wantServer: "cal",
 		},
-		{"unknown action", `{"action":"remove_mcp_server","catalog":"fetch"}`, nil, "unknown", "", ""},
-		{"unknown key", `{"action":"add_mcp_server","catalog":"fetch","allow":["*"]}`, nil, "valid JSON", "", ""},
-		{"not an object", `"fetch"`, nil, "valid JSON", "", ""},
+		{"unknown action", `{"action":"remove_mcp_server","catalog":"google"}`, nil, "unknown", "", ""},
+		{"unknown key", `{"action":"add_mcp_server","catalog":"google","allow":["*"]}`, nil, "valid JSON", "", ""},
+		{"not an object", `"google"`, nil, "valid JSON", "", ""},
 		{"unknown catalog name", `{"action":"add_mcp_server","catalog":"slack"}`, nil, "not in the catalog", "", ""},
-		{"catalog entry that takes folders", `{"action":"add_mcp_server","catalog":"filesystem"}`, nil, "meru mcp add filesystem <folder>", "", ""},
-		{"catalog and custom", `{"action":"add_mcp_server","catalog":"fetch","name":"x","command":"y"}`, nil, "not both", "", ""},
+		{"catalog and custom", `{"action":"add_mcp_server","catalog":"google","name":"x","command":"y"}`, nil, "not both", "", ""},
 		{"nothing to add", `{"action":"add_mcp_server"}`, nil, "give catalog", "", ""},
 		{"command and url", `{"action":"add_mcp_server","name":"x","command":"y","url":"http://127.0.0.1:1/mcp"}`, nil, "exactly one", "", ""},
 		{"neither command nor url", `{"action":"add_mcp_server","name":"x"}`, nil, "exactly one", "", ""},
@@ -140,7 +138,7 @@ func TestConfigure(t *testing.T) {
 
 func TestConfigureTwiceRefuses(t *testing.T) {
 	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, "", nil, nil, nil)
-	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`)
+	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`)
 	if res, _ := tools.Call(context.Background(), Configure, args); res.IsError {
 		t.Fatalf("first call: %s", res.Text)
 	}
@@ -153,7 +151,7 @@ func TestConfigureTwiceRefuses(t *testing.T) {
 func TestConfigureReloadFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	tools := New(path, config.Builtin{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
-	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`))
+	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`))
 	if !res.IsError || !strings.Contains(res.Text, "restart merud") || !strings.Contains(res.Text, "pool broke") {
 		t.Errorf("Result = %+v, want an error that says to restart merud", res)
 	}
@@ -190,7 +188,7 @@ func TestBackend(t *testing.T) {
 	if len(specs) != 1 || specs[0].Name != Configure {
 		t.Fatalf("Tools = %+v, want configure alone", specs)
 	}
-	if !strings.Contains(specs[0].Description, "gmail") {
+	if !strings.Contains(specs[0].Description, "google") {
 		t.Error("the description doesn't list the catalog")
 	}
 	var schema map[string]any

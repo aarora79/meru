@@ -26,8 +26,8 @@ func Block(e Entry) string {
 	fmt.Fprintf(&b, "name    = %s\n", quote(e.Name))
 	if e.URL != "" {
 		fmt.Fprintf(&b, "url     = %s\n", quote(e.URL))
-		if e.Network {
-			b.WriteString("network = true   # the server runs on another machine\n")
+		if e.Remote {
+			b.WriteString("remote  = true   # the server runs on another machine\n")
 		}
 	} else {
 		fmt.Fprintf(&b, "command = %s\n", quote(e.Command))
@@ -54,7 +54,7 @@ func Block(e Entry) string {
 // Custom makes an Entry for a server outside the catalog. commandOrURL is
 // either a program to start (a stdio server, with args) or an http(s) URL
 // (a Streamable HTTP server; Custom drops args). A URL that isn't loopback
-// gets network = true, because the user named it on purpose.
+// gets remote = true, because the user named it on purpose.
 //
 // Its allow list is empty: nobody knows the server's tool names until merud
 // has connected to it. The block says to run `meru tools` after restarting
@@ -68,7 +68,7 @@ func Custom(name, commandOrURL string, args []string) Entry {
 	if strings.HasPrefix(commandOrURL, "http://") || strings.HasPrefix(commandOrURL, "https://") {
 		e.Transport = TransportHTTP
 		e.URL = commandOrURL
-		e.Network = loopback.CheckURL(commandOrURL) != nil
+		e.Remote = loopback.CheckURL(commandOrURL) != nil
 		return e
 	}
 	e.Transport = TransportStdio

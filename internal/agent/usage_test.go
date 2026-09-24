@@ -52,7 +52,7 @@ func TestTurnRowAndAssistantLine(t *testing.T) {
 	garden := filepath.Join(home, "notes", "garden.md")
 	// Two excerpts from one file: the file counts once.
 	search := &fakeSearcher{results: []retrieve.Result{
-		result(garden, "Budget", "4,200 dollars.", 3, 5, 0.03),
+		result(garden, "Planting", "Sow tomatoes on 12 April.", 3, 5, 0.03),
 		result("/srv/plan.md", "", "Plant tomatoes in May.", 1, 1, 0.02),
 		result(garden, "Beds", "Six raised beds.", 9, 9, 0.01),
 	}}
@@ -68,10 +68,10 @@ func TestTurnRowAndAssistantLine(t *testing.T) {
 		wantCalls int
 	}{
 		{
-			name: "search and one tool call", route: "search+tools", question: "What is the garden budget?",
+			name: "search and one tool call", route: "search+tools", question: "When does the garden project sow tomatoes?",
 			rounds: []fakeRound{
 				{calls: []engine.ToolCall{call("notes.search", `{"q":"garden"}`)}, usage: engine.Usage{PromptTokens: 10, OutputTokens: 2}},
-				{pieces: []string{"4,200 [1]."}, usage: engine.Usage{PromptTokens: 30, OutputTokens: 5}},
+				{pieces: []string{"12 April [1]."}, usage: engine.Usage{PromptTokens: 30, OutputTokens: 5}},
 			},
 			wantRoute: "search+tools", wantDocs: []string{garden, "/srv/plan.md"}, wantCalls: 1,
 		},

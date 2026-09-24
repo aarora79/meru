@@ -285,7 +285,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// to direct, and a direct turn offers no remember tool, so the model
 	// would say it will remember and save nothing. When the question holds
 	// "remember" as a whole word and the route has no tools, add them. A
-	// wrong guess ("do you remember the budget?") costs a prompt that holds
+	// wrong guess ("do you remember the trip?") costs a prompt that holds
 	// the tool schemas, and the model need not call any.
 	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksToRemember(question, a.tools.Tools()) {
 		a.log.DebugContext(ctx, "route changed: the question asks Meru to remember",
@@ -321,6 +321,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
+	// A turn that offers tools first gives each tool server that isn't
+	// connected one try, then lists the tools again: a server the user
+	// started after merud, or one that crashed, is back for this turn. This
+	// is the only place merud reconnects, so nothing runs while nobody
+	// asks (ARCHITECTURE.md, "MCP"). A server that still fails is left out.
+	if len(specs) > 0 {
+		a.tools.ConnectMissing(ctx)
+		specs = a.toolSpecs(dec.Route)
+	}
 	memories := a.memorySection(ctx, searchQuery(question, history))
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
@@ -599,10 +608,10 @@ func words(text string) []string {
 }
 
 // standaloneWords is how many subject words make a question stand on its
-// own. "and the budget?" has one and "how much did it cost?" two, so both
+// own. "and the watering?" has one and "how long was the stay?" two, so both
 // borrow the earlier question; "i did some work on the bakery site, remind
 // me" has four (work, bakery, site, remind) and doesn't. Two would be too few:
-// "how much did it cost" would lose what "it" is.
+// "how long was the stay" would lose which stay.
 const standaloneWords = 3
 
 // searchQuery is the text a turn searches for. No model rewrites the query.

@@ -44,6 +44,8 @@ func (m Model) View() string {
 		pane = m.usageBoxView(m.width, m.conversation.Height)
 	case m.meBox != nil:
 		pane = m.meBoxView(m.width, m.conversation.Height)
+	case m.mcpBox != nil:
+		pane = m.mcpBoxView(m.width, m.conversation.Height)
 	}
 	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 }

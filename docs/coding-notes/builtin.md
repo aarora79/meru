@@ -17,8 +17,9 @@ behind the same `dispatch.Backend` interface the MCP pool and the A2A client use
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
 There are six built-ins. When you say "connect my Gmail" in chat, the model calls
-`configure` with `{"action": "add_mcp_server", "catalog": "gmail"}`, and
-`configure` adds the Gmail entry to `config.toml`. It can also add a server outside
+`configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
+`configure` adds the `google` entry to `config.toml`. You still start that server
+yourself; `merud` connects to it on the next turn that offers tools. It can also add a server outside
 the catalog, from a name and a command or URL.
 
 When you say "remember that I work on the registry team", the model calls
@@ -104,10 +105,10 @@ setting can switch its prompt off, and `dispatch` offers only "approve once" and
 `Call` decodes the arguments with `DisallowUnknownFields`, so a key the tool
 doesn't know, such as an `allow` list the model made up, fails instead of being
 ignored. `entryFor` accepts exactly one of two shapes: `catalog`, or `name` with
-`command` (and `args`) or `url`. For a catalog entry it also refuses one made for
-another system (`windows` off Windows) and one that takes folders on the command
-line: `entry.WithArgs(nil)` fails for `filesystem`, and the error names the
-terminal command to run.
+`command` (and `args`) or `url`. A catalog name must be one of the three entries,
+`google`, `brave` or `obsidian`; any other name fails with the list. No catalog
+entry now runs on one system only or takes folders on the command line, so
+`entryFor` dropped its checks for both.
 
 Before it writes, `missingSecrets` loads `secrets.toml` next to `config.toml` and
 checks every secret the entry names. When one is missing, `configure` writes

@@ -159,6 +159,18 @@ func (d *Dispatcher) Replace(kind string, b Backend) {
 	d.backends = append(d.backends, b)
 }
 
+// ConnectMissing gives every backend that is a Connector its one try at
+// the servers it can't reach, one backend after another. A backend that
+// isn't a Connector is skipped. The ", ok" form of the type assertion
+// b.(Connector) gives ok = false, not a panic, for those.
+func (d *Dispatcher) ConnectMissing(ctx context.Context) {
+	for _, b := range d.snapshot() {
+		if c, ok := b.(Connector); ok {
+			c.ConnectMissing(ctx)
+		}
+	}
+}
+
 // Asks reports whether a call to the named tool would ask the user before
 // it runs, unless a session approval covers it. A tool no backend offers
 // counts as asking, the safe answer. The agent loop uses it to offer only

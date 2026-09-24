@@ -7,7 +7,7 @@
 {"q": "how does a hash map handle collisions", "route": "direct", "why": "general knowledge"}
 {"q": "is it affect or effect in \"the change will ___ everyone\"", "route": "direct", "why": "grammar question"}
 {"q": "write a haiku about monday mornings", "route": "direct", "why": "creative writing"}
-{"q": "whats the difference between a roth and a traditional ira", "route": "direct", "why": "general knowledge, stable facts"}
+{"q": "whats the difference between a latte and a flat white", "route": "direct", "why": "general knowledge, stable facts"}
 {"q": "how many tablespoons in a cup", "route": "direct", "why": "unit conversion"}
 {"q": "explain big-O of binary search like I'm 12", "route": "direct", "why": "general knowledge"}
 {"q": "translate \"where is the train station\" into portuguese", "route": "direct", "why": "translation"}
@@ -29,8 +29,8 @@
 {"q": "can you give me a tiny example of the first one?", "route": "direct", "why": "follow-up about general knowledge already in the conversation", "history": [{"q": "what's the difference between a mutex and a channel?", "a": "A mutex guards shared memory so one goroutine at a time can touch it; a channel passes values between goroutines so they don't share memory at all."}]}
 {"q": "turn that into a packing list", "route": "direct", "why": "follow-up; everything needed is in the conversation", "history": [{"q": "what did I write about the Lisbon trip?", "a": "Your notes say: flights on 12 Oct, hotel in Alfama, a day trip to Sintra, and dinner at a fado bar."}]}
 {"q": "ok good night", "route": "direct", "why": "chit-chat"}
-{"q": "what did I change in the portfolio repo this week?", "route": "search", "why": "the owner's own repository history"}
-{"q": "what did I write in my notes about the Q3 budget?", "route": "search", "why": "the user's notes"}
+{"q": "what did I change in the blog repo this week?", "route": "search", "why": "the owner's own repository history"}
+{"q": "what did I write in my notes about the Q3 launch plan?", "route": "search", "why": "the user's notes"}
 {"q": "where did I put the notes from the dentist appointment", "route": "search", "why": "the user's notes"}
 {"q": "summarise the design doc in my meru repo", "route": "search", "why": "a document in the user's repository"}
 {"q": "what was that book recommendation I saved last month", "route": "search", "why": "something the user saved"}
@@ -57,18 +57,18 @@
 {"q": "what else did I note about Sintra?", "route": "search", "why": "follow-up asking for more from the user's notes", "history": [{"q": "what did I write about the Lisbon trip?", "a": "Your notes say: flights on 12 Oct, hotel in Alfama, a day trip to Sintra, and dinner at a fado bar."}]}
 {"q": "and what does my doc say v0.3 is?", "route": "search", "why": "follow-up about the user's own document", "history": [{"q": "summarize the meru roadmap", "a": "v0.1 answers questions with local models; v0.2 adds the store and search over your files."}]}
 {"q": "what gift ideas did I jot down for mom", "route": "search", "why": "the user's notes"}
-{"q": "commits I made to portfolio yesterday", "route": "search", "why": "the owner's own repository history"}
+{"q": "commits I made to blog yesterday", "route": "search", "why": "the owner's own repository history"}
 {"q": "my car's license plate is in my notes somewhere, what is it", "route": "search", "why": "the user's notes"}
 {"q": "what's the weather in seattle tomorrow", "route": "tools", "why": "live data: weather"}
 {"q": "send an email to sam saying I'll be 10 min late", "route": "tools", "why": "an action: sending email"}
 {"q": "what's on my calendar tomorrow", "route": "tools", "why": "live data: the calendar is a service, not a note"}
-{"q": "how's NVDA doing today", "route": "tools", "why": "live data: stock price"}
+{"q": "what's the weather in Lisbon right now", "route": "tools", "why": "live data: weather"}
 {"q": "add a dentist appointment friday 3pm to my calendar", "route": "tools", "why": "an action: creating an event"}
 {"q": "any new emails from priya?", "route": "tools", "why": "live data: email inbox"}
-{"q": "what's the latest news on the fed rate decision", "route": "tools", "why": "live data: news"}
+{"q": "what's the latest news on the paris metro strike", "route": "tools", "why": "live data: news"}
 {"q": "set a reminder to call mom at 6", "route": "tools", "why": "an action: creating a reminder"}
 {"q": "book a table for two at 7 tonight somewhere near me", "route": "tools", "why": "an action: booking"}
-{"q": "usd to inr rate right now?", "route": "tools", "why": "live data: exchange rate"}
+{"q": "what's the air quality in delhi right now?", "route": "tools", "why": "live data: air quality"}
 {"q": "search the web for reviews of the framework 13 laptop", "route": "tools", "why": "web search"}
 {"q": "did the warriors win last night", "route": "tools", "why": "live data: sports results"}
 {"q": "text alex that I'm on my way", "route": "tools", "why": "an action: sending a message"}
@@ -76,7 +76,7 @@
 {"q": "what time does trader joe's close today", "route": "tools", "why": "live data: business hours"}
 {"q": "how long is the drive to SFO right now", "route": "tools", "why": "live data: traffic"}
 {"q": "is it going to rain this weekend", "route": "tools", "why": "live data: weather forecast"}
-{"q": "what's bitcoin at", "route": "tools", "why": "live data: price"}
+{"q": "is the 5:40 train to leeds running late", "route": "tools", "why": "live data: train times"}
 {"q": "reply to the last email from my landlord saying thanks", "route": "tools", "why": "an action on the email service"}
 {"q": "cancel my 4pm meeting", "route": "tools", "why": "an action on the calendar"}
 {"q": "what's the latest ollama release", "route": "tools", "why": "live data from the web"}
@@ -90,12 +90,12 @@
 {"q": "looks good, send it", "route": "tools", "why": "follow-up; the draft is in history, sending is an action", "history": [{"q": "draft a note to my landlord about the leak", "a": "Hi Mark, the kitchen sink has been leaking since Monday. Could someone take a look this week? Thanks, Dana"}]}
 {"q": "how many unread emails do I have", "route": "tools", "why": "live data: email inbox"}
 {"q": "email sam the summary of my offsite notes", "route": "search+tools", "why": "read the user's notes, then send email"}
-{"q": "compare my notes on the vendor contract with the vendor's stock price today", "route": "search+tools", "why": "the user's notes plus a live price"}
+{"q": "compare my notes on the vendor contract with the vendor's latest news", "route": "search+tools", "why": "the user's notes plus live news"}
 {"q": "add the dates from my lisbon trip doc to my calendar", "route": "search+tools", "why": "read the user's doc, then create events"}
 {"q": "check the weather for the hike I planned in my notes", "route": "search+tools", "why": "the plan is in the notes, the weather is live"}
 {"q": "which deps in my meru go.mod are out of date?", "route": "search+tools", "why": "the user's file plus the latest versions online"}
 {"q": "send priya the action items from yesterday's meeting notes", "route": "search+tools", "why": "read the user's notes, then send"}
-{"q": "is the AAPL price target in my notes above where it trades now", "route": "search+tools", "why": "the user's notes plus a live price"}
+{"q": "is the release date in my notes still what the vendor's site says now", "route": "search+tools", "why": "the user's notes plus the vendor's live site"}
 {"q": "create github issues for the TODOs in my architecture doc", "route": "search+tools", "why": "read the user's doc, then create issues"}
 {"q": "look up reviews for the books on my reading list", "route": "search+tools", "why": "the user's list plus web search"}
 {"q": "make calendar events for the deadlines in my project plan", "route": "search+tools", "why": "read the user's plan, then create events"}
@@ -103,7 +103,7 @@
 {"q": "is the restaurant I saved in my notes open tonight", "route": "search+tools", "why": "the user's notes plus live hours"}
 {"q": "text alex the address from my notes for saturday's party", "route": "search+tools", "why": "read the user's notes, then send a message"}
 {"q": "search the web for fixes to the error in my debugging log", "route": "search+tools", "why": "the user's log plus web search"}
-{"q": "update my budget note with today's EUR rate", "route": "search+tools", "why": "the user's note plus a live exchange rate"}
+{"q": "update my trip note with the weather forecast for those dates", "route": "search+tools", "why": "the user's note plus a live forecast"}
 {"q": "what's changed in upstream ollama since the version my project pins", "route": "search+tools", "why": "the user's repo plus the web"}
 {"q": "set reminders for the open items in my team sync notes", "route": "search+tools", "why": "read the user's notes, then create reminders"}
 {"q": "email my landlord the leak details I noted last week", "route": "search+tools", "why": "read the user's notes, then send email"}
@@ -111,8 +111,8 @@
 {"q": "is the conference from my notes already on my calendar?", "route": "search+tools", "why": "the user's notes plus the calendar"}
 {"q": "reply to priya's latest email with what we decided in my notes", "route": "search+tools", "why": "the user's notes plus an email action"}
 {"q": "whats the weather in each city on my itinerary doc", "route": "search+tools", "why": "the user's doc plus live weather"}
-{"q": "post the release notes from my portfolio changelog to slack", "route": "search+tools", "why": "the user's repo plus posting a message"}
-{"q": "compare the salary in my offer notes with current market rates", "route": "search+tools", "why": "the user's notes plus the web"}
+{"q": "post the release notes from my blog changelog to slack", "route": "search+tools", "why": "the user's repo plus posting a message"}
+{"q": "compare the laptop specs in my notes with the current model on the maker's site", "route": "search+tools", "why": "the user's notes plus the web"}
 {"q": "book the restaurant I bookmarked in my food notes for friday", "route": "search+tools", "why": "the user's notes plus a booking"}
 {"q": "forward the summary we made yesterday to my manager", "route": "search+tools", "why": "a past conversation plus sending"}
 {"q": "put everything from my notes on it into my calendar", "route": "search+tools", "why": "follow-up; history shows only part of the notes, and the calendar is an action", "history": [{"q": "what did I write about the Lisbon trip?", "a": "Your notes say: flights on 12 Oct, hotel in Alfama, a day trip to Sintra, and dinner at a fado bar."}]}
@@ -122,11 +122,11 @@
 {"q": "what database does meru use", "route": "search", "why": "meru is one of the user's indexed folders"}
 {"q": "what language is meru written in", "route": "search", "why": "meru is one of the user's indexed folders"}
 {"q": "what is the default chunk size in meru's indexer", "route": "search", "why": "a detail of the user's own project"}
-{"q": "how does the portfolio site get deployed", "route": "search", "why": "portfolio is one of the user's indexed folders"}
+{"q": "how does the blog site get deployed", "route": "search", "why": "blog is one of the user's indexed folders"}
 {"q": "what model does meru run by default", "route": "search", "why": "a detail of the user's own project"}
 {"q": "what documents do you have indexed", "route": "search", "why": "asks what the user's files hold"}
 {"q": "try the last question again", "route": "search", "why": "retry of a question about the user's project", "history": [{"q": "what database does meru use to store its index", "a": "I'm not sure which database Meru uses."}]}
-{"q": "search again, I think it's in there", "route": "search", "why": "asks to look in the user's files again", "history": [{"q": "what port does the portfolio dev server use", "a": "The excerpts don't say which port it uses."}]}
+{"q": "search again, I think it's in there", "route": "search", "why": "asks to look in the user's files again", "history": [{"q": "what port does the blog dev server use", "a": "The excerpts don't say which port it uses."}]}
 {"q": "check my docs this time", "route": "search", "why": "asks to look in the user's files", "history": [{"q": "what's the retry limit in the meru router", "a": "Routers often retry two or three times."}]}
 {"q": "is that in the architecture doc?", "route": "search", "why": "follow-up about the user's own document", "history": [{"q": "does meru have a sandbox", "a": "Your files say Meru runs as an ordinary user process with no sandbox."}]}
 {"q": "what files can you see", "route": "search", "why": "asks what the user's files hold"}

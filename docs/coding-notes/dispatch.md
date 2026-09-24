@@ -100,6 +100,22 @@ was a field on `Result` that `dispatch` would prefer for the `tool_result` line 
 the row. It would leave the `tool_call` line and the prompt showing the model's
 arguments, so you would approve `{"repo":"meru"}` without seeing the command.
 
+**Connector.** A backend may also have `ConnectMissing`, which makes it a
+`Connector`:
+
+```go
+type Connector interface {
+    ConnectMissing(ctx context.Context)
+}
+```
+
+`ConnectMissing` tries once to reach each of the backend's servers that isn't
+connected, and returns when every try has ended. The MCP backend is the one
+`Connector`. `merud` never retries an MCP server in the background, so the agent
+loop calls this at the start of a turn that offers tools, before it lists them
+(see [mcp.md](mcp.md)). The built-ins, the commands and the A2A client have no
+servers to reach this way, so they don't need a stub method.
+
 `Call` carries one tool call: its ID, the tool's full name, the arguments, the
 session, where the question came from, and two functions: `Append` writes a line to
 the transcript, and `Approve` asks the user. A nil `Approve` means nobody can answer.
@@ -193,6 +209,23 @@ carries `gen_ai.tool.name`, `meru.tool.kind`, `meru.tool.server`,
 `meru.tool.outcome` and `meru.tool.approval`. Arguments and results go on it only
 when `capture_content = true`; for a command the arguments are the argv.
 
+**ConnectMissing.** The agent loop reaches the backends through the Dispatcher,
+so the Dispatcher passes the call on:
+
+```go
+func (d *Dispatcher) ConnectMissing(ctx context.Context) {
+    for _, b := range d.snapshot() {
+        if c, ok := b.(Connector); ok {
+            c.ConnectMissing(ctx)
+        }
+    }
+}
+```
+
+`snapshot` copies the backend list under the lock, so a reload can swap the MCP
+backend while the tries run. The backends go one after another; with one
+`Connector` today, running them side by side would buy nothing.
+
 **A denied name.** When no backend offers a tool, `guessLocation` splits its name
 for the row: `a2a.` names an agent, `cmd.` a command, a dot an MCP server, and no
 dot a built-in.
@@ -202,7 +235,8 @@ dot a built-in.
 `mcpBackend` wraps `*mcp.Pool` so it satisfies `Backend`. Each method is a line or
 two: `Confirm` asks the pool's confirm list, `Locate` splits `server.tool` at the
 first dot, and `Call` keeps the result's text and error flag. `Status` joins the
-pool's health report with its tool list for `meru tools list`.
+pool's health report with its tool list for `meru tools list`. `ConnectMissing`
+calls `pool.ConnectMissing`, which makes `mcpBackend` a `Connector`.
 
 ```go
 var _ dispatch.Backend = mcpBackend{}
@@ -219,8 +253,8 @@ be a secret.
 
 ## Go ideas used here
 
-- **Interfaces** — `Backend`, `Auditor` and `Recorder`, and a type assertion
-  to find an `Auditor`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Interfaces** — `Backend`, `Auditor`, `Connector` and `Recorder`, and type
+  assertions to find an `Auditor` or a `Connector`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **`sync.Mutex`** — guards the backend list and the session approvals.
 - **context** — cancellation, `context.WithoutCancel` for the row, and
   `context.WithValue` for the session. More in
@@ -258,8 +292,9 @@ MCP server on 127.0.0.1.
   wording and the same records.
 - **The session on the context, not in the interface.** One tool needs it, so
   one small function beats a new parameter on every backend's `Call`.
-- **An optional interface for the audit.** One backend needs it, so a type
-  assertion beats a new method that three backends would stub out.
+- **Optional interfaces for the audit and the connect.** One backend needs each,
+  so a type assertion beats a new method on `Backend` that three backends would
+  stub out.
 - **Session approvals in memory.** Writing them to disk would make them outlive the
   session, which ARCHITECTURE.md rules out. Config stays the one place that grants
   lasting trust.

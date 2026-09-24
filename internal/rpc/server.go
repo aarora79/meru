@@ -188,7 +188,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd, OpMemoryForget,
-		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload:
+		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload, OpMCPStatus:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})

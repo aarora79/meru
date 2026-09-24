@@ -78,6 +78,10 @@ type ToolRunner interface {
 	// Asks reports whether a call to the named tool would ask the user
 	// first.
 	Asks(name string) bool
+	// ConnectMissing gives each tool server that isn't connected one try
+	// and returns when the tries have ended. Handle calls it once per turn
+	// that offers tools, before it lists them.
+	ConnectMissing(ctx context.Context)
 }
 
 // turn holds what the rounds need to know about the turn they run in.

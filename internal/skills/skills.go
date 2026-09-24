@@ -30,7 +30,7 @@ const (
 const fileName = "SKILL.md"
 
 // namePattern matches a skill name: lowercase letters and digits in words
-// joined by single hyphens, such as "writing" or "portfolio-review". A name
+// joined by single hyphens, such as "writing" or "meeting-notes". A name
 // that passes can't hold a path separator, "..", spaces or capitals, so it is
 // safe as a folder name on every platform and reads the same everywhere.
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)

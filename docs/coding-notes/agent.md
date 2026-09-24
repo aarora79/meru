@@ -51,6 +51,9 @@ sequenceDiagram
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
     end
+    opt the route offers tools
+        A->>D: ConnectMissing (one try per server that isn't connected)
+    end
     A->>A: Profile.Recall(question), on every route
     loop each round, up to max_rounds
         A->>E: Stream(system + excerpts + history + question + earlier rounds, tool schemas)
@@ -108,6 +111,7 @@ type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
     Asks(name string) bool
+    ConnectMissing(ctx context.Context)
 }
 ```
 
@@ -120,9 +124,11 @@ The agent only builds the `dispatch.Call` and reads what comes back.
 an outcome (`denied`, `declined`, `error`, `timeout` or `cancelled`) and a
 `Result` whose text tells the model what happened. `Asks` says whether a call
 to a tool would ask you first; `toolSpecs` uses it to pick the commands the
-"search" route may offer.
+"search" route may offer. `ConnectMissing` gives each tool server that isn't
+connected one try and returns when the tries have ended (see
+[The tool rounds](#the-tool-rounds-toolsgo)).
 
-`merud` passes `*dispatch.Dispatcher`, which has these three methods. Tests
+`merud` passes `*dispatch.Dispatcher`, which has these four methods. Tests
 pass `fakeTools`, which answers from a table by tool name. A `nil`
 ToolRunner turns tools off.
 
@@ -267,9 +273,9 @@ answer. Reading 20 files takes about 0.6 ms, too little to earn a cache.
 ### Recalled memories (recall.go)
 
 `Handle` calls `memorySection` on every route, `direct` included, right before it
-builds the prompt. A preference such as "always ask before trading" matters most
-on a turn that runs tools, and a fact about a person matters on a direct question
-about them. The query is the same `searchQuery` the file search uses, so a
+builds the prompt. A preference such as "always ask before sending mail" matters
+most on a turn that runs tools, and a fact about a person matters on a direct
+question about them. The query is the same `searchQuery` the file search uses, so a
 follow-up borrows the earlier question's subject.
 
 `memorySection` asks `Profile.Recall` and hands the result to `formatMemories`:
@@ -304,7 +310,7 @@ tools, and the model then says it will remember and saves nothing. So when the
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
-count. A wrong guess, such as "do you remember the budget?", costs a prompt
+count. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
 ### Skills (skills.go)
@@ -492,7 +498,7 @@ msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, p
   project, searched together with the question before it about a trip, came
   back with travel papers and no project notes. A shorter question is a follow-up, and `searchQuery` adds one earlier
   question after it, because "and the one after that?" finds nothing alone.
-  "how much did it cost?" has two subject words, so it still borrows; the
+  "how long was the stay?" has two subject words, so it still borrows; the
   filler list also holds words that point back, such as one, other, after and
   those. It walks back from the
   newest and takes the first one that `namesSubject`: a question with at least
@@ -542,7 +548,7 @@ them to `formatEarlier`, which writes one line per session under the header
 "From earlier conversations:":
 
 ```text
-- 2026-09-17 (7 days ago): The user set the garden budget at 400 dollars. The user said: "what budget for the garden?"
+- 2026-09-17 (7 days ago): The user chose two raised beds for the garden. The user said: "how many raised beds should the garden have?"
 ```
 
 - **The date** is the day the session started, with how many days ago that
@@ -651,6 +657,26 @@ The `route` event also says whether the router fell back: `Fallback` is true
 for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
 ### The tool rounds (tools.go)
+
+**Connecting first.** `merud` tries each MCP server once at startup and never
+retries on a timer (ARCHITECTURE.md, "MCP"). A server the user starts later, or a
+stdio child that crashed, comes back on the next turn that offers tools. `Handle`
+does that right after it picks the tools:
+
+```go
+specs := a.toolSpecs(dec.Route)
+if len(specs) > 0 {
+    a.tools.ConnectMissing(ctx)
+    specs = a.toolSpecs(dec.Route)
+}
+```
+
+The second `toolSpecs` call lists the tools again, so a server that answers now
+joins this turn. One that still fails is left out, and the model answers without
+it. `len(specs) > 0` is the whole test: any turn that offers a tool asks, a `search`
+turn with only file tools included, and a `direct` turn never does.
+`ConnectMissing` runs once per turn, before the first round, and never between
+rounds.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
 ToolRunner offers on `tools` and `search+tools`. On `search` it keeps the
@@ -851,6 +877,9 @@ reaching the model, `approve` and a job's source reaching dispatch, a hang-up
 during a call, one `gen_ai.chat` span per round, and a transcript and
 history that hold only the question and the answer. `TestToolsOfferedByRoute`
 checks which tools and which note each route gets.
+`TestTurnConnectsMissingServersOnce` gives `fakeTools` a tool that appears only
+after `ConnectMissing`: a `tools` or `search+tools` turn calls it once and offers
+the new tool in the same turn, and a `direct` turn never calls it.
 
 `files_test.go` runs a `search` turn over the real built-in tools behind a real
 `dispatch.Dispatcher`: the fake engine calls `read_file`, and the next round
@@ -882,9 +911,9 @@ by meaning.
 `earlier_test.go` checks `formatEarlier` (dates, "The user said" and "You
 said", the cap), which routes add the section, that the asking session is left
 out, and that a failed recall still answers. `TestRecallsLastWeekWithoutAReminder`
-is the v0.4 "Done when" line: it writes a garden-budget session dated seven
-days ago and one about taxes, lets the real summarizer summarize both over a
-fake model, and asks "what did we decide about the garden budget?" in a new
+is the v0.4 "Done when" line: it writes a garden-beds session dated seven
+days ago and one about the library, lets the real summarizer summarize both over a
+fake model, and asks "what did we decide about the garden beds?" in a new
 session. The prompt's first recalled line must read "7 days ago" and hold the
 garden summary. It uses a real store and `retrieve.SearchSessions`, with a
 bag-of-words fake embedding.

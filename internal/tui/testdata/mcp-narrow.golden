@@ -1,30 +1,20 @@
 Meru मेरु lite · minicpm5:2b … ● connected
 ────────────────────────────────────────
 
-You
-  │ Email Sam
-
-Meru  tools · 0.82
-  → mail.send
   ╭────────────────────────────────────╮
-  │ Run mail.send?  mcp                │
-  │ {                                  │
-  │   "to": "sam@example.com",         │
-  │   "subject": "Garden plan",        │
-  │   "body": "We sow the tomatoes on… │
-  │ }                                  │
+  │ MCP servers                        │
   │                                    │
-  │  o once   s this session  [d deny] │
+  │ SERVER     TRANSPORT  STATE      … │
+  │ google     http       connected  … │
+  │ brave      stdio      connected  … │
+  │ obsidian   stdio      not connect… │
+  │                                    │
+  │ meru tools lists each tool; meru   │
+  │ mcp list shows the catalog and     │
+  │ meru mcp add adds a server.        │
   ╰────────────────────────────────────╯
-
-
-
-
-
-
-
 
 ╭──────────────────────────────────────╮
 │ Ask Meru anything…                   │
 ╰──────────────────────────────────────╯
-o once · s this session · d deny …
+esc/q close · ctrl+c stop/quit

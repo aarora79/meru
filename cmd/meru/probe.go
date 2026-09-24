@@ -10,8 +10,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/rpc"
@@ -84,7 +87,7 @@ func probe(ctx context.Context, socket string, e catalog.Entry) (*rpc.ProbeResul
 		Args:    e.Args,
 		Env:     e.Env,
 		URL:     e.URL,
-		Network: e.Network,
+		Remote:  e.Remote,
 	}}
 	var res *rpc.ProbeResult
 	for ev, err := range rpc.Do(ctx, socket, req, nil) {
@@ -271,4 +274,33 @@ func shortLine(s string, n int) string {
 		return string(r[:n-3]) + "..."
 	}
 	return string(r)
+}
+
+// urlAnswers reports whether something accepts a TCP connection at the host
+// and port of rawURL within a second. `meru mcp add` asks it before it
+// tries a server the user runs, such as google: when nothing listens yet,
+// a probe would only fail. It sends no request, so it says nothing about
+// what is listening; the probe finds that out.
+func urlAnswers(ctx context.Context, rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Host
+	if u.Port() == "" {
+		port := "80"
+		if u.Scheme == "https" {
+			port = "443"
+		}
+		host = net.JoinHostPort(u.Hostname(), port)
+	}
+	var d net.Dialer
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	conn, err := d.DialContext(ctx, "tcp", host)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close() // nothing was sent, so a failed close loses nothing
+	return true
 }

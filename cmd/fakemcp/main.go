@@ -43,7 +43,7 @@ func main() {
 	mcp.AddTool(s, &mcp.Tool{Name: "search", Description: "Search the user's notes.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}},
 		func(_ context.Context, _ *mcp.CallToolRequest, in searchArgs) (*mcp.CallToolResult, any, error) {
-			return text("note garden.md: the garden budget for " + in.Query + " is 4,200 dollars"), nil, nil
+			return text("note garden.md: the garden plan for " + in.Query + ": sow tomatoes on 12 April"), nil, nil
 		})
 	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a message.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &yes}},

@@ -28,8 +28,8 @@ func TestTurnRecorderReplaysTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, l := range []transcript.Line{
-		{Type: transcript.TypeUser, Text: "what is the garden budget?"},
-		{Type: transcript.TypeAssistant, Text: "400 dollars."},
+		{Type: transcript.TypeUser, Text: "when does the garden project sow tomatoes?"},
+		{Type: transcript.TypeAssistant, Text: "On 12 April."},
 	} {
 		if err := sess.Append(l); err != nil {
 			t.Fatal(err)

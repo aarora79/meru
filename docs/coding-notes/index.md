@@ -100,8 +100,8 @@ An error from the engine or the store stops the scan, because Ollama being down
 would fail every file after it too.
 
 Each embedded text starts with the chunk's heading path. The third chunk of a
-long "Budget > Q3" section doesn't repeat the heading line, and the path keeps
-its vector about Q3's budget.
+long "Garden > Spring" section doesn't repeat the heading line, and the path keeps
+its vector about spring planting.
 
 ### skip.go and ignore.go
 
@@ -156,7 +156,7 @@ embedding model's tokenizer, and a chunk a few tokens off target does no harm.
 
 | Kind | Split | Heading | Location |
 | --- | --- | --- | --- |
-| markdown | by `#` heading, then paragraphs | heading path, `Budget > Q3` | lines |
+| markdown | by `#` heading, then paragraphs | heading path, `Garden > Spring` | lines |
 | Go | by top-level declaration, via `go/parser` | `Scan`, `Indexer.Scan`, `Report` | lines |
 | other code, text | by blank-line blocks | none | lines |
 | html | by `<h1>`–`<h6>`, then paragraphs | heading path | none |

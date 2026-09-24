@@ -12,12 +12,13 @@
 It runs two searches and merges them:
 
 - **Vector search** compares the question's embedding with each chunk's. It
-  finds a note about "Nvidia's quarterly results" when you ask about earnings.
+  finds a note about the new app's release date when you ask about the launch.
 - **Keyword search** ranks chunks by BM25, the standard formula for how well a
-  passage's words match. It finds the ticker "NVDA" every time.
+  passage's words match. It finds an exact string such as the project code name "Kestrel" every
+  time.
 
 `Format` then turns the results into a prompt section with numbered
-citations, so the model can answer "the budget is 40k [1]" and the user can
+citations, so the model can answer "the launch is on 12 May [1]" and the user can
 open the file.
 
 `retrieve.SearchMemories` does the same for memories, with a third list: the
@@ -33,7 +34,7 @@ flowchart LR
     V --> R["rrf + top<br/>top 10 IDs"]
     K --> R
     R --> C["st.Chunks<br/>text + path"]
-    C --> F["Format<br/>[1] notes/budget.md, …"]
+    C --> F["Format<br/>[1] notes/launch.md, …"]
 ```
 
 ## Walk through the code
@@ -57,8 +58,8 @@ func rrf(lists ...[]int64) map[int64]float64 {
 }
 ```
 
-A chunk earns `1/(60 + place)` from each list it appears in. With the "NVDA
-results" example from [200.md](../architecture/200.md), `earnings.md` is
+A chunk earns `1/(60 + place)` from each list it appears in. With the "Kestrel
+launch" example from [200.md](../architecture/200.md), `launch-plan.md` is
 second by keyword and first by meaning: `1/62 + 1/61 = 0.0325`, the top score.
 
 `top` sorts the map into a list, highest score first, and keeps `n`. Go walks
@@ -97,7 +98,7 @@ starting values: 50 from each search and 10 after the merge.
 `Cite(1, r)` returns one line:
 
 ```text
-[1] notes/budget.md, "Q3 budget", lines 12–40
+[1] notes/launch.md, "Q3 launch", lines 12–40
 ```
 
 A PDF chunk gets `page 3` instead of lines, and a chunk with no heading leaves

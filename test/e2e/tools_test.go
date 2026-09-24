@@ -47,13 +47,13 @@ confirm = ["send"]
 func TestToolCall(t *testing.T) {
 	t.Parallel()
 	s := startToolStack(t)
-	const answer = "Your garden budget is 4,200 dollars."
+	const answer = "Your garden plan: sow tomatoes on 12 April."
 	s.fake.enqueue(t, fastModel, toolsRoute())
 	s.fake.enqueue(t, mainModel,
 		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "notes.search", Arguments: map[string]any{"query": "garden"}}}},
 		fakeollama.Reply{Text: answer})
 
-	res := runMeru(t, s.home, "what is my garden budget?")
+	res := runMeru(t, s.home, "when do I sow the tomatoes?")
 	if res.code != 0 {
 		t.Fatalf("meru exited %d, stderr:\n%s\nmerud.log:\n%s", res.code, res.stderr, s.home.log())
 	}
@@ -67,7 +67,7 @@ func TestToolCall(t *testing.T) {
 	// The model's second request must carry the tool's result.
 	var sawResult bool
 	for _, r := range s.fake.chatRequests(t, mainModel) {
-		if strings.Contains(string(r.Body), "the garden budget for garden is 4,200 dollars") {
+		if strings.Contains(string(r.Body), "the garden plan for garden: sow tomatoes on 12 April") {
 			sawResult = true
 		}
 	}

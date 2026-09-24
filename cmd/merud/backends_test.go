@@ -20,6 +20,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/mcp"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // echoArgs is the argument object of the test server's tools.
@@ -204,7 +205,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		{
 			name:    "the pool's rules apply",
 			servers: []config.MCPServer{{Name: "x", URL: "https://mcp.example.com/mcp"}},
-			wantErr: "network = true",
+			wantErr: "remote = true",
 		},
 		{
 			name:    "no servers",
@@ -233,5 +234,62 @@ func TestMCPServerConfigs(t *testing.T) {
 			}
 			tt.check(t, got)
 		})
+	}
+}
+
+// TestMCPStatusOp checks the mcp_status reply against a pool with one
+// server up and one down. The rows join config with the pool's state, and
+// building them sends no request to either server.
+func TestMCPStatusOp(t *testing.T) {
+	upURL := startMCPServer(t)
+	// count counts the requests the down server receives. It answers 503, as a
+	// server that isn't ready would.
+	var mu sync.Mutex // guards count
+	count := 0
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		count++
+		mu.Unlock()
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(down.Close)
+
+	pool, err := mcp.NewPool(context.Background(), []mcp.ServerConfig{
+		{Name: "files", URL: upURL, Allow: []string{"echo", "delete"}, Confirm: []string{"delete"}},
+		{Name: "google", URL: down.URL + "/mcp", Allow: []string{"a", "b", "c"}, Confirm: []string{"c"}, AlwaysConfirm: []string{"b"}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	mu.Lock()
+	before := count
+	mu.Unlock()
+
+	s := &toolService{pool: pool}
+	var events []rpc.Event
+	if err := s.handleMCPStatus(func(ev rpc.Event) error { events = append(events, ev); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != rpc.EventMCPStatus {
+		t.Fatalf("events = %+v, want one mcp_status", events)
+	}
+	rows := events[0].MCP
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want 2", rows)
+	}
+	up := rpc.MCPStatus{Name: "files", Transport: "http", State: "connected", URL: upURL, Tools: 3, Allowed: 2, Confirm: 1}
+	if rows[0] != up {
+		t.Errorf("row 1 = %+v, want %+v", rows[0], up)
+	}
+	got := rows[1]
+	if got.Name != "google" || got.State != "not connected" || got.Tools != -1 || got.Allowed != 3 || got.Confirm != 2 || got.Err == "" {
+		t.Errorf("row 2 = %+v, want not connected, tools -1, 3 allowed, 2 confirm, a reason", got)
+	}
+	mu.Lock()
+	after := count
+	mu.Unlock()
+	if after != before {
+		t.Errorf("the status op sent %d requests to the down server, want none", after-before)
 	}
 }

@@ -72,6 +72,11 @@ const (
 	// restart. The reply is one "tools" event with the new state, and
 	// "done".
 	OpMCPReload Op = "mcp_reload"
+	// OpMCPStatus asks for the state of each configured MCP server. merud
+	// answers from config and what its client pool already holds, and
+	// sends nothing to any server, so the reply comes at once while a
+	// server is down. The reply is one "mcp_status" event and "done".
+	OpMCPStatus Op = "mcp_status"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -148,6 +153,8 @@ const (
 	EventSkills EventType = "skills"
 	// EventProbe answers OpMCPProbe, in Probe.
 	EventProbe EventType = "probe"
+	// EventMCPStatus answers OpMCPStatus, in MCP.
+	EventMCPStatus EventType = "mcp_status"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -199,6 +206,8 @@ type Event struct {
 	Skills []SkillInfo `json:"skills,omitempty"`
 	// Probe is set on a "probe" event.
 	Probe *ProbeResult `json:"probe,omitempty"`
+	// MCP is set on an "mcp_status" event.
+	MCP []MCPStatus `json:"mcp,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -461,6 +470,35 @@ type SkillInfo struct {
 	Body string `json:"body,omitempty"`
 }
 
+// MCP server states, for MCPStatus.State. Config has no key that turns a
+// server off, so there is no "disabled" state; a server you don't want is
+// one you remove.
+const (
+	MCPConnected    = "connected"
+	MCPNotConnected = "not connected"
+)
+
+// MCPStatus is one row of `meru mcp` and the chat's /mcp box: what config
+// declares for one [[mcp.servers]] entry, joined with what merud's client
+// pool holds for it. A server that never connected still reports the
+// tools config allows.
+type MCPStatus struct {
+	Name      string `json:"name"`
+	Transport string `json:"transport"` // "stdio" or "http"
+	State     string `json:"state"`     // MCPConnected or MCPNotConnected
+	URL       string `json:"url,omitempty"`
+	// Tools counts the tools the server offers, from its tools/list. It is
+	// -1 when the server isn't connected: with no list, any count would be
+	// a guess.
+	Tools int `json:"tools"`
+	// Allowed counts the tools config allows, and Confirm the allowed
+	// tools that ask before they run (confirm and always_confirm).
+	Allowed int `json:"allowed"`
+	Confirm int `json:"confirm"`
+	// Err says in one line why the server isn't connected.
+	Err string `json:"err,omitempty"`
+}
+
 // ProbeServer is an MCP server to try before it goes into config: the same
 // fields as an [[mcp.servers]] entry, minus the allow lists. Env and Headers
 // values may be "secret:<name>"; merud resolves them from secrets.toml.
@@ -471,7 +509,7 @@ type ProbeServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 	URL     string            `json:"url,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
-	Network bool              `json:"network,omitempty"`
+	Remote  bool              `json:"remote,omitempty"`
 }
 
 // ProbeResult is what a probed server offers.

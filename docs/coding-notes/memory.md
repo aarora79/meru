@@ -30,7 +30,7 @@ A memory file looks like this:
 created: 2026-09-23
 source: session 2026-09-23T101502-7f3a
 ---
-Prefers index funds over individual stocks for retirement accounts.
+Prefers short replies, with the answer in the first sentence.
 ```
 
 ## The picture
@@ -40,7 +40,7 @@ flowchart LR
     caller["profile / remember tool / memory ops"] --> store["Store"]
     store -- "ID or path" --> resolve["resolve: must be &lt;kind&gt;/&lt;name&gt;.md"]
     resolve --> root["os.Root on ~/.meru/memory"]
-    root --> files["preferences/prefers-index-funds.md<br/>people/sam-is-my-sister.md<br/>..."]
+    root --> files["preferences/prefers-short-replies.md<br/>people/sam-is-my-sister.md<br/>..."]
 ```
 
 ## Walk through the code
@@ -55,7 +55,7 @@ Each memory comes back as a `Memory`:
 
 | Field | What it holds |
 | --- | --- |
-| `ID` | the path inside the memory folder, with `/`: `preferences/prefers-index-funds.md` |
+| `ID` | the path inside the memory folder, with `/`: `preferences/prefers-short-replies.md` |
 | `Kind` | the folder: `preferences` |
 | `Path` | the absolute path on disk |
 | `Text` | the fact |
@@ -146,8 +146,8 @@ words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 
 `strings.FieldsFunc` splits the text wherever the function returns true, here at
 anything that isn't an ASCII letter or digit. `slugify` joins the words with `-`
-until the next word would pass 48 bytes. "Prefers index funds over individual
-stocks." becomes `prefers-index-funds-over-individual-stocks`. The result can't hold
+until the next word would pass 48 bytes. "Prefers short replies with the
+answer first." becomes `prefers-short-replies-with-the-answer-first`. The result can't hold
 `/`, `.` or a space, so it is safe on every file system. Text with no ASCII letters
 becomes `memory`, and a Windows device name such as `con` becomes `memory-con`.
 

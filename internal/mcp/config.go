@@ -45,12 +45,13 @@ type ServerConfig struct {
 	Env map[string]string
 
 	// URL is the endpoint of a Streamable HTTP server that is already
-	// running. It must be loopback unless Network is true.
+	// running. It must be loopback unless Remote is true.
 	URL string
-	// Network allows a URL that isn't loopback. It is the user's explicit
+	// Remote allows a URL that isn't loopback. It is the user's explicit
 	// "this server may be on another machine" (ARCHITECTURE.md, "Privacy
-	// boundary").
-	Network bool
+	// boundary"). It covers only where merud connects; it says nothing
+	// about what the server itself reaches.
+	Remote bool
 	// Headers go on every HTTP request to a Streamable HTTP server, such
 	// as an Authorization header with an API key. merud resolves secrets
 	// before they get here, so the values are the real ones.
@@ -115,11 +116,18 @@ func (c ServerConfig) Validate() error {
 
 	// Settings that only make sense for the other transport are mistakes,
 	// most often a half-edited entry. Refuse them instead of ignoring them.
-	if !hasCommand && (len(c.Args) > 0 || len(c.Env) > 0) {
-		add("args and env apply only to a stdio server (command)")
+	if !hasCommand && len(c.Args) > 0 {
+		add("args apply only to a stdio server (command)")
 	}
-	if !hasURL && c.Network {
-		add("network applies only to a Streamable HTTP server (url)")
+	// env on a url entry would do nothing: merud starts no process for it,
+	// so it has no environment to set. Say so, rather than let the user
+	// wonder why the server never sees the key.
+	if hasURL && !hasCommand && len(c.Env) > 0 {
+		add("env does nothing on a url server, because merud doesn't start it. " +
+			"Set the variables where you start the server, or send a key with headers")
+	}
+	if !hasURL && c.Remote {
+		add("remote applies only to a Streamable HTTP server (url)")
 	}
 	if !hasURL && len(c.Headers) > 0 {
 		add("headers apply only to a Streamable HTTP server (url)")
@@ -137,7 +145,7 @@ func (c ServerConfig) Validate() error {
 	}
 
 	if hasURL {
-		if err := checkServerURL(c.URL, c.Network); err != nil {
+		if err := checkServerURL(c.URL, c.Remote); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -245,12 +253,12 @@ func checkToolName(field, name string) error {
 }
 
 // checkServerURL fails unless raw is an http or https URL, and a loopback one
-// when network is false. loopback.CheckURL holds the loopback rule, so MCP
+// when remote is false. loopback.CheckURL holds the loopback rule, so MCP
 // follows the same rule as the engine and the telemetry exporter.
-func checkServerURL(raw string, network bool) error {
-	if !network {
+func checkServerURL(raw string, remote bool) error {
+	if !remote {
 		if err := loopback.CheckURL(raw); err != nil {
-			return fmt.Errorf("url: %w (set network = true to allow a server on another machine)", err)
+			return fmt.Errorf("url: %w (set remote = true to allow a server on another machine)", err)
 		}
 		return nil
 	}

@@ -1,17 +1,18 @@
-// This file tests the `meru mcp` commands against a fake merud: each shape
-// of `meru mcp add`, the probe step (accept, edit, failure), the reload
-// after a write, `meru mcp list` and `meru mcp remove`.
+// This file tests the `meru mcp` commands against a fake merud: the status
+// table and its JSON, each shape of `meru mcp add`, the probe step (accept,
+// edit, failure), a server the user runs, the reload after a write, `meru
+// mcp list` and `meru mcp remove`.
 
 package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +32,8 @@ type fakeMerud struct {
 	probe func(rpc.ProbeServer) (*rpc.ProbeResult, error)
 	// servers is what OpTools and OpMCPReload report.
 	servers []rpc.ServerInfo
+	// status is what OpMCPStatus reports.
+	status []rpc.MCPStatus
 
 	mu   sync.Mutex    // guards reqs
 	reqs []rpc.Request // every request, in order
@@ -107,6 +110,8 @@ func (f *fakeMerud) serve(conn net.Conn) {
 		_ = enc.Encode(rpc.Event{Type: rpc.EventProbe, Probe: res})
 	case rpc.OpMCPReload, rpc.OpTools:
 		_ = enc.Encode(rpc.Event{Type: rpc.EventTools, Servers: f.servers})
+	case rpc.OpMCPStatus:
+		_ = enc.Encode(rpc.Event{Type: rpc.EventMCPStatus, MCP: f.status})
 	}
 	_ = enc.Encode(rpc.Event{Type: rpc.EventDone})
 }
@@ -247,25 +252,59 @@ func TestMCPAddProbeFails(t *testing.T) {
 
 // TestMCPAddCatalogProbe adds a catalog entry through the probe: the
 // catalog's lists win over the hints, and a tool the catalog doesn't know
-// shows as off.
+// shows as off. google is a server the user runs, so the flow prints the
+// command to start it, and probes because something answers at its URL.
 func TestMCPAddCatalogProbe(t *testing.T) {
 	f := &fakeMerud{probe: func(rpc.ProbeServer) (*rpc.ProbeResult, error) {
 		return &rpc.ProbeResult{Tools: []rpc.ProbeTool{
-			{Name: "fetch", Description: "Fetches a URL."},
-			{Name: "fetch_raw", Description: "Fetches raw bytes.", ReadOnly: hintOf(true)},
+			{Name: "search_gmail_messages", Description: "Searches mail.", ReadOnly: hintOf(true)},
+			{Name: "send_gmail_message", Description: "Sends mail."},
+			{Name: "delete_gmail_label", Description: "Deletes a label.", ReadOnly: hintOf(true)},
 		}}, nil
 	}}
 	sock := f.start(t)
 	c, out, _ := scripted("d\n\ny\n")
-	if err := mcpCmd(t.Context(), sock, []string{"add", "fetch"}, c); err != nil {
+	c.answers = func(context.Context, string) bool { return true }
+	if err := mcpCmd(t.Context(), sock, []string{"add", "google"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
-	s := serverIn(t, sock, "fetch")
-	if !slices.Equal(s.Allow, []string{"fetch"}) || len(s.Confirm) != 0 {
+	s := serverIn(t, sock, "google")
+	if !slices.Equal(s.Allow, []string{"search_gmail_messages", "send_gmail_message"}) || !slices.Equal(s.Confirm, []string{"send_gmail_message"}) {
 		t.Errorf("allow %q confirm %q", s.Allow, s.Confirm)
 	}
-	if !strings.Contains(out.String(), "off    fetch_raw") {
-		t.Errorf("the unknown tool isn't shown as off:\n%s", out)
+	if s.URL != "http://127.0.0.1:8000/mcp" || s.Command != "" || len(s.Env) != 0 {
+		t.Errorf("server = %+v, want the url entry with no env", s)
+	}
+	for _, want := range []string{"off    delete_gmail_label", "uvx workspace-mcp --transport streamable-http"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestMCPAddServerNotRunning adds google while nothing answers at its URL:
+// the flow prints the start command, skips the probe, and writes the
+// catalog's lists.
+func TestMCPAddServerNotRunning(t *testing.T) {
+	f := &fakeMerud{probe: probeNotes}
+	sock := f.start(t)
+	c, out, _ := scripted("d\ny\n")
+	c.answers = func(context.Context, string) bool { return false }
+	if err := mcpCmd(t.Context(), sock, []string{"add", "google"}, c); err != nil {
+		t.Fatalf("mcp add: %v\n%s", err, out)
+	}
+	if slices.Contains(f.ops(), rpc.OpMCPProbe) {
+		t.Errorf("ops = %v, want no probe while nothing answers", f.ops())
+	}
+	e, _ := catalog.Find("google")
+	s := serverIn(t, sock, "google")
+	if !slices.Equal(s.Allow, e.Allow) || !slices.Equal(s.Confirm, e.Confirm) {
+		t.Errorf("allow %q confirm %q, want the catalog's lists", s.Allow, s.Confirm)
+	}
+	for _, want := range []string{e.Start, "Nothing answers at http://127.0.0.1:8000/mcp", "on your next question"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -306,7 +345,6 @@ func TestMCPAddSavesKeyBeforeProbe(t *testing.T) {
 // so the flow skips the probe and writes the catalog's lists or an empty
 // allow list.
 func TestMCPAddShapes(t *testing.T) {
-	folder := t.TempDir()
 	tests := []struct {
 		name    string
 		args    []string
@@ -321,10 +359,10 @@ func TestMCPAddShapes(t *testing.T) {
 			config.MCPServer{Name: "cal", URL: "http://127.0.0.1:8123/mcp"}, "merud isn't running"},
 		{"older url", []string{"add", "cal", "--url", "http://127.0.0.1:8123/mcp"},
 			config.MCPServer{Name: "cal", URL: "http://127.0.0.1:8123/mcp"}, "merud isn't running"},
-		{"http off this machine", []string{"add", "http", "far", "https://mcp.example.com/mcp", "--network"},
-			config.MCPServer{Name: "far", URL: "https://mcp.example.com/mcp", Network: true}, "sends your data there"},
-		{"filesystem", []string{"add", "filesystem", folder},
-			config.MCPServer{Name: "filesystem", Command: "npx"}, "merud isn't running"},
+		{"http off this machine", []string{"add", "http", "far", "https://mcp.example.com/mcp", "--remote"},
+			config.MCPServer{Name: "far", URL: "https://mcp.example.com/mcp", Remote: true}, "sends your data there"},
+		{"catalog url entry", []string{"add", "google"},
+			config.MCPServer{Name: "google", URL: "http://127.0.0.1:8000/mcp"}, "uvx workspace-mcp"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,12 +376,12 @@ func TestMCPAddShapes(t *testing.T) {
 				t.Fatalf("servers = %+v", servers)
 			}
 			s := servers[0]
-			if s.Name != tt.want.Name || s.Command != tt.want.Command || s.URL != tt.want.URL || s.Network != tt.want.Network {
+			if s.Name != tt.want.Name || s.Command != tt.want.Command || s.URL != tt.want.URL || s.Remote != tt.want.Remote {
 				t.Errorf("server = %+v, want %+v", s, tt.want)
 			}
-			if tt.name == "filesystem" {
-				if s.Args[len(s.Args)-1] != folder || len(s.Allow) == 0 {
-					t.Errorf("filesystem args %q allow %q, want the folder last and the catalog's list", s.Args, s.Allow)
+			if tt.name == "catalog url entry" {
+				if len(s.Allow) == 0 {
+					t.Errorf("allow %q, want the catalog's list", s.Allow)
 				}
 			} else if !slices.Equal(s.Args, tt.want.Args) || len(s.Allow) != 0 {
 				t.Errorf("args %q allow %q, want %q and an empty allow", s.Args, s.Allow, tt.want.Args)
@@ -355,25 +393,6 @@ func TestMCPAddShapes(t *testing.T) {
 	}
 }
 
-// TestMCPAddAsksFolders runs the filesystem entry with no folders on the
-// command line, as meru setup does: the flow asks for them.
-func TestMCPAddAsksFolders(t *testing.T) {
-	dir := t.TempDir()
-	folder := t.TempDir()
-	c, out, _ := scripted("d\n/no/such/folder\n" + folder + "\ny\n")
-	e, _ := catalog.Find("filesystem")
-	if _, err := c.offer(t.Context(), filepath.Join(dir, "merud.sock"), e); err != nil {
-		t.Fatalf("offer: %v\n%s", err, out)
-	}
-	if !strings.Contains(out.String(), "doesn't exist") {
-		t.Errorf("output doesn't flag the missing folder:\n%s", out)
-	}
-	s := loadServers(t, dir)
-	if len(s) != 1 || s[0].Args[len(s[0].Args)-1] != folder {
-		t.Errorf("servers = %+v", s)
-	}
-}
-
 func TestMCPErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -382,17 +401,16 @@ func TestMCPErrors(t *testing.T) {
 	}{
 		{"not in catalog", []string{"add", "slack"}, "not in the catalog"},
 		{"unknown subcommand", []string{"rename", "brave"}, "usage"},
-		{"no words", nil, "usage"},
+		{"status with junk", []string{"status", "--yaml"}, "usage"},
 		{"bad name", []string{"add", "stdio", "a.b", "--", "x"}, "letters, digits"},
 		{"older bad name", []string{"add", "a.b", "--", "x"}, "letters, digits"},
 		{"url without scheme", []string{"add", "http", "x", "127.0.0.1:1"}, "http://"},
-		{"off this machine without --network", []string{"add", "http", "x", "https://mcp.example.com/mcp"}, "--network"},
-		{"older url off this machine", []string{"add", "x", "--url", "https://mcp.example.com/mcp"}, "--network"},
+		{"off this machine without --remote", []string{"add", "http", "x", "https://mcp.example.com/mcp"}, "--remote"},
+		{"older url off this machine", []string{"add", "x", "--url", "https://mcp.example.com/mcp"}, "--remote"},
 		{"stdio without --", []string{"add", "stdio", "x", "notes-mcp"}, "usage"},
 		{"stdio with a URL", []string{"add", "stdio", "x", "--", "http://127.0.0.1:1/mcp"}, "meru mcp add http"},
 		{"http with junk", []string{"add", "http", "x", "http://127.0.0.1:1/mcp", "--yes"}, "usage"},
-		{"filesystem without folders", []string{"add", "filesystem"}, "at least one folder"},
-		{"args to fetch", []string{"add", "fetch", "extra"}, "takes no arguments"},
+		{"args to brave", []string{"add", "brave", "extra"}, "takes no arguments"},
 		{"remove without a name", []string{"remove", "--yes"}, "usage"},
 		{"remove unknown", []string{"remove", "--yes", "brave"}, "no MCP server named"},
 	}
@@ -407,26 +425,16 @@ func TestMCPErrors(t *testing.T) {
 	}
 }
 
-func TestMCPAddWindowsOnly(t *testing.T) {
-	_, err := addEntry([]string{"windows"}, "darwin")
-	if err == nil || !strings.Contains(err.Error(), "only on Windows") {
-		t.Errorf("error = %v", err)
-	}
-	if _, err := addEntry([]string{"windows"}, "windows"); err != nil {
-		t.Errorf("on Windows: %v", err)
-	}
-}
-
 // TestMCPList checks the catalog part and the servers part, with merud up
 // and down.
 func TestMCPList(t *testing.T) {
 	f := &fakeMerud{servers: []rpc.ServerInfo{
-		{Name: "fetch", Kind: "mcp", Connected: true, Offered: 2, Tools: []rpc.ToolInfo{{Name: "fetch.fetch"}}},
+		{Name: "brave", Kind: "mcp", Connected: true, Offered: 2, Tools: []rpc.ToolInfo{{Name: "brave.brave_web_search"}}},
 		{Name: "notes", Kind: "mcp", LastError: "exit status 1"},
 		{Name: "meru", Kind: "builtin", Connected: true},
 	}}
 	sock := f.start(t)
-	config := "[[mcp.servers]]\nname = \"fetch\"\ncommand = \"uvx\"\nallow = [\"fetch\"]\n\n" +
+	config := "[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\nallow = [\"brave_web_search\"]\n\n" +
 		"[[mcp.servers]]\nname = \"notes\"\ncommand = \"notes-mcp\"\n\n" +
 		"[[mcp.servers]]\nname = \"fresh\"\nurl = \"http://127.0.0.1:9/mcp\"\n"
 	if err := os.WriteFile(configPathFor(sock), []byte(config), 0o600); err != nil {
@@ -437,11 +445,8 @@ func TestMCPList(t *testing.T) {
 	if err := mcpCmd(t.Context(), sock, []string{"list"}, c); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"filesystem", "google", "needs", "connected · offers 2, 1 allowed",
+	want := []string{"google", "brave", "obsidian", "needs", "you start it", "connected · offers 2, 1 allowed",
 		"not connected: exit status 1", "not loaded yet"}
-	if runtime.GOOS != "windows" {
-		want = append(want, "Windows only")
-	}
 	for _, w := range want {
 		if !strings.Contains(out.String(), w) {
 			t.Errorf("list lacks %q:\n%s", w, out)
@@ -471,7 +476,7 @@ func TestMCPList(t *testing.T) {
 // leaves the file alone after a no.
 func TestMCPRemove(t *testing.T) {
 	orig := "# mine\nprofile = \"lite\"\n\n" +
-		"[[mcp.servers]]\nname = \"fetch\"\ncommand = \"uvx\"\n\n" +
+		"[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\n\n" +
 		"# my notes server\n[[mcp.servers]]\nname = \"notes\"\ncommand = \"notes-mcp\"\n"
 	tests := []struct {
 		name    string
@@ -479,9 +484,9 @@ func TestMCPRemove(t *testing.T) {
 		input   string
 		removed bool
 	}{
-		{"yes", []string{"remove", "fetch"}, "y\n", true},
-		{"--yes", []string{"remove", "--yes", "fetch"}, "", true},
-		{"no", []string{"remove", "fetch"}, "\n", false},
+		{"yes", []string{"remove", "brave"}, "y\n", true},
+		{"--yes", []string{"remove", "--yes", "brave"}, "", true},
+		{"no", []string{"remove", "brave"}, "\n", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -541,5 +546,61 @@ func TestApplyEdits(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestMCPStatus checks `meru mcp`, `meru mcp status` and --json against a
+// fake merud, and the error when merud doesn't answer.
+func TestMCPStatus(t *testing.T) {
+	rows := []rpc.MCPStatus{
+		{Name: "google", Transport: "http", State: "not connected", URL: "http://127.0.0.1:8000/mcp", Tools: -1, Allowed: 8, Confirm: 2,
+			Err: "connect: dial tcp 127.0.0.1:8000: connect: connection refused"},
+		{Name: "obsidian", Transport: "stdio", State: "connected", Tools: 13, Allowed: 5, Confirm: 1},
+	}
+	f := &fakeMerud{status: rows}
+	sock := f.start(t)
+	table := "SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM\n" +
+		"google     http       not connected     —        8        2   connect: dial tcp 127.0.0.1:8000: connect: connection refused\n" +
+		"obsidian   stdio      connected        13        5        1\n"
+	for _, args := range [][]string{nil, {"status"}} {
+		c, out, _ := scripted("")
+		if err := mcpCmd(t.Context(), sock, args, c); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if out.String() != table {
+			t.Errorf("%v printed\n%s\nwant\n%s", args, out, table)
+		}
+	}
+
+	// --json prints the rows, and they read back as the same structs.
+	for _, args := range [][]string{{"--json"}, {"status", "--json"}} {
+		c, out, _ := scripted("")
+		if err := mcpCmd(t.Context(), sock, args, c); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		var got []rpc.MCPStatus
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+		if !slices.Equal(got, rows) {
+			t.Errorf("%v = %+v, want %+v", args, got, rows)
+		}
+	}
+
+	// No servers: an empty JSON array, and a line on how to add one.
+	empty := (&fakeMerud{}).start(t)
+	c, out, _ := scripted("")
+	if err := mcpCmd(t.Context(), empty, []string{"--json"}, c); err != nil || strings.TrimSpace(out.String()) != "[]" {
+		t.Errorf("--json with no servers = %q, %v; want []", out, err)
+	}
+	c, out, _ = scripted("")
+	if err := mcpCmd(t.Context(), empty, nil, c); err != nil || !strings.Contains(out.String(), "meru mcp add") {
+		t.Errorf("no servers printed %q, %v", out, err)
+	}
+
+	// merud down.
+	c, _, _ = scripted("")
+	if err := mcpCmd(t.Context(), filepath.Join(t.TempDir(), "merud.sock"), nil, c); err == nil {
+		t.Error("meru mcp with merud down succeeded, want an error")
 	}
 }

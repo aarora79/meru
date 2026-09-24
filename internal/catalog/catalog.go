@@ -5,35 +5,33 @@
 // deny-by-default and an allow entry that doesn't match a real tool name
 // gives the model nothing. Checked on 2026-09-24 against:
 //
+//   - google: https://github.com/taylorwilsdon/google_workspace_mcp,
+//     workspace-mcp 1.28.0 (commit 138effb, 2026-09-23); names from
+//     core/tool_tiers.yaml and the functions in gmail/gmail_tools.py,
+//     gcalendar/calendar_tools.py, gdrive/drive_tools.py and
+//     gdocs/docs_tools.py. main.py reads --tools as a list, so one process
+//     serves several services. With --transport streamable-http it listens
+//     on port 8000 (WORKSPACE_MCP_PORT changes it) and serves MCP at /mcp;
+//     without OAuth 2.1 it binds 127.0.0.1 unless WORKSPACE_MCP_HOST says
+//     otherwise. It reads GOOGLE_OAUTH_CLIENT_ID and
+//     GOOGLE_OAUTH_CLIENT_SECRET, and on first use sends a sign-in link
+//     whose callback is http://localhost:8000/oauth2callback.
 //   - brave: https://github.com/brave/brave-search-mcp-server, package
 //     @brave/brave-search-mcp-server 2.1.4; names from src/tools/web and
 //     src/tools/news (index.ts, `export const name`).
-//   - fetch: https://github.com/modelcontextprotocol/servers/tree/main/src/fetch,
-//     mcp-server-fetch 0.6.3; name from src/mcp_server_fetch/server.py.
-//   - filesystem: https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem,
-//     npm @modelcontextprotocol/server-filesystem 2026.8.31; names and hints
-//     from src/filesystem/index.ts (server.registerTool). The server marks
-//     ten tools read-only and four as writing. It also offers read_file,
-//     marked deprecated in favour of read_text_file, so the catalog leaves
-//     it out. Meru's MCP client offers the server no roots, so the folders
-//     on the command line are the ones it may use.
-//   - google, gmail, calendar, drive: https://github.com/taylorwilsdon/google_workspace_mcp,
-//     workspace-mcp 1.28.0 (2026-09-21); names from core/tool_tiers.yaml and
-//     the functions in gmail/gmail_tools.py, gcalendar/calendar_tools.py,
-//     gdrive/drive_tools.py and gdocs/docs_tools.py. main.py reads --tools
-//     as a list, so one process can serve several services.
 //   - obsidian: https://github.com/MarkusPfundstein/mcp-obsidian,
 //     mcp-obsidian 0.2.2; names from src/mcp_obsidian/tools.py. The README
 //     lists them without the "obsidian_" prefix, but the server sends it.
-//   - windows: https://github.com/CursorTouch/Windows-MCP, PyPI windows-mcp
-//     0.8.5 (2026-08-01); names and hints from src/windows_mcp/tools/*.py.
-//     Since 0.8.5 the command needs the word "serve".
 //
-// One Google Workspace server covers Gmail, Calendar, Drive and Docs. The
-// google entry runs it once for all four. The gmail, calendar and drive
-// entries run it for one service each, so you can add only the services you
-// want, and each process asks Google for the permissions of its own
-// services and no others.
+// The catalog holds three servers, one per kind of example the docs use:
+// mail and calendar (google), web search (brave) and notes (obsidian).
+//
+// google is the one url entry. Its README calls stdio legacy, and its
+// OAuth 2.1 mode needs HTTP, so the user runs it as a Streamable HTTP
+// server. merud never starts, restarts or watches it; it connects to the
+// URL, like any client (ARCHITECTURE.md, "MCP"). The server offers 120-odd
+// tools; --tools limits the process to four services, and allow limits the
+// model to a handful of those.
 //
 // Google also runs its own MCP servers for Gmail, Drive, Docs and Calendar
 // (developer preview since 2026-05-01; see
@@ -41,10 +39,6 @@
 // They are remote only, at *mcp.googleapis.com, and need an OAuth sign-in
 // that Meru's client doesn't do. workspace-mcp runs on this machine with
 // your own OAuth client, so the catalog keeps it.
-//
-// Two servers send usage data by default: windows-mcp (to PostHog) and
-// Desktop Commander, which the catalog doesn't carry. The windows entry
-// sets ANONYMIZED_TELEMETRY=false, the switch windows-mcp reads.
 //
 // The commands aren't pinned to a version: npx and uvx fetch the latest
 // release, which keeps security fixes coming. A later release that adds a
@@ -72,10 +66,6 @@ const (
 	// NeedNote asks nothing; it tells the user something they must do, such
 	// as sign in to Google in a browser.
 	NeedNote = "note"
-	// NeedFolders asks for one or more folders and adds them to the end of
-	// Args as absolute paths. On the command line they follow the entry's
-	// name: meru mcp add filesystem ~/notes. See WithArgs.
-	NeedFolders = "folders"
 )
 
 // Transports an Entry can use.
@@ -86,7 +76,7 @@ const (
 
 // Need is one thing a server needs from the user before it can run.
 type Need struct {
-	// Kind is NeedAPIKey, NeedPath, NeedURL, NeedNote or NeedFolders.
+	// Kind is NeedAPIKey, NeedPath, NeedURL or NeedNote.
 	Kind string
 	// SecretName is the secrets.toml entry an api_key goes into.
 	SecretName string
@@ -113,18 +103,20 @@ type Entry struct {
 	Command   string
 	Args      []string
 	URL       string
-	// Network allows a URL that isn't loopback.
-	Network bool
+	// Remote lets merud connect to a URL that isn't loopback.
+	Remote bool
+	// Start is the command the user runs to start an HTTP server. merud
+	// never runs it; `meru mcp add` prints it.
+	Start string
 	// Env holds the environment for a stdio server. A "secret:<name>" value
-	// comes from secrets.toml when merud starts the server.
+	// comes from secrets.toml when merud starts the server. A url entry has
+	// none: merud doesn't start that server, so it can't set its
+	// environment.
 	Env map[string]string
 	// Needs lists what to ask the user, in order. Requires sums them up in
 	// a few words for `meru mcp list`, such as "a Brave Search API key".
 	Needs    []Need
 	Requires string
-	// OS names the one system the server runs on, as a runtime.GOOS value
-	// such as "windows". Empty means it runs everywhere.
-	OS string
 	// Allow lists the tools the model may call; Confirm the allowed tools
 	// that ask before each call.
 	Allow   []string
@@ -138,70 +130,15 @@ type Entry struct {
 	Docs string
 }
 
-// googleNeeds returns what every Google Workspace entry needs: an OAuth
-// client ID and secret, then a sign-in on first use. It builds a new slice
-// on each call, so no two entries share one.
-func googleNeeds(api string) []Need {
-	help := "In Google Cloud Console, turn on the " + api + ", then create an OAuth client of type " +
-		"\"Desktop app\" under APIs & Services > Credentials. Steps: https://workspacemcp.com/quick-start"
-	return []Need{
-		// #nosec G101 -- names of secrets.toml entries, not credentials
-		{Kind: NeedAPIKey, SecretName: "google_oauth_client_id", Prompt: "Paste your Google OAuth client ID", Help: help},
-		// #nosec G101 -- names of secrets.toml entries, not credentials
-		{Kind: NeedAPIKey, SecretName: "google_oauth_client_secret", Prompt: "Paste your Google OAuth client secret", Help: help},
-		{Kind: NeedNote, Prompt: "The first time Meru uses this server, it opens a browser window or gives you a link. Sign in to Google there."},
-	}
-}
-
-// googleEnv returns the env block every Google Workspace entry uses.
-func googleEnv() map[string]string {
-	return map[string]string{
-		"GOOGLE_OAUTH_CLIENT_ID":     secrets.Prefix + "google_oauth_client_id",
-		"GOOGLE_OAUTH_CLIENT_SECRET": secrets.Prefix + "google_oauth_client_secret",
-	}
-}
-
-// The six functions below return the tool lists of the Google services.
-// The google entry joins all three services; each one-service entry uses
-// its own. They are functions, not variables, so no two entries share a
-// slice.
-
-// gmailAllow returns the Gmail tools the model may call.
-func gmailAllow() []string {
-	return []string{
-		"search_gmail_messages", "get_gmail_message_content", "get_gmail_messages_content_batch",
-		"get_gmail_thread_content", "list_gmail_labels", "draft_gmail_message", "send_gmail_message",
-	}
-}
-
-// gmailConfirm returns the Gmail tools that ask first.
-func gmailConfirm() []string { return []string{"draft_gmail_message", "send_gmail_message"} }
-
-// calendarAllow returns the Calendar tools the model may call.
-func calendarAllow() []string {
-	return []string{"list_calendars", "get_events", "query_freebusy", "manage_event"}
-}
-
-// calendarConfirm returns the Calendar tools that ask first.
-func calendarConfirm() []string { return []string{"manage_event"} }
-
-// driveAllow returns the Drive and Docs tools the model may call.
-func driveAllow() []string {
-	return []string{
-		"search_drive_files", "get_drive_file_content", "list_drive_items",
-		"get_doc_content", "get_doc_as_markdown", "search_docs", "list_docs_in_folder",
-		"create_doc", "modify_doc_text",
-	}
-}
-
-// driveConfirm returns the Drive and Docs tools that ask first.
-func driveConfirm() []string { return []string{"create_doc", "modify_doc_text"} }
-
-// googleRequires is the Requires text of every Google entry.
-const googleRequires = "a Google OAuth client, a sign-in, and uv"
+// googleStart is the command that starts the google server. The user runs
+// it, in a terminal or from launchd or systemd, with their own OAuth
+// client; merud never does. --tools limits the process to the four
+// services the allow list draws from.
+const googleStart = "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
+	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
 
 // installUV is the Install text for the servers that run with uvx.
-const installUV = "uvx downloads the server the first time merud starts it. " +
+const installUV = "uvx downloads the server the first time it starts. " +
 	"Install uv, which provides uvx: https://docs.astral.sh/uv/getting-started/installation/"
 
 // installNode is the Install text for the servers that run with npx.
@@ -212,8 +149,35 @@ const installNode = "npx downloads the server the first time merud starts it. " 
 // list on each call, so a caller that changes an entry changes only its
 // own copy.
 func Entries() []Entry {
-	google := "https://github.com/taylorwilsdon/google_workspace_mcp"
 	return []Entry{
+		{
+			Name:  "google",
+			Title: "Gmail, Google Calendar, Drive and Docs",
+			Description: "Searches and reads your mail, lists calendar events, searches Drive and reads Docs; " +
+				"sending mail and changing an event ask first. You start and run this server; Meru never does.",
+			Transport: TransportHTTP,
+			URL:       "http://127.0.0.1:8000/mcp",
+			Start:     googleStart,
+			Needs: []Need{
+				{
+					Kind: NeedNote,
+					Prompt: "You start this server and keep it running; Meru only connects to it. " +
+						"Start it in another terminal, or from launchd or systemd: " + googleStart,
+					Help: "In Google Cloud Console, turn on the Gmail, Calendar, Drive and Docs APIs, then create an OAuth client " +
+						"of type \"Desktop app\" under APIs & Services > Credentials. Steps: https://workspacemcp.com/quick-start",
+				},
+				{Kind: NeedNote, Prompt: "The first time the model uses a Google tool, the server gives you a link. Sign in to Google there."},
+			},
+			Requires: "a Google OAuth client, uv, and the server running (you start it)",
+			Allow: []string{
+				"search_gmail_messages", "get_gmail_message_content", "get_gmail_thread_content", "send_gmail_message",
+				"get_events", "manage_event",
+				"search_drive_files", "get_doc_content",
+			},
+			Confirm: []string{"send_gmail_message", "manage_event"},
+			Install: installUV + " Then start the server yourself: " + googleStart,
+			Docs:    "https://github.com/taylorwilsdon/google_workspace_mcp",
+		},
 		{
 			Name:        "brave",
 			Title:       "Web search (Brave Search)",
@@ -233,101 +197,6 @@ func Entries() []Entry {
 			Allow:    []string{"brave_web_search", "brave_news_search"},
 			Install:  installNode,
 			Docs:     "https://github.com/brave/brave-search-mcp-server",
-		},
-		{
-			Name:        "fetch",
-			Title:       "Web page fetch",
-			Description: "Reads a web page and hands it to the model as Markdown.",
-			Transport:   TransportStdio,
-			Command:     "uvx",
-			Args:        []string{"mcp-server-fetch"},
-			Requires:    "uv",
-			Allow:       []string{"fetch"},
-			Install:     installUV,
-			Docs:        "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
-		},
-		{
-			Name:  "filesystem",
-			Title: "Files and folders",
-			Description: "Lists, searches and reads files in the folders you name; " +
-				"writing, editing, moving and making folders ask first.",
-			Transport: TransportStdio,
-			Command:   "npx",
-			Args:      []string{"-y", "@modelcontextprotocol/server-filesystem"},
-			Needs: []Need{{
-				Kind:   NeedFolders,
-				Prompt: "Folders the server may read and change",
-			}},
-			Requires: "one or more folders, and Node.js",
-			Allow: []string{
-				"read_text_file", "read_media_file", "read_multiple_files", "list_directory",
-				"list_directory_with_sizes", "directory_tree", "search_files", "get_file_info",
-				"list_allowed_directories",
-				"write_file", "edit_file", "create_directory", "move_file",
-			},
-			Confirm: []string{"write_file", "edit_file", "create_directory", "move_file"},
-			Install: installNode,
-			Docs:    "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
-		},
-		{
-			Name:        "google",
-			Title:       "Gmail, Google Calendar, Drive and Docs",
-			Description: "The gmail, calendar and drive entries in one server. Reading is allowed; sending, drafting and changing anything ask first.",
-			Transport:   TransportStdio,
-			Command:     "uvx",
-			Args:        []string{"workspace-mcp", "--tools", "gmail", "calendar", "drive", "docs"},
-			Env:         googleEnv(),
-			Needs:       googleNeeds("Gmail API, Google Calendar API, Google Drive API and Google Docs API"),
-			Requires:    googleRequires,
-			Allow:       slices.Concat(gmailAllow(), calendarAllow(), driveAllow()),
-			Confirm:     slices.Concat(gmailConfirm(), calendarConfirm(), driveConfirm()),
-			Install:     installUV,
-			Docs:        google,
-		},
-		{
-			Name:        "gmail",
-			Title:       "Gmail",
-			Description: "Searches and reads your mail; drafting and sending ask first.",
-			Transport:   TransportStdio,
-			Command:     "uvx",
-			Args:        []string{"workspace-mcp", "--tools", "gmail"},
-			Env:         googleEnv(),
-			Needs:       googleNeeds("Gmail API"),
-			Requires:    googleRequires,
-			Allow:       gmailAllow(),
-			Confirm:     gmailConfirm(),
-			Install:     installUV,
-			Docs:        google,
-		},
-		{
-			Name:        "calendar",
-			Title:       "Google Calendar",
-			Description: "Lists your calendars and events; creating or changing an event asks first.",
-			Transport:   TransportStdio,
-			Command:     "uvx",
-			Args:        []string{"workspace-mcp", "--tools", "calendar"},
-			Env:         googleEnv(),
-			Needs:       googleNeeds("Google Calendar API"),
-			Requires:    googleRequires,
-			Allow:       calendarAllow(),
-			Confirm:     calendarConfirm(),
-			Install:     installUV,
-			Docs:        google,
-		},
-		{
-			Name:        "drive",
-			Title:       "Google Drive and Docs",
-			Description: "Searches and reads your Drive files and Docs; creating or editing a doc asks first.",
-			Transport:   TransportStdio,
-			Command:     "uvx",
-			Args:        []string{"workspace-mcp", "--tools", "drive", "docs"},
-			Env:         googleEnv(),
-			Needs:       googleNeeds("Google Drive API and Google Docs API"),
-			Requires:    googleRequires,
-			Allow:       driveAllow(),
-			Confirm:     driveConfirm(),
-			Install:     installUV,
-			Docs:        google,
 		},
 		{
 			Name:        "obsidian",
@@ -359,33 +228,6 @@ func Entries() []Entry {
 			Confirm: []string{"obsidian_append_content"},
 			Install: "Turn on Obsidian's \"Local REST API\" plugin. " + installUV,
 			Docs:    "https://github.com/MarkusPfundstein/mcp-obsidian",
-		},
-		{
-			Name:  "windows",
-			Title: "Windows desktop",
-			Description: "Sees the screen and lists open apps; clicking, typing, running PowerShell " +
-				"and changing files ask first. An approved action runs as you, with no sandbox.",
-			Transport: TransportStdio,
-			Command:   "uvx",
-			Args:      []string{"windows-mcp", "serve"},
-			// windows-mcp sends usage data to PostHog unless this is "false".
-			Env:      map[string]string{"ANONYMIZED_TELEMETRY": "false"},
-			OS:       "windows",
-			Requires: "Windows, and uv",
-			Allow: []string{
-				"DisplayInventory", "Snapshot", "Screenshot", "Scrape", "Wait", "WaitFor",
-				"App", "PowerShell", "FileSystem", "Click", "Type", "Scroll", "Move", "Shortcut",
-				"MultiSelect", "MultiEdit", "Clipboard", "Process", "Notification",
-			},
-			// Registry stays out of allow: a registry edit can break Windows.
-			// PowerShell runs commands as the user, so it asks every time.
-			AlwaysConfirm: []string{"PowerShell"},
-			Confirm: []string{
-				"App", "FileSystem", "Click", "Type", "Scroll", "Move", "Shortcut",
-				"MultiSelect", "MultiEdit", "Clipboard", "Process", "Notification",
-			},
-			Install: installUV + " windows-mcp needs a recent Python; uv downloads one if you don't have it.",
-			Docs:    "https://github.com/CursorTouch/Windows-MCP",
 		},
 	}
 }

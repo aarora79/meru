@@ -47,13 +47,31 @@ type fakeTools struct {
 	specs   []engine.ToolSpec
 	results map[string]fakeResult
 	asks    map[string]bool // tools that ask first; missing means no
+	// late holds the tools of a server that isn't connected yet; the
+	// first ConnectMissing adds them to specs, as a server the user just
+	// started would.
+	late []engine.ToolSpec
 
-	mu      sync.Mutex // guards calls and choices
-	calls   []dispatch.Call
-	choices []rpc.Choice
+	mu       sync.Mutex // guards calls, choices and connects
+	calls    []dispatch.Call
+	choices  []rpc.Choice
+	connects int // how many times ConnectMissing ran
 }
 
-func (f *fakeTools) Tools() []engine.ToolSpec { return f.specs }
+func (f *fakeTools) Tools() []engine.ToolSpec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.specs)
+}
+
+// ConnectMissing counts the call and brings in the late tools.
+func (f *fakeTools) ConnectMissing(context.Context) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.connects++
+	f.specs = append(f.specs, f.late...)
+	f.late = nil
+}
 
 func (f *fakeTools) Asks(name string) bool { return f.asks[name] }
 
@@ -178,16 +196,16 @@ func TestToolRoundThenAnswer(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{rounds: []fakeRound{
 		{calls: []engine.ToolCall{call("notes.search", `{"q":"garden"}`)}, usage: engine.Usage{PromptTokens: 10, OutputTokens: 2, EvalDuration: 20 * time.Millisecond}},
-		{pieces: []string{"The budget ", "is 4,200."}, usage: engine.Usage{PromptTokens: 30, OutputTokens: 5, EvalDuration: 50 * time.Millisecond}},
+		{pieces: []string{"Sow them ", "on 12 April."}, usage: engine.Usage{PromptTokens: 30, OutputTokens: 5, EvalDuration: 50 * time.Millisecond}},
 	}}
 	tools := &fakeTools{
 		specs:   []engine.ToolSpec{spec("notes.search")},
-		results: map[string]fakeResult{"notes.search": {text: "garden.md: budget 4,200"}},
+		results: map[string]fakeResult{"notes.search": {text: "garden.md: sow tomatoes on 12 April"}},
 	}
 	search := &fakeSearcher{results: []retrieve.Result{result("/srv/plan.md", "", "Plant tomatoes in May.", 1, 1, 0.02)}}
 	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.9, Outcome: "ok"}}, search, tools, nil, nil, quietLog())
 
-	evs, err := run(context.Background(), a, rpc.Request{Text: "What is the garden budget?"})
+	evs, err := run(context.Background(), a, rpc.Request{Text: "When do I sow the tomatoes?"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -217,7 +235,7 @@ func TestToolRoundThenAnswer(t *testing.T) {
 	if tail[0].Role != engine.RoleAssistant || len(tail[0].ToolCalls) != 1 || tail[0].ToolCalls[0].Name != "notes.search" {
 		t.Errorf("second last message = %+v, want the assistant's tool call", tail[0])
 	}
-	if tail[1].Role != engine.RoleTool || tail[1].ToolName != "notes.search" || tail[1].Content != "garden.md: budget 4,200" {
+	if tail[1].Role != engine.RoleTool || tail[1].ToolName != "notes.search" || tail[1].Content != "garden.md: sow tomatoes on 12 April" {
 		t.Errorf("last message = %+v, want the tool result", tail[1])
 	}
 	if len(eng.lastCall().tools) != 1 {
@@ -317,14 +335,14 @@ func TestRoundCapForcesAnswer(t *testing.T) {
 
 func TestDeniedAndDeclinedReachTheModel(t *testing.T) {
 	tools := &fakeTools{
-		specs: []engine.ToolSpec{spec("robinhood.place_order")},
+		specs: []engine.ToolSpec{spec("google.send_gmail_message")},
 		results: map[string]fakeResult{
-			"shell.run":             {text: "shell.run isn't allowed", outcome: dispatch.OutcomeDenied},
-			"robinhood.place_order": {text: "the user said no", outcome: dispatch.OutcomeDeclined},
+			"shell.run":                 {text: "shell.run isn't allowed", outcome: dispatch.OutcomeDenied},
+			"google.send_gmail_message": {text: "the user said no", outcome: dispatch.OutcomeDeclined},
 		},
 	}
 	eng := &fakeEngine{rounds: []fakeRound{
-		{calls: []engine.ToolCall{call("shell.run", `{"cmd":"ls"}`), call("robinhood.place_order", `{"qty":5}`)}},
+		{calls: []engine.ToolCall{call("shell.run", `{"cmd":"ls"}`), call("google.send_gmail_message", `{"to":"sam@example.com"}`)}},
 		{pieces: []string{"I couldn't do that."}},
 	}}
 	evs, err := run(context.Background(), toolsAgent(t, "tools", eng, tools), rpc.Request{Text: "sell"})
@@ -337,14 +355,14 @@ func TestDeniedAndDeclinedReachTheModel(t *testing.T) {
 			outcomes[ev.Tool.Name] = ev.Tool.Outcome
 		}
 	}
-	if outcomes["shell.run"] != "denied" || outcomes["robinhood.place_order"] != "declined" {
+	if outcomes["shell.run"] != "denied" || outcomes["google.send_gmail_message"] != "declined" {
 		t.Errorf("outcomes = %v, want denied and declined", outcomes)
 	}
 	msgs := eng.lastCall().msgs
 	tail := msgs[len(msgs)-2:]
 	want := []engine.Message{
 		{Role: engine.RoleTool, ToolName: "shell.run", Content: "shell.run isn't allowed"},
-		{Role: engine.RoleTool, ToolName: "robinhood.place_order", Content: "the user said no"},
+		{Role: engine.RoleTool, ToolName: "google.send_gmail_message", Content: "the user said no"},
 	}
 	if !reflect.DeepEqual(tail, want) {
 		t.Errorf("tool messages = %+v\nwant %+v", tail, want)
@@ -353,11 +371,11 @@ func TestDeniedAndDeclinedReachTheModel(t *testing.T) {
 
 func TestApprovePassedThrough(t *testing.T) {
 	tools := &fakeTools{
-		specs:   []engine.ToolSpec{spec("robinhood.place_order")},
-		results: map[string]fakeResult{"robinhood.place_order": {text: "placed", ask: true}},
+		specs:   []engine.ToolSpec{spec("google.send_gmail_message")},
+		results: map[string]fakeResult{"google.send_gmail_message": {text: "placed", ask: true}},
 	}
 	eng := &fakeEngine{rounds: []fakeRound{
-		{calls: []engine.ToolCall{call("robinhood.place_order", `{"qty":5}`)}},
+		{calls: []engine.ToolCall{call("google.send_gmail_message", `{"to":"sam@example.com"}`)}},
 		{pieces: []string{"Done."}},
 	}}
 	var asked []rpc.Approval
@@ -368,8 +386,8 @@ func TestApprovePassedThrough(t *testing.T) {
 	if _, err := runApprove(context.Background(), toolsAgent(t, "tools", eng, tools), rpc.Request{Text: "sell"}, approve); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(asked) != 1 || asked[0].Name != "robinhood.place_order" {
-		t.Errorf("approve saw %+v, want one question about place_order", asked)
+	if len(asked) != 1 || asked[0].Name != "google.send_gmail_message" {
+		t.Errorf("approve saw %+v, want one question about send_gmail_message", asked)
 	}
 	if !slices.Equal(tools.choices, []rpc.Choice{rpc.ChoiceSession}) {
 		t.Errorf("dispatch got choices %v, want [session]", tools.choices)
@@ -508,7 +526,7 @@ func TestToolTurnSpans(t *testing.T) {
 func TestToolKind(t *testing.T) {
 	tests := []struct{ name, want string }{
 		{"a2a.research.summarize", "a2a"},
-		{"robinhood.get_portfolio", "mcp"},
+		{"google.search_gmail_messages", "mcp"},
 		{"remember", "builtin"},
 		{"a2ax.tool", "mcp"},
 		{"cmd.git-log", "command"},
@@ -560,5 +578,45 @@ func TestToolServers(t *testing.T) {
 	got := toolServers([]engine.ToolSpec{spec("Obsidian.search"), spec("obsidian.read"), spec("a2a.research.summarize"), spec("configure")})
 	if want := []string{"obsidian", "research"}; !slices.Equal(got, want) {
 		t.Errorf("toolServers = %q, want %q", got, want)
+	}
+}
+
+// TestTurnConnectsMissingServersOnce checks the connect-on-demand rule
+// from the agent's side: a turn that offers tools asks the tool runner to
+// reach missing servers once, before it lists the tools, so a server that
+// connects then is offered in the same turn. A turn that offers no tools
+// never asks.
+func TestTurnConnectsMissingServersOnce(t *testing.T) {
+	tests := []struct {
+		route        string
+		wantConnects int
+		wantOffered  []string
+	}{
+		{"tools", 1, []string{"notes.search", "google.search_gmail_messages"}},
+		{"search+tools", 1, []string{"notes.search", "google.search_gmail_messages"}},
+		{"direct", 0, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.route, func(t *testing.T) {
+			tools := &fakeTools{
+				specs: []engine.ToolSpec{spec("notes.search")},
+				late:  []engine.ToolSpec{spec("google.search_gmail_messages")},
+			}
+			eng := &fakeEngine{rounds: []fakeRound{{pieces: []string{"ok"}}}}
+			a := toolsAgent(t, tt.route, eng, tools)
+			if _, err := run(context.Background(), a, rpc.Request{Text: "what did we agree on the launch date?"}); err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			if tools.connects != tt.wantConnects {
+				t.Errorf("ConnectMissing ran %d times, want %d", tools.connects, tt.wantConnects)
+			}
+			var offered []string
+			for _, s := range eng.lastCall().tools {
+				offered = append(offered, s.Name)
+			}
+			if !slices.Equal(offered, tt.wantOffered) {
+				t.Errorf("offered %v, want %v", offered, tt.wantOffered)
+			}
+		})
 	}
 }

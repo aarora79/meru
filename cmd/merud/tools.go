@@ -142,7 +142,7 @@ func a2aAgents(agents []config.A2AAgent, resolve func(string) (string, error)) (
 	out := make([]a2a.AgentConfig, 0, len(agents))
 	for _, a := range agents {
 		c := a2a.AgentConfig{
-			Name: a.Name, URL: a.URL, Network: a.Network,
+			Name: a.Name, URL: a.URL, Remote: a.Remote,
 			Allow: a.Allow, Confirm: a.Confirm,
 		}
 		if a.Timeout != "" {
@@ -225,6 +225,17 @@ func (s *toolService) Close() {
 // handleTools answers OpTools with one "tools" event listing every source.
 func (s *toolService) handleTools(emit func(rpc.Event) error) error {
 	return emit(rpc.Event{Type: rpc.EventTools, Servers: s.dispatcher.Servers()})
+}
+
+// handleMCPStatus answers OpMCPStatus with one "mcp_status" event: a row
+// per configured MCP server, in config order. It reads the pool's own
+// record of each server and sends nothing to any of them, so it answers at
+// once while a server is down.
+func (s *toolService) handleMCPStatus(emit func(rpc.Event) error) error {
+	s.mu.Lock()
+	pool := s.pool
+	s.mu.Unlock()
+	return emit(rpc.Event{Type: rpc.EventMCPStatus, MCP: mcpStatus(pool.Status())})
 }
 
 // handleReload answers OpMCPReload: it reloads the MCP servers from config

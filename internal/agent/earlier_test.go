@@ -31,17 +31,17 @@ func TestFormatEarlier(t *testing.T) {
 	now := time.Date(2026, 9, 24, 15, 0, 0, 0, time.Local)
 	lastWeek := now.AddDate(0, 0, -7)
 	results := []retrieve.SessionResult{
-		pastSession(lastWeek, "Set the garden\nbudget at 400 dollars.",
-			&store.Message{Role: "user", Text: "what budget for the garden?"}),
-		pastSession(now.AddDate(0, 0, -1), "", &store.Message{Role: "assistant", Text: "Seeds cost 30."}),
-		pastSession(now, "Asked about taxes.", nil),
+		pastSession(lastWeek, "Chose two raised\nbeds for the garden.",
+			&store.Message{Role: "user", Text: "how many beds for the garden?"}),
+		pastSession(now.AddDate(0, 0, -1), "", &store.Message{Role: "assistant", Text: "Seeds come next week."}),
+		pastSession(now, "Asked about the library.", nil),
 		pastSession(now, "", nil), // nothing to show
 	}
 	got, n := formatEarlier(results, now, maxEarlierChars)
 	want := earlierHeader +
-		"\n- " + lastWeek.Format("2006-01-02") + ` (7 days ago): Set the garden budget at 400 dollars. The user said: "what budget for the garden?"` +
-		"\n- " + now.AddDate(0, 0, -1).Format("2006-01-02") + ` (yesterday): You said: "Seeds cost 30."` +
-		"\n- " + now.Format("2006-01-02") + " (today): Asked about taxes."
+		"\n- " + lastWeek.Format("2006-01-02") + ` (7 days ago): Chose two raised beds for the garden. The user said: "how many beds for the garden?"` +
+		"\n- " + now.AddDate(0, 0, -1).Format("2006-01-02") + ` (yesterday): You said: "Seeds come next week."` +
+		"\n- " + now.Format("2006-01-02") + " (today): Asked about the library."
 	if got != want || n != 3 {
 		t.Errorf("formatEarlier =\n%s\n(%d lines)\nwant\n%s", got, n, want)
 	}
@@ -68,7 +68,7 @@ func TestFormatEarlier(t *testing.T) {
 
 func TestEarlierConversationsInPrompt(t *testing.T) {
 	past := []retrieve.SessionResult{pastSession(time.Now().AddDate(0, 0, -7),
-		"Set the garden budget at 400 dollars.", nil)}
+		"Chose two raised beds for the garden.", nil)}
 	tests := []struct {
 		name     string
 		route    string
@@ -84,10 +84,10 @@ func TestEarlierConversationsInPrompt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			search := &fakeSearcher{sessions: past, sessionsErr: tt.err}
-			eng := &fakeEngine{pieces: []string{"400 dollars."}}
+			eng := &fakeEngine{pieces: []string{"Two raised beds."}}
 			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}},
 				search, nil, nil, nil, quietLog())
-			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "what did we decide about the garden budget?"})
+			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "what did we decide about the garden beds?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
@@ -117,11 +117,11 @@ type recallEngine struct {
 }
 
 // Generate plays the summarizer's fast model: it summarizes the garden
-// conversation as a person would, and any other as one about taxes.
+// conversation as a person would, and any other as one about the library.
 func (e recallEngine) Generate(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (engine.Completion, error) {
-	text := "The user asked when taxes are due; they are due on April 15."
+	text := "The user asked when the library closes; it closes at 6 pm on Saturdays."
 	if strings.Contains(msgs[len(msgs)-1].Content, "garden") {
-		text = "The user set the garden budget at 400 dollars and chose raised beds."
+		text = "The user chose two raised beds for the garden."
 	}
 	return engine.Completion{Text: text, DoneReason: "stop"}, nil
 }
@@ -161,7 +161,7 @@ func (r recallSearcher) SearchSessions(ctx context.Context, query, exclude strin
 }
 
 // TestRecallsLastWeekWithoutAReminder is the v0.4 "Done when" test. A
-// session from seven days ago planned the garden budget. merud's
+// session from seven days ago planned the garden beds. merud's
 // summarizer finds it quiet and summarizes it; a week later, a new session
 // asks what was decided, and its prompt holds that session.
 func TestRecallsLastWeekWithoutAReminder(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRecallsLastWeekWithoutAReminder(t *testing.T) {
 	cfg := testConfig(t)
 	dir := filepath.Join(cfg.Dir, "sessions")
 	eng := recallEngine{
-		fakeEngine: &fakeEngine{pieces: []string{"You set it at 400 dollars."}},
+		fakeEngine: &fakeEngine{pieces: []string{"You chose two raised beds."}},
 	}
 	st, err := store.Open(ctx, store.Options{Path: filepath.Join(cfg.Dir, "meru.db"), EmbedModel: "fake", Dims: recallDims})
 	if err != nil {
@@ -180,8 +180,8 @@ func TestRecallsLastWeekWithoutAReminder(t *testing.T) {
 	// Last week's sessions: the garden, and one about something else.
 	week := time.Now().AddDate(0, 0, -7)
 	for _, turn := range [][2]string{
-		{"Let's plan the garden. How much should we spend?", "Four hundred dollars covers raised beds and seeds."},
-		{"When are my taxes due?", "April 15."},
+		{"Let's plan the garden. How many raised beds should we build?", "Two raised beds fit the sunny strip, with room for a path."},
+		{"When does the library close?", "6 pm on Saturdays."},
 	} {
 		sess, err := transcript.New(dir)
 		if err != nil {
@@ -208,7 +208,7 @@ func TestRecallsLastWeekWithoutAReminder(t *testing.T) {
 	// Today: a new session asks, with no reminder of what was said.
 	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}},
 		recallSearcher{st: st, eng: eng}, nil, nil, nil, quietLog())
-	if _, err := run(ctx, a, rpc.Request{Op: rpc.OpAsk, Text: "what did we decide about the garden budget?"}); err != nil {
+	if _, err := run(ctx, a, rpc.Request{Op: rpc.OpAsk, Text: "what did we decide about the garden beds?"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	system := eng.lastCall().msgs[0].Content
@@ -217,7 +217,7 @@ func TestRecallsLastWeekWithoutAReminder(t *testing.T) {
 		t.Fatalf("no earlier conversations in the prompt:\n%s", system)
 	}
 	first := strings.Split(strings.TrimSpace(section), "\n")[1] // line 0 is the header's second line
-	for _, want := range []string{"(7 days ago)", "garden budget at 400 dollars"} {
+	for _, want := range []string{"(7 days ago)", "two raised beds for the garden"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("first recalled session %q lacks %q", first, want)
 		}

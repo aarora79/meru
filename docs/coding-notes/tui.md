@@ -1,7 +1,7 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `box.go`, `usage.go`, `me.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, and usage in the header and in `/usage` in v0.3; the memory count, the profile nudge and `/me` in v0.4
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
@@ -38,7 +38,7 @@ Meru  direct · 0.91
 ╭──────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                       │
 ╰──────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /new /usage /me
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp
 ```
 
 Once `merud` has answered the first status check, the header also says how big the
@@ -70,16 +70,16 @@ for your answer:
 Meru  tools · 0.82
   ✓ notes.search · 120 ms
   → mail.send
-  ╭─────────────────────────────────────────────╮
-  │ Run mail.send?  mcp                         │
-  │ {                                           │
-  │   "to": "sam@example.com",                  │
-  │   "subject": "Garden budget",               │
-  │   "body": "The Q3 budget is 4,200 dollars." │
-  │ }                                           │
-  │                                             │
-  │  o once   s this session  [d deny]          │
-  ╰─────────────────────────────────────────────╯
+  ╭──────────────────────────────────────────────╮
+  │ Run mail.send?  mcp                          │
+  │ {                                            │
+  │   "to": "sam@example.com",                   │
+  │   "subject": "Garden plan",                  │
+  │   "body": "We sow the tomatoes on 12 April." │
+  │ }                                            │
+  │                                              │
+  │  o once   s this session  [d deny]           │
+  ╰──────────────────────────────────────────────╯
 ...
 o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
 ```
@@ -104,6 +104,22 @@ knows about you, the memories that go into every prompt:
   │ Say "remember that …" in a message, or run meru setup user in another      │
   │ terminal.                                                                  │
   ╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+`/mcp` opens one with the state of each MCP server, the same table `meru mcp`
+prints:
+
+```text
+  ╭─────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ MCP servers                                                                                 │
+  │                                                                                             │
+  │ SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM                                 │
+  │ google     http       connected       124        6        2   127.0.0.1:8000/mcp            │
+  │ brave      stdio      connected         4        2        0                                 │
+  │ obsidian   stdio      not connected     —        3        1   exec: "npx" not found         │
+  │                                                                                             │
+  │ meru tools lists each tool; meru mcp list shows the catalog and meru mcp add adds a server. │
+  ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 `/usage` opens a box of the same kind, with one column per window of time:
@@ -290,6 +306,7 @@ help line and the behaviour come from one place.
 | Up (on the input's first line) | put the last question back | same |
 | PgUp / PgDn | scroll the conversation | same |
 | `/usage` then Enter | open the usage box | same; the answer keeps streaming behind it |
+| `/mcp` then Enter | open the MCP status box | same |
 
 While the approval box is open, the keys answer it instead, and typing doesn't reach
 the input:
@@ -356,8 +373,8 @@ help line.
 return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 ```
 
-`pane` is the conversation, or the `/usage` or `/me` box drawn at the same size while
-one is open.
+`pane` is the conversation, or the `/usage`, `/me` or `/mcp` box drawn at the same
+size while one is open.
 `helpLine` lists the keys; while a box is open, it lists the keys that answer that
 box. `helpView` draws it and drops keys from the end until the line fits. The help
 component from Bubbles cuts a long line and ends it with "…" on its own, except
@@ -405,9 +422,9 @@ stats; "stopped"; or the error box.
 `sourcesBlock` draws the files, dim, like the stats line under them:
 
 ```text
-  The Q3 budget for the garden project is 4,200 dollars [1].
+  The garden project sows tomatoes on 12 April [1].
   Sources
-  [1] ~/notes/garden.md, "Budget", lines 3–5
+  [1] ~/notes/garden.md, "Planting", lines 3–5
   0.8s to first token · 40.0 tok/s · 2.4s
 ```
 
@@ -580,13 +597,14 @@ mark the selected choice, so the selection shows with colour off too. `View` swa
 the help line for a `keyList`, a slice of key bindings with the two methods the
 help component needs, so the bottom line lists the keys that answer the box.
 
-An approval box closes an open `/usage` or `/me` box: the approval needs the keys,
-and it sits in the conversation those boxes cover.
+An approval box closes an open `/usage`, `/me` or `/mcp` box: the approval needs
+the keys, and it sits in the conversation those boxes cover.
 
 ### commands.go
 
 A line that starts with `/` never reaches the model; `submit` hands it to
-`command`. `/usage` opens the usage box and `/me` the profile box (both below). `/new` calls `newSession`, which
+`command`. `/usage` opens the usage box, `/me` the profile box and `/mcp` the MCP
+status box (all below). `/new` calls `newSession`, which
 stops a streaming answer, clears the screen and forgets the session ID, so the next
 question asks `merud` for a new session. It also counts up `m.turn`: the stopped
 answer may still send events, and `handleEvent` drops any event whose turn number
@@ -612,7 +630,7 @@ other command it leaves the text in the input, so you can fix a typo, and sets
 `notice`, a dim line that takes the help line's place until the next key:
 
 ```text
-unknown command /usag · commands: /new, /usage, /me
+unknown command /usag · commands: /new, /usage, /me, /mcp
 ```
 
 `applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A
@@ -635,17 +653,20 @@ the input.
 `/usage` has no shortcut key. Ctrl-U would be the obvious one, but the text area
 already uses it to delete to the start of the line. The help line lists `/usage`
 through a key binding whose key is the text `/usage`, which no key press produces;
-Bubbles skips a binding with no keys at all.
+Bubbles skips a binding with no keys at all. The binding's help splits
+"/new /usage /me /mcp" across its key and description slots, and the scroll key
+reads `pgup/dn`, so the whole help line still fits in 80 columns.
 
 ### box.go
 
-The `/usage` and `/me` boxes share their frame. `boxPane` draws a title, a blank
+The `/usage`, `/me` and `/mcp` boxes share their frame. `boxPane` draws a title, a blank
 line, the body, a blank line and a dim note inside a teal border, as wide as the
 widest line allows up to the pane's width, and pads the result to the pane's height.
 A body line too wide for the box ends in "…", so a caller that wants its lines whole
 wraps them to `boxRoom(width)` first. `boxOpen` says whether either box is open,
 `boxKey` handles the keys while one is, and `closeBox` closes it and gives the input
-its cursor back.
+its cursor back. The `Model` holds one pointer per box (`usageBox`, `meBox`,
+`mcpBox`); nil means closed, so `boxOpen` checks all three.
 
 ### me.go
 
@@ -664,6 +685,38 @@ another terminal. The profile counts in the status move on the next status check
 so the nudge and the `no profile` marker go away within 30 seconds of the first
 memory. `Update` redraws the conversation when a status check turns the nudge on or
 off.
+
+### mcp.go
+
+`/mcp` works like `/me`: `command` opens an `mcpBox` with `loading` set and returns
+`mcpCmd`, which sends `rpc.OpMCPStatus` once and hands the rows back as an
+`mcpMsg`. `applyMCP` fills a waiting box and ignores a reply that comes after the
+box closed. `mcpBoxView` draws the rows with `MCPTable`, or `merud`'s error, such
+as an older `merud` that doesn't know the op.
+
+`MCPTable` starts with a capital letter, which in Go makes it visible to other
+packages: `meru mcp` calls it to print the same table in the shell, so the two
+views can't drift apart. It returns one string per line:
+
+```go
+line := func(name, transport, state, tools, allowed, confirm, last string) string {
+    s := fmt.Sprintf("%-*s %-10s %-13s %5s  %7s  %7s   %s",
+        nameWidth, name, transport, state, tools, allowed, confirm, last)
+    return strings.TrimRight(s, " ")
+}
+```
+
+`line` is a function value stored in a variable, a closure: it reads `nameWidth`
+from the function around it. In the format, `%-10s` pads a string on the right to
+10 columns and `%5s` pads on the left, so the numbers line up on the right. `%-*s`
+takes its width from the argument before the string, here `nameWidth`, which grows
+to fit the longest server name. `fmt` counts characters, so `—` takes one column.
+
+`TOOLS` shows `—` when `Tools` is -1, the value `merud` sends for a server that
+isn't connected. The last field is the reason a server isn't connected, folded onto
+one line by `oneLine`, or else an HTTP server's URL without its scheme. With no rows,
+`MCPTable` returns one line that says how to add a server. A box too narrow for the
+table cuts each line with "…", as `boxPane` does for any box.
 
 ### run.go
 
@@ -717,7 +770,8 @@ streaming, a finished Markdown answer, a fallback route, a route badge with a
 skill, an answer with sources, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
-usage box and the `/me` box at 80 and 40 columns, and the empty screen with the
+usage box and the `/me` box at 80 and 40 columns, the `/mcp` box at 100 and 40
+columns, and the empty screen with the
 profile nudge. After a deliberate change to the look, rewrite them and read the
 diff:
 
@@ -754,6 +808,11 @@ only the profile kinds, it says so when Meru knows nothing or `merud` fails, and
 or q closes it. It also walks the profile counts through a run (no status, -1, 0,
 then some) and checks that the nudge and the header marker follow them, and that
 the marker stays once a question has replaced the nudge.
+
+`mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
+without its scheme, a reason with a line break, a long name that widens the first
+column, no servers), that `/mcp` sends `OpMCPStatus`, fills the box, ignores a late
+reply and closes on q, and that the box shows `merud`'s error.
 
 ## Why it's built this way
 

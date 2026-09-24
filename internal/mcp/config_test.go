@@ -22,17 +22,22 @@ func TestValidate(t *testing.T) {
 		{"valid stdio", func(c *ServerConfig) {}, ""},
 		{"valid http loopback", func(c *ServerConfig) { c.Command = ""; c.URL = "http://127.0.0.1:8123/mcp" }, ""},
 		{"valid http localhost", func(c *ServerConfig) { c.Command = ""; c.URL = "http://localhost:8123/mcp" }, ""},
-		{"valid http network", func(c *ServerConfig) { c.Command = ""; c.URL = "https://mcp.example.com/mcp"; c.Network = true }, ""},
+		{"valid http remote", func(c *ServerConfig) { c.Command = ""; c.URL = "https://mcp.example.com/mcp"; c.Remote = true }, ""},
 		{"empty allow is valid and gives nothing", func(c *ServerConfig) { c.Allow = nil; c.Confirm = nil }, ""},
 		{"tool name with dots", func(c *ServerConfig) { c.Allow = []string{"files.read_v2"}; c.Confirm = nil }, ""},
 		{"both command and url", func(c *ServerConfig) { c.URL = "http://127.0.0.1:8123/mcp" }, "not both"},
 		{"neither command nor url", func(c *ServerConfig) { c.Command = "" }, "set command"},
-		{"non-loopback url without network", func(c *ServerConfig) { c.Command = ""; c.URL = "https://mcp.example.com/mcp" }, "network = true"},
-		{"private address without network", func(c *ServerConfig) { c.Command = ""; c.URL = "http://192.168.1.5:8123/mcp" }, "not a loopback"},
+		{"non-loopback url without remote", func(c *ServerConfig) { c.Command = ""; c.URL = "https://mcp.example.com/mcp" }, "remote = true"},
+		{"private address without remote", func(c *ServerConfig) { c.Command = ""; c.URL = "http://192.168.1.5:8123/mcp" }, "not a loopback"},
 		{"url with bad scheme", func(c *ServerConfig) { c.Command = ""; c.URL = "ftp://127.0.0.1/mcp" }, "scheme"},
-		{"network url with bad scheme", func(c *ServerConfig) { c.Command = ""; c.URL = "ftp://mcp.example.com"; c.Network = true }, "http or https"},
-		{"network on stdio", func(c *ServerConfig) { c.Network = true }, "network applies only"},
-		{"args on http", func(c *ServerConfig) { c.Command = ""; c.URL = "http://127.0.0.1:1/mcp"; c.Args = []string{"x"} }, "args and env"},
+		{"remote url with bad scheme", func(c *ServerConfig) { c.Command = ""; c.URL = "ftp://mcp.example.com"; c.Remote = true }, "http or https"},
+		{"remote on stdio", func(c *ServerConfig) { c.Remote = true }, "remote applies only"},
+		{"args on http", func(c *ServerConfig) { c.Command = ""; c.URL = "http://127.0.0.1:1/mcp"; c.Args = []string{"x"} }, "args apply only"},
+		{"env on http", func(c *ServerConfig) {
+			c.Command = ""
+			c.URL = "http://127.0.0.1:8000/mcp"
+			c.Env = map[string]string{"GOOGLE_OAUTH_CLIENT_ID": "x"}
+		}, `mcp server "files": env does nothing on a url server, because merud doesn't start it. Set the variables where you start the server, or send a key with headers`},
 		{"empty name", func(c *ServerConfig) { c.Name = "" }, "name is empty"},
 		{"name with dot", func(c *ServerConfig) { c.Name = "my.files" }, "letters, digits"},
 		{"name with space", func(c *ServerConfig) { c.Name = "my files" }, "letters, digits"},

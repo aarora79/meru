@@ -120,6 +120,7 @@ In `meru chat`:
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
+| `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
 index, the memories and the session on the left:
@@ -269,7 +270,7 @@ While it answers, the model may call a tool, such as a search of your notes. `me
 shows each call on standard error, dimmed, as it starts and ends:
 
 ```text
-→ notes.search {"query":"garden budget"}
+→ notes.search {"query":"garden plan"}
 ✓ notes.search 120 ms
 ```
 
@@ -280,7 +281,7 @@ arguments and waits:
 Meru wants to run mail.send (mcp) with:
   {
     "to": "sam@example.com",
-    "subject": "Garden budget"
+    "subject": "Garden plan"
   }
 Run mail.send? [o]nce  [s]ession  [d]eny:
 ```
@@ -441,11 +442,11 @@ Then ask about your notes. When the router sends a question to search, the answe
 cites the excerpts it used by number, and `meru` lists them after it:
 
 ```text
-$ meru "what is the Q3 budget for the garden project?"
-The Q3 budget for the garden project is 4,200 dollars [1].
+$ meru "when does the garden project sow tomatoes?"
+The garden project sows tomatoes on 12 April [1].
 
 Sources:
-[1] ~/notes/garden.md, "Budget", lines 3–5
+[1] ~/notes/garden.md, "Planting", lines 3–5
 ```
 
 Each source gives the file, the heading it sits under, and the lines (or the page,
@@ -558,7 +559,7 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### meru mcp add
 
-An MCP server gives the model tools. Meru knows nine, and `meru mcp list` shows
+An MCP server gives the model tools. Meru knows three, and `meru mcp list` shows
 them:
 
 ```sh
@@ -567,21 +568,14 @@ meru mcp list
 
 | Name | What the model gets | What you need |
 | --- | --- | --- |
+| `google` | search and read mail and threads, send mail, list and change calendar events, search Drive, read a doc; sending mail and changing an event ask first | a Google OAuth client, `uv`, and the server running, which you start |
 | `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
-| `fetch` | reading a web page | `uv`, which provides `uvx` |
-| `filesystem` | list, search and read files in the folders you name; writing, editing, moving and making folders ask first | the folders, and Node.js |
-| `google` | `gmail`, `calendar` and `drive` in one server | a Google OAuth client and `uv`; you sign in to Google on first use |
-| `gmail` | search and read mail; drafting and sending ask first | as for `google` |
-| `calendar` | calendars and events; changing an event asks first | as for `google` |
-| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `google` |
 | `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
-| `windows` | see the screen and open apps; clicking, typing, PowerShell and file changes ask first | Windows, and `uv` |
 
-To add one, name it. An entry that takes arguments gets them after its name:
+To add one, name it:
 
 ```sh
 meru mcp add brave
-meru mcp add filesystem ~/Documents ~/notes
 ```
 
 Meru shows what the server does and offers two paths:
@@ -594,18 +588,35 @@ Meru shows what the server does and offers two paths:
 - **s) Show me how.** Meru prints the install step, the block, the file to paste
   it into, and the lines to add to `secrets.toml`. It writes nothing.
 
+`brave` and `obsidian` are stdio servers: `merud` starts each one as a child
+process. `google` is a server you start yourself (see
+[The google entry](#the-google-entry)).
+
 A server outside the catalog takes one command too:
 
 ```sh
 meru mcp add stdio notes -- /usr/local/bin/notes-mcp --vault ~/notes   # merud starts it
-meru mcp add http calendar http://127.0.0.1:8123/mcp                   # it runs already
-meru mcp add http team https://mcp.example.com/mcp --network           # on another machine
+meru mcp add http tasks http://127.0.0.1:8123/mcp                      # you start it
+meru mcp add http team https://mcp.example.com/mcp --remote            # on another machine
 ```
 
-A URL off this machine needs `--network`. Every call to one of its tools sends
-your data to that machine, and Meru says so before it writes anything. The older
-forms, `meru mcp add notes -- <command>` and `meru mcp add calendar --url <url>`,
-still work.
+A URL off this machine needs `--remote`. Every call to one of its tools sends
+your data to that machine, and Meru says so before it writes anything. `remote`
+covers only where `merud` connects. It says nothing about what the server itself
+reaches: `google` runs on this machine with `remote = false` and talks to Google.
+The older forms, `meru mcp add notes -- <command>` and `meru mcp add tasks --url
+<url>`, still work.
+
+An `env` table goes only on a stdio server. `merud` starts no process for a `url`
+server, so it has no environment to set, and `merud` refuses to start with this
+message:
+
+```text
+mcp server "tasks": env does nothing on a url server, because merud doesn't start it. Set the variables where you start the server, or send a key with headers
+```
+
+A config written before `network` became `remote` fails to load with "network was
+renamed remote". Change the key and restart `merud`.
 
 #### Meru tries the server first
 
@@ -656,27 +667,79 @@ When `merud` isn't running, Meru can't try the server. It writes the catalog's
 lists, or an empty `allow` for a server of your own, and the server loads when
 `merud` starts.
 
-#### The filesystem and windows entries
+For a server you start, such as `google`, Meru first checks for one second whether
+anything answers at the URL. When nothing does, it skips the try, writes the
+catalog's lists, and says `merud` connects on your next question after you start
+the server.
 
-These two let the model change your files or run programs. Each one runs as
-you, with no sandbox: an approved call can do anything you can. The catalog has
-no shell server; to let the model run a program, declare it in `[[commands]]`
-(see [Local commands](#local-commands)).
+#### The google entry
 
-- **`filesystem`** reads only inside the folders you name. Meru turns `~` into
-  your home folder and checks that each folder exists. Reading, listing and
-  searching run without asking; `write_file`, `edit_file`, `move_file` and
-  `create_directory` ask first.
-- **`windows`** runs [Windows-MCP](https://github.com/CursorTouch/Windows-MCP),
-  and only on Windows. Looking at the screen runs without asking. Clicking, typing,
-  PowerShell (every time, with no approval for the session), files and processes
-  ask first, and the registry tool stays off.
-  Windows-MCP sends usage data to its makers unless told not to, so the entry
-  sets `ANONYMIZED_TELEMETRY = "false"`.
+`google` runs [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
+for Gmail, Calendar, Drive and Docs. You start it and keep it running; `merud`
+connects to it at `http://127.0.0.1:8000/mcp` and never starts, restarts or
+watches it. `meru mcp add google` prints the command:
 
-The `google` entry adds Gmail, Calendar, Drive and Docs in one server, with one
-Google sign-in. Use `gmail`, `calendar` or `drive` instead when you want only one
-of them: each asks Google for its own permissions and no more.
+```sh
+GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
+```
+
+Before the first run, turn on the Gmail, Calendar, Drive and Docs APIs in Google
+Cloud Console and create an OAuth client of type "Desktop app"; the
+[quick start](https://workspacemcp.com/quick-start) lists the steps. The client ID
+and secret go in the server's environment when you start it. They never pass
+through Meru, and `secrets.toml` doesn't hold them. The first time the model uses
+a Google tool, the server gives you a link to sign in to Google.
+
+Run the command in a terminal, or from `launchd` or `systemd` the way you run
+Ollama. The server offers more than 120 tools. `--tools` limits it to four Google
+services, and the catalog's `allow` list gives the model eight tools:
+
+| Tool | Asks first |
+| --- | --- |
+| `search_gmail_messages`, `get_gmail_message_content`, `get_gmail_thread_content` | no |
+| `send_gmail_message` | yes |
+| `get_events` | no |
+| `manage_event` | yes |
+| `search_drive_files`, `get_doc_content` | no |
+
+The catalog has no shell server; to let the model run a program, declare it in
+`[[commands]]` (see [Local commands](#local-commands)).
+
+#### See each server's state
+
+`meru mcp`, or `meru mcp status`, prints one row per server in `config.toml`:
+
+```text
+$ meru mcp
+SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
+google     http       connected       124        8        2   127.0.0.1:8000/mcp
+brave      stdio      connected         4        2        0
+obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH
+```
+
+| Column | What it shows |
+| --- | --- |
+| `SERVER` | the `name` from config |
+| `TRANSPORT` | `stdio` or `http` |
+| `STATE` | `connected` or `not connected` |
+| `TOOLS` | how many tools the server offers; `—` when it isn't connected |
+| `ALLOWED` | how many tools your `allow` list names |
+| `CONFIRM` | how many allowed tools ask first, from `confirm` and `always_confirm` |
+| last field | the URL of an HTTP server, or why the server isn't connected |
+
+`ALLOWED` and `CONFIRM` come from `config.toml`, so they show while a server is
+down. `merud` answers from what it already holds and sends nothing to any server,
+so the table comes back at once. `meru mcp --json` prints the same rows as JSON,
+and `/mcp` in `meru chat` shows the table in a box.
+
+`merud` connects to each server once when it starts. A server that isn't connected
+gets one more try at the start of each turn that offers tools: 5 seconds for an
+HTTP server, 30 for a stdio server. Nothing retries between turns. So when `google`
+shows `not connected`, start it, and ask your question: `merud` connects on that
+turn, with no restart. A stdio server that crashed comes back the same way. A
+server that fails the try leaves its tools out of that turn, and the model answers
+without them.
 
 #### See and remove servers
 
@@ -699,11 +762,11 @@ Meru deletes that server's `[[mcp.servers]]` block and the comment lines right
 above it, keeps the rest of `config.toml` as it was, and asks `merud` to reload.
 Keys stay in `secrets.toml`, since another server may use them.
 
-In chat you can also ask Meru to "connect my Gmail". The model calls the built-in
-`configure` tool, which asks you every time, with only "approve once" and "deny".
-A server that needs an API key you haven't saved yet isn't added from chat, because
-keys never pass through the model; Meru tells you to run `meru mcp add` instead.
-The same goes for `filesystem`, which needs its folders on the command line.
+In chat you can also ask Meru to "connect my Google mail". The model calls the
+built-in `configure` tool, which asks you every time, with only "approve once" and
+"deny". `configure` won't add a server that needs an API key you haven't saved yet,
+because keys never pass through the model; Meru tells you to run `meru mcp add`
+instead.
 
 If you edit `config.toml` by hand, restart `merud` to load the change:
 
@@ -881,8 +944,8 @@ with something your files hold:
    remind me what it was". The second answer should come from that project's
    notes. If its sources are the first topic's files, the search mixed the two
    questions.
-2. **A real follow-up.** Ask "what did I pay for [something]?", then "how much did
-   it cost?". The second answer should still be about the same thing: a short
+2. **A real follow-up.** Ask "which hotel did I book in [a city]?", then "how long
+   was the stay?". The second answer should still be about the same thing: a short
    follow-up borrows the question before it.
 3. **Recovery.** When the model says it has nothing, type `/new` and ask again in
    one full question. It should answer.

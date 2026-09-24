@@ -262,7 +262,7 @@ tr:last-child td{border-bottom:none}
   <rect x="424" y="350" width="268" height="46" rx="9" class="bxc"/>
   <text x="436" y="368" class="ttl">tools &#183; MCP</text>
   <text x="680" y="368" class="sm" text-anchor="end">+ more</text>
-  <text x="436" y="386" class="sm">web search &#183; Gmail &#183; Calendar &#183; Drive</text>
+  <text x="436" y="386" class="sm">Google &#183; web search &#183; Obsidian</text>
 
   <!-- agent loop reaches models, data, skills; dispatch reaches agents and tools -->
   <path d="M370 156 L421 84" class="ln" marker-end="url(#dk)"/>
@@ -303,7 +303,7 @@ tr:last-child td{border-bottom:none}
       <div class="li"><b>&#9632;</b><span><i>Local models only.</i> The one model client talks to Ollama on this machine and refuses any other URL.</span></div>
       <div class="li"><b>&#9632;</b><span><i>No telemetry leaves the machine.</i> Meru measures itself locally, sends no crash reports and never checks for updates.</span></div>
       <div class="li"><b>&#9632;</b><span><i>Deny by default.</i> A new MCP server or A2A agent gives the model nothing until you allow tools by name.</span></div>
-      <div class="li"><b>&#9632;</b><span><i>Loopback unless you say so.</i> A remote server or agent needs <span class="mono">network = true</span> in its entry.</span></div>
+      <div class="li"><b>&#9632;</b><span><i>Loopback unless you say so.</i> A remote server or agent needs <span class="mono">remote = true</span> in its entry.</span></div>
       <div class="li"><b>&#9632;</b><span><i>Every external action logged.</i> Review them all with <span class="mono">meru log</span>.</span></div>
       <div class="li warnli"><b>!</b><span><i>No sandbox.</i> MCP servers run with your permissions, so add only ones you trust.</span></div>
     </div>
@@ -332,7 +332,7 @@ tr:last-child td{border-bottom:none}
 
   <div class="card">
     <h2><span class="chip">05</span>Two searches, merged by rank<span class="tail">BM25 + vec1 distance + reciprocal-rank fusion</span></h2>
-    <p style="margin-bottom:6px">Search turns look in your files; memories and chat summaries join in v0.4. Keyword search (BM25) finds exact strings such as tickers, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
+    <p style="margin-bottom:6px">Search turns look in your files; memories and chat summaries join in v0.4. Keyword search (BM25) finds exact strings such as project code names, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
     <div class="chart"><svg viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid search pipeline and reciprocal-rank fusion scores"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker></defs>
 
 <text x="0" y="12" class="cl">RRF SCORE = Σ 1/(60 + RANK) · RANKS INVENTED, SCORES COMPUTED</text>
@@ -361,7 +361,7 @@ tr:last-child td{border-bottom:none}
 <text x="56" y="94" class="ct">kw #1</text>
 <rect x="150" y="83" width="178.0" height="14" rx="3" fill="#E4552F"/>
 <text x="335.0" y="94" class="cv">0.0164</text>
-<text x="386.0" y="94" class="cf">exact ticker, keyword only</text>
+<text x="386.0" y="94" class="cf">exact code name, keyword only</text>
 <text x="0" y="113" class="cn">chunk E</text>
 <text x="56" y="113" class="ct">vec #1</text>
 <rect x="150" y="102" width="178.0" height="14" rx="3" fill="#E4552F"/>
@@ -390,10 +390,10 @@ tr:last-child td{border-bottom:none}
         <p class="fine" style="margin-top:4px"><span class="mono">configure</span>, the built-in tool that edits config, asks every time. Scripts and scheduled jobs have no one to ask, so <span class="mono">dispatch</span> denies.</p>
       </div>
       <pre>[[mcp.servers]]
-name    = <span class="s">"gmail"</span>
-command = <span class="s">"..."</span>          <span class="c"># stdio child</span>
-allow   = [<span class="s">"search"</span>, <span class="s">"read"</span>, <span class="s">"send"</span>] <span class="c"># rest: off</span>
-confirm = [<span class="s">"send"</span>]         <span class="c"># ask me first</span></pre>
+name    = <span class="s">"obsidian"</span>
+command = <span class="s">"uvx"</span>          <span class="c"># stdio child</span>
+allow   = [<span class="s">"search"</span>, <span class="s">"read"</span>, <span class="s">"append"</span>] <span class="c"># rest: off</span>
+confirm = [<span class="s">"append"</span>]       <span class="c"># ask me first</span></pre>
     </div>
   </div>
 
@@ -423,7 +423,7 @@ other/        <span class="c">anything else</span></pre>
         <div class="step"><b>1</b><span>Checks for Ollama and prints the install command if needed.</span></div>
         <div class="step"><b>2</b><span>Downloads the <span class="mono">lite</span> or <span class="mono">full</span> models, your pick.</span></div>
         <div class="step"><b>3</b><span>Writes <span class="mono">config.toml</span> and asks which folders to index.</span></div>
-        <div class="step"><b>4</b><span>Offers starter MCP servers (web search, Gmail, Drive). It adds each for you, or shows you what to paste.</span></div>
+        <div class="step"><b>4</b><span>Offers three starter MCP servers (Google, web search, Obsidian). It adds each for you, or shows you what to paste.</span></div>
         <div class="step"><b>5</b><span>Answers a test question.</span></div>
       </div>
       <div class="lane b">

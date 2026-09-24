@@ -56,6 +56,23 @@ tables, which the parser decodes into a slice (`[]Command`); each
 interpreters live in [commands](commands.md), which checks the entries when
 `merud` starts, as the MCP pool checks `[[mcp.servers]]`.
 
+`MCPServer` is one `[[mcp.servers]]` entry and `A2AAgent` one `[[a2a.agents]]`
+entry. Each has a `Remote` field:
+
+```go
+// Remote lets merud connect to a URL that isn't loopback. It covers
+// only where merud connects; it says nothing about what the server
+// itself reaches. It was called network before.
+Remote bool `toml:"remote"`
+```
+
+The key was `network` until the rename. `network = false` on a Gmail server read
+as "this server stays off the network", which is false: the `google` server runs
+on loopback and talks to Google. `remote` names the one thing the key controls.
+`MCPServer.Env` belongs to a stdio server; the `mcp` package refuses it on a `url`
+entry, because `merud` starts no process whose environment it could set (see
+[mcp.md](mcp.md)).
+
 ### load.go
 
 `Load` starts from a `Config` full of defaults and lets the TOML parser write
@@ -83,6 +100,24 @@ default:
 - `md.Undecoded()` lists keys the file has but no struct field wants. That
   catches typos such as `profil = "full"`, which would otherwise do nothing
   without a word.
+
+One unknown key gets its own message. A config written before the rename still
+says `network`, and "unknown keys: mcp.servers.network" wouldn't say what to
+change. So inside the loop over the unknown keys, `Load` asks `renamedNetwork`
+first:
+
+```go
+func renamedNetwork(k toml.Key) bool {
+    return len(k) == 3 && k[2] == "network" &&
+        ((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
+}
+```
+
+A `toml.Key` is a slice of strings, one per level of the key's path, so
+`network` inside `[[mcp.servers]]` arrives as `["mcp", "servers", "network"]`.
+When it matches, `Load` fails with "network was renamed remote: write remote =
+true in mcp.servers to let merud connect to a URL on another machine".
+`TestLoadErrors` covers the old key in both tables.
 
 Next, `Load` sets `Dir` to the folder that holds the config file. Pointing
 `merud -config` at another folder moves the whole Meru home there, which is

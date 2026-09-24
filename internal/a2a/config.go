@@ -36,14 +36,14 @@ type AgentConfig struct {
 	Name string
 	// URL is where the Client reads the agent card: a base URL, which gets
 	// "/.well-known/agent-card.json" added, or the card's full URL. It must
-	// be loopback unless Network is true.
+	// be loopback unless Remote is true.
 	URL string
-	// Network allows an agent that isn't on this machine. It is the user's
+	// Remote allows an agent that isn't on this machine. It is the user's
 	// explicit "my data may leave this machine" (ARCHITECTURE.md, "Privacy
 	// boundary"). Without it the Client also refuses to connect to any
 	// address off this machine, so a card on loopback can't send the calls
 	// elsewhere.
-	Network bool
+	Remote bool
 	// Headers go on every request to the agent, the card fetch included.
 	// merud resolves "secret:<name>" values before it builds the Client.
 	Headers map[string]string
@@ -82,7 +82,7 @@ func (c AgentConfig) Validate() error {
 	}
 	if strings.TrimSpace(c.URL) == "" {
 		add("url is empty")
-	} else if err := checkAgentURL(c.URL, c.Network); err != nil {
+	} else if err := checkAgentURL(c.URL, c.Remote); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -191,12 +191,12 @@ func checkSkillID(field, id string) error {
 }
 
 // checkAgentURL fails unless raw is an http or https URL, and a loopback one
-// when network is false. loopback.CheckURL holds the loopback rule, so A2A
+// when remote is false. loopback.CheckURL holds the loopback rule, so A2A
 // follows the same rule as MCP, the engine and the telemetry exporter.
-func checkAgentURL(raw string, network bool) error {
-	if !network {
+func checkAgentURL(raw string, remote bool) error {
+	if !remote {
 		if err := loopback.CheckURL(raw); err != nil {
-			return fmt.Errorf("url: %w (set network = true to allow an agent on another machine)", err)
+			return fmt.Errorf("url: %w (set remote = true to allow an agent on another machine)", err)
 		}
 		return nil
 	}

@@ -145,15 +145,19 @@ type MCPServer struct {
 	Command string   `toml:"command"`
 	Args    []string `toml:"args"`
 	// Env adds environment variables for a stdio server. A value written
-	// "secret:<name>" is replaced by that entry of ~/.meru/secrets.toml.
+	// "secret:<name>" is replaced by that entry of ~/.meru/secrets.toml. A
+	// url entry with env fails to load: merud starts no process for it, so
+	// the variables would go nowhere.
 	Env map[string]string `toml:"env"`
 	// URL reaches a Streamable HTTP server that is already running.
 	URL string `toml:"url"`
 	// Headers go on every HTTP request to URL. A value written
 	// "secret:<name>" is replaced from secrets.toml, as in Env.
 	Headers map[string]string `toml:"headers"`
-	// Network allows a URL that isn't loopback.
-	Network bool `toml:"network"`
+	// Remote lets merud connect to a URL that isn't loopback. It covers
+	// only where merud connects; it says nothing about what the server
+	// itself reaches. It was called network before.
+	Remote bool `toml:"remote"`
 	// Allow lists the tools the model may call; empty means none.
 	Allow []string `toml:"allow"`
 	// Confirm lists allowed tools that ask before each call.
@@ -177,9 +181,10 @@ type A2A struct {
 type A2AAgent struct {
 	Name string `toml:"name"`
 	// URL is where merud reads the agent card. It must be loopback unless
-	// Network is true.
-	URL     string `toml:"url"`
-	Network bool   `toml:"network"`
+	// Remote is true, which covers only where merud connects. It was called
+	// network before.
+	URL    string `toml:"url"`
+	Remote bool   `toml:"remote"`
 	// Headers go on every request to the agent; "secret:<name>" values come
 	// from secrets.toml.
 	Headers map[string]string `toml:"headers"`

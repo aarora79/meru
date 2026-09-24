@@ -48,9 +48,9 @@ func (l labelled) turn() Turn {
 }
 
 // evalFolders stands in for the user's [index] folders on every labelled
-// row, so rows can ask about "meru" or "portfolio" by name the way a user
+// row, so rows can ask about "meru" or "blog" by name the way a user
 // asks about their own projects.
-var evalFolders = []string{"~/notes", "~/repos/meru", "~/repos/portfolio"}
+var evalFolders = []string{"~/notes", "~/repos/meru", "~/repos/blog"}
 
 // loadLabelled reads a JSONL file of labelled questions, one JSON object per
 // line. It fails on a bad line or on a route that isn't one of the four.

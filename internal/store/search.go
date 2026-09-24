@@ -98,7 +98,7 @@ func (s *Store) hits(ctx context.Context, query string, args ...any) ([]Hit, err
 // maxQueryTerms words count. It returns "" when the text holds no words.
 //
 // OR rather than FTS5's default AND: a question such as "what did I note
-// about the Q3 budget" should find a chunk that says "Q3 budget" without
+// about the Q3 launch" should find a chunk that says "Q3 launch" without
 // the words "what", "did" and "note". BM25 already scores common words low.
 func ftsQuery(text string) string {
 	words := strings.FieldsFunc(text, func(r rune) bool {

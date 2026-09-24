@@ -683,7 +683,7 @@ func (ix *Indexer) embed(ctx context.Context, chunks []store.Chunk) ([]engine.Ve
 }
 
 // embedText is what gets embedded for a chunk: its heading path, then its
-// text. The second chunk of a long "Budget > Q3" section doesn't repeat the
+// text. The second chunk of a long "Garden > Spring" section doesn't repeat the
 // heading line, and without the path its vector would lose what the section
 // is about.
 func embedText(c store.Chunk) string {

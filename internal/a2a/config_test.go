@@ -27,18 +27,18 @@ func TestValidate(t *testing.T) {
 		{"valid loopback", func(c *AgentConfig) {}, ""},
 		{"valid localhost card path", func(c *AgentConfig) { c.URL = "http://localhost:9100/agent-card.json" }, ""},
 		{"valid ipv6 loopback", func(c *AgentConfig) { c.URL = "http://[::1]:9100" }, ""},
-		{"valid network", func(c *AgentConfig) { c.URL = "https://agent.example.com"; c.Network = true }, ""},
+		{"valid remote", func(c *AgentConfig) { c.URL = "https://agent.example.com"; c.Remote = true }, ""},
 		{"valid headers", func(c *AgentConfig) { c.Headers = map[string]string{"Authorization": "Bearer x", "X-Api-Key": "k"} }, ""},
 		{"empty allow is valid and gives nothing", func(c *AgentConfig) { c.Allow = nil; c.Confirm = nil }, ""},
 		{"skill ID with dots", func(c *AgentConfig) { c.Allow = []string{"docs.summarize_v2"}; c.Confirm = nil }, ""},
 		{"valid timeout", func(c *AgentConfig) { c.Timeout = 5 * time.Minute }, ""},
 		{"empty url", func(c *AgentConfig) { c.URL = "" }, "url is empty"},
-		{"non-loopback url without network", func(c *AgentConfig) { c.URL = "https://agent.example.com" }, "network = true"},
-		{"private address without network", func(c *AgentConfig) { c.URL = "http://192.168.1.5:9100" }, "not a loopback"},
+		{"non-loopback url without remote", func(c *AgentConfig) { c.URL = "https://agent.example.com" }, "remote = true"},
+		{"private address without remote", func(c *AgentConfig) { c.URL = "http://192.168.1.5:9100" }, "not a loopback"},
 		{"url with bad scheme", func(c *AgentConfig) { c.URL = "ftp://127.0.0.1/agent" }, "scheme"},
 		{"file url", func(c *AgentConfig) { c.URL = "file:///tmp/card.json" }, "scheme"},
-		{"network url with bad scheme", func(c *AgentConfig) { c.URL = "ftp://agent.example.com"; c.Network = true }, "http or https"},
-		{"network url without host", func(c *AgentConfig) { c.URL = "http:///card"; c.Network = true }, "with a host"},
+		{"remote url with bad scheme", func(c *AgentConfig) { c.URL = "ftp://agent.example.com"; c.Remote = true }, "http or https"},
+		{"remote url without host", func(c *AgentConfig) { c.URL = "http:///card"; c.Remote = true }, "with a host"},
 		{"empty name", func(c *AgentConfig) { c.Name = "" }, "name is empty"},
 		{"name with dot", func(c *AgentConfig) { c.Name = "my.agent" }, "letters, digits"},
 		{"name with space", func(c *AgentConfig) { c.Name = "my agent" }, "letters, digits"},
@@ -78,7 +78,7 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() = nil, want errors")
 	}
-	for _, want := range []string{"letters, digits", "network = true", "wildcards", "negative"} {
+	for _, want := range []string{"letters, digits", "remote = true", "wildcards", "negative"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate() = %v, missing %q", err, want)
 		}

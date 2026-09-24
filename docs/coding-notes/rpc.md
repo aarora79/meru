@@ -81,7 +81,36 @@ holds the name and version the server reports and every tool it offers, each
 with `read_only` and `destructive`, the server's MCP hints. Both are `*bool`, so
 a hint the server left out stays out of the JSON instead of reading as `false`.
 `mcp_reload` answers with one `tools` event, the same as `tools`, showing the
-servers after the reload.
+servers after the reload. `ProbeServer.Remote` goes on the wire as `remote`; it
+was `network` before the rename.
+
+A third MCP op, `OpMCPStatus` (`mcp_status`), backs `meru mcp` and the chat's
+`/mcp` box. `merud` answers from config and what its client pool already holds,
+and sends nothing to any server, so the reply comes at once while a server is
+down. The reply is one `mcp_status` event (`EventMCPStatus`) whose `MCP` field
+holds one `MCPStatus` per `[[mcp.servers]]` entry, in config order:
+
+```go
+type MCPStatus struct {
+    Name      string `json:"name"`
+    Transport string `json:"transport"` // "stdio" or "http"
+    State     string `json:"state"`     // MCPConnected or MCPNotConnected
+    URL       string `json:"url,omitempty"`
+    Tools     int    `json:"tools"`
+    Allowed   int    `json:"allowed"`
+    Confirm   int    `json:"confirm"`
+    Err       string `json:"err,omitempty"`
+}
+```
+
+`State` holds one of two constants, `MCPConnected` ("connected") and
+`MCPNotConnected` ("not connected"). Config has no key that turns a server off,
+so there is no third state. `Tools` is -1 for a server that isn't connected,
+since it has no tool list to count; the clients draw it as `—`. `Tools` has no
+`omitempty`, so a connected server that offers no tools still sends `0`.
+`Allowed` and `Confirm` come from config (`Confirm` counts `confirm` and
+`always_confirm` together), so they show either way. `Err` says in one line why a
+server isn't connected.
 
 `Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
 never a struct value, so without the pointer every event would carry an empty
@@ -95,7 +124,7 @@ Adding a slice field (`Sources`) made `Event` a type Go can't compare with
 Two helpers both clients use, so `meru` and `meru chat` show sources the same
 way:
 
-- **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Budget",
+- **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Planting",
   lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
   this way.
 - **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
@@ -160,7 +189,7 @@ the caller's context closes the connection.
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
 `tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
 `memory_forget`), the skill ops (`skills`, `skill_show`, `skill_reset`) and the
-MCP ops (`mcp_probe`, `mcp_reload`) to the handler. Any other op gets an
+MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`) to the handler. Any other op gets an
 `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,

@@ -14,7 +14,7 @@
 // the tool_calls row and the transcript lines (AGENTS.md, non-negotiable 4).
 //
 // The Client reaches only loopback addresses unless an entry says
-// network = true. It checks the configured URL, and its dialer refuses any
+// remote = true. It checks the configured URL, and its dialer refuses any
 // other address at connect time, so a card can't point the calls elsewhere.
 //
 // What the package leaves out: it serves no A2A of its own, sends no push

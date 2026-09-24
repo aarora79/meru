@@ -123,16 +123,16 @@ func summaries(t *testing.T, sess *transcript.Session) []string {
 func TestTickSummarizesQuietSessions(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	eng := &fakeEngine{text: "  The user set the garden\nbudget at 400 dollars.  "}
+	eng := &fakeEngine{text: "  The user chose two raised\nbeds for the garden.  "}
 	st, dir, s := setup(t, eng, now)
 
-	quiet := writeSession(t, st, dir, now.Add(-2*time.Hour), "garden budget")
-	active := writeSession(t, st, dir, now.Add(-5*time.Minute), "taxes")
+	quiet := writeSession(t, st, dir, now.Add(-2*time.Hour), "garden beds")
+	active := writeSession(t, st, dir, now.Add(-5*time.Minute), "library")
 
 	if n := s.Tick(ctx); n != 1 {
 		t.Fatalf("Tick wrote %d summaries, want 1", n)
 	}
-	if got := summaries(t, quiet); len(got) != 1 || got[0] != "The user set the garden budget at 400 dollars." {
+	if got := summaries(t, quiet); len(got) != 1 || got[0] != "The user chose two raised beds for the garden." {
 		t.Errorf("quiet session's summaries = %q", got)
 	}
 	if got := summaries(t, active); len(got) != 0 {
@@ -142,7 +142,7 @@ func TestTickSummarizesQuietSessions(t *testing.T) {
 	if opts.Model != "fast-model" || !opts.NoThink || opts.MaxTokens != maxTokens || opts.LogProbs {
 		t.Errorf("model call options = %+v; want the fast model, thinking off, a token cap", opts)
 	}
-	if !strings.Contains(eng.msgs[0][1].Content, "User: garden budget") {
+	if !strings.Contains(eng.msgs[0][1].Content, "User: garden beds") {
 		t.Errorf("model read %q, want the conversation", eng.msgs[0][1].Content)
 	}
 	// The store has the summary and its vector.
@@ -164,20 +164,20 @@ func TestTickSummarizesQuietSessions(t *testing.T) {
 	if err := quiet.Append(transcript.Line{TS: now.Add(10 * time.Minute), Type: transcript.TypeUser, Text: "and seeds?"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := quiet.Append(transcript.Line{TS: now.Add(11 * time.Minute), Type: transcript.TypeAssistant, Text: "30 dollars."}); err != nil {
+	if err := quiet.Append(transcript.Line{TS: now.Add(11 * time.Minute), Type: transcript.TypeAssistant, Text: "Next week."}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.ReplaySession(ctx, dir, quiet.ID()); err != nil {
 		t.Fatal(err)
 	}
-	eng.text = "Set the garden budget and priced seeds."
+	eng.text = "Chose the beds and ordered seeds."
 	s.now = func() time.Time { return now.Add(time.Hour) }
 	// Both sessions are quiet now, so both get a summary.
 	if n := s.Tick(ctx); n != 2 {
 		t.Fatalf("Tick after new turns wrote %d, want 2", n)
 	}
 	rows, _ = st.Sessions(ctx, []string{quiet.ID()})
-	if rows[0].Summary != "Set the garden budget and priced seeds." {
+	if rows[0].Summary != "Chose the beds and ordered seeds." {
 		t.Errorf("summary = %q, want the newest", rows[0].Summary)
 	}
 	if got := summaries(t, quiet); len(got) != 2 {
@@ -235,11 +235,11 @@ func TestTickWhenTheModelFailsOrSaysNothing(t *testing.T) {
 	t.Run("says nothing", func(t *testing.T) {
 		eng := &fakeEngine{text: " \n "}
 		st, dir, s := setup(t, eng, now)
-		sess := writeSession(t, st, dir, now.Add(-time.Hour), "what is the garden budget?")
+		sess := writeSession(t, st, dir, now.Add(-time.Hour), "when do I sow the tomatoes?")
 		if n := s.Tick(ctx); n != 1 {
 			t.Fatalf("Tick wrote %d, want 1", n)
 		}
-		if got := summaries(t, sess); len(got) != 1 || got[0] != "what is the garden budget?" {
+		if got := summaries(t, sess); len(got) != 1 || got[0] != "when do I sow the tomatoes?" {
 			t.Errorf("summaries = %q, want the first question", got)
 		}
 	})

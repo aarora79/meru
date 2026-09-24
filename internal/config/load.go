@@ -129,6 +129,10 @@ func Load(path string) (Config, error) {
 		if unknown := md.Undecoded(); len(unknown) > 0 {
 			keys := make([]string, len(unknown))
 			for i, k := range unknown {
+				if renamedNetwork(k) {
+					return Config{}, fmt.Errorf("config %s: network was renamed remote: write remote = true in %s "+
+						"to let merud connect to a URL on another machine", path, k[0]+"."+k[1])
+				}
 				keys[i] = k.String()
 			}
 			slices.Sort(keys)
@@ -309,4 +313,13 @@ func LogLevel(name string) (slog.Level, bool) {
 func ProfileModels(name string) (Models, bool) {
 	m, ok := profiles[name]
 	return m, ok
+}
+
+// renamedNetwork reports whether k is the old network key of an
+// [[mcp.servers]] or [[a2a.agents]] entry, which is now called remote. Load
+// names the rename rather than calling the key unknown, so a config written
+// before the rename gets a message that says what to change.
+func renamedNetwork(k toml.Key) bool {
+	return len(k) == 3 && k[2] == "network" &&
+		((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
 }

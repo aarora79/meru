@@ -128,7 +128,7 @@ name    = "research"
 url     = "http://127.0.0.1:9100"
 allow   = ["summarize"]
 confirm = ["summarize"]
-network = false
+remote  = false
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -217,6 +217,8 @@ func TestLoadErrors(t *testing.T) {
 		{"index overlap negative", "[index]\noverlap_tokens = -1", "index.overlap_tokens"},
 		{"index overlap past half", "[index]\nchunk_tokens = 100\noverlap_tokens = 51", "index.overlap_tokens"},
 		{"index unknown key", "[index]\nfolder = []", "unknown keys: index.folder"},
+		{"old mcp network key", "[[mcp.servers]]\nname = \"g\"\nurl = \"http://127.0.0.1:8000/mcp\"\nnetwork = true", "network was renamed remote"},
+		{"old a2a network key", "[[a2a.agents]]\nname = \"r\"\nurl = \"http://127.0.0.1:9100\"\nnetwork = false", "network was renamed remote"},
 		{"output_dir empty", "[skills]\noutput_dir = \"\"", "skills.output_dir is empty"},
 		{"output_dir relative", "[skills]\noutput_dir = \"out\"", `skills.output_dir "out" must be an absolute path`},
 	}

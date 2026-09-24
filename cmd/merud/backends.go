@@ -21,7 +21,8 @@ import (
 )
 
 // mcpBackend is the dispatch.Backend for the MCP servers in config. The
-// pool does the real work: allowlists, timeouts and reconnects. This type
+// pool does the real work: allowlists, timeouts and the one try per turn
+// at a server that isn't connected. This type
 // only changes the shape of what goes in and out.
 type mcpBackend struct {
 	pool *mcp.Pool
@@ -36,6 +37,11 @@ func (b mcpBackend) Kind() string { return dispatch.KindMCP }
 
 // Tools returns the allowed tools of every server, named "<server>.<tool>".
 func (b mcpBackend) Tools() []engine.ToolSpec { return b.pool.Tools() }
+
+// ConnectMissing makes mcpBackend a dispatch.Connector: it gives each
+// server that isn't connected one try, at the start of a turn that offers
+// tools (see mcp.Pool.ConnectMissing).
+func (b mcpBackend) ConnectMissing(ctx context.Context) { b.pool.ConnectMissing(ctx) }
 
 // Confirm returns ConfirmAlways for a tool in its server's always_confirm
 // list, ConfirmAsk for one in its confirm list, and ConfirmNever for the
@@ -100,6 +106,30 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 	return out
 }
 
+// mcpStatus turns the pool's report into the rows `meru mcp` prints. A
+// server that isn't connected gets Tools = -1, which the client shows as
+// "—": it has no tool list, so any count would be a guess. Allowed and
+// Confirm come from config, so they show either way.
+func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
+	out := make([]rpc.MCPStatus, 0, len(servers))
+	for _, st := range servers {
+		row := rpc.MCPStatus{
+			Name:      st.Name,
+			Transport: st.Transport,
+			State:     rpc.MCPConnected,
+			URL:       st.URL,
+			Tools:     st.Offered,
+			Allowed:   st.Listed,
+			Confirm:   st.Confirms,
+		}
+		if !st.Connected {
+			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 // mcpServerConfigs turns the [[mcp.servers]] entries into the pool's
 // settings. It parses each timeout and passes every env and header value
 // through resolve, which swaps "secret:<name>" for the stored secret and
@@ -118,7 +148,7 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 			Command: s.Command,
 			Args:    s.Args,
 			URL:     s.URL,
-			Network: s.Network,
+			Remote:  s.Remote,
 			Allow:   s.Allow,
 			Confirm: s.Confirm,
 
@@ -160,7 +190,7 @@ func probeConfig(ps rpc.ProbeServer, resolve func(string) (string, error)) (mcp.
 		Command: ps.Command,
 		Args:    ps.Args,
 		URL:     ps.URL,
-		Network: ps.Network,
+		Remote:  ps.Remote,
 	}
 	var err error
 	if c.Env, err = resolveAll(ps.Env, resolve); err != nil {

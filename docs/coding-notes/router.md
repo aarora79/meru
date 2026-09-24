@@ -151,7 +151,7 @@ against fixtures. `loadLabelled` reads `testdata/routes.jsonl`, one JSON object
 per line:
 
 ```json
-{"q": "what did I change in the portfolio repo this week?", "route": "search", "why": "the owner's own repository history"}
+{"q": "what did I change in the blog repo this week?", "route": "search", "why": "the owner's own repository history"}
 ```
 
 A follow-up row adds `"history": [{"q": "...", "a": "..."}]`, and `turn` turns
@@ -195,7 +195,7 @@ The last two need Ollama running with the fast model pulled. The second routes
 seven questions and prints each distribution. `make router-eval` scores all 135
 labelled questions and prints the report, a temperature sweep and a
 `min_confidence` sweep. It gives every row the folders in `evalFolders`
-(`~/notes`, `~/repos/meru`, `~/repos/portfolio`). On the development machine
+(`~/notes`, `~/repos/meru`, `~/repos/blog`). On the development machine
 (Ollama 0.34, MiniCPM5-2B at Q4_K_M) the router picked the labelled route for 32
 of 40 held-out questions, at about 28 ms per warm decision. Without the folder
 line it picked 30 of 40. See

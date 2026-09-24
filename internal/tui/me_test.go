@@ -18,7 +18,7 @@ import (
 // plus a memory of another kind, which /me leaves out.
 var meReply = []rpc.Event{
 	{Type: rpc.EventMemories, Memories: append([]rpc.MemoryInfo{
-		{ID: "project/garden.md", Kind: "project", Text: "The garden budget is 4,200 dollars."},
+		{ID: "project/garden.md", Kind: "project", Text: "The garden gets two raised beds."},
 	}, profileFixture...)},
 	{Type: rpc.EventDone},
 }

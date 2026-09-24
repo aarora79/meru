@@ -157,7 +157,7 @@ func TestMCPProbeOp(t *testing.T) {
 	}{
 		{"no server", nil, "needs a server"},
 		{"missing secret", &rpc.ProbeServer{Name: "files", URL: url, Headers: map[string]string{"Authorization": "secret:nope"}}, `headers "Authorization"`},
-		{"off this machine", &rpc.ProbeServer{Name: "far", URL: "http://example.com/mcp"}, "network = true"},
+		{"off this machine", &rpc.ProbeServer{Name: "far", URL: "http://example.com/mcp"}, "remote = true"},
 		{"bad command", &rpc.ProbeServer{Name: "gone", Command: filepath.Join(dir, "no-such-server")}, `mcp server "gone"`},
 	}
 	for _, tt := range errs {
@@ -211,6 +211,17 @@ func TestMCPReloadOp(t *testing.T) {
 		}
 		if got := toolNamesOf(mcpServers(t, call(t, d.sock, rpc.Request{Op: rpc.OpTools}))); !slices.Equal(got, s.want) {
 			t.Errorf("%s: tools = %v, want %v", s.name, got, s.want)
+		}
+		// The status op, over the socket, reports the pool the reload left:
+		// one connected row while files is configured, none after remove.
+		var rows []rpc.MCPStatus
+		for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpMCPStatus}) {
+			if ev.Type == rpc.EventMCPStatus {
+				rows = ev.MCP
+			}
+		}
+		if want := min(len(s.want), 1); len(rows) != want || (want == 1 && (rows[0].Name != "files" || rows[0].State != rpc.MCPConnected)) {
+			t.Errorf("%s: mcp_status rows = %+v, want %d connected", s.name, rows, want)
 		}
 	}
 }

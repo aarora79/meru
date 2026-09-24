@@ -56,6 +56,9 @@ type console struct {
 	run func(ctx context.Context, name string, args ...string) error
 	// ollamaVersion asks the Ollama at baseURL for its version.
 	ollamaVersion func(ctx context.Context, baseURL string) (string, error)
+	// answers reports whether something listens at an HTTP server's URL
+	// (see urlAnswers).
+	answers func(ctx context.Context, rawURL string) bool
 }
 
 // terminal returns a console on standard input and out. When standard input
@@ -67,6 +70,7 @@ func terminal(out io.Writer) *console {
 		out:           out,
 		run:           runCommand,
 		ollamaVersion: ollamaVersion,
+		answers:       urlAnswers,
 	}
 	c.readSecret = c.line
 	fd := int(os.Stdin.Fd()) // #nosec G115 -- a file descriptor fits in an int
@@ -134,7 +138,7 @@ func (c *console) offer(ctx context.Context, socket string, e catalog.Entry) (bo
 	if e.Docs != "" {
 		fmt.Fprintf(c.out, "  %s\n", e.Docs)
 	}
-	if e.Network {
+	if e.Remote {
 		fmt.Fprintf(c.out, "%s is on another machine. Each tool call sends your data there.\n", e.URL)
 	}
 	cfg, err := config.Load(configPath)
@@ -225,29 +229,31 @@ func (c *console) doIt(ctx context.Context, socket string, e catalog.Entry) (boo
 			if v != "" {
 				env[n.Env] = v
 			}
-		case catalog.NeedFolders:
-			// The folders didn't come on the command line, as in meru
-			// setup, so ask for them.
-			filled, ok, err := c.askFolders(e, n)
-			if err != nil {
-				return false, err
-			}
-			if !ok {
-				fmt.Fprintln(c.out, "No folder given, so nothing was written.")
-				return false, nil
-			}
-			e.Args = filled.Args
 		case catalog.NeedNote:
 			fmt.Fprintln(c.out, "Note: "+n.Prompt)
 		}
 	}
 	e.Env = env
 
+	// A server the user runs themselves: say how to start it. Meru never
+	// runs this command (ARCHITECTURE.md, "MCP").
+	if e.Start != "" {
+		fmt.Fprintf(c.out, "You start this server; Meru only connects to it. In another terminal, run:\n  %s\n", e.Start)
+	}
+
 	// Try the server before writing anything to config.toml. merud starts
 	// it and resolves its secret: references, so the keys must be in
-	// secrets.toml first.
+	// secrets.toml first. A server the user runs gets tried only if
+	// something answers at its URL; if not, the entry keeps the catalog's
+	// lists and merud connects on the first question after it starts.
 	up := ping(ctx, socket, io.Discard) == nil
-	if up {
+	probeIt := up
+	if up && e.Start != "" && !c.answers(ctx, e.URL) {
+		fmt.Fprintf(c.out, "Nothing answers at %s yet, so Meru writes the catalog's tool list. "+
+			"Once you start the server, merud connects to it on your next question.\n", e.URL)
+		probeIt = false
+	}
+	if probeIt {
 		if len(pending) > 0 {
 			if err := saveSecrets(secretsPath, pending); err != nil {
 				return false, err
@@ -266,8 +272,8 @@ func (c *console) doIt(ctx context.Context, socket string, e catalog.Entry) (boo
 			return false, nil
 		}
 		e = picked
-	} else {
-		fmt.Fprintln(c.out, "merud isn't running, so Meru can't start the server to see its tools first.")
+	} else if !up {
+		fmt.Fprintln(c.out, "merud isn't running, so Meru can't try the server to see its tools first.")
 	}
 
 	block := catalog.Block(e)
@@ -301,29 +307,6 @@ func (c *console) doIt(ctx context.Context, socket string, e catalog.Entry) (boo
 	}
 	c.reload(ctx, socket, e.Name, up)
 	return true, nil
-}
-
-// askFolders asks for the folders need n wants and returns e with them
-// added to its args. It asks again when a folder doesn't exist. The bool is
-// false when the user gives no folder.
-func (c *console) askFolders(e catalog.Entry, n catalog.Need) (catalog.Entry, bool, error) {
-	for {
-		a, err := c.ask(n.Prompt + ", separated by commas (for example ~/Documents):")
-		if err != nil || a == "" {
-			return e, false, err
-		}
-		var folders []string
-		for _, f := range strings.Split(a, ",") {
-			if f = strings.TrimSpace(f); f != "" {
-				folders = append(folders, f)
-			}
-		}
-		filled, err := e.WithArgs(folders)
-		if err == nil {
-			return filled, true, nil
-		}
-		fmt.Fprintln(c.out, err)
-	}
 }
 
 // saveSecrets writes each key in pending to secrets.toml. It does nothing
@@ -361,18 +344,6 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 		}
 	}
 	fmt.Fprintln(c.out, restartHint)
-}
-
-// setupEntries returns the catalog entries setup offers on the system goos:
-// all but the ones made for another system.
-func setupEntries(goos string) []catalog.Entry {
-	var out []catalog.Entry
-	for _, e := range catalog.Entries() {
-		if e.RunsOn(goos) {
-			out = append(out, e)
-		}
-	}
-	return out
 }
 
 // setupCmd runs `meru setup`: check Ollama, download the models, write
@@ -415,7 +386,7 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 
 	fmt.Fprintln(c.out, "\n4. Tools")
 	fmt.Fprintln(c.out, "Meru can connect to these servers. Pick a path for each, or skip it and run meru mcp add later.")
-	for _, e := range setupEntries(runtime.GOOS) {
+	for _, e := range catalog.Entries() {
 		if _, err := c.offer(ctx, socket, e); err != nil {
 			return err
 		}

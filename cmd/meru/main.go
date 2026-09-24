@@ -17,6 +17,7 @@
 //	meru [-socket path] setup user       tell Meru who you are
 //	meru [-socket path] memory list      show what Meru remembers; also add, forget
 //	meru [-socket path] skills list      show the skills; also show, reset
+//	meru [-socket path] mcp              the state of each MCP server; also mcp status [--json]
 //	meru [-socket path] mcp list         the MCP server catalog and your servers
 //	meru [-socket path] mcp add ...      add an MCP server; also remove
 //
@@ -84,11 +85,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
                         show, save or delete what Meru remembers
   meru skills list | show <name> | reset [--yes] <name>
                         show the skills, print one, or restore a built-in
+  meru mcp [status] [--json]
+                        show the state of each MCP server
   meru mcp list         show the server catalog and your MCP servers
-  meru mcp add <catalog-name> [args...]
+  meru mcp add <catalog-name>
                         add a server from the catalog
   meru mcp add stdio <name> -- <command> [args...]
-  meru mcp add http <name> <url> [--network]
+  meru mcp add http <name> <url> [--remote]
                         add a server that isn't in the catalog
   meru mcp remove [--yes] <name>
                         take a server out of config.toml

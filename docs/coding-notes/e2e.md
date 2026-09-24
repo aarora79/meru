@@ -169,7 +169,7 @@ makes a test slower, not flaky.
 | `TestLocalCommand` | `commands_test.go` | A `[[commands]]` entry runs `echo` with a string and a path parameter; the fake model calls `cmd.say` with `hello; rm -rf ~`, which echo prints as one argument; the `tool_call` line holds the argv with the path resolved, `meru log` shows it as a command line, and `meru tools` shows the template. Unix only, for `echo` |
 | `TestIndexFollowsChanges` | `index_test.go` | The watcher re-indexes a changed note (the next prompt holds the new fact, not the old) and drops a deleted one; a key file added later stays out; `meru index` rescans; `meru index <folder>` refuses a folder outside `[index]` and names the config file, and rescans one inside |
 | `TestIntegrationLiteTTFT` | `integration_test.go` | Real Ollama, lite profile: "Paris", and the first token within one second after two warm-up questions |
-| `TestIntegrationNotesAnswer` | `index_integration_test.go` | Real Ollama, lite profile: a question about the garden note gets "4,200" in the answer and the note first among the sources, and `meru` prints a `Sources:` list naming it; logs the scan time, the search time (from merud's debug log) and the time to first token |
+| `TestIntegrationNotesAnswer` | `index_integration_test.go` | Real Ollama, lite profile: a question about the garden note gets "April" and "12" in the answer and the note first among the sources, and `meru` prints a `Sources:` list naming it; logs the scan time, the search time (from merud's debug log) and the time to first token |
 
 `TestNoTelemetryByDefault` can't watch merud's network connections without
 root, so it sets traps. It starts a canary HTTP server in the test and points

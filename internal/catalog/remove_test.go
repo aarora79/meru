@@ -16,13 +16,13 @@ import (
 const before = `# my settings
 profile = "lite" # the small one
 
-# Web page fetch: Reads a web page.
-# Docs: https://example.com/fetch
+# Web search (Brave Search): Searches the web.
+# Docs: https://example.com/brave
 [[mcp.servers]]
-name    = "fetch"
-command = "uvx"
-args    = ["mcp-server-fetch"]
-allow   = ["fetch"]
+name    = "brave"
+command = "npx"
+args    = ["-y", "@brave/brave-search-mcp-server"]
+allow   = ["brave_web_search"]
 
 # notes: a server you added by hand
 [[mcp.servers]]
@@ -54,15 +54,15 @@ func TestRemoveServer(t *testing.T) {
 	}{
 		{
 			name:        "first",
-			remove:      "fetch",
-			wantRemoved: []string{"# Web page fetch: Reads a web page.", "# Docs: https://example.com/fetch", `name    = "fetch"`},
+			remove:      "brave",
+			wantRemoved: []string{"# Web search (Brave Search): Searches the web.", "# Docs: https://example.com/brave", `name    = "brave"`},
 			wantKept:    []string{"# my settings", `profile = "lite" # the small one`, "# notes: a server you added by hand", `NOTES_DIR = "/srv/notes"`},
 		},
 		{
 			name:        "with a sub-table and a multi-line array",
 			remove:      "notes",
 			wantRemoved: []string{"# notes: a server you added by hand", `  "search",`, "[mcp.servers.env]", `NOTES_DIR = "/srv/notes"`},
-			wantKept:    []string{"# Web page fetch: Reads a web page.", "# keep this: it's about the last server", `name = "last"`},
+			wantKept:    []string{"# Web search (Brave Search): Searches the web.", "# keep this: it's about the last server", `name = "last"`},
 		},
 		{
 			name:        "last before another table",
@@ -124,7 +124,7 @@ func lines(s string) int {
 func TestRemoveServerRefuses(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if _, err := RemoveServer(path, "fetch"); err == nil || !strings.Contains(err.Error(), "doesn't exist") {
+	if _, err := RemoveServer(path, "brave"); err == nil || !strings.Contains(err.Error(), "doesn't exist") {
 		t.Errorf("missing file: error = %v", err)
 	}
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
@@ -146,11 +146,11 @@ func TestAppendThenRemove(t *testing.T) {
 	if err := os.WriteFile(path, []byte(orig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	e, _ := Find("fetch")
+	e, _ := Find("google")
 	if err := AppendServer(path, Block(e)); err != nil {
 		t.Fatal(err)
 	}
-	removed, err := RemoveServer(path, "fetch")
+	removed, err := RemoveServer(path, "google")
 	if err != nil {
 		t.Fatal(err)
 	}

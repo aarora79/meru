@@ -42,7 +42,7 @@ type styles struct {
 	choice        lipgloss.Style // a choice in the box
 	choiceOn      lipgloss.Style // the choice Enter would pick
 
-	box lipgloss.Style // the /usage and /me boxes, in a teal border
+	box lipgloss.Style // the /usage, /me and /mcp boxes, in a teal border
 }
 
 // answerIndent is how far message text sits from the left edge. Glamour's
@@ -115,7 +115,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 		approvalTitle: r.NewStyle().Foreground(amber).Bold(true),
 		choice:        r.NewStyle().Foreground(grey),
 		choiceOn:      r.NewStyle().Foreground(teal).Bold(true),
-		// Teal, like the input box: the /usage and /me boxes answer
+		// Teal, like the input box: the /usage, /me and /mcp boxes answer
 		// something the user typed, and ask for no decision.
 		box: r.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -135,12 +135,12 @@ type keyMap struct {
 	Recall  key.Binding
 	Scroll  key.Binding
 	Newline key.Binding
-	// Commands lists the slash commands, /new, /usage and /me. They have
-	// no key: Ctrl-U, the obvious one for usage, already deletes to the
-	// start of the line in the input box. The binding exists only so the
-	// help line lists them. The help line skips a binding with no keys, so
-	// it gets "/new /usage /me", which no key press ever reads as; submit
-	// runs the commands.
+	// Commands lists the slash commands, /new, /usage, /me and /mcp. They
+	// have no key: Ctrl-U, the obvious one for usage, already deletes to
+	// the start of the line in the input box. The binding exists only so
+	// the help line lists them. The help line skips a binding with no
+	// keys, so it gets "/new /usage /me /mcp", which no key press ever
+	// reads as; submit runs the commands.
 	Commands key.Binding
 }
 
@@ -151,12 +151,12 @@ func newKeyMap() keyMap {
 		Stop:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
 		Quit:    key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "quit")),
 		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
-		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "scroll")),
+		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/dn", "scroll")),
 		Newline: key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
-		// The help text splits "/new /usage /me" across the key and the
-		// description slots, so the line reads "/new /usage /me" and
-		// still fits in 80 columns.
-		Commands: key.NewBinding(key.WithKeys("/new /usage /me"), key.WithHelp("/new", "/usage /me")),
+		// The help text splits "/new /usage /me /mcp" across the key and
+		// the description slots, so the line reads "/new /usage /me /mcp"
+		// and still fits in 80 columns.
+		Commands: key.NewBinding(key.WithKeys("/new /usage /me /mcp"), key.WithHelp("/new", "/usage /me /mcp")),
 	}
 }
 
@@ -177,7 +177,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 // keyList is a list of keys for the help line while a box is open: the
-// approval box, the /usage box or the /me box. A plain slice of bindings satisfies
+// approval box, the /usage box, the /me box or the /mcp box. A plain slice of bindings satisfies
 // help.KeyMap once it has the two methods below.
 type keyList []key.Binding
 
@@ -194,8 +194,8 @@ func newApprovalKeys(choices []rpc.Choice) keyList {
 	)
 }
 
-// newBoxKeys returns the help line's keys while the /usage or /me box is
-// open.
+// newBoxKeys returns the help line's keys while the /usage, /me or /mcp
+// box is open.
 func newBoxKeys() keyList {
 	return keyList{
 		key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "close")),

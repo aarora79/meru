@@ -428,20 +428,20 @@ func TestSearchKeyword(t *testing.T) {
 	s := openTest(t)
 	vecs := []engine.Vector{unit(0), unit(0), unit(0), unit(0)}
 	put(t, s, "/n/a.md", []string{
-		"The Q3 budget grew. Budget review on Friday.", // 1: both words, budget twice
-		"Groceries and the weekly budget",              // 2: budget once
-		"NVDA results beat estimates; NEAR the top",    // 3
-		"Café au lait, naïve résumé 東京",                // 4
+		"The Q3 plan grew. Plan review on Friday.", // 1: both words, plan twice
+		"Groceries and the weekly plan",            // 2: plan once
+		"KESTREL launch moved; NEAR the top",       // 3
+		"Café au lait, naïve résumé 東京",            // 4
 	}, vecs)
 
 	tests := []struct {
 		query string
 		want  []int64
 	}{
-		{"q3 budget", []int64{1, 2}},
-		{"NVDA", []int64{3}},
-		{"nvda", []int64{3}},
-		{"what did I write about the q3 budget?", []int64{1, 2, 3}}, // "the" matches chunk 3 too, ranked last
+		{"q3 plan", []int64{1, 2}},
+		{"KESTREL", []int64{3}},
+		{"kestrel", []int64{3}},
+		{"what did I write about the q3 plan?", []int64{1, 2, 3}}, // "the" matches chunk 3 too, ranked last
 		{"東京", []int64{4}},
 		{"résumé", []int64{4}},
 		{"", nil},
@@ -449,23 +449,23 @@ func TestSearchKeyword(t *testing.T) {
 		{"zebra", nil},
 		// Hostile input: each must run without an FTS5 syntax error.
 		{`"`, nil},
-		{`"budget`, []int64{1, 2}},
-		{`budget"`, []int64{1, 2}},
-		{`budget AND`, []int64{2, 1}}, // "and" is a plain word: chunk 2 holds it
+		{`"plan`, []int64{1, 2}},
+		{`plan"`, []int64{1, 2}},
+		{`plan AND`, []int64{2, 1}}, // "and" is a plain word: chunk 2 holds it
 		{`OR`, nil},
-		{`NOT budget`, []int64{1, 2}},
-		{`NEAR(budget q3, 2)`, []int64{3, 1, 2}}, // "near" is a plain word too
+		{`NOT plan`, []int64{1, 2}},
+		{`NEAR(plan q3, 2)`, []int64{3, 1, 2}}, // "near" is a plain word too
 		{`NEAR`, []int64{3}},
-		{`budg*`, nil},
+		{`pla*`, nil},
 		{`*`, nil},
-		{`text:budget`, []int64{1, 2}},
+		{`text:plan`, []int64{1, 2}},
 		{`heading:h0`, []int64{1}},
-		{`-budget`, []int64{1, 2}},
-		{`^budget`, []int64{1, 2}},
-		{`(budget`, []int64{1, 2}},
+		{`-plan`, []int64{1, 2}},
+		{`^plan`, []int64{1, 2}},
+		{`(plan`, []int64{1, 2}},
 		{`)) OR ((`, nil},
-		{`{heading text}: budget`, []int64{1, 2}},
-		{"budget\x00q3", []int64{1, 2}},
+		{`{heading text}: plan`, []int64{1, 2}},
+		{"plan\x00q3", []int64{1, 2}},
 		{"'; DROP TABLE chunks; --", nil},
 	}
 	for _, tt := range tests {
@@ -494,9 +494,9 @@ func TestFTSQuery(t *testing.T) {
 	}{
 		{"", ""},
 		{"hello", `"hello"`},
-		{"Q3 budget", `"Q3" OR "budget"`},
+		{"Q3 plan", `"Q3" OR "plan"`},
 		{`a "quoted" AND b`, `"a" OR "quoted" OR "AND" OR "b"`},
-		{"budget BUDGET Budget", `"budget"`},
+		{"plan PLAN Plan", `"plan"`},
 		{"NEAR(x*, 2)", `"NEAR" OR "x" OR "2"`},
 		{"e-mail", `"e" OR "mail"`},
 	}

@@ -170,6 +170,7 @@ type Event struct {
     Approval   *Approval    // approval event: a call waiting for your answer
     Servers    []ServerInfo // tools event: each tool source and its allowed tools
     Log        []LogEntry   // log event: the newest tool_calls rows
+    MCP        []MCPStatus  // mcp_status event: one row per MCP server
 
     // Stats, on the "done" event that ends an ask:
     TTFTMillis     int64 // question received to first token, routing included
@@ -191,9 +192,11 @@ type Event struct {
 | `index_status` | one `status`; `done` |
 | `tools` | one `tools`; `done` |
 | `log` | one `log`; `done` |
+| `mcp_status` | one `mcp_status`; `done` |
 
 `meru index` sends `index`, and `meru index -status` sends `index_status`.
-`meru tools` sends `tools`, and `meru log -n 5` sends `log` with `Limit` 5. A
+`meru tools` sends `tools`, `meru mcp` sends `mcp_status`, and `meru log -n 5`
+sends `log` with `Limit` 5. A
 `Citation` holds the number the answer cites, the path (as `~/…` under your home
 folder), the heading, the line range or PDF page, and the fused score. The `done`
 that ends an ask carries the turn's timings and token counts, which `meru chat`
@@ -310,11 +313,12 @@ turns a `direct` route into `search`.
 ### `agent.ToolRunner` and `dispatch.Backend`: how a turn reaches a tool
 
 ```go
-// internal/agent/agent.go
+// internal/agent/tools.go
 type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
     Asks(name string) bool // would a call ask first? picks the "search" route's commands
+    ConnectMissing(ctx context.Context) // one try at each tool server that isn't connected
 }
 
 // internal/dispatch/dispatch.go
@@ -325,6 +329,11 @@ type Backend interface {
     Locate(name string) (server, tool string)  // for rows and metrics
     Call(ctx context.Context, name string, args json.RawMessage) (Result, error)
     Status() []rpc.ServerInfo                  // for `meru tools`
+}
+
+// A Backend may also be a Connector: one try at each server it can't reach.
+type Connector interface {
+    ConnectMissing(ctx context.Context)
 }
 ```
 
@@ -350,6 +359,19 @@ place of the model's arguments in the `tool_call` line, the approval prompt and
 the row. `Dispatcher.Replace` swaps in a new MCP backend
 after `configure` changes the servers. `dispatch.Recorder`, one method,
 `InsertToolCall`, is how `dispatch` writes the row; `*store.Store` satisfies it.
+
+`mcpBackend` is the one `Connector`. `merud` tries each MCP server once, in
+`mcp.NewPool`, and never again on its own: no timer, no background goroutine, no
+retry loop. On a turn that offers tools, `Handle` calls
+`ToolRunner.ConnectMissing`, which `Dispatcher.ConnectMissing` passes to each
+backend that is a `Connector`, and `mcp.Pool.ConnectMissing` gives each server
+that isn't connected one try: 5 seconds for an HTTP server (`httpRetryTimeout`),
+30 for a stdio child (`connectTimeout`). `Handle` then lists the tools again, so a
+server the user started after `merud`, or a child that crashed, is back for this
+turn. `Pool.Tools` offers only connected servers' tools, and a call to a server
+that isn't connected fails at once with `mcp.ErrUnavailable`. One goroutine per
+session waits for it to end and marks the server not connected; it never starts
+the server again (ARCHITECTURE.md, "MCP").
 
 `Handle` also calls `Tools()` on each turn for a second route rule: when the
 question names a connected MCP server or A2A agent (`toolServers`) and the route
@@ -472,6 +494,10 @@ sequenceDiagram
         A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
         A-->>U: emit sources event
     end
+    opt the route offers tools
+        A->>D: ConnectMissing: one try at each MCP server that isn't connected
+        A->>A: toolSpecs(route) again
+    end
     A->>A: prompt(system prompt + excerpts + toolsNote, history, question)
     A->>E: round 1: Stream(messages, toolSpecs(route))
     E-->>A: Delta{ToolCalls: obsidian.search_vault}
@@ -539,23 +565,26 @@ The same path as a reading list, in order:
    numbers them, and the agent puts them under the system prompt and sends the
    same numbered list to the client as a `sources` event. A failed search is logged
    and the turn answers without your files.
-7. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
+7. **Back in `Handle`**, when `toolSpecs(route)` isn't empty, `Handle` calls
+   `ToolRunner.ConnectMissing` once and then `toolSpecs` again, so a server that
+   answers now joins this turn's tools. A server that still fails is left out.
+8. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
    `answer` with the schemas from `toolSpecs(route)`, or none on the last allowed
    round (`[agent] max_rounds`, default 8). When the model calls tools,
    `runTools` gives each an ID, emits `tool_call`, and runs the calls at the same
    time in an `errgroup`, each through `ToolRunner.Dispatch`. Each result goes
    back to the model as a `RoleTool` message, in call order, and each call emits
    `tool_result` as it ends. The loop stops when a round has no tool calls.
-8. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
+9. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
    offers the tool, or ends the call as `denied`. It writes the `tool_call` line,
    asks through `approve` when the tool needs a yes, runs `Backend.Call`, redacts
    secrets, cuts the result (16,000 characters for the model, 4,000 for the log),
    and writes the `tool_result` line, the `tool_calls` row, the metrics and the
    `meru.dispatch` span.
-9. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
-   Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
-   Ollama sends each tool call whole, in a chunk of its own.
-10. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
+10. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
+    Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
+    Ollama sends each tool call whole, in a chunk of its own.
+11. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
     session file; `History` reads only the user and assistant lines back into
     messages, so earlier tool results stay out of later prompts.
 
@@ -596,6 +625,27 @@ from a temporary copy, and renames it into place only when it loads; `meru mcp
 remove` takes a block out the same way with `catalog.RemoveServer`. Both end
 with `mcp_reload`. The built-in `configure` tool calls the same `AppendServer`,
 so chat and terminal write the same block.
+
+The catalog holds three entries, in this order: `google` (Gmail, Calendar, Drive
+and Docs), `brave` (web search) and `obsidian` (notes). `google` is a `url` entry
+the user starts; its `Entry.Start` holds the command, which `meru mcp add` prints
+and never runs. Before it probes such an entry, `doIt` asks `urlAnswers`, a
+one-second TCP dial to the URL's host and port. When nothing answers, it skips
+the probe and writes the catalog's lists.
+
+### `meru mcp` and `/mcp`, function by function
+
+1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows.
+   With `--json` it prints them as a JSON array; otherwise it prints
+   `tui.MCPTable(rows)`. In `meru chat`, `/mcp` opens a box that asks the same
+   op (`internal/tui/mcp.go`, `mcpCmd`) and draws the same `MCPTable`.
+2. **`cmd/merud/tools.go` → `handleMCPStatus`** reads `mcp.Pool.Status` and
+   emits one `mcp_status` event. It sends nothing to any server, so it answers at
+   once while one is down.
+3. **`cmd/merud/backends.go` → `mcpStatus`** turns each `mcp.ServerStatus` into
+   an `rpc.MCPStatus`: `State` is `connected` or `not connected`, `Tools` is
+   `-1` for a server that isn't connected (the table shows `—`), and `Allowed`
+   and `Confirm` come from config, so they show either way.
 
 ### `meru index`, function by function
 

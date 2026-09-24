@@ -29,7 +29,7 @@ func withSources(answer string, srcs []rpc.Citation) rpc.Handler {
 
 func TestAskSources(t *testing.T) {
 	srcs := []rpc.Citation{
-		{N: 1, Path: "~/notes/garden.md", Heading: "Budget", StartLine: 1, EndLine: 4, Score: 0.03},
+		{N: 1, Path: "~/notes/garden.md", Heading: "Planting", StartLine: 1, EndLine: 4, Score: 0.03},
 		{N: 2, Path: "~/notes/trip.md", StartLine: 2, EndLine: 2, Score: 0.01},
 	}
 	tests := []struct {
@@ -38,16 +38,16 @@ func TestAskSources(t *testing.T) {
 		srcs    []rpc.Citation
 		wantOut string
 	}{
-		{"cited", "It is 4,200 dollars [1].", srcs,
-			"It is 4,200 dollars [1].\n\nSources:\n[1] ~/notes/garden.md, \"Budget\", lines 1–4\n"},
-		{"none cited lists none", "It is 4,200 dollars.", srcs, "It is 4,200 dollars.\n"},
+		{"cited", "On 12 April [1].", srcs,
+			"On 12 April [1].\n\nSources:\n[1] ~/notes/garden.md, \"Planting\", lines 1–4\n"},
+		{"none cited lists none", "On 12 April.", srcs, "On 12 April.\n"},
 		{"no sources", "Paris.", nil, "Paris.\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sock := startServer(t, withSources(tt.answer, tt.srcs))
 			var out, errOut bytes.Buffer
-			if code := run(context.Background(), []string{"-socket", sock, "what is the budget?"}, &out, &errOut); code != 0 {
+			if code := run(context.Background(), []string{"-socket", sock, "when do I sow the tomatoes?"}, &out, &errOut); code != 0 {
 				t.Fatalf("exit code %d, stderr %q", code, errOut.String())
 			}
 			if out.String() != tt.wantOut {

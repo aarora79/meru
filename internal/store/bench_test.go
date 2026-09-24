@@ -28,9 +28,9 @@ const (
 // benchVocabulary is the words benchmark chunks are written in. A small
 // vocabulary makes every query word match many chunks, which is the slow
 // case for keyword search.
-const benchVocabulary = `budget quarter review earnings notes meeting plan
-	project design memo draft travel invoice receipt tax return portfolio stock bond
-	market report summary agenda action item deadline goal risk issue fix bug release`
+const benchVocabulary = `garden quarter review recipe notes meeting plan
+	project design memo draft travel trip calendar inbox reply photo email album
+	schedule report summary agenda action item deadline goal risk issue fix bug release`
 
 // randomVector returns a vector of benchDims numbers from rng.
 func randomVector(rng *rand.Rand) engine.Vector {
@@ -111,7 +111,7 @@ func BenchmarkStore(b *testing.B) {
 			})
 			b.Run("SearchKeyword", func(b *testing.B) {
 				for b.Loop() {
-					hits, err := s.SearchKeyword(ctx, "what was the budget for the quarter review", 50)
+					hits, err := s.SearchKeyword(ctx, "what was the plan for the quarter review", 50)
 					if err != nil || len(hits) != 50 {
 						b.Fatalf("SearchKeyword: %d hits, %v", len(hits), err)
 					}
