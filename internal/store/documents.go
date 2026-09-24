@@ -104,7 +104,7 @@ func insertChunk(ctx context.Context, tx *sql.Tx, docID int64, ordinal int, c Ch
 		return err
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO chunk_vec (rowid, vector) VALUES (?, ?)`, id, encodeVector(v))
+		`INSERT INTO chunk_vec (chunk_id, vector) VALUES (?, ?)`, id, encodeVector(v))
 	return err
 }
 
@@ -136,7 +136,7 @@ func deleteChunks(ctx context.Context, tx *sql.Tx, path string) error {
 		`INSERT INTO chunk_fts (chunk_fts, rowid, heading, text)
 		 SELECT 'delete', c.id, c.heading, c.text
 		 FROM chunks c JOIN documents d ON d.id = c.doc_id WHERE d.path = ?`,
-		`DELETE FROM chunk_vec WHERE rowid IN (` + ofDoc + `)`,
+		`DELETE FROM chunk_vec WHERE chunk_id IN (` + ofDoc + `)`,
 		`DELETE FROM chunks WHERE id IN (` + ofDoc + `)`,
 	}
 	for _, stmt := range stmts {
@@ -193,14 +193,27 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	return st, nil
 }
 
-// encodeVector packs v into the form vec1 stores: 4 bytes per number, each
-// an IEEE 754 float32, least significant byte first. vec1 wants the
-// machine's byte order, and the machine here is SQLite's WebAssembly, which
-// is little-endian on every host.
+// encodeVector scales v to length 1 and packs it into the blob chunk_vec
+// stores and vec1's distance functions read: 4 bytes per number, each an
+// IEEE 754 float32, least significant byte first. vec1 wants the machine's
+// byte order, and the machine here is SQLite's WebAssembly, which is
+// little-endian on every host.
+//
+// Scaling to length 1 keeps the direction, which is all cosine distance
+// looks at, and lets SearchVector use the cheaper L2 distance to get the
+// same answer. A vector of all zeros has no direction and stays as it is.
 func encodeVector(v engine.Vector) []byte {
+	var sum float64
+	for _, f := range v {
+		sum += float64(f) * float64(f)
+	}
+	scale := 1.0
+	if sum > 0 {
+		scale = 1 / math.Sqrt(sum)
+	}
 	b := make([]byte, 4*len(v))
 	for i, f := range v {
-		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(f))
+		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(float32(float64(f)*scale)))
 	}
 	return b
 }

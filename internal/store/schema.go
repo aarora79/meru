@@ -22,7 +22,12 @@ import (
 // change the list at run time.
 func migrations() []string {
 	return []string{
-		// 1: documents, chunks and the keyword index over chunks.
+		// 1: documents, chunks, their vectors and the keyword index.
+		//
+		// chunk_vec holds one vector per chunk as a blob of float32 values
+		// (see encodeVector). It is a plain table with no search index:
+		// SearchVector compares the query with every row. It sits apart
+		// from chunks so a search reads only IDs and vectors, never text.
 		//
 		// chunk_fts is an FTS5 "external content" table: it indexes the
 		// heading and text columns of chunks without keeping its own copy,
@@ -49,6 +54,10 @@ func migrations() []string {
 			end_line   INTEGER NOT NULL DEFAULT 0,
 			page       INTEGER NOT NULL DEFAULT 0,
 			UNIQUE (doc_id, ordinal)
+		);
+		CREATE TABLE chunk_vec (
+			chunk_id INTEGER PRIMARY KEY REFERENCES chunks(id),
+			vector   BLOB NOT NULL
 		);
 		CREATE VIRTUAL TABLE chunk_fts USING fts5(
 			heading, text, content='chunks', content_rowid='id'
@@ -97,27 +106,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-// vectorModel is the vec1 setup chunk_vec gets when it's created: an exact
-// "flat" index, which compares the query with every stored vector, and
-// cosine distance, which measures the angle between two vectors (0 means
-// the same direction, 2 the opposite). Embedding models are trained for
-// cosine comparison. vec1 also offers approximate indexes; a personal index
-// doesn't need one yet (ARCHITECTURE.md, "Why this driver and this vector
-// store").
-const vectorModel = `{index:"flat", distance:"cos"}`
-
-// checkVectors makes sure chunk_vec exists and matches the embedding model
-// and vector size. Vectors from two models don't compare, so when either
-// changed, it drops chunk_vec with every vector in it and creates it empty.
-// Documents and chunks stay, and NeedsReembed reports the gap.
+// checkVectors makes sure the stored vectors came from model with dims
+// numbers each. Vectors from two models don't compare, so when either
+// changed since the last run, it deletes every vector. Documents and chunks
+// stay, so keyword search still works, and NeedsReembed reports the gap.
 func (s *Store) checkVectors(ctx context.Context, model string, dims int) error {
 	return s.write(ctx, func(tx *sql.Tx) error {
-		var tables int
-		err := tx.QueryRowContext(ctx,
-			`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'chunk_vec'`).Scan(&tables)
-		if err != nil {
-			return fmt.Errorf("look for chunk_vec: %w", err)
-		}
 		oldModel, err := getMeta(ctx, tx, "embed_model")
 		if err != nil {
 			return err
@@ -126,20 +120,11 @@ func (s *Store) checkVectors(ctx context.Context, model string, dims int) error 
 		if err != nil {
 			return err
 		}
-		if tables == 1 && oldModel == model && oldDims == strconv.Itoa(dims) {
+		if oldModel == model && oldDims == strconv.Itoa(dims) {
 			return nil
 		}
-
-		// vec1 learns the vector size from the first row it stores; the
-		// store checks sizes in Go before any vector reaches it.
-		for _, stmt := range []string{
-			`DROP TABLE IF EXISTS chunk_vec`,
-			`CREATE VIRTUAL TABLE chunk_vec USING vec1(vector)`,
-			`INSERT INTO chunk_vec(cmd, arg) VALUES ('rebuild', '` + vectorModel + `')`,
-		} {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				return fmt.Errorf("recreate chunk_vec: %w", err)
-			}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM chunk_vec`); err != nil {
+			return fmt.Errorf("drop old vectors: %w", err)
 		}
 		if err := setMeta(ctx, tx, "embed_model", model); err != nil {
 			return err

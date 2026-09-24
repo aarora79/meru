@@ -30,22 +30,20 @@ func (s *Store) SearchVector(ctx context.Context, v engine.Vector, k int) ([]Hit
 	if k <= 0 {
 		return nil, nil
 	}
-	// vec1 learns the vector size from the rows it holds, so on an empty
-	// table it rejects every query as the wrong size. An empty index has no
-	// neighbours to find; say so without asking.
-	var stored int
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM chunk_vec)`).Scan(&stored); err != nil {
-		return nil, fmt.Errorf("vector search: %w", err)
-	}
-	if stored == 0 {
-		return nil, nil
-	}
-	// chunk_vec(?, ?) calls the vec1 table like a function: its arguments
-	// are the query vector and how many neighbours to return, and each row
-	// comes back with a hidden distance column. ORDER BY fixes the order,
-	// with the chunk ID breaking ties.
+	// Embedding models are trained for cosine distance, which measures the
+	// angle between two vectors: 0 for the same direction, 2 for the
+	// opposite. encodeVector stores every vector at length 1, and for two
+	// such vectors the squared L2 distance, which vec1_l2_distance returns,
+	// is exactly twice the cosine distance. Halving it gives the cosine
+	// distance itself, faster than vec1_cos_distance, which measures both
+	// lengths on every row: 147 ms against 198 ms over 100,000 vectors of
+	// 768 numbers (bench_test.go).
+	//
+	// There is no index. SQLite computes the distance for every row and
+	// keeps the k smallest; the chunk ID breaks ties.
 	hits, err := s.hits(ctx,
-		`SELECT rowid, distance FROM chunk_vec(?, ?) ORDER BY distance, rowid`, encodeVector(v), k)
+		`SELECT chunk_id, vec1_l2_distance(vector, ?1) / 2 AS distance
+		 FROM chunk_vec ORDER BY distance, chunk_id LIMIT ?2`, encodeVector(v), k)
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)
 	}

@@ -19,7 +19,8 @@ The driver is `ncruces/go-sqlite3`. It runs SQLite compiled to WebAssembly
 and then translated to Go, so Meru builds with no C compiler. Two SQLite
 extensions come with it:
 
-- **vec1**, SQLite's own vector search, holds the vectors in `chunk_vec`.
+- **vec1**, SQLite's own vector extension. The store uses only its distance
+  functions; the vectors sit in a plain table, `chunk_vec`.
 - **FTS5**, SQLite's full-text search, holds the keyword index in `chunk_fts`.
 
 ## The picture
@@ -30,7 +31,7 @@ flowchart LR
     W --> D[("documents")]
     W --> C[("chunks")]
     W --> F[("chunk_fts<br/>FTS5, over chunks")]
-    W --> V[("chunk_vec<br/>vec1, flat, cosine")]
+    W --> V[("chunk_vec<br/>plain table, one blob per chunk")]
     RET["retrieve.Search"] -- "SearchVector" --> V
     RET -- "SearchKeyword" --> F
     RET -- "Chunks" --> C
@@ -94,31 +95,32 @@ each step the file hasn't seen, one transaction per step. Later milestones
 add `messages`, `tool_calls` and `memories` by appending a step. A shipped
 step never changes, because existing files have already run it.
 
-The first step creates `documents`, `chunks` and `chunk_fts`:
+The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
 
 ```sql
+CREATE TABLE chunk_vec (
+    chunk_id INTEGER PRIMARY KEY REFERENCES chunks(id),
+    vector   BLOB NOT NULL
+);
 CREATE VIRTUAL TABLE chunk_fts USING fts5(
     heading, text, content='chunks', content_rowid='id'
 );
 ```
 
+`chunk_vec` is an ordinary table: one row per chunk, the vector packed into a
+blob. It has no search index. Vector search reads every row, which the
+benchmark below shows is fast enough for a personal index. The vectors live
+apart from `chunks` so a search reads IDs and vectors and never touches text.
+
 `content='chunks'` makes `chunk_fts` an **external content** table. It indexes
 the `heading` and `text` columns of `chunks` without keeping its own copy of
 the text, and its `rowid` is the chunk ID.
 
-`chunk_vec` is not a migration step, because its shape depends on the
-embedding model. `checkVectors` compares the model name and vector size in
-`meta` with the ones `Open` got. When either differs, it drops `chunk_vec` and
-creates it again, empty:
-
-```sql
-CREATE VIRTUAL TABLE chunk_vec USING vec1(vector);
-INSERT INTO chunk_vec(cmd, arg) VALUES ('rebuild', '{index:"flat", distance:"cos"}');
-```
-
-The `rebuild` command sets up an exact `flat` index with cosine distance.
-Vectors from two models can't be compared, so all of them go. Documents and
-chunks stay, so keyword search keeps working while the indexer re-embeds.
+`checkVectors` compares the embedding model name and vector size in `meta`
+with the ones `Open` got. When either differs, it runs `DELETE FROM chunk_vec`
+and records the new pair. Vectors from two models can't be compared, so all
+of them go. Documents and chunks stay, so keyword search keeps working while
+the indexer re-embeds.
 
 `NeedsReembed` reports that gap. It counts rows instead of keeping a flag:
 some chunks lack a vector exactly when the model changed and the indexer
@@ -146,9 +148,10 @@ SELECT 'delete', c.id, c.heading, c.text FROM chunks c ...
 So the keyword rows go first, while `chunks` still holds the text. Skip this
 and FTS5 keeps matching words from text that no longer exists.
 
-vec1 stores each vector as a blob of 32-bit floats, 4 bytes each, in the
-machine's byte order. SQLite's WebAssembly machine is little-endian on every
-host, so `encodeVector` always writes little-endian.
+`encodeVector` turns a vector into the blob vec1's functions read: 32-bit
+floats, 4 bytes each, in the machine's byte order. SQLite's WebAssembly
+machine is little-endian on every host, so it always writes little-endian.
+It also scales every vector to length 1 first; the next section says why.
 
 `Paths(prefix)` treats the prefix as a folder: `/notes` matches `/notes/a.md`
 and not `/notes2/b.md`. It compares with `substr` rather than `LIKE`, so a `%`
@@ -156,16 +159,21 @@ or `_` in a folder name has no special meaning.
 
 ### search.go: the two searches
 
-`SearchVector` asks vec1 for the nearest `k` vectors:
+`SearchVector` computes the distance from the query to every stored vector
+and keeps the `k` nearest:
 
 ```sql
-SELECT rowid, distance FROM chunk_vec(?, ?) ORDER BY distance, rowid
+SELECT chunk_id, vec1_l2_distance(vector, ?1) / 2 AS distance
+FROM chunk_vec ORDER BY distance, chunk_id LIMIT ?2
 ```
 
-Calling `chunk_vec(?, ?)` like a function passes the query vector and `k`.
-vec1 adds a hidden `distance` column: the cosine distance, 0 for the same
-direction and 2 for the opposite. On an empty table vec1 rejects every query
-as the wrong size, so `SearchVector` checks for an empty table first.
+Embedding models are trained for **cosine distance**, which looks only at the
+angle between two vectors: 0 for the same direction, 2 for the opposite.
+vec1 has a `vec1_cos_distance` function, but it measures both vectors'
+lengths on every row. Because `encodeVector` stores every vector at length 1,
+the squared straight-line (L2) distance between two of them is exactly twice
+their cosine distance. Halving `vec1_l2_distance` gives the same number with
+less work: 147 ms instead of 198 ms over 100,000 vectors.
 
 `SearchKeyword` runs BM25 over `chunk_fts`:
 
@@ -216,22 +224,24 @@ go test -run '^$' -bench . -benchtime 20x ./internal/store/
 ```
 
 `TestSearchKeyword` feeds FTS5 syntax, quotes and SQL fragments as queries.
-`TestConcurrentReadsDuringWrites` runs four readers against a writer and
-checks no reader ever sees half a write. The benchmark indexes 10,000 chunks
-with 768-number vectors.
+`TestSearchVector` checks the distances are true cosine distances for vectors
+of any length. `TestConcurrentReadsDuringWrites` runs four readers against a
+writer and checks no reader ever sees half a write. The benchmark indexes
+10,000 and then 100,000 chunks with 768-number vectors; `-short` skips the
+larger one.
 
-Measured on an Apple M4 Max (v0.35.6 of the driver):
+Measured on an Apple M4 Max (v0.35.6 of the driver), 768 dimensions:
 
-| Operation, 10,000 chunks, 768 dimensions | Time |
-| --- | --- |
-| index all 10,000 chunks (100 documents) | 6.4–7.6 s |
-| `SearchVector`, k = 50 | 15–18 ms |
-| `SearchKeyword`, k = 50, 8 common words | 10–14 ms |
-| `ReplaceDocument`, one 100-chunk document | 186 ms |
+| Operation | 10,000 chunks | 100,000 chunks |
+| --- | --- | --- |
+| index every chunk, 100 per document | 0.59 s | 6.1 s |
+| `ReplaceDocument`, one 100-chunk document | 6 ms | 6 ms |
+| `SearchVector`, k = 50 | 13 ms | 147 ms |
+| `SearchKeyword`, k = 50, 8 common words | 9 ms | 90 ms |
 
-Adding a vector to the flat index gets slower as the index grows: a
-100-chunk document took 6 ms to store into an empty index and 120 ms into
-one holding 9,000 chunks.
+Search time grows with the index, because both searches read every
+candidate. Write time doesn't change with size. The keyword figure is the worst case: the test
+vocabulary has 33 words, so each query word matches most chunks.
 
 ## Why it's built this way
 
@@ -242,9 +252,13 @@ one holding 9,000 chunks.
   and `chunk_vec` in step with `chunks` by themselves. `deleteChunks` and
   `insertChunk` do it in Go instead, so the whole write reads top to bottom in
   one file.
-- **An exact index.** vec1 also offers approximate indexes that need training.
-  A personal index of tens of thousands of chunks doesn't need one yet, and
-  `meru.retrieval.duration` will show when it does.
+- **No vector index.** vec1 offers an exact "flat" index and approximate
+  indexes that need training. At 10,000 chunks the flat index searched in
+  15–18 ms, no faster than the plain table's 13 ms, and each insert got
+  slower as it grew: indexing 10,000 chunks took 7 s instead of 0.6 s, and
+  replacing one document took 186 ms instead of 6 ms. First-time indexing and re-embedding after a model change matter
+  more than a few milliseconds of search, so the vectors sit in a plain
+  table. `meru.retrieval.duration` will show when search needs more.
 - **Counting instead of a flag for re-embedding.** A flag in `meta` would need
   someone to clear it at the right moment. Comparing the chunk and vector
   counts can't go stale.

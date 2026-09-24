@@ -79,7 +79,8 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	}
 
 	// driver.Open calls register on every new connection, so each one
-	// knows the vec1 and FTS5 table types before it runs any SQL.
+	// knows vec1's distance functions and FTS5's table type before it runs
+	// any SQL.
 	db, err := driver.Open(dataSourceName(opts.Path), register)
 	if err != nil {
 		return nil, fmt.Errorf("open store %s: %w", opts.Path, err)
@@ -110,8 +111,9 @@ func (s *Store) Close() error {
 }
 
 // register loads the two SQLite extensions Meru uses into one connection:
-// vec1, SQLite's vector search, and FTS5, its full-text search. The
-// WebAssembly build of SQLite leaves both out until asked.
+// vec1, SQLite's vector extension, for its vec1_cos_distance function, and
+// FTS5, its full-text search. The WebAssembly build of SQLite leaves both
+// out until asked.
 func register(conn *sqlite3.Conn) error {
 	if err := vec1.Register(conn); err != nil {
 		return fmt.Errorf("register vec1: %w", err)

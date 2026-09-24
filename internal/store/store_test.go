@@ -8,6 +8,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -83,7 +84,7 @@ func checkIndexes(t *testing.T, s *Store) {
 	}
 	var orphans int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT count(*) FROM chunk_vec WHERE rowid NOT IN (SELECT id FROM chunks)`).Scan(&orphans); err != nil {
+		`SELECT count(*) FROM chunk_vec WHERE chunk_id NOT IN (SELECT id FROM chunks)`).Scan(&orphans); err != nil {
 		t.Fatalf("count orphan vectors: %v", err)
 	}
 	if orphans != 0 {
@@ -390,6 +391,23 @@ func TestSearchVector(t *testing.T) {
 			}
 		})
 	}
+	// Score is the cosine distance, whatever the vectors' lengths:
+	// 1 - cos(45°) for north-east, 1 for up, 2 for west.
+	put(t, s, "/n/b.md", []string{"west"}, []engine.Vector{{-3, 0, 0}})
+	hits, err := s.SearchVector(ctx, engine.Vector{5, 0, 0}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDist := map[int64]float64{1: 0, 2: 1 - 1/math.Sqrt2, 3: 1, 4: 1, 5: 2}
+	for _, h := range hits {
+		if math.Abs(h.Score-wantDist[h.ChunkID]) > 1e-6 {
+			t.Errorf("chunk %d: distance %v, want %v", h.ChunkID, h.Score, wantDist[h.ChunkID])
+		}
+	}
+	if len(hits) != len(wantDist) {
+		t.Errorf("got %d hits, want %d", len(hits), len(wantDist))
+	}
+
 	if _, err := s.SearchVector(ctx, engine.Vector{1, 0}, 3); err == nil {
 		t.Error("a query with the wrong size succeeded")
 	}
