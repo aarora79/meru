@@ -237,6 +237,7 @@
     <li><a href="#end-to-end">A question, end to end</a></li>
     <li><a href="#models">Models: three jobs, two profiles</a></li>
     <li><a href="#where-data-lives">Where data lives</a></li>
+    <li><a href="#getting-content-in">Getting your content in</a></li>
     <li><a href="#hybrid-search">Finding things: hybrid search</a></li>
     <li><a href="#memory">Memory</a></li>
     <li><a href="#skills">Skills</a></li>
@@ -376,8 +377,8 @@
 <p>A <b>turn</b> runs from your question to the finished answer. A <b>session</b> is one conversation, a run of turns that share one transcript file. Four parts do the work:</p>
 
 <ul>
-  <li>The <b>fast model</b> acts as the <b>router</b>. It rewrites your question into a better search query and picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It also picks which <b>skills</b>, files of instructions for one kind of task, to load.
-    <p style="margin: 8px 0 0">The router doesn't write its choice out as text, which a small model can garble. It labels the four routes A to D, asks for a single letter, and reads how likely the model thought each letter was. The most likely letter wins, and its likelihood is the router's confidence. When the router isn't confident enough, Meru searches your files and allows tools, which costs a little more but never leaves a question without the context it needs. (<a href="300.html#routing">Level 300</a> and the <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">router design note</a> have the details.)</p></li>
+  <li>The <b>fast model</b> acts as the <b>router</b>. It picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It picks nothing else; from v0.4 a second short call will pick which <b>skills</b>, files of instructions for one kind of task, to load.
+    <p style="margin: 8px 0 0">The router doesn't write its choice out as text, which a small model can garble. It labels the four routes A to D, asks for a single letter, and reads how likely the model thought each letter was. The most likely letter wins, and its likelihood is the router's confidence. When the router isn't confident enough, Meru searches your files and allows tools, which costs a little more but never leaves a question without the context it needs. The router's prompt names the folders you index, so it can tell that "what database does meru use" asks about your own project. On a labelled set of questions it held back from tuning, the router picks the right route for 32 of 40, in about 28 ms. When it still picks "answer directly" for a question that names one of your folders, Meru searches anyway. (<a href="300.html#routing">Level 300</a> and the <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">router design note</a> have the details.)</p></li>
   <li>The <b>main model</b> chooses tools and writes the answer.</li>
   <li><b><code>dispatch</code></b> is the one function every tool call passes through. It checks the call against your config, asks you when config says to, runs it and logs it.</li>
   <li>An <b>MCP server</b> is a separate program that offers tools, such as a brokerage server's <code>get_portfolio</code>.</li>
@@ -385,9 +386,9 @@
 
 <figure id="fig-turns">
 <div class="figbox">
-<svg viewBox="0 0 816 1690" role="img" aria-labelledby="f2t f2d">
+<svg viewBox="0 0 816 1724" role="img" aria-labelledby="f2t f2d">
   <title id="f2t">A question, end to end: two turns of one session</title>
-  <desc id="f2d">Sequence diagram with seven participants: you, the meru client, merud, the store, the models, dispatch and an MCP server. Turn 1: you ask what changed in your portfolio this week. merud writes the question to the transcript, the fast model picks the route search plus tools, merud searches files, memories and session summaries, and the main model, given the context and allowed tools, asks for get_portfolio. Dispatch finds it allowed and not on the confirm list, calls the MCP server, gets the holdings, logs the call and returns the result. The main model answers, and merud streams the answer with citations to you. Turn 2: you ask to sell half of the one that dropped most. merud loads the session history, the fast model picks the route tools, and the main model asks for place_order. Dispatch finds it on the confirm list and asks you through the client: approve once, for this session, or deny. You approve once, dispatch calls place_order, the server reports the order placed, dispatch logs the call and the approval, and the main model answers.</desc>
+  <desc id="f2d">Sequence diagram with seven participants: you, the meru client, merud, the store, the models, dispatch and an MCP server. Turn 1: you ask what changed in your portfolio this week. merud writes the question to the transcript, the fast model picks the route search plus tools, merud searches files, memories and session summaries for the question and sends the client the numbered sources it found, and the main model, given the context and allowed tools, asks for get_portfolio. Dispatch finds it allowed and not on the confirm list, calls the MCP server, gets the holdings, logs the call and returns the result. The main model answers, merud streams the answer, and the client shows it with the sources it cites. Turn 2: you ask to sell half of the one that dropped most. merud loads the session history, the fast model picks the route tools without rewriting the question, and the main model, reading turn 1, asks for place_order. Dispatch finds it on the confirm list and asks you through the client: approve once, for this session, or deny. You approve once, dispatch calls place_order, the server reports the order placed, dispatch logs the call and the approval, and the main model answers.</desc>
   <defs>
     <marker id="sqa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="sqb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -413,13 +414,13 @@
   <rect x="714.0" y="12" width="100" height="40" rx="7" class="b"/>
   <text x="764" y="37" class="t1" text-anchor="middle">MCP server</text>
   </g>
-    <line x1="52" y1="52" x2="52" y2="1654" class="life"/>
-  <line x1="160" y1="60" x2="160" y2="1654" class="life"/>
-  <line x1="282" y1="60" x2="282" y2="1654" class="life"/>
-  <line x1="404" y1="60" x2="404" y2="1654" class="life"/>
-  <line x1="526" y1="60" x2="526" y2="1654" class="life"/>
-  <line x1="648" y1="52" x2="648" y2="1654" class="life"/>
-  <line x1="764" y1="52" x2="764" y2="1654" class="life"/>
+    <line x1="52" y1="52" x2="52" y2="1688" class="life"/>
+  <line x1="160" y1="60" x2="160" y2="1688" class="life"/>
+  <line x1="282" y1="60" x2="282" y2="1688" class="life"/>
+  <line x1="404" y1="60" x2="404" y2="1688" class="life"/>
+  <line x1="526" y1="60" x2="526" y2="1688" class="life"/>
+  <line x1="648" y1="52" x2="648" y2="1688" class="life"/>
+  <line x1="764" y1="52" x2="764" y2="1688" class="life"/>
   <g font-size="12">
     <rect x="0" y="98" width="816" height="28" class="band"/>
   <text x="12" y="117" class="ta" font-size="12.5" font-weight="700">Turn 1 · starts a new session</text>
@@ -439,88 +440,90 @@
   <path d="M282 358 L402 358" class="ln" marker-end="url(#sqa)"/>
   <text x="343.0" y="385" class="t2 halo" text-anchor="middle">best matches</text>
   <path d="M404 392 L284 392" class="lnd" marker-end="url(#sqa)"/>
-  <text x="404.0" y="419" class="t2 halo" text-anchor="middle">main: context + allowed tools</text>
-  <path d="M282 426 L524 426" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="453" class="t2 halo" text-anchor="middle">call get_portfolio</text>
-  <path d="M526 460 L284 460" class="lnd" marker-end="url(#sqa)"/>
-  <text x="465.0" y="487" class="t2 halo" text-anchor="middle">get_portfolio</text>
-  <path d="M282 494 L646 494" class="ln" marker-end="url(#sqa)"/>
-  <rect x="550.0" y="508" width="196" height="24" rx="5" class="ba2"/>
-  <text x="648" y="524" class="t1" text-anchor="middle">allowed · not on confirm list</text>
-  <text x="706.0" y="559" class="t1 halo" text-anchor="middle">get_portfolio</text>
-  <path d="M648 566 L762 566" class="lna" marker-end="url(#sqb)"/>
-  <text x="706.0" y="593" class="t2 halo" text-anchor="middle">holdings</text>
-  <path d="M764 600 L650 600" class="lnd" marker-end="url(#sqa)"/>
-  <text x="526.0" y="627" class="t2 halo" text-anchor="middle">log the call</text>
-  <path d="M648 634 L406 634" class="ln" marker-end="url(#sqa)"/>
-  <text x="465.0" y="661" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M648 668 L284 668" class="lnd" marker-end="url(#sqa)"/>
-  <text x="404.0" y="695" class="t2 halo" text-anchor="middle">main: context + result</text>
-  <path d="M282 702 L524 702" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="729" class="t2 halo" text-anchor="middle">answer</text>
-  <path d="M526 736 L284 736" class="lnd" marker-end="url(#sqa)"/>
-  <text x="221.0" y="763" class="t2 halo" text-anchor="middle">stream answer</text>
-  <path d="M282 770 L162 770" class="lnd" marker-end="url(#sqa)"/>
-  <text x="106.0" y="797" class="t2 halo" text-anchor="middle">answer with</text>
-  <text x="106.0" y="812" class="t2 halo" text-anchor="middle">citations</text>
-  <path d="M160 819 L54 819" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="0" y="847" width="816" height="28" class="band"/>
-  <text x="12" y="866" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
-  <text x="106.0" y="900" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
-  <text x="106.0" y="915" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
-  <path d="M52 922 L158 922" class="ln" marker-end="url(#sqa)"/>
-  <text x="221.0" y="949" class="t2 halo" text-anchor="middle">question</text>
-  <path d="M160 956 L280 956" class="ln" marker-end="url(#sqa)"/>
-  <text x="343.0" y="983" class="t2 halo" text-anchor="middle">load this session&#x27;s history</text>
-  <path d="M282 990 L402 990" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1017" class="t2 halo" text-anchor="middle">fast: pick a route</text>
-  <path d="M282 1024 L524 1024" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1051" class="t2 halo" text-anchor="middle">route = tools</text>
-  <path d="M526 1058 L284 1058" class="lnd" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1085" class="t2 halo" text-anchor="middle">main: context with turn 1 + tools</text>
-  <path d="M282 1092 L524 1092" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1119" class="t2 halo" text-anchor="middle">call place_order</text>
-  <path d="M526 1126 L284 1126" class="lnd" marker-end="url(#sqa)"/>
-  <text x="465.0" y="1153" class="t2 halo" text-anchor="middle">place_order</text>
-  <path d="M282 1160 L646 1160" class="ln" marker-end="url(#sqa)"/>
-  <rect x="558.0" y="1174" width="180" height="24" rx="5" class="ba2"/>
-  <text x="648" y="1190" class="t1" text-anchor="middle">allowed · on confirm list</text>
-  <text x="404.0" y="1225" class="t2 halo" text-anchor="middle">ask about place_order(…)</text>
-  <path d="M648 1232 L162 1232" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="106.0" y="1259" class="t2 halo" text-anchor="middle">approve once ·</text>
-  <text x="106.0" y="1274" class="t2 halo" text-anchor="middle">for this session ·</text>
-  <text x="106.0" y="1289" class="t2 halo" text-anchor="middle">deny?</text>
-  <path d="M160 1296 L54 1296" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="106.0" y="1323" class="t1 halo" text-anchor="middle">approve once</text>
-  <path d="M52 1330 L158 1330" class="lna2" marker-end="url(#sqc)"/>
-  <text x="404.0" y="1357" class="t1 halo" text-anchor="middle">approved once</text>
-  <path d="M160 1364 L646 1364" class="lna2" marker-end="url(#sqc)"/>
-  <text x="706.0" y="1391" class="t1 halo" text-anchor="middle">place_order</text>
-  <path d="M648 1398 L762 1398" class="lna" marker-end="url(#sqb)"/>
-  <text x="706.0" y="1425" class="t2 halo" text-anchor="middle">order placed</text>
-  <path d="M764 1432 L650 1432" class="lnd" marker-end="url(#sqa)"/>
-  <text x="526.0" y="1459" class="t2 halo" text-anchor="middle">log the call and the approval</text>
-  <path d="M648 1466 L406 1466" class="ln" marker-end="url(#sqa)"/>
-  <text x="465.0" y="1493" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M648 1500 L284 1500" class="lnd" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1527" class="t2 halo" text-anchor="middle">main: context + result</text>
-  <path d="M282 1534 L524 1534" class="ln" marker-end="url(#sqa)"/>
-  <text x="404.0" y="1561" class="t2 halo" text-anchor="middle">answer</text>
-  <path d="M526 1568 L284 1568" class="lnd" marker-end="url(#sqa)"/>
-  <text x="221.0" y="1595" class="t2 halo" text-anchor="middle">stream answer</text>
-  <path d="M282 1602 L162 1602" class="lnd" marker-end="url(#sqa)"/>
-  <text x="106.0" y="1629" class="t2 halo" text-anchor="middle">answer</text>
-  <path d="M160 1636 L54 1636" class="lnd" marker-end="url(#sqa)"/>
+  <text x="221.0" y="419" class="t2 halo" text-anchor="middle">sources [1], [2], …</text>
+  <path d="M282 426 L162 426" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="453" class="t2 halo" text-anchor="middle">main: context + allowed tools</text>
+  <path d="M282 460 L524 460" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="487" class="t2 halo" text-anchor="middle">call get_portfolio</text>
+  <path d="M526 494 L284 494" class="lnd" marker-end="url(#sqa)"/>
+  <text x="465.0" y="521" class="t2 halo" text-anchor="middle">get_portfolio</text>
+  <path d="M282 528 L646 528" class="ln" marker-end="url(#sqa)"/>
+  <rect x="550.0" y="542" width="196" height="24" rx="5" class="ba2"/>
+  <text x="648" y="558" class="t1" text-anchor="middle">allowed · not on confirm list</text>
+  <text x="706.0" y="593" class="t1 halo" text-anchor="middle">get_portfolio</text>
+  <path d="M648 600 L762 600" class="lna" marker-end="url(#sqb)"/>
+  <text x="706.0" y="627" class="t2 halo" text-anchor="middle">holdings</text>
+  <path d="M764 634 L650 634" class="lnd" marker-end="url(#sqa)"/>
+  <text x="526.0" y="661" class="t2 halo" text-anchor="middle">log the call</text>
+  <path d="M648 668 L406 668" class="ln" marker-end="url(#sqa)"/>
+  <text x="465.0" y="695" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M648 702 L284 702" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="729" class="t2 halo" text-anchor="middle">main: context + result</text>
+  <path d="M282 736 L524 736" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="763" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M526 770 L284 770" class="lnd" marker-end="url(#sqa)"/>
+  <text x="221.0" y="797" class="t2 halo" text-anchor="middle">stream answer</text>
+  <path d="M282 804 L162 804" class="lnd" marker-end="url(#sqa)"/>
+  <text x="106.0" y="831" class="t2 halo" text-anchor="middle">answer, then the</text>
+  <text x="106.0" y="846" class="t2 halo" text-anchor="middle">sources it cites</text>
+  <path d="M160 853 L54 853" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="0" y="881" width="816" height="28" class="band"/>
+  <text x="12" y="900" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
+  <text x="106.0" y="934" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
+  <text x="106.0" y="949" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
+  <path d="M52 956 L158 956" class="ln" marker-end="url(#sqa)"/>
+  <text x="221.0" y="983" class="t2 halo" text-anchor="middle">question</text>
+  <path d="M160 990 L280 990" class="ln" marker-end="url(#sqa)"/>
+  <text x="343.0" y="1017" class="t2 halo" text-anchor="middle">load this session&#x27;s history</text>
+  <path d="M282 1024 L402 1024" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1051" class="t2 halo" text-anchor="middle">fast: pick a route</text>
+  <path d="M282 1058 L524 1058" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1085" class="t2 halo" text-anchor="middle">route = tools</text>
+  <path d="M526 1092 L284 1092" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1119" class="t2 halo" text-anchor="middle">main: context with turn 1 + tools</text>
+  <path d="M282 1126 L524 1126" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1153" class="t2 halo" text-anchor="middle">call place_order</text>
+  <path d="M526 1160 L284 1160" class="lnd" marker-end="url(#sqa)"/>
+  <text x="465.0" y="1187" class="t2 halo" text-anchor="middle">place_order</text>
+  <path d="M282 1194 L646 1194" class="ln" marker-end="url(#sqa)"/>
+  <rect x="558.0" y="1208" width="180" height="24" rx="5" class="ba2"/>
+  <text x="648" y="1224" class="t1" text-anchor="middle">allowed · on confirm list</text>
+  <text x="404.0" y="1259" class="t2 halo" text-anchor="middle">ask about place_order(…)</text>
+  <path d="M648 1266 L162 1266" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="106.0" y="1293" class="t2 halo" text-anchor="middle">approve once ·</text>
+  <text x="106.0" y="1308" class="t2 halo" text-anchor="middle">for this session ·</text>
+  <text x="106.0" y="1323" class="t2 halo" text-anchor="middle">deny?</text>
+  <path d="M160 1330 L54 1330" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="106.0" y="1357" class="t1 halo" text-anchor="middle">approve once</text>
+  <path d="M52 1364 L158 1364" class="lna2" marker-end="url(#sqc)"/>
+  <text x="404.0" y="1391" class="t1 halo" text-anchor="middle">approved once</text>
+  <path d="M160 1398 L646 1398" class="lna2" marker-end="url(#sqc)"/>
+  <text x="706.0" y="1425" class="t1 halo" text-anchor="middle">place_order</text>
+  <path d="M648 1432 L762 1432" class="lna" marker-end="url(#sqb)"/>
+  <text x="706.0" y="1459" class="t2 halo" text-anchor="middle">order placed</text>
+  <path d="M764 1466 L650 1466" class="lnd" marker-end="url(#sqa)"/>
+  <text x="526.0" y="1493" class="t2 halo" text-anchor="middle">log the call and the approval</text>
+  <path d="M648 1500 L406 1500" class="ln" marker-end="url(#sqa)"/>
+  <text x="465.0" y="1527" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M648 1534 L284 1534" class="lnd" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1561" class="t2 halo" text-anchor="middle">main: context + result</text>
+  <path d="M282 1568 L524 1568" class="ln" marker-end="url(#sqa)"/>
+  <text x="404.0" y="1595" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M526 1602 L284 1602" class="lnd" marker-end="url(#sqa)"/>
+  <text x="221.0" y="1629" class="t2 halo" text-anchor="middle">stream answer</text>
+  <path d="M282 1636 L162 1636" class="lnd" marker-end="url(#sqa)"/>
+  <text x="106.0" y="1663" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M160 1670 L54 1670" class="lnd" marker-end="url(#sqa)"/>
   </g>
-  <text x="12" y="1678" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the approval.</text>
+  <text x="12" y="1712" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the approval.</text>
 </svg>
 </div>
 <figcaption><b>Figure 2.</b> Both turns follow the same path until <code>dispatch</code>. Only turn 2 stops for you, because <code>place_order</code> sits on the server's confirm list and <code>get_portfolio</code> doesn't.</figcaption>
 </figure>
 
-<p><b>Turn 1.</b> You ask what changed in your portfolio. <code>merud</code> writes the question to the transcript, and the router picks "search and call tools". <code>merud</code> searches your files, your memories and the summaries of past sessions, then gives the main model the best matches, your question and a description of each tool you allowed. The model asks for <code>get_portfolio</code>, which is allowed and needs no yes from you, so <code>dispatch</code> calls it and logs the call. The model reads the holdings and writes an answer that cites the files it used.</p>
+<p><b>Turn 1.</b> You ask what changed in your portfolio. <code>merud</code> writes the question to the transcript, and the router picks "search and call tools". <code>merud</code> searches your files, your memories and the summaries of past sessions for your question, sends the client the numbered list of what it found, then gives the main model the best matches, your question and a description of each tool you allowed. The model asks for <code>get_portfolio</code>, which is allowed and needs no yes from you, so <code>dispatch</code> calls it and logs the call. The model reads the holdings and writes an answer that cites the files it used by number, and <code>meru</code> lists those files under the answer.</p>
 
-<p><b>Turn 2.</b> You type "sell half of the one that dropped most". <code>merud</code> loads this session's earlier questions and answers, newest first, until their share of the prompt fills. The router reads them too, so it can rewrite "the one that dropped most" into a query that names the stock. The model asks for <code>place_order</code>, which sits on the server's <b>confirm list</b>, the tools that need your yes on every call. So <code>dispatch</code> stops and asks.</p>
+<p><b>Turn 2.</b> You type "sell half of the one that dropped most". <code>merud</code> loads this session's earlier questions and answers, newest first, until their share of the prompt fills. The router reads them too, and picks "call tools". It doesn't rewrite your words. The main model reads turn 1's answer and works out which stock dropped most. On a turn that searches, <code>merud</code> adds an earlier question to the search, so a follow-up such as "and the one after that?" still finds the right files. It skips questions such as "try that again" that name no subject. The model asks for <code>place_order</code>, which sits on the server's <b>confirm list</b>, the tools that need your yes on every call. So <code>dispatch</code> stops and asks.</p>
 
 <p>Within a turn the main model either asks for a tool or answers. Each time it asks, <code>merud</code> runs the tool and hands back the result. The turn ends when the model answers, or after 8 rounds (a config setting). When the route leaves tools out, <code>merud</code> sends no tool descriptions, and a model can't call a tool it hasn't seen.</p>
 
@@ -545,7 +548,7 @@
 <div class="tbl"><table>
   <thead><tr><th>Tier</th><th>Job</th></tr></thead>
   <tbody>
-    <tr><td><code>fast</code></td><td>routing, rewriting queries, trivial answers</td></tr>
+    <tr><td><code>fast</code></td><td>routing, trivial answers</td></tr>
     <tr><td><code>main</code></td><td>reasoning, choosing tools, writing the answer</td></tr>
     <tr><td><code>embed</code></td><td>turning text into embeddings for search</td></tr>
   </tbody>
@@ -564,7 +567,7 @@
   </tbody>
 </table></div>
 
-<p><code>merud</code> loads every tier at startup and asks Ollama to keep them loaded, so no question waits for a model. Switching embedding models makes every stored embedding useless, since each model makes lists of a different length. The index records which model made its embeddings, and when config names a different one, <code>merud</code> rebuilds them from your files.</p>
+<p><code>merud</code> loads every tier at startup and asks Ollama to keep them loaded, so no question waits for a model. Switching embedding models makes every stored embedding useless, since each model makes lists of a different length. The index records which model made its embeddings. When config names a different one, <code>merud</code> drops the old embeddings, keeps keyword search working, and embeds your files again.</p>
 
 <!-- ============================================================ -->
 <h2 id="where-data-lives">Where data lives</h2>
@@ -583,13 +586,13 @@
 <pre><code>{"ts":"2026-09-23T10:15:03Z","type":"tool_call","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}</code></pre>
 
-<p>The index is one SQLite file, <code>~/.meru/meru.db</code>. It holds your files cut into pieces, with a keyword index and an embedding for each piece; every message and tool call; your memories; and your scheduled jobs with the outcome of each run. Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
+<p>The index is one SQLite file, <code>~/.meru/meru.db</code>, readable only by you. It holds your files cut into pieces, with a keyword index and an embedding for each piece. Later milestones add the rest: every tool call (v0.3), every message and your memories (v0.4), and your scheduled jobs with the outcome of each run (v0.5). Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
 
 <figure id="fig-storage">
 <div class="figbox">
 <svg viewBox="0 0 800 380" role="img" aria-labelledby="f3t f3d">
   <title id="f3t">Files as truth, SQLite as a rebuildable index</title>
-  <desc id="f3d">On the left, the files that hold the truth: your folders, session transcripts, memory files, and config.toml with skills. On the right, the meru.db index. The indexer splits and embeds your folders into file pieces with keyword and meaning indexes. Replaying the transcripts fills messages and tool calls. Embedding the memory files fills memories with keyword and meaning indexes. Reading config fills jobs and settings.</desc>
+  <desc id="f3d">On the left, the files that hold the truth: your folders, session transcripts, memory files, and config.toml with skills. On the right, the meru.db index. The indexer splits and embeds your folders into file pieces with keyword and meaning indexes. Replaying the transcripts fills messages and tool calls, from v0.3 and v0.4. Embedding the memory files fills memories with keyword and meaning indexes. Reading config fills jobs and settings.</desc>
   <defs>
     <marker id="f3a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -620,7 +623,7 @@
 
   <rect x="484" y="124" width="290" height="60" rx="8" class="b"/>
   <text x="500" y="148" class="t1" font-size="14" font-weight="600">messages · tool calls</text>
-  <text x="500" y="169" class="t3" font-size="12">each with its trace ID</text>
+  <text x="500" y="169" class="t3" font-size="12">each with its trace ID · from v0.3–v0.4</text>
 
   <rect x="484" y="204" width="290" height="60" rx="8" class="b"/>
   <text x="500" y="228" class="t1" font-size="14" font-weight="600">memories</text>
@@ -646,9 +649,16 @@
 </figure>
 
 <!-- ============================================================ -->
-<h2 id="hybrid-search">Finding things: hybrid search</h2>
+<h2 id="getting-content-in">Getting your content in</h2>
 
-<p>The indexer cuts each file into <b>chunks</b> along its own structure: Markdown by heading, code by function, PDFs by page. It re-reads a file only when its timestamp and contents change.</p>
+<p>Meru reads only the folders you list under <code>[index] folders</code> in <code>config.toml</code>, and none until you list one. Inside them the <b>indexer</b> skips, in order: symbolic links, which it never follows; secret files such as <code>.env</code> or <code>id_rsa</code>, which no ignore file can bring back; hidden files; build folders such as <code>node_modules</code>; anything a <code>.gitignore</code> or <code>.meruignore</code> names; media, archives and programs; files over 5 MB; and anything else that isn't text. A <code>.meruignore</code> uses <code>.gitignore</code> syntax, so you can skip more, or bring back with <code>!name</code> a file git ignores.</p>
+
+<p>The indexer cuts each file into <b>chunks</b> of about 500 tokens along its own structure: Markdown by heading, Go code by function or type, other code and text by blank lines, HTML by heading, and PDFs by page, as plain text without layout. Each chunk repeats the last 50 tokens of the one before, so a sentence cut at a boundary still appears whole somewhere.</p>
+
+<p><code>merud</code> reads the folder list when it starts, so a change takes a restart. It scans the folders at startup and re-reads a file only when its timestamp or contents change. While it runs it watches the folders, and re-indexes a file half a second after you save it. <code>meru index</code> rescans on demand, and <code>meru index -status</code> shows what the index holds. Email, calendar and Drive stay out of the index: Meru asks their tools at question time, so your mail never lands in <code>meru.db</code>.</p>
+
+<!-- ============================================================ -->
+<h2 id="hybrid-search">Finding things: hybrid search</h2>
 
 <p>Each common way to search misses one kind of question:</p>
 
@@ -728,9 +738,11 @@
   </tbody>
 </table></div>
 
-<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and the main model cites those paths. The sizes 50 and 10 are starting values in config.</p>
+<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and numbers them in the prompt. The main model cites them as <code>[1]</code>, <code>[2]</code>, and <code>meru</code> prints the cited files under the answer. The prompt also names the folders Meru indexes, so the model doesn't claim it can't see your files while it reads them. The sizes 50 and 10 are constants in the code, not settings; we'll tune them once we have measurements.</p>
 
-<p>Each turn runs this search over three sources: file chunks, memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
+<p>Meru stores each embedding as a plain row in <code>meru.db</code> and compares the question with every one. On the development machine that takes 13 ms over 10,000 chunks and about 150 ms over 100,000, fast enough for a personal index.</p>
+
+<p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a follow-up. Until tools arrive in v0.3, the tools route searches too, because the router sends some questions about your files there. In v0.2 it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
 
 <!-- ============================================================ -->
 <h2 id="memory">Memory</h2>
@@ -764,7 +776,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <!-- ============================================================ -->
 <h2 id="skills">Skills</h2>
 
-<p>A skill is a Markdown file of instructions at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>, with a name and a short description of when to use it. The prompt carries only names and descriptions. <code>merud</code> loads a skill's full text when the router picks it, so adding skills barely grows the prompt.</p>
+<p>A skill is a Markdown file of instructions at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>, with a name and a short description of when to use it. The prompt carries only names and descriptions. <code>merud</code> loads a skill's full text when a short model call picks it, so adding skills barely grows the prompt.</p>
 
 <p>Two skills ship inside the program:</p>
 
@@ -786,7 +798,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <p>Both follow the same rules, set per server or agent in <code>config.toml</code>:</p>
 
 <ul>
-  <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list.</li>
+  <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
   <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave.</li>
   <li><b>One door.</b> MCP tools, A2A agents and the built-in tools (<code>remember</code>, <code>write_file</code>, <code>configure</code>) all go through <code>dispatch</code>. No other code reaches them. The built-in tools need no allow entry: the model always sees all three.</li>
@@ -859,6 +871,8 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 </figure>
 
 <p><code>dispatch</code> logs every call to the transcript and the <code>tool_calls</code> table, and <code>meru log</code> shows them. A call to a tool you didn't allow doesn't run, but it still gets a row, so a model that keeps reaching for forbidden tools shows up in the log. An assistant that can place orders or send email needs a record you can read afterwards.</p>
+
+<p>Each call has a time limit, 60 seconds unless the server's entry sets another. A server that crashes restarts on the next call to one of its tools, at most once every 10 seconds. A server Meru starts gets only a short list of environment variables plus its own, so it can't read another tool's API key from <code>merud</code>'s environment.</p>
 
 <p>Meru doesn't confine MCP servers. Each runs as an ordinary program with your permissions and can read files or reach the network on its own. The allowlist decides which tools the model may call; the server decides what each call does. Adding a server means trusting it, as with any program you install.</p>
 

@@ -122,6 +122,10 @@ type Turn struct {
 	History []engine.Message
 	// Question is the user's new message.
 	Question string
+	// Folders lists the folders Meru indexes, as config.toml writes them,
+	// such as "~/repos/meru". The prompt names them, so a question about a
+	// project kept there goes to search. Empty leaves the line out.
+	Folders []string
 }
 
 // Decision is what the router concluded.

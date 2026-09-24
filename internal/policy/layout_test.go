@@ -33,7 +33,7 @@ var forbiddenClientPackages = []struct {
 	{"internal/transcript", "merud owns the session transcripts"},
 	{"internal/agent", "the agent loop and dispatch run in merud"},
 	{"internal/store", "merud owns the store"},
-	{"internal/retrieval", "retrieval runs in merud next to the store"},
+	{"internal/retrieve", "retrieval runs in merud next to the store"},
 	{"internal/memory", "merud owns memory"},
 	{"internal/mcp", "merud owns the MCP clients"},
 	{"internal/a2a", "merud owns the A2A clients"},

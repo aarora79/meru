@@ -1,6 +1,7 @@
 # router
 
-**Code:** `internal/router/` (`router.go`, `prompt.go`, `probs.go`)
+**Code:** `internal/router/` (`router.go`, `prompt.go`, `probs.go`; the scoring
+harness in `eval_test.go` and `eval_integration_test.go`)
 **Milestone:** v0.1
 **Architecture:** [Routing](../../ARCHITECTURE.md#routing); full design in [docs/fast-router.md](../fast-router.md)
 
@@ -19,7 +20,7 @@ reads how likely the model thought each of the letters A, B, C and D was.
 
 ```mermaid
 flowchart LR
-    T["Turn<br/>question + history"] --> P["buildMessages<br/>options A–D, ends 'Answer: '"]
+    T["Turn<br/>question, history, folders"] --> P["buildMessages<br/>options A–D, folders, examples,<br/>then the turn, ends 'Answer: '"]
     P --> G["engine.Generate<br/>MaxTokens 1, LogProbs, TopLogProbs 20"]
     G --> L["log probabilities<br/>at position 0"]
     L --> F["probs<br/>keep A–D, exp(lp / T), normalise"]
@@ -38,14 +39,34 @@ so the prompt and the letter table can't drift apart:
 
 ```go
 var options = [...]option{
-    {"A", RouteDirect, "Answer from what you already know. No files or tools needed."},
-    {"B", RouteSearch, "The answer is in the user's own notes, documents or repositories. Retrieve first."},
+    {"A", RouteDirect, "General knowledge, chit-chat, maths, coding or writing help. ..."},
+    {"B", RouteSearch, "Look in the user's own saved notes, documents, code repos or past chats. ..."},
     ...
 }
 ```
 
-`buildMessages` writes the history newest first, then the question, the four
-options, and ends with `Answer: ` so the model's next token is a letter.
+A second array, `examples`, holds two short questions per route. Each example
+names its route, and `letterFor` turns the route into its letter, so changing a
+letter can't leave an example pointing at the wrong option.
+
+`buildMessages` writes the fixed part first (the options, then the examples),
+then the history newest first, then the question, and ends with `Answer: ` so
+the model's next token is a letter. The fixed part comes first for two reasons
+the labelled set measured: accuracy rose, and Ollama can reuse its work on a
+prompt opening it saw on the last turn, so the longer prompt still runs faster.
+
+When `Turn.Folders` holds the `[index] folders`, B's line gains one more
+sentence:
+
+```text
+The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.
+```
+
+Without it the model can't tell that "meru" in "what database does meru use"
+names the user's own project, and it answered `direct`. `merud` fills
+`Turn.Folders` from config, in `routerAdapter` in `cmd/merud/main.go`. Config
+changes only when `merud` restarts, so the line stays the same from turn to turn
+and counts as part of the fixed part.
 
 `routeForLetter` trims spaces and ignores case. A tokenizer may emit `A`, ` A` or
 `a` for the same answer; all three map to `direct`. `AB`, `Alpha` and `1` map to
@@ -67,9 +88,10 @@ for _, alt := range pos.Top {
 ```
 
 A log probability is the natural logarithm of a probability, so `math.Exp` turns
-it back. Dividing by a temperature above 1 flattens the distribution: small models
-claim more certainty than they have. The temperature never changes which route
-wins. Tokens that map to the same route, such as `A` and ` A`, add up.
+it back. Dividing by a temperature above 1 flattens the distribution, for a model
+that claims more certainty than it has. The fitted default is 1.25. The
+temperature never changes which route wins. Tokens that map to the same route,
+such as `A` and ` A`, add up.
 
 `raw` is a *map*: Go's hash table, here from `Route` to `float64`. Reading a key
 that isn't there gives 0. Go walks a map in random order, so `best` walks the
@@ -120,6 +142,33 @@ a logger that writes nothing, so tests need no logger. `merud` sets it to its ow
 fast model's name, and checks every value: `top_logprobs` 1 to 20, `temperature`
 above 0, `min_confidence` 0 to 1, `fallback` one of the four routes.
 
+### eval_test.go and eval_integration_test.go
+
+These two files score the router; neither ships in `merud`.
+
+`eval_test.go` has no build tag, so a plain `go test` checks its arithmetic
+against fixtures. `loadLabelled` reads `testdata/routes.jsonl`, one JSON object
+per line:
+
+```json
+{"q": "what did I change in the portfolio repo this week?", "route": "search", "why": "the owner's own repository history"}
+```
+
+A follow-up row adds `"history": [{"q": "...", "a": "..."}]`, and `turn` turns
+it into user and assistant messages. `split` puts the 3rd, 6th and 9th row of
+every ten with the same route into the held-out set, so each route keeps its
+share and every run gets the same split. `score` replays `decide` over saved
+completions and fills a `report`: accuracy, per-route precision and recall, the
+confusion matrix, `ece` (expected calibration error over ten bins), the fallback
+rate, the missed rate and latency percentiles. `fitTemperature` runs `score`
+over a grid of temperatures and keeps the one with the lowest ECE.
+
+`eval_integration_test.go` has the `integration` tag. It wraps the real engine
+in a `recorder`, a struct that embeds `engine.Engine` and overrides `Generate`
+to keep the last completion. Each labelled question goes through `Decide`, the
+real code path, and the recorder hands the raw log probabilities to `score`.
+One pass over the model then covers every temperature and threshold.
+
 ## Go ideas used here
 
 - **Maps** — `map[Route]float64`; a missing key reads as 0.
@@ -131,21 +180,27 @@ above 0, `min_confidence` 0 to 1, `fallback` one of the four routes.
   `engine.Engine` to get the three methods it doesn't need, and writes only
   `Generate`.
 - **Build tags** — `//go:build integration` at the top of `integration_test.go`
-  keeps the real-model test out of a plain `go test`.
+  and `eval_integration_test.go` keeps the real-model tests out of a plain
+  `go test`.
 
 ## Try it
 
 ```sh
 go test -race ./internal/router/
 go test -tags integration -v -run Integration ./internal/router/
+make router-eval
 ```
 
-The second command needs Ollama running with the fast model pulled. It routes
-seven questions and prints each distribution and its time. On the development
-machine (Ollama 0.34, MiniCPM5-2B at Q4_K_M, temperature 1.0) a warm decision
-took about 13 ms. The router picked the expected route for 2 of the 7 questions
-and leaned towards `search+tools`, which is what the uncalibrated threshold is
-for; see [Calibration](../fast-router.md#calibration).
+The last two need Ollama running with the fast model pulled. The second routes
+seven questions and prints each distribution. `make router-eval` scores all 135
+labelled questions and prints the report, a temperature sweep and a
+`min_confidence` sweep. It gives every row the folders in `evalFolders`
+(`~/notes`, `~/repos/meru`, `~/repos/portfolio`). On the development machine
+(Ollama 0.34, MiniCPM5-2B at Q4_K_M) the router picked the labelled route for 32
+of 40 held-out questions, at about 28 ms per warm decision. Without the folder
+line it picked 30 of 40. See
+[Calibration](../fast-router.md#calibration) and the notes at the end of that
+page.
 
 ## Why it's built this way
 

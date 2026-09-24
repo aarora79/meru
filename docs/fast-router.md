@@ -34,8 +34,9 @@ default poisons it.
 A route decision is a classification, so read it from the logits instead of parsing
 prose.
 
-1. Prompt the `fast` model with the question, the session history and one lettered
-   option per route, each with a description.
+1. Prompt the `fast` model with one lettered option per route, each with a
+   description, the folders Meru indexes, two worked examples per route, then the
+   session history and the question.
 2. Ask Ollama for **one** token with log probabilities, with thinking turned off
    (`think: false`). A thinking model otherwise spends that token starting its hidden
    reasoning.
@@ -50,7 +51,7 @@ from a fixed set of letters rather than from whatever it wrote.
 
 ```mermaid
 flowchart LR
-    Q["question + history"] --> P["build prompt<br/>A–D with criteria"]
+    Q["question + history"] --> P["build prompt<br/>A–D, folders, examples, then the turn"]
     P --> O["Ollama /api/chat<br/>num_predict 1<br/>logprobs true, think false"]
     O --> T["top_logprobs at position 0"]
     T --> F["keep A–D<br/>exp, temperature, normalise"]
@@ -74,11 +75,15 @@ that emits single letters as their own tokens, which the startup probe checks.
 
 **In scope.** The route decision, and only that.
 
-**Out of scope, on purpose.** The query rewrite and the skills to load stay in the
-generation call they live in today. A rewrite needs generated text, so it cannot come
-from a single token. Skill selection could become a second classification, but one
-decision per call means one call per decision, and nobody has measured that the
-current path is a problem. Revisit when there is a number.
+**Out of scope, on purpose.** No model rewrites the query. Search uses the question
+itself, and on a follow-up `merud` appends the session's latest earlier question
+that isn't only filler words such as "try the last question again". That needs no
+model call (see
+[How a conversation continues](../ARCHITECTURE.md#how-a-conversation-continues)).
+A rewrite would need generated text, a second model call on every search turn;
+nobody has measured that search needs one. Skill selection arrives in v0.4 as its own
+short call. It could become a second classification, but one decision per call means
+one call per decision. Revisit either when there is a number.
 
 This keeps the change small: one new path, one prompt, one parser.
 
@@ -88,7 +93,24 @@ The prompt ends with a bare `Answer: ` so the next token is the letter. Options 
 a description, because small models lean on the label text.
 
 ```text
-<system prompt>
+<system prompt, when there is one>
+
+Decide how to answer the user's next question.
+
+A = General knowledge, chit-chat, maths, coding or writing help. Needs nothing about the user and nothing recent or live.
+B = Look in the user's own saved notes, documents, code repos or past chats. Nothing live, no action. The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.
+C = Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) or an action (send, book, create, schedule). Nothing from the user's notes.
+D = Needs the user's notes or files AND a live lookup or an action.
+
+Examples:
+what's the boiling point of water in Denver -> A
+fix the grammar: me and him was late -> A
+what did I note about the gym contract -> B
+which of my scripts use ffmpeg -> B
+is it windy in Chicago now -> C
+move my Monday standup to 10 -> C
+text Maya the gate code from my notes -> D
+does the hotel in my trip notes have rooms free -> D
 
 Conversation so far:
 <history, newest first, within the history budget>
@@ -96,19 +118,37 @@ Conversation so far:
 Question:
 <the user's question>
 
-Pick the best way to answer it.
-
-A = Answer from what you already know. No files or tools needed.
-B = The answer is in the user's own notes, documents or repositories. Retrieve first.
-C = The answer needs a tool: live data, an external service, or an action.
-D = Both: retrieve from the user's files and call a tool.
-
 Reply with one letter and nothing else.
 Answer: 
 ```
 
 The letter-to-route mapping lives in Go, next to the prompt template, so the two
 never drift. Do not read the letters from config; they are part of the prompt.
+
+Each part earned its place on the labelled set (see [Calibration](#calibration)):
+
+- **Fixed part first.** The options and examples never change, so they open the
+  prompt and the turn's history and question close it. Ollama reuses its work on a
+  prompt's opening tokens when the next prompt starts the same way, so the fixed
+  part costs little after the first turn. The order also raised accuracy more than
+  any other single change.
+- **Contrastive descriptions.** Each option names the questions that belong to it
+  and says what it excludes. "Email inbox" and "calendar" sit under C, because
+  they are live services, not notes.
+- **Folders on B's line.** When `[index] folders` lists any, B's line names them
+  as `config.toml` writes them, and says that questions about projects kept there,
+  by name, are B. `merud` passes them in `Turn.Folders`. Without the line the model
+  sent "what database does meru use" to `direct` with 0.902 confidence, because
+  nothing told it that "meru" is one of the user's own projects. The folders change
+  only when config does, so the line sits in the fixed part and Ollama's reuse
+  still works. With no folders the line is left out.
+- **Two examples per route.** None repeats a question in the labelled set, and a
+  unit test checks that.
+- **Letters A to D in route order.** Every other order tried did worse, and so did
+  the words `direct`, `search`, `tools` and `both`, which the tokenizer splits.
+
+The prompt costs about 256 tokens for a question with no history and no folders,
+against about 120 before these changes.
 
 ### Tokeniser detail
 
@@ -207,9 +247,9 @@ const (
 //
 // Ollama reports a natural logarithm per token. math.Exp turns each back into a
 // probability. Dividing the logit by a temperature above 1 flattens the
-// distribution; small models are overconfident, and the fitted value for a model
-// of this size usually lands between 2 and 2.5. Temperature never changes which
-// route wins, only how sure the router claims to be.
+// distribution. `make router-eval` fits the value; with the prompt above,
+// MiniCPM5-2B needs 1.25. Temperature never changes which route wins, only how
+// sure the router claims to be.
 func probs(pos engine.PositionLogProbs, temp float64) map[Route]float64 {
     raw := map[Route]float64{}
     for _, alt := range pos.Top {
@@ -243,7 +283,7 @@ records.
 ```toml
 [router]
 top_logprobs   = 20             # Ollama's cap
-temperature    = 1.0            # 1.0 = raw. Fit this later; see Calibration.
+temperature    = 1.25           # fitted by `make router-eval`; see Calibration
 min_confidence = 0.45           # below this, take the fallback route
 fallback       = "search+tools" # the safe superset: retrieval and tools both allowed
 ```
@@ -257,14 +297,39 @@ spend tokens rather than guess.
 
 ## Calibration
 
-Raw probabilities from a 2B model are overconfident, so `min_confidence` means little
-until a temperature is fitted. Ship `temperature = 1.0` and treat the threshold as
-provisional.
+`make router-eval` scores the router against the local Ollama. It needs the fast
+model pulled, and skips otherwise.
 
-Fitting it takes about 200 labelled turns and one scalar, not a training run: sweep
-temperature over a small grid, pick the value with the lowest expected calibration
-error on held-out rows, write it to config. Worth a `meru router calibrate` command
-once there are transcripts to fit on. Out of scope for this note.
+**The labelled set.** `internal/router/testdata/routes.jsonl` holds 135 questions
+written the way a user types them, about 30 per route, each with its route and a
+reason. Some are follow-ups that carry a `history` of earlier turns. The harness
+gives every row the same folders, `~/notes`, `~/repos/meru` and
+`~/repos/portfolio` (`evalFolders`), so a row can ask about "meru" by name the way
+a user asks about their own project. A fixed rule splits the set: of every ten rows
+with the same route, the 3rd, 6th and 9th go to a held-out set of 40 rows, and the
+other 95 form the fit set. Tune on the fit set and
+report the held-out numbers.
+
+**The report.** The harness sends every question through `Decide` with the shipped
+config and keeps each raw completion. It then replays the arithmetic offline, so one
+pass over the model covers every temperature and threshold. For each set it prints
+accuracy (the route `Decide` returned) and top-pick accuracy (before any fallback),
+per-route precision and recall, the confusion matrix, mean confidence when right and
+when wrong, expected calibration error (ECE) over ten bins, the fallback rate, the
+share of turns that *missed* (the route lacks a search or a tool the question needs;
+a fallback never misses) and latency at p50 and p95.
+
+**Temperature.** A sweep from 0.5 to 5 picks the value with the lowest ECE over all
+135 rows. Temperature never changes the top pick, so fitting it on every row leaks
+nothing into the accuracy numbers. The held-out set alone, at 40 rows, gives an ECE
+too jumpy to fit on.
+
+**Threshold.** A sweep of `min_confidence` shows the fallback rate, accuracy and
+missed rate at each floor. Pick the floor with the highest accuracy on the fit set,
+and break ties by the lowest missed rate.
+
+**Refit** after any change to the prompt, the examples or the fast model, and write
+the results into `config.toml` defaults and `config.example.toml`.
 
 ## Observability
 
@@ -290,6 +355,9 @@ it leaks something about the question.
 
 Standard `testing`, table-driven, no assertion library.
 
+- **Scoring.** `eval_test.go` checks the split, ECE, percentiles and the report
+  against fixtures. The real-model harness in `eval_integration_test.go` runs only
+  with the `integration` tag.
 - **`probs` arithmetic.** Table of alternative lists and temperatures against expected
   distributions. Include a list with no route letters, one with a single letter, and
   one where two letters tie.
@@ -317,7 +385,7 @@ Per [AGENTS.md](../AGENTS.md), ARCHITECTURE.md changes first and the level 200 a
 pages follow in the same pull request.
 
 1. **[Agent loop](../ARCHITECTURE.md#agent-loop), step 1** — say the router returns a
-   route by classification and the rewrite stays a generation call.
+   route by classification, and nothing else.
 2. **[Who decides what](../ARCHITECTURE.md#who-decides-what)** — the row for the route
    decision gains "reads the probability of each route letter from one decoded token".
 3. **[Engine layer](../ARCHITECTURE.md#engine-layer)** — note the two new `Options`
@@ -338,11 +406,15 @@ pages follow in the same pull request.
 
 ## Open items
 
-- Fit a temperature once transcripts exist, and revisit `min_confidence` with it.
+- Refit the temperature and the threshold on labelled turns from real transcripts
+  once there are enough of them.
+- `tools` has the weakest recall: the model still answers questions about recent
+  events, such as last night's score or the latest release, from memory, and sends
+  requests such as "text alex that I'm on my way" to `search`. In v0.2 the agent
+  searches on the `tools` route as well, so a question about the user's files that
+  lands there still gets excerpts.
 - Measure whether skill selection should become a second classification. Needs a
   number first.
-- Check MiniCPM5-2B's tokeniser emits `A` through `D` as single tokens. If it does
-  not, use four distinct single-token words instead of letters.
 
 ## Notes from the v0.1 build
 
@@ -357,3 +429,84 @@ pages follow in the same pull request.
   1.0 took about 13 ms per warm decision and picked the expected route for 2 of 7
   hand-picked questions, leaning towards `search+tools`. Calibration and prompt
   tuning are the next steps (see open question 1 in ARCHITECTURE.md).
+
+## Notes from the v0.2 calibration
+
+Measured with `make router-eval` on the development machine: Ollama 0.34,
+MiniCPM5-2B at Q4_K_M, held-out set of 36 questions.
+
+| | v0.1 prompt, T = 1.0 | v0.2 prompt, T = 1.25 |
+| --- | --- | --- |
+| accuracy (after fallback) | 0.444 | 0.806 |
+| top-pick accuracy | 0.472 | 0.778 |
+| recall: direct, search, tools, search+tools | 0.22, 0.11, 0.89, 0.67 | 1.00, 0.78, 0.44, 0.89 |
+| missed (route lacks a needed search or tool) | 0.167 | 0.056 |
+| fallback rate at `min_confidence = 0.45` | 0.056 | 0.139 |
+| ECE | 0.222 | 0.150 (0.043 over all 121 rows) |
+| mean confidence right / wrong | 0.70 / 0.66 | 0.85 / 0.48 |
+| prompt tokens, no history | 116 | 256 |
+| latency p50 / p95 | 56 ms / 64 ms | 28 ms / 49 ms |
+
+- **The lean.** The v0.1 prompt sent almost everything to `tools` or
+  `search+tools`; top-pick accuracy on the fit set was 0.34, and 2 of 22 `direct`
+  questions came back `direct`. The new prompt spreads the four routes out. Its
+  errors now lean the other way: questions about recent events come back
+  `direct`.
+- **What helped.** Top-pick accuracy on the fit set, one change at a time: the
+  v0.1 prompt scored 0.34; contrastive descriptions alone, 0.42 (and lower on the
+  held-out set); eight examples after the question, 0.61; the fixed part moved
+  first, 0.75 to 0.89 depending on the wording. Of the wordings in that last group
+  the one shipped had the lowest log loss on the fit set. Three other letter orders
+  scored 0.40 to 0.55, the labels `direct`/`search`/`tools`/`both` 0.47, and the
+  digits 1 to 4 0.73.
+- **Temperature.** The v0.1 prompt needed T = 4 for its lowest ECE. With the new
+  prompt the raw probabilities sit close to calibrated, and ECE stays flat from 0.9
+  to 1.25, so the fit is a light touch.
+- **Latency.** The new prompt is twice as long and still faster. The likely
+  reason: Ollama reuses the fixed opening from the previous turn and evaluates
+  only the history and the question.
+- **Full profile.** The `full` profile uses the same fast model, so these numbers
+  cover it too.
+
+## Notes from the folder line
+
+Measured with `make router-eval` on the development machine: Ollama 0.34.0,
+MiniCPM5-2B at Q4_K_M, temperature 1.25, `min_confidence = 0.45`. The labelled set
+grew from 121 to 135 rows. The 14 new rows are 11 `search` questions and 3 `direct`
+look-alikes. The `search` rows ask about the user's projects by name ("what
+database does meru use", "what files can you see") or ask to retry ("try the last
+question again", "search again, I think it's in there"). The look-alikes ask the
+same kind of thing about someone else's project: "what database does wordpress
+use", "what is sqlite good for", "what language is kubernetes written in".
+
+| | old prompt, 121 rows | old prompt, 135 rows | folders on B's line, 135 rows |
+| --- | --- | --- | --- |
+| fit top-pick accuracy | 0.859 | 0.811 | 0.874 |
+| fit accuracy (after fallback) | 0.859 | 0.800 | 0.884 |
+| held-out top pick | 28 of 36 (0.778) | 30 of 40 (0.750) | 32 of 40 (0.800) |
+| held-out search recall | 0.778 | 0.667 (8 of 12) | 0.917 (11 of 12) |
+| held-out tools recall | 0.444 | 0.444 | 0.444 (4 of 9) |
+| fallback rate, fit / held-out | 0.035 / 0.139 | 0.042 / 0.125 | 0.011 / 0.025 |
+| ECE over all rows | 0.043 | 0.061 | 0.065 |
+
+- **Two placements that lost.** A separate line after the options that said
+  questions about those projects are "B or D" pushed 10 fit `search` rows to
+  `search+tools`, and held-out top pick fell to 29 of 40. The same line saying
+  only "B" pulled requests to text or send into `search`: 28 of 40. The shipped
+  version adds the folders to B's own line.
+- **What got worse.** Held-out `tools` requests now go to `search` rather than
+  `search+tools`: 4 of the 9, such as "text alex that I'm on my way". The router
+  also falls back less, and a fallback never misses, so the held-out missed rate
+  rose from 0.056 to 0.175. In v0.2 the
+  agent searches on `tools` as well, and no route calls tools yet, so these misses
+  cost nothing until v0.3.
+- **Temperature.** The sweep's lowest ECE over all rows is now at T = 1.10
+  (0.050), against 0.065 at 1.25. The gap is small, so the default stays at 1.25.
+- **A rule after the router.** Even with the folder line, the router sent "what
+  database does Meru use to store its index?" to `direct` at 0.621, and the model
+  made up an answer. So the agent loop, outside this package, changes a `direct`
+  route to `search` when the question names an indexed folder as a whole word,
+  such as "meru" for `~/repos/meru`. A wrong guess costs one search of about
+  50 ms. The `meru.route` span and `meru.route.decisions` still record what the
+  router chose; the turn's route event, log line and span show `search`. See
+  [docs/coding-notes/agent.md](coding-notes/agent.md).

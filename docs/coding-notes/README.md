@@ -24,12 +24,18 @@ Read them in this order; each builds on the ones before it.
 3. [router](router.md): picking a route from one token's probabilities
 4. [transcript](transcript.md): session files, one JSON object per line
 5. [rpc](rpc.md): the socket protocol between `meru` and `merud`
-6. [agent](agent.md): one turn, from question to streamed answer
-7. [obs](obs.md): OpenTelemetry metrics and traces, loopback only
-8. [merud and meru](merud.md): the two programs and how they start
-9. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
-10. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-11. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+6. [store](store.md): `meru.db`, the SQLite file of documents, chunks and vectors
+7. [retrieve](retrieve.md): hybrid search, merged by reciprocal-rank fusion, and citations
+8. [index](index.md): reading your folders into the store: skip rules, chunking, watching
+9. [agent](agent.md): one turn, from question to streamed answer
+10. [obs](obs.md): OpenTelemetry metrics and traces, loopback only
+11. [merud and meru](merud.md): the two programs and how they start
+12. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
+13. [mcp](mcp.md): the MCP client pool, groundwork for tools in v0.3
+14. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
+15. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
+16. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+17. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 
@@ -47,6 +53,13 @@ Read them in this order; each builds on the ones before it.
 - [sync/atomic](go-basics/atomic.md)
 - [Testing](go-basics/testing.md)
 - [Build tags](go-basics/build-tags.md)
+- [database/sql](go-basics/sql.md)
+- [Transactions](go-basics/transactions.md)
+- [filepath](go-basics/filepath.md)
+- [select](go-basics/select.md)
+- [os/exec](go-basics/os-exec.md)
+- [encoding/json](go-basics/json.md)
+- [embed](go-basics/embed.md)
 
 ## Rules for writing a note
 

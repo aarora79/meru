@@ -13,8 +13,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -189,6 +189,20 @@ func TestRoundTrip(t *testing.T) {
 		return errors.New("transcript write failed")
 	}
 
+	// report answers the two index ops the way merud does.
+	report := func(ctx context.Context, req Request, emit func(Event) error) error {
+		if req.Op == OpIndexStatus {
+			return emit(Event{Type: EventStatus, Status: &IndexStatus{Folders: []string{"~/notes"}, Documents: 2, Chunks: 5, Vectors: 5}})
+		}
+		if err := emit(Event{Type: EventProgress, Text: "indexing " + req.Path}); err != nil {
+			return err
+		}
+		return emit(Event{Type: EventReport, Report: &IndexReport{Seen: 2, Indexed: 1, Unchanged: 1, DurationMillis: 40}})
+	}
+	sources := func(ctx context.Context, req Request, emit func(Event) error) error {
+		return emit(Event{Type: EventSources, Sources: []Citation{{N: 1, Path: "~/a.md", Heading: "A", StartLine: 1, EndLine: 4, Score: 0.03}}})
+	}
+
 	tests := []struct {
 		name    string
 		handler Handler
@@ -212,6 +226,21 @@ func TestRoundTrip(t *testing.T) {
 		{"handler error", fail, Request{Op: OpAsk, Text: "x"}, []Event{
 			{Type: EventError, Error: "model fell over"},
 		}},
+		// The index ops reach the handler too, and their payloads survive
+		// the trip through JSON.
+		{"index", report, Request{Op: OpIndex, Path: "/notes"}, []Event{
+			{Type: EventProgress, Text: "indexing /notes"},
+			{Type: EventReport, Report: &IndexReport{Seen: 2, Indexed: 1, Unchanged: 1, DurationMillis: 40}},
+			{Type: EventDone},
+		}},
+		{"index status", report, Request{Op: OpIndexStatus}, []Event{
+			{Type: EventStatus, Status: &IndexStatus{Folders: []string{"~/notes"}, Documents: 2, Chunks: 5, Vectors: 5}},
+			{Type: EventDone},
+		}},
+		{"sources", sources, Request{Op: OpAsk, Text: "x"}, []Event{
+			{Type: EventSources, Sources: []Citation{{N: 1, Path: "~/a.md", Heading: "A", StartLine: 1, EndLine: 4, Score: 0.03}}},
+			{Type: EventDone},
+		}},
 		{"unknown op", echo, Request{Op: "dance"}, []Event{
 			{Type: EventError, Error: `unknown op "dance"`},
 		}},
@@ -223,7 +252,7 @@ func TestRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Do: %v", err)
 			}
-			if !slices.Equal(got, tt.want) {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("events = %+v\nwant %+v", got, tt.want)
 			}
 		})

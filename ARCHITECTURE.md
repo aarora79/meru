@@ -87,9 +87,10 @@ Three things stay outside the binaries:
 - **MCP servers and A2A agents**, which run as their own processes.
 
 The store uses `ncruces/go-sqlite3`, a Go library that runs SQLite compiled to
-WebAssembly, with `sqlite-vec` built in. It needs no cgo (Go's bridge to C code), so
-a plain `go build` works without a C compiler (see [Storage](#storage)), and one
-command builds for another platform: `GOOS=linux GOARCH=amd64 go build ./...`.
+WebAssembly, with FTS5 and vec1, SQLite's own vector extension, built in. It needs no
+cgo (Go's bridge to C code), so a plain `go build` works without a C compiler (see
+[Storage](#storage)), and one command builds for another platform:
+`GOOS=linux GOARCH=amd64 go build ./...`.
 
 ### Platforms
 
@@ -156,7 +157,7 @@ flowchart TB
 
     subgraph store["~/.meru/"]
         SESS["sessions/*.jsonl<br/>transcripts (source of truth)"]
-        DB[("meru.db<br/>sqlite + vec + fts5<br/>(projection)")]
+        DB[("meru.db<br/>sqlite + fts5 + vec1<br/>(projection)")]
         CFG["config.toml"]
         SKD["skills/"]
         MEMD["memory/"]
@@ -255,10 +256,11 @@ sequenceDiagram
     U->>C: "what changed in my portfolio this week?"
     C->>L: new session + question
     L->>S: append user line to session JSONL
-    L->>F: rewrite the query and pick a route
+    L->>F: pick a route
     F-->>L: route = search + tools
-    L->>S: hybrid search: chunks, memories, session summaries
+    L->>S: hybrid search on the question: chunks, memories, session summaries
     S-->>L: top chunks, relevant memories
+    L-->>C: sources: the excerpts, numbered [1], [2], …
     L->>L: build context within budgets
     L->>M: context + schemas of allowed tools
     M-->>L: tool call robinhood.get_portfolio
@@ -271,14 +273,14 @@ sequenceDiagram
     L->>M: context + tool result
     M-->>L: answer, no tool call
     L-->>C: stream tokens
-    C-->>U: answer with citations
+    C-->>U: answer, then the sources it cites
     L->>S: append assistant line
 
     Note over U,T: Turn 2 continues the same session
     U->>C: "sell half of the one that dropped most"
     C->>L: same session + question
     L->>S: load this session's recent messages
-    L->>F: rewrite the query and pick a route
+    L->>F: pick a route, reading turn 1 too
     F-->>L: route = tools
     L->>S: recall memories
     S-->>L: relevant memories
@@ -305,7 +307,8 @@ sequenceDiagram
 
 | Decision | Made by | How |
 | --- | --- | --- |
-| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. A separate short call rewrites the query and picks the skills to load |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder. From v0.4, a separate short call picks the skills to load |
+| What to search for | `merud`, with no model | The question as you typed it. On a follow-up, `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's `allow` list reach the model; the rest don't exist to it |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in the server's `confirm` list, unless you already approved that tool for this session |
@@ -362,14 +365,21 @@ and arguments and offers three choices:
 - **Each turn starts with the session's history.** `merud` loads your earlier
   questions and Meru's earlier answers from this session, newest first, until the
   history budget is full. Older turns drop out of the prompt but stay in the
-  transcript, where search can still find them.
+  transcript. From v0.4, search can find them there.
 - **Earlier tool results stay out of the history.** The answer that used a result
   already carries what mattered from it, and raw results can run to thousands of
   tokens. The transcript keeps the full results.
-- **The router sees the history too**, so a follow-up like "sell half of the one that
-  dropped most" gets rewritten into a query that names the stock.
-  This works because turn 1's answer named the stocks and their moves; the router
-  reads answers, not the raw tool results behind them.
+- **The router sees the history too**, so it can tell that a follow-up like "sell
+  half of the one that dropped most" needs tools. It picks a route and nothing else;
+  no model rewrites the follow-up.
+- **Search adds an earlier question.** On the search routes, `merud` searches for
+  the new question with the session's latest earlier question appended, so "and the
+  one after that?" still finds the right files. It skips earlier questions made only
+  of filler words, so "search again" after "try that again" still carries the
+  subject from before them.
+- **The `main` model resolves the reference.** It reads turn 1's answer in the
+  history, which named the stocks and their moves, and works out which one dropped
+  most. It reads answers, not the raw tool results behind them.
 
 ---
 
@@ -380,7 +390,7 @@ says which model fills each one.
 
 | Tier | Job |
 | --- | --- |
-| `fast` | routing, query rewrites, classification, trivial answers |
+| `fast` | routing, classification, trivial answers |
 | `main` | reasoning, writing the answer, choosing tools |
 | `embed` | embeddings for the index and for queries |
 
@@ -412,7 +422,8 @@ versions. Routing costs no extra model: the `fast` model is already loaded.
 
 A new embedding model makes vectors of a different size, and every stored vector
 goes stale. The store records the embedding model's name and vector size. When
-either stops matching config, `merud` rebuilds the vectors from your files (see
+either stops matching config, the store drops every vector and keeps the text, so
+keyword search keeps working while the indexer re-embeds your files (see
 [Storage](#storage)).
 
 A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
@@ -472,8 +483,13 @@ order.
 1. **Route.** The `fast` model picks one of four routes: answer directly, search your
    files first (RAG, retrieval-augmented generation), call tools, or search and call
    tools. It picks by classification, reading one decoded token's probabilities (see
-   [Routing](#routing)). A separate short generation call rewrites the query and
-   picks the skills to load.
+   [Routing](#routing)). On the search routes, `merud` then searches your files for
+   the question, with an earlier question appended on a follow-up. No model
+   rewrites the query. Until tools arrive in v0.3, the `tools` route searches too:
+   the router sends some questions about your files there, and an answer from the
+   files beats one from the model alone. When the router picks `direct` for a
+   question that names an indexed folder, `merud` searches anyway (see
+   [Routing](#routing)). From v0.4, a separate short call picks the skills to load.
 2. **Build the context.** System prompt, skill descriptions, relevant memories,
    retrieved chunks, this session's history and the allowed tools' schemas, each
    within its own token budget.
@@ -502,9 +518,15 @@ three ways: it writes broken JSON, invents a fifth route, or answers wrong with 
 sign that it was unsure. So the router doesn't ask for text. It treats the route as a
 classification and reads the answer from the model's probabilities:
 
-1. The prompt gives the question, the session history and four lettered options
-   (A = answer directly, B = search, C = tools, D = search and tools), each with a
-   one-line description, and ends with `Answer: `.
+1. The prompt opens with four lettered options (A = answer directly, B = search,
+   C = tools, D = search and tools) and two examples per route. Each option's
+   description names the questions that belong to it and the ones that don't.
+   Option B also names the folders in `[index] folders` and says that questions
+   about projects kept there, by name, are B. Without that line the model can't
+   tell that "meru" in "what database does meru use" is your own project. The
+   session history and the question come last, and the prompt ends with
+   `Answer: `. The fixed part, folders included, stays the same from turn to turn,
+   so Ollama reuses its work on it from the previous turn.
 2. `merud` asks Ollama's `/api/chat` for one token with log probabilities
    (`num_predict = 1`, `logprobs = true`, `top_logprobs = 20`) and with thinking
    off (`think = false`). A thinking model such as MiniCPM5 otherwise spends its
@@ -523,7 +545,7 @@ lack of context: an unsure router spends tokens rather than guesses.
 ```toml
 [router]
 top_logprobs   = 20             # Ollama's cap
-temperature    = 1.0            # raw; fit later from labelled turns
+temperature    = 1.25           # fitted by `make router-eval`
 min_confidence = 0.45           # below this, take the fallback
 fallback       = "search+tools"
 ```
@@ -531,11 +553,25 @@ fallback       = "search+tools"
 The router lives in `internal/router` as one function, `Decide`, which returns the
 route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
-`Decide` returns the fallback and says why. Small models are overconfident, so
-`min_confidence` means little until a temperature is fitted from about 200 labelled
-turns.
+`Decide` returns the fallback and says why.
 
-The full design, with the prompt contract, tests and calibration plan, is in
+One rule overrides the router. When it picks `direct` and the question names an
+indexed folder as a whole word, such as "meru" for `~/repos/meru`, the agent loop
+changes the route to `search`. Even with the folders in the prompt, the router sent
+"what database does Meru use to store its index?" to `direct` at 0.621, and the
+model made up an answer. A wrong guess costs one search of about 50 ms, and the
+model uses only the excerpts that help. The turn's route event, log line and span
+show `search`; the `meru.route` span and metric still record what the router
+chose. The rule matches the last part of each folder path, in any case, and skips
+names under three letters. "hey meru, what's the capital of France" searches too,
+because the assistant shares its name with the folder.
+
+`make router-eval` scores the router against the local Ollama on a labelled set of
+135 questions, 40 of them held out, and fits the temperature. At 1.25 the
+probabilities sit close to calibrated, so `min_confidence = 0.45` means what it
+says. Refit after any change to the prompt, the examples or the `fast` model.
+
+The full design, with the prompt contract, tests and calibration results, is in
 [docs/fast-router.md](docs/fast-router.md).
 
 ---
@@ -557,7 +593,7 @@ flowchart LR
     subgraph proj["projection (rebuildable)"]
         DB[("~/.meru/meru.db")]
         CH["chunks + chunk_fts + chunk_vec"]
-        MSG["messages + message_fts"]
+        MSG["messages + message_fts<br/>(v0.4)"]
         TC["tool_calls"]
         MM["memories + memory_fts + memory_vec"]
     end
@@ -592,41 +628,177 @@ loses at most the line being written. The database keeps a copy for search and f
 
 ### The database
 
-`~/.meru/meru.db` is one SQLite file, opened through `ncruces/go-sqlite3` with
-`sqlite-vec` built in. FTS5, SQLite's built-in full-text search, handles keywords;
-`sqlite-vec` handles vectors.
+`~/.meru/meru.db` is one SQLite file, opened through `ncruces/go-sqlite3`. FTS5,
+SQLite's built-in full-text search, handles keywords. Vectors sit in plain tables,
+one row per vector, and vec1, SQLite's own vector extension, supplies the distance
+function that compares them. `merud` creates `meru.db` and its `-wal` and `-shm`
+files with mode `0600`, so only you can read them.
 
 | Table | Holds | Rebuilt from |
 | --- | --- | --- |
 | `documents` | indexed source files: path, mtime, hash, type | your folders |
 | `chunks` | pieces of each file's text, plus metadata and the parent document | your folders |
-| `chunk_vec` | one vector per chunk (sqlite-vec) | chunks, re-embedded |
+| `chunk_vec` | one vector per chunk, a blob of 32-bit floats scaled to length 1 | chunks, re-embedded |
 | `chunk_fts` | keyword index over chunks (FTS5) | chunks |
-| `sessions` / `messages` | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
-| `session_vec` | one vector per session summary, for "what did we decide last week" | session summaries |
-| `message_fts` | keyword index over messages, for "what did we say about X" | messages |
-| `tool_calls` | audit log: every MCP, A2A and built-in tool call, with `kind` (`mcp`, `a2a` or `builtin`), args, result, duration, approval choice, trace ID | `sessions/*.jsonl` |
-| `memories` | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
-| `memory_vec` / `memory_fts` | vector and keyword indexes over memories | memories |
-| `jobs` / `job_runs` | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
+| `sessions` / `messages` (v0.4) | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
+| `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
+| `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
+| `tool_calls` (v0.3) | audit log: every MCP, A2A and built-in tool call, with `kind` (`mcp`, `a2a` or `builtin`), args, result, duration, approval choice, trace ID | `sessions/*.jsonl` |
+| `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
+| `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
+| `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
 | `meta` | schema version, embedding model name and vector size | config |
+
+v0.2 builds `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`. Each other
+table arrives with the milestone marked beside it. Replaying transcripts into
+`messages` and `message_fts` waits for v0.4, where session summaries need it; until
+then the JSONL files are the only copy of a conversation.
 
 `tool_calls` is mandatory. An assistant with tools that change things needs a record
 you can read afterwards. `messages` and `tool_calls` store the trace ID of their turn,
 so you can jump from a slow trace in Grafana to the rows it produced, and back.
 
+When the embedding model's name or vector size in `meta` stops matching config, the
+store deletes every row of `chunk_vec` and keeps `documents` and `chunks`. Keyword
+search keeps working while the indexer re-embeds. The store reports the gap by
+counting chunks that lack a vector (`NeedsReembed`), so the count stays right if
+`merud` stops halfway through.
+
 ### Why this driver and this vector store
 
-- **`ncruces/go-sqlite3` + `sqlite-vec`.** No cgo, no C compiler, and vectors live in
-  the same file as everything else. One query can join vector hits, keyword hits and
-  document metadata.
-- **Search compares against every vector.** `sqlite-vec` has no approximate index. For
-  a personal index of up to a few hundred thousand chunks, that should stay inside the
-  latency budget, and `meru.retrieval.duration` will show when it doesn't. The first
-  fix is smaller vectors (int8, or fewer dimensions), not another database.
-- **Rejected:** `chromem-go` (pure Go, but a second store we can't join with keyword
-  search), LanceDB and DuckDB (both need cgo and do more than we need), Qdrant and
-  Chroma (extra server processes).
+- **`ncruces/go-sqlite3` with vec1 and FTS5.** No cgo, no C compiler, and vectors
+  live in the same file as everything else. One query can join vector hits, keyword
+  hits and document metadata. vec1 ships with the driver, so Meru adds no extension
+  of its own.
+- **A plain table, no vector index.** Vector search reads every row of `chunk_vec`
+  and orders by `vec1_l2_distance(vector, ?) / 2`. The store keeps every vector at
+  length 1, and for such vectors half the squared straight-line distance equals the
+  cosine distance that embedding models are trained for. vec1 also offers an exact
+  "flat" index, but writes slowed as it grew: replacing one 100-chunk file took
+  186 ms at 10,000 chunks, and indexing 100,000 chunks would take about ten minutes.
+  Plain rows index 100,000 chunks in 6.1 s.
+- **Measured.** On the development machine (M4 Max), with 768-dimension vectors and
+  100 chunks per file:
+
+  | Operation | 10,000 chunks | 100,000 chunks |
+  | --- | --- | --- |
+  | index every chunk | 0.59 s | 6.1 s |
+  | replace one file | 6.4 ms | 6.1 ms |
+  | vector search, top 50 | 13 ms | 147 ms |
+  | keyword search, top 50 | 9 ms | 90 ms |
+
+  Search time grows with the index, because both searches read every candidate;
+  write time doesn't. `meru.retrieval.duration` will show when search needs to get
+  faster. The first fixes are fewer dimensions, or computing distances in Go, not
+  another database.
+- **Rejected:** `sqlite-vec`, because its Go bindings work only with the 2024
+  release of the driver (v0.17.1), 18 releases behind and without the security
+  fixes since, and the driver already bundles vec1, which supplies the distance
+  function the store needs. Also `chromem-go` (pure Go, but a second store we
+  can't join with keyword search), LanceDB and DuckDB (both need cgo and do more
+  than we need), Qdrant and Chroma (extra server processes).
+
+---
+
+## Getting your content in
+
+The indexer reads the folders you name into the store, keeps them current while
+`merud` runs, and reads nothing else on disk.
+
+### What gets indexed
+
+Only the folders under `[index] folders` in `config.toml`. The list ships empty, so a
+fresh Meru indexes nothing, and it reads your home folder only if you list `~`.
+`merud` reads the list when it starts, so a change takes a restart.
+
+```toml
+[index]
+folders        = ["~/notes", "~/Documents/papers"]
+ignore         = ["*.log", "drafts/"]   # .gitignore-style, on top of the built-in list
+max_file_mb    = 5
+chunk_tokens   = 500
+overlap_tokens = 50
+watch          = true
+```
+
+Inside those folders the indexer checks each entry against these rules, in order,
+and skips it at the first one that matches:
+
+| Order | Skipped as | What it catches |
+| --- | --- | --- |
+| 1 | `symlink` | any symbolic link; the indexer never follows one |
+| 2 | `secret` | `.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.kdbx`, `credentials*`, `.netrc` and similar |
+| 3 | `hidden` | a name that starts with `.` |
+| 4 | `build-folder` | `node_modules`, `.venv`, `venv`, `vendor`, `target`, `dist`, `build`, `__pycache__` |
+| 5 | `ignored` | `[index] ignore`, then each folder's `.gitignore` and `.meruignore`, from the top folder down |
+| 6 | `media`, `binary`, `unsupported` | by extension: images, audio, video, archives, programs, databases, and any type with no chunker |
+| 7 | `too-large` | over `max_file_mb` |
+| 8 | `binary` | a NUL byte in the first 8 KB (PDFs excepted) |
+
+- **Secrets sit beyond any ignore file's reach.** No `.gitignore` or `.meruignore`
+  line can bring one back, because a key in the index would end up in a prompt.
+- **Config patterns come next**, and no ignore file can undo them either.
+- **Each skip has a reason.** A scan counts skips by reason, and `merud -v` logs
+  each skipped path with its reason.
+
+A `.meruignore` uses `.gitignore` syntax: one pattern per line, `#` for a comment,
+`*` for any run of characters within a name, `**/` for any number of folders, a
+trailing `/` for folders only, a `/` at the start to anchor the pattern to the
+file's own folder, and `!` to re-include. Git's rule holds across the ignore files:
+the last matching line wins, and a deeper folder's file beats a shallower one's.
+Meru reads `.meruignore` after `.gitignore` in the same folder, so it can skip more
+for Meru alone, or bring back with `!name` a file git ignores.
+
+### Chunking
+
+The indexer cuts each file into chunks along its own structure:
+
+| File | Split by | Heading kept | Citation points to |
+| --- | --- | --- | --- |
+| Markdown | heading, then paragraphs | the heading path, such as `Budget > Q3` | lines |
+| Go | top-level declaration, read with Go's own parser | the declaration's name | lines |
+| other code, plain text | blank-line blocks | none | lines |
+| HTML | `<h1>` to `<h6>`, then paragraphs; scripts, styles and `<head>` dropped | the heading path | none |
+| PDF | page, then paragraphs; plain text, no layout | none | page |
+
+- **Size.** A chunk holds about `chunk_tokens` (500) tokens and repeats the last
+  `overlap_tokens` (50) of the chunk before it, so a sentence cut at a boundary
+  still appears whole in one chunk. Meru estimates a token as four characters,
+  because Ollama doesn't expose the embedding model's tokenizer.
+- **No chunk passes the limit.** A paragraph too big for one chunk gets split at
+  line breaks, then between words, and last at a fixed width.
+- **The heading path travels with the text.** Each embedded chunk starts with its
+  heading path, so the third chunk of a long "Budget > Q3" section still embeds as
+  being about Q3's budget.
+
+### Keeping it current
+
+- **Changed files only.** At startup `merud` scans every folder and compares each
+  file's mtime and SHA-256 hash with the store's copy. It re-chunks and re-embeds a
+  file only when either differs. It hashes every file, because some sync tools and
+  editors keep the mtime when the content changes.
+- **Removals.** After a folder's scan, the indexer deletes the store's entries for
+  files the scan didn't keep: deleted files, and files a new ignore rule now covers.
+- **Missing folders keep their entries.** A folder that doesn't exist, such as one
+  on an unplugged drive, and a folder the scan can't read both keep what the store
+  holds for them.
+- **Watching.** With `watch = true`, `merud` asks the operating system to report
+  changes in every folder the skip rules keep. It indexes a changed path once the
+  path has been quiet for 500 ms, so an editor can finish a save that takes several
+  writes. When the operating system refuses another watch (Linux's
+  `fs.inotify.max_user_watches`, or the open-file limit on macOS), `merud` logs one
+  warning and keeps the watches it has; the next startup scan catches the rest.
+- **On demand.** `meru index` rescans every configured folder, `meru index <path>`
+  rescans one folder or file inside them, and `meru index -status` prints counts.
+
+### What stays out
+
+- **Symlinks are never followed.** A link inside a folder could index files twice
+  or loop, and a link out of it would break the promise that Meru reads only the
+  folders you list. A link's target inside the folder gets indexed at its real path.
+- **Email, calendar and Drive stay live.** Meru reaches them through their MCP
+  servers at question time and copies none of them into `meru.db`. Answers see
+  today's inbox, and your mail never lands in the index.
 
 ---
 
@@ -635,25 +807,30 @@ so you can jump from a slow trace in Grafana to the rows it produced, and back.
 Vector search misses exact strings such as ticker symbols and error codes. BM25, the
 standard keyword-ranking formula, misses paraphrase. Meru runs both.
 
-[A question, end to end](#a-question-end-to-end) shows where retrieval sits in a turn.
-
-The indexer splits files along their structure: markdown by heading, code by
-function or type, PDFs by page with layout kept. It re-indexes a file only when its
-mtime and content hash change.
+[A question, end to end](#a-question-end-to-end) shows where retrieval sits in a turn,
+and [Getting your content in](#getting-your-content-in) shows how files become
+chunks: Markdown by heading, code by declaration or blank-line block, PDFs by page as
+plain text with no layout.
 
 ### How hybrid search works
 
 SQLite does both searches; our code merges the results.
 
-Each turn searches three sources: file chunks, memories and the summaries of past
-sessions. Each source gets the same keyword and meaning search, `rrf` merges the
-results within that source, and each source has its own share of the context
-budget, so one busy source can't crowd out the others.
+A search runs on the `search` and `search+tools` routes, and in v0.2 on `tools`
+as well, until tools arrive in v0.3. It also runs on a `direct` question that
+names an indexed folder (see [Routing](#routing)). Its query is the question, with an earlier
+question appended on a follow-up (see
+[How a conversation continues](#how-a-conversation-continues)).
+
+In v0.2 a turn searches file chunks. From v0.4 it also searches memories and the
+summaries of past sessions. Each source gets the same keyword and meaning search,
+`rrf` merges the results within that source, and each source has its own share of
+the context budget, so one busy source can't crowd out the others.
 
 | Piece | Comes from |
 | --- | --- |
 | Keyword search, ranked by BM25 | FTS5 (`ORDER BY rank`, where `rank` is BM25) |
-| Similarity search, ranked by distance | `sqlite-vec` (`embedding MATCH ? AND k = ?`) |
+| Similarity search, ranked by distance | every row of `chunk_vec`, with vec1's distance function (`ORDER BY vec1_l2_distance(vector, ?) / 2 LIMIT ?`) |
 | Merging the two lists | our Go code: reciprocal-rank fusion |
 
 ```mermaid
@@ -666,6 +843,10 @@ flowchart LR
     R --> T["top 10 chunk IDs"]
     T --> C["load text + source path<br/>from chunks / documents"]
 ```
+
+The keyword query quotes every word of the query and joins them with `OR`, so text
+from the user can never reach FTS5 as query syntax. It keeps the first 32 distinct
+words, which is why the new question comes before the previous one.
 
 `merud` runs the vector query and the keyword query one after the other, then merges the two
 ranked lists with reciprocal-rank fusion (RRF). BM25 scores and vector distances use
@@ -709,8 +890,41 @@ The extra query costs microseconds, because SQLite runs inside `merud`.
 and its `rowid` equals the chunk ID. `chunk_vec` uses the same chunk ID as its key, so
 both lists name chunks the same way and the merge needs no lookup.
 
-The list sizes (50 from each search, top 10 after the merge) are starting values in
-`config.toml`. We'll tune them against real questions.
+The list sizes are fixed constants in `internal/retrieve`: 50 hits from each search
+and 10 chunks after the merge. They aren't config keys. We'll tune them once we have
+measurements from real questions.
+
+### Citations
+
+`merud` numbers the chunks it found and puts them in the prompt under "From your
+files", with a rule that tells the model to cite each excerpt it uses as `[1]`,
+`[2]` and so on, and never to invent one. When a search finds nothing, the prompt
+says so instead, and the model answers without citing files.
+
+The system prompt names the folders in `[index] folders` on every turn, says that
+Meru searches them before it answers, and says the model can't open or list files
+itself. With no folders set, it tells the model that Meru hasn't indexed anything
+yet and where you add folders. Without this note a small model answers "I don't
+have access to your files" while it reads excerpts from them, and can't say what
+Meru indexes.
+
+Before the first token, `merud` sends the client a `sources` event that lists each
+excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
+the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
+same list under the answer. Both list only the sources the answer cites; when it
+cites none, as a small model sometimes forgets to, they list every source the prompt
+held.
+
+```text
+The Q3 budget for the garden project is 4,200 dollars [1].
+
+Sources:
+[1] ~/notes/garden.md, "Budget", lines 3–5
+```
+
+With a tiny index, every chunk lands in the top 10, so an answer that cites nothing
+lists every file. A minimum fused score, or keeping fewer than 10 chunks, would trim
+that list; choosing either waits for measurements (see [Open questions](#open-questions)).
 
 ---
 
@@ -748,8 +962,16 @@ Prefers index funds over individual stocks for retirement accounts.
   that by hand, or `meru memory forget` does it.
 - **`other/` holds anything that fits no other folder.** If it fills up with one kind
   of thing, create a new folder for that kind; Meru picks it up with no code change.
+  A kind's folder name uses letters, digits, `-` and `_`; Meru skips any other
+  folder. `merud` creates the six default folders when it opens the memory folder.
 - **The frontmatter records when and where** each memory came from, so you can trace
   it back to the session that produced it.
+- **Memories stay small.** Meru saves a new memory only up to 4 KiB of text, and
+  reads a memory file only up to 64 KiB, which leaves room for hand edits. It
+  skips a larger file and says which.
+- **Meru never follows a link.** It won't read or delete a memory file, or a kind
+  folder, that is a symbolic link, and every file operation stays inside
+  `~/.meru/memory/`.
 
 Meru keeps no index file. The database already indexes the files, and
 `meru memory list` shows them.
@@ -798,8 +1020,14 @@ description: Review holdings through a valuation lens. Use when asked about
 <the instructions, loaded only when the skill is chosen>
 ```
 
-The system prompt carries only each skill's `name` and `description`. `merud` loads
-the body when the router picks the skill, so adding skills barely grows the prompt.
+The system prompt carries only each skill's `name` and `description`. From v0.4, a
+short call to the `fast` model picks the skills a turn needs, and `merud` loads only
+their bodies, so adding skills barely grows the prompt.
+
+A skill's `name` is lowercase letters and digits in words joined by `-`, such as
+`portfolio-review`, and must match its folder's name. A `SKILL.md` may be up to
+256 KiB. A skill that breaks a rule is skipped with a warning that says why, and
+the other skills still load.
 
 Skills are plain files, so any other agent that reads this format can use the same
 directory.
@@ -897,6 +1125,7 @@ name    = "obsidian"
 command = "..."                   # stdio: merud starts this process
 allow   = ["read", "search"]     # tool-level allowlist
 confirm = []                      # allowed tools that still need a yes per call
+timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
 name    = "calendar"
@@ -911,6 +1140,21 @@ follow.
 
 Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
+
+- **No wildcards.** `allow` and `confirm` name each tool; `merud` refuses `*` or any
+  other pattern. A wildcard would admit tools a server adds in a later release,
+  which nobody has read.
+- **A timeout per call.** Each server entry may set `timeout`, 60 seconds unless
+  set. When it passes, or you cancel the turn, Meru tells the server to cancel the
+  call.
+- **Lazy reconnect.** A server that crashes, or fails to start, restarts on the next
+  call to one of its tools, at most once every 10 seconds. A call inside that wait
+  fails at once. Meru runs no background restart loop, so a server that crashes on
+  start doesn't spin.
+- **A short environment for stdio servers.** A child process gets only `PATH`,
+  `HOME` and the few variables Windows programs need, plus the entry's own `env`.
+  The rest of `merud`'s environment stays out, because it may hold another tool's
+  API key.
 
 Meru doesn't confine MCP servers. Each one runs as an ordinary process with your
 user's permissions, and can read files or reach the network by itself. Adding a
@@ -1020,7 +1264,8 @@ capture_content  = false                     # prompt/response text in spans
 ### Traces
 
 Each turn produces one trace. A question over the socket starts at `rpc.request`;
-a scheduled job (v0.5) starts at `meru.turn`. In v0.1 a turn looks like this:
+a scheduled job (v0.5) starts at `meru.turn`. In v0.2 a turn on a search route looks
+like this:
 
 ```text
 rpc.request                       op, source, question length
@@ -1030,15 +1275,26 @@ rpc.request                       op, source, question length
     ├── meru.route                decision, confidence, outcome, meru.route.p.<route>
     │   └── gen_ai.chat  fast     one token with log probabilities
     │       └── POST /api/chat    HTTP status
+    ├── meru.search               results found
+    │   └── meru.retrieve         hits per list, fused count, time per stage
+    │       └── POST /api/embed   the query's vector
     ├── meru.prompt               messages, characters, estimated tokens
     ├── gen_ai.chat  main         the streamed answer; first_token event
     │   └── POST /api/chat        HTTP status, thinking chunks
     └── meru.transcript.append    the assistant line
 ```
 
-Later milestones add spans under `meru.turn`: `meru.retrieve` (vector, fts, fusion
-in v0.2; memories in v0.4), one `gen_ai.chat` per model call in the tool loop, and
-`mcp.tool_call` for each tool (v0.3).
+A turn on the `direct` route has no `meru.search`, unless the question names an indexed folder. Later milestones add
+spans under `meru.turn`: memories under `meru.retrieve` (v0.4), one `gen_ai.chat`
+per model call in the tool loop, and `tools/call <tool>` for each tool (v0.3).
+
+Indexing has traces of its own, apart from any turn. A scan of every folder is one
+`meru.index.scan` span (folders, whether it re-embeds, and the counts it ends with),
+with a `meru.index.file` span for each file it reads (kind, outcome, chunks, bytes,
+and the skip reason). Indexing one path, as the watcher and `meru index <path>` do,
+records only `meru.index.file` spans. The startup scan and each file the watcher
+re-indexes start a new trace; `meru index` puts its spans under its own
+`rpc.request`.
 
 Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
 `gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.input_tokens`,
@@ -1046,8 +1302,11 @@ Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
 plus Ollama's own timings: `meru.ollama.load_ms`, `meru.ollama.prompt_eval_ms` and
 `meru.ollama.eval_ms`. The HTTP spans follow the OTel HTTP conventions. A failed
 span records the error and sets its status to Error; a cancelled one gets a
-`cancelled` event instead. Tool spans follow the MCP semantic conventions and add
-`meru.tool.server` and `meru.tool.allowed`. `merud` writes each trace ID to the
+`cancelled` event instead. Tool spans follow the OTel MCP semantic conventions: each
+is named `tools/call <tool>` and carries `mcp.method.name` and `gen_ai.tool.name`.
+Meru adds `meru.tool.server` and `meru.tool.allowed`. A failed call's `error.type`
+says how it failed: `tool_error` (the convention's name) when the server reports
+failure, or Meru's own `denied`, `unavailable` or `timeout`. `merud` writes each trace ID to the
 session transcript, `messages` and `tool_calls`, and to every log line of the turn.
 
 ### Metrics
@@ -1104,12 +1363,12 @@ To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), 
 and doesn't export them. `[log] level` picks how much it writes; `merud -v` forces
 `debug`.
 
-- **`info`** (the default): startup settings, each model warm-up, shutdown, and one
-  `turn` line per turn with its route, outcome, total time, time to first token and
-  token counts.
+- **`info`** (the default): startup settings, each model warm-up, the store's
+  counts, each index scan's counts, shutdown, and one `turn` line per turn with its
+  route, outcome, total time, time to first token and token counts.
 - **`debug`**: adds a line for each stage of a turn: the request, the session, the
   history, each transcript write, the route with its whole distribution, the
-  prompt's size, each Ollama call (status, time to headers, first token, Ollama's
+  search's result count, the prompt's size, each Ollama call (status, time to headers, first token, Ollama's
   own timings, tokens per second) and the reply.
 
 Every line of a turn carries its `trace_id`, the same ID the trace and the
@@ -1129,7 +1388,10 @@ transcript lines hold. No level writes question or answer text. With
 - No telemetry leaves the machine. Meru's own metrics and traces are off by default,
   go only to loopback when on, and leave out prompt text unless you opt in. Meru
   sends no crash reports and never checks for updates.
-- The store is a plain file. Back it up or delete it; it's yours.
+- The store is a plain file, readable only by you (mode `0600`). Back it up or
+  delete it; it's yours.
+- The indexer reads only the folders you list, never follows a symlink, and never
+  indexes a file that looks like a secret.
 - `meru log` and the `tool_calls` table let you review every external action.
 
 ---
@@ -1150,26 +1412,43 @@ transcript lines hold. No level writes question or answer text. With
 
 We'll settle these with working code and measurements.
 
-1. **Router quality.** The router no longer has to write valid output; it reads
-   probabilities (see [Routing](#routing)). The open question is whether a 2B model's
-   probabilities separate the four routes well enough to act on.
-   `meru.route.decisions` by outcome, and a temperature fitted from labelled turns,
-   will show. If they don't, `lite` gets a larger `fast` model. The first run, on
-   the development machine with MiniCPM5-2B and the raw temperature of 1.0, took
-   about 13 ms per warm decision and picked the expected route for 2 of 7
-   hand-picked questions. It leaned towards `search+tools`, the safe fallback, so
-   no answer lacked context, but it did more work than needed. Next: label real
-   turns, fit the temperature, and tune the option descriptions.
+1. **Router quality.** The router reads probabilities instead of parsing text (see
+   [Routing](#routing)). A labelled set of 135 questions and `make router-eval`
+   measure it. On the development machine with MiniCPM5-2B, a prompt that puts
+   contrastive option text, the indexed folders and two examples per route ahead
+   of the turn picks the labelled route for 32 of 40 held-out questions, and takes
+   about 28 ms per warm decision. The v0.1 prompt picked 17 of 36. Naming the
+   folders lifted held-out search recall from 8 of 12 to 11 of 12. At a
+   temperature of 1.25 the probabilities are close to calibrated (expected
+   calibration error 0.065 over all 135 rows), so `min_confidence = 0.45` means
+   what it says. The weak spot is tools recall (4 of 9 held out): the model answers
+   questions about recent events from memory, and sends requests such as "text
+   alex that I'm on my way" to search. Next:
+   label real turns from transcripts, refit, and decide whether `lite` needs a
+   larger `fast` model for tool-heavy use.
 2. **Context order.** Skills, memories and retrieved chunks compete for the same
    window. `meru.context.tokens` will supply the numbers to set a budget per section.
-3. **PDF extraction.** Local tools that keep a PDF's layout are weak, and Go has fewer
-   of them than Python. We may need a cgo library or an external tool.
+3. **PDF extraction.** v0.2 reads each page's plain text with a pure-Go library and
+   keeps no layout, so tables and columns come out as running text. A scanned PDF
+   with no text layer yields nothing. Local tools that keep layout are weak, and Go
+   has fewer of them than Python; better extraction may need a cgo library or an
+   external tool.
 4. **Leaving Ollama.** An embedded llama.cpp engine would make `merud` self-contained,
    but Meru would take over tool-call parsing and loading models. Decide once v0.3
    works on Ollama and we can measure the cost.
-5. **WASM SQLite speed.** `ncruces/go-sqlite3` runs slower than native SQLite. In
-   v0.2, measure indexing and search on a real notes folder before building further
-   on it.
+5. **WASM SQLite speed (answered in v0.2).** `ncruces/go-sqlite3` runs SQLite as
+   WebAssembly, slower than native SQLite, so v0.2 measured it before building on
+   it. On the development machine with 768-dimension vectors, 100,000 chunks index
+   in 6.1 s, a file replaces in about 6 ms, a vector search takes 147 ms and a
+   keyword search 90 ms; at 10,000 chunks the searches take 13 ms and 9 ms (see
+   [Why this driver and this vector store](#why-this-driver-and-this-vector-store)).
+   That fits a personal index. If search must get faster, use fewer dimensions or
+   compute distances in Go.
+6. **How many sources to show.** Each search keeps the top 10 chunks, and with a
+   tiny index that is every chunk. When the model cites nothing, the clients list
+   every source the prompt held, which can be every file you indexed (see
+   [Citations](#citations)). A minimum fused score or fewer than 10 chunks would
+   fix it; measurements from real questions will pick one.
 
 ### Resolved
 
@@ -1185,11 +1464,19 @@ We'll settle these with working code and measurements.
   `full` for Apple silicon with 32 GB or more, or a ~24 GB GPU (`qwen3.8:27b` +
   `qwen3-embedding:0.6b`).
 - **Storage:** JSONL transcripts as the source of truth; SQLite via
-  `ncruces/go-sqlite3` with `sqlite-vec` as the index. No separate vector database.
+  `ncruces/go-sqlite3` as the index, with vectors in a plain table and vec1's
+  distance function. No separate vector database.
 - **Routing:** a one-token classification read from log probabilities, falling back
   to search and tools when unsure ([docs/fast-router.md](docs/fast-router.md)).
-- **Hybrid search:** FTS5 BM25 plus `sqlite-vec` similarity, merged in Go with
-  reciprocal-rank fusion.
+  Temperature 1.25 and `min_confidence = 0.45`, fitted with `make router-eval`.
+- **Hybrid search:** FTS5 BM25 plus vector distance over every stored vector,
+  merged in Go with reciprocal-rank fusion. The query is the question, plus on a
+  follow-up the session's latest earlier question that isn't only filler words; no
+  model call rewrites it. List sizes
+  are constants (50, 50, 10) until measurements say otherwise.
+- **Indexing:** only the folders in `[index] folders`, nothing by default; secrets,
+  hidden files, build folders and ignored files skipped; symlinks never followed;
+  email, calendar and Drive reached live through MCP, not indexed.
 - **Built-in skills:** `writing` and `explainer` ship in the binary
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each

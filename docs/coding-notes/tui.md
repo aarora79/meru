@@ -1,7 +1,7 @@
 # tui
 
 **Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1
+**Milestone:** v0.1; sources under answers in v0.2
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui)
 
 ## What it does
@@ -41,9 +41,10 @@ Meru  direct · 0.91
 enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll
 ```
 
-In colour, the name, the "You" label, the question's bar and the input border are
-Meru's teal; "● connected" is green and "● merud not running" red; a route the router
-fell back to is amber; errors sit in a red box.
+In colour, the header's name and the input border are Meru's teal. The "You" label and
+the bar beside your question are blue, and the "Meru" label is green, so a glance tells
+you who wrote what. "● connected" is green and "● merud not running" red; a route the
+router fell back to is amber; errors sit in a red box.
 
 Bubble Tea, the library we build on, runs one loop. A message arrives, `Update` turns
 the old state into a new one, `View` draws the new state, and Bubble Tea repaints the
@@ -255,7 +256,23 @@ an ellipsis, then disappear.
 - streaming: the raw text, wrapped, with a teal `▍` at the end;
 - finished or stopped: the answer rendered as Markdown;
 
-and then, on its own line, the stats, "stopped", or the error box.
+and then, on lines of their own: for a finished answer, the files it cites and the
+stats; "stopped"; or the error box.
+
+`sourcesBlock` draws the files, dim, like the stats line under them:
+
+```text
+  The Q3 budget for the garden project is 4,200 dollars [1].
+  Sources
+  [1] ~/notes/garden.md, "Budget", lines 3–5
+  0.8s to first token · 40.0 tok/s · 2.4s
+```
+
+The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
+turn's `sources` field. It waits until the answer is finished, because
+`rpc.Cited` needs the whole text to see which numbers it cites; when it cites
+none, the block lists every excerpt the model read. `Citation.String`, shared
+with `meru`, writes each line, and each wraps to the screen width.
 
 The answer stays raw while it streams for two reasons. Half-written Markdown renders
 badly: an open code fence swallows everything after it. And Glamour takes longer to
@@ -290,12 +307,12 @@ A Lip Gloss *style* describes how to draw text: colour, bold, borders, padding.
 ```go
 question: r.NewStyle().
 	Border(lipgloss.NormalBorder(), false, false, false, true).
-	BorderForeground(teal).
+	BorderForeground(blue).
 	PaddingLeft(1).
 	MarginLeft(answerIndent),
 ```
 
-That style draws the teal bar to the left of each question: a border on the left side
+That style draws the blue bar to the left of each question: a border on the left side
 only (the four booleans are top, right, bottom, left), one space of padding, and two
 columns of margin.
 
@@ -384,8 +401,8 @@ go test -race ./internal/tui/...
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
-streaming, a finished Markdown answer, a fallback route, an error, a stopped answer,
-and a 40-column terminal. After a deliberate change to the look, rewrite them and read
+streaming, a finished Markdown answer, a fallback route, an answer with sources, an
+error, a stopped answer, and a 40-column terminal. After a deliberate change to the look, rewrite them and read
 the diff:
 
 ```sh

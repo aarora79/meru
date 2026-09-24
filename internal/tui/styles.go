@@ -50,12 +50,16 @@ const answerIndent = 2
 // the terminal which it has. Hex values need a terminal with 24-bit colour;
 // on older terminals Lip Gloss picks the nearest colour the terminal has.
 func newStyles(r *lipgloss.Renderer) styles {
-	// teal is Meru's brand colour: the name, the "You" label, the input
+	// teal is Meru's brand colour: the name in the header, the input
 	// border and the streaming cursor.
 	teal := lipgloss.AdaptiveColor{Light: "#0E7C7B", Dark: "#5FC4BD"}
+	// blue marks what the user wrote: the "You" label and the bar beside
+	// the question.
+	blue := lipgloss.AdaptiveColor{Light: "#3558C2", Dark: "#8AB4F8"}
 	// amber marks a route the router fell back to because it wasn't sure.
 	amber := lipgloss.AdaptiveColor{Light: "#B26B00", Dark: "#E5A445"}
-	// green and red colour the connection status and the error box.
+	// green colours the "Meru" label and the connection status; red
+	// colours the error box.
 	green := lipgloss.AdaptiveColor{Light: "#2E7D32", Dark: "#7BC67E"}
 	red := lipgloss.AdaptiveColor{Light: "#C62828", Dark: "#EF6C6C"}
 	// grey draws lines and hints that should stay in the background.
@@ -67,15 +71,15 @@ func newStyles(r *lipgloss.Renderer) styles {
 		rule:       r.NewStyle().Foreground(grey),
 		online:     r.NewStyle().Foreground(green),
 		offline:    r.NewStyle().Foreground(red),
-		you:        r.NewStyle().Foreground(teal).Bold(true),
-		meru:       r.NewStyle().Bold(true),
+		you:        r.NewStyle().Foreground(blue).Bold(true),
+		meru:       r.NewStyle().Foreground(green).Bold(true),
 		badge:      r.NewStyle().Foreground(grey),
 		badgeAmber: r.NewStyle().Foreground(amber),
 		// A border on the left side only draws a thin bar next to the
 		// question. The four booleans are top, right, bottom and left.
 		question: r.NewStyle().
 			Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(teal).
+			BorderForeground(blue).
 			PaddingLeft(1).
 			MarginLeft(answerIndent),
 		raw:     r.NewStyle().PaddingLeft(answerIndent),

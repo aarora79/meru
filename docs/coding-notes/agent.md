@@ -1,8 +1,8 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `agent_test.go`, `observe_test.go`)
-**Milestone:** v0.1
-**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `agent_test.go`, `search_test.go`, `observe_test.go`)
+**Milestone:** v0.1; search in v0.2
+**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
 
@@ -10,9 +10,15 @@
 is saved". `merud` hands `Agent.Handle` to the socket server, and the server
 calls it once per question.
 
-In v0.1 a turn makes one model call. The router still picks a route and the
-agent reports it, but every route answers directly for now: search arrives in
-v0.2 and tools in v0.3.
+A turn makes one model call. The router picks a route, and the route decides
+whether the turn looks in your files first:
+
+| Route | Searches your files? |
+| --- | --- |
+| `direct` | no, unless the question names an indexed folder |
+| `search` | yes |
+| `tools` | yes in v0.2 (tools arrive in v0.3; until then it searches, see below) |
+| `search+tools` | yes |
 
 ## The picture
 
@@ -30,7 +36,11 @@ sequenceDiagram
     A->>T: Append user line
     A->>R: Decide(question, history)
     A-->>S: emit route
-    A->>E: Stream(system + history + question)
+    opt route isn't direct, or the question names an indexed folder
+        A->>A: Searcher.Search(question)
+        A-->>S: emit sources (when it found some)
+    end
+    A->>E: Stream(system + excerpts + history + question)
     loop each piece
         E-->>A: delta
         A-->>S: emit token
@@ -55,13 +65,46 @@ agent declares only the one method it calls, so it doesn't import the router
 package, and tests pass in a fake that returns a fixed route. `merud` wraps the
 real router in a small adapter.
 
+### The Searcher interface
+
+```go
+type Searcher interface {
+    Search(ctx context.Context, query string) ([]retrieve.Result, error)
+}
+```
+
+The same trick as `Router`: the agent names the one method it needs. `merud`
+passes `searchAdapter`, which calls `retrieve.Search` over the store; tests pass
+`fakeSearcher`, which returns fixed results. A `nil` Searcher turns search off,
+which is what most of the older tests pass.
+
+### New and filesNote
+
+`New` builds the system prompt once and adds `filesNote(cfg.Index.Folders)` to
+the end of it, so every turn tells the model which folders Meru searches:
+
+```text
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. You can't open or list files yourself.
+```
+
+With no folders, the note says instead that Meru hasn't indexed any files yet
+and that the user lists folders under `[index] folders` in
+`~/.meru/config.toml`. Without the note a small model answered "I don't have
+access to your files" while it read excerpts from them, and couldn't say what
+Meru had indexed.
+
+`New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
+path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
+three letters, which match too many ordinary words, and keeps each name once.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
 straight to `rpc.Serve`. Its steps follow the diagram, and each is a short
 method that opens its own span under `meru.turn` and writes one debug line:
 `openSession` (`meru.session`), `appendLine` (`meru.transcript.append`),
-`route` (the router's `meru.route`), `prompt` (`meru.prompt`) and `answer`
+`route` (the router's `meru.route`), `searchFiles` (`meru.search`, with
+retrieval's `meru.retrieve` under it), `prompt` (`meru.prompt`) and `answer`
 (`gen_ai.chat`). Two details:
 
 **The turn span and metrics are recorded in one deferred function.**
@@ -85,6 +128,79 @@ writes the turn's one info line, `logTurn`.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
+
+### searchFiles
+
+On every route but `direct`, `Handle` calls `searchFiles` between routing and
+the prompt. `searches(route)` is `route != "direct"`. Until tools arrive in
+v0.3, `tools` searches too: the router sends some questions about your files to
+`tools`, and an answer from the files beats one from the model alone.
+
+One rule runs first. When the router says `direct` and the question names an
+indexed folder, the route becomes `search`:
+
+```go
+if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+    dec.Route = "search"
+}
+```
+
+`namesFolder` splits the question into words with `words` and looks for one of
+the folder names. It matches whole words and ignores case, so "Meru" and
+"meru's" match `meru` and "merudaemon" doesn't. Even with the folders in its
+prompt, the router sent "what database does Meru use to store its index?" to
+`direct` at 0.621, and the model made up an answer. A wrong guess costs one
+search of about 50 ms, and the model uses only the excerpts that help. "hey
+meru, what's the capital of France" searches too, because the assistant shares
+its name with the folder. The `route` event, the turn's log line and its span
+show `search`, with a debug line that says why; the router's own `meru.route`
+span and metric keep what the router chose.
+
+Then the search:
+
+```go
+if searches(dec.Route) && a.search != nil {
+    var sources []rpc.Citation
+    files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+    ...
+    if len(sources) > 0 {
+        emit(rpc.Event{Type: rpc.EventSources, Sources: sources})
+    }
+}
+msgs := a.prompt(ctx, history, question, files)
+```
+
+- **What it searches for.** No model rewrites the query, so `searchQuery`
+  uses the question. On a follow-up it adds one earlier question after it,
+  because "and the one after that?" finds nothing alone. It walks back from the
+  newest and takes the first one that `namesSubject`: a question with at least
+  one word that `isFiller` doesn't list. The filler list holds short common
+  words and the words people use to retry, such as try, again, search, check,
+  last, question, docs, files and notes. So "search again i think it is
+  specified", after "try the last question again now", after "what database
+  does meru use", searches for `search again i think it is specified` and `what
+  database does meru use`. The question goes first: keyword search keeps only a
+  query's first 32 words.
+- **What the model sees.** `retrieve.Format` numbers the excerpts `[1]`,
+  `[2]` and so on, each under a citation line with its file, heading and
+  lines. `searchFiles` puts `citeRule` in front of them, which tells the model
+  to cite with `[n]`, to cite only the numbers listed, and never to invent a
+  source. The whole section joins the end of the system prompt, because some
+  chat templates accept a system message only in first place.
+- **When it finds nothing.** An empty index, a search with no match, and a
+  search that fails all give the model the `noResults` note ("found nothing
+  relevant … don't cite any files") and no `sources` event, and the turn
+  answers anyway. A failed search is logged as a warning; only a cancelled
+  turn stops here.
+- **Paths.** `shortPath` writes a file under your home folder as
+  `~/notes/garden.md`, for the model and for the client. Other paths stay
+  whole.
+- **The sources event** lists every excerpt the model got, numbered as the
+  prompt numbers them, with its heading, lines or page, and score. It goes out
+  before the first token, so a client can show it however it likes; `meru`
+  and `meru chat` show the ones the answer cites (see `rpc.Cited`).
+- **The metric.** `meru.context.tokens` with `section = "chunks"` records the
+  section's size, estimated as characters divided by four.
 
 ### answer
 
@@ -152,7 +268,9 @@ At info level, one `turn` line per turn in `merud.log`: session ID, route,
 source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
 the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
-`transcript appended` (twice), `prompt built` and `answer finished`.
+`transcript appended` (twice), `search done` (on search routes, with the
+result count, the section's size and the time), `prompt built` and `answer
+finished`.
 
 Every line goes through `a.log.DebugContext(ctx, ...)` or `InfoContext`, so the
 log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
@@ -162,7 +280,7 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 
 ## Go ideas used here
 
-- **Interfaces** — `Router`, and `engine.Engine`.
+- **Interfaces** — `Router`, `Searcher`, and `engine.Engine`.
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
 - **`context`** — one context runs through the whole turn and stops it. More in
@@ -171,12 +289,24 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   [go-basics/errors.md](go-basics/errors.md).
 - **`strings.Builder`** — collects the answer without copying it on every piece.
 - **Range over a function** — `for delta, err := range stream`.
+- **A function as an argument** — `words` hands `strings.FieldsFunc` a small
+  function that says where to split: at any rune that isn't a letter, a digit
+  or a hyphen, so "personal-knowledge-base" stays one word.
+- **`switch` with a list of cases** — `isFiller` lists its words in one `case`,
+  and the switch returns true when `w` matches any of them.
 
 ## Try it
 
 ```sh
 go test -race ./internal/agent/...
 ```
+
+`search_test.go` checks the search step: the search routes and `tools` add
+the excerpts and send `sources` before the tokens, `direct` doesn't search
+unless the question names an indexed folder, an empty or failed search still
+answers, and `TestSearchQuery` checks which earlier question joins the query.
+`TestFilesNote` checks the folders reach the system prompt, and
+`TestFolderNames` checks the names the folder rule matches.
 
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and
@@ -195,5 +325,10 @@ hold the question or answer until `capture_content` is on.
   (audit, budgets, approvals) must live in code we can read.
 - **The agent returns errors; the server sends them.** The agent never writes
   to the socket itself, so the same code can later serve scheduled jobs.
-- **Route recorded, not yet acted on.** Collecting route metrics from day one
-  gives v0.2 and v0.3 real numbers to test against.
+- **Route recorded from day one.** Route metrics collected since v0.1 give
+  search (v0.2) and tools (v0.3) real numbers to test against.
+- **A failed search doesn't fail the turn.** The excerpts help the answer, but
+  the model can still answer without them, and the note in the prompt stops it
+  from pretending it looked.
+- **Sources before the answer.** The client learns what the model read while
+  the answer streams, and picks which to show once it has the whole text.

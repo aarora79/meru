@@ -389,6 +389,32 @@ func TestRecordContextTokensAndStreams(t *testing.T) {
 	}
 }
 
+// TestRecordRetrieval checks each stage lands under its own attribute, in
+// seconds, and that an unknown stage becomes "other".
+func TestRecordRetrieval(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	RecordRetrieval(ctx, "vector", 3*time.Millisecond)
+	RecordRetrieval(ctx, "fts", time.Millisecond)
+	RecordRetrieval(ctx, "fts", time.Millisecond)
+	RecordRetrieval(ctx, "fusion", 50*time.Microsecond)
+	RecordRetrieval(ctx, "notes/budget.md", time.Millisecond)
+	got := collect(t, reader)
+
+	m := got[metricRetrievalDuration]
+	if m.Unit != "s" {
+		t.Errorf("unit = %q, want s", m.Unit)
+	}
+	if h := histPoint[float64](t, m, attrs(keyStage, "vector")); !near(h.Sum, 0.003) {
+		t.Errorf("vector sum = %v, want 0.003", h.Sum)
+	}
+	if h := histPoint[float64](t, m, attrs(keyStage, "fts")); h.Count != 2 {
+		t.Errorf("fts count = %d, want 2", h.Count)
+	}
+	histPoint[float64](t, m, attrs(keyStage, "fusion"))
+	histPoint[float64](t, m, attrs(keyStage, "other"))
+}
+
 // TestTracerUsesGlobalProvider checks that Tracer follows the installed
 // provider and names Meru as the scope.
 func TestTracerUsesGlobalProvider(t *testing.T) {

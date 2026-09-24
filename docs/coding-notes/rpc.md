@@ -1,7 +1,7 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `client.go`, `server.go`)
-**Milestone:** v0.1
+**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `client.go`, `server.go`)
+**Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
 ## What it does
@@ -28,7 +28,9 @@ sequenceDiagram
     H->>S: emit(session)
     S-->>C: {"type":"session","session":"2026-…"}
     H->>S: emit(route)
-    S-->>C: {"type":"route","route":"direct"}
+    S-->>C: {"type":"route","route":"search"}
+    H->>S: emit(sources), when the turn searched
+    S-->>C: {"type":"sources","sources":[{"n":1,"path":"~/notes/garden.md",…}]}
     H->>S: emit(token) …
     S-->>C: {"type":"token","text":"Hi"}
     H->>S: emit(done + stats), held back
@@ -52,6 +54,35 @@ The `done` that ends an ask carries the turn's stats: time to first token
 `{"type":"done"}`, and a client built before these fields existed skips
 them.
 
+v0.2 added, without changing anything older clients read:
+
+| Addition | What it carries |
+| --- | --- |
+| `sources` event | `Sources`, a list of `Citation`s: the excerpts from your files that the prompt held, numbered as the answer cites them (`n`), with the shortened `path`, `heading`, `start_line`/`end_line` or `page`, and `score`. It comes after `route` and before the first `token`, and only when the search found something. |
+| `index` op | `Path` in the request: a folder or file to index, or empty for every `[index]` folder. The reply is `progress` events (one line of news in `Text`), one `report` event, then `done`. |
+| `index_status` op | The reply is one `status` event, then `done`. |
+| `report` event | `Report`, an `IndexReport`: files seen, indexed, unchanged, removed, failed and skipped, chunks written, and the time taken. |
+| `status` event | `Status`, an `IndexStatus`: the configured folders, the counts of files, chunks and vectors, whether a scan runs, and the last full scan's report, time and error. |
+
+`Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
+never a struct value, so without the pointer every event would carry an empty
+report.
+
+Adding a slice field (`Sources`) made `Event` a type Go can't compare with
+`==`, so tests compare events with `reflect.DeepEqual`.
+
+### citation.go
+
+Two helpers both clients use, so `meru` and `meru chat` show sources the same
+way:
+
+- **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Budget",
+  lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
+  this way.
+- **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
+  answer with a regular expression and returns the sources they name. When
+  the answer cites none, it returns them all: the model still read them.
+
 ### client.go
 
 `Do` dials the socket, sends the request and returns the events as an
@@ -59,6 +90,9 @@ iterator, which callers read with `for ev, err := range rpc.Do(...)`. Cancelling
 the caller's context closes the connection.
 
 ### server.go
+
+`serveConn` answers `ping` itself and hands `ask`, `index` and
+`index_status` to the handler. Any other op gets an `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,
 so `Listen` checks what is there first:
@@ -180,6 +214,10 @@ adds a `cancelled` event to the span.
 ```sh
 go test -race ./internal/rpc/...
 ```
+
+`TestRoundTrip` also sends the index ops and a `sources` event through a real
+socket, to show their payloads survive the trip through JSON. `TestCited`
+covers which sources count as cited.
 
 `TestClientDisconnectCancelsHandler` hangs up mid-answer and checks that the
 handler's context ends with `context.Canceled`. `TestDebugLog` runs a question

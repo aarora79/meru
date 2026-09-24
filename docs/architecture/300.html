@@ -241,7 +241,7 @@
   <div class="num"><b>1.6 GB</b><span>the default chat model, sized for a 16 GB computer</span></div>
   <div class="num"><b>4</b><span>methods on the <code>Engine</code> interface</span></div>
 </div>
-<p class="note">Design targets and model sizes from ARCHITECTURE.md and ROADMAP.md, September 2026. No Go code exists yet, so nothing on this page is a measurement.</p>
+<p class="note">Design targets and model sizes from ARCHITECTURE.md and ROADMAP.md, September 2026. The strip shows targets; measurements from v0.1 and v0.2 appear in the sections they belong to.</p>
 
 <nav class="toc" aria-label="Contents">
   <ol>
@@ -251,6 +251,7 @@
     <li><a href="#tiers">Three model jobs, two profiles</a></li>
     <li><a href="#engine">The engine: four methods, one runtime</a></li>
     <li><a href="#storage">Storage: files hold the truth</a></li>
+    <li><a href="#getting-your-content-in">Getting your content in</a></li>
     <li><a href="#retrieval">Finding the right text: hybrid search</a></li>
     <li><a href="#memory">Memory you can read and edit</a></li>
     <li><a href="#skills">Skills: instructions loaded on demand</a></li>
@@ -481,7 +482,7 @@
   <li><b>MCP servers and A2A agents</b>, which run as their own processes.</li>
 </ul>
 
-<p>The store uses <code>ncruces/go-sqlite3</code>, a Go library that runs SQLite compiled to WebAssembly, with <code>sqlite-vec</code> built in. It needs no <b>cgo</b>, Go's bridge to C code, so a plain <code>go build</code> works without a C compiler, and one command builds for another platform: <code>GOOS=linux GOARCH=amd64 go build ./...</code>.</p>
+<p>The store uses <code>ncruces/go-sqlite3</code>, a Go library that runs SQLite compiled to WebAssembly, with FTS5 and vec1, SQLite's own vector extension, built in. It needs no <b>cgo</b>, Go's bridge to C code, so a plain <code>go build</code> works without a C compiler, and one command builds for another platform: <code>GOOS=linux GOARCH=amd64 go build ./...</code>.</p>
 
 <h3>Where it runs</h3>
 
@@ -503,15 +504,15 @@
 
 <p>A <b>turn</b> is everything between your question and the finished answer. A <b>session</b> is one conversation, a run of turns that share a transcript. Figure 2 follows two turns of one session. In the first, Meru searches your files and calls a tool that only reads. The second builds on the first and calls a tool that changes something, so Meru asks you before it runs. Later sections explain each step.</p>
 
-<p>Four parts share the work. The <b>agent loop</b> inside <code>merud</code> runs the turn. The <b>fast model</b>, which Meru uses as the <b>router</b>, is a small model that rewrites your question and picks a <b>route</b>, one of four: answer directly, search your files first, call tools, or search and call tools. It also picks which skills, files of instructions for one kind of task, to load. The <b>main model</b> chooses tools and writes the answer. Every tool call it makes passes through <b><code>dispatch</code></b>, one Go function, on its way to an <b>MCP server</b>, a separate program that offers tools such as <code>get_portfolio</code>.</p>
+<p>Four parts share the work. The <b>agent loop</b> inside <code>merud</code> runs the turn. The <b>fast model</b>, which Meru uses as the <b>router</b>, is a small model that picks a <b>route</b>, one of four: answer directly, search your files first, call tools, or search and call tools. It picks nothing else. From v0.4 a second short call picks which skills, files of instructions for one kind of task, to load. The <b>main model</b> chooses tools and writes the answer. Every tool call it makes passes through <b><code>dispatch</code></b>, one Go function, on its way to an <b>MCP server</b>, a separate program that offers tools such as <code>get_portfolio</code>.</p>
 
 <p>The main model reads the <b>context</b>, everything <code>merud</code> sends it with your question; <a href="#loop">the agent loop</a> lists the parts. One part is each allowed tool's <b>schema</b>: its name, description and argument types. For each MCP server, <code>config.toml</code> names the tools the model may see (<code>allow</code>, the <b>allowlist</b>) and the allowed tools that still need a yes from you on every call (<code>confirm</code>).</p>
 
 <figure id="fig-end-to-end">
 <div class="figbox">
-<svg viewBox="0 0 1146 1653" role="img" aria-labelledby="fqt fqd">
+<svg viewBox="0 0 1146 1680" role="img" aria-labelledby="fqt fqd">
   <title id="fqt">A question, end to end: two turns of one session</title>
-  <desc id="fqd">Sequence diagram with eight participants: you, the meru client, the merud agent loop, the store, the fast model, the main model, dispatch and an MCP server. Turn 1 starts a new session. You ask what changed in your portfolio this week. The client opens a new session and passes the question to the agent loop, which appends the user line to the session JSONL, asks the fast model to rewrite the query and pick a route, and gets back route search plus tools. The loop runs hybrid search over three sources, file chunks, memories and session summaries, gets the top chunks and relevant memories, and builds the context within budgets. Inside a loop that repeats until the model answers without a tool call, at most 8 rounds, the loop sends the context and the schemas of allowed tools to the main model, which returns a tool call robinhood.get_portfolio. Dispatch checks the allowlist, finds the tool is not in the confirm list, calls get_portfolio on the MCP server and gets holdings, writes tool_call and tool_result lines and a tool_calls row to the store, and returns the result. The loop sends the context and tool result to the main model, which answers without a tool call. The loop streams tokens to the client, the client shows you the answer with citations, and the loop appends the assistant line. Turn 2 continues the same session. You ask to sell half of the one that dropped most. The loop loads this session's recent messages, the fast model returns route tools, the loop recalls relevant memories from the store even though this route skips file search, and the main model, given the context with turn 1 and the tool schemas, returns a tool call robinhood.place_order. Dispatch checks the allowlist, finds place_order in the confirm list, and asks the client, which offers you three choices: approve once, approve for this session, or deny. You approve once, the client sends approved once to dispatch, and dispatch calls place_order on the MCP server, which reports the order placed. Dispatch logs it, returns the result, the main model answers without a tool call, the loop streams tokens to the client, the client shows you the answer, and the loop appends the assistant line.</desc>
+  <desc id="fqd">Sequence diagram with eight participants: you, the meru client, the merud agent loop, the store, the fast model, the main model, dispatch and an MCP server. Turn 1 starts a new session. You ask what changed in your portfolio this week. The client opens a new session and passes the question to the agent loop, which appends the user line to the session JSONL, asks the fast model to pick a route, and gets back route search plus tools. The loop runs hybrid search for the question over three sources, file chunks, memories and session summaries, gets the top chunks and relevant memories, sends the client a sources event that numbers the excerpts, and builds the context within budgets. Inside a loop that repeats until the model answers without a tool call, at most 8 rounds, the loop sends the context and the schemas of allowed tools to the main model, which returns a tool call robinhood.get_portfolio. Dispatch checks the allowlist, finds the tool is not in the confirm list, calls get_portfolio on the MCP server and gets holdings, writes tool_call and tool_result lines and a tool_calls row to the store, and returns the result. The loop sends the context and tool result to the main model, which answers without a tool call. The loop streams tokens to the client, the client shows you the answer followed by the sources it cites, and the loop appends the assistant line. Turn 2 continues the same session. You ask to sell half of the one that dropped most. The loop loads this session's recent messages, the fast model reads them and returns route tools without rewriting the question, the loop recalls relevant memories from the store even though this route skips file search, and the main model, given the context with turn 1 and the tool schemas, returns a tool call robinhood.place_order. Dispatch checks the allowlist, finds place_order in the confirm list, and asks the client, which offers you three choices: approve once, approve for this session, or deny. You approve once, the client sends approved once to dispatch, and dispatch calls place_order on the MCP server, which reports the order placed. Dispatch logs it, returns the result, the main model answers without a tool call, the loop streams tokens to the client, the client shows you the answer, and the loop appends the assistant line.</desc>
   <defs>
     <marker id="sqa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="sqb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -537,14 +538,14 @@
     <rect x="1034" y="12" width="104" height="40" rx="7" class="b"/>
     <text x="1086" y="37" class="t1">MCP server</text>
   </g>
-  <line x1="56" y1="52" x2="56" y2="1609" class="life"/>
-  <line x1="196" y1="60" x2="196" y2="1609" class="life"/>
-  <line x1="371" y1="60" x2="371" y2="1609" class="life"/>
-  <line x1="621" y1="52" x2="621" y2="1609" class="life"/>
-  <line x1="736" y1="52" x2="736" y2="1609" class="life"/>
-  <line x1="851" y1="52" x2="851" y2="1609" class="life"/>
-  <line x1="966" y1="52" x2="966" y2="1609" class="life"/>
-  <line x1="1086" y1="52" x2="1086" y2="1609" class="life"/>
+  <line x1="56" y1="52" x2="56" y2="1636" class="life"/>
+  <line x1="196" y1="60" x2="196" y2="1636" class="life"/>
+  <line x1="371" y1="60" x2="371" y2="1636" class="life"/>
+  <line x1="621" y1="52" x2="621" y2="1636" class="life"/>
+  <line x1="736" y1="52" x2="736" y2="1636" class="life"/>
+  <line x1="851" y1="52" x2="851" y2="1636" class="life"/>
+  <line x1="966" y1="52" x2="966" y2="1636" class="life"/>
+  <line x1="1086" y1="52" x2="1086" y2="1636" class="life"/>
   <g font-size="12">
   <rect x="0" y="90" width="1146" height="28" class="band"/>
   <text x="12" y="109" class="ta" font-size="12.5" font-weight="700">Turn 1 · starts a new session</text>
@@ -555,107 +556,109 @@
   <path d="M196 184 L369 184" class="ln" marker-end="url(#sqa)"/>
   <text x="496.0" y="205" class="t2 halo" text-anchor="middle">append user line to session JSONL</text>
   <path d="M371 211 L619 211" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="232" class="t2 halo" text-anchor="middle">rewrite the query and pick a route</text>
+  <text x="553.5" y="232" class="t2 halo" text-anchor="middle">pick a route</text>
   <path d="M371 238 L734 238" class="ln" marker-end="url(#sqa)"/>
   <text x="553.5" y="259" class="t2 halo mono" text-anchor="middle" font-size="11">route = search + tools</text>
   <path d="M736 265 L373 265" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="286" class="t2 halo" text-anchor="middle">hybrid search: chunks, memories,</text>
-  <text x="496.0" y="300" class="t2 halo" text-anchor="middle">session summaries</text>
+  <text x="496.0" y="286" class="t2 halo" text-anchor="middle">hybrid search on the question:</text>
+  <text x="496.0" y="300" class="t2 halo" text-anchor="middle">chunks, memories, session summaries</text>
   <path d="M371 306 L619 306" class="ln" marker-end="url(#sqa)"/>
   <text x="496.0" y="327" class="t2 halo" text-anchor="middle">top chunks, relevant memories</text>
   <path d="M621 333 L373 333" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="263.0" y="348" width="216" height="24" rx="5" class="ba2"/>
-  <text x="371" y="364" class="t1" text-anchor="middle">build context within budgets</text>
-  <text x="611.0" y="424" class="t2 halo" text-anchor="middle">context + schemas of allowed tools</text>
-  <path d="M371 430 L849 430" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="451" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.get_portfolio</text>
-  <path d="M851 457 L373 457" class="lnd" marker-end="url(#sqa)"/>
-  <text x="668.5" y="478" class="t2 halo" text-anchor="middle">dispatch</text>
-  <path d="M371 484 L964 484" class="ln" marker-end="url(#sqa)"/>
-  <rect x="850.0" y="499" width="232" height="24" rx="5" class="ba2"/>
-  <text x="966" y="515" class="t1" text-anchor="middle">allowlist ✓ · not in confirm list</text>
-  <text x="1026.0" y="545" class="t1 halo mono" text-anchor="middle" font-size="11">get_portfolio</text>
-  <path d="M966 551 L1084 551" class="lna" marker-end="url(#sqb)"/>
-  <text x="1026.0" y="572" class="t2 halo" text-anchor="middle">holdings</text>
-  <path d="M1086 578 L968 578" class="lnd" marker-end="url(#sqa)"/>
-  <text x="793.5" y="599" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
-  <path d="M966 605 L623 605" class="ln" marker-end="url(#sqa)"/>
-  <text x="668.5" y="626" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M966 632 L373 632" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="653" class="t2 halo" text-anchor="middle">context + tool result</text>
-  <path d="M371 659 L849 659" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="680" class="t2 halo" text-anchor="middle">answer, no tool call</text>
-  <path d="M851 686 L373 686" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="18" y="390" width="1120" height="311" rx="6" class="bg"/>
-  <path d="M18 410 L62 410 L70 402 L70 390 " class="ln"/>
-  <text x="26" y="405" class="t2" font-size="11.5" font-weight="700">loop</text>
-  <text x="80" y="405" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
-  <text x="283.5" y="715" class="t2 halo" text-anchor="middle">stream tokens</text>
-  <path d="M371 721 L198 721" class="lnd" marker-end="url(#sqa)"/>
-  <text x="126.0" y="742" class="t2 halo" text-anchor="middle">answer with</text>
-  <text x="126.0" y="757" class="t2 halo" text-anchor="middle">citations</text>
-  <path d="M196 763 L58 763" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="784" class="t2 halo" text-anchor="middle">append assistant line</text>
-  <path d="M371 790 L619 790" class="ln" marker-end="url(#sqa)"/>
-  <rect x="0" y="817" width="1146" height="28" class="band"/>
-  <text x="12" y="836" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
-  <text x="126.0" y="863" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
-  <text x="126.0" y="878" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
-  <path d="M56 884 L194 884" class="ln" marker-end="url(#sqa)"/>
-  <text x="283.5" y="905" class="t2 halo" text-anchor="middle">same session + question</text>
-  <path d="M196 911 L369 911" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="932" class="t2 halo" text-anchor="middle">load this session&#x27;s recent messages</text>
-  <path d="M371 938 L619 938" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="959" class="t2 halo" text-anchor="middle">rewrite the query and pick a route</text>
-  <path d="M371 965 L734 965" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="986" class="t2 halo mono" text-anchor="middle" font-size="11">route = tools</text>
-  <path d="M736 992 L373 992" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1013" class="t2 halo" text-anchor="middle">recall memories</text>
-  <path d="M371 1019 L619 1019" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1040" class="t2 halo" text-anchor="middle">relevant memories</text>
-  <path d="M621 1046 L373 1046" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1097" class="t2 halo" text-anchor="middle">context (with turn 1) + tool schemas</text>
-  <path d="M371 1103 L849 1103" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1124" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.place_order</text>
-  <path d="M851 1130 L373 1130" class="lnd" marker-end="url(#sqa)"/>
-  <text x="668.5" y="1151" class="t2 halo" text-anchor="middle">dispatch</text>
-  <path d="M371 1157 L964 1157" class="ln" marker-end="url(#sqa)"/>
-  <rect x="821.0" y="1172" width="290" height="24" rx="5" class="ba2"/>
-  <text x="966" y="1188" class="t1" text-anchor="middle">allowlist ✓ · place_order is in confirm list</text>
-  <text x="581.0" y="1218" class="t2 halo mono" text-anchor="middle" font-size="11">ask: place_order(...)?</text>
-  <path d="M966 1224 L198 1224" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="126.0" y="1245" class="t2 halo" text-anchor="middle">approve once ·</text>
-  <text x="126.0" y="1260" class="t2 halo" text-anchor="middle">for this session ·</text>
-  <text x="126.0" y="1275" class="t2 halo" text-anchor="middle">deny?</text>
-  <path d="M196 1281 L58 1281" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="126.0" y="1302" class="t1 halo" text-anchor="middle">approve once</text>
-  <path d="M56 1308 L194 1308" class="lna2" marker-end="url(#sqc)"/>
-  <text x="581.0" y="1329" class="t1 halo" text-anchor="middle">approved once</text>
-  <path d="M196 1335 L964 1335" class="lna2" marker-end="url(#sqc)"/>
-  <text x="1026.0" y="1356" class="t1 halo mono" text-anchor="middle" font-size="11">place_order</text>
-  <path d="M966 1362 L1084 1362" class="lna" marker-end="url(#sqb)"/>
-  <text x="1026.0" y="1383" class="t2 halo" text-anchor="middle">order placed</text>
-  <path d="M1086 1389 L968 1389" class="lnd" marker-end="url(#sqa)"/>
-  <text x="793.5" y="1410" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
-  <path d="M966 1416 L623 1416" class="ln" marker-end="url(#sqa)"/>
-  <text x="668.5" y="1437" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M966 1443 L373 1443" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1464" class="t2 halo" text-anchor="middle">context + tool result</text>
-  <path d="M371 1470 L849 1470" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1491" class="t2 halo" text-anchor="middle">answer, no tool call</text>
-  <path d="M851 1497 L373 1497" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="18" y="1063" width="1120" height="449" rx="6" class="bg"/>
-  <path d="M18 1083 L62 1083 L70 1075 L70 1063 " class="ln"/>
-  <text x="26" y="1078" class="t2" font-size="11.5" font-weight="700">loop</text>
-  <text x="80" y="1078" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
-  <text x="283.5" y="1526" class="t2 halo" text-anchor="middle">stream tokens</text>
-  <path d="M371 1532 L198 1532" class="lnd" marker-end="url(#sqa)"/>
-  <text x="126.0" y="1553" class="t2 halo" text-anchor="middle">answer</text>
-  <path d="M196 1559 L58 1559" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1580" class="t2 halo" text-anchor="middle">append assistant line</text>
-  <path d="M371 1586 L619 1586" class="ln" marker-end="url(#sqa)"/>
+  <text x="283.5" y="354" class="t2 halo" text-anchor="middle">sources [1], [2], …</text>
+  <path d="M371 360 L198 360" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="263.0" y="375" width="216" height="24" rx="5" class="ba2"/>
+  <text x="371" y="391" class="t1" text-anchor="middle">build context within budgets</text>
+  <text x="611.0" y="451" class="t2 halo" text-anchor="middle">context + schemas of allowed tools</text>
+  <path d="M371 457 L849 457" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="478" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.get_portfolio</text>
+  <path d="M851 484 L373 484" class="lnd" marker-end="url(#sqa)"/>
+  <text x="668.5" y="505" class="t2 halo" text-anchor="middle">dispatch</text>
+  <path d="M371 511 L964 511" class="ln" marker-end="url(#sqa)"/>
+  <rect x="850.0" y="526" width="232" height="24" rx="5" class="ba2"/>
+  <text x="966" y="542" class="t1" text-anchor="middle">allowlist ✓ · not in confirm list</text>
+  <text x="1026.0" y="572" class="t1 halo mono" text-anchor="middle" font-size="11">get_portfolio</text>
+  <path d="M966 578 L1084 578" class="lna" marker-end="url(#sqb)"/>
+  <text x="1026.0" y="599" class="t2 halo" text-anchor="middle">holdings</text>
+  <path d="M1086 605 L968 605" class="lnd" marker-end="url(#sqa)"/>
+  <text x="793.5" y="626" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
+  <path d="M966 632 L623 632" class="ln" marker-end="url(#sqa)"/>
+  <text x="668.5" y="653" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M966 659 L373 659" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="680" class="t2 halo" text-anchor="middle">context + tool result</text>
+  <path d="M371 686 L849 686" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="707" class="t2 halo" text-anchor="middle">answer, no tool call</text>
+  <path d="M851 713 L373 713" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="18" y="417" width="1120" height="311" rx="6" class="bg"/>
+  <path d="M18 437 L62 437 L70 429 L70 417 " class="ln"/>
+  <text x="26" y="432" class="t2" font-size="11.5" font-weight="700">loop</text>
+  <text x="80" y="432" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
+  <text x="283.5" y="742" class="t2 halo" text-anchor="middle">stream tokens</text>
+  <path d="M371 748 L198 748" class="lnd" marker-end="url(#sqa)"/>
+  <text x="126.0" y="769" class="t2 halo" text-anchor="middle">answer, then the</text>
+  <text x="126.0" y="784" class="t2 halo" text-anchor="middle">sources it cites</text>
+  <path d="M196 790 L58 790" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="811" class="t2 halo" text-anchor="middle">append assistant line</text>
+  <path d="M371 817 L619 817" class="ln" marker-end="url(#sqa)"/>
+  <rect x="0" y="844" width="1146" height="28" class="band"/>
+  <text x="12" y="863" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
+  <text x="126.0" y="890" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
+  <text x="126.0" y="905" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
+  <path d="M56 911 L194 911" class="ln" marker-end="url(#sqa)"/>
+  <text x="283.5" y="932" class="t2 halo" text-anchor="middle">same session + question</text>
+  <path d="M196 938 L369 938" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="959" class="t2 halo" text-anchor="middle">load this session&#x27;s recent messages</text>
+  <path d="M371 965 L619 965" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="986" class="t2 halo" text-anchor="middle">pick a route, reading turn 1 too</text>
+  <path d="M371 992 L734 992" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="1013" class="t2 halo mono" text-anchor="middle" font-size="11">route = tools</text>
+  <path d="M736 1019 L373 1019" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1040" class="t2 halo" text-anchor="middle">recall memories</text>
+  <path d="M371 1046 L619 1046" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1067" class="t2 halo" text-anchor="middle">relevant memories</text>
+  <path d="M621 1073 L373 1073" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1124" class="t2 halo" text-anchor="middle">context (with turn 1) + tool schemas</text>
+  <path d="M371 1130 L849 1130" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1151" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.place_order</text>
+  <path d="M851 1157 L373 1157" class="lnd" marker-end="url(#sqa)"/>
+  <text x="668.5" y="1178" class="t2 halo" text-anchor="middle">dispatch</text>
+  <path d="M371 1184 L964 1184" class="ln" marker-end="url(#sqa)"/>
+  <rect x="821.0" y="1199" width="290" height="24" rx="5" class="ba2"/>
+  <text x="966" y="1215" class="t1" text-anchor="middle">allowlist ✓ · place_order is in confirm list</text>
+  <text x="581.0" y="1245" class="t2 halo mono" text-anchor="middle" font-size="11">ask: place_order(...)?</text>
+  <path d="M966 1251 L198 1251" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="126.0" y="1272" class="t2 halo" text-anchor="middle">approve once ·</text>
+  <text x="126.0" y="1287" class="t2 halo" text-anchor="middle">for this session ·</text>
+  <text x="126.0" y="1302" class="t2 halo" text-anchor="middle">deny?</text>
+  <path d="M196 1308 L58 1308" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="126.0" y="1329" class="t1 halo" text-anchor="middle">approve once</text>
+  <path d="M56 1335 L194 1335" class="lna2" marker-end="url(#sqc)"/>
+  <text x="581.0" y="1356" class="t1 halo" text-anchor="middle">approved once</text>
+  <path d="M196 1362 L964 1362" class="lna2" marker-end="url(#sqc)"/>
+  <text x="1026.0" y="1383" class="t1 halo mono" text-anchor="middle" font-size="11">place_order</text>
+  <path d="M966 1389 L1084 1389" class="lna" marker-end="url(#sqb)"/>
+  <text x="1026.0" y="1410" class="t2 halo" text-anchor="middle">order placed</text>
+  <path d="M1086 1416 L968 1416" class="lnd" marker-end="url(#sqa)"/>
+  <text x="793.5" y="1437" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
+  <path d="M966 1443 L623 1443" class="ln" marker-end="url(#sqa)"/>
+  <text x="668.5" y="1464" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M966 1470 L373 1470" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1491" class="t2 halo" text-anchor="middle">context + tool result</text>
+  <path d="M371 1497 L849 1497" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1518" class="t2 halo" text-anchor="middle">answer, no tool call</text>
+  <path d="M851 1524 L373 1524" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="18" y="1090" width="1120" height="449" rx="6" class="bg"/>
+  <path d="M18 1110 L62 1110 L70 1102 L70 1090 " class="ln"/>
+  <text x="26" y="1105" class="t2" font-size="11.5" font-weight="700">loop</text>
+  <text x="80" y="1105" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
+  <text x="283.5" y="1553" class="t2 halo" text-anchor="middle">stream tokens</text>
+  <path d="M371 1559 L198 1559" class="lnd" marker-end="url(#sqa)"/>
+  <text x="126.0" y="1580" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M196 1586 L58 1586" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1607" class="t2 halo" text-anchor="middle">append assistant line</text>
+  <path d="M371 1613 L619 1613" class="ln" marker-end="url(#sqa)"/>
   </g>
-  <text x="12" y="1639" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the confirmation.</text>
+  <text x="12" y="1666" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the confirmation.</text>
 </svg>
 </div>
 <figcaption><b>Figure 2.</b> Each dashed frame is one run of the agent loop, and both turns go round it twice: <code>main</code> asks for a tool, gets the result, then answers. Turn 2 skips the file search but still recalls memories, because recall runs on every route. Only turn 2 stops for you, because <code>place_order</code> sits in the server's <code>confirm</code> list.</figcaption>
@@ -666,7 +669,8 @@
 <div class="tbl"><table>
   <thead><tr><th>Decision</th><th>Made by</th><th>How</th></tr></thead>
   <tbody>
-    <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. A separate short call rewrites the query and picks the skills to load.</td></tr>
+    <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. <code>merud</code> searches anyway when a <code>direct</code> question names an indexed folder. From v0.4, a separate short call picks the skills to load.</td></tr>
+    <tr><td>What to search for</td><td><code>merud</code>, with no model</td><td>The question as you typed it. On a follow-up, <code>merud</code> appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again".</td></tr>
     <tr><td>Which tools the model may use</td><td>you, in <code>config.toml</code></td><td>Only tools in each server's <code>allow</code> list reach the model; the rest don't exist to it.</td></tr>
     <tr><td>Which tool to call, with what arguments</td><td>the <code>main</code> model</td><td>It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks.</td></tr>
     <tr><td>Whether a call runs without asking</td><td>you, in <code>config.toml</code> and at the prompt</td><td><code>dispatch</code> stops and asks when the tool is in the server's <code>confirm</code> list, unless you already approved that tool for this session.</td></tr>
@@ -706,9 +710,11 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <ul>
   <li><b>A session is one transcript file.</b> <code>meru chat</code> keeps one session open until you quit. Each one-shot <code>meru "..."</code> starts a new session.</li>
-  <li><b>Each turn starts with the session's history.</b> <code>merud</code> loads your earlier questions and Meru's earlier answers from this session, newest first, until the history budget, its fixed share of the context, is full. Older turns drop out of the prompt but stay in the transcript, where search can still find them.</li>
+  <li><b>Each turn starts with the session's history.</b> <code>merud</code> loads your earlier questions and Meru's earlier answers from this session, newest first, until the history budget, its fixed share of the context, is full. Older turns drop out of the prompt but stay in the transcript. From v0.4, search can find them there.</li>
   <li><b>Earlier tool results stay out of the history.</b> The answer that used a result already carries what mattered from it, and raw results can run to thousands of tokens. The transcript keeps the full results.</li>
-  <li><b>The router sees the history too</b>, so a follow-up like "sell half of the one that dropped most" gets rewritten into a query that names the stock. This works because turn 1's answer named the stocks and their moves; the router reads answers, not the raw tool results behind them.</li>
+  <li><b>The router sees the history too</b>, so it can tell that a follow-up like "sell half of the one that dropped most" needs tools. It picks a route and nothing else; no model rewrites the follow-up.</li>
+  <li><b>Search adds an earlier question.</b> On the search routes, <code>merud</code> searches for the new question with the session's latest earlier question appended, so "and the one after that?" still finds the right files. It skips earlier questions made only of filler words, so "search again" after "try that again" still carries the subject from before them.</li>
+  <li><b>The <code>main</code> model resolves the reference.</b> It reads turn 1's answer in the history, which named the stocks and their moves, and works out which one dropped most. It reads answers, not the raw tool results behind them.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -719,7 +725,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <div class="tbl"><table>
   <thead><tr><th>Tier</th><th>Job</th></tr></thead>
   <tbody>
-    <tr><td><code>fast</code></td><td>routing, query rewrites, classification, trivial answers</td></tr>
+    <tr><td><code>fast</code></td><td>routing, classification, trivial answers</td></tr>
     <tr><td><code>main</code></td><td>reasoning, writing the answer, choosing tools</td></tr>
     <tr><td><code>embed</code></td><td>embeddings for the index and for queries</td></tr>
   </tbody>
@@ -748,7 +754,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>The <code>fast</code> tier needs a runtime that reports log probabilities, because <a href="#routing">routing</a> reads them. Ollama added them in v0.12.11; <code>merud</code> reads <code>/api/version</code> at startup and refuses to start on anything older, naming both versions. Routing costs no extra model: the <code>fast</code> model is already loaded.</p>
 
-<p>A new embedding model makes vectors of a different size, and every stored vector goes stale. The store records the embedding model's name and vector size. When either stops matching config, <code>merud</code> rebuilds the vectors from your files.</p>
+<p>A new embedding model makes vectors of a different size, and every stored vector goes stale. The store records the embedding model's name and vector size. When either stops matching config, the store drops every vector and keeps the text, so keyword search keeps working while the indexer re-embeds your files (see <a href="#storage">Storage</a>).</p>
 
 <p>A 120B model at 4-bit needs about 60 GB, which leaves even the 64 GB development machine no room and makes it swap. Meru won't support models that size.</p>
 
@@ -803,7 +809,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <div class="figbox">
 <svg viewBox="0 0 960 488" role="img" aria-labelledby="f2t f2d">
   <title id="f2t">Storage: files as truth, SQLite as projection</title>
-  <desc id="f2d">On the left, the source-of-truth files: your folders, session transcripts, memory files, and config.toml with skills. On the right, the tables in meru.db. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec. Replaying transcripts fills sessions, messages, message_fts and session_vec, and tool_calls. The indexer embeds the memory files into memories, memory_fts and memory_vec. Config fills meta and jobs; each job run is a session, so its transcript fills job_runs.</desc>
+  <desc id="f2d">On the left, the source-of-truth files: your folders, session transcripts, memory files, and config.toml with skills. On the right, the tables in meru.db. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec, a plain table of vectors compared with vec1's distance function. Replaying transcripts fills sessions, messages, message_fts and session_vec (from v0.4), and tool_calls (from v0.3). The indexer embeds the memory files into memories, memory_fts and memory_vec. Config fills meta and jobs; each job run is a session, so its transcript fills job_runs.</desc>
   <defs>
     <marker id="f2a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -830,18 +836,18 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
   <rect x="560" y="52" width="376" height="60" rx="8" class="b"/>
   <text x="576" y="76" class="t1 mono" font-size="13">documents · chunks</text>
-  <text x="576" y="97" class="t3 mono" font-size="11.5">chunk_fts (FTS5) · chunk_vec (sqlite-vec)</text>
+  <text x="576" y="97" class="t3 mono" font-size="11.5">chunk_fts (FTS5) · chunk_vec (plain table)</text>
 
   <rect x="560" y="128" width="376" height="56" rx="8" class="b"/>
-  <text x="576" y="150" class="t1 mono" font-size="13">sessions · messages · message_fts</text>
+  <text x="576" y="150" class="t1 mono" font-size="13">sessions · messages · message_fts (v0.4)</text>
   <text x="576" y="171" class="t3 mono" font-size="11.5">session_vec · one vector per summary</text>
   <rect x="560" y="194" width="376" height="42" rx="8" class="b"/>
   <text x="576" y="220" class="t1 mono" font-size="13">tool_calls</text>
-  <text x="664" y="220" class="t3" font-size="12">audit log of every tool call</text>
+  <text x="664" y="220" class="t3" font-size="12">audit log of every tool call (v0.3)</text>
 
   <rect x="560" y="252" width="376" height="56" rx="8" class="b"/>
   <text x="576" y="274" class="t1 mono" font-size="13">memories</text>
-  <text x="576" y="295" class="t3 mono" font-size="11.5">memory_fts (FTS5) · memory_vec (sqlite-vec)</text>
+  <text x="576" y="295" class="t3 mono" font-size="11.5">memory_fts (FTS5) · memory_vec (plain table)</text>
 
   <rect x="560" y="328" width="376" height="42" rx="8" class="b"/>
   <text x="576" y="354" class="t1 mono" font-size="13">meta</text>
@@ -864,39 +870,137 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <text x="16" y="474" class="t3" font-size="12">Delete meru.db and merud rebuilds every box on the right from the files on the left.</text>
 </svg>
 </div>
-<figcaption><b>Figure 3.</b> Every arrow runs left to right, and every table on the right has a file behind it, memories included. Edit a memory file by hand and the indexer picks up the change the same way it does for your notes.</figcaption>
+<figcaption><b>Figure 3.</b> Every arrow runs left to right, and every table on the right has a file behind it, memories included. v0.2 builds <code>documents</code>, <code>chunks</code>, <code>chunk_fts</code>, <code>chunk_vec</code> and <code>meta</code>; the rest arrive with later milestones, as the table below marks. Edit a memory file by hand and the indexer picks up the change the same way it does for your notes.</figcaption>
 </figure>
 
 <h3>The database</h3>
 
-<p><code>~/.meru/meru.db</code> is one SQLite file, opened through <code>ncruces/go-sqlite3</code> with <code>sqlite-vec</code> built in. <b>FTS5</b>, SQLite's built-in full-text search, handles keywords. <b><code>sqlite-vec</code></b>, a SQLite extension that stores and compares vectors, handles embeddings.</p>
+<p><code>~/.meru/meru.db</code> is one SQLite file, opened through <code>ncruces/go-sqlite3</code>. <b>FTS5</b>, SQLite's built-in full-text search, handles keywords. Vectors sit in plain tables, one row per vector, and <b>vec1</b>, SQLite's own vector extension, supplies the distance function that compares them. <code>merud</code> creates <code>meru.db</code> and its <code>-wal</code> and <code>-shm</code> files with mode <code>0600</code>, so only you can read them.</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Table</th><th>Holds</th><th>Rebuilt from</th></tr></thead>
   <tbody>
     <tr><td><code>documents</code></td><td>indexed source files: path, mtime, hash, type</td><td>your folders</td></tr>
     <tr><td><code>chunks</code></td><td>pieces of each file's text, plus metadata and the parent document</td><td>your folders</td></tr>
-    <tr><td><code>chunk_vec</code></td><td>one vector per chunk (sqlite-vec)</td><td>chunks, re-embedded</td></tr>
+    <tr><td><code>chunk_vec</code></td><td>one vector per chunk, a blob of 32-bit floats scaled to length 1</td><td>chunks, re-embedded</td></tr>
     <tr><td><code>chunk_fts</code></td><td>keyword index over chunks (FTS5)</td><td>chunks</td></tr>
-    <tr><td><code>sessions</code> / <code>messages</code></td><td>every session and message, plus each session's summary, for context and <code>meru log</code></td><td><code>sessions/*.jsonl</code></td></tr>
-    <tr><td><code>session_vec</code></td><td>one vector per session summary, for "what did we decide last week"</td><td>session summaries</td></tr>
-    <tr><td><code>message_fts</code></td><td>keyword index over messages, for "what did we say about X"</td><td>messages</td></tr>
-    <tr><td><code>tool_calls</code></td><td>audit log: every MCP, A2A and built-in tool call, with <code>kind</code> (<code>mcp</code>, <code>a2a</code> or <code>builtin</code>), args, result, duration, approval choice, trace ID</td><td><code>sessions/*.jsonl</code></td></tr>
-    <tr><td><code>memories</code></td><td>one row per memory file: path, folder (its kind), text, created, source, last used</td><td><code>memory/*/*.md</code></td></tr>
-    <tr><td><code>memory_vec</code> / <code>memory_fts</code></td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
-    <tr><td><code>jobs</code> / <code>job_runs</code></td><td>scheduled jobs and each run's outcome</td><td>jobs: <code>[[jobs]]</code> in <code>config.toml</code>; runs: the job's session transcript</td></tr>
+    <tr><td><code>sessions</code> / <code>messages</code> (v0.4)</td><td>every session and message, plus each session's summary, for context and <code>meru log</code></td><td><code>sessions/*.jsonl</code></td></tr>
+    <tr><td><code>session_vec</code> (v0.4)</td><td>one vector per session summary, for "what did we decide last week"</td><td>session summaries</td></tr>
+    <tr><td><code>message_fts</code> (v0.4)</td><td>keyword index over messages, for "what did we say about X"</td><td>messages</td></tr>
+    <tr><td><code>tool_calls</code> (v0.3)</td><td>audit log: every MCP, A2A and built-in tool call, with <code>kind</code> (<code>mcp</code>, <code>a2a</code> or <code>builtin</code>), args, result, duration, approval choice, trace ID</td><td><code>sessions/*.jsonl</code></td></tr>
+    <tr><td><code>memories</code> (v0.4)</td><td>one row per memory file: path, folder (its kind), text, created, source, last used</td><td><code>memory/*/*.md</code></td></tr>
+    <tr><td><code>memory_vec</code> / <code>memory_fts</code> (v0.4)</td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
+    <tr><td><code>jobs</code> / <code>job_runs</code> (v0.5)</td><td>scheduled jobs and each run's outcome</td><td>jobs: <code>[[jobs]]</code> in <code>config.toml</code>; runs: the job's session transcript</td></tr>
     <tr><td><code>meta</code></td><td>schema version, embedding model name and vector size</td><td>config</td></tr>
   </tbody>
 </table></div>
 
+<p>v0.2 builds <code>documents</code>, <code>chunks</code>, <code>chunk_vec</code>, <code>chunk_fts</code> and <code>meta</code>. Each other table arrives with the milestone marked beside it. Replaying transcripts into <code>messages</code> and <code>message_fts</code> waits for v0.4, where session summaries need it; until then the JSONL files are the only copy of a conversation.</p>
+
 <p><code>tool_calls</code> is mandatory. An assistant with tools that change things needs a record you can read afterwards. <code>messages</code> and <code>tool_calls</code> store the trace ID of their turn, so you can jump from a slow trace in Grafana to the rows it produced, and back.</p>
 
-<h3>Why this driver and this vector store</h3>
+<p>When the embedding model's name or vector size in <code>meta</code> stops matching config, the store deletes every row of <code>chunk_vec</code> and keeps <code>documents</code> and <code>chunks</code>. Keyword search keeps working while the indexer re-embeds. The store reports the gap by counting chunks that lack a vector (<code>NeedsReembed</code>), so the count stays right if <code>merud</code> stops halfway through.</p>
+
+<h3 id="why-this-driver-and-this-vector-store">Why this driver and this vector store</h3>
 
 <ul>
-  <li><b><code>ncruces/go-sqlite3</code> + <code>sqlite-vec</code>.</b> No cgo, no C compiler, and vectors live in the same file as everything else. One query can join vector hits, keyword hits and document metadata.</li>
-  <li><b>Search compares against every vector.</b> <code>sqlite-vec</code> has no approximate index. For a personal index of up to a few hundred thousand chunks, that should stay inside the latency budget, and <code>meru.retrieval.duration</code> will show when it doesn't. The first fix would shrink the vectors (int8, or fewer dimensions) and keep the same database.</li>
-  <li><b>Rejected:</b> <code>chromem-go</code> (pure Go, but a second store we can't join with keyword search), LanceDB and DuckDB (both need cgo and do more than we need), Qdrant and Chroma (extra server processes).</li>
+  <li><b><code>ncruces/go-sqlite3</code> with vec1 and FTS5.</b> No cgo, no C compiler, and vectors live in the same file as everything else. One query can join vector hits, keyword hits and document metadata. vec1 ships with the driver, so Meru adds no extension of its own.</li>
+  <li><b>A plain table, no vector index.</b> Vector search reads every row of <code>chunk_vec</code> and orders by <code>vec1_l2_distance(vector, ?) / 2</code>. The store keeps every vector at length 1, and for such vectors half the squared straight-line distance equals the <b>cosine distance</b> that embedding models are trained for. vec1 also offers an exact "flat" index, but writes slowed as it grew: replacing one 100-chunk file took 186 ms at 10,000 chunks, and indexing 100,000 chunks would take about ten minutes. Plain rows index 100,000 chunks in 6.1 s.</li>
+  <li><b>Measured.</b> On the development machine (M4 Max), with 768-dimension vectors and 100 chunks per file:</li>
+</ul>
+
+<div class="tbl"><table>
+  <thead><tr><th>Operation</th><th>10,000 chunks</th><th>100,000 chunks</th></tr></thead>
+  <tbody>
+    <tr><td>index every chunk</td><td class="num-col">0.59 s</td><td class="num-col">6.1 s</td></tr>
+    <tr><td>replace one file</td><td class="num-col">6.4 ms</td><td class="num-col">6.1 ms</td></tr>
+    <tr><td>vector search, top 50</td><td class="num-col">13 ms</td><td class="num-col">147 ms</td></tr>
+    <tr><td>keyword search, top 50</td><td class="num-col">9 ms</td><td class="num-col">90 ms</td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li>Search time grows with the index, because both searches read every candidate; write time doesn't. <code>meru.retrieval.duration</code> will show when search needs to get faster. The first fixes are fewer dimensions, or computing distances in Go, not another database.</li>
+  <li><b>Rejected:</b> <code>sqlite-vec</code>, because its Go bindings work only with the 2024 release of the driver (v0.17.1), 18 releases behind and without the security fixes since, and the driver already bundles vec1, which supplies the distance function the store needs. Also <code>chromem-go</code> (pure Go, but a second store we can't join with keyword search), LanceDB and DuckDB (both need cgo and do more than we need), Qdrant and Chroma (extra server processes).</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="getting-your-content-in">Getting your content in</h2>
+
+<p>The indexer reads the folders you name into the store, keeps them current while <code>merud</code> runs, and reads nothing else on disk.</p>
+
+<h3>What gets indexed</h3>
+
+<p>Only the folders under <code>[index] folders</code> in <code>config.toml</code>. The list ships empty, so a fresh Meru indexes nothing, and it reads your home folder only if you list <code>~</code>. <code>merud</code> reads the list when it starts, so a change takes a restart.</p>
+
+<pre><code>[index]
+folders        = ["~/notes", "~/Documents/papers"]
+ignore         = ["*.log", "drafts/"]   # .gitignore-style, on top of the built-in list
+max_file_mb    = 5
+chunk_tokens   = 500
+overlap_tokens = 50
+watch          = true</code></pre>
+
+<p>Inside those folders the indexer checks each entry against these rules, in order, and skips it at the first one that matches:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Order</th><th>Skipped as</th><th>What it catches</th></tr></thead>
+  <tbody>
+    <tr><td class="num-col">1</td><td><code>symlink</code></td><td>any symbolic link; the indexer never follows one</td></tr>
+    <tr><td class="num-col">2</td><td><code>secret</code></td><td><code>.env*</code>, <code>*.pem</code>, <code>*.key</code>, <code>id_rsa*</code>, <code>*.kdbx</code>, <code>credentials*</code>, <code>.netrc</code> and similar</td></tr>
+    <tr><td class="num-col">3</td><td><code>hidden</code></td><td>a name that starts with <code>.</code></td></tr>
+    <tr><td class="num-col">4</td><td><code>build-folder</code></td><td><code>node_modules</code>, <code>.venv</code>, <code>venv</code>, <code>vendor</code>, <code>target</code>, <code>dist</code>, <code>build</code>, <code>__pycache__</code></td></tr>
+    <tr><td class="num-col">5</td><td><code>ignored</code></td><td><code>[index] ignore</code>, then each folder's <code>.gitignore</code> and <code>.meruignore</code>, from the top folder down</td></tr>
+    <tr><td class="num-col">6</td><td><code>media</code>, <code>binary</code>, <code>unsupported</code></td><td>by extension: images, audio, video, archives, programs, databases, and any type with no chunker</td></tr>
+    <tr><td class="num-col">7</td><td><code>too-large</code></td><td>over <code>max_file_mb</code></td></tr>
+    <tr><td class="num-col">8</td><td><code>binary</code></td><td>a NUL byte in the first 8 KB (PDFs excepted)</td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li><b>Secrets sit beyond any ignore file's reach.</b> No <code>.gitignore</code> or <code>.meruignore</code> line can bring one back, because a key in the index would end up in a prompt.</li>
+  <li><b>Config patterns come next</b>, and no ignore file can undo them either.</li>
+  <li><b>Each skip has a reason.</b> A scan counts skips by reason, and <code>merud -v</code> logs each skipped path with its reason.</li>
+</ul>
+
+<p>A <code>.meruignore</code> uses <code>.gitignore</code> syntax: one pattern per line, <code>#</code> for a comment, <code>*</code> for any run of characters within a name, <code>**/</code> for any number of folders, a trailing <code>/</code> for folders only, a <code>/</code> at the start to anchor the pattern to the file's own folder, and <code>!</code> to re-include. Git's rule holds across the ignore files: the last matching line wins, and a deeper folder's file beats a shallower one's. Meru reads <code>.meruignore</code> after <code>.gitignore</code> in the same folder, so it can skip more for Meru alone, or bring back with <code>!name</code> a file git ignores.</p>
+
+<h3>Chunking</h3>
+
+<p>The indexer cuts each file into chunks along its own structure:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>File</th><th>Split by</th><th>Heading kept</th><th>Citation points to</th></tr></thead>
+  <tbody>
+    <tr><td>Markdown</td><td>heading, then paragraphs</td><td>the heading path, such as <code>Budget &gt; Q3</code></td><td>lines</td></tr>
+    <tr><td>Go</td><td>top-level declaration, read with Go's own parser</td><td>the declaration's name</td><td>lines</td></tr>
+    <tr><td>other code, plain text</td><td>blank-line blocks</td><td>none</td><td>lines</td></tr>
+    <tr><td>HTML</td><td><code>&lt;h1&gt;</code> to <code>&lt;h6&gt;</code>, then paragraphs; scripts, styles and <code>&lt;head&gt;</code> dropped</td><td>the heading path</td><td>none</td></tr>
+    <tr><td>PDF</td><td>page, then paragraphs; plain text, no layout</td><td>none</td><td>page</td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li><b>Size.</b> A chunk holds about <code>chunk_tokens</code> (500) tokens and repeats the last <code>overlap_tokens</code> (50) of the chunk before it, so a sentence cut at a boundary still appears whole in one chunk. Meru estimates a token as four characters, because Ollama doesn't expose the embedding model's tokenizer.</li>
+  <li><b>No chunk passes the limit.</b> A paragraph too big for one chunk gets split at line breaks, then between words, and last at a fixed width.</li>
+  <li><b>The heading path travels with the text.</b> Each embedded chunk starts with its heading path, so the third chunk of a long "Budget &gt; Q3" section still embeds as being about Q3's budget.</li>
+</ul>
+
+<h3>Keeping it current</h3>
+
+<ul>
+  <li><b>Changed files only.</b> At startup <code>merud</code> scans every folder and compares each file's mtime and SHA-256 hash with the store's copy. It re-chunks and re-embeds a file only when either differs. It hashes every file, because some sync tools and editors keep the mtime when the content changes.</li>
+  <li><b>Removals.</b> After a folder's scan, the indexer deletes the store's entries for files the scan didn't keep: deleted files, and files a new ignore rule now covers.</li>
+  <li><b>Missing folders keep their entries.</b> A folder that doesn't exist, such as one on an unplugged drive, and a folder the scan can't read both keep what the store holds for them.</li>
+  <li><b>Watching.</b> With <code>watch = true</code>, <code>merud</code> asks the operating system to report changes in every folder the skip rules keep. It indexes a changed path once the path has been quiet for 500 ms, so an editor can finish a save that takes several writes. When the operating system refuses another watch (Linux's <code>fs.inotify.max_user_watches</code>, or the open-file limit on macOS), <code>merud</code> logs one warning and keeps the watches it has; the next startup scan catches the rest.</li>
+  <li><b>On demand.</b> <code>meru index</code> rescans every configured folder, <code>meru index &lt;path&gt;</code> rescans one folder or file inside them, and <code>meru index -status</code> prints counts.</li>
+</ul>
+
+<h3>What stays out</h3>
+
+<ul>
+  <li><b>Symlinks are never followed.</b> A link inside a folder could index files twice or loop, and a link out of it would break the promise that Meru reads only the folders you list. A link's target inside the folder gets indexed at its real path.</li>
+  <li><b>Email, calendar and Drive stay live.</b> Meru reaches them through their MCP servers at question time and copies none of them into <code>meru.db</code>. Answers see today's inbox, and your mail never lands in the index.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -911,15 +1015,15 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>Meru runs both. <a href="#fig-end-to-end">Figure 2</a> in <a href="#end-to-end">A question, end to end</a> shows where the search sits in a turn: after the router picks a route that includes your files, and before <code>merud</code> builds the context.</p>
 
-<p>Before any search, the indexer splits files into <b>chunks</b>, pieces cut along the file's own structure: markdown by heading, code by function or type, PDFs by page with layout kept. It re-indexes a file only when its mtime (last-modified time) and content hash change.</p>
+<p>Before any search, the indexer splits files into <b>chunks</b>, pieces cut along the file's own structure: Markdown by heading, code by declaration or blank-line block, PDFs by page as plain text with no layout. <a href="#getting-your-content-in">Getting your content in</a> shows how.</p>
 
-<p>Each turn searches three sources: file chunks, memories and the summaries of past sessions. Each source gets the same keyword and meaning search, <code>rrf</code> merges the results within that source, and each source has its own share of the context budget, so one busy source can't crowd out the others. SQLite does both searches; our code merges the results:</p>
+<p>A search runs on the <code>search</code> and <code>search+tools</code> routes, and in v0.2 on <code>tools</code> as well, until tools arrive in v0.3. It also runs on a <code>direct</code> question that names an indexed folder (see <a href="#routing">Routing</a>). Its query is the question, with an earlier question appended on a follow-up. In v0.2 a turn searches file chunks. From v0.4 it also searches memories and the summaries of past sessions. Each source gets the same keyword and meaning search, <code>rrf</code> merges the results within that source, and each source has its own share of the context budget, so one busy source can't crowd out the others. SQLite does both searches; our code merges the results:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Piece</th><th>Comes from</th></tr></thead>
   <tbody>
     <tr><td>Keyword search, ranked by BM25</td><td>FTS5 (<code>ORDER BY rank</code>, where <code>rank</code> is BM25)</td></tr>
-    <tr><td>Similarity search, ranked by distance</td><td><code>sqlite-vec</code> (<code>embedding MATCH ? AND k = ?</code>)</td></tr>
+    <tr><td>Similarity search, ranked by distance</td><td>every row of <code>chunk_vec</code>, with vec1's distance function (<code>ORDER BY vec1_l2_distance(vector, ?) / 2 LIMIT ?</code>)</td></tr>
     <tr><td>Merging the two lists</td><td>our Go code: reciprocal-rank fusion</td></tr>
   </tbody>
 </table></div>
@@ -928,7 +1032,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <div class="figbox">
 <svg viewBox="0 0 960 300" role="img" aria-labelledby="f3t f3d">
   <title id="f3t">Hybrid search</title>
-  <desc id="f3d">The query is embedded with the embed tier and runs as a vector query against chunk_vec for the top 50. The same query runs as a keyword query against chunk_fts, ranked by BM25, for the top 50. The two queries run one after the other. rrf in Go merges the two lists, keeps the top 10 chunk IDs, and merud loads their text and source path from chunks and documents.</desc>
+  <desc id="f3d">The query is embedded with the embed tier and runs as a vector query that reads every row of chunk_vec, orders by vec1 distance and keeps the top 50. The same query runs as a keyword query against chunk_fts, ranked by BM25, for the top 50. The two queries run one after the other. rrf in Go merges the two lists, keeps the top 10 chunk IDs, and merud loads their text and source path from chunks and documents. The list sizes are fixed constants in internal/retrieve, not config keys.</desc>
   <defs>
     <marker id="f3a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f3b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -942,7 +1046,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
   <rect x="366" y="40" width="200" height="56" rx="8" class="b"/>
   <text x="380" y="63" class="t1" font-size="13" font-weight="600">vector query</text>
-  <text x="380" y="82" class="t3 mono" font-size="11">chunk_vec · top 50</text>
+  <text x="380" y="82" class="t3 mono" font-size="11">chunk_vec · every row · top 50</text>
   <text x="380" y="114" class="t3 mono" font-size="10.5">stage = vector</text>
 
   <rect x="366" y="192" width="200" height="56" rx="8" class="b"/>
@@ -974,11 +1078,13 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <path d="M742 144 L762 144 L762 68 L782 68" class="lna" marker-end="url(#f3b)"/>
   <path d="M864 96 L864 190" class="ln" marker-end="url(#f3a)"/>
 
-  <text x="16" y="292" class="t3" font-size="11.5">List sizes (50, 50, 10) are starting values in config.toml. Each stage reports its own time in meru.retrieval.duration.</text>
+  <text x="16" y="292" class="t3" font-size="11.5">List sizes (50, 50, 10) are constants in internal/retrieve, not config. Each stage reports its time in meru.retrieval.duration.</text>
 </svg>
 </div>
 <figcaption><b>Figure 4.</b> Only the vector side needs a model call. The keyword side, the merge and the final lookup are all SQLite or plain Go inside <code>merud</code>.</figcaption>
 </figure>
+
+<p>The keyword query quotes every word of the query and joins them with <code>OR</code>, so text from the user can never reach FTS5 as query syntax. It keeps the first 32 distinct words, which is why the new question comes before the previous one.</p>
 
 <h3>Merging two lists with reciprocal-rank fusion</h3>
 
@@ -1024,6 +1130,23 @@ func rrf(lists ...[]int64) map[int64]float64 {
 
 <p><b>Schema detail.</b> <code>chunk_fts</code> is an FTS5 <i>external content</i> table (<code>content='chunks'</code>). It indexes the text in <code>chunks</code> without storing a second copy, and its <code>rowid</code> equals the chunk ID. <code>chunk_vec</code> uses the same chunk ID as its key, so both lists name chunks the same way and the merge needs no lookup.</p>
 
+<p>The list sizes are fixed constants in <code>internal/retrieve</code>: 50 hits from each search and 10 chunks after the merge. They aren't config keys. We'll tune them once we have measurements from real questions.</p>
+
+<h3 id="citations">Citations</h3>
+
+<p><code>merud</code> numbers the chunks it found and puts them in the prompt under "From your files", with a rule that tells the model to cite each excerpt it uses as <code>[1]</code>, <code>[2]</code> and so on, and never to invent one. When a search finds nothing, the prompt says so instead, and the model answers without citing files.</p>
+
+<p>The system prompt names the folders in <code>[index] folders</code> on every turn, says that Meru searches them before it answers, and says the model can't open or list files itself. With no folders set, it tells the model that Meru hasn't indexed anything yet and where you add folders. Without this note a small model answers "I don't have access to your files" while it reads excerpts from them, and can't say what Meru indexes.</p>
+
+<p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites; when it cites none, as a small model sometimes forgets to, they list every source the prompt held.</p>
+
+<pre><code>The Q3 budget for the garden project is 4,200 dollars [1].
+
+Sources:
+[1] ~/notes/garden.md, "Budget", lines 3–5</code></pre>
+
+<p>With a tiny index, every chunk lands in the top 10, so an answer that cites nothing lists every file. A minimum fused score, or keeping fewer than 10 chunks, would trim that list; choosing either waits for measurements (see <a href="#open-questions">Open questions</a>).</p>
+
 <!-- ============================================================ -->
 <h2 id="memory">Memory you can read and edit</h2>
 
@@ -1052,8 +1175,10 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <ul>
   <li><b>The folder is the kind.</b> A file has no <code>kind:</code> field that could disagree with its path, and you can browse by kind in a file manager or with <code>ls</code>.</li>
   <li><b>One fact per file</b>, so forgetting a memory means deleting one file. You can do that by hand, or <code>meru memory forget</code> does it.</li>
-  <li><b><code>other/</code> holds anything that fits no other folder.</b> If it fills up with one kind of thing, create a new folder for that kind; Meru picks it up with no code change.</li>
+  <li><b><code>other/</code> holds anything that fits no other folder.</b> If it fills up with one kind of thing, create a new folder for that kind; Meru picks it up with no code change. A kind's folder name uses letters, digits, <code>-</code> and <code>_</code>; Meru skips any other folder. <code>merud</code> creates the six default folders when it opens the memory folder.</li>
   <li><b>The frontmatter records when and where</b> each memory came from. The <code>source</code> above names the session transcript shown in <a href="#storage">Storage</a>, so you can open it and read the exchange that produced the fact.</li>
+  <li><b>Memories stay small.</b> Meru saves a new memory only up to 4 KiB of text, and reads a memory file only up to 64 KiB, which leaves room for hand edits. It skips a larger file and says which.</li>
+  <li><b>Meru never follows a link.</b> It won't read or delete a memory file, or a kind folder, that is a symbolic link, and every file operation stays inside <code>~/.meru/memory/</code>.</li>
 </ul>
 
 <p>Meru keeps no index file. The database already indexes the folders and <code>meru memory list</code> shows them, so a second list on disk would only drift out of step with the files.</p>
@@ -1089,7 +1214,9 @@ description: Review holdings through a valuation lens. Use when asked about
 
 &lt;the instructions, loaded only when the skill is chosen&gt;</code></pre>
 
-<p>The system prompt carries only each skill's <code>name</code> and <code>description</code>. <code>merud</code> loads the body when the router picks the skill, so each new skill adds two lines to the prompt until the router chooses it.</p>
+<p>The system prompt carries only each skill's <code>name</code> and <code>description</code>. From v0.4, a short call to the <code>fast</code> model picks the skills a turn needs, and <code>merud</code> loads only their bodies, so each new skill adds two lines to the prompt until that call chooses it.</p>
+
+<p>A skill's <code>name</code> is lowercase letters and digits in words joined by <code>-</code>, such as <code>portfolio-review</code>, and must match its folder's name. A <code>SKILL.md</code> may be up to 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and the other skills still load.</p>
 
 <p>Skills are plain files, so any other agent that reads this format can use the same directory.</p>
 
@@ -1121,7 +1248,7 @@ description: Review holdings through a valuation lens. Use when asked about
 <p>A turn has five steps. <a href="#fig-end-to-end">Figure 2</a> in <a href="#end-to-end">A question, end to end</a> shows them in order.</p>
 
 <ol>
-  <li><b>Route.</b> The <code>fast</code> model picks one of four routes: answer directly, search your files first (RAG, retrieval-augmented generation), call tools, or search and call tools. It picks by classification, reading one decoded token's probabilities (see <a href="#routing">Routing</a>). A separate short generation call rewrites the query and picks the skills to load.</li>
+  <li><b>Route.</b> The <code>fast</code> model picks one of four routes: answer directly, search your files first (RAG, retrieval-augmented generation), call tools, or search and call tools. It picks by classification, reading one decoded token's probabilities (see <a href="#routing">Routing</a>). On the search routes, <code>merud</code> then searches your files for the question, with an earlier question appended on a follow-up. No model rewrites the query. Until tools arrive in v0.3, the <code>tools</code> route searches too: the router sends some questions about your files there, and an answer from the files beats one from the model alone. When the router picks <code>direct</code> for a question that names an indexed folder, <code>merud</code> searches anyway (see <a href="#routing">Routing</a>). From v0.4, a separate short call picks the skills to load.</li>
   <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and the allowed tools' schemas, each within its own token budget.</li>
   <li><b>Call <code>main</code>.</b> Stream text to the client as it arrives. Tool-call arguments also arrive in pieces; buffer each call until it is complete.</li>
   <li><b>Dispatch tools.</b> Every call goes through one function, <code>dispatch</code>. It checks the allowlist, asks you to confirm if config lists the tool under <code>confirm</code>, calls the MCP server, A2A agent or built-in tool (such as <code>remember</code>), writes the <code>tool_calls</code> row, and records the call's timing span and metrics. If you say no, the call doesn't run and its outcome is <code>declined</code>. A call to a tool outside the allowlist doesn't run either; its outcome is <code>denied</code>, and it still gets a <code>tool_calls</code> row, so a model that keeps reaching for forbidden tools shows up in the log. No other code path reaches a server, agent or built-in tool. Independent calls run at the same time (<code>errgroup</code>, Go's helper for running calls together and collecting their errors), each with its own timeout.</li>
@@ -1135,7 +1262,7 @@ description: Review holdings through a valuation lens. Use when asked about
 <p>A small model asked to write its route as JSON (JavaScript Object Notation) fails in three ways: it writes broken JSON, invents a fifth route, or answers wrong with no sign that it was unsure. So the router doesn't ask for text. It treats the route as a classification and reads the answer from the model's probabilities:</p>
 
 <ol>
-  <li>The prompt gives the question, the session history and four lettered options (A = answer directly, B = search, C = tools, D = search and tools), each with a one-line description, and ends with <code>Answer: </code>.</li>
+  <li>The prompt opens with four lettered options (A = answer directly, B = search, C = tools, D = search and tools) and two examples per route. Each option's description names the questions that belong to it and the ones that don't. Option B also names the folders in <code>[index] folders</code> and says that questions about projects kept there, by name, are B. Without that line the model can't tell that "meru" in "what database does meru use" is your own project. The session history and the question come last, and the prompt ends with <code>Answer: </code>. The fixed part, folders included, stays the same from turn to turn, so Ollama reuses its work on it from the previous turn.</li>
   <li><code>merud</code> asks Ollama's <code>/api/chat</code> for one token with log probabilities (<code>num_predict = 1</code>, <code>logprobs = true</code>, <code>top_logprobs = 20</code>) and with thinking off (<code>think = false</code>). A thinking model such as MiniCPM5 otherwise spends its one token starting its hidden reasoning, and no letter comes back.</li>
   <li>The router keeps the alternatives whose text is one of the four letters, turns each log probability back into a probability, divides by a fitted temperature, and normalizes the four so they sum to 1.</li>
   <li>The most likely letter is the route, and its probability is the confidence.</li>
@@ -1145,7 +1272,7 @@ description: Review holdings through a valuation lens. Use when asked about
 <div class="figbox">
 <svg viewBox="0 0 960 312" role="img" aria-labelledby="frt frd">
   <title id="frt">Routing: one token, four probabilities</title>
-  <desc id="frd">The question and the session history go into a prompt with four lettered options, A answer directly, B search, C tools, D search and tools, ending with Answer. Ollama runs the fast model for one token with log probabilities: num_predict 1, logprobs true, top_logprobs 20. The router keeps the alternatives that are the letters A to D, turns each log probability back into a probability, divides by the temperature and normalizes the four to sum to 1. It then checks whether the confidence is at least min_confidence. If yes, the most likely letter is the route, its probability is the confidence, and the outcome is ok. If no, the router takes the fallback route search+tools, with outcome low_confidence, or degraded when fewer than two letters appeared.</desc>
+  <desc id="frd">The prompt opens with four lettered options, A answer directly, B search, which also names the indexed folders, C tools, D search and tools, and two examples per route, then the session history and the question, ending with Answer. Ollama runs the fast model for one token with log probabilities: num_predict 1, logprobs true, top_logprobs 20. The router keeps the alternatives that are the letters A to D, turns each log probability back into a probability, divides by the temperature and normalizes the four to sum to 1. It then checks whether the confidence is at least min_confidence. If yes, the most likely letter is the route, its probability is the confidence, and the outcome is ok. If no, the router takes the fallback route search+tools, with outcome low_confidence, or degraded when fewer than two letters appeared.</desc>
   <defs>
     <marker id="fra" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="frb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -1154,9 +1281,9 @@ description: Review holdings through a valuation lens. Use when asked about
 
   <rect x="16" y="24" width="212" height="112" rx="8" class="b"/>
   <text x="30" y="48" class="t1" font-size="14" font-weight="600">prompt</text>
-  <text x="30" y="70" class="t2" font-size="12.5">question + history</text>
-  <text x="30" y="90" class="t2 mono" font-size="11.5">A answer · B search</text>
-  <text x="30" y="108" class="t2 mono" font-size="11.5">C tools · D search+tools</text>
+  <text x="30" y="70" class="t2 mono" font-size="11.5">A answer · B search</text>
+  <text x="30" y="88" class="t2 mono" font-size="11.5">C tools · D search+tools</text>
+  <text x="30" y="107" class="t2" font-size="12.5">examples, then the turn</text>
   <text x="30" y="126" class="t3" font-size="12">ends with <tspan class="mono">Answer: </tspan></text>
 
   <path d="M228 80 L250 80" class="ln" marker-end="url(#fra)"/>
@@ -1208,13 +1335,17 @@ description: Review holdings through a valuation lens. Use when asked about
 
 <pre><code>[router]
 top_logprobs   = 20             # Ollama's cap
-temperature    = 1.0            # raw; fit later from labelled turns
+temperature    = 1.25           # fitted by `make router-eval`
 min_confidence = 0.45           # below this, take the fallback
 fallback       = "search+tools"</code></pre>
 
-<p>The router lives in <code>internal/router</code> as one function, <code>Decide</code>, which returns the route, its confidence, the full distribution and an outcome (<code>ok</code>, <code>low_confidence</code> or <code>degraded</code>). A model that answers unclearly isn't an error; <code>Decide</code> returns the fallback and says why. Small models are overconfident, so <code>min_confidence</code> means little until a temperature is fitted from about 200 labelled turns.</p>
+<p>The router lives in <code>internal/router</code> as one function, <code>Decide</code>, which returns the route, its confidence, the full distribution and an outcome (<code>ok</code>, <code>low_confidence</code> or <code>degraded</code>). A model that answers unclearly isn't an error; <code>Decide</code> returns the fallback and says why.</p>
 
-<p>The full design, with the prompt contract, tests and calibration plan, is in <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>.</p>
+<p>One rule overrides the router. When it picks <code>direct</code> and the question names an indexed folder as a whole word, such as "meru" for <code>~/repos/meru</code>, the agent loop changes the route to <code>search</code>. Even with the folders in the prompt, the router sent "what database does Meru use to store its index?" to <code>direct</code> at 0.621, and the model made up an answer. A wrong guess costs one search of about 50 ms, and the model uses only the excerpts that help. The turn's route event, log line and span show <code>search</code>; the <code>meru.route</code> span and metric still record what the router chose. The rule matches the last part of each folder path, in any case, and skips names under three letters. "hey meru, what's the capital of France" searches too, because the assistant shares its name with the folder.</p>
+
+<p><code>make router-eval</code> scores the router against the local Ollama on a labelled set of 135 questions, 40 of them held out, and fits the temperature. At 1.25 the probabilities sit close to calibrated, so <code>min_confidence = 0.45</code> means what it says. Refit after any change to the prompt, the examples or the <code>fast</code> model.</p>
+
+<p>The full design, with the prompt contract, tests and calibration results, is in <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>.</p>
 
 <!-- ============================================================ -->
 <h2 id="mcp">Tools over MCP</h2>
@@ -1233,6 +1364,7 @@ name    = "obsidian"
 command = "..."                   # stdio: merud starts this process
 allow   = ["read", "search"]     # tool-level allowlist
 confirm = []                      # allowed tools that still need a yes per call
+timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
 name    = "calendar"
@@ -1248,10 +1380,18 @@ network = false                          # true only if the URL isn't loopback</
     <tr><td><code>allow</code></td><td>the tools the model may call. Anything missing stays hidden.</td></tr>
     <tr><td><code>confirm</code></td><td>allowed tools that still need a yes from you on every call.</td></tr>
     <tr><td><code>network</code></td><td><code>merud</code> refuses a non-loopback URL unless this is <code>true</code>.</td></tr>
+    <tr><td><code>timeout</code></td><td>the longest one call may take; 60 seconds unless set.</td></tr>
   </tbody>
 </table></div>
 
 <p>Tools are <b>deny-by-default</b>. A server that offers 40 tools gives the model none until you allow specific ones.</p>
+
+<ul>
+  <li><b>No wildcards.</b> <code>allow</code> and <code>confirm</code> name each tool; <code>merud</code> refuses <code>*</code> or any other pattern. A wildcard would admit tools a server adds in a later release, which nobody has read.</li>
+  <li><b>A timeout per call.</b> Each server entry may set <code>timeout</code>, 60 seconds unless set. When it passes, or you cancel the turn, Meru tells the server to cancel the call.</li>
+  <li><b>Lazy reconnect.</b> A server that crashes, or fails to start, restarts on the next call to one of its tools, at most once every 10 seconds. A call inside that wait fails at once. Meru runs no background restart loop, so a server that crashes on start doesn't spin.</li>
+  <li><b>A short environment for stdio servers.</b> A child process gets only <code>PATH</code>, <code>HOME</code> and the few variables Windows programs need, plus the entry's own <code>env</code>. The rest of <code>merud</code>'s environment stays out, because it may hold another tool's API key.</li>
+</ul>
 
 <p>Meru doesn't confine MCP servers. Each one runs as an ordinary process with your user's permissions, and can read files or reach the network by itself. Adding a server to config means trusting it. Meru's allowlist picks which tools the model may call; what each call does is up to the server.</p>
 
@@ -1390,13 +1530,13 @@ capture_content  = false                     # prompt/response text in spans</co
 
 <h3>Traces</h3>
 
-<p>Each turn produces one trace. A question over the socket starts at <code>rpc.request</code>; a scheduled job (v0.5) starts at <code>meru.turn</code>. In v0.1 a turn looks like this:</p>
+<p>Each turn produces one trace. A question over the socket starts at <code>rpc.request</code>; a scheduled job (v0.5) starts at <code>meru.turn</code>. In v0.2 a turn on a search route looks like this:</p>
 
 <figure id="fig-trace">
 <div class="figbox">
-<svg viewBox="0 0 960 574" role="img" aria-labelledby="f6t f6d">
-  <title id="f6t">Trace tree for one v0.1 turn</title>
-  <desc id="f6d">The root span rpc.request carries op, source and question length. Under it, meru.turn carries route, source, session, iterations and outcome. The children of meru.turn, in order: meru.session, new or opened, with history turns and messages; meru.transcript.append for the user line; meru.route with decision, confidence, outcome and meru.route.p per route, whose child gen_ai.chat fast asks for one token with log probabilities and has a POST /api/chat child with the HTTP status; meru.prompt with messages, characters and estimated tokens; gen_ai.chat main, the streamed answer with a first_token event, whose POST /api/chat child carries the HTTP status and thinking chunks; and meru.transcript.append for the assistant line. The same trace ID goes to the transcript, the messages and tool_calls rows, and every log line of the turn. Later milestones add meru.retrieve, more gen_ai.chat calls in the tool loop, and mcp.tool_call.</desc>
+<svg viewBox="0 0 960 694" role="img" aria-labelledby="f6t f6d">
+  <title id="f6t">Trace tree for one v0.2 turn on a search route</title>
+  <desc id="f6d">The root span rpc.request carries op, source and question length. Under it, meru.turn carries route, source, session, iterations and outcome. The children of meru.turn, in order: meru.session, new or opened, with history turns and messages; meru.transcript.append for the user line; meru.route with decision, confidence, outcome and meru.route.p per route, whose child gen_ai.chat fast asks for one token with log probabilities and has a POST /api/chat child with the HTTP status; meru.search with the number of results found, whose child meru.retrieve records the hits from each list, the fused count and the time of each stage, and has a POST /api/embed child that embeds the query; meru.prompt with messages, characters and estimated tokens; gen_ai.chat main, the streamed answer with a first_token event, whose POST /api/chat child carries the HTTP status and thinking chunks; and meru.transcript.append for the assistant line. A turn on the direct or tools route has no meru.search. The same trace ID goes to the transcript, the messages and tool_calls rows, and every log line of the turn. Later milestones add memories under meru.retrieve, more gen_ai.chat calls in the tool loop, and a tools/call span per tool.</desc>
   <defs>
     <marker id="f6a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -1415,16 +1555,19 @@ capture_content  = false                     # prompt/response text in spans</co
   <text x="58" y="126" class="t3" font-size="11.5">route · source · session · iterations · outcome</text>
 
   <path d="M30 66 L30 111 L44 111" class="ln"/>
-  <path d="M58 136 L58 487" class="ln"/>
+  <path d="M58 136 L58 607" class="ln"/>
   <path d="M58 167 L72 167" class="ln"/>
   <path d="M58 207 L72 207" class="ln"/>
   <path d="M58 247 L72 247" class="ln"/>
   <path d="M58 367 L72 367" class="ln"/>
-  <path d="M58 407 L72 407" class="ln"/>
   <path d="M58 487 L72 487" class="ln"/>
+  <path d="M58 527 L72 527" class="ln"/>
+  <path d="M58 607 L72 607" class="ln"/>
   <path d="M86 262 L86 287 L100 287" class="ln"/>
   <path d="M114 302 L114 327 L128 327" class="ln"/>
-  <path d="M86 422 L86 447 L100 447" class="ln"/>
+  <path d="M86 382 L86 407 L100 407" class="ln"/>
+  <path d="M114 422 L114 447 L128 447" class="ln"/>
+  <path d="M86 542 L86 567 L100 567" class="ln"/>
   <g font-size="12">
     <rect x="72" y="152" width="268" height="30" rx="6" class="b"/>
     <text x="86" y="172" class="t1 mono" font-size="12.5">meru.session</text>
@@ -1441,29 +1584,40 @@ capture_content  = false                     # prompt/response text in spans</co
     <rect x="128" y="312" width="212" height="30" rx="6" class="b"/>
     <text x="142" y="332" class="t1 mono" font-size="12.5">POST /api/chat</text>
     <text x="372" y="332" class="t2">HTTP status</text>
-    <rect x="72" y="352" width="268" height="30" rx="6" class="b"/>
-    <text x="86" y="372" class="t1 mono" font-size="12.5">meru.prompt</text>
-    <text x="372" y="372" class="t2">messages, characters, estimated tokens</text>
-    <rect x="72" y="392" width="268" height="30" rx="6" class="ba2"/>
-    <text x="86" y="412" class="t1 mono" font-size="12.5">gen_ai.chat  main</text>
-    <text x="372" y="412" class="t2">the streamed answer; first_token event</text>
-    <rect x="100" y="432" width="240" height="30" rx="6" class="b"/>
-    <text x="114" y="452" class="t1 mono" font-size="12.5">POST /api/chat</text>
-    <text x="372" y="452" class="t2">HTTP status, thinking chunks</text>
+    <rect x="72" y="352" width="268" height="30" rx="6" class="ba"/>
+    <text x="86" y="372" class="t1 mono" font-size="12.5">meru.search</text>
+    <text x="372" y="372" class="t2">results found; on every route but direct</text>
+    <rect x="100" y="392" width="240" height="30" rx="6" class="b"/>
+    <text x="114" y="412" class="t1 mono" font-size="12.5">meru.retrieve</text>
+    <text x="372" y="412" class="t2">hits per list, fused count, time per stage</text>
+    <rect x="128" y="432" width="212" height="30" rx="6" class="b"/>
+    <text x="142" y="452" class="t1 mono" font-size="12.5">POST /api/embed</text>
+    <text x="372" y="452" class="t2">the query's vector</text>
     <rect x="72" y="472" width="268" height="30" rx="6" class="b"/>
-    <text x="86" y="492" class="t1 mono" font-size="12.5">meru.transcript.append</text>
-    <text x="372" y="492" class="t2">the assistant line</text>
+    <text x="86" y="492" class="t1 mono" font-size="12.5">meru.prompt</text>
+    <text x="372" y="492" class="t2">messages, characters, estimated tokens</text>
+    <rect x="72" y="512" width="268" height="30" rx="6" class="ba2"/>
+    <text x="86" y="532" class="t1 mono" font-size="12.5">gen_ai.chat  main</text>
+    <text x="372" y="532" class="t2">the streamed answer; first_token event</text>
+    <rect x="100" y="552" width="240" height="30" rx="6" class="b"/>
+    <text x="114" y="572" class="t1 mono" font-size="12.5">POST /api/chat</text>
+    <text x="372" y="572" class="t2">HTTP status, thinking chunks</text>
+    <rect x="72" y="592" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="612" class="t1 mono" font-size="12.5">meru.transcript.append</text>
+    <text x="372" y="612" class="t2">the assistant line</text>
   </g>
-  <text x="16" y="532" class="t3" font-size="11.5">Later milestones add meru.retrieve (v0.2, v0.4), a gen_ai.chat per model call in the tool loop, and mcp.tool_call per tool (v0.3).</text>
-  <text x="16" y="554" class="t3" font-size="11.5">Model spans follow the OTel GenAI conventions; HTTP spans the OTel HTTP conventions. No prompt text unless capture_content = true.</text>
+  <text x="16" y="652" class="t3" font-size="11.5">Later: memories under meru.retrieve (v0.4), a gen_ai.chat per model call in the tool loop, tools/call &lt;tool&gt; per tool (v0.3).</text>
+  <text x="16" y="674" class="t3" font-size="11.5">Model spans follow the OTel GenAI conventions; HTTP spans the OTel HTTP conventions. No prompt text unless capture_content = true.</text>
 </svg>
 </div>
-<figcaption><b>Figure 7.</b> One v0.1 turn. The router's one-token call and the streamed answer each get a <code>gen_ai.chat</code> span with its HTTP request under it. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in Grafana leads to the exact lines, and a line leads back to its timing.</figcaption>
+<figcaption><b>Figure 7.</b> One v0.2 turn on a search route. The router's one-token call and the streamed answer each get a <code>gen_ai.chat</code> span with its HTTP request under it, and the search sits between them. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in Grafana leads to the exact lines, and a line leads back to its timing.</figcaption>
 </figure>
 
-<p>Later milestones add spans under <code>meru.turn</code>: <code>meru.retrieve</code> (vector, fts, fusion in v0.2; memories in v0.4), one <code>gen_ai.chat</code> per model call in the tool loop, and <code>mcp.tool_call</code> for each tool (v0.3).</p>
+<p>A turn on the <code>direct</code> route has no <code>meru.search</code>, unless the question names an indexed folder. Later milestones add spans under <code>meru.turn</code>: memories under <code>meru.retrieve</code> (v0.4), one <code>gen_ai.chat</code> per model call in the tool loop, and <code>tools/call &lt;tool&gt;</code> for each tool (v0.3).</p>
 
-<p>Model spans follow the OTel GenAI semantic conventions (<code>gen_ai.operation.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.request.max_tokens</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>, <code>gen_ai.response.finish_reasons</code>) and add <code>meru.tier</code> plus Ollama's own timings: <code>meru.ollama.load_ms</code>, <code>meru.ollama.prompt_eval_ms</code> and <code>meru.ollama.eval_ms</code>. The HTTP spans follow the OTel HTTP conventions. A failed span records the error and sets its status to Error; a cancelled one gets a <code>cancelled</code> event instead. Tool spans follow the MCP semantic conventions and add <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. <code>merud</code> writes each trace ID to the session transcript, <code>messages</code> and <code>tool_calls</code>, and to every log line of the turn.</p>
+<p>Indexing has traces of its own, apart from any turn. A scan of every folder is one <code>meru.index.scan</code> span (folders, whether it re-embeds, and the counts it ends with), with a <code>meru.index.file</code> span for each file it reads (kind, outcome, chunks, bytes, and the skip reason). Indexing one path, as the watcher and <code>meru index &lt;path&gt;</code> do, records only <code>meru.index.file</code> spans. The startup scan and each file the watcher re-indexes start a new trace; <code>meru index</code> puts its spans under its own <code>rpc.request</code>.</p>
+
+<p>Model spans follow the OTel GenAI semantic conventions (<code>gen_ai.operation.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.request.max_tokens</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>, <code>gen_ai.response.finish_reasons</code>) and add <code>meru.tier</code> plus Ollama's own timings: <code>meru.ollama.load_ms</code>, <code>meru.ollama.prompt_eval_ms</code> and <code>meru.ollama.eval_ms</code>. The HTTP spans follow the OTel HTTP conventions. A failed span records the error and sets its status to Error; a cancelled one gets a <code>cancelled</code> event instead. Tool spans follow the OTel MCP semantic conventions: each is named <code>tools/call &lt;tool&gt;</code> and carries <code>mcp.method.name</code> and <code>gen_ai.tool.name</code>. Meru adds <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. A failed call's <code>error.type</code> says how it failed: <code>tool_error</code> (the convention's name) when the server reports failure, or Meru's own <code>denied</code>, <code>unavailable</code> or <code>timeout</code>. <code>merud</code> writes each trace ID to the session transcript, <code>messages</code> and <code>tool_calls</code>, and to every log line of the turn.</p>
 
 <h3>Metrics</h3>
 
@@ -1511,8 +1665,8 @@ capture_content  = false                     # prompt/response text in spans</co
 <p><code>merud</code> writes <code>key=value</code> lines with <code>log/slog</code> to <code>merud.log</code> in its home folder, and doesn't export them. <code>[log] level</code> picks how much it writes; <code>merud -v</code> forces <code>debug</code>.</p>
 
 <ul>
-  <li><b><code>info</code></b> (the default): startup settings, each model warm-up, shutdown, and one <code>turn</code> line per turn with its route, outcome, total time, time to first token and token counts.</li>
-  <li><b><code>debug</code></b>: adds a line for each stage of a turn: the request, the session, the history, each transcript write, the route with its whole distribution, the prompt's size, each Ollama call (status, time to headers, first token, Ollama's own timings, tokens per second) and the reply.</li>
+  <li><b><code>info</code></b> (the default): startup settings, each model warm-up, the store's counts, each index scan's counts, shutdown, and one <code>turn</code> line per turn with its route, outcome, total time, time to first token and token counts.</li>
+  <li><b><code>debug</code></b>: adds a line for each stage of a turn: the request, the session, the history, each transcript write, the route with its whole distribution, the search's result count, the prompt's size, each Ollama call (status, time to headers, first token, Ollama's own timings, tokens per second) and the reply.</li>
 </ul>
 
 <p>Every line of a turn carries its <code>trace_id</code>, the same ID the trace and the transcript lines hold. No level writes question or answer text. With <code>capture_content = true</code>, the debug lines add the first 200 characters of each.</p>
@@ -1525,7 +1679,8 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
   <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
-  <li>The store is a plain file you can back up or delete.</li>
+  <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
+  <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
 </ul>
 
@@ -1537,7 +1692,7 @@ capture_content  = false                     # prompt/response text in spans</co
 <ul>
   <li><b>No sandbox.</b> An MCP server you add can do anything your user account can. The allowlist picks which tools the model calls and leaves each tool's behavior to its server.</li>
   <li><b>No 120B-class models.</b> A 120B model at 4-bit needs about 60 GB, which pushes even a 64 GB machine into swap.</li>
-  <li><b>Exact vector search only.</b> <code>sqlite-vec</code> compares the query against every stored vector. That should hold up to a few hundred thousand chunks; past that, the plan is smaller vectors before another database.</li>
+  <li><b>Exact vector search only.</b> Meru compares the query against every stored vector, with no vector index: 147 ms over 100,000 chunks on the development machine. Past that, the plan is fewer dimensions or distances computed in Go, before another database.</li>
   <li><b>Remote agents can leak.</b> An A2A agent on another machine may send your data to a cloud model. Meru can't see what it does with a message, so treat <code>network = true</code> as consent for your data to leave.</li>
 </ul>
 
@@ -1551,16 +1706,17 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><b>Not an agent framework.</b> The loop exists to serve Meru, and we won't package it as a library.</li>
 </ul>
 
-<h3>Open questions</h3>
+<h3 id="open-questions">Open questions</h3>
 
 <p>We'll settle these with working code and measurements.</p>
 
 <ol>
-  <li><b>Router quality.</b> The router no longer has to write valid output; it reads probabilities (see <a href="#routing">Routing</a>). The open question is whether a 2B model's probabilities separate the four routes well enough to act on. <code>meru.route.decisions</code> by outcome, and a temperature fitted from labelled turns, will show. If they don't, <code>lite</code> gets a larger <code>fast</code> model. The first run, on the development machine with MiniCPM5-2B and the raw temperature of 1.0, took about 13 ms per warm decision and picked the expected route for 2 of 7 hand-picked questions. It leaned towards <code>search+tools</code>, the safe fallback, so no answer lacked context, but it did more work than needed. Next: label real turns, fit the temperature, and tune the option descriptions.</li>
+  <li><b>Router quality.</b> The router reads probabilities instead of parsing text (see <a href="#routing">Routing</a>). A labelled set of 135 questions and <code>make router-eval</code> measure it. On the development machine with MiniCPM5-2B, a prompt that puts contrastive option text, the indexed folders and two examples per route ahead of the turn picks the labelled route for 32 of 40 held-out questions, and takes about 28 ms per warm decision. The v0.1 prompt picked 17 of 36. Naming the folders lifted held-out search recall from 8 of 12 to 11 of 12. At a temperature of 1.25 the probabilities are close to calibrated (expected calibration error 0.065 over all 135 rows), so <code>min_confidence = 0.45</code> means what it says. The weak spot is tools recall (4 of 9 held out): the model answers questions about recent events from memory, and sends requests such as "text alex that I'm on my way" to search. Next: label real turns from transcripts, refit, and decide whether <code>lite</code> needs a larger <code>fast</code> model for tool-heavy use.</li>
   <li><b>Context order.</b> Skills, memories and retrieved chunks compete for the same window. <code>meru.context.tokens</code> will supply the numbers to set a budget per section.</li>
-  <li><b>PDF extraction.</b> Local tools that keep a PDF's layout are weak, and Go has fewer of them than Python. We may need a cgo library or an external tool.</li>
+  <li><b>PDF extraction.</b> v0.2 reads each page's plain text with a pure-Go library and keeps no layout, so tables and columns come out as running text. A scanned PDF with no text layer yields nothing. Local tools that keep layout are weak, and Go has fewer of them than Python; better extraction may need a cgo library or an external tool.</li>
   <li><b>Leaving Ollama.</b> An embedded llama.cpp engine would make <code>merud</code> self-contained, but Meru would take over tool-call parsing and loading models. Decide once v0.3 works on Ollama and we can measure the cost.</li>
-  <li><b>WebAssembly SQLite speed.</b> <code>ncruces/go-sqlite3</code> runs slower than native SQLite. In v0.2, measure indexing and search on a real notes folder before building further on it.</li>
+  <li><b>WebAssembly SQLite speed (answered in v0.2).</b> <code>ncruces/go-sqlite3</code> runs SQLite as WebAssembly, slower than native SQLite, so v0.2 measured it before building on it. On the development machine with 768-dimension vectors, 100,000 chunks index in 6.1 s, a file replaces in about 6 ms, a vector search takes 147 ms and a keyword search 90 ms; at 10,000 chunks the searches take 13 ms and 9 ms (see <a href="#why-this-driver-and-this-vector-store">Why this driver and this vector store</a>). That fits a personal index. If search must get faster, use fewer dimensions or compute distances in Go.</li>
+  <li><b>How many sources to show.</b> Each search keeps the top 10 chunks, and with a tiny index that is every chunk. When the model cites nothing, the clients list every source the prompt held, which can be every file you indexed (see <a href="#citations">Citations</a>). A minimum fused score or fewer than 10 chunks would fix it; measurements from real questions will pick one.</li>
 </ol>
 
 <!-- ============================================================ -->
@@ -1574,9 +1730,10 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Agent harness</td><td>Our own loop plus the official MCP and A2A Go SDKs. We looked at Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and neither saves much once the allowlist, audit and budget logic are ours.</td></tr>
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
     <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 32 GB or more, or a ~24 GB GPU (<code>qwen3.8:27b</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>
-    <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> with <code>sqlite-vec</code> as the index. No separate vector database.</td></tr>
-    <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>).</td></tr>
-    <tr><td>Hybrid search</td><td>FTS5 BM25 plus <code>sqlite-vec</code> similarity, merged in Go with reciprocal-rank fusion.</td></tr>
+    <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> as the index, with vectors in a plain table and vec1's distance function. No separate vector database.</td></tr>
+    <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>). Temperature 1.25 and <code>min_confidence = 0.45</code>, fitted with <code>make router-eval</code>.</td></tr>
+    <tr><td>Hybrid search</td><td>FTS5 BM25 plus vector distance over every stored vector, merged in Go with reciprocal-rank fusion. The query is the question, plus on a follow-up the session's latest earlier question that isn't only filler words; no model call rewrites it. List sizes are constants (50, 50, 10) until measurements say otherwise.</td></tr>
+    <tr><td>Indexing</td><td>Only the folders in <code>[index] folders</code>, nothing by default; secrets, hidden files, build folders and ignored files skipped; symlinks never followed; email, calendar and Drive reached live through MCP, not indexed.</td></tr>
     <tr><td>Built-in skills</td><td><code>writing</code> and <code>explainer</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> runs on first use and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste.</td></tr>
     <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for styling and Glamour for Markdown answers, in <code>meru chat</code> only. Answers always stream.</td></tr>
@@ -1603,7 +1760,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><a href="https://github.com/a2aproject/a2a-go">a2aproject/a2a-go</a> — the A2A Go SDK</li>
   <li><a href="https://ollama.com">Ollama</a> — the local model runtime</li>
   <li><a href="https://github.com/ncruces/go-sqlite3">ncruces/go-sqlite3</a> — SQLite compiled to WebAssembly, no cgo</li>
-  <li><a href="https://github.com/asg017/sqlite-vec">asg017/sqlite-vec</a> — vector search inside SQLite</li>
+  <li><a href="https://sqlite.org/vec1">SQLite vec1</a> — SQLite's own vector extension, bundled with the driver; Meru uses its distance function</li>
   <li><a href="https://www.sqlite.org/fts5.html">SQLite FTS5</a> — full-text search, BM25 ranking, external content tables</li>
   <li><a href="https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf">Cormack, Clarke and Büttcher, SIGIR 2009</a> — the reciprocal-rank fusion paper and the k = 60 constant</li>
   <li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OTel GenAI semantic conventions</a> — model span and metric names</li>

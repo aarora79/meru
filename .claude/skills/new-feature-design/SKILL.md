@@ -23,8 +23,9 @@ client), `cmd/merud` (resident daemon) and everything else under `internal/`. Mo
 Ollama on loopback. The agent loop is hand-written. Meru is a client of MCP (Model Context
 Protocol) servers over stdio or Streamable HTTP, through the official Go SDK (software
 development kit), and a client of other agents over A2A (agent-to-agent). JSONL (JSON Lines)
-session transcripts and other files are the source of truth; SQLite (`ncruces/go-sqlite3` +
-`sqlite-vec`, no cgo) is a rebuildable projection. OpenTelemetry (OTel) metrics and traces go
+session transcripts and other files are the source of truth; SQLite (`ncruces/go-sqlite3`,
+no cgo, with FTS5 for keywords and vec1's distance function over a plain vector table) is a
+rebuildable projection. OpenTelemetry (OTel) metrics and traces go
 to a loopback-only OTLP (OpenTelemetry Protocol) endpoint. Meru has no sandbox: it runs as
 an ordinary user process, and control sits at the tool and agent allowlists. It has no
 frontend, cloud service, auth server or second user.

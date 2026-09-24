@@ -1,8 +1,9 @@
 # e2e
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
-`daemon_test.go`, `integration_test.go`, `race_test.go`, `norace_test.go`)
-**Milestone:** v0.1
+`daemon_test.go`, `index_test.go`, `integration_test.go`, `index_integration_test.go`,
+`race_test.go`, `norace_test.go`)
+**Milestone:** v0.1; the notes tests in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client),
 [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
 
@@ -158,7 +159,10 @@ makes a test slower, not flaky.
 | `TestShutdown` | `daemon_test.go` | SIGTERM and SIGINT: merud exits 0, removes its socket, logs the stop |
 | `TestFilePermissions` | `daemon_test.go` | Session directories 0700; transcript, socket and log 0600 |
 | `TestNoTelemetryByDefault` | `daemon_test.go` | With no `otlp_endpoint`, merud contacts nothing but the fake |
+| `TestAnswerCitesLocalNote` | `index_test.go` | v0.2's "done when": merud indexes a notes folder; the router picks `search`; the main model's prompt holds the garden note's fact under "From your files" and the citation rule; `meru "question"` prints the answer, then `Sources:` with `[1]` and the note's path and nothing it didn't cite; `meru index -status` counts four files (the empty one too, the `.env` never) |
+| `TestIndexFollowsChanges` | `index_test.go` | The watcher re-indexes a changed note (the next prompt holds the new fact, not the old) and drops a deleted one; a key file added later stays out; `meru index` rescans; `meru index <folder>` refuses a folder outside `[index]` and names the config file, and rescans one inside |
 | `TestIntegrationLiteTTFT` | `integration_test.go` | Real Ollama, lite profile: "Paris", and the first token within one second after two warm-up questions |
+| `TestIntegrationNotesAnswer` | `index_integration_test.go` | Real Ollama, lite profile: a question about the garden note gets "4,200" in the answer and the note first among the sources, and `meru` prints a `Sources:` list naming it; logs the scan time, the search time (from merud's debug log) and the time to first token |
 
 `TestNoTelemetryByDefault` can't watch merud's network connections without
 root, so it sets traps. It starts a canary HTTP server in the test and points
@@ -183,6 +187,12 @@ first two warm the models and the caches; the third is the measurement. The
 time runs from the moment the client sends the request to the first token
 event, so it includes the router's call and the socket, as a user would feel
 it. The test fails above one second, the v0.1 target in ROADMAP.md.
+
+`index_integration_test.go` does the same for v0.2 with the notes folder from
+`index_test.go`. The question starts "According to my notes", as a person
+asking about their files would, which steers the real router to a search
+route. The small model doesn't always cite `[1]`, so the test checks the
+number in the answer and the note in the sources, not the citation mark.
 
 ## Go ideas used here
 

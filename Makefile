@@ -29,7 +29,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build check clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build router-eval check clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -59,6 +59,9 @@ e2e: ## Run the end-to-end tests (build tag e2e)
 	else \
 		echo "no test files: test/e2e doesn't exist yet"; \
 	fi
+
+router-eval: ## Score the router on labelled questions against the local Ollama
+	go test -tags integration -count=1 -v -run TestRouterEval ./internal/router/
 
 vuln: ## Report known vulnerabilities in code Meru calls
 	go run $(GOVULNCHECK) ./...

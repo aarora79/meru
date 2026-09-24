@@ -56,6 +56,11 @@ func TestViewGolden(t *testing.T) {
 	fallback := rpc.Event{Type: rpc.EventRoute, Route: "search+tools", Confidence: 0.31, Fallback: true}
 	stats := rpc.Event{Type: rpc.EventDone, TTFTMillis: 800, DurationMillis: 2400, TokensIn: 120, TokensOut: 64}
 	tok := func(s string) rpc.Event { return rpc.Event{Type: rpc.EventToken, Text: s} }
+	search := rpc.Event{Type: rpc.EventRoute, Route: "search", Confidence: 0.88}
+	sources := rpc.Event{Type: rpc.EventSources, Sources: []rpc.Citation{
+		{N: 1, Path: "~/notes/garden.md", Heading: "Budget", StartLine: 3, EndLine: 5, Score: 0.032},
+		{N: 2, Path: "~/notes/plants.md", StartLine: 1, EndLine: 9, Score: 0.016},
+	}}
 
 	tests := []struct {
 		name   string
@@ -73,6 +78,7 @@ func TestViewGolden(t *testing.T) {
 		{name: "fallback", width: 80, q: "Find my notes on Rust", evs: []rpc.Event{session, fallback, tok("I can't search yet."), stats}, done: true},
 		{name: "error", width: 80, q: "Hello?", err: errors.New("connect to merud at /home/u/.meru/merud.sock: no such file (is merud running?)"), done: true},
 		{name: "stopped", width: 80, q: "Tell me a long story", evs: []rpc.Event{session, direct, tok("Once upon a time")}},
+		{name: "sources", width: 80, q: "What is the Q3 budget for the garden project?", evs: []rpc.Event{session, search, sources, tok("The Q3 budget for the garden project is 4,200 dollars [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 	}
 	for _, tt := range tests {

@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -20,6 +23,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/transcript"
 )
@@ -27,6 +31,40 @@ import (
 // DefaultSystemPrompt is the system prompt when config sets none.
 const DefaultSystemPrompt = "You are Meru, a personal assistant that runs entirely on the user's own computer. " +
 	"Answer clearly and briefly. If you don't know something, say so."
+
+// citeRule joins the system prompt on turns that search the user's files.
+// Small models invent sources when they aren't told not to, so the rule
+// says it plainly.
+const citeRule = "Below, under \"From your files\", are numbered excerpts from the user's own files. " +
+	"When they help answer the question, answer from them and cite each excerpt you use by its number " +
+	"in square brackets, like [1]. Cite only the numbers listed there. " +
+	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
+
+// filesNote joins the system prompt on every turn and tells the model which
+// folders Meru searches. Without it a small model answers "I don't have
+// access to your files" even while it reads excerpts from them, and can't say
+// what it has indexed.
+func filesNote(folders []string) string {
+	if len(folders) == 0 {
+		return "Meru hasn't indexed any of the user's files yet. " +
+			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
+	}
+	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
+		"When a question needs them, Meru searches first and puts the best excerpts below. " +
+		"You can't open or list files yourself."
+}
+
+// noResults stands in for the excerpts when a search finds nothing, or when
+// nothing is indexed yet, so the model answers without pretending it looked.
+const noResults = "A search of the user's files found nothing relevant to this question. " +
+	"Answer from what you know, and don't cite any files."
+
+// Searcher finds the excerpts from the user's files that best answer query,
+// best first. merud passes an adapter around retrieve.Search; tests pass a
+// fake. It fails when the embedding or the store fails.
+type Searcher interface {
+	Search(ctx context.Context, query string) ([]retrieve.Result, error)
+}
 
 // Router picks a route for one turn. The agent defines the interface with
 // only the method it calls, so this package doesn't depend on the router's
@@ -50,40 +88,55 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
+	search      Searcher // nil turns search off
 	models      config.Models
+	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
 	system      string       // system prompt
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
+	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
 }
 
-// New returns an Agent that answers with eng, routes with router and keeps
-// transcripts under cfg.Dir/sessions. log may be nil, which means no log
-// lines.
-func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) *Agent {
+// New returns an Agent that answers with eng, routes with router, and keeps
+// transcripts under cfg.Dir/sessions. It searches the user's files with
+// search on every route but "direct", and on a direct question that names
+// one of cfg.Index.Folders. search may be nil, which turns search off. log
+// may be nil, which means no log lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
+	}
+	// Without a home folder, paths show in full; that is only cosmetic.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
 	}
 	system := cfg.Agent.SystemPrompt
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
+	system += "\n\n" + filesNote(cfg.Index.Folders)
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
 		engine:      eng,
 		router:      router,
+		search:      search,
 		models:      cfg.Models,
+		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
+		home:        home,
 		log:         log,
 	}
 }
 
 // Handle runs one turn for req and sends its events through emit, in this
-// order: "session", "route", one "token" per piece of the answer, and last a
-// "done" that carries the turn's stats. It has the rpc.Handler signature, so
+// order: "session", "route", "sources" when the turn searched the user's
+// files and found something, one "token" per piece of the answer, and last
+// a "done" that carries the turn's stats. It has the rpc.Handler signature, so
 // merud passes a.Handle straight to rpc.Serve. The server holds the "done"
 // back until Handle returns, and sends "error" in its place if Handle fails.
 //
@@ -155,6 +208,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err != nil {
 		return err
 	}
+	// The router can't always tell that a question names one of the user's
+	// own projects: "what database does meru use" can look like general
+	// knowledge. When a direct question names an indexed folder, search
+	// anyway. A wrong guess costs one search of about 50 ms.
+	if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+		a.log.DebugContext(ctx, "route changed to search: the question names an indexed folder",
+			"confidence", dec.Confidence)
+		dec.Route = "search"
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
@@ -163,10 +225,24 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// v0.1 answers every route directly: search arrives in v0.2 and tools in
-	// v0.3. The route is still recorded above, so the metrics show how often
-	// each one would have run.
-	msgs := a.prompt(ctx, history, question)
+	// Every route but "direct" looks in the user's files first. Tools
+	// arrive in v0.3; until then "tools" searches too, because the router
+	// sends some questions about the user's files there, and an answer from
+	// the files beats one from the model alone.
+	var files string
+	if searches(dec.Route) && a.search != nil {
+		var sources []rpc.Citation
+		files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+		if err != nil {
+			return err
+		}
+		if len(sources) > 0 {
+			if err := emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
+				return err
+			}
+		}
+	}
+	msgs := a.prompt(ctx, history, question, files)
 	iterations = 1
 	rep, err = a.answer(ctx, msgs, emit)
 	if err != nil {
@@ -322,13 +398,173 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
+// searches reports whether a route looks in the user's files. In v0.2 that
+// is every route but "direct"; see Handle.
+func searches(route string) bool {
+	return route != "direct"
+}
+
+// folderNames returns the last part of each folder, in lower case, such as
+// "meru" for "~/repos/meru". Names under three letters are left out, because
+// they match too many ordinary words.
+func folderNames(folders []string) []string {
+	var names []string
+	for _, f := range folders {
+		n := strings.ToLower(filepath.Base(filepath.FromSlash(f)))
+		if utf8.RuneCountInString(n) >= 3 && !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// namesFolder reports whether question holds one of names as a whole word,
+// ignoring case: "meru's" and "Meru" match "meru", "merudaemon" doesn't.
+func namesFolder(question string, names []string) bool {
+	for _, w := range words(question) {
+		if slices.Contains(names, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// words splits text into lower-case words at every rune that isn't a letter,
+// a digit or a hyphen, so "personal-knowledge-base" stays one word.
+func words(text string) []string {
+	// FieldsFunc splits text at every rune for which the function returns
+	// true.
+	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-'
+	})
+}
+
+// searchQuery is the text a turn searches for. No model rewrites the query,
+// so it is the question itself plus the session's latest earlier question
+// that names a subject, because "and the one after that?" means nothing to a
+// search on its own. The current question comes first: keyword search keeps
+// only a query's first words.
+//
+// An earlier question made only of filler, such as "try the last question
+// again", names no subject, so the walk skips it and keeps going back.
+// Without the skip, "search again" after "try again" searched for those
+// words alone and found nothing on the subject.
+func searchQuery(question string, history []engine.Message) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == engine.RoleUser && namesSubject(history[i].Content) {
+			return question + "\n" + history[i].Content
+		}
+	}
+	return question
+}
+
+// namesSubject reports whether text holds at least one word that isn't
+// filler, so it can steer a search.
+func namesSubject(text string) bool {
+	for _, w := range words(text) {
+		if !isFiller(w) {
+			return true
+		}
+	}
+	return false
+}
+
+// isFiller reports whether w is a word that says nothing about a subject:
+// short common words, and the words people use to ask for a retry or a
+// search. The list is short on purpose; a word missing from it only means
+// an earlier question joins the query when it could have been skipped.
+func isFiller(w string) bool {
+	switch w {
+	case "a", "an", "the", "and", "or", "but", "so", "is", "are", "was", "were", "be",
+		"it", "its", "this", "that", "there", "here", "i", "im", "me", "my", "you", "your",
+		"we", "do", "does", "did", "can", "could", "would", "will", "please", "ok", "okay",
+		"to", "in", "on", "of", "for", "at", "about", "again", "try", "retry", "search",
+		"look", "check", "find", "last", "previous", "question", "answer", "now", "think",
+		"sure", "time", "once", "more", "docs", "files", "notes", "what", "how", "why",
+		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned":
+		return true
+	}
+	return false
+}
+
+// searchFiles searches the user's files for query inside a meru.search
+// span. It returns the prompt section to add under the system prompt, and
+// the citations for the "sources" event, numbered as the section numbers
+// them.
+//
+// A search that finds nothing, or runs before anything is indexed, gives a
+// short section saying so and no citations. A search that fails for any
+// reason but a cancelled turn is logged and treated the same way: the
+// answer can still come from the model alone. It returns an error only when
+// ctx ends.
+func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, error) {
+	ctx, span := obs.Tracer().Start(ctx, "meru.search")
+	defer span.End()
+	start := time.Now()
+
+	results, err := a.search.Search(ctx, query)
+	if err != nil {
+		if ctx.Err() != nil {
+			obs.EndSpanErr(ctx, span, err)
+			return "", nil, fmt.Errorf("search: %w", err)
+		}
+		// The turn goes on without excerpts, so this is a warning, not the
+		// turn's error.
+		a.log.WarnContext(ctx, "search failed; answering without your files", "err", err)
+		obs.EndSpanErr(ctx, span, err)
+		results = nil
+	}
+
+	// Show each path as ~/... to the model and to the client: it is shorter,
+	// and the model has no use for the full path.
+	for i := range results {
+		results[i].Path = shortPath(a.home, results[i].Path)
+	}
+	section := noResults
+	if len(results) > 0 {
+		section = citeRule + "\n\nFrom your files\n\n" + retrieve.Format(results)
+	}
+	obs.RecordContextTokens(ctx, "chunks", utf8.RuneCountInString(section)/4)
+
+	sources := make([]rpc.Citation, len(results))
+	for i, r := range results {
+		sources[i] = rpc.Citation{
+			N: i + 1, Path: r.Path, Heading: r.Heading,
+			StartLine: r.StartLine, EndLine: r.EndLine, Page: r.Page, Score: r.Score,
+		}
+	}
+	span.SetAttributes(attribute.Int("meru.search.results", len(results)))
+	a.log.DebugContext(ctx, "search done", "results", len(results),
+		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
+	return section, sources, nil
+}
+
+// shortPath writes p under the home folder as ~/..., using the OS's path
+// separator. Any other path, or any path when home is "", stays as it is.
+func shortPath(home, p string) string {
+	if home == "" {
+		return p
+	}
+	rel, err := filepath.Rel(home, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return p
+	}
+	return "~" + string(filepath.Separator) + rel
+}
+
 // prompt builds the messages for the main model inside a meru.prompt span,
-// and reports their size. est_tokens is characters divided by four, a rough
-// rule for English text; the model's own count arrives with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string) []engine.Message {
+// and reports their size. files is the "From your files" section for a turn
+// that searched, or "" for one that didn't. est_tokens is characters divided
+// by four, a rough rule for English text; the model's own count arrives
+// with its answer.
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
-	msgs := buildMessages(a.system, history, question)
+	system := a.system
+	if files != "" {
+		system += "\n\n" + files
+	}
+	msgs := buildMessages(system, history, question)
 	chars := 0
 	for _, m := range msgs {
 		chars += utf8.RuneCountInString(m.Content)
@@ -416,7 +652,9 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's
-// earlier turns, then the new question.
+// earlier turns, then the new question. The excerpts from the user's files,
+// when a turn has them, sit at the end of the system prompt: some models'
+// chat templates accept a system message only in first place.
 func buildMessages(system string, history []engine.Message, question string) []engine.Message {
 	msgs := make([]engine.Message, 0, len(history)+2)
 	msgs = append(msgs, engine.Message{Role: engine.RoleSystem, Content: system})
