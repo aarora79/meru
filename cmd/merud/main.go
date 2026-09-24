@@ -193,7 +193,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, nil, log)
 	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
