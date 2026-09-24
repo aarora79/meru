@@ -1,0 +1,228 @@
+# index
+
+**Code:** `internal/index/` (`doc.go`, `indexer.go`, `skip.go`, `ignore.go`,
+`chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`)
+**Milestone:** v0.2
+**Architecture:** [Storage](../../ARCHITECTURE.md#storage), [Retrieval](../../ARCHITECTURE.md#retrieval)
+
+## What it does
+
+`index` reads the folders you list under `[index] folders` in `config.toml` and
+keeps the store's copy of them current. For each file it decides whether to read
+it at all, cuts its text into chunks of about 500 tokens along the file's own
+structure, turns each chunk into a vector with the embedding model, and hands
+the document, chunks and vectors to the store. When a file changes it does that
+again; when a file goes away it tells the store to drop it.
+
+`merud` calls `Scan` at startup and runs `Watch` while it stays up. `IndexPaths`
+indexes a few paths on demand; the watcher uses it, and `meru index` will.
+
+## The picture
+
+```mermaid
+flowchart TD
+    S["Scan / IndexPaths / Watch"] --> W["walk a folder<br/>(filepath.WalkDir)"]
+    W --> K{"skip?<br/>skip.go"}
+    K -- "hidden, build folder, secret,<br/>ignored, symlink, media, binary" --> R["count in Report.Skipped"]
+    K -- keep --> H["read, SHA-256"]
+    H --> U{"same mtime and hash<br/>as the store?"}
+    U -- yes --> N["Unchanged"]
+    U -- no --> C["chunk by kind<br/>markdown / code / text / html / pdf"]
+    C --> E["Embed, 32 texts per call"]
+    E --> P["Sink.ReplaceDocument"]
+    W --> D["after the walk: Sink.Paths,<br/>DeleteDocument for files not seen"]
+```
+
+## Walk through the code
+
+### indexer.go
+
+`Indexer` holds the expanded folder list, the compiled `[index] ignore`
+patterns, the chunk limits and two things it talks to: a `Sink` and an
+`engine.Engine`.
+
+`Sink` is a four-method interface for the part of the store the indexer uses:
+
+```go
+type Sink interface {
+    Document(ctx context.Context, path string) (doc store.Document, ok bool, err error)
+    ReplaceDocument(ctx context.Context, doc store.Document, chunks []store.Chunk, vecs []engine.Vector) error
+    DeleteDocument(ctx context.Context, path string) error
+    Paths(ctx context.Context, prefix string) ([]string, error)
+}
+```
+
+`*store.Store` has these methods, so merud passes it straight in. The tests pass
+a map-backed fake instead, which is why the interface lives here and not in
+`store` (see [interfaces](go-basics/interfaces.md)).
+
+`scanTree` walks one folder with `filepath.WalkDir` (see
+[filepath](go-basics/filepath.md)). For each folder it asks `skipReason`; a
+non-empty answer returns `fs.SkipDir`, so the walk never enters `node_modules`.
+For each file it calls `indexFile`. After the walk it asks the store for every
+path it holds under the folder and deletes the ones the walk didn't keep. That
+one step removes deleted files and files a new ignore rule now covers. It
+spares folders the walk couldn't read, so a permission problem doesn't wipe
+their entries, and `Scan` leaves a folder that doesn't exist at all alone, in
+case it lives on an unplugged drive.
+
+`indexFile` does the per-file work under a mutex, so `Scan` and the watcher
+never store two versions of one file in the wrong order:
+
+1. Check the size against `max_file_mb`, then read the file. `readFile` checks
+   with `os.SameFile` that the file it opened is the one `Lstat` saw, so a file
+   swapped for a symlink mid-scan doesn't get read.
+2. Skip it as binary if the first 8 KB hold a NUL byte (PDFs excepted).
+3. Hash it with SHA-256. If the store holds the same hash and the same mtime
+   (to the second), stop: the file is unchanged.
+4. Chunk it, number the chunks, embed them 32 at a time, and call
+   `ReplaceDocument`.
+
+A file that can't be read or parsed counts as `Failed` and the scan moves on.
+An error from the engine or the store stops the scan, because Ollama being down
+would fail every file after it too.
+
+Each embedded text starts with the chunk's heading path. The third chunk of a
+long "Budget > Q3" section doesn't repeat the heading line, and the path keeps
+its vector about Q3's budget.
+
+### skip.go and ignore.go
+
+`skipReason` checks one entry in a fixed order and returns the first reason
+that applies:
+
+| Order | Reason | What it catches |
+| --- | --- | --- |
+| 1 | `symlink` | any symlink; the indexer never follows one |
+| 2 | `secret` | `.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.kdbx`, `credentials*`, `.netrc` and the rest |
+| 3 | `hidden` | a name starting with `.` |
+| 4 | `build-folder` | `node_modules`, `.venv`, `venv`, `vendor`, `target`, `dist`, `build`, `__pycache__` |
+| 5 | `ignored` | `[index] ignore`, then each folder's `.gitignore` and `.meruignore` |
+| 6 | `media`, `binary`, `unsupported` | by extension |
+
+Secrets come first and nothing can re-include them: a key in the index would
+end up in a prompt. Config patterns come next and a `.gitignore` can't undo
+them either. Within the ignore files, git's rule holds: the last matching line
+wins, and a deeper folder's file beats a shallower one's. `.meruignore` is read
+after `.gitignore` in the same folder, so it can re-include with `!name`.
+
+`ignore.go` turns each gitignore line into a regular expression:
+
+```go
+case c == '*' && strings.HasPrefix(glob[i:], "**/") && atSegmentStart:
+    b.WriteString("(?:.*/)?") // zero or more folders
+```
+
+`*` becomes "anything but `/`", `**/` becomes "zero or more folders", and a
+pattern with no slash in it gets `(?:.*/)?` in front so it matches its name at
+any depth. `rulesFor` caches each folder's parsed files behind a mutex; every
+walk and every change to an ignore file clears the cache for its folder.
+
+### chunk.go
+
+Every chunker works in **spans**: byte ranges `[start, end)` over the file's
+text. A chunk's text is always an exact slice of the source, which keeps line
+numbers right.
+
+`pack` is the one grouping rule. It takes small units in order, such as
+paragraphs, and adds them to the current chunk while the chunk stays within
+`chunk_tokens × 4` characters. When the next unit doesn't fit, it closes the
+chunk and starts the next one with the last `overlap_tokens × 4` characters of
+the previous chunk, cut at a word boundary. A unit too big for any chunk gets
+split first: at line breaks, then between words, and last every N characters.
+No chunk passes the limit.
+
+The token estimate is characters divided by four. Ollama doesn't expose the
+embedding model's tokenizer, and a chunk a few tokens off target does no harm.
+
+### markdown.go, code.go, html.go, pdf.go
+
+| Kind | Split | Heading | Location |
+| --- | --- | --- | --- |
+| markdown | by `#` heading, then paragraphs | heading path, `Budget > Q3` | lines |
+| Go | by top-level declaration, via `go/parser` | `Scan`, `Indexer.Scan`, `Report` | lines |
+| other code, text | by blank-line blocks | none | lines |
+| html | by `<h1>`–`<h6>`, then paragraphs | heading path | none |
+| pdf | by page, then paragraphs | none | page |
+
+Markdown treats a fenced code block as one paragraph, blank lines and all, so
+`pack` splits it only when it alone passes the limit. A `#` inside a fence is
+not a heading. A heading with nothing under it but another heading makes no
+chunk; its title already sits in the path below.
+
+The Go chunker uses the standard library's own parser, so it never mistakes a
+brace in a string for the end of a function. A file that doesn't parse falls
+back to blank-line blocks.
+
+HTML goes through `golang.org/x/net/html`'s tokenizer, which copes with broken
+markup. Scripts, styles and `<head>` drop out, entities decode, and white space
+collapses except in `<pre>`. The extracted text doesn't line up with lines in
+the file, so HTML chunks carry no line numbers.
+
+PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
+never cross a page. That library panics on some broken files, so `chunkPDF`
+recovers the panic and returns it as an error; the file counts as `Failed`. A
+PDF with no text layer (a scan) fails the same way. PDF quality is an open
+question for v0.2.
+
+### watch.go
+
+`Watch` asks the OS, through `fsnotify`, to report changes in every folder the
+skip rules keep. Its loop is one `select` over four channels: the context, the
+event stream, the error stream and a timer (see [select](go-basics/select.md)).
+
+Each event records its path in `pending` with a due time 500 ms away. A later
+event for the same path pushes the time back. When the timer fires, `flush`
+hands every due path to `IndexPaths`, which indexes, re-indexes or removes it.
+The wait lets an editor finish a save that takes several writes.
+
+A new folder gets watches of its own before its files get indexed. A changed
+`.gitignore` or `.meruignore` clears its cached rules and re-checks its whole
+folder. When the OS refuses another watch (Linux's inotify limit, or the
+open-file limit that macOS's kqueue hits), `Watch` logs one warning and keeps
+the watches it has; the next startup scan catches changes in the rest.
+
+## Go ideas used here
+
+- **filepath.WalkDir and fs.SkipDir** — walking a folder tree and pruning it.
+  More in [go-basics/filepath.md](go-basics/filepath.md).
+- **select** — waiting on several channels at once. More in
+  [go-basics/select.md](go-basics/select.md).
+- **Interfaces defined by the user** — `Sink` lists only what the indexer calls.
+  More in [go-basics/interfaces.md](go-basics/interfaces.md).
+- **sync.Mutex** — `fileMu` and `rulesMu` each guard the fields declared next to
+  them.
+- **Type switches** — `declName` branches on the kind of Go declaration. More in
+  [go-basics/type-switches.md](go-basics/type-switches.md).
+- **recover** — a deferred function in `chunkPDF` turns the PDF library's panic
+  into an error.
+- **iota** — numbers the four file outcomes in `indexer.go`.
+
+## Try it
+
+```sh
+go test -race ./internal/index/
+go test -race -run TestSkipRules -v ./internal/index/
+go test -race -run TestWatch -v ./internal/index/
+```
+
+`TestSkipRules` builds a folder with one file for every skip rule and checks
+what got indexed and the count for each reason. `TestWatch` starts `Watch` on a
+temporary folder, then creates, edits and deletes files and polls the fake
+store until each change shows up.
+
+## Why it's built this way
+
+- **One grouping rule for every kind.** Each chunker only says where the
+  paragraphs are; `pack` does the sizing and overlap for all of them. A new file
+  kind needs a function that finds its paragraphs, nothing more.
+- **Hash every file on every scan.** Comparing mtimes alone would skip reading,
+  but some sync tools and editors keep the mtime when content changes. Reading a
+  few thousand small files at startup takes seconds.
+- **Symlinks are never followed.** Following links inside the folder would index
+  some files twice and risk loops; following links out of it would break the
+  promise that Meru reads only the folders you list. The target of an inside
+  link is indexed at its real path anyway.
+- **Rejected:** a tokenizer for exact token counts (Ollama doesn't expose one),
+  a Markdown library (headings and fences are all the chunker needs), and cgo
+  PDF libraries such as poppler bindings (Meru builds without a C compiler).
