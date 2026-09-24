@@ -1,0 +1,105 @@
+# Security checks: known vulnerabilities (govulncheck), risky code patterns
+# (gosec), committed secrets (gitleaks), CodeQL analysis, and a review of new
+# dependencies on pull requests. docs/ci.md explains each check. The weekly
+# run catches a vulnerability published after the code last changed.
+
+name: security
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: make vuln
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to code scanning
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Write the SARIF report first without failing, so code scanning gets
+      # the findings, then run again to fail the job on any finding.
+      - name: gosec (SARIF)
+        run: make sec-sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        # Forked pull requests get a read-only token and can't upload.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+      - name: gosec
+        run: make sec
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # scan the whole history, not only the last commit
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: gitleaks
+        run: make secrets-history
+
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # upload CodeQL results to code scanning
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          build-mode: autobuild
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:go"
+
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
