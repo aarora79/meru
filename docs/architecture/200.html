@@ -801,7 +801,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
   <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave. The A2A client checks each address again as it connects, and follows no redirects, so an agent's card can't point the calls somewhere else.</li>
-  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools all go through <code>dispatch</code>. No other code reaches them. v0.3 has one built-in tool, <code>configure</code>; <code>remember</code> and <code>write_file</code> come in v0.4. The built-in tools need no allow entry: the model always sees them.</li>
+  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code> and <code>remember</code>; <code>write_file</code> comes later in v0.4. The built-in tools need no allow entry: the model always sees them.</li>
 </ul>
 
 <figure id="fig-dispatch">
