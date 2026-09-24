@@ -1,10 +1,11 @@
 # builtin
 
-**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, and the test
-`builtin_test.go`)
-**Milestone:** v0.3
+**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`, and the
+test `builtin_test.go`)
+**Milestone:** v0.3 (`configure`), v0.4 (`remember`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
-[Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
+[Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
+[Memory](../../ARCHITECTURE.md#memory)
 
 ## What it does
 
@@ -12,10 +13,15 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-v0.3 has one built-in, `configure`. When you say "connect my Gmail" in chat, the
-model calls it with `{"action": "add_mcp_server", "catalog": "gmail"}`, and
+There are two built-ins. When you say "connect my Gmail" in chat, the model calls
+`configure` with `{"action": "add_mcp_server", "catalog": "gmail"}`, and
 `configure` adds the Gmail entry to `config.toml`. It can also add a server outside
 the catalog, from a name and a command or URL.
+
+When you say "remember that I work on the registry team", the model calls
+`remember` with `{"kind": "me", "text": "Works on the registry team"}`, and
+`remember` saves that fact as a file under `~/.meru/memory/me/`. From the next
+turn on, the fact sits in every prompt (see [agent](agent.md)).
 
 ## The picture
 
@@ -47,14 +53,16 @@ sequenceDiagram
 
 ### builtin.go
 
-`New` takes the config path, the `[builtin]` section and an `onChange` hook:
+`New` takes the config path, the `[builtin]` section, the memory store and an
+`onChange` hook:
 
 ```go
-func New(configPath string, cfg config.Builtin, onChange func(context.Context) error) *Tools
+func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func(context.Context) error) *Tools
 ```
 
 `merud` passes a hook that rebuilds its MCP pool, so a new server works without a
-restart. The package doesn't know how the pool works; it only calls the hook.
+restart. The package doesn't know how the pool works; it only calls the hook. A
+`nil` memory store leaves `remember` out, which the tests of `configure` use.
 
 `Confirm` decides whether a call asks first:
 
@@ -90,9 +98,41 @@ isn't a built-in returns an error, because that call couldn't run at all.
 A `sync.Mutex` wraps the check and the write, so two calls from two sessions can't
 both pass the duplicate-name check and add the same server twice.
 
-`Tools` builds the tool's JSON Schema from a Go map with `json.Marshal`. The
+`Tools` builds each tool's JSON Schema from a Go map with `json.Marshal`. The
 `catalog` property lists the catalog names as an `enum`, so the model sees the
 valid choices.
+
+### remember.go
+
+`remember` takes two arguments, `kind` and `text`. The schema's `kind` enum comes
+from `memory.Store.Kinds()`, read each time `Tools` runs, so a folder you create
+by hand shows up as a choice on the next turn. The model can pick only a folder
+that exists; making a new kind is up to you.
+
+The description the model reads asks for one fact per call, written about you in
+the third person ("Works on the AI registry team at Example Corp"). The profile
+lists these facts in every prompt, and a line such as "I work on..." there would
+read as the model talking about itself. It also tells the model to use `me` for
+who you are, `preferences` for how you like things done, and never to save a
+secret.
+
+Before it saves, `remember` refuses:
+
+- a kind that isn't one of the memory folders;
+- an empty text, or one over 4 KiB (`memory.Add` checks the size and says so);
+- a text that holds any value from `secrets.toml`.
+
+The secrets check reuses `Secrets.Redact`: when redacting the text changes it,
+the text holds a secret. It reads `secrets.toml` on each call, so a key you added
+a moment ago counts, and it refuses to save when it can't read the file at all.
+
+The memory's `source` line names the chat it came from, `session <id>`. `Call`
+has no session parameter, so `remember` reads it from the context with
+`dispatch.SessionFrom(ctx)` (see [dispatch](dispatch.md)).
+
+`remember` answers `ConfirmNever` unless `[builtin] confirm` lists it, so a
+memory saves without asking, as ARCHITECTURE.md says. The call still goes through
+`dispatch`, so it lands in `tool_calls` and the transcript like any other.
 
 ## Go ideas used here
 
@@ -118,6 +158,12 @@ without their keys, custom commands and URLs, and each kind of bad argument. It
 checks what landed in `config.toml`, that a refusal wrote nothing, and that no key
 shows up in the result.
 
+`TestRemember` sends each call through a real `dispatch.Dispatcher`, the way
+`merud` does, so the session reaches the tool on the context. It checks the file
+name, the source line, and that each refusal (bad kind, empty or long text, a
+secret) saves nothing. `TestRememberSpecAndConfirm` checks the kind choices, the
+description and the confirm rule.
+
 ## Why it's built this way
 
 - **One writer for config.** `configure` and `meru mcp add` both call
@@ -126,3 +172,5 @@ shows up in the result.
   client; `merud` wires the two together.
 - **No keys in chat.** The simple rule "the model never sees a key" beats any
   scheme for hiding a key the model has already read.
+- **The session on the context.** Only `remember` needs the session, so putting
+  it on `ctx` beats adding a parameter to every backend's `Call`.

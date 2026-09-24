@@ -19,6 +19,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/mcp"
+	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 	"github.com/aarora79/meru/internal/store"
@@ -46,14 +47,15 @@ type toolService struct {
 }
 
 // newToolService loads secrets.toml, starts the MCP pool and the A2A
-// client, builds the built-in tools, and joins them in one dispatcher that
+// client, builds the built-in tools over the memory folder mem, and joins
+// them in one dispatcher that
 // writes its rows to st. It then rebuilds the tool_calls table from the
 // transcripts if the table is empty, so a deleted meru.db loses no history.
 //
 // It fails when secrets.toml can't be read or is readable by others, or
 // when a server or agent entry is wrong; merud then refuses to start, so a
 // bad entry shows at once.
-func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, log *slog.Logger) (*toolService, error) {
+func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, log *slog.Logger) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
@@ -74,7 +76,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	}
 
 	s := &toolService{configPath: configPath, st: st, log: log, a2a: ac, secrets: sec, pool: pool}
-	bt := builtin.New(configPath, cfg.Builtin, s.reloadMCP)
+	bt := builtin.New(configPath, cfg.Builtin, mem, s.reloadMCP)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure.
 	s.dispatcher = dispatch.New(

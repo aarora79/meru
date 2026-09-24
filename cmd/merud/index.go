@@ -28,8 +28,9 @@ import (
 type indexService struct {
 	ix         *index.Indexer
 	st         *store.Store
-	folders    []string // [index] folders as config.toml writes them
-	configPath string   // config.toml, named in messages that ask for a change
+	memories   memoryService // counts the memory files for the status op
+	folders    []string      // [index] folders as config.toml writes them
+	configPath string        // config.toml, named in messages that ask for a change
 	log        *slog.Logger
 
 	// turn holds one token while a scan runs. A channel with room for one
@@ -46,11 +47,11 @@ type indexService struct {
 	lastErr  string           // why it stopped early, if it did
 }
 
-// newIndexService returns an indexService over ix and st. folders and
-// configPath only appear in status replies and messages.
-func newIndexService(ix *index.Indexer, st *store.Store, folders []string, configPath string, log *slog.Logger) *indexService {
+// newIndexService returns an indexService over ix and st. memories, folders
+// and configPath only appear in status replies and messages.
+func newIndexService(ix *index.Indexer, st *store.Store, memories memoryService, folders []string, configPath string, log *slog.Logger) *indexService {
 	return &indexService{
-		ix: ix, st: st, folders: folders, configPath: configPath, log: log,
+		ix: ix, st: st, memories: memories, folders: folders, configPath: configPath, log: log,
 		turn: make(chan struct{}, 1),
 	}
 }
@@ -207,7 +208,8 @@ func (s *indexService) handleIndex(ctx context.Context, req rpc.Request, emit fu
 }
 
 // handleStatus answers OpIndexStatus with one "status" event, which
-// includes the size of meru.db on disk.
+// includes the size of meru.db on disk and how many memories there are, so
+// the client can tell whether Meru knows the user yet.
 func (s *indexService) handleStatus(ctx context.Context, emit func(rpc.Event) error) error {
 	stats, err := s.st.Stats(ctx)
 	if err != nil {
@@ -224,6 +226,7 @@ func (s *indexService) handleStatus(ctx context.Context, emit func(rpc.Event) er
 		Vectors:   stats.Vectors,
 		DBBytes:   size,
 	}
+	st.Memories, st.Profile = s.memories.counts()
 	s.mu.Lock()
 	st.Scanning = s.scanning
 	st.LastScan = s.last

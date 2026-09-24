@@ -31,6 +31,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/index"
+	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/router"
 	"github.com/aarora79/meru/internal/rpc"
@@ -194,13 +195,20 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, log)
+	// merud owns the memory folder: the agent reads the profile from it,
+	// remember writes to it, and the memory ops answer `meru memory`.
+	mem, err := memory.Open(filepath.Join(cfg.Dir, "memory"))
+	if err != nil {
+		return err
+	}
+	mems := memoryService{mem: mem, log: log}
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, log)
-	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, profileAdapter{mem: mem}, log)
+	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
 	// An errgroup runs each function in its own goroutine and Wait waits
@@ -209,7 +217,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// too. The scan and the watcher log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	return g.Wait()
@@ -266,9 +274,9 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index ops to the index service, the tools and log ops to the tool
-// service, and the usage op to the store. The rpc server answers pings
-// itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService, st *store.Store) rpc.Handler {
+// service, the memory ops to the memory service, and the usage op to the
+// store. The rpc server answers pings itself.
+func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, st *store.Store) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -283,6 +291,12 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, st *store.St
 			return tools.handleLog(ctx, req.Limit, emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, emit)
+		case rpc.OpMemoryList:
+			return mems.handleList(emit)
+		case rpc.OpMemoryAdd:
+			return mems.handleAdd(req, emit)
+		case rpc.OpMemoryForget:
+			return mems.handleForget(req)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

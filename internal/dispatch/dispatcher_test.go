@@ -397,6 +397,25 @@ func TestRedaction(t *testing.T) {
 	}
 }
 
+// TestSessionOnContext checks that the backend can read the call's session
+// from its ctx, and that a ctx outside a call carries none.
+func TestSessionOnContext(t *testing.T) {
+	var got string
+	b := &fakeBackend{kind: KindBuiltin, tools: []string{"remember"},
+		call: func(ctx context.Context) (Result, error) {
+			got = SessionFrom(ctx)
+			return Result{Text: "saved"}, nil
+		}}
+	d := New([]Backend{b}, nil, Options{})
+	d.Dispatch(context.Background(), newCall("remember", &sink{}, nil))
+	if got != "s1" {
+		t.Errorf("SessionFrom in the backend = %q, want s1", got)
+	}
+	if s := SessionFrom(context.Background()); s != "" {
+		t.Errorf("SessionFrom outside a call = %q, want empty", s)
+	}
+}
+
 func TestBadArgsStillEncode(t *testing.T) {
 	b := &fakeBackend{kind: KindMCP, tools: []string{"web.search"}}
 	d := New([]Backend{b}, &fakeRecorder{}, Options{})
