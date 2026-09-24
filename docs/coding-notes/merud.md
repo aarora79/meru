@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user` and `meru memory` in v0.4
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, the session replay and the summarizer in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -75,7 +75,7 @@ short probe text, so config never holds a number that could go stale. When
 the model or the size changed since the last run, the store drops the old
 vectors (`store.NeedsReembed` then reports true).
 
-Then three jobs run side by side in an **errgroup** from
+Then four jobs run side by side in an **errgroup** from
 `golang.org/x/sync`:
 
 ```go
@@ -83,13 +83,14 @@ g, gctx := errgroup.WithContext(ctx)
 g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
+g.Go(func() error { sum.Run(gctx); return nil })
 return g.Wait()
 ```
 
 `g.Go` starts a function in its own goroutine, and `g.Wait` waits for all of
 them. `gctx` ends when `ctx` does, or when one function returns an error, so
-all three stop together. The scan and the watcher log their own errors and
-return `nil`, so a folder that can't be read never stops `merud`. Because the
+all four stop together. The scan, the watcher and the summarizer log their
+own errors and return `nil`, so a folder that can't be read never stops `merud`. Because the
 scan runs beside the server, questions get answers during a long first scan;
 they search whatever the index holds so far.
 
@@ -108,8 +109,8 @@ rpc server answers `ping` itself.
 which fills the `turns` table from the session transcripts when the table is
 empty, and logs how many rows it wrote. A failed replay logs a warning and
 `merud` starts anyway: it costs `meru usage` some history, not the answer to
-any question. `serve` passes the store to `agent.New` as the agent's
-`TurnRecorder`, so each answered turn adds its row. `handleUsage` answers
+any question. `serve` passes `turnRecorder` to `agent.New` as the agent's
+`TurnRecorder`, so each answered turn adds its row; see sessions.go below. `handleUsage` answers
 `OpUsage` with one `usage` event that holds `store.Usage(ctx, time.Now())`: six
 windows, with today, week and month in `merud`'s local time.
 
@@ -178,7 +179,28 @@ Both are -1 when the memory folder can't be read. A `Profile` of 0 tells `meru
 chat` that Meru doesn't know you yet.
 
 `searchAdapter` joins the agent's `Searcher` interface to `retrieve.Search`
-over the store, the way `routerAdapter` joins the router.
+and `retrieve.SearchSessions` over the store, the way `routerAdapter` joins the
+router.
+
+### merud: sessions.go
+
+This file keeps the past-conversation tables (`sessions`, `messages` and
+their indexes) in step with the transcripts, at three moments:
+
+- **At startup.** `replaySessions` runs right after `replayTurns`. On a fresh
+  `meru.db` it reads every transcript; after that, only the lines added while
+  `merud` was stopped, because the store remembers how many bytes of each file
+  it has read. A failure logs a warning and `merud` starts anyway.
+- **After each turn.** `turnRecorder` is the agent's `TurnRecorder`. Its
+  `InsertTurn` writes the `turns` row, then calls `store.ReplaySession` for the
+  turn's session, which reads only the turn's new lines. A failed replay logs a
+  warning; the next replay catches up.
+- **After each summary.** The summarizer replays the session itself.
+
+`newSummarizer` reads `[agent] summary_idle` and builds a
+`summarize.Summarizer` on the `fast` model. `serve` runs its `Run` as the
+errgroup's fourth job: a pass at once, then one a minute, until `merud` stops.
+See [summarize](summarize.md).
 
 ### merud: memory.go
 

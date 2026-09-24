@@ -1,7 +1,8 @@
 # transcript
 
 **Code:** `internal/transcript/` (`doc.go`, `transcript.go`)
-**Milestone:** v0.1; tool lines and the assistant line's route, ms and sources in v0.3
+**Milestone:** v0.1; tool lines and the assistant line's route, ms and sources in v0.3;
+summary lines and `ReadFrom` in v0.4
 **Architecture:** [Session transcripts](../../ARCHITECTURE.md#session-transcripts)
 
 ## What it does
@@ -111,6 +112,37 @@ to rebuild `tool_calls` from the `tool_call`, `approval` and `tool_result` lines
 that `dispatch` writes, and `ReplayTurns` to rebuild `turns` from the user,
 `tool_call` and assistant lines.
 
+### Summary lines
+
+From v0.4, `merud` appends a `summary` line once a session has gone quiet
+for `[agent] summary_idle` (see [summarize](summarize.md)):
+
+```json
+{"ts":"2026-09-23T10:46:00Z","type":"summary","text":"The user set the garden budget at 400 dollars."}
+```
+
+A session that goes on after its summary gets another one later. The file
+keeps both, and the newest wins.
+
+### ReadFrom
+
+`ReadFrom(path, offset)` reads only the lines that start at byte `offset` and
+end in a newline. It returns them and the offset just past the last newline.
+The store's replay passes that offset back next time, so a turn costs only
+its own new lines, however long the session.
+
+```go
+b, err := r.ReadBytes('\n')
+if errors.Is(err, io.EOF) {
+    return lines, offset, nil // b, if any, is a line still being written
+}
+```
+
+`bufio.Reader.ReadBytes` returns everything up to and including the next
+newline. At the end of the file it returns the rest with `io.EOF`. A line with
+no newline yet is still being written, or a crash tore it, so `ReadFrom`
+leaves it for next time and doesn't move the offset past it.
+
 ## Go ideas used here
 
 - **Pointer receivers** — `func (s *Session) Append(...)` makes `Append` a
@@ -131,7 +163,8 @@ go test ./internal/transcript/...
 ```
 
 `TestOpenRejectsBadIDs` tries path-traversal IDs; `TestHistorySkipsTornLines`
-simulates a crash mid-write.
+simulates a crash mid-write. `TestReadFromReadsOnlyNewCompleteLines` checks
+that a half-written line waits and a torn one is skipped.
 
 ## Why it's built this way
 

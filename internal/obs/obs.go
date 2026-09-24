@@ -176,8 +176,8 @@ func RecordRoute(ctx context.Context, route, outcome string) {
 }
 
 // RecordContextTokens records meru.context.tokens for one prompt section:
-// "system", "skills", "memories", "chunks", "history" or "tools". Any other
-// section becomes "other".
+// "system", "skills", "memories", "sessions", "chunks", "history" or
+// "tools". Any other section becomes "other".
 func RecordContextTokens(ctx context.Context, section string, tokens int) {
 	in := load()
 	if in == nil {
@@ -188,7 +188,8 @@ func RecordContextTokens(ctx context.Context, section string, tokens int) {
 }
 
 // RecordRetrieval records meru.retrieval.duration for one retrieval stage:
-// "vector", "fts", "fusion" or "memories". Any other stage becomes "other".
+// "vector", "fts", "fusion", "memories" or "sessions". Any other stage
+// becomes "other".
 func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
 	in := load()
 	if in == nil {

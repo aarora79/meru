@@ -75,8 +75,8 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 - Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and
   keyword search
 - Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
-- Session summaries appended to transcripts and embedded, for recall by episode
-- Transcripts replayed into `messages` + `message_fts`, so search can find past
+- [x] Session summaries appended to transcripts and embedded, for recall by episode
+- [x] Transcripts replayed into `messages` + `message_fts`, so search can find past
   conversations
 - `meru memory list | add | forget`, working on the files
 - Skill registry with progressive disclosure

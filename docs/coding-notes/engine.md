@@ -2,7 +2,7 @@
 
 **Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `loopback.go`, `version.go`,
 `observe_test.go`)
-**Milestone:** v0.1
+**Milestone:** v0.1; `Options.NoThink` in v0.4
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -78,6 +78,9 @@ probabilities. When the caller sets `Options.LogProbs`, the request also carries
 `think: false`. MiniCPM5 is a "thinking" model: by default its first tokens are
 hidden reasoning, so a one-token call would return the probabilities of the word
 "We" instead of a route letter. We checked this against Ollama 0.34.
+`Options.NoThink` (v0.4) sends `think: false` without asking for log
+probabilities. The session summarizer sets it: two sentences gain nothing from
+seconds of hidden reasoning first.
 
 `Stream` posts with `stream: true`. Ollama answers with NDJSON (newline-delimited
 JSON): one JSON object per line. `Stream` returns an iterator that reads a line,
@@ -189,9 +192,10 @@ You should see the one-token call pick `B` with a log probability near 0.
   Ollama 0.34 returns log probabilities from `/api/chat`, so one endpoint covers
   every answer. `/api/generate` with a raw prompt would also skip the model's chat
   template, and Meru would then have to know each model's template.
-- **Thinking off only for log-probability calls.** `Options` has no thinking
-  switch, and adding one grows the interface's surface for a single caller. A call
-  that asks for log probabilities wants the answer's tokens, so the engine turns
-  thinking off there and leaves every other call alone.
+- **Thinking off for two kinds of call.** A call that asks for log probabilities
+  wants the answer's tokens, so the engine turns thinking off there by itself.
+  `NoThink` came in v0.4 with a second caller, the session summarizer, which
+  wants a short answer fast and no probabilities. Every other call keeps the
+  model's default.
 - **No overall client timeout.** A long answer can stream for minutes. The caller's
   context decides when to give up.

@@ -1,7 +1,7 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile in v0.4
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `earlier_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -84,13 +84,16 @@ real router in a small adapter.
 ```go
 type Searcher interface {
     Search(ctx context.Context, query string) ([]retrieve.Result, error)
+    SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error)
 }
 ```
 
-The same trick as `Router`: the agent names the one method it needs. `merud`
-passes `searchAdapter`, which calls `retrieve.Search` over the store; tests pass
-`fakeSearcher`, which returns fixed results. A `nil` Searcher turns search off,
-which is what most of the older tests pass.
+The same trick as `Router`: the agent names the methods it needs. `merud`
+passes `searchAdapter`, which calls `retrieve.Search` and
+`retrieve.SearchSessions` over the store; tests pass `fakeSearcher`, which
+returns fixed results. A `nil` Searcher turns search off, which is what most of
+the older tests pass. `SearchSessions` (v0.4) recalls past conversations; see
+[Earlier conversations](#earlier-conversations-earliergo).
 
 ### The ToolRunner interface
 
@@ -123,9 +126,10 @@ type TurnRecorder interface {
 ```
 
 After each answered turn the agent hands a `store.Turn` row to its
-TurnRecorder, and `meru usage` adds the rows up. `merud` passes the
-`*store.Store` itself, which has this method, so no adapter sits between them.
-Tests pass `fakeTurns`, which keeps the rows in a slice. A `nil` TurnRecorder
+TurnRecorder, and `meru usage` adds the rows up. `merud` passes
+`turnRecorder`, which writes the row to the store and then replays the turn's
+session into the past-conversation tables (v0.4), so another session can
+recall this one at once. Tests pass `fakeTurns`, which keeps the rows in a slice. A `nil` TurnRecorder
 keeps no rows, which is what most tests pass.
 
 The agent writes the row, rather than `merud` reading it back from the
@@ -360,6 +364,48 @@ msgs := a.prompt(ctx, history, question, files)
   and `meru chat` show the ones the answer cites (see `rpc.Cited`).
 - **The metric.** `meru.context.tokens` with `section = "chunks"` records the
   section's size, estimated as characters divided by four.
+
+### Earlier conversations (earlier.go)
+
+On the same routes, right after the file search, one line in `Handle` adds past
+sessions to the prompt (v0.4):
+
+```go
+files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
+```
+
+`earlierSection` asks the Searcher for up to three past sessions that match
+the same query the file search used, leaving out the session asking. It hands
+them to `formatEarlier`, which writes one line per session under the header
+"From earlier conversations:":
+
+```text
+- 2026-09-17 (7 days ago): The user set the garden budget at 400 dollars. The user said: "what budget for the garden?"
+```
+
+- **The date** is the day the session started, with how many days ago that
+  was. A small model can't work out "last week" from a date alone, and the
+  prompt holds no "today" to count from.
+- **The summary** comes from the session's newest `summary` line (see
+  [summarize](summarize.md)). A session with no summary yet shows only its
+  matching message.
+- **The matching message** is the question or answer that best matched by
+  keyword: "The user said" for a question, "You said" for Meru's own answer,
+  since the system prompt calls the model "you".
+- **The cap.** The section stays within 2,400 characters, about 600 tokens.
+  Each summary is cut to 400 characters and each message to 300, so one session
+  can't take the whole budget, and a line that would pass the cap is left out
+  with every line after it.
+- **No numbers.** These aren't files, so they get no citation number and no
+  `sources` event, and the header tells the model not to cite them.
+- **Failure.** A failed recall logs a warning and the turn goes on without the
+  section, as a failed file search does.
+- **The metric.** `meru.context.tokens` with `section = "sessions"`.
+
+`joinSections` joins two parts of the system prompt with a blank line and
+leaves out an empty one. Adding the section to `files` keeps `prompt` as it
+was: the section lands after the file excerpts, at the end of the system
+prompt.
 
 ### answer
 
@@ -623,6 +669,16 @@ second request sent Ollama: the call, its result and the tool schema.
 keeping the newest, empty), where the section sits in the system prompt, that
 an empty or unreadable profile leaves the header out without failing the
 turn, and which questions the remember rule gives tools.
+
+`earlier_test.go` checks `formatEarlier` (dates, "The user said" and "You
+said", the cap), which routes add the section, that the asking session is left
+out, and that a failed recall still answers. `TestRecallsLastWeekWithoutAReminder`
+is the v0.4 "Done when" line: it writes a garden-budget session dated seven
+days ago and one about taxes, lets the real summarizer summarize both over a
+fake model, and asks "what did we decide about the garden budget?" in a new
+session. The prompt's first recalled line must read "7 days ago" and hold the
+garden summary. It uses a real store and `retrieve.SearchSessions`, with a
+bag-of-words fake embedding.
 
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each

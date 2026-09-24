@@ -1,8 +1,8 @@
 # store
 
 **Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`,
-`toolcalls.go`, `turns.go`)
-**Milestone:** v0.2; `tool_calls` and `turns` in v0.3
+`toolcalls.go`, `turns.go`, `sessions.go`)
+**Milestone:** v0.2; `tool_calls` and `turns` in v0.3; past conversations in v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -14,7 +14,8 @@ file (a **document**), the pieces of text the indexer cut each file into
 The indexer writes to it; retrieval reads from it. From v0.3 it also holds
 `tool_calls`, the audit log of every tool call, which `dispatch` writes and
 `meru log` reads, and `turns`, one row per answered question, which the agent
-writes and `meru usage` adds up.
+writes and `meru usage` adds up. From v0.4 it holds past conversations too:
+`sessions`, `messages` and their search indexes, replayed from the transcripts.
 
 Everything in the file can be rebuilt from your files, so the store never
 holds the only copy of anything. Delete `meru.db` and `merud` builds it again.
@@ -96,9 +97,9 @@ returns an error, `write` rolls back and nothing changes.
 `migrations()` returns a list of SQL steps. Step `i` takes the database from
 `schema_version` `i` to `i+1`, and `meta` records the version. `migrate` runs
 each step the file hasn't seen, one transaction per step. v0.3 appended step 2
-for `tool_calls` and step 3 for `turns`, and later milestones add `messages` and
-`memories` the same way. A shipped
-step never changes, because existing files have already run it.
+for `tool_calls` and step 3 for `turns`, v0.4 step 4 for the past-conversation
+tables, and `memories` arrives the same way. A shipped step never changes,
+because existing files have already run it.
 
 The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
 
@@ -123,9 +124,10 @@ the text, and its `rowid` is the chunk ID.
 
 `checkVectors` compares the embedding model name and vector size in `meta`
 with the ones `Open` got. When either differs, it runs `DELETE FROM chunk_vec`
-and records the new pair. Vectors from two models can't be compared, so all
-of them go. Documents and chunks stay, so keyword search keeps working while
-the indexer re-embeds.
+and `DELETE FROM session_vec` and records the new pair. Vectors from two models
+can't be compared, so all of them go. Documents and chunks stay, so keyword
+search keeps working while the indexer re-embeds and the summarizer embeds the
+summaries again.
 
 `NeedsReembed` reports that gap. It counts rows instead of keeping a flag:
 some chunks lack a vector exactly when the model changed and the indexer
@@ -295,6 +297,58 @@ places. `BenchmarkUsage` runs `Usage` over 50,000 turns.
 `DiskBytes` adds up the sizes of `meru.db`, `meru.db-wal` and `meru.db-shm`;
 a missing file counts as 0. The store keeps its own path for it.
 
+### sessions.go: past conversations
+
+Migration step 4 creates five tables:
+
+| Table | Holds |
+| --- | --- |
+| `sessions` | one row per transcript: start, last question or answer, answers so far, the newest summary and its time, and replay bookkeeping (`path`, `bytes`) |
+| `messages` | one row per question or answer, with its trace ID |
+| `message_fts` | external content FTS5 index over `messages.text`, as `chunk_fts` is over chunks |
+| `summary_fts` | FTS5 index over summaries, with its own copy of each |
+| `session_vec` | one vector per summary, stored like `chunk_vec` |
+
+`summary_fts` keeps its own copy because an external content table needs an
+integer row ID, and `sessions` has a text key, the session ID. A summary is one
+short line, so the copy costs little.
+
+**Replay.** `ReplaySessions(ctx, dir)` walks every transcript at startup, and
+`ReplaySession(ctx, dir, id)` replays one after each turn and each summary.
+Both call `replayFile`, which keeps the cost down with one rule: a transcript
+only grows, a whole line at a time, so `sessions.bytes` marks where the last
+replay stopped.
+
+1. `os.Stat` gives the file's size. When it equals `bytes`, nothing changed, and
+   the replay ends there.
+2. Inside one write transaction, `transcript.ReadFrom(path, bytes)` reads only
+   the new complete lines.
+3. User and assistant lines become `messages` rows, with a `message_fts` entry
+   each. A `summary` line replaces the session's summary, its `summary_fts`
+   row, and drops its vector.
+4. The row gets the new byte count, answer count and times, through an upsert.
+
+A file smaller than `bytes` was cut or replaced by hand. `forgetSession`
+deletes all the session's rows, and the replay reads the file from the start.
+The read and the writes share one transaction, so the replay after a turn and
+the summarizer's replay take turns and never add a line twice
+(`TestConcurrentReplaysAddEachLineOnce`).
+
+**What needs doing.** `DueSummaries(ctx, quietSince, limit)` lists the sessions
+that need a summary, newest first: at least one answer, nothing since
+`quietSince`, and no summary newer than the last question or answer.
+`SummariesWithoutVector` lists the summaries that need a vector: new ones, and
+all of them after a change of embedding model. `SetSessionVector` stores a
+vector only while the summary still reads the text that was embedded; a newer
+summary written meanwhile gets its own vector on the next pass.
+
+**Searches.** `SearchSessionVector`, `SearchSummaryKeyword` and
+`SearchMessageKeyword` work like `SearchVector` and `SearchKeyword`, and each
+leaves out one session, the one asking. The message search joins `messages` to
+get each hit's session, so it ranks with `bm25(message_fts)`, the function that
+`rank` stands for on a query of one FTS5 table. `Sessions` and `Messages` load
+rows by ID in the order asked, as `Chunks` does.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,
@@ -311,7 +365,8 @@ a missing file counts as 0. The store keeps its own path for it.
 - **Struct embedding** — `ChunkWithDoc` embeds `Chunk`, so `c.Text` works
   without writing `c.Chunk.Text`.
 - **`filepath.WalkDir`** — visits every file under a folder; `ReplayToolCalls`
-  and `ReplayTurns` use it to find the session files. More in [go-basics/filepath.md](go-basics/filepath.md).
+  and `ReplayTurns` use it to find the session files, and so does
+  `ReplaySessions`. More in [go-basics/filepath.md](go-basics/filepath.md).
 
 ## Try it
 
@@ -327,7 +382,9 @@ writer and checks no reader ever sees half a write. The benchmark indexes
 10,000 and then 100,000 chunks with 768-number vectors; `-short` skips the
 larger one. `TestUsage` places rows one second either side of each window's
 start, and `TestWindowStarts` checks weeks that start in the month or year
-before.
+before. `TestReplaySessionsIsIncremental` appends lines between replays and
+checks each replay reads only the new ones, then cuts the file and checks the
+replay starts over.
 
 Measured on an Apple M4 Max (v0.35.6 of the driver), 768 dimensions:
 

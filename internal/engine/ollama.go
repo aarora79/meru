@@ -146,7 +146,8 @@ func (e *APIError) Error() string {
 // When opts.LogProbs is set it also turns the model's "thinking" off. The
 // caller wants the probabilities of the answer's first tokens, and a
 // thinking model would otherwise spend those tokens on hidden reasoning.
-// The router relies on this (see docs/fast-router.md).
+// The router relies on this (see docs/fast-router.md). opts.NoThink turns
+// thinking off without asking for probabilities.
 func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (Completion, error) {
 	body, err := e.chatBody(msgs, tools, opts, false)
 	if err != nil {
@@ -372,7 +373,7 @@ func (e *OllamaEngine) chatBody(msgs []Message, tools []ToolSpec, opts Options, 
 		// is what the pointer field wants.
 		req.Options = &chatOptions{Temperature: opts.Temperature, NumPredict: opts.MaxTokens}
 	}
-	if opts.LogProbs {
+	if opts.LogProbs || opts.NoThink {
 		off := false
 		req.Think = &off
 	}

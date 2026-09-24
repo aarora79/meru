@@ -10,7 +10,9 @@
 // "sources" event. On the "tools" and "search+tools" routes it offers the
 // model the allowed tools, runs the calls the model makes through the
 // ToolRunner (dispatch, in merud), and calls the model again with the
-// results, up to [agent] max_rounds model calls per turn.
+// results, up to [agent] max_rounds model calls per turn. On the routes
+// that search, it also recalls up to three past sessions and adds them
+// under "From earlier conversations" (earlier.go).
 //
 // What this package deliberately doesn't do: it holds no socket code (that's
 // internal/rpc), picks no model names (those come from config), never calls

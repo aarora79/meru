@@ -25,9 +25,14 @@ import (
 type fakeSearcher struct {
 	results []retrieve.Result
 	err     error
+	// sessions and sessionsErr are what SearchSessions returns.
+	sessions    []retrieve.SessionResult
+	sessionsErr error
 
-	mu      sync.Mutex // guards queries
-	queries []string
+	mu             sync.Mutex // guards the three lists below
+	queries        []string
+	sessionQueries []string
+	excluded       []string
 }
 
 func (s *fakeSearcher) Search(ctx context.Context, query string) ([]retrieve.Result, error) {
@@ -39,6 +44,19 @@ func (s *fakeSearcher) Search(ctx context.Context, query string) ([]retrieve.Res
 	}
 	// Hand back a copy: the agent shortens paths in place.
 	return append([]retrieve.Result(nil), s.results...), nil
+}
+
+// SearchSessions returns the fixed past sessions and remembers each
+// query and excluded session.
+func (s *fakeSearcher) SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error) {
+	s.mu.Lock()
+	s.sessionQueries = append(s.sessionQueries, query)
+	s.excluded = append(s.excluded, excludeSession)
+	s.mu.Unlock()
+	if s.sessionsErr != nil {
+		return nil, s.sessionsErr
+	}
+	return s.sessions, nil
 }
 
 // result builds one search result.

@@ -1,7 +1,7 @@
 # retrieve
 
-**Code:** `internal/retrieve/` (`doc.go`, `rrf.go`, `search.go`, `format.go`)
-**Milestone:** v0.2
+**Code:** `internal/retrieve/` (`doc.go`, `rrf.go`, `search.go`, `format.go`, `sessions.go`)
+**Milestone:** v0.2; `SearchSessions` in v0.4
 **Architecture:** [Retrieval](../../ARCHITECTURE.md#retrieval) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -100,6 +100,34 @@ A PDF chunk gets `page 3` instead of lines, and a chunk with no heading leaves
 the heading out. `Format` writes a one-line instruction ("Cite the ones you
 use by number") and then each chunk's text under its citation line.
 
+### sessions.go: past conversations
+
+`SearchSessions(ctx, st, eng, query, excludeSession, n)` recalls the `n` past
+sessions that best match a question (v0.4). It runs three searches of up to
+20 hits each, fewer than the 50 for chunks, since a person has far fewer
+sessions than chunks:
+
+1. summaries by meaning: the query's vector against `session_vec`;
+2. summaries by keyword: `summary_fts`;
+3. questions and answers by keyword: `message_fts`.
+
+The message search returns messages, and one session can own many of them.
+`SearchSessions` groups them: a session's place in that list is the place of
+its best message, and that message becomes the result's `Match`.
+
+`rrf` and `top` work on `int64` IDs, and a session ID is text, so
+`SearchSessions` numbers each session in the order it first appears and keeps
+the names to turn the numbers back. That reuses `rrf` unchanged.
+
+Each `SessionResult` embeds `store.Session` (ID, start, summary) and adds the
+matching message, or `nil` when only the summary matched, and the score.
+`excludeSession` keeps the session that asks out of every list, so recall
+never hands a session its own words back.
+
+The whole search records one `meru.retrieval.duration` value under the stage
+`sessions`, inside a `meru.retrieve.sessions` span that carries counts and
+milliseconds, never text.
+
 ## Go ideas used here
 
 - **Variadic parameters** — `rrf(lists ...[]int64)` accepts any number of lists.
@@ -113,6 +141,8 @@ use by number") and then each chunk's text under its citation line.
   [go-basics/defer.md](go-basics/defer.md).
 - **Interfaces** — `Search` takes an `engine.Engine`; the tests pass a fake.
   More in [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Closures** — `number` and `list` in `SearchSessions` are functions written
+  inside it. They read and change its `num` map and `names` slice.
 
 ## Try it
 
@@ -124,6 +154,8 @@ go test -race ./internal/retrieve/
 builds a real store in a temporary folder with hand-placed vectors and a fake
 engine. One of its cases shows RRF at work: a PDF chunk that ranks last by
 meaning but second by keyword beats a chunk that only vector search found.
+`TestSearchSessions` fills a store from real transcripts and checks the order
+of three sessions, the best message, and that the asking session stays out.
 
 ## Why it's built this way
 
@@ -136,3 +168,8 @@ meaning but second by keyword beats a chunk that only vector search found.
 - **Errors stop the search.** If the embedding fails, `Search` returns the
   error instead of falling back to keyword results alone, and the agent
   decides what to do.
+- **Number the sessions rather than make `rrf` generic.** A generic `rrf` could
+  take text IDs, but a small map in `SearchSessions` does the job and leaves
+  `rrf` as the architecture doc prints it.
+- **Past sessions have no numbers.** They aren't files, so they get no
+  citation and no `sources` event; the agent writes them as dated lines.

@@ -94,6 +94,10 @@ type Options struct {
 	// TopLogProbs is how many alternatives to report at each position. Ollama
 	// caps it at 20. Zero means "only the chosen token".
 	TopLogProbs int
+	// NoThink turns the model's hidden reasoning ("thinking") off. The
+	// session summarizer sets it: a one-sentence summary gains nothing from
+	// seconds of reasoning first. LogProbs turns thinking off too.
+	NoThink bool
 }
 
 // Completion is a whole answer from Generate.

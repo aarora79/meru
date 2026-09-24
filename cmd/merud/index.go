@@ -252,9 +252,10 @@ func reportOf(rep index.Report) rpc.IndexReport {
 	}
 }
 
-// searchAdapter lets retrieve.Search serve as the agent's Searcher. The
-// agent doesn't hold the store or the list sizes; this type in main joins
-// them, the way routerAdapter joins the router.
+// searchAdapter lets retrieve.Search and retrieve.SearchSessions serve as
+// the agent's Searcher. The agent doesn't hold the store or the list
+// sizes; this type in main joins them, the way routerAdapter joins the
+// router.
 type searchAdapter struct {
 	st  *store.Store
 	eng engine.Engine
@@ -263,6 +264,12 @@ type searchAdapter struct {
 // Search runs hybrid search over the store with the default list sizes.
 func (s searchAdapter) Search(ctx context.Context, query string) ([]retrieve.Result, error) {
 	return retrieve.Search(ctx, s.st, s.eng, query, retrieve.Options{})
+}
+
+// SearchSessions recalls the n past sessions that best match query,
+// leaving out the session excludeSession.
+func (s searchAdapter) SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error) {
+	return retrieve.SearchSessions(ctx, s.st, s.eng, query, excludeSession, n)
 }
 
 // embedDims asks the embedding model for one vector and returns its size,
