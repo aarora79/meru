@@ -1,4 +1,4 @@
-// This file chunks HTML: it strips the tags, keeps the text and the
+// This file reads HTML: it strips the tags, keeps the text and the
 // headings, and packs the paragraphs under each heading like Markdown.
 
 package index
@@ -41,14 +41,28 @@ type htmlText struct {
 	space    bool        // a space is owed before the next word
 }
 
-// chunkHTML reads src with the x/net/html tokenizer, which copes with the
+// chunkHTML chunks an HTML page: readHTML pulls out its text and sections,
+// and each section packs its paragraphs as in Markdown. The chunks carry no
+// line numbers: their text is the extracted text, which doesn't line up
+// with lines of the file.
+func chunkHTML(src string, lim limits) []store.Chunk {
+	t := readHTML(src)
+	text := t.b.String()
+	var out []store.Chunk
+	for _, sec := range t.sections {
+		out = append(out, packSection(text, sec, paragraphs(text, sec.body), lim, nil)...)
+	}
+	return out
+}
+
+// readHTML reads src with the x/net/html tokenizer, which copes with the
 // broken markup real pages hold. It drops tags, comments, scripts and
 // styles, decodes entities such as &amp;, and collapses runs of white space
 // except inside <pre>. Each h1 to h6 starts a section whose heading path
-// works as in Markdown. The chunks carry no line numbers: their text is the
-// extracted text, which doesn't line up with lines of the file.
-func chunkHTML(src string, lim limits) []store.Chunk {
-	var t htmlText
+// works as in Markdown. It returns a pointer, because htmlText holds a
+// strings.Builder, which must not be copied once written to.
+func readHTML(src string) *htmlText {
+	t := &htmlText{}
 	t.sections = []mdSection{{}}
 	skipDepth := 0    // > 0 while inside a skipped element
 	preDepth := 0     // > 0 while inside <pre>
@@ -110,13 +124,8 @@ func chunkHTML(src string, lim limits) []store.Chunk {
 		}
 	}
 
-	text := t.b.String()
-	t.sections[len(t.sections)-1].body.end = len(text)
-	var out []store.Chunk
-	for _, sec := range t.sections {
-		out = append(out, packSection(text, sec, paragraphs(text, sec.body), lim, nil)...)
-	}
-	return out
+	t.sections[len(t.sections)-1].body.end = t.b.Len()
+	return t
 }
 
 // write adds a run of page text. Outside <pre> it collapses white space to

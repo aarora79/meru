@@ -1,7 +1,7 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -33,6 +33,7 @@ sequenceDiagram
     participant A as Agent.Handle
     participant T as transcript
     participant R as Router
+    participant F as Engine (fast)
     participant E as Engine (main)
     participant D as ToolRunner (dispatch)
     S->>A: request
@@ -40,12 +41,17 @@ sequenceDiagram
     A->>T: History(history_turns)
     A-->>S: emit session
     A->>T: Append user line
-    A->>R: Decide(question, history)
-    A-->>S: emit route
+    par route and pick skills at once
+        A->>R: Decide(question, history)
+    and
+        A->>F: Generate(pick prompt), when there are skills
+    end
+    A-->>S: emit route (with the picked skills)
     opt route isn't direct, or the question names an indexed folder
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
     end
+    A->>A: Profile.Recall(question), on every route
     loop each round, up to max_rounds
         A->>E: Stream(system + excerpts + history + question + earlier rounds, tool schemas)
         E-->>A: text deltas (emit token) and tool calls
@@ -84,13 +90,16 @@ real router in a small adapter.
 ```go
 type Searcher interface {
     Search(ctx context.Context, query string) ([]retrieve.Result, error)
+    SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error)
 }
 ```
 
-The same trick as `Router`: the agent names the one method it needs. `merud`
-passes `searchAdapter`, which calls `retrieve.Search` over the store; tests pass
-`fakeSearcher`, which returns fixed results. A `nil` Searcher turns search off,
-which is what most of the older tests pass.
+The same trick as `Router`: the agent names the methods it needs. `merud`
+passes `searchAdapter`, which calls `retrieve.Search` and
+`retrieve.SearchSessions` over the store; tests pass `fakeSearcher`, which
+returns fixed results. A `nil` Searcher turns search off, which is what most of
+the older tests pass. `SearchSessions` (v0.4) recalls past conversations; see
+[Earlier conversations](#earlier-conversations-earliergo).
 
 ### The ToolRunner interface
 
@@ -123,15 +132,40 @@ type TurnRecorder interface {
 ```
 
 After each answered turn the agent hands a `store.Turn` row to its
-TurnRecorder, and `meru usage` adds the rows up. `merud` passes the
-`*store.Store` itself, which has this method, so no adapter sits between them.
-Tests pass `fakeTurns`, which keeps the rows in a slice. A `nil` TurnRecorder
+TurnRecorder, and `meru usage` adds the rows up. `merud` passes
+`turnRecorder`, which writes the row to the store and then replays the turn's
+session into the past-conversation tables (v0.4), so another session can
+recall this one at once. Tests pass `fakeTurns`, which keeps the rows in a slice. A `nil` TurnRecorder
 keeps no rows, which is what most tests pass.
 
 The agent writes the row, rather than `merud` reading it back from the
 transcript, because the agent already holds every fact the row needs: the
 session, the source, the final route and the tool-call count. `merud` would
 have to reopen the session file after each turn to find them.
+
+### The Profile interface
+
+```go
+type Profile interface {
+    Profile() ([]memory.Memory, error)
+    Recall(ctx context.Context, query string) ([]retrieve.Memory, error)
+}
+```
+
+The profile is what Meru knows about you: the memory files in `me/` and
+`preferences/` (`rpc.ProfileKinds()`). `merud` passes `profileAdapter`, which
+reads those two folders with `memory.Store.ListKind`. Tests pass
+`fakeProfile`. A `nil` Profile leaves the section out, and recall with it.
+
+`Recall` returns the memories outside the profile kinds that fit a question,
+best first. `profileAdapter` calls `retrieve.SearchMemories` over the store. The
+two methods share one interface because both hand the agent your memories, and
+one more parameter on `New` would touch every test that builds an agent.
+
+`Profile` may return memories and an error together, when one file can't be
+read and the rest can. The agent logs the error as a warning and uses what it
+got. A folder it can't read at all gives no memories, and the turn goes on
+without the section.
 
 ### New and filesNote
 
@@ -159,13 +193,211 @@ traveller.
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.
 
+### The profile section (profile.go)
+
+`New` keeps the configured prompt with `whoIsWho` in `a.system`, and the files
+note in `a.filesNote`. On each turn, `prompt` puts the profile between them:
+
+```text
+<system prompt>
+
+<whoIsWho>
+
+What you know about the user:
+- Name is Dana Reyes
+- Works on the AI registry team at Example Corp
+- Likes short answers
+
+<filesNote>
+```
+
+The profile follows `whoIsWho`, so the rule that "I" means the user and the
+facts about who the user is sit side by side. Without them, the 2B model read a
+visa letter and guessed that you were the co-applicant it named.
+
+The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
+date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
+skills; then the recalled memories, the picked skills' instructions, and last
+the files section, which holds the numbered excerpts and then the earlier
+conversations. `prompt` takes the changing parts in one `sections` struct and
+leaves out each empty part.
+
+### budget.go
+
+`budget.go` holds the context budget in one place: a cap per section in
+characters, and the order above. The order puts every part that stays the same
+from turn to turn before every part the question changes. Ollama reuses its
+work on a prompt's opening and stops at the first token that differs, so a
+follow-up in the same session reprocesses only the changing parts, the history
+and the question. Before v0.4's budget, the recalled memories sat right after
+the profile, and each question's new memories cost Ollama the rest of the
+prompt.
+
+`skillsSection` returns two strings for that reason: the list of skills, which
+stays put, and the picked skills' instructions, which move with the question.
+
+`trimHistory` cuts the history to `maxHistoryChars`, oldest first. It drops a
+question together with its answer, so the history never opens with an answer
+to a question that isn't there. `[agent] history_turns` still caps the number
+of turns; the character cap catches a few long answers that the turn count
+would let through. `budget_test.go` checks both the cut and the order.
+
+`formatProfile` builds the section, and it is a plain function so the tests can
+call it with any memories:
+
+- **Order.** `me` first, then `preferences`, oldest first inside each, so your
+  name, usually the first fact saved, leads. `Created` holds only a date, so the
+  file's modification time breaks a tie between two facts from one day, and the
+  ID breaks any tie left.
+- **One line each.** `strings.Fields` splits a fact at every run of spaces and
+  line breaks, and joining the pieces with one space gives one line.
+- **The cap.** The section holds at most 2,000 characters, header included. When
+  the facts hold more, `formatProfile` walks them newest first and keeps each one
+  that still fits, so a newer fact, which more often corrects an older one, wins.
+  It returns how many it left out, and `profileSection` logs that at debug.
+- **Empty means nothing.** With no facts, the section is `""` and the prompt has
+  no header. `meru chat` is the one that tells you Meru doesn't know you yet.
+
+`profileSection` reads the files on every turn, so a hand edit shows in the next
+answer. Reading 20 files takes about 0.6 ms, too little to earn a cache.
+
+### Recalled memories (recall.go)
+
+`Handle` calls `memorySection` on every route, `direct` included, right before it
+builds the prompt. A preference such as "always ask before trading" matters most
+on a turn that runs tools, and a fact about a person matters on a direct question
+about them. The query is the same `searchQuery` the file search uses, so a
+follow-up borrows the earlier question's subject.
+
+`memorySection` asks `Profile.Recall` and hands the result to `formatMemories`:
+
+```text
+Things you remember that may matter here:
+- (people) Sam Lee is the user's manager
+- (projects) Plans a vegetable garden
+```
+
+- **One line each, with the kind.** The kind tells the model what sort of fact it
+  reads. A fact's line breaks become spaces, as in the profile.
+- **Best first, capped.** The lines keep recall's order. The section holds at most
+  2,400 characters (600 tokens at four characters a token), header included; a
+  line that doesn't fit is left out, and a shorter one after it may still fit.
+- **Its own section.** It sits right after the profile and before `filesNote`,
+  apart from the numbered excerpts, so the model never cites a memory as a file.
+- **A failure is a warning.** When recall fails, the turn goes on without the
+  section.
+
+**One metric for both sections.** `prompt` records the profile and the recalled
+memories together as `meru.context.tokens` with section `memories`, through
+`recordMemoryTokens`. Two records under one label would count two samples per
+turn and halve the average; one number gives the prompt's whole share of memory,
+which is what a context budget needs.
+
+### The remember rule
+
+A third rule gives tools to a turn that asks Meru to remember something. The
+router can send "remember that my name is Dana" to `direct`, which offers no
+tools, and the model then says it will remember and saves nothing. So when the
+question holds `remember` as a whole word, the route lacks the full set of tools, and the
+tools on offer include `remember`, `withTools` adds them, as for a tool server.
+`asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
+count. A wrong guess, such as "do you remember the budget?", costs a prompt
+that holds the tool schemas; the model need not call any.
+
+### Skills (skills.go)
+
+A skill is a Markdown file of instructions for one kind of task (see
+[skills](skills.md)). The agent lists every skill in the prompt and loads the
+full instructions of only the ones a question needs. That split is called
+**progressive disclosure**: a new skill costs the prompt one line until a
+question calls for it.
+
+```go
+type Skills interface {
+    Registry(ctx context.Context) *skills.Registry
+}
+```
+
+`merud` passes its skill service, which loads the registry again when you edit
+`~/.meru/skills` (see [merud](merud.md)). Tests pass `fixedSkills`. The agent
+gets it through `UseSkills`, called once before the first turn, rather than as
+a parameter of `New`, so the many tests that build an agent without skills
+stay as they were. With no `Skills`, turns list and load none.
+
+**The pick runs beside the router.** `routeAndPick` replaces the plain
+`route` call in `Handle`. It starts two goroutines with an `errgroup`: one asks
+the router for the route, the other asks the fast model which skills the
+question needs. Neither needs the other's answer. Only the route can fail the
+turn; a failed pick logs a warning and the turn goes on with no skills.
+
+Side by side is also faster than it looks. On the development machine with
+MiniCPM5-2B, `TestIntegrationRouteAndPick` measured 70 ms a turn for the route
+then the pick, and 28 ms for both at once. One after the other, the two prompts
+take turns in one Ollama slot and each throws away the other's cached prompt;
+side by side, each keeps a slot and its cache.
+
+**The pick call.** `pickSkills` skips the call when the registry is empty.
+Otherwise it sends the fast model a short prompt with thinking off
+(`engine.Options.NoThink`), temperature 0 and at most 20 tokens:
+
+```text
+You choose which skills help answer the user's message. A skill is a set of instructions for one kind of task.
+
+Skills:
+- explainer: Build a self-contained HTML explainer for a technical topic ...
+- writing: Write prose people will actually read. ...
+
+Reply with the names of the skills this message needs, at most 2, separated by commas. Reply "none" when no skill fits, as for a plain question, a lookup or small talk. Reply with names only, no other words.
+```
+
+The question follows as the user's message. `parsePick` splits the answer at
+anything that can't be part of a skill name, keeps the words that name a loaded
+skill, drops repeats and stops at two. "none", "None." or a made-up name all
+give no skills, so the model can't load something that isn't there. On the
+built-in skills, `TestIntegrationPickSkills` saw it pick `writing` for "write a
+short email to my landlord" and for a paragraph to tidy, nothing for a lookup,
+the weather or "hi there", and `explainer` with `writing` for an explainer page,
+each in about 35 to 65 ms.
+
+**The prompt sections.** `skillsSection` builds the text that `prompt` puts
+after the tools note and before the excerpts from your files:
+
+```text
+Skills you can use:
+- explainer: Build a self-contained HTML explainer ...
+- writing: Write prose people will actually read. ...
+
+Follow these instructions for this answer:
+
+Skill: writing
+
+# Writing Skill
+...
+```
+
+The list goes into every turn that has skills; the second part only when the
+pick chose some. `formatBodies` caps the instructions at 3,000 tokens (12,000
+characters). The first skill goes in whole even past the cap, because half a
+skill's steps can mislead the model more than none. A second skill gets what is
+left, cut at a line break and closed with a note that Meru cut the rest.
+`skillsSection` records the whole section's size as `meru.context.tokens` with
+section `skills`.
+
+**Who sees the pick.** The `route` event carries the names in `Skills`, each an
+`rpc.SkillInfo` with only `Name` set, and `meru chat` shows them in the route
+badge, as in `direct · 0.91 · writing`. The turn span gets `meru.skills`, the
+names joined with commas; they come from the registry, so the attribute stays
+a small set. The pick has its own `meru.skills.pick` span with a `gen_ai.chat`
+span under it, and a `skills picked` debug line.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
 straight to `rpc.Serve`. Its steps follow the diagram, and each is a short
 method that opens its own span under `meru.turn` and writes one debug line:
 `openSession` (`meru.session`), `appendLine` (`meru.transcript.append`),
-`route` (the router's `meru.route`), `searchFiles` (`meru.search`, with
+`routeAndPick` (the router's `meru.route` and `meru.skills.pick`, side by
+side), `searchFiles` (`meru.search`, with
 retrieval's `meru.retrieve` under it), `prompt` (`meru.prompt`) and `answer`
 (`gen_ai.chat`, once per round). Two details:
 
@@ -223,8 +455,8 @@ show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
 A second rule does the same for tools. When a question names a connected tool
-server, such as "search my obsidian vault", and the route offers no tools,
-`withTools` adds them: `direct` becomes `tools` and `search` becomes
+server, such as "search my obsidian vault", and the route offers at most the
+file tools, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
 `search+tools`. `toolServers` reads the server names from the tool names:
 `obsidian` from `obsidian.search_vault`, `research` from
 `a2a.research.summarize`. It leaves out the built-in tools, whose owner,
@@ -243,8 +475,10 @@ if searches(dec.Route) && a.search != nil {
     if len(sources) > 0 {
         emit(rpc.Event{Type: rpc.EventSources, Sources: sources})
     }
+    files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 }
-msgs := a.prompt(ctx, history, question, files)
+memories := a.memorySection(ctx, searchQuery(question, history))
+msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, picked), len(specs) > 0)
 ```
 
 - **What it searches for.** No model rewrites the query, so `searchQuery`
@@ -289,6 +523,48 @@ msgs := a.prompt(ctx, history, question, files)
   and `meru chat` show the ones the answer cites (see `rpc.Cited`).
 - **The metric.** `meru.context.tokens` with `section = "chunks"` records the
   section's size, estimated as characters divided by four.
+
+### Earlier conversations (earlier.go)
+
+On the same routes, right after the file search, one line in `Handle` adds past
+sessions to the prompt (v0.4):
+
+```go
+files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
+```
+
+`earlierSection` asks the Searcher for up to three past sessions that match
+the same query the file search used, leaving out the session asking. It hands
+them to `formatEarlier`, which writes one line per session under the header
+"From earlier conversations:":
+
+```text
+- 2026-09-17 (7 days ago): The user set the garden budget at 400 dollars. The user said: "what budget for the garden?"
+```
+
+- **The date** is the day the session started, with how many days ago that
+  was. A small model can't work out "last week" from a date alone, and the
+  prompt holds no "today" to count from.
+- **The summary** comes from the session's newest `summary` line (see
+  [summarize](summarize.md)). A session with no summary yet shows only its
+  matching message.
+- **The matching message** is the question or answer that best matched by
+  keyword: "The user said" for a question, "You said" for Meru's own answer,
+  since the system prompt calls the model "you".
+- **The cap.** The section stays within 2,400 characters, about 600 tokens.
+  Each summary is cut to 400 characters and each message to 300, so one session
+  can't take the whole budget, and a line that would pass the cap is left out
+  with every line after it.
+- **No numbers.** These aren't files, so they get no citation number and no
+  `sources` event, and the header tells the model not to cite them.
+- **Failure.** A failed recall logs a warning and the turn goes on without the
+  section, as a failed file search does.
+- **The metric.** `meru.context.tokens` with `section = "sessions"`.
+
+`joinSections` joins two parts of the system prompt with a blank line and
+leaves out an empty one. Adding the section to `files` keeps `prompt` as it
+was: the section lands after the file excerpts, at the end of the system
+prompt.
 
 ### answer
 
@@ -373,12 +649,19 @@ for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
 ### The tool rounds (tools.go)
 
-**Which turns offer tools.** `toolSpecs(route)` returns the ToolRunner's
-schemas on `tools` and `search+tools`, and `nil` on the other routes or when
-the ToolRunner is `nil`. A model can't call a tool it hasn't seen, and the
-prompt stays shorter. On a turn that offers tools, `prompt` adds `toolsNote`
-to the system prompt: the model may call the tools, and some calls ask you
-first. `Handle` also records the schemas' size, characters divided by four,
+**Which turns offer tools.** `toolSpecs(route)` returns every schema the
+ToolRunner offers on `tools` and `search+tools`. On `search` it keeps only the
+three read-only file tools, `read_file`, `list_folder` and `grep`, which
+`builtin.IsFileTool` names. Ten excerpts can't cover "everything in my work
+folder", and those three read nothing search couldn't. On `direct`, or when
+the ToolRunner is `nil`, it returns `nil`. A model can't call a tool it hasn't
+seen, and the prompt stays shorter.
+
+`noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn with
+only the file tools gets `fileToolsNote`: when the excerpts aren't enough, the
+model may read whole files, list folders and grep. Any other turn with tools
+gets `toolsNote`: the model may call the tools, and some calls ask you first.
+A turn with no tools gets neither. `Handle` also records the schemas' size, characters divided by four,
 as `meru.context.tokens` with `section = "tools"`.
 
 **The loop.** `converse` runs the rounds:
@@ -487,6 +770,7 @@ source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
 the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
 `transcript appended` (once per line, dispatch's tool lines included),
+`route` (from the router), `skills picked` (with the names and the time),
 `search done` (on search routes, with the result count, the section's size
 and the time), `prompt built`, and per round `answer finished` (with its
 `tool_calls` count) and `round finished` (round number, tool calls and
@@ -503,7 +787,11 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 - **Interfaces** — `Router`, `Searcher`, `ToolRunner`, `TurnRecorder`, and
   `engine.Engine`.
 - **`errgroup`** — runs a round's tool calls at the same time and waits for
-  them all. More in [go-basics/goroutines.md](go-basics/goroutines.md).
+  them all, and runs the route and the skill pick side by side. More in
+  [go-basics/goroutines.md](go-basics/goroutines.md).
+- **Embedding a struct** — the test's `pickEngine` holds a `*fakeEngine`
+  without a field name, so it gets `fakeEngine`'s methods and replaces only
+  `Generate`.
 - **Pointer receivers** — `reply.add` changes the reply it is called on.
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
@@ -539,7 +827,12 @@ two calls that must run at the same time (one waits on a channel the other
 closes) with results in call order, the round cap, denied and declined calls
 reaching the model, `approve` and a job's source reaching dispatch, a hang-up
 during a call, one `gen_ai.chat` span per round, and a transcript and
-history that hold only the question and the answer.
+history that hold only the question and the answer. `TestToolsOfferedByRoute`
+checks which tools and which note each route gets.
+
+`files_test.go` runs a `search` turn over the real built-in tools behind a real
+`dispatch.Dispatcher`: the fake engine calls `read_file`, and the next round
+must read the file's whole text.
 
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and
@@ -547,6 +840,47 @@ the transcript file. `TestEndToEndToolRound` does the same with the real
 `OllamaEngine` against the fake Ollama, which answers the first chat request
 with a tool call and the second with text. It checks the events and what the
 second request sent Ollama: the call, its result and the tool schema.
+
+`profile_test.go` checks `formatProfile` (order, one line per fact, the cap
+keeping the newest, empty), where the section sits in the system prompt, that
+an empty or unreadable profile leaves the header out without failing the
+turn, and which questions the remember rule gives tools.
+
+`recall_test.go` checks `formatMemories` (order, the kind, one line per fact,
+the cap), where the section sits on each route and that a failed recall leaves
+it out. `TestRecallAcrossSessions` is the v0.4 "Done when" for recall. It builds
+the real remember tool, dispatcher, memory folder, store and syncer, with a fake
+embedding model that puts "manager" and "boss" on one axis. In one session the
+model saves "Sam Lee is the user's manager". The test moves the memory's created
+date back a week and holds six unrelated memories, so recency alone would leave
+Sam out of the five. In a new session, "Draft a note to my boss about launch
+slipping", which shares no word with the memory, brings Sam back into the prompt
+by meaning.
+
+`earlier_test.go` checks `formatEarlier` (dates, "The user said" and "You
+said", the cap), which routes add the section, that the asking session is left
+out, and that a failed recall still answers. `TestRecallsLastWeekWithoutAReminder`
+is the v0.4 "Done when" line: it writes a garden-budget session dated seven
+days ago and one about taxes, lets the real summarizer summarize both over a
+fake model, and asks "what did we decide about the garden budget?" in a new
+session. The prompt's first recalled line must read "7 days ago" and hold the
+garden summary. It uses a real store and `retrieve.SearchSessions`, with a
+bag-of-words fake embedding.
+
+`skills_test.go` checks the skills step with `pickEngine`, a fake whose
+`Generate` plays the fast model. `TestPickWritingForEmail` asks "write a short
+email to my landlord" over the real built-in skills and checks the pick call's
+options, that the `route` event names `writing`, and that the list, the header
+and the writing body land in the system prompt in that order. Other tests
+cover a pick of "none", no skills or an empty folder (no pick call at all), a
+failed pick that still answers, a failed route, `parsePick` and the cap in
+`formatBodies`.
+
+`skills_integration_test.go` runs the pick against the real local Ollama:
+
+```sh
+go test -tags integration -v -run Integration ./internal/agent/
+```
 
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each
@@ -571,7 +905,9 @@ hold the question or answer until `capture_content` is on.
   search (v0.2) and tools (v0.3) real numbers to test against.
 - **A failed search doesn't fail the turn.** The excerpts help the answer, but
   the model can still answer without them, and the note in the prompt stops it
-  from pretending it looked.
+  from pretending it looked. A failed recall works the same way.
+- **Recall on every route.** It costs one embedding of the question and three
+  small queries, about 10 ms against the local Ollama, well under a model call.
 - **Sources before the answer.** The client learns what the model read while
   the answer streams, and picks which to show once it has the whole text.
 - **The agent never runs a tool itself.** It hands every call to the
@@ -580,3 +916,7 @@ hold the question or answer until `capture_content` is on.
 - **Calls in a round run at the same time.** The model asked for them
   together, so none needs another's result, and a slow MCP server doesn't
   hold up a quick built-in.
+- **A separate pick call, not a longer router.** The router reads one token's
+  probabilities and can't name skills. A second short call keeps the router's
+  prompt and its calibration as they are, and running both at once costs no
+  extra time.

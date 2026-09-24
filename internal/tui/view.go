@@ -31,16 +31,19 @@ func (m Model) View() string {
 	switch {
 	case m.approval != nil:
 		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices))
-	case m.usageBox != nil:
-		helpLine = m.helpView(newUsageKeys())
+	case m.boxOpen():
+		helpLine = m.helpView(newBoxKeys())
 	case m.notice != "":
 		helpLine = m.style.dim.Render(ansi.Truncate(m.notice, m.width, "…"))
 	}
-	// The usage box takes the conversation's place, at the same size, so
-	// the conversation underneath keeps its scroll position.
+	// A box takes the conversation's place, at the same size, so the
+	// conversation underneath keeps its scroll position.
 	pane := m.conversation.View()
-	if m.usageBox != nil {
+	switch {
+	case m.usageBox != nil:
 		pane = m.usageBoxView(m.width, m.conversation.Height)
+	case m.meBox != nil:
+		pane = m.meBoxView(m.width, m.conversation.Height)
 	}
 	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 }
@@ -60,14 +63,19 @@ func (m Model) helpView(keys []key.Binding) string {
 }
 
 // header draws the top line: the name, the setup details (profile, main
-// model, the index's size) and the session on the left, and on the right the
-// last hour's usage, dim, and whether merud is reachable.
+// model, the index's size, the memory count, a "no profile" marker) and the
+// session on the left, and on the right the last hour's usage, dim, and
+// whether merud is reachable.
 //
 // When the line is too narrow, parts go in order of how little they are
 // missed. The usage goes first: /usage shows it in full, and the left side
-// says what Meru is running. The index's vector count and size go next, as
-// a whole, because cutting them mid-way would leave an open bracket. Then
-// the details shrink with "…", and last they disappear. The status stays.
+// says what Meru is running. The index's vector count and size go next,
+// with the memory count: cutting the bracket mid-way would leave it open,
+// and `meru index -status` and `meru memory list` show all three. Then the
+// details shrink with "…", from the session back, and last they disappear.
+// The "no profile" marker sits before the session so it outlasts it: it
+// asks the user to do something, and the session ID only labels the chat.
+// The status stays.
 func (m Model) header() string {
 	brand := m.style.brand.Render("Meru मेरु")
 
@@ -115,12 +123,17 @@ func (m Model) header() string {
 }
 
 // details joins the header's setup details with " · ": profile, model, the
-// document count and the session, leaving out any that are empty. sizes
-// says whether the document count carries the vector count and the size
-// of meru.db.
+// document count, the memory count, "no profile" and the session, leaving
+// out any that are empty. sizes says whether the document count carries
+// the vector count and the size of meru.db, and whether the memory count
+// shows.
 func (m Model) details(sizes bool) string {
+	noProfile := ""
+	if m.noProfile() {
+		noProfile = "no profile"
+	}
 	var parts []string
-	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index, sizes), shortSession(m.session)} {
+	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index, sizes), memoryCount(m.index, sizes), noProfile, shortSession(m.session)} {
 		if p != "" {
 			parts = append(parts, p)
 		}
@@ -142,10 +155,15 @@ func shortSession(id string) string {
 }
 
 // renderConversation draws every turn, with a blank line before each. An
-// empty conversation shows a one-line hint instead.
+// empty conversation shows a one-line hint instead, and under it the
+// profile nudge while merud says it knows nothing about the user.
 func (m *Model) renderConversation() string {
 	if len(m.turns) == 0 {
-		return "\n" + m.style.raw.Render(m.style.dim.Render("Ask a question below. The answer comes from models on this machine."))
+		hint := "Ask a question below. The answer comes from models on this machine."
+		if m.noProfile() {
+			hint += "\n\n" + ansi.Wrap(profileNudge, max(m.width-answerIndent, 10), "")
+		}
+		return "\n" + m.style.raw.Render(m.style.dim.Render(hint))
 	}
 	var b strings.Builder
 	for i := range m.turns {
@@ -245,7 +263,7 @@ func millis(ms int64) string {
 // file: wrapping first and linking each piece keeps a link from spanning a
 // line break, which some terminals draw badly.
 func (m *Model) sourcesBlock(t *exchange, width int) string {
-	cited := rpc.Cited(t.answer, t.sources, len(t.tools) > 0)
+	cited := rpc.Cited(t.answer, t.sources)
 	if len(cited) == 0 {
 		return ""
 	}
@@ -264,7 +282,8 @@ func (m *Model) sourcesBlock(t *exchange, width int) string {
 	return m.style.raw.Render(m.style.dim.Render(strings.Join(lines, "\n")))
 }
 
-// badge draws the route next to the "Meru" label, such as "direct · 0.91".
+// badge draws the route next to the "Meru" label, such as "direct · 0.91",
+// followed by the skills the turn loaded, as in "search · 0.91 · writing".
 // A route the router fell back to is drawn in amber and says "fallback", so
 // it still stands out with colour turned off.
 func (m *Model) badge(t *exchange) string {
@@ -272,6 +291,9 @@ func (m *Model) badge(t *exchange) string {
 		return ""
 	}
 	text := fmt.Sprintf("%s · %.2f", t.route, t.confidence)
+	if len(t.skills) > 0 {
+		text += " · " + strings.Join(t.skills, ", ")
+	}
 	if t.fallback {
 		return "  " + m.style.badgeAmber.Render(text+" · fallback")
 	}
@@ -401,4 +423,17 @@ func docCount(ix *rpc.IndexStatus, sizes bool) string {
 		s += " · indexing"
 	}
 	return s
+}
+
+// memoryCount writes how many memories merud holds, such as "7 memories"
+// or "1 memory". It returns "" without sizes, before merud has answered,
+// and when merud couldn't count them (-1).
+func memoryCount(ix *rpc.IndexStatus, sizes bool) string {
+	switch {
+	case ix == nil || !sizes || ix.Memories < 0:
+		return ""
+	case ix.Memories == 1:
+		return "1 memory"
+	}
+	return fmt.Sprintf("%d memories", ix.Memories)
 }

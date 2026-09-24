@@ -1,7 +1,7 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `usage.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, and usage in the header and in `/usage` in v0.3
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `box.go`, `usage.go`, `me.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, and usage in the header and in `/usage` in v0.3; the memory count, the profile nudge and `/me` in v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
@@ -38,14 +38,28 @@ Meru  direct · 0.91
 ╭──────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                       │
 ╰──────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /usage show usage
+enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /new /usage /me
 ```
 
 Once `merud` has answered the first status check, the header also says how big the
-search index is, and on a wide terminal how much you asked in the last hour:
+search index is and how many memories Meru keeps, and on a wide terminal how much
+you asked in the last hour:
 
 ```text
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB)           1h: 4 questions · 18k in · 2.1k out  ● connected
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories        1h: 4 questions · 18k in · 2.1k out  ● connected
+```
+
+While Meru knows nothing about you, the header says `no profile`, and the empty
+conversation says how to fix that:
+
+```text
+Meru मेरु lite · minicpm5:2b · 2637 docs · no profile                  ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+  Ask a question below. The answer comes from models on this machine.
+
+  Meru doesn't know you yet. Run meru setup user in another terminal, or tell it
+  about yourself in a message.
 ```
 
 When the model calls a tool, a dim line inside the Meru message tracks it. When the
@@ -73,8 +87,26 @@ o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
 Once the call ends, its line changes to `✓ mail.send · 80 ms`, or to
 `✗ mail.send · declined` when you said no.
 
-Type `/usage` and press Enter, and a box takes the conversation's place with one
-column per window of time:
+Type `/me` and press Enter, and a box takes the conversation's place with what Meru
+knows about you, the memories that go into every prompt:
+
+```text
+  ╭────────────────────────────────────────────────────────────────────────────╮
+  │ About you                                                                  │
+  │                                                                            │
+  │ me                                                                         │
+  │ Name: Dana Reyes                                                           │
+  │ Work: staff engineer on the registry team at Acme, in the platform group   │
+  │                                                                            │
+  │ preferences                                                                │
+  │ Answers: short, with bullet points                                         │
+  │                                                                            │
+  │ Say "remember that …" in a message, or run meru setup user in another      │
+  │ terminal.                                                                  │
+  ╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+`/usage` opens a box of the same kind, with one column per window of time:
 
 ```text
   ╭───────────────────────────────────────────────────────────────╮
@@ -207,6 +239,7 @@ type exchange struct {
 	route      string
 	confidence float64
 	fallback   bool
+	skills     []string // skills the turn loaded, from the route event
 	sources    []rpc.Citation
 	tools      []toolCall // the turn's tool calls, in order
 	answer     string    // raw text, grown token by token
@@ -301,7 +334,9 @@ never to store a context in a struct.
 
 - `session`: remember the ID. `submit` sends it with every later question, so `merud`
   continues the same conversation.
-- `route`: keep the route, its confidence, and whether the router fell back.
+- `route`: keep the route, its confidence, whether the router fell back, and the
+  names of the skills the turn loaded. `badge` draws them after the confidence,
+  as in `direct · 0.91 · writing`.
 - `sources`: keep the excerpts for the list under the answer.
 - `tool_call`: add a tool line. `tool_result`: `finishTool` finds the line with the
   same ID and fills in the outcome and the time.
@@ -321,15 +356,16 @@ help line.
 return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 ```
 
-`pane` is the conversation, or the usage box drawn at the same size while it is open.
+`pane` is the conversation, or the `/usage` or `/me` box drawn at the same size while
+one is open.
 `helpLine` lists the keys; while a box is open, it lists the keys that answer that
 box. `helpView` draws it and drops keys from the end until the line fits. The help
 component from Bubbles cuts a long line and ends it with "…" on its own, except
 when the keys that fit leave less than two columns: then it adds every key and the
 line runs off the screen.
 
-`header` puts the name, profile, model, the size of the search index and a short
-session ID on the left. `docCount` writes the size, such as
+`header` puts the name, profile, model, the size of the search index, the memory
+count, a `no profile` marker and a short session ID on the left. `docCount` writes the size, such as
 `2637 docs (11698 vectors, 84 MB)`, from the `IndexStatus` that `merud` sends: the
 document and vector counts, and `DBBytes`, the size of `meru.db` on disk. A
 `DBBytes` of 0 means an older `merud` didn't send it, so the size stays out:
@@ -338,12 +374,20 @@ by 1,024 as `ls -lh` does, and labels the units KB, MB and GB. The whole count s
 out until `merud` has answered once, so the header never shows a zero it hasn't
 checked.
 
+`memoryCount` writes `7 memories` from the same status, and nothing when `merud`
+sends -1, its way of saying it couldn't read the memory folder. When the status
+says `Profile` is 0, no memory of kind `me` or `preferences` exists, and `details`
+adds `no profile`. `noProfile` makes that call for the header and for the empty
+conversation, which adds the nudge under its usual hint.
+
 On the right sit the last hour's usage, dim, from `lastHour`
 (`1h: 4 questions · 18k in · 2.1k out`), and the connection status. When the
 terminal is narrow, the header gives things up in this order: the usage first,
 because `/usage` shows it in full; then the bracket with the vectors and size, whole,
-because cutting it mid-way would leave an open `(`; then the rest of the details
-shrink with an ellipsis, and last they disappear. The status always stays.
+because cutting it mid-way would leave an open `(`, and the memory count with it;
+then the rest of the details shrink with an ellipsis from the right, and last they
+disappear. `no profile` sits before the session ID, so it outlasts it: the marker
+asks you to do something, and the ID only labels the chat. The status always stays.
 
 `renderTurn` draws one turn. Under the "Meru" label come the tool lines first, one
 per call, dim, drawn by `toolText`: `→ notes.search` while the call runs, then
@@ -370,8 +414,7 @@ stats; "stopped"; or the error box.
 The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
 turn's `sources` field. It waits until the answer is finished, because
 `rpc.Cited` needs the whole text to see which numbers it cites; when it cites
-none, the block lists every excerpt the model read, unless the turn called a
-tool, in which case the block stays empty. `Citation.String`, shared
+none, the block stays empty. `Citation.String`, shared
 with `meru`, writes each line, and each wraps to the screen width.
 
 The answer stays raw while it streams for two reasons. Half-written Markdown renders
@@ -537,13 +580,13 @@ mark the selected choice, so the selection shows with colour off too. `View` swa
 the help line for a `keyList`, a slice of key bindings with the two methods the
 help component needs, so the bottom line lists the keys that answer the box.
 
-An approval box closes an open usage box: the approval needs the keys, and it sits in
-the conversation the usage box covers.
+An approval box closes an open `/usage` or `/me` box: the approval needs the keys,
+and it sits in the conversation those boxes cover.
 
 ### commands.go
 
 A line that starts with `/` never reaches the model; `submit` hands it to
-`command`. `/usage` opens the usage box (below). `/new` calls `newSession`, which
+`command`. `/usage` opens the usage box and `/me` the profile box (both below). `/new` calls `newSession`, which
 stops a streaming answer, clears the screen and forgets the session ID, so the next
 question asks `merud` for a new session. It also counts up `m.turn`: the stopped
 answer may still send events, and `handleEvent` drops any event whose turn number
@@ -569,7 +612,7 @@ other command it leaves the text in the input, so you can fix a typo, and sets
 `notice`, a dim line that takes the help line's place until the next key:
 
 ```text
-unknown command /usag · commands: /usage
+unknown command /usag · commands: /new, /usage, /me
 ```
 
 `applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A
@@ -585,13 +628,42 @@ alone. The recent windows say most about how you use Meru now, and `meru usage`
 prints every window at any width. The note on the local calendar wraps to the box.
 The box pads itself to the conversation's height, so the screen keeps its shape.
 
-`usageKey` closes the box on Esc or q. `handleKey` sends it every key except Ctrl-C
-and Ctrl-D, as it does for the approval box, so typing can't slip into the input.
+`boxKey`, in `box.go`, closes the box on Esc or q. `handleKey` sends it every key
+except Ctrl-C and Ctrl-D, as it does for the approval box, so typing can't slip into
+the input.
 
 `/usage` has no shortcut key. Ctrl-U would be the obvious one, but the text area
 already uses it to delete to the start of the line. The help line lists `/usage`
 through a key binding whose key is the text `/usage`, which no key press produces;
 Bubbles skips a binding with no keys at all.
+
+### box.go
+
+The `/usage` and `/me` boxes share their frame. `boxPane` draws a title, a blank
+line, the body, a blank line and a dim note inside a teal border, as wide as the
+widest line allows up to the pane's width, and pads the result to the pane's height.
+A body line too wide for the box ends in "…", so a caller that wants its lines whole
+wraps them to `boxRoom(width)` first. `boxOpen` says whether either box is open,
+`boxKey` handles the keys while one is, and `closeBox` closes it and gives the input
+its cursor back.
+
+### me.go
+
+`/me` works like `/usage`: `command` opens a `meBox` with `loading` set and returns
+`meCmd`, which asks `merud` for `OpMemoryList` and keeps the memories whose kind is
+in `rpc.ProfileKinds()`, `me` and `preferences`. Those are the memories `merud` puts
+into every prompt, so the box shows what the model knows about you before it
+searches anything. `applyMe` fills a waiting box and ignores a reply that comes after
+the box closed. `meBoxView` groups the memories under their kind, wraps each to the
+box, and ends with the two ways to add more: say "remember that …" in chat, or run
+`meru setup user`.
+
+The chat itself never writes a memory. Telling Meru something in a message goes
+through `merud`'s `remember` tool, like any tool call, and `meru setup user` runs in
+another terminal. The profile counts in the status move on the next status check,
+so the nudge and the `no profile` marker go away within 30 seconds of the first
+memory. `Update` redraws the conversation when a status check turns the nudge on or
+off.
 
 ### run.go
 
@@ -641,10 +713,12 @@ go test -race ./internal/tui/...
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
-streaming, a finished Markdown answer, a fallback route, an answer with sources, an
+streaming, a finished Markdown answer, a fallback route, a route badge with a
+skill, an answer with sources, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
-and 40 columns, the header with usage and index size at 120, 80 and 60 columns, and
-the usage box at 80 and 40 columns. After a deliberate change to the look, rewrite them and read the
+and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
+usage box and the `/me` box at 80 and 40 columns, and the empty screen with the
+profile nudge. After a deliberate change to the look, rewrite them and read the
 diff:
 
 ```sh
@@ -672,7 +746,14 @@ closes the box and stops the turn, and that a request from a stopped turn gets
 request is `OpUsage` and no question goes to the model. It checks each key while the
 box is open, that an unknown `/command` sends nothing, what an unreachable and an
 older `merud` do to the header, and, one column at a time from 140 down to 30, that
-the header gives up the usage before the index size and never cuts a bracket.
+the header gives up the usage before the index size, drops the memory count with
+the bracket, and never cuts a bracket.
+
+`me_test.go` checks `/me` the same way: the request is `OpMemoryList`, the box shows
+only the profile kinds, it says so when Meru knows nothing or `merud` fails, and Esc
+or q closes it. It also walks the profile counts through a run (no status, -1, 0,
+then some) and checks that the nudge and the header marker follow them, and that
+the marker stays once a question has replaced the nudge.
 
 ## Why it's built this way
 

@@ -327,9 +327,11 @@ sequenceDiagram
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, unless you already approved that tool for this session. `configure` asks every time |
 | When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
 
-Only the `tools` and `search+tools` routes offer tools. On `direct` and `search`,
-`merud` sends the model no tool schemas at all. The model can't call a tool it
-hasn't seen, and the prompt stays shorter.
+The `tools` and `search+tools` routes offer every allowed tool. `search` offers
+only the three read-only file tools, `read_file`, `list_folder` and `grep`: a
+question such as "write about everything in my work folder" lands there, and ten
+excerpts can't cover a folder. `direct` offers none. The model can't call a tool
+it hasn't seen, and the prompt stays shorter.
 
 ### Approving a tool call
 
@@ -359,12 +361,26 @@ and arguments and offers the choices `merud` sends, at most these three:
 
   ```toml
   [builtin]
-  confirm = []   # the shipped default; from v0.4, add "remember" or "write_file" here
+  confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
-  v0.3 has one built-in tool, `configure`, which always asks, whatever this list
-  says (see [First run and setup](#first-run-and-setup)). `remember` and
-  `write_file` arrive with memory and skills in v0.4.
+  The built-in tools are `configure`, which always asks, whatever this list says
+  (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
+  memory without asking unless you list it here; `write_file`, which asks
+  before each file it saves because the shipped list names it; and three
+  read-only file tools that run without asking unless you list them:
+
+  | Tool | What it returns |
+  | --- | --- |
+  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. |
+  | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
+  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
+
+  The file tools reach only the `[index] folders`, and they skip what the
+  indexer skips (see [What stays out](#what-stays-out)): they never follow a
+  symlink, and they refuse secret, hidden, ignored, binary and oversized files
+  with the indexer's reason. They read nothing that search couldn't already
+  put in the prompt. `merud` leaves them out when no folder is listed.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -514,13 +530,37 @@ order.
    the question, with an earlier question appended on a follow-up. No model
    rewrites the query. The `tools` route searches too: the router sends some
    questions about your files there, and an answer from the files beats one from
-   the model alone. Two rules then adjust the route (see [Routing](#routing)): a
-   `direct` question that names an indexed folder becomes `search`, and a
-   question that names a connected tool server gets tools. From v0.4, a separate
+   the model alone. Three rules then adjust the route (see [Routing](#routing)):
+   a `direct` question that names an indexed folder becomes `search`, a
+   question that names a connected tool server gets tools, and so does a
+   question that says "remember". From v0.4, a separate
    short call picks the skills to load.
-2. **Build the context.** System prompt, skill descriptions, relevant memories,
-   retrieved chunks, this session's history and, on the `tools` and `search+tools`
-   routes, the allowed tools' schemas, each within its own token budget.
+2. **Build the context.** The system prompt puts the parts that stay the same
+   from turn to turn first: the configured prompt, the rule that "I" means the
+   user, today's date (a model knows only its training data, so without it a trip
+   that ended last week reads as one still to come), your profile, the note on your folders, the tools note, and the list of
+   skills. The parts each question changes come after: recalled memories, the
+   picked skills' instructions, and file excerpts with earlier conversations.
+   Ollama reuses its work on a prompt's opening until the first token that
+   differs, so this order lets a follow-up reprocess only the changing parts, the
+   history and the question. Each part has its own cap, in characters (a token is
+   about four):
+
+   | Part | Cap | Past the cap |
+   | --- | --- | --- |
+   | Profile (`me`, `preferences`) | 2,000 | the oldest facts drop |
+   | Recalled memories | 2,400 | the lowest-ranked drop |
+   | Skill instructions | 12,000 | the first skill stays whole; the second is cut |
+   | Earlier conversations | 2,400 | the lowest-ranked drop |
+   | History | 8,000 | the oldest turns drop, each question with its answer |
+
+   File excerpts need no cap of their own: a search keeps 10 chunks of about 500
+   tokens. The caps keep one part from crowding out the others; a `lite` turn
+   uses well under a tenth of the model's 131k-token window. On the `tools` and
+   `search+tools` routes the model also gets the allowed tools' schemas; on
+   `search` it gets the three file tools' schemas, and a note that says it may
+   read whole files, list folders and grep when the excerpts fall short.
+   `meru.context.tokens` records each part's size per turn, to tune the caps by.
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
    client about each call with a `tool_call` event.
@@ -605,7 +645,7 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
-Two rules override the router, in this order. The first: when it picks `direct` and
+Three rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
 in the prompt, the router sent "what database does Meru use to store its index?" to
@@ -617,7 +657,7 @@ any case, and skips names under three letters. "hey meru, what's the capital of
 France" searches too, because the assistant shares its name with the folder.
 
 The second: when the question names a connected MCP server or A2A agent as a whole
-word, and the route offers no tools, the agent loop adds them. `direct` becomes
+word, and the route offers at most the file tools, the agent loop adds the rest. `direct` becomes
 `tools`, and `search` becomes `search+tools`. The names come from the tools
 `dispatch` offers, such as "obsidian" from `obsidian.search_vault` and "research"
 from `a2a.research.summarize`, and the loop reads them on each turn, because
@@ -627,6 +667,11 @@ router sent "Search my Obsidian vault for notes mentioning 'AI'" to `search` at
 0.65; with no tools offered, the model said it couldn't search the vault. With the
 rule it listed the vaults, searched one and answered. A wrong guess costs a prompt
 that holds the tool schemas.
+
+The third: when the question holds "remember" as a whole word and the route offers
+at most the file tools, the loop adds the rest, so the model can call `remember`. "Remember that I
+work on the registry team" reads like chit-chat to the router, and a `direct` turn
+would answer "noted" and save nothing.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
 135 questions, 40 of them held out, and fits the temperature. At 1.25 the
@@ -710,8 +755,9 @@ files with mode `0600`, so only you can read them.
 | `sessions` / `messages` (v0.4) | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
+| `summary_fts` (v0.4) | keyword index over session summaries | session summaries |
 | `tool_calls` | audit log: every MCP, A2A and built-in tool call, with its call ID, session, `kind` (`mcp`, `a2a` or `builtin`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
-| `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
+| `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration and files) |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
@@ -719,9 +765,9 @@ files with mode `0600`, so only you can read them.
 
 v0.2 built `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`, and v0.3
 added `tool_calls`. Each other table arrives with the milestone marked beside it.
-Replaying transcripts into `messages` and `message_fts` waits for v0.4, where
-session summaries need it; until then the JSONL files are the only copy of a
-conversation.
+v0.4 replays the transcripts into `sessions`, `messages` and their indexes: at
+startup, after each turn and after each summary. `sessions` records how many bytes
+of each file it has read, so a replay reads only the lines added since the last one.
 
 `tool_calls` is mandatory. An assistant with tools that change things needs a record
 you can read afterwards. `dispatch` writes a row as each call ends, and `meru log`
@@ -732,10 +778,12 @@ no `tool_result` line, because `merud` stopped mid-call, gets the outcome
 can jump from a slow trace in Grafana to the rows it produced, and back.
 
 When the embedding model's name or vector size in `meta` stops matching config, the
-store deletes every row of `chunk_vec` and keeps `documents` and `chunks`. Keyword
-search keeps working while the indexer re-embeds. The store reports the gap by
-counting chunks that lack a vector (`NeedsReembed`), so the count stays right if
-`merud` stops halfway through.
+store deletes every row of `chunk_vec`, `memory_vec` and `session_vec` and keeps
+`documents`, `chunks`, `memories` and `sessions`. Keyword search keeps working while
+the indexer re-embeds. The store reports the gap by counting chunks that lack a
+vector (`NeedsReembed`), so the count stays right if `merud` stops halfway through.
+The memory syncer re-embeds each memory that lacks a vector, and the summarizer
+does the same for each summary.
 
 ### Why this driver and this vector store
 
@@ -985,11 +1033,11 @@ Meru indexes.
 Before the first token, `merud` sends the client a `sources` event that lists each
 excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
-same list under the answer. Both list only the sources the answer cites. When it
-cites none, as a small model sometimes forgets to, they list every source the prompt
-held, with one exception: on a turn that called a tool, they list none. That
-answer may come from the tool's result, and in a live test an answer built from an
-Obsidian search listed ten unrelated repo files as its sources.
+same list under the answer. Both list only the sources the answer cites, and an
+answer that cites none gets no list: the model decides when a source matters. An
+earlier rule listed every excerpt when the answer cited none, in case a small model
+forgot to cite; in use it printed ten unrelated files under general answers and
+under an answer built from an Obsidian search.
 
 ```text
 The Q3 budget for the garden project is 4,200 dollars [1].
@@ -998,10 +1046,9 @@ Sources:
 [1] ~/notes/garden.md, "Budget", lines 3–5
 ```
 
-With a tiny index, every chunk lands in the top 10, so an answer that cites nothing
-and called no tool lists every file. A minimum fused score, or keeping fewer than 10
-chunks, would trim that list; choosing either waits for measurements (see [Open
-questions](#open-questions)).
+With a tiny index, every chunk lands in the top 10. A minimum fused score, or
+keeping fewer than 10 chunks, would shorten the prompt; choosing either waits for
+measurements (see [Open questions](#open-questions)).
 
 ---
 
@@ -1059,11 +1106,25 @@ Meru keeps no index file. The database already indexes the files, and
 - **Episodes** (what happened when) already live in the session transcripts, so
   memory files don't copy them. When a session ends, `merud` asks the `fast` model for
   a one- or two-sentence summary and appends it to the transcript as a `summary`
-  line. The indexer embeds those summaries, so "what did we decide about the
-  portfolio last week?" finds the right session.
+  line. A session ends when it has had no question for `[agent] summary_idle` (30
+  minutes by default); a session that goes on later gets a new summary, and the
+  newest wins. `merud` embeds each summary into `session_vec`, so "what did we
+  decide about the portfolio last week?" finds the right session. On the routes that
+  search files, the prompt gets up to three past sessions under "From earlier
+  conversations", each with its date, summary and best-matching message.
 
 ### How Meru uses them
 
+0. **Your profile, in every prompt.** Every file in `me/` and `preferences/` goes
+   into the system prompt of every turn, under "What you know about the user",
+   up to 2,000 characters; past that, the newest files win and the rest wait
+   for recall. These are the facts Meru should never have to search for: your
+   name, your work, where you live, how you like answers. Without them, the
+   model can't tell whether "Sam" in a letter is you or someone you know.
+   `meru setup user` asks for them one at a time and saves each as a memory,
+   and you can add more in chat ("remember that I work on the registry team").
+   While both folders are empty, `meru chat` says Meru doesn't know you yet and
+   points at `meru setup user`.
 1. **Indexing.** The indexer treats `~/.meru/memory/` like any folder you index: each
    file gets a vector and a keyword entry. It picks up hand edits through the usual
    mtime and content-hash check.
@@ -1076,7 +1137,8 @@ Meru keeps no index file. The database already indexes the files, and
    a folder and the text. The call goes through `dispatch` like any other tool, so it
    lands in `tool_calls` and the transcript. Memories save without asking; add
    `remember` to `builtin.confirm` in `config.toml` if you want to approve each one.
-4. **Your commands.** `meru memory list | add | forget` work on the files.
+4. **Your commands.** `meru memory list | add | forget` work on the files,
+   through `merud`, which owns the memory folder.
 
 If Meru believes something wrong about you, you can find the file and fix or delete
 it. A vector blob you can't read would leave you no way to audit or correct it.
@@ -1152,7 +1214,10 @@ own the first time you run `meru`.
    skills yet.
 4. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
-5. **A test question.** When `merud` runs, Meru asks it one question so you see it
+5. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
+   name, your work, where you live and how you like answers, and saves each as a
+   memory (see [Memory](#memory)).
+6. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new server or a new
    `config.toml` takes a restart of `merud`.
 
@@ -1451,7 +1516,10 @@ rpc.request                       op, source, question length
 A turn on the `direct` route has no `meru.search`, unless the question names an
 indexed folder. A turn on `direct` or `search` has no tool spans, and one
 `gen_ai.chat main`. The calls of one round run at the same time, so their
-`meru.dispatch` spans overlap. v0.4 adds memories under `meru.retrieve`.
+`meru.dispatch` spans overlap. v0.4 adds memories under `meru.retrieve`, and a
+`meru.retrieve.sessions` span under `meru.turn` for past sessions. Each session
+summary is a trace of its own: `meru.summarize`, with the fast model's
+`gen_ai.chat` inside.
 
 Indexing has traces of its own, apart from any turn. A scan of every folder is one
 `meru.index.scan` span (folders, whether it re-embeds, and the counts it ends with),
@@ -1507,10 +1575,10 @@ for the rest.
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |
 | `meru.turn.iterations` | histogram | route | loop depth |
-| `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
+| `meru.context.tokens` | histogram | section (system/skills/memories/sessions/chunks/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
-| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | retrieval cost (v0.2; memories stage v0.4) |
+| `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories/sessions) | retrieval cost (v0.2; memories and sessions stages v0.4) |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
 
@@ -1585,7 +1653,9 @@ transcript lines hold. No level writes question or answer text. With
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
 - The indexer reads only the folders you list, never follows a symlink, and never
-  indexes a file that looks like a secret.
+  indexes a file that looks like a secret. The file tools, `read_file`,
+  `list_folder` and `grep`, apply the same rules through the indexer's own code,
+  so the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
 
 ---
@@ -1620,8 +1690,10 @@ We'll settle these with working code and measurements.
    alex that I'm on my way" to search. Next:
    label real turns from transcripts, refit, and decide whether `lite` needs a
    larger `fast` model for tool-heavy use.
-2. **Context order.** Skills, memories and retrieved chunks compete for the same
-   window. `meru.context.tokens` will supply the numbers to set a budget per section.
+2. **Context caps.** v0.4 sets a cap per part of the prompt and orders the parts
+   for Ollama's prompt reuse (see [Agent loop](#agent-loop), step 2). The caps are
+   first guesses; `meru.context.tokens` will show whether any part runs into its
+   cap often.
 3. **PDF extraction.** v0.2 reads each page's plain text with a pure-Go library and
    keeps no layout, so tables and columns come out as running text. A scanned PDF
    with no text layer yields nothing. Local tools that keep layout are weak, and Go
@@ -1639,12 +1711,11 @@ We'll settle these with working code and measurements.
    [Why this driver and this vector store](#why-this-driver-and-this-vector-store)).
    That fits a personal index. If search must get faster, use fewer dimensions or
    compute distances in Go.
-6. **How many sources to show.** Each search keeps the top 10 chunks, and with a
-   tiny index that is every chunk. When the model cites nothing on a turn without
-   tool calls, the clients list every source the prompt held, which can be every
-   file you indexed (see
-   [Citations](#citations)). A minimum fused score or fewer than 10 chunks would
-   fix it; measurements from real questions will pick one.
+6. **How many excerpts to keep.** Each search keeps the top 10 chunks, and with a
+   tiny index that is every chunk, so the prompt carries excerpts that don't help.
+   The clients list only the sources an answer cites (see [Citations](#citations)),
+   so this costs prompt length, not a noisy list. A minimum fused score or fewer
+   than 10 chunks would fix it; measurements from real questions will pick one.
 
 ### Resolved
 

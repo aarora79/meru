@@ -156,6 +156,22 @@ func TestGenerateRequestDefaults(t *testing.T) {
 	}
 }
 
+// TestGenerateNoThink checks that NoThink alone sends "think": false.
+func TestGenerateNoThink(t *testing.T) {
+	f := newFakeOllama(t, map[string]route{"/api/chat": {200, `{"message":{"content":"none"},"done":true}`}})
+	e := newTestEngine(t, f, "")
+	if _, err := e.Generate(context.Background(), nil, nil, Options{Model: "m", NoThink: true}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	body := f.body(t, "/api/chat")
+	if body["think"] != false {
+		t.Errorf("request think = %#v, want false", body["think"])
+	}
+	if _, ok := body["logprobs"]; ok {
+		t.Error("NoThink alone asked for log probabilities")
+	}
+}
+
 func TestGenerateToolsAndToolCalls(t *testing.T) {
 	reply := `{"message":{"role":"assistant","content":"","tool_calls":[
 		{"id":"abc","function":{"index":0,"name":"get_weather","arguments":{"city":"Paris"}}}]},

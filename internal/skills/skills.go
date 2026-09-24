@@ -154,25 +154,36 @@ func loadSkill(folder, folderName string) (Skill, error) {
 // splits it into frontmatter fields and body. It fails when the file can't be
 // read, is too large, or doesn't parse.
 func readSkillFile(path string) (map[string]string, string, error) {
-	f, err := os.Open(path) // #nosec G304 -- a SKILL.md inside the skills directory
+	data, err := readLimited(path)
 	if err != nil {
-		return nil, "", fmt.Errorf("open %s: %w", fileName, err)
-	}
-	// defer runs f.Close() when this function returns, on every path.
-	defer f.Close()
-	// Read one byte past the limit: getting it back means the file is too big.
-	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
-	if err != nil {
-		return nil, "", fmt.Errorf("read %s: %w", fileName, err)
-	}
-	if len(data) > maxFileBytes {
-		return nil, "", fmt.Errorf("%s is over the %d KiB limit", fileName, maxFileBytes>>10)
+		return nil, "", err
 	}
 	fields, body, err := parseFrontmatter(data)
 	if err != nil {
 		return nil, "", fmt.Errorf("%s: %w", fileName, err)
 	}
 	return fields, body, nil
+}
+
+// readLimited reads the SKILL.md at path, refusing a file over
+// maxFileBytes. It fails when the file can't be opened or read, or is too
+// large.
+func readLimited(path string) ([]byte, error) {
+	f, err := os.Open(path) // #nosec G304 -- a SKILL.md inside the skills directory
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", fileName, err)
+	}
+	// defer runs f.Close() when this function returns, on every path.
+	defer f.Close()
+	// Read one byte past the limit: getting it back means the file is too big.
+	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", fileName, err)
+	}
+	if len(data) > maxFileBytes {
+		return nil, fmt.Errorf("%s is over the %d KiB limit", fileName, maxFileBytes>>10)
+	}
+	return data, nil
 }
 
 // Dir returns the directory the registry was loaded from.
@@ -210,6 +221,22 @@ func (r *Registry) Get(name string) (Skill, bool) {
 	}
 	s.Extra = maps.Clone(s.Extra)
 	return s, true
+}
+
+// File returns the whole SKILL.md of the skill called name, header and all,
+// as it is on disk now, for `meru skills show`. It fails with ErrNotFound
+// for an unknown name, and when the file can't be read or has grown past
+// the size limit.
+func (r *Registry) File(name string) (string, error) {
+	s, ok := r.skills[name]
+	if !ok {
+		return "", fmt.Errorf("%w: %q", ErrNotFound, name)
+	}
+	data, err := readLimited(s.Path)
+	if err != nil {
+		return "", fmt.Errorf("skill %s: %w", name, err)
+	}
+	return string(data), nil
 }
 
 // Body reads the instructions of the skill called name from disk and returns

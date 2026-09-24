@@ -109,6 +109,80 @@ func migrations() []string {
 		);
 		CREATE INDEX turns_ts ON turns (ts);
 		CREATE INDEX turns_session ON turns (session);`,
+
+		// 4: sessions, messages and their search indexes (v0.4), so a turn
+		// can recall past conversations. ReplaySessions fills them from
+		// the transcripts; sessions.go explains how.
+		//
+		// sessions has one row per transcript file. summary is the newest
+		// summary line's text, "" until merud writes one. path and bytes
+		// are replay bookkeeping: the file, and how many of its bytes the
+		// tables already hold, so a replay reads only the lines after them.
+		//
+		// messages holds the user and assistant lines. message_fts is an
+		// external content table over its text, as chunk_fts is over chunks.
+		// summary_fts keeps its own copy of each summary: one short line
+		// per session, and sessions has a text key, which an external
+		// content table can't use as its rowid.
+		//
+		// session_vec holds one vector per summary, stored like chunk_vec.
+		`CREATE TABLE sessions (
+			id         TEXT PRIMARY KEY,
+			started    TEXT NOT NULL,
+			last       TEXT NOT NULL,
+			turns      INTEGER NOT NULL DEFAULT 0,
+			summary    TEXT NOT NULL DEFAULT '',
+			summary_ts TEXT NOT NULL DEFAULT '',
+			path       TEXT NOT NULL DEFAULT '',
+			bytes      INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE INDEX sessions_last ON sessions (last);
+		CREATE TABLE messages (
+			id       INTEGER PRIMARY KEY,
+			session  TEXT NOT NULL,
+			ts       TEXT NOT NULL,
+			role     TEXT NOT NULL,
+			text     TEXT NOT NULL,
+			trace_id TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX messages_session ON messages (session);
+		CREATE VIRTUAL TABLE message_fts USING fts5(
+			text, content='messages', content_rowid='id'
+		);
+		CREATE VIRTUAL TABLE summary_fts USING fts5(session UNINDEXED, summary);
+		CREATE TABLE session_vec (
+			session TEXT PRIMARY KEY,
+			vector  BLOB NOT NULL
+		);`,
+
+		// 5: memories, their vectors and their keyword index (v0.4).
+		//
+		// One row per memory file, keyed by the memory ID
+		// ("people/sam-is-my-manager.md"), which the memory folder's
+		// syncer (index.Memories) keeps in step with the files. A memory is
+		// one short fact, so it gets one row and one vector, with no chunks.
+		// memory_vec and memory_fts mirror chunk_vec and chunk_fts: a plain
+		// vector table keyed by the row ID, and an external-content FTS5
+		// table over text. created and mtime use the fixed-width form
+		// sortableTime writes, so ORDER BY on the text sorts by time.
+		`CREATE TABLE memories (
+			id      INTEGER PRIMARY KEY,
+			mem_id  TEXT NOT NULL UNIQUE,
+			kind    TEXT NOT NULL,
+			text    TEXT NOT NULL,
+			created TEXT NOT NULL DEFAULT '',
+			source  TEXT NOT NULL DEFAULT '',
+			mtime   TEXT NOT NULL,
+			hash    TEXT NOT NULL
+		);
+		CREATE INDEX memories_recent ON memories (created, mtime);
+		CREATE TABLE memory_vec (
+			memory_id INTEGER PRIMARY KEY REFERENCES memories(id),
+			vector    BLOB NOT NULL
+		);
+		CREATE VIRTUAL TABLE memory_fts USING fts5(
+			text, content='memories', content_rowid='id'
+		);`,
 	}
 }
 
@@ -155,8 +229,12 @@ func (s *Store) migrate(ctx context.Context) error {
 
 // checkVectors makes sure the stored vectors came from model with dims
 // numbers each. Vectors from two models don't compare, so when either
-// changed since the last run, it deletes every vector. Documents and chunks
-// stay, so keyword search still works, and NeedsReembed reports the gap.
+// changed since the last run, it deletes every vector: of chunks, of
+// memories and of session summaries. Documents, chunks, memories and
+// summaries stay, so keyword search still works. NeedsReembed reports the
+// gap in chunks, MemoryIDs reports each memory with no vector, so the
+// syncer embeds it again, and SummariesWithoutVector does the same for the
+// summarizer.
 func (s *Store) checkVectors(ctx context.Context, model string, dims int) error {
 	return s.write(ctx, func(tx *sql.Tx) error {
 		oldModel, err := getMeta(ctx, tx, "embed_model")
@@ -170,7 +248,8 @@ func (s *Store) checkVectors(ctx context.Context, model string, dims int) error 
 		if oldModel == model && oldDims == strconv.Itoa(dims) {
 			return nil
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM chunk_vec`); err != nil {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM chunk_vec; DELETE FROM memory_vec; DELETE FROM session_vec`); err != nil {
 			return fmt.Errorf("drop old vectors: %w", err)
 		}
 		if err := setMeta(ctx, tx, "embed_model", model); err != nil {

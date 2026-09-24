@@ -1,7 +1,7 @@
 // This file defines the store's API: the Store type, the types the indexer,
 // retrieval and the agent share, and Open and Close. The SQL behind the
-// other methods lives in schema.go, documents.go, search.go, toolcalls.go
-// and turns.go.
+// other methods lives in schema.go, documents.go, search.go, toolcalls.go,
+// turns.go and memories.go.
 
 package store
 

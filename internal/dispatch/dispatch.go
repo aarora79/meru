@@ -109,3 +109,27 @@ type Outcome struct {
 	Outcome  string
 	Duration time.Duration
 }
+
+// sessionKey is the key under which Dispatch puts the call's session on
+// the context it hands a backend. An unexported struct type as the key
+// means no other package can read or overwrite the value by accident.
+type sessionKey struct{}
+
+// withSession returns a copy of ctx that carries the session ID.
+func withSession(ctx context.Context, session string) context.Context {
+	return context.WithValue(ctx, sessionKey{}, session)
+}
+
+// SessionFrom returns the session of the call a backend is running, or ""
+// outside a call or for a call with no session.
+//
+// Backend.Call takes no session, and only the remember tool needs one, to
+// record which session a memory came from. Adding a parameter would change
+// every backend for that one tool, so Dispatch puts the session on the
+// call's context instead. ctx.Value returns an any, Go's empty interface;
+// the ", ok" form of the type assertion gives "" rather than a panic when
+// the value is missing.
+func SessionFrom(ctx context.Context) string {
+	s, _ := ctx.Value(sessionKey{}).(string)
+	return s
+}

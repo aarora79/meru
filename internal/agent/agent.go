@@ -73,8 +73,13 @@ const noResults = "A search of the user's files found nothing relevant to this q
 // Searcher finds the excerpts from the user's files that best answer query,
 // best first. merud passes an adapter around retrieve.Search; tests pass a
 // fake. It fails when the embedding or the store fails.
+//
+// SearchSessions finds the n past sessions that best match query, best
+// first, leaving out the session excludeSession; merud's adapter calls
+// retrieve.SearchSessions. See earlier.go.
 type Searcher interface {
 	Search(ctx context.Context, query string) ([]retrieve.Result, error)
+	SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error)
 }
 
 // Router picks a route for one turn. The agent defines the interface with
@@ -109,11 +114,14 @@ type Agent struct {
 	search      Searcher     // nil turns search off
 	tools       ToolRunner   // nil turns tools off
 	turns       TurnRecorder // nil keeps no turn rows
+	profile     Profile      // nil leaves the profile out of the prompt
+	skills      Skills       // nil turns skills off; set by UseSkills
 	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
-	system      string       // system prompt
+	system      string       // system prompt, with whoIsWho; the profile follows it
+	filesNote   string       // filesNote for the [index] folders; follows the profile
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
 	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
@@ -124,11 +132,13 @@ type Agent struct {
 // search on every route but "direct", and on a direct question that names
 // one of cfg.Index.Folders. search may be nil, which turns search off. It
 // offers the model the tools from tools on the "tools" and "search+tools"
-// routes, for at most cfg.Agent.MaxRounds model calls per turn. tools may be
+// routes, and only the file tools on "search", for at most
+// cfg.Agent.MaxRounds model calls per turn. tools may be
 // nil, which turns tools off. It writes a row for each answered turn to
-// turns, which may be nil to keep none. log may be nil, which means no log
-// lines.
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent {
+// turns, which may be nil to keep none. It puts the user's profile from
+// profile into every prompt; a nil profile leaves it out. log may be nil,
+// which means no log lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, profile Profile, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
 	}
@@ -141,7 +151,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
-	system += "\n\n" + whoIsWho + "\n\n" + filesNote(cfg.Index.Folders)
+	system += "\n\n" + whoIsWho
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
@@ -150,11 +160,13 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		search:      search,
 		tools:       tools,
 		turns:       turns,
+		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
+		filesNote:   filesNote(cfg.Index.Folders),
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
 		home:        home,
 		log:         log,
@@ -248,7 +260,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	dec, err := a.route(ctx, question, history)
+	dec, picked, err := a.routeAndPick(ctx, question, history)
 	if err != nil {
 		return err
 	}
@@ -262,17 +274,28 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		dec.Route = "search"
 	}
 	// The same gap for tools: "search my obsidian vault" can route to
-	// search, which offers no tools. When a question names a connected tool
-	// server and the route has no tools, add them.
+	// search, which offers only the file tools. When a question names a
+	// connected tool server and the route lacks the full set, add them.
 	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
 		a.log.DebugContext(ctx, "route changed: the question names a tool server",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
+	// And for memory: the router can send "remember that my name is Dana"
+	// to direct, and a direct turn offers no remember tool, so the model
+	// would say it will remember and save nothing. When the question holds
+	// "remember" as a whole word and the route has no tools, add them. A
+	// wrong guess ("do you remember the budget?") costs a prompt that holds
+	// the tool schemas, and the model need not call any.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksToRemember(question, a.tools.Tools()) {
+		a.log.DebugContext(ctx, "route changed: the question asks Meru to remember",
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
-	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok"}
+	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
 	if err := emit(routeEv); err != nil {
 		return err
 	}
@@ -294,9 +317,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				return err
 			}
 		}
+		// Past sessions join the files' section: no numbers, no sources event.
+		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
-	msgs := a.prompt(ctx, history, question, files, len(specs) > 0)
+	memories := a.memorySection(ctx, searchQuery(question, history))
+	skillList, skillBodies := a.skillsSection(ctx, picked)
+	msgs := a.prompt(ctx, history, question, sections{
+		memories: memories, skillList: skillList, skillBodies: skillBodies,
+		files: files, toolsNote: noteFor(specs),
+	})
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
@@ -716,21 +746,55 @@ func shortPath(home, p string) string {
 }
 
 // prompt builds the messages for the main model inside a meru.prompt span,
-// and reports their size. files is the "From your files" section for a turn
-// that searched, or "" for one that didn't. tools is true on a turn that
-// offers tools, and adds toolsNote to the system prompt. est_tokens is
+// and reports their size. The system prompt holds, in order (budget.go
+// explains why):
+//
+//   - the parts that stay the same from turn to turn: the configured prompt
+//     with whoIsWho, the user's profile, filesNote, the tools note on a
+//     turn that offers tools, and the list of skills;
+//   - the parts each question changes: the recalled memories, the picked
+//     skills' instructions, and the excerpts from the user's files with any
+//     earlier conversations.
+//
+// The profile sits right after whoIsWho, so the rule that "I" means the user
+// and the facts about who the user is read together. The recalled memories
+// stay apart from the numbered excerpts, so the model never cites a memory
+// as a file.
+//
+// The history is cut to maxHistoryChars, oldest turns first. est_tokens is
 // characters divided by four, a rough rule for English text; the model's
 // own count arrives with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string, tools bool) []engine.Message {
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string, sec sections) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
+	// add appends one section, leaving out an empty one.
 	system := a.system
-	if tools {
-		system += "\n\n" + toolsNote
+	add := func(part string) {
+		if part != "" {
+			system += "\n\n" + part
+		}
 	}
-	if files != "" {
-		system += "\n\n" + files
+	add(today(time.Now()))
+	profile := a.profileSection(ctx)
+	add(profile)
+	add(a.filesNote)
+	add(sec.toolsNote)
+	add(sec.skillList)
+	add(sec.memories)
+	add(sec.skillBodies)
+	add(sec.files)
+	recordMemoryTokens(ctx, profile, sec.memories)
+
+	history, dropped := trimHistory(history, maxHistoryChars)
+	if dropped > 0 {
+		a.log.DebugContext(ctx, "history cut to its budget", "dropped_messages", dropped, "cap_chars", maxHistoryChars)
 	}
+	historyChars := 0
+	for _, m := range history {
+		historyChars += utf8.RuneCountInString(m.Content)
+	}
+	obs.RecordContextTokens(ctx, "history", historyChars/4)
+
 	msgs := buildMessages(system, history, question)
 	chars := 0
 	for _, m := range msgs {

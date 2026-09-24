@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/skills"
 	"github.com/aarora79/meru/internal/testutil/fakeollama"
 	"github.com/aarora79/meru/internal/transcript"
 )
@@ -184,6 +185,11 @@ type home struct {
 //
 // It uses os.MkdirTemp rather than t.TempDir: t.TempDir's path includes the
 // test's name, and macOS caps a Unix socket path at 104 bytes.
+//
+// It also makes an empty skills/<name> folder for each built-in skill, so
+// merud installs none. With skills, each turn's skill pick calls the fast
+// model while the router does, and the two race for the replies and
+// failures a test queues for the router.
 func newHome(t *testing.T) *home {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "meru-e2e-")
@@ -191,6 +197,11 @@ func newHome(t *testing.T) *home {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	for _, name := range skills.Builtins() {
+		if err := os.MkdirAll(filepath.Join(dir, "skills", name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return &home{
 		dir:    dir,
 		config: filepath.Join(dir, "config.toml"),

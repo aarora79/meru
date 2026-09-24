@@ -1,6 +1,6 @@
-// This file chunks PDFs: it pulls the text out of each page with the
-// pure-Go ledongthuc/pdf reader and packs each page's paragraphs on their
-// own, so every chunk knows its page.
+// This file reads PDFs: it pulls the text out of each page with the
+// pure-Go ledongthuc/pdf reader, and chunks each page's paragraphs on
+// their own, so every chunk knows its page.
 
 package index
 
@@ -23,17 +23,42 @@ var errNoText = errors.New("pdf has no text layer (a scan?)")
 // has no reliable paragraph marks, so paragraphs here are whatever blank
 // lines the extractor produced; pack splits long runs at line breaks.
 //
+// It fails when pdfPages fails, or when the file holds no text at all. The
+// caller skips such a file and logs why.
+func chunkPDF(data []byte, lim limits) ([]store.Chunk, error) {
+	pages, err := pdfPages(data)
+	if err != nil {
+		return nil, err
+	}
+	var chunks []store.Chunk
+	for i, text := range pages {
+		pageChunks := toChunks(text, pack(text, paragraphs(text, span{0, len(text)}), lim), "", nil)
+		for j := range pageChunks {
+			pageChunks[j].Page = i + 1
+		}
+		chunks = append(chunks, pageChunks...)
+	}
+	if len(chunks) == 0 {
+		return nil, errNoText
+	}
+	return chunks, nil
+}
+
+// pdfPages returns the plain text of each page of data, page 1 first. A
+// page with no content comes back as "". ReadText and chunkPDF both use it,
+// so the file tools see the same text the index holds.
+//
 // It fails when the file isn't a PDF the library can read, is encrypted, or
-// holds no text at all. The caller skips such a file and logs why.
+// has a page whose text can't be pulled out.
 //
 // PDF parsing is the least tested path in the indexer: the library panics
-// on some malformed files instead of returning an error, so chunkPDF
+// on some malformed files instead of returning an error, so pdfPages
 // recovers from a panic and reports it as an error. A deferred function
 // that calls recover() stops a panic from crashing merud.
-func chunkPDF(data []byte, lim limits) (chunks []store.Chunk, err error) {
+func pdfPages(data []byte) (pages []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			chunks, err = nil, fmt.Errorf("read pdf: parser failed: %v", r)
+			pages, err = nil, fmt.Errorf("read pdf: parser failed: %v", r)
 		}
 	}()
 	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
@@ -43,20 +68,14 @@ func chunkPDF(data []byte, lim limits) (chunks []store.Chunk, err error) {
 	for n := 1; n <= r.NumPage(); n++ {
 		page := r.Page(n)
 		if page.V.IsNull() {
+			pages = append(pages, "")
 			continue
 		}
 		text, err := page.GetPlainText(nil)
 		if err != nil {
 			return nil, fmt.Errorf("read pdf page %d: %w", n, err)
 		}
-		pageChunks := toChunks(text, pack(text, paragraphs(text, span{0, len(text)}), lim), "", nil)
-		for i := range pageChunks {
-			pageChunks[i].Page = n
-		}
-		chunks = append(chunks, pageChunks...)
+		pages = append(pages, text)
 	}
-	if len(chunks) == 0 {
-		return nil, errNoText
-	}
-	return chunks, nil
+	return pages, nil
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/index"
+	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/router"
 	"github.com/aarora79/meru/internal/rpc"
@@ -119,10 +120,11 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 
 // serve does the work between reading config and shutting down: telemetry,
 // the engine, the runtime check, claiming the socket, warming the models,
-// opening the store, and then three jobs side by side until ctx is
-// cancelled: answering requests, the startup scan of the [index] folders,
-// and the file watcher. Questions get answers while the first scan runs;
-// they search whatever the index holds so far.
+// opening the store and replaying the transcripts into it, and then four
+// jobs side by side until ctx is cancelled: answering requests, the
+// startup scan of the [index] folders, the file watcher, and the session
+// summarizer. Questions get answers while the first scan runs; they search
+// whatever the index holds so far.
 func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
 	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
 	if err != nil {
@@ -184,7 +186,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 			log.Warn("close store", "err", err)
 		}
 	}()
-	replayTurns(ctx, st, filepath.Join(cfg.Dir, "sessions"), log)
+	sessionsDir := filepath.Join(cfg.Dir, "sessions")
+	replayTurns(ctx, st, sessionsDir, log)
+	replaySessions(ctx, st, sessionsDir, log)
 	ix, err := index.New(cfg.Index, st, eng, log)
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
@@ -194,24 +198,53 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, log)
+	// merud owns the memory folder: the agent reads the profile from it,
+	// remember writes to it, and the memory ops answer `meru memory`. Its
+	// syncer copies the files into the store, where recall searches them.
+	mem, err := memory.Open(filepath.Join(cfg.Dir, "memory"))
+	if err != nil {
+		return err
+	}
+	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
+	// merud owns the skills folder too: the agent lists and loads skills
+	// from it each turn, and the skill ops answer `meru skills`.
+	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), log)
+	if err != nil {
+		return err
+	}
+	// With no [index] folders the file tools have nothing to read, so
+	// merud leaves them out and the model never sees them.
+	files := ix
+	if len(cfg.Index.Folders) == 0 {
+		files = nil
+	}
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, log)
-	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
+	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
+	a.UseSkills(sk)
+	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
+	if err != nil {
+		return err
+	}
+	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
 	// An errgroup runs each function in its own goroutine and Wait waits
 	// for all of them. gctx is cancelled when ctx is, or when one of them
-	// returns an error, so a failed server stops the scan and the watcher
-	// too. The scan and the watcher log their own errors and return nil.
+	// returns an error, so a failed server stops the other jobs too. The
+	// scan, the summarizer and the two watchers, of the [index] folders and
+	// of the memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
+	g.Go(func() error { sum.Run(gctx); return nil })
+	g.Go(func() error { mems.watch(gctx); return nil })
 	return g.Wait()
 }
 
@@ -266,9 +299,10 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index ops to the index service, the tools and log ops to the tool
+// service, the memory ops to the memory service, the skill ops to the skill
 // service, and the usage op to the store. The rpc server answers pings
 // itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService, st *store.Store) rpc.Handler {
+func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, st *store.Store) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -283,6 +317,18 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, st *store.St
 			return tools.handleLog(ctx, req.Limit, emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, emit)
+		case rpc.OpMemoryList:
+			return mems.handleList(emit)
+		case rpc.OpMemoryAdd:
+			return mems.handleAdd(ctx, req, emit)
+		case rpc.OpMemoryForget:
+			return mems.handleForget(ctx, req)
+		case rpc.OpSkills:
+			return sk.handleList(ctx, emit)
+		case rpc.OpSkillShow:
+			return sk.handleShow(ctx, req, emit)
+		case rpc.OpSkillReset:
+			return sk.handleReset(ctx, req)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

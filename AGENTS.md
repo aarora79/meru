@@ -36,11 +36,16 @@ and `meru index`, hybrid retrieval on every route but `direct`, and citations: a
 as the one path for every call, the MCP client pool and the A2A client behind it,
 the `tool_calls` audit log, approvals over the socket in both clients, `meru tools`,
 `meru log`, `meru setup`, `meru mcp add` with its server catalog, the built-in
-`configure` tool, and secrets in `~/.meru/secrets.toml`. Memory files and the skill
-registry exist as groundwork for v0.4; nothing in a turn calls them yet. Work goes
-milestone by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
-features (`remember`, `write_file`, the scheduler) ahead of the milestone that owns
-them.
+`configure` tool, and secrets in `~/.meru/secrets.toml`. v0.4 is most of the way
+there: your profile (the `me` and `preferences` memories) goes into every prompt,
+the built-in `remember` tool saves memories from chat, `meru setup user` and
+`meru memory` manage them, and each turn recalls the memories that fit the
+question. Quiet sessions get a summary, and search turns recall past
+conversations. Skills load with progressive disclosure, `meru skills` manages
+them, and the built-in `write_file` tool writes to `~/meru-output/`. The context
+budget across skills, memories and chunks is still to come. Work goes milestone
+by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
+features (the scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):
@@ -143,11 +148,12 @@ internal/
   dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           tools inside merud; v0.3 has `configure`
+  builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
   catalog/           the starter MCP servers and the safe append to config.toml
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
-  skills/            loads SKILL.md folders; ships writing and explainer (v0.4 groundwork)
-  memory/            one Markdown file per memory under memory/<kind>/ (v0.4 groundwork)
+  skills/            loads SKILL.md folders; ships writing and explainer
+  memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
+  summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
   agent/             one turn: route, build the prompt, run tool rounds, stream the answer
   transcript/        append-only JSONL session files
   rpc/               newline-delimited JSON over the Unix socket: client and server

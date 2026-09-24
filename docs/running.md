@@ -104,7 +104,7 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools`, `log`, `usage`, `setup` or `mcp`. Without quotes, `meru` reads that word as
+`index`, `tools`, `log`, `usage`, `setup`, `memory`, `skills` or `mcp`. Without quotes, `meru` reads that word as
 a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
 notebook?`.
 
@@ -119,19 +119,21 @@ In `meru chat`:
 | PgUp, PgDn | scroll |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
+| `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
-index and the session on the left:
+index, the memories and the session on the left:
 
 ```text
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · session 101500-ab12
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories · session 101500-ab12
 ```
 
 The index part counts the files Meru searches, the vectors it holds for them, and
-the size of `meru.db` on disk; `· indexing` follows while a scan runs. On the
-right, a wide terminal shows the last hour's use, such as
+the size of `meru.db` on disk; `· indexing` follows while a scan runs. Then comes
+the number of memories, and `· no profile` while Meru knows nothing about you. On
+the right, a wide terminal shows the last hour's use, such as
 `1h: 4 questions · 18k in · 2.1k out`, then whether `merud` is running. A
-narrow one drops the last hour first, then the vectors and size.
+narrow one drops the last hour first, then the vectors, size and memory count.
 
 Any other line that starts with `/` stays in the input box, and the bottom line
 lists the commands `meru chat` knows.
@@ -148,6 +150,118 @@ without the link. A pipe or a file gets plain text.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
+
+### Tell Meru about you
+
+Meru puts what it knows about you into every prompt: your name, your work, where
+you live and how you like answers. Without it, the model can't tell whether "Sam"
+in a letter is you or someone you know. Tell it once:
+
+```sh
+meru setup user
+```
+
+It asks one short question at a time, and Enter skips any of them:
+
+```text
+Answer a few questions about you. Press Enter to skip one.
+Your name: Dana Reyes
+What you do, your role and where you work: staff engineer at Acme
+Where you live (a city is enough): Boston
+Anything else Meru should always know about you? One fact per line; an empty line ends.
+> I have two kids
+>
+How you like answers, for example "short, with bullet points": short, with bullet points
+
+Saved:
+  me/name-dana-reyes.md  Name: Dana Reyes
+  ...
+```
+
+Each answer becomes one memory, a Markdown file under `~/.meru/memory/me/` or
+`~/.meru/memory/preferences/` that you can read and edit. Run it again to add
+more; when Meru already knows something, it asks whether to keep that or start
+over. `meru setup` offers this step too, when `merud` is running.
+
+To see, add or delete memories by hand:
+
+```sh
+meru memory list                        # every memory, grouped by kind
+meru memory list me                     # one kind
+meru memory add me I have two kids      # save one; prints its ID
+meru memory forget me/i-have-two-kids.md
+```
+
+You can also tell Meru in chat: "remember that I work on the registry team".
+The model saves it with its `remember` tool, which shows as a tool line like any
+other.
+
+In `meru chat`, `/me` shows what Meru knows about you. While it knows nothing,
+the empty chat says so and the header shows `no profile`; both go away within
+half a minute of the first memory.
+
+### Skills
+
+A skill is a Markdown file of instructions for one kind of task. Meru ships two:
+`writing`, plain-English rules for emails, summaries and reports, and
+`explainer`, which builds a one-page HTML explainer on a topic. On its first
+start, `merud` copies both to `~/.meru/skills/<name>/SKILL.md`.
+
+Every prompt lists each skill's name and description. For each question, a short
+call to the fast model picks the skills it needs, at most two, and only their
+instructions join the prompt. Ask "write a short email to my landlord" and the
+route badge in `meru chat` reads `direct · 0.91 · writing`.
+
+```sh
+meru skills list              # each skill, with [built-in] and [edited] marks
+meru skills show writing      # print its SKILL.md
+meru skills reset writing     # put the shipped copy back
+```
+
+`reset` replaces your edits, so on a terminal it asks first; in a script, add
+`--yes`. It works only on the two built-ins.
+
+**Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
+change on the next question; no restart. `merud` never overwrites your copy, even
+after an upgrade, so run `meru skills reset` to take a newer shipped version.
+
+**Add your own** by making a folder under `~/.meru/skills/` whose name matches the
+skill's `name`, holding a `SKILL.md`:
+
+```markdown
+---
+name: meeting-notes
+description: Turn rough meeting notes into decisions and action items. Use when
+  asked to tidy up or summarize notes from a meeting.
+---
+
+List the decisions first, then each action item with its owner and date.
+```
+
+The name takes lowercase letters and digits joined by `-`. The description is what
+the fast model reads when it picks, so say when to use the skill. `merud` skips a
+folder that breaks a rule, and `meru skills list` shows why under `Skipped:`.
+
+**Files skills make.** The built-in `write_file` tool saves a file, such as an
+explainer page, in `~/meru-output/`. It creates the folder the first time, writes
+nowhere else (no absolute paths, no `..`, no symbolic links), caps a file at
+1 MiB, and won't replace a file unless you agree. It asks before every file, and
+the answer names the full path. To change the folder, or to let it write without
+asking, edit `config.toml`:
+
+```toml
+[skills]
+output_dir = "~/meru-output"
+
+[builtin]
+confirm = ["write_file"]   # take write_file out to stop the prompt
+```
+
+The model sees `write_file` only on turns that offer tools, so ask for the file
+in so many words. The router sent "make an explainer page about how DNS works and
+save it" to a route with tools, and "write an explainer on TCP" to `direct`, where
+the page comes back in the answer instead. Skills work best on the `full` profile;
+the 2B model follows long instructions less well.
 
 ### When Meru wants to run a tool
 
@@ -400,11 +514,32 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
+### Reading whole files
+
+Search puts the ten best excerpts in the prompt, about 500 tokens each. When a
+question needs more, such as "summarize everything in ~/notes/work", the model
+can use three read-only tools on the same folders:
+
+- `read_file` reads one file whole, 12,000 characters per call, PDFs page by page;
+- `list_folder` lists a folder, 1 to 3 levels deep;
+- `grep` finds every line that holds a word or a pattern.
+
+They reach only your `[index] folders` and skip what the indexer skips, so they
+read nothing search couldn't. They run without asking; to approve each call, add
+them to `[builtin] confirm`. `meru` shows each call as it runs:
+
+```text
+$ meru "grep my notes for tomatoes and tell me which files mention it"
+→ grep {"pattern":"tomatoes"}
+✓ grep 40 ms
+Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
+```
+
 ## 8. Set up and connect tools
 
 ### meru setup
 
-`meru setup` walks through a first run in five short steps:
+`meru setup` walks through a first run in six short steps:
 
 1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
    install command for your system and waits while you start it.
@@ -415,7 +550,9 @@ search working, and re-embeds your files.
    writes the file. With one already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
 4. **Tools.** It offers each server in the catalog, one at a time (see below).
-5. **A test question.** If `merud` is running, it asks one question and prints
+5. **About you.** If `merud` is running, it offers `meru setup user` (see
+   [Tell Meru about you](#tell-meru-about-you)).
+6. **A test question.** If `merud` is running, it asks one question and prints
    the answer. If not, it tells you how to start `merud`.
 
 ### meru mcp add

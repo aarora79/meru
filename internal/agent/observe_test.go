@@ -126,7 +126,7 @@ func observedAgent(t *testing.T, log *slog.Logger) (*Agent, config.Config) {
 		t.Fatal(err)
 	}
 	rc.Log = log
-	return New(cfg, eng, realRouter{eng: eng, cfg: rc}, nil, nil, nil, log), cfg
+	return New(cfg, eng, realRouter{eng: eng, cfg: rc}, nil, nil, nil, nil, log), cfg
 }
 
 // askOverSocket serves a on a fresh Unix socket, asks each question in turn

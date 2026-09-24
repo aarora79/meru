@@ -9,11 +9,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
+	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/secrets"
 )
 
@@ -88,10 +90,10 @@ func TestConfigure(t *testing.T) {
 				}
 			}
 			changes := 0
-			tools := New(configPath, config.Builtin{}, func(context.Context) error {
+			tools := New(configPath, config.Builtin{}, nil, "", nil, func(context.Context) error {
 				changes++
 				return nil
-			})
+			}, nil)
 
 			res, err := tools.Call(context.Background(), Configure, json.RawMessage(tt.args))
 			if err != nil {
@@ -136,7 +138,7 @@ func TestConfigure(t *testing.T) {
 }
 
 func TestConfigureTwiceRefuses(t *testing.T) {
-	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil)
+	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, "", nil, nil, nil)
 	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`)
 	if res, _ := tools.Call(context.Background(), Configure, args); res.IsError {
 		t.Fatalf("first call: %s", res.Text)
@@ -149,7 +151,7 @@ func TestConfigureTwiceRefuses(t *testing.T) {
 
 func TestConfigureReloadFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	tools := New(path, config.Builtin{}, func(context.Context) error { return errors.New("pool broke") })
+	tools := New(path, config.Builtin{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
 	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`))
 	if !res.IsError || !strings.Contains(res.Text, "restart merud") || !strings.Contains(res.Text, "pool broke") {
 		t.Errorf("Result = %+v, want an error that says to restart merud", res)
@@ -160,7 +162,7 @@ func TestConfigureReloadFails(t *testing.T) {
 }
 
 func TestBackend(t *testing.T) {
-	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil)
+	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil, "", nil, nil, nil)
 
 	confirms := []struct {
 		name string
@@ -203,5 +205,156 @@ func TestBackend(t *testing.T) {
 
 	if _, err := tools.Call(context.Background(), "remember", json.RawMessage(`{}`)); err == nil {
 		t.Error("Call on an unknown built-in succeeded")
+	}
+}
+
+// rememberTools returns built-in tools over a fresh memory folder, with
+// config.toml and secrets.toml in a temp directory, and the memory store.
+func rememberTools(t *testing.T, cfg config.Builtin) (*Tools, *memory.Store, string) {
+	t.Helper()
+	dir := t.TempDir()
+	mem, err := memory.Open(filepath.Join(dir, "memory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(filepath.Join(dir, "config.toml"), cfg, mem, "", nil, nil, nil), mem, dir
+}
+
+// TestRemember runs each call through a real Dispatcher, the only path the
+// model has to a tool, so the session reaches remember as it does in merud.
+func TestRemember(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     string
+		session  string // the call's session; "" for none
+		wantErr  string // "" means the call succeeds
+		wantText string
+		wantKind string
+		wantSrc  string
+	}{
+		{
+			name:     "a fact about the user",
+			args:     `{"kind":"me","text":"Works on the AI registry team at Example Corp"}`,
+			session:  "2026-09-24T144512-cdc3",
+			wantText: "Saved to me/works-on-the-ai-registry-team-at-example-corp.md.",
+			wantKind: "me",
+			wantSrc:  "session 2026-09-24T144512-cdc3",
+		},
+		{
+			name:     "a preference, with no session",
+			args:     `{"kind":"preferences","text":"Likes short answers."}`,
+			wantText: "Saved to preferences/likes-short-answers.md.",
+			wantKind: "preferences",
+		},
+		{"unknown kind", `{"kind":"secrets","text":"x"}`, "", `kind "secrets" is unknown`, "", "", ""},
+		{"a path as the kind", `{"kind":"../me","text":"x"}`, "", "is unknown", "", "", ""},
+		{"no kind", `{"text":"x"}`, "", "is unknown", "", "", ""},
+		{"empty text", `{"kind":"me","text":"  "}`, "", "text is empty", "", "", ""},
+		{"text over 4 KiB", `{"kind":"me","text":"` + strings.Repeat("a", 4097) + `"}`, "", "over the 4096-byte limit", "", "", ""},
+		{"a secret in the text", `{"kind":"reference","text":"The brave key is fake-key-0123456789"}`, "", "holds a secret", "", "", ""},
+		{"unknown key", `{"kind":"me","text":"x","folder":"me"}`, "", "valid JSON", "", "", ""},
+		{"not an object", `"x"`, "", "valid JSON", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tools, mem, dir := rememberTools(t, config.Builtin{})
+			if err := secrets.Set(secrets.Path(dir), "brave_api_key", "fake-key-0123456789"); err != nil {
+				t.Fatal(err)
+			}
+			d := dispatch.New([]dispatch.Backend{tools}, nil, dispatch.Options{})
+			res, out := d.Dispatch(context.Background(), dispatch.Call{
+				ID: "c1", Name: Remember, Args: json.RawMessage(tt.args), Session: tt.session,
+			})
+			all, err := mem.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantErr != "" {
+				if !res.IsError || out.Outcome != dispatch.OutcomeError || !strings.Contains(res.Text, tt.wantErr) {
+					t.Fatalf("Result = %+v (%s), want an error containing %q", res, out.Outcome, tt.wantErr)
+				}
+				if len(all) != 0 {
+					t.Errorf("a refused call saved %+v", all)
+				}
+				return
+			}
+			if res.IsError || out.Outcome != dispatch.OutcomeOK || res.Text != tt.wantText {
+				t.Fatalf("Result = %+v (%s), want %q", res, out.Outcome, tt.wantText)
+			}
+			if len(all) != 1 || all[0].Kind != tt.wantKind || all[0].Source != tt.wantSrc {
+				t.Errorf("memories = %+v, want one of kind %q from %q", all, tt.wantKind, tt.wantSrc)
+			}
+		})
+	}
+}
+
+func TestRememberSpecAndConfirm(t *testing.T) {
+	tools, mem, _ := rememberTools(t, config.Builtin{})
+	// A folder the user made by hand joins the kinds.
+	if err := os.Mkdir(filepath.Join(mem.Dir(), "recipes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	specs := tools.Tools()
+	if len(specs) != 2 || specs[1].Name != Remember {
+		t.Fatalf("Tools = %+v, want configure and remember", specs)
+	}
+	// The struct below names only the part of the schema the test reads;
+	// json.Unmarshal skips the rest.
+	var schema struct {
+		Properties struct {
+			Kind struct {
+				Enum []string `json:"enum"`
+			} `json:"kind"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(specs[1].Parameters, &schema); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range append(memory.DefaultKinds(), "recipes") {
+		if !slices.Contains(schema.Properties.Kind.Enum, k) {
+			t.Errorf("kind enum %v lacks %q", schema.Properties.Kind.Enum, k)
+		}
+	}
+	for _, want := range []string{"third person", `"me"`, `"preferences"`, "secrets"} {
+		if !strings.Contains(specs[1].Description, want) {
+			t.Errorf("description lacks %q: %s", want, specs[1].Description)
+		}
+	}
+
+	// Memories save without asking, unless [builtin] confirm lists remember.
+	if got := tools.Confirm(Remember); got != dispatch.ConfirmNever {
+		t.Errorf("Confirm(remember) = %v, want ConfirmNever by default", got)
+	}
+	if st := tools.Status(); st[0].Offered != 2 || st[0].Tools[1].Confirm {
+		t.Errorf("Status = %+v, want remember listed without confirm", st)
+	}
+	asking, _, _ := rememberTools(t, config.Builtin{Confirm: []string{Remember}})
+	if got := asking.Confirm(Remember); got != dispatch.ConfirmAsk {
+		t.Errorf("Confirm(remember) = %v, want ConfirmAsk when listed", got)
+	}
+	if st := asking.Status(); !st[0].Tools[1].Confirm {
+		t.Errorf("Status = %+v, want remember to show confirm", st)
+	}
+}
+
+// TestRememberRunsHook checks onRemember runs once after a save, so merud
+// can sync the new memory into the store, and not at all after a refusal.
+func TestRememberRunsHook(t *testing.T) {
+	dir := t.TempDir()
+	mem, err := memory.Open(filepath.Join(dir, "memory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{}, mem, "", nil, nil, func(context.Context) { runs++ })
+	ctx := context.Background()
+	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":"Sam is the user's manager"}`)); res.IsError {
+		t.Fatalf("remember failed: %s", res.Text)
+	}
+	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":" "}`)); !res.IsError {
+		t.Fatal("an empty text was saved")
+	}
+	if runs != 1 {
+		t.Errorf("onRemember ran %d times, want 1", runs)
 	}
 }

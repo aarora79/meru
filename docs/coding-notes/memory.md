@@ -9,9 +9,19 @@
 Meru remembers facts about you as small Markdown files, one fact per file, under
 `~/.meru/memory/<kind>/`. The folder names the kind: `me`, `preferences`,
 `projects`, `people`, `reference`, `other`, or any folder you create. This package
-adds, lists, reads and deletes those files. `meru memory list | add | forget` will
-call it, and so will the `remember` tool and the indexer that make memories
-searchable.
+adds, lists, reads and deletes those files.
+
+Four callers use it from v0.4, all inside `merud`, which owns the folder:
+
+- **The profile.** Every turn, the agent reads the `me` and `preferences` folders
+  and puts each fact into the system prompt (see [agent](agent.md)).
+- **The `remember` tool.** The model saves a fact you tell it in chat (see
+  [builtin](builtin.md)).
+- **The memory ops.** `meru memory list | add | forget` and `meru setup user` ask
+  `merud` over the socket (see [merud](merud.md)).
+- **The memory syncer.** `index.Memories` calls `List` and copies every memory into
+  the store's `memories` table, where recall searches it by meaning, keyword and
+  recency (see [index](index.md), [store](store.md) and [retrieve](retrieve.md)).
 
 A memory file looks like this:
 
@@ -27,7 +37,7 @@ Prefers index funds over individual stocks for retirement accounts.
 
 ```mermaid
 flowchart LR
-    caller["meru memory / remember tool / indexer"] --> store["Store"]
+    caller["profile / remember tool / memory ops"] --> store["Store"]
     store -- "ID or path" --> resolve["resolve: must be &lt;kind&gt;/&lt;name&gt;.md"]
     resolve --> root["os.Root on ~/.meru/memory"]
     root --> files["preferences/prefers-index-funds.md<br/>people/sam-is-my-sister.md<br/>..."]
@@ -76,6 +86,13 @@ next number. `TestSlugUnique` runs twenty at once to prove it.
 use (a symbolic link, a file over 64 KiB, a folder with a name like `my notes`)
 doesn't stop the listing. `List` returns the memories it could read and an error
 that names what it skipped, built with `errors.Join`.
+
+**ListKind.** `ListKind(kind)` does the same for one folder and reads no other.
+The agent reads the profile on every turn, so it asks for `me` and `preferences`
+alone. Reading every folder took 13 ms with 500 other memories; reading the two
+takes about 0.6 ms for 20 files. A kind with no folder has no memories, and a kind
+that isn't a plain folder name fails with `ErrBadID`. `List` and `ListKind` share
+one helper, `listKind`, which reads one checked folder.
 
 **Get and Forget.** Both take an ID or an absolute path and send it through
 `resolve`, then check the file with `Lstat` before touching it.
@@ -166,6 +183,8 @@ go test -run 'TestRefuses' -v ./internal/memory/
   or losing hand-edited memories, so each package keeps its own small reader.
 - **The file name comes from the text.** A random ID would be unique for free, but a
   name you can read is how you find a memory in a file manager.
-- **Search comes later.** Indexing memories for vector and keyword search, and the
-  `remember` tool, arrive in the next step. They need the stable `ID`, `Text` and
-  `Modified`, which `List` and `Get` already return.
+- **Search lives elsewhere.** This package only reads and writes files. The syncer
+  keys its rows on the stable `ID` and spots hand edits by `Modified` and a hash of
+  the parsed fields, so this package needs no index of its own.
+- **Read on each turn, no cache.** The profile is a few small files, so reading
+  them costs well under a millisecond, and a hand edit shows in the next answer.

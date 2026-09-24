@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,9 @@ const (
 	TypeToolCall   = "tool_call"
 	TypeApproval   = "approval"
 	TypeToolResult = "tool_result"
+	// TypeSummary holds, in Text, a one- or two-sentence summary of the
+	// session, which merud appends once the session has gone quiet (v0.4).
+	TypeSummary = "summary"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type
@@ -268,6 +272,53 @@ func readFile(path, name string) ([]Line, error) {
 		return nil, fmt.Errorf("read session %s: %w", name, err)
 	}
 	return lines, nil
+}
+
+// ReadFrom parses the lines of the transcript file at path that start at
+// byte offset and end in a newline. It returns them, skipping lines that
+// aren't valid JSON as History does, and the offset just past the last
+// newline it read. The store's replay passes that offset back next time,
+// so each replay reads only the lines added since the last one.
+//
+// A last line with no newline yet is left for next time: Append may still
+// be writing it, or a crash tore it. If a crash tore it, the next Append
+// lands on its end and ends it with a newline, and the joined line fails
+// to parse and is skipped. A line over 16 MiB is skipped as well.
+//
+// ReadFrom fails when the file can't be opened, read or seeked.
+func ReadFrom(path string, offset int64) ([]Line, int64, error) {
+	name := filepath.Base(path)
+	f, err := os.Open(path) // #nosec G304 -- a session file under merud's own sessions directory
+	if err != nil {
+		return nil, offset, fmt.Errorf("read session %s: %w", name, err)
+	}
+	defer f.Close() // we only read, so Close has nothing useful to report
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, offset, fmt.Errorf("read session %s: %w", name, err)
+	}
+
+	var lines []Line
+	r := bufio.NewReader(f)
+	for {
+		// ReadBytes returns everything up to and including the next '\n'.
+		// At the end of the file it returns what is left, with io.EOF.
+		b, err := r.ReadBytes('\n')
+		if errors.Is(err, io.EOF) {
+			return lines, offset, nil // b, if any, is a line still being written
+		}
+		if err != nil {
+			return nil, offset, fmt.Errorf("read session %s: %w", name, err)
+		}
+		offset += int64(len(b))
+		if len(b) > maxLineBytes {
+			continue
+		}
+		var l Line
+		if err := json.Unmarshal(b, &l); err != nil {
+			continue // a torn or empty line
+		}
+		lines = append(lines, l)
+	}
 }
 
 // sessionPath returns dir/YYYY/MM/<id>.jsonl. It trusts id to match

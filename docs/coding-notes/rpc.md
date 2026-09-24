@@ -64,6 +64,16 @@ v0.2 added, without changing anything older clients read:
 | `report` event | `Report`, an `IndexReport`: files seen, indexed, unchanged, removed, failed and skipped, chunks written, and the time taken. |
 | `status` event | `Status`, an `IndexStatus`: the configured folders, the counts of files, chunks and vectors, whether a scan runs, and the last full scan's report, time and error. |
 
+v0.4 added the skill ops. `skills` and `skill_show` answer with one `skills`
+event whose `Skills` lists `SkillInfo`s: name, description, and the `builtin`
+and `edited` marks; `skill_show` adds the whole `SKILL.md` in `Body`, and
+`skills` puts the reasons `merud` skipped any folders in `Text`. `skill_reset`
+answers with `done` alone. A `route` event reuses the same `Skills` field for
+the skills the turn loaded, with only `name` set, such as
+`{"type":"route","route":"direct","confidence":0.91,"skills":[{"name":"writing"}]}`.
+Reusing the field keeps one name for one idea on the wire, and `description`
+has `omitempty`, so each entry stays that small.
+
 `Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
 never a struct value, so without the pointer every event would carry an empty
 report.
@@ -79,11 +89,9 @@ way:
 - **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Budget",
   lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
   this way.
-- **`Cited(answer, sources, usedTools)`** finds the `[1]` and `[1, 3]` marks
-  in the answer with a regular expression and returns the sources they name.
-  When the answer cites none, it returns them all, because the model still
-  read them. A turn that called a tool is the exception: its answer may come
-  from the tool's result, so no marks means no sources.
+- **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
+  answer with a regular expression and returns the sources they name. No
+  marks means no sources: the model decides when a source matters.
 - **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
   `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
 - **`Hyperlink(url, text)`** wraps text in the OSC 8 escape codes, `ESC ] 8 ; ;
@@ -135,8 +143,10 @@ the caller's context closes the connection.
 
 ### server.go
 
-`serveConn` answers `ping` itself and hands `ask`, `index` and
-`index_status` to the handler. Any other op gets an `unknown op` error.
+`serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
+`tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
+`memory_forget`) and the skill ops (`skills`, `skill_show`, `skill_reset`) to
+the handler. Any other op gets an `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,
 so `Listen` checks what is there first:

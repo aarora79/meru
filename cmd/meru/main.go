@@ -14,10 +14,14 @@
 //	meru [-socket path] log [-n N] [-v]  show the latest tool calls
 //	meru [-socket path] usage            show how much you use Meru
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
+//	meru [-socket path] setup user       tell Meru who you are
+//	meru [-socket path] memory list      show what Meru remembers; also add, forget
+//	meru [-socket path] skills list      show the skills; also show, reset
 //	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
 //
-// A question whose first word is ping, chat, index, tools, log, usage, setup or
-// mcp needs quotes, so meru reads it as a question and not as a command.
+// A question whose first word is ping, chat, index, tools, log, usage, setup,
+// memory, skills or mcp needs quotes, so meru reads it as a question and not
+// as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -74,6 +78,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru log [-n N] [-v]  show the latest tool calls, newest first
   meru usage            show how much you use Meru
   meru setup            set up Ollama, the models, config and tools
+  meru setup user       tell Meru who you are
+  meru memory list [kind] | add <kind> <text...> | forget <id>
+                        show, save or delete what Meru remembers
+  meru skills list | show <name> | reset [--yes] <name>
+                        show the skills, print one, or restore a built-in
   meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
   meru mcp add <name> -- <command> [args...] | --url <url>
                         add a server that isn't in the catalog
@@ -119,6 +128,12 @@ flags:`)
 		err = usageCmd(ctx, *socket, stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "setup":
 		err = setupCmd(ctx, *socket, terminal(stdout))
+	case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
+		err = setupUserCmd(ctx, *socket, terminal(stdout))
+	case flags.Arg(0) == "memory":
+		err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
+	case flags.Arg(0) == "skills":
+		err = skillsCmd(ctx, *socket, flags.Args()[1:], os.Stdin, stdout, isTerminal(os.Stdin))
 	case flags.Arg(0) == "mcp":
 		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
 	default:
@@ -182,7 +197,6 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
-	usedTools := false // the turn called a tool; see rpc.Cited
 	endsInNewline := false
 	dim := newLook(stderr).dim
 	// breakLine starts a new line on the terminal before a tool line or a
@@ -208,7 +222,6 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 		case rpc.EventSources:
 			sources = ev.Sources
 		case rpc.EventToolCall, rpc.EventToolResult:
-			usedTools = true
 			if line := toolLine(ev); line != "" {
 				breakLine()
 				fmt.Fprintln(stderr, dim.Render(line))
@@ -230,7 +243,7 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	if answer.Len() > 0 && !endsInNewline {
 		fmt.Fprintln(stdout)
 	}
-	if cited := rpc.Cited(answer.String(), sources, usedTools); len(cited) > 0 {
+	if cited := rpc.Cited(answer.String(), sources); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")
 		links := newLook(stdout).links
 		home, _ := os.UserHomeDir() // "" leaves "~/..." paths unlinked

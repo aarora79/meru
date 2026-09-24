@@ -1,7 +1,8 @@
 # skills
 
 **Code:** `internal/skills/` (`doc.go`, `frontmatter.go`, `skills.go`, `builtin.go`,
-`builtin/`)
+`stamp.go`, `builtin/`, and the tests `frontmatter_test.go`, `skills_test.go` and
+`stamp_test.go`)
 **Milestone:** v0.4
 **Architecture:** [Skills](../../ARCHITECTURE.md#skills) and
 [Built-in skills](../../ARCHITECTURE.md#built-in-skills)
@@ -10,10 +11,11 @@
 
 A skill is a folder under `~/.meru/skills/` holding one `SKILL.md` file: a short
 header with a `name` and a `description`, then Markdown instructions. This package
-reads those folders into a `Registry`. `merud` puts each skill's name and description
-in the system prompt, and reads the instructions only when a turn picks the skill.
-The package also carries Meru's two built-in skills, `writing` and `explainer`,
-inside the binary, and copies them to disk on first run.
+reads those folders into a `Registry`. `merud` puts each skill's name and
+description in the system prompt, and reads the instructions only when a turn
+picks the skill (see [agent](agent.md) for the pick). The package also carries
+Meru's two built-in skills, `writing` and `explainer`, inside the binary, and
+copies them to disk on first run.
 
 ## The picture
 
@@ -28,6 +30,8 @@ flowchart LR
     disk -- "Load" --> reg["Registry"]
     reg -- "List: name + description" --> prompt["system prompt"]
     reg -- "Body(name): read on demand" --> turn["the turn that picked the skill"]
+    disk -- "Stamp: changed since the last Load?" --> merud["merud's skill service"]
+    merud -- "Load again" --> reg
 ```
 
 ## Walk through the code
@@ -96,6 +100,8 @@ lock. To pick up a new skill, call `Load` again and swap in the new registry.
 - `Body(name)` reads the file again and returns the instructions. Reading at use
   time means an edit shows up without a reload. If the edit renamed the skill,
   `Body` refuses and asks for a reload.
+- `File(name)` returns the whole `SKILL.md`, header and all, for `meru skills
+  show`. It shares `readLimited` with `Body`, so the 256 KiB limit holds here too.
 
 ### builtin.go
 
@@ -125,6 +131,29 @@ Each file goes through `writeFileAtomic`, which writes a temporary file and rena
 over the old one, so a reader sees the old file or the new one, never half of each.
 
 Folders get mode `0700` and files `0600`: only you can read them.
+
+`IsBuiltin(name)` says whether Meru ships a skill of that name. `Edited(dir,
+name)` compares your `SKILL.md` byte for byte with the copy inside the binary,
+for the `[edited]` mark in `meru skills list`. Saving the file without a change
+doesn't count as an edit.
+
+### stamp.go
+
+`merud` needs to know when you add, edit or delete a skill, so it can call `Load`
+again. `Stamp(dir)` answers that in microseconds. It lists `dir` and, for each folder
+whose name doesn't start with `.`, stats the `SKILL.md` inside and writes one
+line:
+
+```text
+explainer:21034:1727185821000000000
+writing:7512:1727185821000000000
+```
+
+The name, the size and the modification time in nanoseconds. Any edit changes
+the size or the time; a new or deleted folder adds or drops a line. A folder with
+no `SKILL.md` still writes `name:-`, so adding the file later changes the stamp.
+`merud` keeps the stamp it took just before its last `Load` and compares a fresh
+one on every turn. With a handful of skills that costs a few microseconds.
 
 ### The built-in files
 
@@ -168,6 +197,9 @@ The second command proves the shipped skills match the repo copies.
   skill in this repo, and rejects the rest with a line number.
 - **The body loads on demand.** Keeping only names and descriptions in the prompt
   lets you add skills without growing every prompt (ARCHITECTURE.md, "Skills").
+- **A stamp, not a watcher.** A file watcher would need a watch on the folder and
+  on every skill folder inside it, kept in step as folders come and go, plus a
+  goroutine to own it. A stamp per turn needs none of that and costs microseconds.
 - **Warnings, not failure.** Skills are files you edit by hand. A typo in one should
   cost you that one skill, with a message saying why.
 - **Copy on first run, never overwrite.** The simpler option, reading the built-ins

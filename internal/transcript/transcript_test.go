@@ -294,3 +294,60 @@ func TestIDFormat(t *testing.T) {
 		t.Errorf("sessionPath = %s", got)
 	}
 }
+
+func TestReadFromReadsOnlyNewCompleteLines(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, text := range []string{"one", "two"} {
+		if err := s.Append(Line{Type: TypeUser, Text: text}); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	lines, off, err := ReadFrom(s.Path(), 0)
+	if err != nil {
+		t.Fatalf("ReadFrom: %v", err)
+	}
+	info, err := os.Stat(s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 || lines[1].Text != "two" || off != info.Size() {
+		t.Fatalf("ReadFrom(0) = %d lines, offset %d; want 2 lines, offset %d", len(lines), off, info.Size())
+	}
+
+	// A half-written line stays unread, and the offset stops before it.
+	f, err := os.OpenFile(s.Path(), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"type":"user","te`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	lines, off2, err := ReadFrom(s.Path(), off)
+	if err != nil {
+		t.Fatalf("ReadFrom: %v", err)
+	}
+	if len(lines) != 0 || off2 != off {
+		t.Errorf("ReadFrom over a partial line = %d lines, offset %d; want 0, %d", len(lines), off2, off)
+	}
+
+	// The next Append ends the torn line. The joined line fails to parse
+	// and is skipped; the one after it reads.
+	for _, text := range []string{"three", "four"} {
+		if err := s.Append(Line{Type: TypeAssistant, Text: text}); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	lines, _, err = ReadFrom(s.Path(), off)
+	if err != nil {
+		t.Fatalf("ReadFrom: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Text != "four" {
+		t.Errorf("ReadFrom after a torn line = %+v, want only the line \"four\"", lines)
+	}
+}

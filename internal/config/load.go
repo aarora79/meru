@@ -75,6 +75,7 @@ func defaults() Config {
 		Agent: Agent{
 			MaxRounds:    8,
 			HistoryTurns: 10,
+			SummaryIdle:  "30m",
 		},
 		Router: Router{
 			TopLogProbs:   20,
@@ -97,7 +98,10 @@ func defaults() Config {
 			OverlapTokens: 50,
 			Watch:         true,
 		},
-		Builtin: Builtin{Confirm: []string{}},
+		// write_file asks before each call: a file it writes stays on your
+		// disk after the chat ends (ARCHITECTURE.md, "Approving a tool call").
+		Builtin: Builtin{Confirm: []string{"write_file"}},
+		Skills:  Skills{OutputDir: "~/meru-output"},
 	}
 }
 
@@ -180,6 +184,16 @@ func validate(cfg Config) error {
 
 	if cfg.Agent.MaxRounds < 1 {
 		add("agent.max_rounds is %d; it must be 1 or more", cfg.Agent.MaxRounds)
+	}
+	if d, err := time.ParseDuration(cfg.Agent.SummaryIdle); err != nil || d <= 0 {
+		add("agent.summary_idle %q must be a positive duration such as \"30m\"", cfg.Agent.SummaryIdle)
+	}
+	if o := cfg.Skills.OutputDir; o == "" {
+		add("skills.output_dir is empty; set a folder such as \"~/meru-output\"")
+	} else if home := o == "~" || strings.HasPrefix(o, "~/") || strings.HasPrefix(o, `~\`); !home && !filepath.IsAbs(o) {
+		// Like an [index] folder, the output folder must name one place,
+		// whatever directory merud starts in.
+		add("skills.output_dir %q must be an absolute path or start with \"~/\"", o)
 	}
 	if cfg.Agent.HistoryTurns < 0 {
 		add("agent.history_turns is %d; it must be 0 or more", cfg.Agent.HistoryTurns)

@@ -72,18 +72,20 @@ Meru answered a question from an Obsidian vault through the owner's own MCP serv
 three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 
 ## v0.4 — It knows you
-- Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and
+- [x] Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and
   keyword search
-- Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
-- Session summaries appended to transcripts and embedded, for recall by episode
-- Transcripts replayed into `messages` + `message_fts`, so search can find past
+- [x] Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
+- [x] Session summaries appended to transcripts and embedded, for recall by episode
+- [x] Transcripts replayed into `messages` + `message_fts`, so search can find past
   conversations
-- `meru memory list | add | forget`, working on the files
-- Skill registry with progressive disclosure
-- `meru skills list | show | reset`
-- Built-in skills `writing` and `explainer`, plus the `write_file`
+- [x] `meru memory list | add | forget`, working on the files
+- [x] Skill registry with progressive disclosure
+- [x] `meru skills list | show | reset`
+- [x] Built-in skills `writing` and `explainer`, plus the `write_file`
   tool limited to `~/meru-output/`
-- Context budget policy across skills / memories / chunks
+- [x] Context budget policy across skills / memories / chunks
+- [x] Read-only `read_file`, `list_folder` and `grep` over the `[index]` folders,
+  with the indexer's skip rules, offered on the search routes
 
 **Done when:** it recalls something from last week without a reminder.
 

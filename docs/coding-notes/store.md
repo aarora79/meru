@@ -1,8 +1,8 @@
 # store
 
 **Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`,
-`toolcalls.go`, `turns.go`)
-**Milestone:** v0.2; `tool_calls` and `turns` in v0.3
+`toolcalls.go`, `turns.go`, `sessions.go`, `memories.go`)
+**Milestone:** v0.2; `tool_calls` and `turns` in v0.3; past conversations and `memories` in v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -14,7 +14,10 @@ file (a **document**), the pieces of text the indexer cut each file into
 The indexer writes to it; retrieval reads from it. From v0.3 it also holds
 `tool_calls`, the audit log of every tool call, which `dispatch` writes and
 `meru log` reads, and `turns`, one row per answered question, which the agent
-writes and `meru usage` adds up.
+writes and `meru usage` adds up. From v0.4 it holds past conversations too:
+`sessions`, `messages` and their search indexes, replayed from the transcripts.
+It also holds `memories`, one row per memory file, with a vector and a keyword
+entry each, which recall searches.
 
 Everything in the file can be rebuilt from your files, so the store never
 holds the only copy of anything. Delete `meru.db` and `merud` builds it again.
@@ -96,9 +99,10 @@ returns an error, `write` rolls back and nothing changes.
 `migrations()` returns a list of SQL steps. Step `i` takes the database from
 `schema_version` `i` to `i+1`, and `meta` records the version. `migrate` runs
 each step the file hasn't seen, one transaction per step. v0.3 appended step 2
-for `tool_calls` and step 3 for `turns`, and later milestones add `messages` and
-`memories` the same way. A shipped
-step never changes, because existing files have already run it.
+for `tool_calls` and step 3 for `turns`. v0.4 appended step 4 for the
+past-conversation tables and step 5 for `memories`, `memory_vec` and
+`memory_fts`. A shipped step never changes, because existing files have
+already run it.
 
 The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
 
@@ -122,10 +126,11 @@ the `heading` and `text` columns of `chunks` without keeping its own copy of
 the text, and its `rowid` is the chunk ID.
 
 `checkVectors` compares the embedding model name and vector size in `meta`
-with the ones `Open` got. When either differs, it runs `DELETE FROM chunk_vec`
-and records the new pair. Vectors from two models can't be compared, so all
-of them go. Documents and chunks stay, so keyword search keeps working while
-the indexer re-embeds.
+with the ones `Open` got. When either differs, it deletes every row of
+`chunk_vec`, `memory_vec` and `session_vec` and records the new pair. Vectors
+from two models can't be compared, so all of them go. Documents, chunks,
+memories and summaries stay, so keyword search keeps working while the indexer
+and the memory syncer re-embed and the summarizer embeds the summaries again.
 
 `NeedsReembed` reports that gap. It counts rows instead of keeping a flag:
 some chunks lack a vector exactly when the model changed and the indexer
@@ -295,6 +300,96 @@ places. `BenchmarkUsage` runs `Usage` over 50,000 turns.
 `DiskBytes` adds up the sizes of `meru.db`, `meru.db-wal` and `meru.db-shm`;
 a missing file counts as 0. The store keeps its own path for it.
 
+### sessions.go: past conversations
+
+Migration step 4 creates five tables:
+
+| Table | Holds |
+| --- | --- |
+| `sessions` | one row per transcript: start, last question or answer, answers so far, the newest summary and its time, and replay bookkeeping (`path`, `bytes`) |
+| `messages` | one row per question or answer, with its trace ID |
+| `message_fts` | external content FTS5 index over `messages.text`, as `chunk_fts` is over chunks |
+| `summary_fts` | FTS5 index over summaries, with its own copy of each |
+| `session_vec` | one vector per summary, stored like `chunk_vec` |
+
+`summary_fts` keeps its own copy because an external content table needs an
+integer row ID, and `sessions` has a text key, the session ID. A summary is one
+short line, so the copy costs little.
+
+**Replay.** `ReplaySessions(ctx, dir)` walks every transcript at startup, and
+`ReplaySession(ctx, dir, id)` replays one after each turn and each summary.
+Both call `replayFile`, which keeps the cost down with one rule: a transcript
+only grows, a whole line at a time, so `sessions.bytes` marks where the last
+replay stopped.
+
+1. `os.Stat` gives the file's size. When it equals `bytes`, nothing changed, and
+   the replay ends there.
+2. Inside one write transaction, `transcript.ReadFrom(path, bytes)` reads only
+   the new complete lines.
+3. User and assistant lines become `messages` rows, with a `message_fts` entry
+   each. A `summary` line replaces the session's summary, its `summary_fts`
+   row, and drops its vector.
+4. The row gets the new byte count, answer count and times, through an upsert.
+
+A file smaller than `bytes` was cut or replaced by hand. `forgetSession`
+deletes all the session's rows, and the replay reads the file from the start.
+The read and the writes share one transaction, so the replay after a turn and
+the summarizer's replay take turns and never add a line twice
+(`TestConcurrentReplaysAddEachLineOnce`).
+
+**What needs doing.** `DueSummaries(ctx, quietSince, limit)` lists the sessions
+that need a summary, newest first: at least one answer, nothing since
+`quietSince`, and no summary newer than the last question or answer.
+`SummariesWithoutVector` lists the summaries that need a vector: new ones, and
+all of them after a change of embedding model. `SetSessionVector` stores a
+vector only while the summary still reads the text that was embedded; a newer
+summary written meanwhile gets its own vector on the next pass.
+
+**Searches.** `SearchSessionVector`, `SearchSummaryKeyword` and
+`SearchMessageKeyword` work like `SearchVector` and `SearchKeyword`, and each
+leaves out one session, the one asking. The message search joins `messages` to
+get each hit's session, so it ranks with `bm25(message_fts)`, the function that
+`rank` stands for on a query of one FTS5 table. `Sessions` and `Messages` load
+rows by ID in the order asked, as `Chunks` does.
+
+### memories.go: memories and recall
+
+One row in `memories` per memory file, keyed by the memory ID
+(`people/sam-is-my-manager.md`). `memory_vec` and `memory_fts` mirror `chunk_vec`
+and `chunk_fts`: a plain table with one blob per memory, and an external-content
+FTS5 table over `text`. A memory is one short fact, so it gets one row and one
+vector, with no chunks. The syncer in [index](index.md) keeps the table in step
+with the files; nothing else writes it.
+
+- **`ReplaceMemory`** deletes whatever the table held for the memory ID and writes
+  the row, its keyword entry and its vector in one transaction. The row gets a new
+  ID each time.
+- **`DeleteMemory`** removes one memory. As in `deleteChunks`, the FTS5 `'delete'`
+  command runs first, while `memories` still holds the text FTS5 needs.
+- **`MemoryIDs`** returns every stored memory ID with its mtime, hash and whether
+  it has a vector (a `LEFT JOIN` on `memory_vec`). The syncer compares it with the
+  files.
+
+Recall merges three lists, and the store builds each one:
+
+| Method | Order |
+| --- | --- |
+| `SearchMemoryVector` | cosine distance to the query vector, nearest first |
+| `SearchMemoryKeyword` | BM25 over `memory_fts`, with the query escaped by `ftsQuery` |
+| `RecentMemories` | `created` newest first, then `mtime` newest first |
+
+Each takes `exclude`, a list of kinds to leave out; the agent passes the profile
+kinds, which every prompt holds already. The list goes to SQLite as one JSON
+array, and `json_each` turns it into rows for `kind NOT IN (...)`, the trick
+`Chunks` uses for its IDs. Each search returns whole rows, so recall needs no
+second query to load the text.
+
+`created` and `mtime` go in as fixed-width text, `sortableTime`: UTC with nine
+digits of fraction. RFC 3339 trims trailing zeros from the fraction, so
+`…:05Z` would sort after `…:05.5Z` ("Z" comes after "." in ASCII). With every
+value the same width, `ORDER BY` on the text sorts by time. A memory with no
+created date stores `''`, which sorts after every dated one in `DESC` order.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,
@@ -311,7 +406,8 @@ a missing file counts as 0. The store keeps its own path for it.
 - **Struct embedding** — `ChunkWithDoc` embeds `Chunk`, so `c.Text` works
   without writing `c.Chunk.Text`.
 - **`filepath.WalkDir`** — visits every file under a folder; `ReplayToolCalls`
-  and `ReplayTurns` use it to find the session files. More in [go-basics/filepath.md](go-basics/filepath.md).
+  and `ReplayTurns` use it to find the session files, and so does
+  `ReplaySessions`. More in [go-basics/filepath.md](go-basics/filepath.md).
 
 ## Try it
 
@@ -320,6 +416,10 @@ go test -race ./internal/store/
 go test -run '^$' -bench . -benchtime 20x ./internal/store/
 ```
 
+`memories_test.go` covers `ReplaceMemory` and `DeleteMemory` with the FTS5
+integrity check, the order of each memory search with and without `exclude`, and
+an embedding model change that drops the memory vectors.
+
 `TestSearchKeyword` feeds FTS5 syntax, quotes and SQL fragments as queries.
 `TestSearchVector` checks the distances are true cosine distances for vectors
 of any length. `TestConcurrentReadsDuringWrites` runs four readers against a
@@ -327,7 +427,9 @@ writer and checks no reader ever sees half a write. The benchmark indexes
 10,000 and then 100,000 chunks with 768-number vectors; `-short` skips the
 larger one. `TestUsage` places rows one second either side of each window's
 start, and `TestWindowStarts` checks weeks that start in the month or year
-before.
+before. `TestReplaySessionsIsIncremental` appends lines between replays and
+checks each replay reads only the new ones, then cuts the file and checks the
+replay starts over.
 
 Measured on an Apple M4 Max (v0.35.6 of the driver), 768 dimensions:
 

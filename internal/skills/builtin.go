@@ -5,6 +5,7 @@
 package skills
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"fmt"
@@ -51,6 +52,31 @@ func Builtins() []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// IsBuiltin reports whether Meru ships a skill called name.
+func IsBuiltin(name string) bool {
+	return slices.Contains(Builtins(), name)
+}
+
+// Edited reports whether <dir>/<name>/SKILL.md differs from the copy of the
+// built-in skill name that Meru ships, for the [edited] mark in `meru skills
+// list`. It compares the bytes, so saving the file unchanged doesn't count.
+// It returns false for a skill Meru doesn't ship, and fails when the file
+// can't be read.
+func Edited(dir, name string) (bool, error) {
+	if !IsBuiltin(name) {
+		return false, nil
+	}
+	shipped, err := builtinFS.ReadFile(path.Join(builtinRoot, name, fileName))
+	if err != nil {
+		return false, fmt.Errorf("read shipped %s: %w", name, err)
+	}
+	mine, err := readLimited(filepath.Join(dir, name, fileName))
+	if err != nil {
+		return false, fmt.Errorf("skill %s: %w", name, err)
+	}
+	return !bytes.Equal(shipped, mine), nil
 }
 
 // InstallBuiltins copies each built-in skill to <dir>/<name>/ when no file or
@@ -119,7 +145,7 @@ func installOne(dir, name, target string) (err error) {
 // refuses when <dir>/<name> is a symbolic link or a plain file, because
 // writing through a link would change files outside the skills directory.
 func Reset(dir, name string) error {
-	if !slices.Contains(Builtins(), name) {
+	if !IsBuiltin(name) {
 		return fmt.Errorf("reset %q: %w", name, ErrNotBuiltin)
 	}
 	target := filepath.Join(dir, name)

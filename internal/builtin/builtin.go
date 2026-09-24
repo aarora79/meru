@@ -1,5 +1,7 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
-// and the configure tool.
+// and the configure tool. The remember tool lives in remember.go,
+// write_file in writefile.go, and read_file, list_folder and grep in
+// files.go.
 
 package builtin
 
@@ -18,6 +20,8 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/index"
+	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -35,8 +39,12 @@ const actionAddServer = "add_mcp_server"
 // Tools is merud's set of built-in tools. Build it with New.
 type Tools struct {
 	configPath string
-	confirm    []string // [builtin] confirm from config.toml
+	confirm    []string       // [builtin] confirm from config.toml
+	memory     *memory.Store  // where remember saves; nil leaves remember out
+	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
+	files      *index.Indexer // what the file tools read through; nil leaves them out
 	onChange   func(context.Context) error
+	onRemember func(context.Context) // runs after remember saves; nil for none
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -44,32 +52,67 @@ type Tools struct {
 }
 
 // New returns the built-in tools. configPath is config.toml; secrets.toml
-// sits next to it. cfg is the [builtin] section. onChange runs after
-// configure writes config.toml; merud passes a function that rebuilds the
-// MCP pool. A nil onChange does nothing.
-func New(configPath string, cfg config.Builtin, onChange func(context.Context) error) *Tools {
+// sits next to it. cfg is the [builtin] section. mem is the memory folder
+// that remember saves to; a nil mem leaves remember out, for tests of
+// configure alone. outputDir is the absolute folder write_file writes in,
+// [skills] output_dir with "~" expanded; "" leaves write_file out. onChange
+// runs after configure writes config.toml; merud passes a function that
+// rebuilds the MCP pool. onRemember runs after remember saves a memory;
+// merud passes a function that syncs the memory folder into the store, so
+// the next turn can recall the new fact. A nil onChange or onRemember does
+// nothing. files is merud's indexer, which read_file, list_folder and grep
+// read through, so they see the [index] folders with the indexer's skip
+// rules; a nil files leaves the three out.
+func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
+		memory:     mem,
+		outputDir:  outputDir,
+		files:      files,
 		onChange:   onChange,
+		onRemember: onRemember,
 	}
 }
 
 // Kind returns dispatch.KindBuiltin.
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
-// Tools returns the configure tool's spec for the model.
+// Tools returns the specs of configure, remember, write_file and the three
+// file tools for the model. It reads the memory folders on each call, so a
+// kind folder the user adds shows up in remember's choices on the next
+// turn.
 func (t *Tools) Tools() []engine.ToolSpec {
-	return []engine.ToolSpec{{
+	specs := []engine.ToolSpec{{
 		Name:        Configure,
 		Description: description(),
 		Parameters:  schema(),
 	}}
+	if t.memory != nil {
+		specs = append(specs, engine.ToolSpec{
+			Name:        Remember,
+			Description: rememberDescription,
+			Parameters:  rememberSchema(t.kinds()),
+		})
+	}
+	if t.outputDir != "" {
+		specs = append(specs, engine.ToolSpec{
+			Name:        WriteFile,
+			Description: writeFileDescription(t.outputDir),
+			Parameters:  writeFileSchema(),
+		})
+	}
+	if t.files != nil {
+		specs = append(specs, t.fileToolSpecs()...)
+	}
+	return specs
 }
 
 // Confirm says configure always asks, with no session approval. Any other
 // built-in asks when [builtin] confirm lists it, and runs without asking
-// otherwise.
+// otherwise. The shipped list holds write_file alone, so remember saves
+// without asking, as ARCHITECTURE.md "Memory" says, write_file asks, and
+// the read-only file tools run without asking.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case name == Configure:
@@ -85,20 +128,49 @@ func (t *Tools) Confirm(name string) dispatch.Confirm {
 // and metrics name merud itself.
 func (t *Tools) Locate(name string) (string, string) { return server, name }
 
-// Status describes the built-ins for `meru tools`: always connected, one
-// tool that always asks.
+// Status describes the built-ins for `meru tools`: always connected,
+// configure, which always asks, and the others, which ask only when
+// [builtin] confirm lists them.
 func (t *Tools) Status() []rpc.ServerInfo {
+	tools := []rpc.ToolInfo{{
+		Name:        Configure,
+		Description: "Adds an MCP server to config.toml.",
+		Confirm:     true,
+		AlwaysAsks:  true,
+	}}
+	if t.memory != nil {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        Remember,
+			Description: "Saves one fact about you to ~/.meru/memory.",
+			Confirm:     t.Confirm(Remember) != dispatch.ConfirmNever,
+		})
+	}
+	if t.outputDir != "" {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        WriteFile,
+			Description: "Saves a file in " + t.outputDir + ".",
+			Confirm:     t.Confirm(WriteFile) != dispatch.ConfirmNever,
+		})
+	}
+	if t.files != nil {
+		for _, f := range []struct{ name, desc string }{
+			{ReadFile, "Reads a whole file in the indexed folders."},
+			{ListFolder, "Lists a folder in the indexed folders."},
+			{Grep, "Finds matching lines in the indexed folders."},
+		} {
+			tools = append(tools, rpc.ToolInfo{
+				Name:        f.name,
+				Description: f.desc,
+				Confirm:     t.Confirm(f.name) != dispatch.ConfirmNever,
+			})
+		}
+	}
 	return []rpc.ServerInfo{{
 		Name:      server,
 		Kind:      dispatch.KindBuiltin,
 		Connected: true,
-		Tools: []rpc.ToolInfo{{
-			Name:        Configure,
-			Description: "Adds an MCP server to config.toml.",
-			Confirm:     true,
-			AlwaysAsks:  true,
-		}},
-		Offered: 1,
+		Tools:     tools,
+		Offered:   len(tools),
 	}}
 }
 
@@ -107,10 +179,24 @@ func (t *Tools) Status() []rpc.ServerInfo {
 // Result with IsError set, so the model can read why and tell the user. The
 // error return is for a name that isn't a built-in.
 func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (dispatch.Result, error) {
-	if name != Configure {
+	var text string
+	var err error
+	switch {
+	case name == Configure:
+		text, err = t.configure(ctx, args)
+	case name == Remember && t.memory != nil:
+		text, err = t.remember(ctx, args)
+	case name == WriteFile && t.outputDir != "":
+		text, err = t.writeFile(args)
+	case name == ReadFile && t.files != nil:
+		text, err = t.readFile(args)
+	case name == ListFolder && t.files != nil:
+		text, err = t.listFolder(ctx, args)
+	case name == Grep && t.files != nil:
+		text, err = t.grep(ctx, args)
+	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}
-	text, err := t.configure(ctx, args)
 	if err != nil {
 		return dispatch.Result{Text: err.Error(), IsError: true}, nil
 	}

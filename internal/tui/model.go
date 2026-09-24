@@ -73,9 +73,10 @@ type exchange struct {
 	question string
 	state    turnState
 
-	route      string  // empty until merud's "route" event
-	confidence float64 // the router's confidence in route
-	fallback   bool    // the router wasn't sure and fell back
+	route      string   // empty until merud's "route" event
+	confidence float64  // the router's confidence in route
+	fallback   bool     // the router wasn't sure and fell back
+	skills     []string // the skills the turn loaded, from the "route" event
 
 	// sources lists the excerpts from the user's files that merud put in
 	// the prompt, from its "sources" event; nil when the turn didn't
@@ -176,6 +177,8 @@ type Model struct {
 	// usageBox is the open /usage box, or nil. While it is set, the box
 	// covers the conversation and the keys go to it.
 	usageBox *usageBox
+	// meBox is the open /me box, or nil, and works the same way.
+	meBox *meBox
 	// notice is a dim line that takes the help line's place until the next
 	// key press, such as the answer to an unknown /command.
 	notice string
@@ -266,11 +269,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.link = linkDown
 		}
 		if msg.index != nil {
+			nudged := m.noProfile()
 			m.index = msg.index
+			// The empty conversation shows the profile nudge, so it
+			// redraws when the nudge comes or goes.
+			if m.noProfile() != nudged {
+				m.refresh()
+			}
 		}
 		return m, nil
 	case usageMsg:
 		m.applyUsage(msg)
+		return m, nil
+	case meMsg:
+		m.applyMe(msg)
 		return m, nil
 	case refreshMsg:
 		// Check now, and book the next check. Only this branch books one,
@@ -327,9 +339,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// The approval box has the keys until the user answers it.
 		m.approvalKey(msg)
 		return m, nil
-	case m.usageBox != nil:
-		// So does the usage box, until Esc or q closes it.
-		m.usageKey(msg)
+	case m.boxOpen():
+		// So do the /usage and /me boxes, until Esc or q closes them.
+		m.boxKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
@@ -405,6 +417,10 @@ func (m *Model) handleEvent(msg eventMsg) {
 		m.session = ev.Session
 	case rpc.EventRoute:
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
+		cur.skills = nil
+		for _, s := range ev.Skills {
+			cur.skills = append(cur.skills, s.Name)
+		}
 	case rpc.EventSources:
 		cur.sources = ev.Sources
 	case rpc.EventToolCall:

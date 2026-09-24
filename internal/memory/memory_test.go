@@ -398,6 +398,55 @@ func TestListSkipsBadFiles(t *testing.T) {
 	}
 }
 
+// TestListKind checks that ListKind reads one folder only, reports a bad
+// file there without hiding the rest, and refuses a kind that isn't a
+// plain folder name.
+func TestListKind(t *testing.T) {
+	s := openTest(t)
+	for _, m := range []struct{ kind, text string }{
+		{"me", "Name is Dana."}, {"me", "Lives in Washington."}, {"projects", "Builds Meru."},
+	} {
+		if _, err := s.Add(m.kind, m.text, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	big := filepath.Join(s.Dir(), "preferences", "big.md")
+	if err := os.WriteFile(big, []byte(strings.Repeat("x", maxFileBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		kind    string
+		wantIDs []string
+		wantErr string // "" for none
+	}{
+		{"me", []string{"me/lives-in-washington.md", "me/name-is-dana.md"}, ""},
+		{"projects", []string{"projects/builds-meru.md"}, ""},
+		{"preferences", nil, "big.md"},
+		{"travel", nil, ""}, // no folder, no memories
+		{"../me", nil, ErrBadID.Error()},
+		{"", nil, ErrBadID.Error()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			list, err := s.ListKind(tt.kind)
+			var ids []string
+			for _, m := range list {
+				ids = append(ids, m.ID)
+			}
+			if !slices.Equal(ids, tt.wantIDs) {
+				t.Errorf("IDs = %v, want %v", ids, tt.wantIDs)
+			}
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Errorf("err = %v, want none", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Errorf("err = %v, want one containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // checkMode fails the test when path's permission bits aren't want. Windows
 // has no Unix permission bits, so the check is skipped there.
 func checkMode(t *testing.T, path string, want os.FileMode) {

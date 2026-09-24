@@ -1,8 +1,9 @@
 # index
 
 **Code:** `internal/index/` (`doc.go`, `indexer.go`, `skip.go`, `ignore.go`,
-`chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`)
-**Milestone:** v0.2
+`chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`,
+`memories.go`, `files.go`)
+**Milestone:** v0.2; the memory syncer and `files.go` v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -16,6 +17,12 @@ again; when a file goes away it tells the store to drop it.
 
 `merud` calls `Scan` at startup and runs `Watch` while it stays up. `IndexPaths`
 indexes a few paths on demand; the watcher uses it, and `meru index` will.
+
+From v0.4 the package also holds `Memories`, a small syncer that copies the memory
+folder, `~/.meru/memory`, into the store's `memories` table (see
+[memories.go](#memoriesgo) below), and four methods that let the file tools in
+[builtin](builtin.md) see the folders the way the indexer does (see
+[files.go](#filesgo) below).
 
 ## The picture
 
@@ -171,7 +178,9 @@ the file, so HTML chunks carry no line numbers.
 
 PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
 never cross a page. That library panics on some broken files, so `chunkPDF`
-recovers the panic and returns it as an error; the file counts as `Failed`. A
+recovers the panic and returns it as an error; the file counts as `Failed`. The
+page reading lives in `pdfPages`, which `chunkPDF` and `ReadText` share, and
+the HTML reading in `readHTML`, which `chunkHTML` and `ReadText` share. A
 PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
 
@@ -191,6 +200,81 @@ A new folder gets watches of its own before its files get indexed. A changed
 folder. When the OS refuses another watch (Linux's inotify limit, or the
 open-file limit that macOS's kqueue hits), `Watch` logs one warning and keeps
 the watches it has; the next startup scan catches changes in the rest.
+
+### files.go
+
+The file tools, `read_file`, `list_folder` and `grep`, must reach exactly what
+search reaches. Rather than copy the skip rules, `builtin` calls four methods on
+the same `*Indexer` that `merud` indexes with:
+
+```go
+func (ix *Indexer) Roots() []string
+func (ix *Indexer) Check(p string) (Checked, error)
+func (ix *Indexer) Walk(ctx context.Context, dir string, fn func(p string, info fs.FileInfo, reason string) error) error
+func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
+```
+
+- **`Roots`** returns the `[index] folders` with symlinks resolved, leaving out
+  the ones that don't exist now.
+- **`Check`** takes one absolute path and returns a `Checked`: the path under
+  its folder, the folder, what `os.Lstat` says, and a `Reason…` constant, or
+  `""` when the indexer reads it. It runs `skipPath`, which checks every folder
+  between the indexed folder and the path, then, for a file, the size cap and
+  the NUL-byte test (`contentReason`). A path outside every folder fails with
+  `ErrOutsideFolders`. `Check` first matches the path as written against each
+  folder, as configured and resolved, so `~/notes/a.md` works when `~/notes`
+  is a link. It never resolves anything below the folder, so a link there comes
+  back as `symlink`.
+- **`Walk`** walks a folder with `filepath.WalkDir`, which never follows a
+  link, and calls `fn` for each entry with its reason. It skips the inside of a
+  skipped folder itself; `fn` may return `fs.SkipDir` or `fs.SkipAll`.
+- **`ReadText`** returns a `Text`: the file's kind and its pages. A PDF has one
+  page per PDF page; every other kind has one page, the whole text. HTML comes
+  back as the text `readHTML` pulls out. It opens the file through an `os.Root`
+  on its folder, so `..` or a link swapped in after the check can't lead out,
+  and it checks the size and the NUL byte again. `reason` is set when the file
+  turns out to be skipped; `err` when it can't be read or a PDF has no text.
+
+`Check` and `Walk` clear the cached ignore rules for the folder first, so a
+`.meruignore` you edited a moment ago counts even with `[index] watch = false`.
+The four methods need no store and no engine, so a test can build the
+`Indexer` with `New(cfg, nil, nil, nil)`.
+
+### memories.go
+
+Memory files differ from the `[index]` folders in three ways, so they get their own
+small syncer instead of the `Indexer`. They sit in one folder `merud` owns. Each is
+one short fact, so it needs no chunking and becomes one row with one vector. And
+they go to their own tables, `memories`, `memory_vec` and `memory_fts`, not to
+`documents` and `chunks`. The syncer borrows the indexer's batch size (32 texts per
+`Embed` call) and its 500 ms debounce.
+
+`Sync` compares the files with the table:
+
+1. `memory.Store.List` reads every memory file.
+2. `MemoryIDs` returns what the store holds for each memory ID: its mtime, a hash,
+   and whether it still has a vector.
+3. A memory whose mtime and hash match, and which has a vector, is unchanged. Every
+   other one gets embedded and stored with `ReplaceMemory`.
+4. A stored memory whose file is gone gets `DeleteMemory`.
+
+The hash is SHA-256 over the parsed parts the store keeps (kind, created date,
+source and text), each followed by a zero byte, so two different memories can't run
+together into the same bytes. A memory past 4 KiB, which only a hand edit makes,
+sends only its first 4 KiB to the embedding model, cut at a character boundary by
+`cutText`; keyword search still covers the whole text.
+
+When `List` can't read some files, `Sync` stores the rest and removes nothing. It
+can't tell a file it couldn't read from one that is gone, and a memory shouldn't
+drop out of recall over a permission problem. A mutex lets one `Sync` run at a time,
+because the watcher, a memory op and the `remember` tool can all ask for one at
+once.
+
+`Watch` runs `Sync` once, then again each time the folder has been quiet for 500 ms
+after a change. It watches the memory folder and each kind folder, and adds a watch
+for a new kind folder before the next sync. `watch.go` keeps a due time for each
+changed path; this watcher resets one timer on every event, because `Sync` reads
+every file anyway and has no use for a list of changed paths.
 
 ## Go ideas used here
 
@@ -214,6 +298,7 @@ the watches it has; the next startup scan catches changes in the rest.
 go test -race ./internal/index/
 go test -race -run TestSkipRules -v ./internal/index/
 go test -race -run TestWatch -v ./internal/index/
+go test -race -run 'TestMemory' -v ./internal/index/
 ```
 
 `store_test.go` runs the indexer against the real SQLite store to check the
@@ -226,6 +311,17 @@ the vectors missing while `Reembed` restores them.
 what got indexed and the count for each reason. `TestWatch` starts `Watch` on a
 temporary folder, then creates, edits and deletes files and polls the fake
 store until each change shows up.
+
+`memories_test.go` runs the memory syncer against a real memory folder and the real
+store: add, a sync with nothing to do, a hand edit, a touched file, a forget, a
+file too big to read (its row stays), an embedding model change (the memory gets a
+vector again), and the watcher picking up a new file, a deleted one and a file in a
+new kind folder.
+
+`files_test.go` checks the four methods the file tools use: `Check` on a kept
+file, a secret, a file under a folder a `.meruignore` names, a NUL byte, a file
+over the cap, a link and a path through one, a path outside and a missing one;
+`Walk`'s reasons and its stops; and `ReadText` for each kind of file.
 
 ## Why it's built this way
 
