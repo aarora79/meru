@@ -1,7 +1,9 @@
 // This file builds the tools the model may use and answers the tool ops. A
 // toolService owns the secrets, the MCP pool, the A2A client, the built-in
 // tools and the dispatcher that joins them, and swaps in a new MCP pool
-// when the configure tool changes config.toml.
+// when the configure tool changes config.toml or a client asks for a
+// reload. It also answers the probe op, which tries a server before the
+// user adds it.
 
 package main
 
@@ -36,6 +38,7 @@ const maxLogResult = 300
 // toolService holds everything tool calls need while merud runs.
 type toolService struct {
 	configPath string
+	dir        string // the Meru home, which holds secrets.toml
 	st         *store.Store
 	log        *slog.Logger
 	a2a        *a2a.Client
@@ -78,7 +81,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		return nil, fmt.Errorf("a2a: %w", err)
 	}
 
-	s := &toolService{configPath: configPath, st: st, log: log, a2a: ac, secrets: sec, pool: pool}
+	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, a2a: ac, secrets: sec, pool: pool}
 	outputDir, err := expandHome(cfg.Skills.OutputDir)
 	if err != nil {
 		return nil, fmt.Errorf("skills.output_dir: %w", err)
@@ -164,10 +167,13 @@ func (s *toolService) redact(text string) string {
 	return sec.Redact(text)
 }
 
-// reloadMCP is the configure tool's change hook. It reads config.toml and
-// secrets.toml again, starts a new MCP pool, and swaps it in for the old
-// one, which it then closes. A call still running on the old pool fails;
-// configure runs rarely, and the user approved it a moment ago.
+// reloadMCP is the configure tool's change hook, and OpMCPReload's work.
+// It reads config.toml and secrets.toml again, starts a new MCP pool, and
+// swaps it in for the old one, which it then closes. The new pool holds
+// exactly the servers config lists now, so a server added, changed or
+// removed takes effect, and closing the old pool stops every child it
+// started, a removed server's included. A call still running on the old
+// pool fails; reloads are rare, and the user asked for this one.
 //
 // It fails, leaving the old pool in place, when config or secrets don't
 // load or a server entry is wrong.
@@ -210,6 +216,48 @@ func (s *toolService) Close() {
 // handleTools answers OpTools with one "tools" event listing every source.
 func (s *toolService) handleTools(emit func(rpc.Event) error) error {
 	return emit(rpc.Event{Type: rpc.EventTools, Servers: s.dispatcher.Servers()})
+}
+
+// handleReload answers OpMCPReload: it reloads the MCP servers from config
+// and replies with one "tools" event, as OpTools does. On a bad config it
+// returns the error, which names the problem, and the old pool stays.
+//
+// The reload runs to the end even if the client hangs up, so merud never
+// holds a half-built pool: context.WithoutCancel keeps ctx's values but
+// drops its cancellation. connectTimeout still bounds each server.
+func (s *toolService) handleReload(ctx context.Context, emit func(rpc.Event) error) error {
+	if err := s.reloadMCP(context.WithoutCancel(ctx)); err != nil {
+		return err
+	}
+	return s.handleTools(emit)
+}
+
+// handleProbe answers OpMCPProbe with one "probe" event: the tools the
+// server in req.Server offers, with their hints. It reads secrets.toml
+// afresh, since `meru mcp add` may have saved the server's key a moment
+// ago, and resolves the "secret:" values in env and headers.
+//
+// The probe calls no tool, and the model never sees what it finds, so it
+// doesn't go through dispatch: like the memory ops, it is a command the
+// user runs. The error text passes through Redact, in case a server
+// echoes a key back.
+func (s *toolService) handleProbe(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	if req.Server == nil {
+		return errors.New("mcp_probe needs a server to probe")
+	}
+	sec, err := secrets.Load(secrets.Path(s.dir))
+	if err != nil {
+		return err
+	}
+	cfg, err := probeConfig(*req.Server, sec.Resolve)
+	if err != nil {
+		return err
+	}
+	info, err := mcp.Probe(ctx, cfg, s.log)
+	if err != nil {
+		return errors.New(sec.Redact(err.Error()))
+	}
+	return emit(rpc.Event{Type: rpc.EventProbe, Probe: probeResult(info)})
 }
 
 // handleLog answers OpLog with one "log" event: the latest limit rows of

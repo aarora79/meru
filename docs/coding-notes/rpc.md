@@ -74,6 +74,15 @@ the skills the turn loaded, with only `name` set, such as
 Reusing the field keeps one name for one idea on the wire, and `description`
 has `omitempty`, so each entry stays that small.
 
+Two MCP ops back `meru mcp add`. `mcp_probe` carries the server to try in
+`Server`, a `ProbeServer` with the fields of an `[[mcp.servers]]` entry minus the
+allow lists, and answers with one `probe` event. Its `Probe`, a `ProbeResult`,
+holds the name and version the server reports and every tool it offers, each
+with `read_only` and `destructive`, the server's MCP hints. Both are `*bool`, so
+a hint the server left out stays out of the JSON instead of reading as `false`.
+`mcp_reload` answers with one `tools` event, the same as `tools`, showing the
+servers after the reload.
+
 `Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
 never a struct value, so without the pointer every event would carry an empty
 report.
@@ -145,8 +154,9 @@ the caller's context closes the connection.
 
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
 `tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
-`memory_forget`) and the skill ops (`skills`, `skill_show`, `skill_reset`) to
-the handler. Any other op gets an `unknown op` error.
+`memory_forget`), the skill ops (`skills`, `skill_show`, `skill_reset`) and the
+MCP ops (`mcp_probe`, `mcp_reload`) to the handler. Any other op gets an
+`unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,
 so `Listen` checks what is there first:

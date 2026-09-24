@@ -32,7 +32,8 @@ import (
 
 // Handler answers one request whose op isn't OpPing: OpAsk, OpIndex,
 // OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd,
-// OpMemoryForget, OpSkills, OpSkillShow or OpSkillReset. It calls emit once per event to send ("session",
+// OpMemoryForget, OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe or
+// OpMCPReload. It calls emit once per event to send ("session",
 // "route", "token" and so on) and returns when the reply is complete.
 //
 // The server writes the closing event itself: "done" when Handler returns
@@ -187,7 +188,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd, OpMemoryForget,
-		OpSkills, OpSkillShow, OpSkillReset:
+		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})

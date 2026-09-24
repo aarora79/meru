@@ -3,8 +3,9 @@
 // offers three tools:
 //
 //   - search returns a fixed note that names the query, so a test can see
-//     the arguments arrived;
-//   - send pretends to send a message; tests put it in a confirm list;
+//     the arguments arrived; it carries readOnlyHint;
+//   - send pretends to send a message; tests put it in a confirm list; it
+//     carries destructiveHint;
 //   - secret is never allowlisted, so a call to it must be denied.
 //
 // It is test code, built by test/e2e, and never ships.
@@ -37,11 +38,15 @@ func main() {
 	text := func(s string) *mcp.CallToolResult {
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
 	}
-	mcp.AddTool(s, &mcp.Tool{Name: "search", Description: "Search the user's notes."},
+	// The hints let a probe tell a reading tool from one that acts.
+	yes := true
+	mcp.AddTool(s, &mcp.Tool{Name: "search", Description: "Search the user's notes.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}},
 		func(_ context.Context, _ *mcp.CallToolRequest, in searchArgs) (*mcp.CallToolResult, any, error) {
 			return text("note garden.md: the garden budget for " + in.Query + " is 4,200 dollars"), nil, nil
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a message."},
+	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a message.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &yes}},
 		func(_ context.Context, _ *mcp.CallToolRequest, in sendArgs) (*mcp.CallToolResult, any, error) {
 			return text("sent to " + in.To), nil, nil
 		})
