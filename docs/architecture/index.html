@@ -236,7 +236,7 @@
 
 <header class="top">
   <h1><span class="meru-name"><i>Meru</i> (<span lang="hi">मेरु</span>)</span>: the big picture</h1>
-  <p class="standfirst">Meru is a personal AI assistant that runs on a machine you control. It answers questions from your notes and files, remembers what matters about you, and uses tools such as web search, Gmail and your calendar. The models run on your own machine, so no prompt goes to an AI company.</p>
+  <p class="standfirst">Meru is a personal AI assistant that runs on a machine you control. It answers questions from your notes and files, remembers what matters about you, and uses tools such as web search, Gmail, your calendar and your Obsidian notes. The models run on your own machine, so no prompt goes to an AI company.</p>
   <aside class="aside"><p><b>Why &ldquo;Meru&rdquo;?</b> Meru is the cosmic mountain that the sun, moon and stars turn around. This assistant takes the name because it works the same way: it stays in one place, on your machine, and your notes, tools and daily routine turn around it.</p></aside>
   <p>This page covers the main parts in a few minutes. <a href="200.html">Level 200</a> explains how each part works, and <a href="300.html">level 300</a> is the full design.</p>
   <p class="byline">Amit Arora · September 2026 · the design, written before the code</p>
@@ -249,7 +249,7 @@
 <div class="figbox">
 <svg viewBox="0 0 780 590" role="img" aria-labelledby="f1t f1d">
   <title id="f1t">The parts of Meru</title>
-  <desc id="f1d">A dashed line marks your machine. Inside it, you type into meru, for a chat or one question, and meru passes the question to merud, which runs in the background. merud holds three parts: the scheduler, which starts jobs such as morning briefs; the agent loop, which answers your question; and dispatch, which checks each tool call and asks before risky calls. The agent loop uses local models run by Ollama (fast, main and embed, in a lite or full setup), your data (the folders you index, memory files, conversation transcripts and a SQLite search index) and skills (writing, explainer and any you add). Dispatch reaches other agents over A2A and tools over MCP, such as web search, Gmail, Calendar and Drive. An optional dashboard, Grafana, runs on the same machine. Outside the dashed line sit internet services such as a search engine or Google; only the tools you allow connect to them.</desc>
+  <desc id="f1d">A dashed line marks your machine. Inside it, you type into meru, for a chat or one question, and meru passes the question to merud, which runs in the background. merud holds three parts: the scheduler, which starts jobs such as morning briefs; the agent loop, which answers your question; and dispatch, which checks each tool call and asks before risky calls. The agent loop uses local models run by Ollama (fast, main and embed, in a lite or full setup), your data (the folders you index, memory files, conversation transcripts and a SQLite search index) and skills (writing, explainer and any you add). Dispatch reaches other agents over A2A and tools over MCP, such as Gmail, Calendar, web search and your notes. An optional dashboard, Grafana, runs on the same machine. Outside the dashed line sit internet services such as a search engine or Google; only the tools you allow connect to them.</desc>
   <defs>
     <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -336,8 +336,8 @@
   <!-- tools -->
   <rect x="500" y="404" width="260" height="62" rx="10" class="ba2"/>
   <text x="514" y="426" class="t1" font-size="13.5" font-weight="700">tools · MCP</text>
-  <text x="746" y="426" class="t3" font-size="12.5" text-anchor="end">+ more</text>
-  <text x="514" y="450" class="t2" font-size="12.5">web search · Gmail · Calendar · Drive</text>
+  <text x="746" y="426" class="t3" font-size="12.5" text-anchor="end">+ yours</text>
+  <text x="514" y="450" class="t2" font-size="12.5">Gmail · Calendar · web search · notes</text>
 
   <!-- agent loop reaches models, data, skills; dispatch reaches agents and tools -->
   <path d="M424 190 L498 84" class="ln" marker-end="url(#f1a)"/>
@@ -363,7 +363,7 @@
   <li><b>Your files.</b> You choose folders to index, such as your notes or documents. Meru indexes nothing until you list one, skips secret files such as <code>.env</code>, and keeps the index current as you edit. It searches your files by keyword and by meaning, and names the file behind each answer. Email and calendar stay with their tools and never enter the index.</li>
   <li><b>Memory.</b> Meru saves what it learns about you as small Markdown files, plain text you can open in any editor, sorted into folders such as <code>me/</code>, <code>preferences/</code> and <code>projects/</code>. You can read, edit or delete any of them. It also writes a short summary of each conversation, so it can recall what you discussed last week.</li>
   <li><b>Skills.</b> A skill is a Markdown file of instructions for one kind of task, such as writing a report or explaining a topic. Meru ships with two (<code>writing</code> and <code>explainer</code>), loads a skill only when a question needs it, and picks up any skill you add.</li>
-  <li><b>Tools and other agents.</b> Meru uses tools through <b>MCP</b> (Model Context Protocol), an open standard many services already support: web search, Gmail, Calendar, Drive, your notes app. It can also hand a task to another agent over <b>A2A</b> (Agent2Agent). Tools start switched off; you turn on the ones you want, and Meru asks you before any tool call that sends, deletes or buys something. To let it run a program on your machine, such as <code>git log</code>, you write the whole command in the config file and the model fills in only the blanks, such as which folder; no shell runs it. <code>meru setup</code> offers a short list of starter servers and adds the ones you pick. API keys stay in a file only you can read, and never pass through the model.</li>
+  <li><b>Tools and other agents.</b> Meru uses tools through <b>MCP</b> (Model Context Protocol), an open standard many services already support: Gmail and Google Calendar, Brave web search, your Obsidian notes. It can also hand a task to another agent over <b>A2A</b> (Agent2Agent). Tools start switched off; you turn on the ones you want, and Meru asks you before any tool call that sends, deletes or changes something. To let it run a program on your machine, such as <code>git log</code>, you write the whole command in the config file and the model fills in only the blanks, such as which folder; no shell runs it. <code>meru setup</code> offers three starter tools (Google, Brave and Obsidian) and adds the ones you pick. Meru starts most tools itself. You start the Google one yourself, and Meru connects to it. When a tool stops, Meru leaves it stopped and tries it once more when your next question needs tools. <code>meru mcp</code> shows which tools are connected. API keys stay in a file only you can read, and never pass through the model.</li>
   <li><b>Observability.</b> Meru records how long each step takes, how many words the model read and wrote, and which tools it called. With the optional dashboard (Grafana) running on your machine, you can see why an answer was slow or which tool failed. That data never leaves the machine.</li>
 </ul>
 

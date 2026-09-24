@@ -164,9 +164,9 @@ flowchart TB
     end
 
     subgraph ext["MCP servers (separate processes)"]
-        S1["obsidian"]
-        S2["robinhood"]
-        S3["gmail / calendar"]
+        S1["google"]
+        S2["brave"]
+        S3["obsidian"]
     end
 
     subgraph agents["other agents (A2A)"]
@@ -266,7 +266,7 @@ sequenceDiagram
     participant T as MCP server
 
     Note over U,T: Turn 1 starts a new session
-    U->>C: "what changed in my portfolio this week?"
+    U->>C: "what did we agree on the launch date in email this week?"
     C->>L: new session + question
     L->>S: append user line to session JSONL
     L->>F: pick a route
@@ -275,12 +275,13 @@ sequenceDiagram
     S-->>L: top chunks, relevant memories
     L-->>C: sources: the excerpts, numbered [1], [2], …
     L->>L: build context within budgets
+    L->>L: try MCP servers that aren't connected, once
     L->>M: context + schemas of allowed tools
-    M-->>L: tool call robinhood.get_portfolio
+    M-->>L: tool call google.search_gmail_messages
     L->>D: dispatch
     D->>D: allowlist ✓ · not in confirm list
-    D->>T: get_portfolio
-    T-->>D: holdings
+    D->>T: search_gmail_messages
+    T-->>D: matching messages
     D->>S: tool_call + tool_result lines, tool_calls row
     D-->>L: result
     L->>M: context + tool result
@@ -290,7 +291,7 @@ sequenceDiagram
     L->>S: append assistant line
 
     Note over U,T: Turn 2 continues the same session
-    U->>C: "sell half of the one that dropped most"
+    U->>C: "reply to that thread and confirm I can make it"
     C->>L: same session + question
     L->>S: load this session's recent messages
     L->>F: pick a route, reading turn 1 too
@@ -298,15 +299,15 @@ sequenceDiagram
     L->>S: search files, recall memories
     S-->>L: top chunks, relevant memories
     L->>M: context (with turn 1) + tool schemas
-    M-->>L: tool call robinhood.place_order
+    M-->>L: tool call google.send_gmail_message
     L->>D: dispatch
-    D->>D: allowlist ✓ · place_order is in confirm list
-    D-->>C: ask: place_order(...)?
+    D->>D: allowlist ✓ · send_gmail_message is in confirm list
+    D-->>C: ask: send_gmail_message(...)?
     C-->>U: approve once · for this session · deny?
     U->>C: approve once
     C->>D: approved once
-    D->>T: place_order
-    T-->>D: order placed
+    D->>T: send_gmail_message
+    T-->>D: message sent
     D->>S: tool_call, approval + tool_result lines, tool_calls row
     D-->>L: result
     L->>M: context + tool result
@@ -356,7 +357,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   keeps the choice:
 
   ```json
-  {"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"robinhood","tool":"place_order","choice":"once","trace_id":"9c2e…"}
+  {"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"google","tool":"send_gmail_message","choice":"once","trace_id":"9c2e…"}
   ```
 
 - **Built-in tools have their own confirm list.** Built-ins belong to no server
@@ -418,8 +419,8 @@ and arguments and offers the choices `merud` sends, at most these three:
 - **Earlier tool results stay out of the history.** The answer that used a result
   already carries what mattered from it, and raw results can run to thousands of
   tokens. The transcript keeps the full results.
-- **The router sees the history too**, so it can tell that a follow-up like "sell
-  half of the one that dropped most" needs tools. It picks a route and nothing else;
+- **The router sees the history too**, so it can tell that a follow-up like "reply
+  to that thread and confirm I can make it" needs tools. It picks a route and nothing else;
   no model rewrites the follow-up.
 - **A follow-up search adds an earlier question.** On the search routes, a short
   question (fewer than three words that aren't filler) gets the session's latest
@@ -430,8 +431,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   of filler words, so "search again" after "try that again" still carries the
   subject from before them.
 - **The `main` model resolves the reference.** It reads turn 1's answer in the
-  history, which named the stocks and their moves, and works out which one dropped
-  most. It reads answers, not the raw tool results behind them.
+  history, which named the thread and the date agreed in it, and works out which
+  thread "that thread" means. It reads answers, not the raw tool results behind
+  them.
 
 ---
 
@@ -571,6 +573,8 @@ order.
    commands that don't ask, with a note that says it may read whole files, list
    folders and grep when the excerpts fall short, and run the `cmd.` tools.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
+   On a route that offers tools, the loop first gives each MCP server that isn't
+   connected one try, then lists the tools (see [MCP](#mcp)).
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
    client about each call with a `tool_call` event.
@@ -733,11 +737,11 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 ```
 
 ```json
-{"ts":"2026-09-23T10:15:02Z","type":"user","text":"what changed in my portfolio this week?","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:04Z","type":"tool_result","call_id":"call-1","outcome":"ok","ok":true,"ms":812,"result":"NVDA 120 shares…","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Reviewed the week's portfolio changes; two positions fell more than 5%."}
+{"ts":"2026-09-23T10:15:02Z","type":"user","text":"what did we agree on the launch date in email this week?","trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"google","tool":"search_gmail_messages","args":{"query":"launch date"},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:04Z","type":"tool_result","call_id":"call-1","outcome":"ok","ok":true,"ms":812,"result":"Re: Launch date, from Sam…","trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Sam and Priya agreed on 14 October…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Found the launch date agreed in email: 14 October, in the thread with Sam."}
 ```
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
@@ -887,7 +891,7 @@ The indexer cuts each file into chunks along its own structure:
 
 | File | Split by | Heading kept | Citation points to |
 | --- | --- | --- | --- |
-| Markdown | heading, then paragraphs | the heading path, such as `Budget > Q3` | lines |
+| Markdown | heading, then paragraphs | the heading path, such as `Garden > Spring` | lines |
 | Go | top-level declaration, read with Go's own parser | the declaration's name | lines |
 | other code, plain text | blank-line blocks | none | lines |
 | HTML | `<h1>` to `<h6>`, then paragraphs; scripts, styles and `<head>` dropped | the heading path | none |
@@ -900,8 +904,8 @@ The indexer cuts each file into chunks along its own structure:
 - **No chunk passes the limit.** A paragraph too big for one chunk gets split at
   line breaks, then between words, and last at a fixed width.
 - **The heading path travels with the text.** Each embedded chunk starts with its
-  heading path, so the third chunk of a long "Budget > Q3" section still embeds as
-  being about Q3's budget.
+  heading path, so the third chunk of a long "Garden > Spring" section still embeds
+  as being about the garden in spring.
 
 ### Keeping it current
 
@@ -936,7 +940,7 @@ The indexer cuts each file into chunks along its own structure:
 
 ## Retrieval
 
-Vector search misses exact strings such as ticker symbols and error codes. BM25, the
+Vector search misses exact strings such as project code names and error codes. BM25, the
 standard keyword-ranking formula, misses paraphrase. Meru runs both.
 
 [A question, end to end](#a-question-end-to-end) shows where retrieval sits in a turn,
@@ -1051,10 +1055,10 @@ forgot to cite; in use it printed ten unrelated files under general answers and
 under an answer built from an Obsidian search.
 
 ```text
-The Q3 budget for the garden project is 4,200 dollars [1].
+The garden project sows tomatoes on 12 April [1].
 
 Sources:
-[1] ~/notes/garden.md, "Budget", lines 3–5
+[1] ~/notes/garden.md, "Planting", lines 3–5
 ```
 
 With a tiny index, every chunk lands in the top 10. A minimum fused score, or
@@ -1088,7 +1092,7 @@ One file per memory, and one folder per kind:
 created: 2026-09-23
 source: session 2026-09-23T101502-7f3a
 ---
-Prefers index funds over individual stocks for retirement accounts.
+Prefers short replies, with the answer in the first sentence.
 ```
 
 - **The folder is the kind.** No `kind:` field can disagree with the path, and you can
@@ -1120,7 +1124,7 @@ Meru keeps no index file. The database already indexes the files, and
   line. A session ends when it has had no question for `[agent] summary_idle` (30
   minutes by default); a session that goes on later gets a new summary, and the
   newest wins. `merud` embeds each summary into `session_vec`, so "what did we
-  decide about the portfolio last week?" finds the right session. On the routes that
+  decide about the garden beds last week?" finds the right session. On the routes that
   search files, the prompt gets up to three past sessions under "From earlier
   conversations", each with its date, summary and best-matching message.
 
@@ -1142,7 +1146,7 @@ Meru keeps no index file. The database already indexes the files, and
 2. **Recall.** Each turn searches memories by meaning and by keyword, adds a third
    list ranked by recency, and merges all three with `rrf`. The top results go into
    the context, up to the memory budget. Recall runs on every route, including
-   tools-only turns, because a preference such as "always ask before trading" matters
+   tools-only turns, because a preference such as "always ask before sending mail" matters
    most when tools run.
 3. **Saving.** The model saves a memory by calling the built-in `remember` tool with
    a folder and the text. The call goes through `dispatch` like any other tool, so it
@@ -1162,9 +1166,9 @@ A skill is a markdown file with YAML frontmatter, at `~/.meru/skills/<name>/SKIL
 
 ```markdown
 ---
-name: portfolio-review
-description: Review holdings through a valuation lens. Use when asked about
-  positions, concentration, or whether to buy or sell.
+name: meeting-notes
+description: Turn a meeting transcript into decisions and action items. Use when
+  asked to write up a meeting, list what was agreed, or who owns what.
 ---
 
 <the instructions, loaded only when the skill is chosen>
@@ -1175,7 +1179,7 @@ short call to the `fast` model picks the skills a turn needs, and `merud` loads 
 their bodies, so adding skills barely grows the prompt.
 
 A skill's `name` is lowercase letters and digits in words joined by `-`, such as
-`portfolio-review`, and must match its folder's name. A `SKILL.md` may be up to
+`meeting-notes`, and must match its folder's name. A `SKILL.md` may be up to
 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and
 the other skills still load.
 
@@ -1235,42 +1239,48 @@ own the first time you run `meru`.
 
 ### Adding an MCP server
 
-Meru carries a small catalog of known servers in the binary:
+Meru carries a small catalog of known servers in the binary, one for each kind of
+example this document uses: mail and calendar, web search, and notes.
 
-| Name | Server | Needs | Asks first |
-| --- | --- | --- | --- |
-| `brave` | Brave Search (`@brave/brave-search-mcp-server`) | an API key | nothing |
-| `fetch` | web page fetch (`mcp-server-fetch`) | nothing | nothing |
-| `filesystem` | `@modelcontextprotocol/server-filesystem` | the folders it may use | writing, editing, moving, making a folder |
-| `google` | `workspace-mcp --tools gmail calendar drive docs` | a Google OAuth client and a sign-in | as `gmail`, `calendar` and `drive` |
-| `gmail` | `workspace-mcp --tools gmail` | a Google OAuth client and a sign-in | draft, send |
-| `calendar` | `workspace-mcp --tools calendar` | a Google OAuth client and a sign-in | changing an event |
-| `drive` | `workspace-mcp --tools drive docs` | a Google OAuth client and a sign-in | creating or editing a doc |
-| `obsidian` | `mcp-obsidian`, through Obsidian's Local REST API plugin | the plugin's API key | appending to a note |
-| `windows` | `windows-mcp` (Windows only) | nothing | clicking, typing, PowerShell, files, processes |
+| Name | Server | Transport | Needs | Asks first |
+| --- | --- | --- | --- | --- |
+| `google` | `taylorwilsdon/google_workspace_mcp` (`uvx workspace-mcp`) | Streamable HTTP on `127.0.0.1:8000/mcp` | a Google OAuth client, a sign-in, and you running it | sending mail, changing an event |
+| `brave` | Brave Search (`@brave/brave-search-mcp-server`) | stdio | an API key in `secrets.toml` | nothing |
+| `obsidian` | `mcp-obsidian`, through Obsidian's Local REST API plugin | stdio | the plugin's API key | appending to a note |
 
 Each entry lists the install command, what the server needs, and a starting `allow`
 and `confirm` list: reading allowed, anything that sends, writes, runs or changes
-something in `confirm`. One Google Workspace server covers Gmail, Calendar, Drive
-and Docs. The `google` entry runs it once for all four; `gmail`, `calendar` and
-`drive` run it with one service each, so you can add only the services you want,
-and each asks Google only for its own permissions. Google's own Workspace MCP
-servers are remote only, so the catalog keeps the local one.
+something in `confirm`.
 
-`filesystem` and `windows` can change files or run programs as you, with no
-sandbox, so their descriptions say so. The catalog has no shell server; to let the
-model run a program, declare it in `[[commands]]` (see
-[Local commands](#local-commands)). `windows` sets `ANONYMIZED_TELEMETRY = "false"`, because the server
-sends usage data to its makers otherwise, and leaves its registry tool out of
-`allow`. Setup and `meru mcp list` offer `windows` only on Windows.
+`google` is the one `url` entry. The server's README marks stdio as legacy, and its
+OAuth 2.1 mode needs HTTP, so you start it yourself and `merud` connects to it
+(see [MCP](#mcp)). The catalog prints the command:
+
+```sh
+GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
+```
+
+The server offers 120-odd tools across twelve Google services. `--tools` limits the
+process to Gmail, Calendar, Drive and Docs, and the catalog's `allow` limits the
+model to eight of those: search and read mail and threads, send mail, list and
+change calendar events, search Drive, and read a doc. Sending mail and changing an
+event sit in `confirm`. So two layers apply: the server decides what exists, and
+Meru decides what the model sees. The OAuth client ID and secret go in the
+server's environment when you start it, never through Meru. Google's own Workspace
+MCP servers are remote only, so the catalog keeps the local one.
+
+The catalog has no shell server; to let the model run a program, declare it in
+`[[commands]]` (see [Local commands](#local-commands)).
 
 For each server, you choose one of two paths:
 
 - **"Do it for me."** Meru asks only for what the server needs, one question at a
   time, and reads each key without showing it on screen: "Paste your Brave Search
-  API key". A Google entry notes that the server opens a browser window for the
-  sign-in the first time Meru uses it. Then Meru shows you the exact config block
-  it will add, and writes it only after you approve.
+  API key". For `google`, Meru prints the command that starts the server and never
+  runs it, and notes that the server gives you a sign-in link the first time the
+  model uses a Google tool. Then Meru shows you the exact config block it will
+  add, and writes it only after you approve.
 - **"Show me how."** Meru prints the config block, any install command and the
   `secrets.toml` lines, and names the file to paste them into. Nothing changes
   until you do it yourself.
@@ -1282,16 +1292,15 @@ when the copy loads and its servers pass the same checks `merud` runs.
 Outside setup, one command adds any server:
 
 ```sh
-meru mcp add <catalog-name> [args...]              # a catalog entry
+meru mcp add <catalog-name>                        # a catalog entry
 meru mcp add stdio <name> -- <command> [args...]   # a server merud starts
-meru mcp add http <name> <url> [--network]         # a Streamable HTTP server
+meru mcp add http <name> <url> [--remote]          # a Streamable HTTP server you run
 ```
 
-`meru mcp add gmail` offers the same two paths as setup. An entry that takes
-arguments gets them on the command line: `meru mcp add filesystem ~/notes` names
-the folders, with `~` expanded, since the server wants absolute paths. The older
-forms, `meru mcp add <name> -- <command>` and `--url <url>`, still work. `meru mcp
-list` shows the catalog, then each server in `config.toml` with what `merud` says
+`meru mcp add google` offers the same two paths as setup. The older forms, `meru
+mcp add <name> -- <command>` and `--url <url>`, still work. `meru mcp` shows the
+state of each configured server (see [MCP](#mcp)). `meru mcp list` shows the
+catalog, then each server in `config.toml` with what `merud` says
 about it: connected or not, and how many tools it offers and allows. `meru mcp
 remove <name>` takes one `[[mcp.servers]]` block out of `config.toml`, with the
 comment lines above it, keeps every other line, and checks the result loads before
@@ -1316,9 +1325,12 @@ writes the entry: Enter accepts, and `-name`, `+name` and `?name` leave a tool o
 allow it without asking, or make it ask. MCP calls these hints, not promises: a
 server can mislabel a tool, so the proposal is a starting point and you make the
 call. When the probe fails, `meru` says why and offers to try again, to write the
-entry anyway (with the catalog's lists, or an empty `allow`), or to cancel. A URL
-off this machine needs `--network`, and `meru` says that each tool call sends your
-data there; the entry gets `network = true`.
+entry anyway (with the catalog's lists, or an empty `allow`), or to cancel. For a
+server you run, such as `google`, `meru` probes only when something answers at the
+URL. When nothing does, it writes the catalog's lists and says `merud` connects on
+your first question after you start the server. A URL off this machine needs
+`--remote`, and `meru` says that each tool call sends your data there; the entry
+gets `remote = true`.
 
 After it writes the entry, `meru` asks `merud` to reload its MCP servers, so the new
 tools work without a restart.
@@ -1328,8 +1340,7 @@ tool, which adds a catalog entry, or a custom one from a name and a command or U
 `configure` never writes an entry whose secret is missing from `secrets.toml`. It
 tells the model to send you to `meru mcp add <name>` in a terminal instead, because
 a key typed into chat would pass through the model, the approval prompt and the
-transcript. It sends you there for `filesystem` too, which takes its folders on the
-command line. After it writes, `merud` rebuilds the MCP client pool and swaps it in,
+transcript. After it writes, `merud` rebuilds the MCP client pool and swaps it in,
 so the new server works without a restart.
 
 **Config changes always ask.** `configure` goes through `dispatch` and asks you
@@ -1339,14 +1350,18 @@ lasting trust, so the model can't grant any to itself. (Built-in tools need no
 allowlist entry: the model always sees `configure`, and from v0.4 `remember` and
 `write_file`.)
 
-**Secrets stay out of config.** API keys and OAuth client secrets go in
-`~/.meru/secrets.toml`, a flat list of `name = "value"` lines. A config value
+**Secrets stay out of config.** API keys go in `~/.meru/secrets.toml`, a flat list of `name = "value"` lines. A config value
 refers to one as `secret:<name>`, in an MCP server's `env` or `headers` or an A2A
 agent's `headers`:
 
 ```toml
 env = { BRAVE_API_KEY = "secret:brave_api_key" }
 ```
+
+`env` belongs to a stdio server, which `merud` starts. A `url` entry with `env`
+fails at startup: `merud` starts no process for it, so the variables would go
+nowhere. The message names the server and points at `headers`, the way to send a
+key to an HTTP server.
 
 `merud` swaps in the value when it starts a server or calls an agent, and refuses
 to start when group or other users can read `secrets.toml` (it says to run
@@ -1372,28 +1387,73 @@ two transports in the current MCP spec, both provided by the official Go SDK:
 
 Every MCP server you already run becomes a Meru capability with no new code.
 
+**`merud` doesn't supervise servers.** The operating system already ships a
+process supervisor, and a second one inside the daemon would trade the first
+design rule for convenience:
+
+| Transport | What `merud` does | What it never does |
+| --- | --- | --- |
+| stdio | starts the server as a child, because the transport is the child's stdin and stdout | restart it on its own, watch its health, back off and retry |
+| Streamable HTTP | connects to a URL | start it, restart it, health-check it, wait for it |
+
+Starting a stdio child isn't supervision: until the child exists there is no server
+to talk to. An HTTP server is somebody else's process with its own lifetime. You
+start it with `launchd`, `systemd` or by hand, the way you start Ollama.
+
+**Connecting: once at startup, once more per turn.** `merud` tries each configured
+server once when it starts: connect, `initialize`, `tools/list`. A failure is
+recorded with its reason, and the server stays listed as not connected. A server
+that isn't connected has no tool list, so its tools aren't offered. At the start
+of each turn that offers tools, before it lists them, `merud` tries each server
+that isn't connected once more, inside that turn: 5 seconds for an HTTP server, 30
+seconds for a stdio child, which may still be downloading. If the try fails, the
+turn carries on without that server. A stdio child that crashed counts as not
+connected and follows the same rule. For stdio, "try" means start the child and
+run the handshake; for HTTP, connect to the URL.
+
+| | What happens |
+| --- | --- |
+| `merud` starts | one try per server |
+| a turn that offers tools | one try per server that isn't connected, before the tool list |
+| a turn that offers no tools, or no turn at all | nothing |
+| a call to a server that died mid-turn | fails at once; the next turn tries again |
+
+There is no loop, timer, goroutine or backoff, and nothing runs while nobody asks: a
+server that fails and is never needed again is never touched again. The one
+goroutine per session waits for the session to end so that `/mcp` reports a dead
+server at once; it marks the server not connected and never reconnects. So you can
+start `workspace-mcp` after `merud`, and it works on your next question with no
+restart.
+
 ```toml
 [[mcp.servers]]
 name    = "obsidian"
-command = "npx"                   # stdio: merud starts this process
-args    = ["-y", "obsidian-mcp", "serve", "--vault", "/Users/you/notes"]
-allow   = ["list_vaults", "search_vault", "read_note"]   # tool-level allowlist
-confirm = []                      # allowed tools that still need a yes per call
+command = "uvx"                   # stdio: merud starts this process
+args    = ["mcp-obsidian"]
+env     = { OBSIDIAN_API_KEY = "secret:obsidian_api_key", OBSIDIAN_PORT = "27124" }  # stdio only
+allow   = ["obsidian_simple_search", "obsidian_get_file_contents", "obsidian_append_content"]  # tool-level allowlist
+confirm = ["obsidian_append_content"]   # allowed tools that still need a yes per call
 always_confirm = []               # ask every call, with no approval for the session
 timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
-name    = "calendar"
-url     = "http://127.0.0.1:8123/mcp"   # Streamable HTTP: server already running
-headers = { Authorization = "secret:calendar_token" }   # value from secrets.toml
-allow   = ["list_events"]
-network = false                          # true only if the URL isn't loopback
+name    = "google"
+url     = "http://127.0.0.1:8000/mcp"   # Streamable HTTP: you start the server
+headers = { Authorization = "secret:google_token" }   # value from secrets.toml
+allow   = ["search_gmail_messages", "send_gmail_message"]
+confirm = ["send_gmail_message"]
+remote  = false                          # true only if the URL isn't loopback
 ```
 
-A server entry has either `command` or `url`. `merud` refuses a Streamable HTTP URL
-that isn't loopback unless the entry says `network = true`, the same rule A2A agents
-follow. `env` and `headers` values may name a secret as `secret:<name>` (see
-[Adding an MCP server](#adding-an-mcp-server)).
+A server entry has either `command` or `url`. `env` goes only with `command`: a `url`
+entry with `env` fails to load, with a message that points at `headers`. `merud`
+refuses a Streamable HTTP URL that isn't loopback unless the entry says
+`remote = true`, the same rule A2A agents follow. `remote` covers one thing: whether
+`merud` may connect to a URL on another machine. It says nothing about what the
+server itself reaches; `google` has `remote = false` and talks to Google all day.
+Before the rename it was called `network`, and a config that still says `network`
+fails to load with "network was renamed remote". `env` and `headers` values may name
+a secret as `secret:<name>` (see [Adding an MCP server](#adding-an-mcp-server)).
 
 `merud` reads the servers when it starts, and again on a **reload**: after
 `configure` adds a server, and when a client sends the `mcp_reload` op, as
@@ -1409,28 +1469,53 @@ it (see [Adding an MCP server](#adding-an-mcp-server)). A probe needs no allow l
 since it calls no tool, and the model never sees what it finds. It is a user
 command, like the memory ops, so it doesn't go through `dispatch`.
 
-`meru tools` lists each server, whether `merud` reached it, the
-tools the model may use and which of them ask first, and warns about each `allow`
-entry the server doesn't offer, most often a typo.
+**Status.** `meru mcp` (or `meru mcp status`) and `/mcp` in `meru chat` show one
+row per configured server:
+
+```text
+$ meru mcp
+SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
+google     http       connected       124        8        2   127.0.0.1:8000/mcp
+brave      stdio      connected         4        2        0
+obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH
+```
+
+| Column | Meaning |
+| --- | --- |
+| `SERVER` | the `name` from config |
+| `TRANSPORT` | `stdio` or `http` |
+| `STATE` | `connected` or `not connected`; config has no key that turns a server off, so there is no third state |
+| `TOOLS` | how many tools the server offers, from its `tools/list`; `—` when not connected, since there is no list to count |
+| `ALLOWED` | how many tools config allows |
+| `CONFIRM` | how many allowed tools ask first, from `confirm` and `always_confirm` |
+| last field | the URL of an HTTP server, or why the server isn't connected |
+
+The data comes from the `mcp_status` op, which `merud` answers from config and the
+pool's own record of each server. It sends nothing to any server, so the view is
+instant and works while a server is down. `ALLOWED` and `CONFIRM` come from config
+and show either way, which tells you what you would get. `meru mcp --json` prints
+the same rows for scripts. Tool names stay out of this view: `meru tools` lists each
+server, whether `merud` reached it, the tools the model may use and which of them
+ask first, and warns about each `allow` entry the server doesn't offer, most often a
+typo.
 
 Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
 
 - **Commands ask every time.** A tool in `always_confirm` asks before every call and
-  offers only "approve once" and "deny", like the built-in `configure`. The catalog
-  puts Windows' `PowerShell` there, the one catalog tool that runs commands. A
-  session approval would let the model run any command unseen for the rest of the
-  session.
+  offers only "approve once" and "deny", like the built-in `configure`. It is for a
+  tool that runs commands, where a session approval would let the model run any
+  command unseen for the rest of the session. No catalog entry needs it today.
 - **No wildcards.** `allow` and `confirm` name each tool; `merud` refuses `*` or any
   other pattern. A wildcard would admit tools a server adds in a later release,
   which nobody has read.
 - **A timeout per call.** Each server entry may set `timeout`, 60 seconds unless
   set. When it passes, or you cancel the turn, Meru tells the server to cancel the
   call.
-- **Lazy reconnect.** A server that crashes, or fails to start, restarts on the next
-  call to one of its tools, at most once every 10 seconds. A call inside that wait
-  fails at once. Meru runs no background restart loop, so a server that crashes on
-  start doesn't spin.
+- **One try per turn, no retry loop.** A server that crashes, or fails to start,
+  gets one try at the start of the next turn that offers tools (see above). A call
+  to a server that isn't connected fails at once. Nothing retries on a timer, so a
+  server that crashes on start doesn't spin.
 - **A short environment for stdio servers.** A child process gets only `PATH`,
   `HOME` and the few variables Windows programs need, plus the entry's own `env`.
   The rest of `merud`'s environment stays out, because it may hold another tool's
@@ -1573,7 +1658,7 @@ name    = "research"
 url     = "http://127.0.0.1:9100"   # Meru reads the agent card from here
 allow   = ["summarize"]              # skills from the agent card
 confirm = []
-network = false                      # true only if the agent isn't on loopback
+remote  = false                      # true only if the agent isn't on loopback
 timeout = "60s"                      # the default
 ```
 
@@ -1596,8 +1681,10 @@ sequenceDiagram
 
 Agents are deny-by-default too. Meru can reach only the agents in config, and only
 the skills in `allow` become tools. An agent on another machine may use a cloud
-model, so your data would leave the machine. Reaching one takes `network = true`;
-without it, `merud` refuses any agent URL that isn't loopback.
+model, so your data would leave the machine. Reaching one takes `remote = true`;
+without it, `merud` refuses any agent URL that isn't loopback. As for MCP, `remote`
+covers only where `merud` connects, and a config that still says `network` fails
+with "network was renamed remote".
 
 - **Lazy card fetch.** `merud` starts without contacting any agent. It reads an
   agent's card the first time a turn needs its tools, so an agent that starts after
@@ -1613,7 +1700,7 @@ without it, `merud` refuses any agent URL that isn't loopback.
 - **Guards on the connection.** The config check covers the card's URL, but the
   card names the URLs the calls go to. So the client's dialer checks each address
   just before it connects, after DNS, and refuses anything off loopback unless the
-  entry says `network = true`. The client follows no redirects, because a redirect
+  entry says `remote = true`. The client follows no redirects, because a redirect
   could carry the entry's `headers`, which may hold an API key, to another host.
 
 ---
@@ -1829,7 +1916,9 @@ transcript lines hold. No level writes question or answer text. With
 - The codebase contains no path to a cloud model. The engine talks only to a model
   runtime on loopback.
 - You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
-  HTTP server needs `network = true` in its config entry. The A2A client checks
+  HTTP server needs `remote = true` in its config entry. `remote` says where
+  `merud` may connect, not what the server reaches: a loopback server such as
+  `google` still talks to Google. The A2A client checks
   each address again as it connects and follows no redirects, so an agent card
   can't send your messages elsewhere.
 - API keys live in `~/.meru/secrets.toml`, which `merud` refuses to read when other

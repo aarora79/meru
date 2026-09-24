@@ -85,8 +85,12 @@ demands it, and say which one in the PR. In practice:
 docs, coding notes, code comments, commit messages, PR descriptions, issue text, HTML
 pages and posters. Load the skill before drafting and run its revision pass before
 committing. In short: short words, active voice with a named actor, no `-ly` padding,
-no stock phrases, acronyms spelled out on first use, and none of the sentence-shape
+no stale phrases, acronyms spelled out on first use, and none of the sentence-shape
 tells it lists.
+
+Examples come from the catalog servers (`google` for mail and calendar, `brave` for
+web search, `obsidian` for notes), and the repository carries no trading or
+personal-finance examples.
 
 The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
@@ -106,7 +110,7 @@ never by editing them in place.
    response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
-   except to A2A agents and Streamable HTTP MCP servers marked `network = true`.
+   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.
