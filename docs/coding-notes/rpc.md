@@ -1,6 +1,6 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `client.go`, `server.go`)
+**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `args.go`, `client.go`, `server.go`)
 **Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
@@ -82,6 +82,22 @@ way:
 - **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
   answer with a regular expression and returns the sources they name. When
   the answer cites none, it returns them all: the model still read them.
+
+### args.go
+
+Helpers both clients use to show a tool call's arguments, which arrive as raw
+JSON (`json.RawMessage`):
+
+- **`ArgsLines(args, maxLines)`** indents the JSON with `json.Indent`, one field
+  per line, for an approval prompt. Past `maxLines`, the last line says how
+  many it left out: `… 12 more lines`.
+- **`ArgsLine(args, width)`** squeezes the JSON onto one line with
+  `json.Compact`, for a tool line or `meru log`, and cuts it to `width`.
+- **`Cut(s, width)`** does the cutting. It counts characters (runes), not bytes,
+  so it never splits a character such as "é" that takes two bytes.
+
+Arguments that aren't valid JSON come back as they are, so a broken tool can't
+hide what it sent.
 
 ### client.go
 
@@ -217,7 +233,8 @@ go test -race ./internal/rpc/...
 
 `TestRoundTrip` also sends the index ops and a `sources` event through a real
 socket, to show their payloads survive the trip through JSON. `TestCited`
-covers which sources count as cited.
+covers which sources count as cited. `TestArgsLines` and `TestArgsLine` cover
+indenting, cutting, and arguments that aren't JSON.
 
 `TestClientDisconnectCancelsHandler` hangs up mid-answer and checks that the
 handler's context ends with `context.Canceled`. `TestDebugLog` runs a question

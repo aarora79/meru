@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`), `cmd/meru/` (`main.go`, `index.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `look.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools` and `meru log` in v0.3
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -40,6 +40,7 @@ flowchart TB
         A["meru \"question\""] -- "rpc.Do" --> R
         P["meru ping"] -- "rpc.Do" --> R
         I["meru index"] -- "rpc.Do" --> R
+        T["meru tools, meru log"] -- "rpc.Do" --> R
     end
 ```
 
@@ -164,19 +165,31 @@ case flags.NArg() == 1 && flags.Arg(0) == "chat":
     err = tui.Run(ctx, *socket, chatInfo())
 case flags.Arg(0) == "index":
     err = indexCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+case flags.Arg(0) == "tools":
+    err = toolsCmd(ctx, *socket, flags.Args()[1:], stdout)
+case flags.Arg(0) == "log":
+    err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 default:
-    err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout)
+    p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
+    err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
 }
 ```
 
 - `meru "question"` and `meru question words` both work; the words are joined.
-  A question whose first word is `ping`, `chat` or `index` needs quotes.
+  A question whose first word is `ping`, `chat`, `index`, `tools` or `log` needs
+  quotes.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
   as `[1] ~/notes/garden.md, "Budget", lines 3–5`. `rpc.Cited` picks those
   lines; when the answer cites no number, it lists every excerpt the model
   read.
+- Tool calls show on standard error as dim lines, `→ notes.search
+  {"query":"garden"}` when a call starts and `✓ notes.search 120 ms` or
+  `✗ mail.send declined` when it ends. They and the approval prompt stay off
+  standard output, so `meru "..." > answer.txt` saves only the answer. When the
+  answer stopped mid-line, `breakLine` starts a new line on standard error
+  first, so the tool line doesn't run into the text.
 - `meru chat` is the Bubble Tea terminal UI in `internal/tui`.
 - Exit status: 0 on success, 1 on any error, 130 after Ctrl-C (the shell's
   convention: 128 plus signal number 2).
@@ -197,6 +210,64 @@ Index:      12 files, 87 chunks, 87 vectors
 Scanning:   no
 Last scan:  2026-09-23T10:15:00-04:00, 3 files indexed (5 chunks), 9 unchanged, 0 removed, 0 failed, 2 skipped, in 1.2s
 ```
+
+### meru: approve.go
+
+When a tool is in a `confirm` list, `merud` sends an `approval` event and holds
+the call until the client answers. `rpc.Do` calls the `ApproveFunc` it was given
+and writes the answer back. For one-shot `meru`, that function is the
+`approve` method of a `prompter`:
+
+```text
+Meru wants to run mail.send (mcp) with:
+  {
+    "to": "sam@example.com",
+    "subject": "Garden budget"
+  }
+Run mail.send? [o]nce  [s]ession  [d]eny:
+```
+
+- It shows only the choices `merud` offers; the `configure` tool offers once and
+  deny. A key (`o`) or the whole word (`once`), in any case, picks a choice. An
+  empty or unknown answer asks again, and end of input denies.
+- It reads from standard input, and only when standard input is a terminal.
+  `isTerminal` checks `os.ModeCharDevice` on `os.Stdin.Stat()`, from the
+  standard library. In a pipe or a script, `approve` denies without asking and
+  prints one line saying so. We don't open `/dev/tty` instead: Windows has no
+  such file, and a script should get a deny, not a prompt it can't see.
+- A read from a terminal blocks until Enter, and nothing can interrupt it. So
+  `readLine` reads in a goroutine and waits with `select` for either the line
+  or the end of `ctx` ([go-basics/select.md](go-basics/select.md)). Ctrl-C ends
+  `ctx`, `approve` returns its error, and the turn stops as it always did.
+- Tests pass a `strings.Reader` as the keyboard and choose `terminal` themselves,
+  so they never touch the real standard input.
+
+### meru: tools.go and log.go
+
+`meru tools` (or `meru tools list`) sends `OpTools` and prints each tool
+source: its name, kind, transport and whether `merud` reached it, then the
+tools the model may use, with "asks first" or "always asks" beside those that
+need approval, the count allowed out of the count offered, and a warning for
+each `allow` entry the source doesn't offer. With no source, it says how to
+add one. `toolsText` pads tool names with `%-*s`, whose `*` takes the width
+from the argument list.
+
+`meru log` sends `OpLog` with `Limit` from `-n` (20 by default) and prints one
+line per call, newest first. `writeLog` lines up the columns with
+`text/tabwriter`, which pads each tab-separated cell to the widest in its
+column. It writes the table into a buffer first, so `-v` can put each call's
+result on its own line under it without breaking the columns.
+
+`rpc.ArgsLines` and `rpc.ArgsLine` format arguments for the prompt and the log,
+so `meru chat` shows them the same way.
+
+### meru: look.go
+
+`newLook` builds the few styles the plain-text output uses: dim, bold, green,
+red and amber. Each comes from a `lipgloss.Renderer` made for the writer it
+styles, which checks whether that writer is a terminal, how many colours it has
+and whether `NO_COLOR` is set. Without colour, a style adds no escape codes, so
+a pipe, a file and the tests all get plain text.
 
 ## Go ideas used here
 
@@ -238,7 +309,11 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
   can't be tested; returning an error or a status code avoids both problems.
 - **The socket before the warm-up**, so a duplicate daemon fails fast.
 - **`meru` stays thin.** It imports only `rpc`, `tui` and `config` (for the
-  default socket path), and starts in milliseconds.
+  default socket path), and starts in milliseconds. `meru tools` and `meru log`
+  format what `merud` sends; `merud` decides what is allowed and reads the
+  audit log.
+- **A deny when nobody can answer.** A script can't approve a tool call, and a
+  call that runs unseen is worse than an answer without the tool.
 - **The scan runs in the background.** A first scan of a big folder can take
   minutes of embedding; `merud` shouldn't sit silent for that long.
 - **Folders come from config only.** `meru index <folder>` rescans a folder

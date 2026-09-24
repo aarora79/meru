@@ -15,13 +15,14 @@ import (
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// askFunc sends one request to merud and returns the reply events. In the real
-// program it wraps rpc.Do with the socket path; tests pass a fake that returns
-// scripted events, so they never open a socket.
+// askFunc sends one request to merud and returns the reply events. approve
+// answers merud's approval questions; nil denies them all. In the real
+// program askFunc wraps rpc.Do with the socket path; tests pass a fake that
+// returns scripted events, so they never open a socket.
 //
 // iter.Seq2[rpc.Event, error] is Go's type for "something you can range over
 // that yields two values per step", here an event and an error.
-type askFunc func(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Event, error]
+type askFunc func(ctx context.Context, req rpc.Request, approve rpc.ApproveFunc) iter.Seq2[rpc.Event, error]
 
 // sender delivers a message into a running Bubble Tea program. *tea.Program
 // has a Send method with this shape, so it satisfies the interface without
@@ -58,13 +59,47 @@ type turnDoneMsg struct {
 func streamCmd(ctx context.Context, ask askFunc, send sender, turn int, req rpc.Request) tea.Cmd {
 	return func() tea.Msg {
 		// range over an iterator runs the loop body once per yielded pair.
-		for ev, err := range ask(ctx, req) {
+		for ev, err := range ask(ctx, req, approveVia(send, turn)) {
 			if err != nil {
 				return turnDoneMsg{turn: turn, err: err}
 			}
 			send.Send(eventMsg{turn: turn, ev: ev})
 		}
 		return turnDoneMsg{turn: turn}
+	}
+}
+
+// approvalRequestMsg asks Update to show an approval box for one tool call.
+// reply takes the user's choice back to the goroutine that waits for it.
+// turn names the question it belongs to, like eventMsg's.
+type approvalRequestMsg struct {
+	turn     int
+	approval rpc.Approval
+	// reply has room for one choice, so Update can send the answer without
+	// waiting, even when the goroutine has already given up.
+	reply chan rpc.Choice
+}
+
+// approveVia returns the ApproveFunc for one turn. rpc.Do calls it from the
+// stream goroutine each time merud asks about a tool call.
+//
+// The goroutine can't draw anything or read keys; only Update can. So the
+// function hands the question to Update as an approvalRequestMsg, through
+// send like any event, and then blocks until one of two things happens:
+// Update puts the user's choice on the reply channel, or ctx ends because
+// the user pressed Ctrl-C or quit. select waits for whichever comes first.
+// While it blocks, the turn waits too: merud holds the tool call until the
+// Reply arrives.
+func approveVia(send sender, turn int) rpc.ApproveFunc {
+	return func(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
+		reply := make(chan rpc.Choice, 1)
+		send.Send(approvalRequestMsg{turn: turn, approval: a, reply: reply})
+		select {
+		case c := <-reply:
+			return c, nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
 }
 
@@ -83,7 +118,7 @@ func pingCmd(ask askFunc) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		// defer runs cancel when this function returns, freeing the timer.
 		defer cancel()
-		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpPing}) {
+		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpPing}, nil) {
 			if err != nil {
 				return pingMsg{err: err}
 			}

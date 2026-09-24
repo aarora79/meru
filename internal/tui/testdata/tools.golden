@@ -1,0 +1,30 @@
+Meru मेरु lite · minicpm5:2b · session 101500-ab12                     ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+You
+  │ Email Sam the garden budget
+
+Meru  tools · 0.82
+  ✓ notes.search · 120 ms
+  ✗ mail.send · declined
+  I found the budget, 4,200 dollars, but didn't send the email.
+  0.8s to first token · 40.0 tok/s · 2.4s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll

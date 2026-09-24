@@ -1,5 +1,5 @@
 // This file holds the chat screen's look: the brand colours, the Lip Gloss
-// styles built from them, and the key map that both drives the keys and fills
+// styles built from them, and the key maps that both drive the keys and fill
 // the help line at the bottom.
 
 package tui
@@ -7,6 +7,8 @@ package tui
 import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // styles holds every Lip Gloss style the screen uses.
@@ -34,6 +36,11 @@ type styles struct {
 	spinner    lipgloss.Style // the "thinking" spinner
 	errorBox   lipgloss.Style // an error, in a red rounded box
 	inputBox   lipgloss.Style // the rounded border round the input
+
+	approvalBox   lipgloss.Style // a tool call waiting for approval, in an amber box
+	approvalTitle lipgloss.Style // "Run notes.search?" at the top of that box
+	choice        lipgloss.Style // a choice in the box
+	choiceOn      lipgloss.Style // the choice Enter would pick
 }
 
 // answerIndent is how far message text sits from the left edge. Glamour's
@@ -56,7 +63,8 @@ func newStyles(r *lipgloss.Renderer) styles {
 	// blue marks what the user wrote: the "You" label and the bar beside
 	// the question.
 	blue := lipgloss.AdaptiveColor{Light: "#3558C2", Dark: "#8AB4F8"}
-	// amber marks a route the router fell back to because it wasn't sure.
+	// amber marks a route the router fell back to because it wasn't sure,
+	// and the approval box.
 	amber := lipgloss.AdaptiveColor{Light: "#B26B00", Dark: "#E5A445"}
 	// green colours the "Meru" label and the connection status; red
 	// colours the error box.
@@ -95,6 +103,16 @@ func newStyles(r *lipgloss.Renderer) styles {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(teal).
 			Padding(0, 1),
+		// Amber marks the approval box, as it marks a route the router
+		// wasn't sure of: both ask for a second look.
+		approvalBox: r.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(amber).
+			Padding(0, 1).
+			MarginLeft(answerIndent),
+		approvalTitle: r.NewStyle().Foreground(amber).Bold(true),
+		choice:        r.NewStyle().Foreground(grey),
+		choiceOn:      r.NewStyle().Foreground(teal).Bold(true),
 	}
 }
 
@@ -135,3 +153,27 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll}}
 }
+
+// approvalKeys lists the keys that answer an approval box, for the help
+// line while the box is open. A plain slice of bindings satisfies
+// help.KeyMap once it has the two methods below.
+type approvalKeys []key.Binding
+
+// newApprovalKeys returns the help line's keys for an approval that offers
+// choices: one key per choice, then ←/→ with Enter, then Ctrl-C.
+func newApprovalKeys(choices []rpc.Choice) approvalKeys {
+	var k approvalKeys
+	for _, c := range choices {
+		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c))))
+	}
+	return append(k,
+		key.NewBinding(key.WithKeys("left", "right", "enter"), key.WithHelp("←/→ enter", "choose")),
+		key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop")),
+	)
+}
+
+// ShortHelp returns the keys in order.
+func (k approvalKeys) ShortHelp() []key.Binding { return k }
+
+// FullHelp returns the keys as one column.
+func (k approvalKeys) FullHelp() [][]key.Binding { return [][]key.Binding{k} }

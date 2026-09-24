@@ -24,7 +24,13 @@ const streamCursor = "▍"
 func (m Model) View() string {
 	rule := m.style.rule.Render(strings.Repeat("─", m.width))
 	input := m.style.inputBox.Render(m.input.View())
-	return strings.Join([]string{m.header(), rule, m.conversation.View(), input, m.help.View(m.keys)}, "\n")
+	// While an approval box is open, the help line lists the keys that
+	// answer it instead.
+	helpLine := m.help.View(m.keys)
+	if m.approval != nil {
+		helpLine = m.help.View(newApprovalKeys(m.approval.ask.Choices))
+	}
+	return strings.Join([]string{m.header(), rule, m.conversation.View(), input, helpLine}, "\n")
 }
 
 // header draws the top line: the name, the setup details and the session on
@@ -109,8 +115,18 @@ func (m *Model) renderTurn(t *exchange) string {
 		"",
 		m.style.meru.Render("Meru") + m.badge(t),
 	}
+	for _, tc := range t.tools {
+		lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Truncate(toolText(tc), width, "…"))))
+	}
+	// The approval box belongs to the turn that is streaming, the newest.
+	asking := m.approval != nil && t == &m.turns[len(m.turns)-1]
+	if asking {
+		lines = append(lines, m.approvalBoxView(width))
+	}
 
 	switch {
+	case asking && t.answer == "":
+		// The box says what Meru waits for; the spinner would only repeat it.
 	case t.state == stateActive && t.answer == "":
 		// The spinner's frames end in a space, so none goes between.
 		lines = append(lines, m.style.raw.Render(m.spin.View()+m.style.dim.Render("thinking…")))
@@ -140,6 +156,30 @@ func (m *Model) renderTurn(t *exchange) string {
 		lines = append(lines, m.style.errorBox.Render(msg))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// toolText writes one tool call as the turn shows it:
+//
+//	→ notes.search              while it runs
+//	✓ notes.search · 120 ms     when it worked
+//	✗ mail.send · declined      when it didn't
+func toolText(tc toolCall) string {
+	switch tc.outcome {
+	case "":
+		return "→ " + tc.name
+	case "ok":
+		return "✓ " + tc.name + " · " + millis(tc.millis)
+	}
+	return "✗ " + tc.name + " · " + tc.outcome
+}
+
+// millis writes a duration in milliseconds: "120 ms" under a second,
+// "1.2s" from there up, as the stats line writes seconds.
+func millis(ms int64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%d ms", ms)
+	}
+	return seconds(ms)
 }
 
 // sourcesBlock draws the files a finished answer cites, dim, under the
