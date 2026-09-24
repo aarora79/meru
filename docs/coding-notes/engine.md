@@ -36,7 +36,7 @@ as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 
 ### loopback.go
 
-`CheckLoopbackURL` decides whether a URL points at this machine:
+`loopback.CheckURL` (in `internal/loopback`, shared with config and obs) decides whether a URL points at this machine:
 
 ```go
 if strings.EqualFold(host, "localhost") {
@@ -52,7 +52,7 @@ every address it resolves to is loopback. It refuses every other host name
 without a lookup, because only `localhost` is reserved for this machine; another
 name could point here today and elsewhere tomorrow. `Unmap` turns
 `::ffff:127.0.0.1`, an IPv4 address written as IPv6, back into plain IPv4 so the
-test sees it. `IsLoopbackURL` wraps it for callers that want a yes or no.
+test sees it. `loopback.IsURL` wraps it for callers that want a yes or no.
 
 ### ollama.go
 

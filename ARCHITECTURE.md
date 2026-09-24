@@ -494,8 +494,10 @@ classification and reads the answer from the model's probabilities:
 1. The prompt gives the question, the session history and four lettered options
    (A = answer directly, B = search, C = tools, D = search and tools), each with a
    one-line description, and ends with `Answer: `.
-2. `merud` asks Ollama for one token with log probabilities (`num_predict = 1`,
-   `logprobs = true`, `top_logprobs = 20`).
+2. `merud` asks Ollama's `/api/chat` for one token with log probabilities
+   (`num_predict = 1`, `logprobs = true`, `top_logprobs = 20`) and with thinking
+   off (`think = false`). A thinking model such as MiniCPM5 otherwise spends its
+   one token starting its hidden reasoning, and no letter comes back.
 3. The router keeps the alternatives whose text is one of the four letters, turns
    each log probability back into a probability, divides by a fitted temperature,
    and normalizes the four so they sum to 1.
@@ -1110,7 +1112,12 @@ We'll settle these with working code and measurements.
    probabilities (see [Routing](#routing)). The open question is whether a 2B model's
    probabilities separate the four routes well enough to act on.
    `meru.route.decisions` by outcome, and a temperature fitted from labelled turns,
-   will show. If they don't, `lite` gets a larger `fast` model.
+   will show. If they don't, `lite` gets a larger `fast` model. The first run, on
+   the development machine with MiniCPM5-2B and the raw temperature of 1.0, took
+   about 13 ms per warm decision and picked the expected route for 2 of 7
+   hand-picked questions. It leaned towards `search+tools`, the safe fallback, so
+   no answer lacked context, but it did more work than needed. Next: label real
+   turns, fit the temperature, and tune the option descriptions.
 2. **Context order.** Skills, memories and retrieved chunks compete for the same
    window. `meru.context.tokens` will supply the numbers to set a budget per section.
 3. **PDF extraction.** Local tools that keep a PDF's layout are weak, and Go has fewer

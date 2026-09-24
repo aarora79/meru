@@ -1131,7 +1131,7 @@ description: Review holdings through a valuation lens. Use when asked about
 
 <ol>
   <li>The prompt gives the question, the session history and four lettered options (A = answer directly, B = search, C = tools, D = search and tools), each with a one-line description, and ends with <code>Answer: </code>.</li>
-  <li><code>merud</code> asks Ollama for one token with log probabilities (<code>num_predict = 1</code>, <code>logprobs = true</code>, <code>top_logprobs = 20</code>).</li>
+  <li><code>merud</code> asks Ollama's <code>/api/chat</code> for one token with log probabilities (<code>num_predict = 1</code>, <code>logprobs = true</code>, <code>top_logprobs = 20</code>) and with thinking off (<code>think = false</code>). A thinking model such as MiniCPM5 otherwise spends its one token starting its hidden reasoning, and no letter comes back.</li>
   <li>The router keeps the alternatives whose text is one of the four letters, turns each log probability back into a probability, divides by a fitted temperature, and normalizes the four so they sum to 1.</li>
   <li>The most likely letter is the route, and its probability is the confidence.</li>
 </ol>
@@ -1522,7 +1522,7 @@ capture_content  = false                     # prompt/response text in spans</co
 <p>We'll settle these with working code and measurements.</p>
 
 <ol>
-  <li><b>Router quality.</b> The router no longer has to write valid output; it reads probabilities (see <a href="#routing">Routing</a>). The open question is whether a 2B model's probabilities separate the four routes well enough to act on. <code>meru.route.decisions</code> by outcome, and a temperature fitted from labelled turns, will show. If they don't, <code>lite</code> gets a larger <code>fast</code> model.</li>
+  <li><b>Router quality.</b> The router no longer has to write valid output; it reads probabilities (see <a href="#routing">Routing</a>). The open question is whether a 2B model's probabilities separate the four routes well enough to act on. <code>meru.route.decisions</code> by outcome, and a temperature fitted from labelled turns, will show. If they don't, <code>lite</code> gets a larger <code>fast</code> model. The first run, on the development machine with MiniCPM5-2B and the raw temperature of 1.0, took about 13 ms per warm decision and picked the expected route for 2 of 7 hand-picked questions. It leaned towards <code>search+tools</code>, the safe fallback, so no answer lacked context, but it did more work than needed. Next: label real turns, fit the temperature, and tune the option descriptions.</li>
   <li><b>Context order.</b> Skills, memories and retrieved chunks compete for the same window. <code>meru.context.tokens</code> will supply the numbers to set a budget per section.</li>
   <li><b>PDF extraction.</b> Local tools that keep a PDF's layout are weak, and Go has fewer of them than Python. We may need a cgo library or an external tool.</li>
   <li><b>Leaving Ollama.</b> An embedded llama.cpp engine would make <code>merud</code> self-contained, but Meru would take over tool-call parsing and loading models. Decide once v0.3 works on Ollama and we can measure the cost.</li>
