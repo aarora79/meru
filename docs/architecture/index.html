@@ -249,7 +249,7 @@
 <div class="figbox">
 <svg viewBox="0 0 780 590" role="img" aria-labelledby="f1t f1d">
   <title id="f1t">The parts of Meru</title>
-  <desc id="f1d">A dashed line marks your machine. Inside it, you type into meru, for a chat or one question, and meru passes the question to merud, which runs in the background. merud holds three parts: the scheduler, which starts jobs such as morning briefs; the agent loop, which answers your question; and dispatch, which checks each tool call and asks before risky calls. The agent loop uses local models run by Ollama (fast, main and embed, in a lite or full setup), your data (the folders you index, memory files, conversation transcripts and a SQLite search index) and skills (writing, explainer, poster-making and any you add). Dispatch reaches other agents over A2A and tools over MCP, such as web search, Gmail, Calendar and Drive. An optional dashboard, Grafana, runs on the same machine. Outside the dashed line sit internet services such as a search engine or Google; only the tools you allow connect to them.</desc>
+  <desc id="f1d">A dashed line marks your machine. Inside it, you type into meru, for a chat or one question, and meru passes the question to merud, which runs in the background. merud holds three parts: the scheduler, which starts jobs such as morning briefs; the agent loop, which answers your question; and dispatch, which checks each tool call and asks before risky calls. The agent loop uses local models run by Ollama (fast, main and embed, in a lite or full setup), your data (the folders you index, memory files, conversation transcripts and a SQLite search index) and skills (writing, explainer and any you add). Dispatch reaches other agents over A2A and tools over MCP, such as web search, Gmail, Calendar and Drive. An optional dashboard, Grafana, runs on the same machine. Outside the dashed line sit internet services such as a search engine or Google; only the tools you allow connect to them.</desc>
   <defs>
     <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -327,7 +327,7 @@
   <rect x="500" y="278" width="260" height="58" rx="10" class="b"/>
   <text x="514" y="300" class="t1" font-size="13.5" font-weight="700">skills</text>
   <text x="746" y="300" class="t3" font-size="12.5" text-anchor="end">+ yours</text>
-  <text x="514" y="322" class="t2" font-size="12.5">writing · explainer · poster-making</text>
+  <text x="514" y="322" class="t2" font-size="12.5">writing · explainer</text>
 
   <!-- other agents -->
   <rect x="500" y="350" width="260" height="40" rx="10" class="b"/>
@@ -362,7 +362,7 @@
   <li><b>Local models.</b> Ollama, a free program, runs <b>open-weight models</b>, models whose files anyone can download, on your machine. The default <code>lite</code> setup needs about 2 GB of downloads and runs on most computers; the <code>full</code> setup uses a bigger model for better answers and needs a stronger machine. <code>merud</code> keeps the models loaded, so answers start fast.</li>
   <li><b>Your files.</b> You choose folders to index, such as your notes or documents. Meru searches them by keyword and by meaning, and names the file behind each answer.</li>
   <li><b>Memory.</b> Meru saves what it learns about you as small Markdown files, plain text you can open in any editor, sorted into folders such as <code>me/</code>, <code>preferences/</code> and <code>projects/</code>. You can read, edit or delete any of them. It also writes a short summary of each conversation, so it can recall what you discussed last week.</li>
-  <li><b>Skills.</b> A skill is a Markdown file of instructions for one kind of task, such as writing a report or making a poster. Meru ships with three (<code>writing</code>, <code>explainer</code> and <code>poster-making</code>), loads a skill only when a question needs it, and picks up any skill you add.</li>
+  <li><b>Skills.</b> A skill is a Markdown file of instructions for one kind of task, such as writing a report or explaining a topic. Meru ships with two (<code>writing</code> and <code>explainer</code>), loads a skill only when a question needs it, and picks up any skill you add.</li>
   <li><b>Tools and other agents.</b> Meru uses tools through <b>MCP</b> (Model Context Protocol), an open standard many services already support: web search, Gmail, Calendar, Drive, your notes app. It can also hand a task to another agent over <b>A2A</b> (Agent2Agent). Tools start switched off; you turn on the ones you want, and Meru asks you before any tool call that sends, deletes or buys something.</li>
   <li><b>Observability.</b> Meru records how long each step takes, how many words the model read and wrote, and which tools it called. With the optional dashboard (Grafana) running on your machine, you can see why an answer was slow or which tool failed. That data never leaves the machine.</li>
 </ul>

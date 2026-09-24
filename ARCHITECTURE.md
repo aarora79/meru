@@ -793,13 +793,12 @@ directory.
 
 ### Built-in skills
 
-Meru ships with three skills, taken from the owner's `my-ai-assets` repo:
+Meru ships with two skills, taken from the owner's `my-ai-assets` repo:
 
 | Skill | What it does |
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
-| `poster-making` | Builds a printable one-page poster as HTML, and PNG and PDF when a browser is available |
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
@@ -810,10 +809,9 @@ Meru ships with three skills, taken from the owner's `my-ai-assets` repo:
   counts, whether you wrote it or copied it from elsewhere.
 - **Skills that make files need somewhere to put them.** The built-in `write_file`
   tool writes only inside `~/meru-output/` (configurable). It can't touch any other
-  path, and it goes through `dispatch` like every tool. To render a poster to PNG or
-  PDF, Meru needs Chrome or Chromium installed; without one it produces the HTML only.
+  path, and it goes through `dispatch` like every tool.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
-  model writes weaker explainers and posters.
+  model writes weaker explainers.
 
 ---
 
@@ -1143,7 +1141,7 @@ We'll settle these with working code and measurements.
   to search and tools when unsure ([docs/fast-router.md](docs/fast-router.md)).
 - **Hybrid search:** FTS5 BM25 plus `sqlite-vec` similarity, merged in Go with
   reciprocal-rank fusion.
-- **Built-in skills:** `writing`, `explainer` and `poster-making` ship in the binary
+- **Built-in skills:** `writing` and `explainer` ship in the binary
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each
   added "for you" (with approval of the exact config block) or by copy-paste.

@@ -55,7 +55,7 @@ token in under a second, and the dashboard shows the timing.
 - `meru memory list | add | forget`, working on the files
 - Skill registry with progressive disclosure
 - `meru skills list | show | reset`
-- Built-in skills `writing`, `explainer` and `poster-making`, plus the `write_file`
+- Built-in skills `writing` and `explainer`, plus the `write_file`
   tool limited to `~/meru-output/`
 - Context budget policy across skills / memories / chunks
 

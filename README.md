@@ -42,7 +42,7 @@ $ meru brief                       # today's digest, prepared in advance
 | **MCP tools** | `meru setup` offers web search, Gmail, Calendar, Drive and more, and adds each one for you or shows you what to paste |
 | **Other agents** | Meru hands tasks to agents you've allowed, over A2A (Agent2Agent) |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete |
-| **Skills** | Markdown files of instructions, loaded only when a question needs them. Ships with `writing`, `explainer` and `poster-making` |
+| **Skills** | Markdown files of instructions, loaded only when a question needs them. Ships with `writing` and `explainer` |
 | **Scheduled jobs** | Briefs and other jobs run on a schedule, so Meru can tell you things before you ask |
 | **Observability** | OpenTelemetry metrics and traces for every question: tokens, time taken and tool calls, shown in a local Grafana |
 

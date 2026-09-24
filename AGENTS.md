@@ -67,9 +67,10 @@ no stock phrases, acronyms spelled out on first use, and none of the sentence-sh
 tells it lists.
 
 The skills `writing`, `explainer` and `poster-making` come from the owner's
-`my-ai-assets` repo; don't rewrite them here. Meru also ships copies of the same three
-as built-in skills under `internal/skills/builtin/`. Update those by copying from
-`my-ai-assets`, never by editing them in place.
+`my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
+`explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
+repo tool only and doesn't ship. Update the built-ins by copying from `my-ai-assets`,
+never by editing them in place.
 
 ## Non-negotiables
 

@@ -1090,14 +1090,13 @@ description: Review holdings through a valuation lens. Use when asked about
 
 <h3 id="builtin-skills">Built-in skills</h3>
 
-<p>Meru ships with three skills, taken from the owner's <code>my-ai-assets</code> repo:</p>
+<p>Meru ships with two skills, taken from the owner's <code>my-ai-assets</code> repo:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>writing</code></td><td>Plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
     <tr><td><code>explainer</code></td><td>Builds a self-contained HTML page that teaches a topic, with diagrams</td></tr>
-    <tr><td><code>poster-making</code></td><td>Builds a printable one-page poster as HTML, and PNG and PDF when a browser is available</td></tr>
   </tbody>
 </table></div>
 
@@ -1105,8 +1104,8 @@ description: Review holdings through a valuation lens. Use when asked about
   <li><b>They ship inside the binary.</b> Go's <code>embed</code> package compiles files into the program, and the repo keeps them under <code>internal/skills/builtin/</code>. On first run, <code>merud</code> copies each one to <code>~/.meru/skills/&lt;name&gt;/</code> unless that folder already exists.</li>
   <li><b>Your copy wins.</b> <code>merud</code> never overwrites a skill you've edited. To get the shipped version back, run <code>meru skills reset &lt;name&gt;</code>.</li>
   <li><b>You add more by dropping in a folder.</b> Any <code>SKILL.md</code> under <code>~/.meru/skills/</code> counts, whether you wrote it or copied it from elsewhere.</li>
-  <li><b>Skills that make files need somewhere to put them.</b> The built-in <code>write_file</code> tool writes only inside <code>~/meru-output/</code> (configurable). It can't touch any other path, and it goes through <code>dispatch</code> like every tool. To render a poster to PNG or PDF, Meru needs Chrome or Chromium installed; without one it produces the HTML only.</li>
-  <li><b>These skills want the <code>full</code> profile.</b> The <code>lite</code> model can run them, but a 2B model writes weaker explainers and posters.</li>
+  <li><b>Skills that make files need somewhere to put them.</b> The built-in <code>write_file</code> tool writes only inside <code>~/meru-output/</code> (configurable). It can't touch any other path, and it goes through <code>dispatch</code> like every tool.</li>
+  <li><b>These skills want the <code>full</code> profile.</b> The <code>lite</code> model can run them, but a 2B model writes weaker explainers.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -1544,7 +1543,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> with <code>sqlite-vec</code> as the index. No separate vector database.</td></tr>
     <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>).</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus <code>sqlite-vec</code> similarity, merged in Go with reciprocal-rank fusion.</td></tr>
-    <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code> and <code>poster-making</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
+    <tr><td>Built-in skills</td><td><code>writing</code> and <code>explainer</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> runs on first use and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste.</td></tr>
     <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, in <code>meru chat</code> only. Answers always stream.</td></tr>
     <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask (scripts, scheduled jobs), <code>dispatch</code> denies.</td></tr>
