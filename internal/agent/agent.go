@@ -110,6 +110,7 @@ type Agent struct {
 	tools       ToolRunner   // nil turns tools off
 	turns       TurnRecorder // nil keeps no turn rows
 	profile     Profile      // nil leaves the profile out of the prompt
+	skills      Skills       // nil turns skills off; set by UseSkills
 	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
@@ -253,7 +254,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	dec, err := a.route(ctx, question, history)
+	dec, picked, err := a.routeAndPick(ctx, question, history)
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
-	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok"}
+	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
 	if err := emit(routeEv); err != nil {
 		return err
 	}
@@ -312,7 +313,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		}
 	}
 	specs := a.toolSpecs(dec.Route)
-	msgs := a.prompt(ctx, history, question, files, len(specs) > 0)
+	msgs := a.prompt(ctx, history, question, files, a.skillsSection(ctx, picked), len(specs) > 0)
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
@@ -734,15 +735,16 @@ func shortPath(home, p string) string {
 // prompt builds the messages for the main model inside a meru.prompt span,
 // and reports their size. The system prompt holds, in order: the configured
 // prompt with whoIsWho, the user's profile when there is one, filesNote,
-// toolsNote on a turn that offers tools, and the excerpts from the user's
-// files. The profile sits right after whoIsWho, so the rule that "I" means
-// the user and the facts about who the user is read together.
+// toolsNote on a turn that offers tools, the skills, and the excerpts from
+// the user's files. The profile sits right after whoIsWho, so the rule that
+// "I" means the user and the facts about who the user is read together.
 //
 // files is the "From your files" section for a turn that searched, or ""
-// for one that didn't. tools is true on a turn that offers tools.
+// for one that didn't. skills is skillsSection's text, "" for none. tools
+// is true on a turn that offers tools.
 // est_tokens is characters divided by four, a rough rule for English text;
 // the model's own count arrives with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string, tools bool) []engine.Message {
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files, skills string, tools bool) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
 	system := a.system
@@ -752,6 +754,9 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, 
 	system += "\n\n" + a.filesNote
 	if tools {
 		system += "\n\n" + toolsNote
+	}
+	if skills != "" {
+		system += "\n\n" + skills
 	}
 	if files != "" {
 		system += "\n\n" + files

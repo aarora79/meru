@@ -1,5 +1,6 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
-// and the configure tool. The remember tool lives in remember.go.
+// and the configure tool. The remember tool lives in remember.go and
+// write_file in writefile.go.
 
 package builtin
 
@@ -38,6 +39,7 @@ type Tools struct {
 	configPath string
 	confirm    []string      // [builtin] confirm from config.toml
 	memory     *memory.Store // where remember saves; nil leaves remember out
+	outputDir  string        // where write_file writes, absolute; "" leaves write_file out
 	onChange   func(context.Context) error
 
 	// mu makes one configure call finish its write before the next starts
@@ -48,14 +50,16 @@ type Tools struct {
 // New returns the built-in tools. configPath is config.toml; secrets.toml
 // sits next to it. cfg is the [builtin] section. mem is the memory folder
 // that remember saves to; a nil mem leaves remember out, for tests of
-// configure alone. onChange runs after configure writes config.toml; merud
-// passes a function that rebuilds the MCP pool. A nil onChange does
-// nothing.
-func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func(context.Context) error) *Tools {
+// configure alone. outputDir is the absolute folder write_file writes in,
+// [skills] output_dir with "~" expanded; "" leaves write_file out. onChange
+// runs after configure writes config.toml; merud passes a function that
+// rebuilds the MCP pool. A nil onChange does nothing.
+func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error) *Tools {
 	return &Tools{
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
+		outputDir:  outputDir,
 		onChange:   onChange,
 	}
 }
@@ -63,7 +67,8 @@ func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func
 // Kind returns dispatch.KindBuiltin.
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
-// Tools returns the specs of configure and remember for the model. It reads
+// Tools returns the specs of configure, remember and write_file for the
+// model. It reads
 // the memory folders on each call, so a kind folder the user adds shows up
 // in remember's choices on the next turn.
 func (t *Tools) Tools() []engine.ToolSpec {
@@ -79,13 +84,20 @@ func (t *Tools) Tools() []engine.ToolSpec {
 			Parameters:  rememberSchema(t.kinds()),
 		})
 	}
+	if t.outputDir != "" {
+		specs = append(specs, engine.ToolSpec{
+			Name:        WriteFile,
+			Description: writeFileDescription(t.outputDir),
+			Parameters:  writeFileSchema(),
+		})
+	}
 	return specs
 }
 
 // Confirm says configure always asks, with no session approval. Any other
 // built-in asks when [builtin] confirm lists it, and runs without asking
-// otherwise. The shipped list is empty, so remember saves without asking,
-// as ARCHITECTURE.md "Memory" says.
+// otherwise. The shipped list holds write_file alone, so remember saves
+// without asking, as ARCHITECTURE.md "Memory" says, and write_file asks.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case name == Configure:
@@ -102,8 +114,8 @@ func (t *Tools) Confirm(name string) dispatch.Confirm {
 func (t *Tools) Locate(name string) (string, string) { return server, name }
 
 // Status describes the built-ins for `meru tools`: always connected,
-// configure, which always asks, and remember, which asks only when
-// [builtin] confirm lists it.
+// configure, which always asks, and remember and write_file, which ask
+// only when [builtin] confirm lists them.
 func (t *Tools) Status() []rpc.ServerInfo {
 	tools := []rpc.ToolInfo{{
 		Name:        Configure,
@@ -116,6 +128,13 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Name:        Remember,
 			Description: "Saves one fact about you to ~/.meru/memory.",
 			Confirm:     t.Confirm(Remember) != dispatch.ConfirmNever,
+		})
+	}
+	if t.outputDir != "" {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        WriteFile,
+			Description: "Saves a file in " + t.outputDir + ".",
+			Confirm:     t.Confirm(WriteFile) != dispatch.ConfirmNever,
 		})
 	}
 	return []rpc.ServerInfo{{
@@ -139,6 +158,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.configure(ctx, args)
 	case name == Remember && t.memory != nil:
 		text, err = t.remember(ctx, args)
+	case name == WriteFile && t.outputDir != "":
+		text, err = t.writeFile(args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}

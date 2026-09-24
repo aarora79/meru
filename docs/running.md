@@ -104,7 +104,7 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools`, `log`, `usage`, `setup`, `memory` or `mcp`. Without quotes, `meru` reads that word as
+`index`, `tools`, `log`, `usage`, `setup`, `memory`, `skills` or `mcp`. Without quotes, `meru` reads that word as
 a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
 notebook?`.
 
@@ -199,6 +199,69 @@ other.
 In `meru chat`, `/me` shows what Meru knows about you. While it knows nothing,
 the empty chat says so and the header shows `no profile`; both go away within
 half a minute of the first memory.
+
+### Skills
+
+A skill is a Markdown file of instructions for one kind of task. Meru ships two:
+`writing`, plain-English rules for emails, summaries and reports, and
+`explainer`, which builds a one-page HTML explainer on a topic. On its first
+start, `merud` copies both to `~/.meru/skills/<name>/SKILL.md`.
+
+Every prompt lists each skill's name and description. For each question, a short
+call to the fast model picks the skills it needs, at most two, and only their
+instructions join the prompt. Ask "write a short email to my landlord" and the
+route badge in `meru chat` reads `direct · 0.91 · writing`.
+
+```sh
+meru skills list              # each skill, with [built-in] and [edited] marks
+meru skills show writing      # print its SKILL.md
+meru skills reset writing     # put the shipped copy back
+```
+
+`reset` replaces your edits, so on a terminal it asks first; in a script, add
+`--yes`. It works only on the two built-ins.
+
+**Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
+change on the next question; no restart. `merud` never overwrites your copy, even
+after an upgrade, so run `meru skills reset` to take a newer shipped version.
+
+**Add your own** by making a folder under `~/.meru/skills/` whose name matches the
+skill's `name`, holding a `SKILL.md`:
+
+```markdown
+---
+name: meeting-notes
+description: Turn rough meeting notes into decisions and action items. Use when
+  asked to tidy up or summarize notes from a meeting.
+---
+
+List the decisions first, then each action item with its owner and date.
+```
+
+The name takes lowercase letters and digits joined by `-`. The description is what
+the fast model reads when it picks, so say when to use the skill. `merud` skips a
+folder that breaks a rule, and `meru skills list` shows why under `Skipped:`.
+
+**Files skills make.** The built-in `write_file` tool saves a file, such as an
+explainer page, in `~/meru-output/`. It creates the folder the first time, writes
+nowhere else (no absolute paths, no `..`, no symbolic links), caps a file at
+1 MiB, and won't replace a file unless you agree. It asks before every file, and
+the answer names the full path. To change the folder, or to let it write without
+asking, edit `config.toml`:
+
+```toml
+[skills]
+output_dir = "~/meru-output"
+
+[builtin]
+confirm = ["write_file"]   # take write_file out to stop the prompt
+```
+
+The model sees `write_file` only on turns that offer tools, so ask for the file
+in so many words. The router sent "make an explainer page about how DNS works and
+save it" to a route with tools, and "write an explainer on TCP" to `direct`, where
+the page comes back in the answer instead. Skills work best on the `full` profile;
+the 2B model follows long instructions less well.
 
 ### When Meru wants to run a tool
 

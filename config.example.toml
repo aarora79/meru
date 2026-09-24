@@ -152,10 +152,12 @@ watch = true
 [builtin]
 # Built-in tools that ask before each call. configure, which edits this
 # file, always asks and offers no approval for the session, whatever this
-# list says. remember saves a memory without asking; add "remember" or
-# "write_file" here to approve each call.
-confirm = []
+# list says. write_file asks before it saves a file; take it out to let it
+# write without asking. remember saves a memory without asking; add
+# "remember" here to approve each call.
+confirm = ["write_file"]
 
 [skills]
-# The one folder the write_file tool may write in.
+# The one folder the write_file tool may write in. merud creates it on the
+# first write.
 output_dir = "~/meru-output"

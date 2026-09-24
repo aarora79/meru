@@ -74,10 +74,12 @@ and `"5m"` goes out as a string.
 
 `Generate` posts to `/api/chat` with `stream: false` and copies the reply into a
 `Completion`: the text, any tool calls, the stop reason, the counters and the log
-probabilities. When the caller sets `Options.LogProbs`, the request also carries
-`think: false`. MiniCPM5 is a "thinking" model: by default its first tokens are
-hidden reasoning, so a one-token call would return the probabilities of the word
-"We" instead of a route letter. We checked this against Ollama 0.34.
+probabilities. When the caller sets `Options.LogProbs` or `Options.NoThink`, the
+request also carries `think: false`. MiniCPM5 is a "thinking" model: by default
+its first tokens are hidden reasoning, so a one-token call would return the
+probabilities of the word "We" instead of a route letter. We checked this
+against Ollama 0.34. The agent's skill pick sets `NoThink`: it wants a skill
+name within 20 tokens, not reasoning.
 
 `Stream` posts with `stream: true`. Ollama answers with NDJSON (newline-delimited
 JSON): one JSON object per line. `Stream` returns an iterator that reads a line,
@@ -189,9 +191,11 @@ You should see the one-token call pick `B` with a log probability near 0.
   Ollama 0.34 returns log probabilities from `/api/chat`, so one endpoint covers
   every answer. `/api/generate` with a raw prompt would also skip the model's chat
   template, and Meru would then have to know each model's template.
-- **Thinking off only for log-probability calls.** `Options` has no thinking
-  switch, and adding one grows the interface's surface for a single caller. A call
-  that asks for log probabilities wants the answer's tokens, so the engine turns
-  thinking off there and leaves every other call alone.
+- **Thinking off only when a caller asks.** A call that asks for log
+  probabilities wants the answer's tokens, so `LogProbs` turns thinking off by
+  itself. The skill pick needs thinking off without log probabilities, a second
+  caller, so `Options` gained `NoThink`. It is a field on `Options`, not a new
+  method: the `Engine` interface keeps its four methods. Every other call leaves
+  the model's default alone.
 - **No overall client timeout.** A long answer can stream for minutes. The caller's
   context decides when to give up.

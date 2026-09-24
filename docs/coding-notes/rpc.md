@@ -64,6 +64,16 @@ v0.2 added, without changing anything older clients read:
 | `report` event | `Report`, an `IndexReport`: files seen, indexed, unchanged, removed, failed and skipped, chunks written, and the time taken. |
 | `status` event | `Status`, an `IndexStatus`: the configured folders, the counts of files, chunks and vectors, whether a scan runs, and the last full scan's report, time and error. |
 
+v0.4 added the skill ops. `skills` and `skill_show` answer with one `skills`
+event whose `Skills` lists `SkillInfo`s: name, description, and the `builtin`
+and `edited` marks; `skill_show` adds the whole `SKILL.md` in `Body`, and
+`skills` puts the reasons `merud` skipped any folders in `Text`. `skill_reset`
+answers with `done` alone. A `route` event reuses the same `Skills` field for
+the skills the turn loaded, with only `name` set, such as
+`{"type":"route","route":"direct","confidence":0.91,"skills":[{"name":"writing"}]}`.
+Reusing the field keeps one name for one idea on the wire, and `description`
+has `omitempty`, so each entry stays that small.
+
 `Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
 never a struct value, so without the pointer every event would carry an empty
 report.
@@ -136,8 +146,9 @@ the caller's context closes the connection.
 ### server.go
 
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
-`tools`, `log`, `usage` and the memory ops (`memory_list`, `memory_add`,
-`memory_forget`) to the handler. Any other op gets an `unknown op` error.
+`tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
+`memory_forget`) and the skill ops (`skills`, `skill_show`, `skill_reset`) to
+the handler. Any other op gets an `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,
 so `Listen` checks what is there first:

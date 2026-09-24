@@ -202,12 +202,19 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	mems := memoryService{mem: mem, log: log}
+	// merud owns the skills folder too: the agent lists and loads skills
+	// from it each turn, and the skill ops answer `meru skills`.
+	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), log)
+	if err != nil {
+		return err
+	}
 	tools, err := newToolService(ctx, cfg, configPath, st, mem, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
 	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, profileAdapter{mem: mem}, log)
+	a.UseSkills(sk)
 	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
@@ -217,7 +224,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// too. The scan and the watcher log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	return g.Wait()
@@ -274,9 +281,10 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index ops to the index service, the tools and log ops to the tool
-// service, the memory ops to the memory service, and the usage op to the
-// store. The rpc server answers pings itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, st *store.Store) rpc.Handler {
+// service, the memory ops to the memory service, the skill ops to the skill
+// service, and the usage op to the store. The rpc server answers pings
+// itself.
+func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, st *store.Store) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -297,6 +305,12 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 			return mems.handleAdd(req, emit)
 		case rpc.OpMemoryForget:
 			return mems.handleForget(req)
+		case rpc.OpSkills:
+			return sk.handleList(ctx, emit)
+		case rpc.OpSkillShow:
+			return sk.handleShow(ctx, req, emit)
+		case rpc.OpSkillReset:
+			return sk.handleReset(ctx, req)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

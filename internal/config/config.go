@@ -194,6 +194,7 @@ type Skills struct {
 // Builtin configures the tools built into merud. configure always asks,
 // whatever Confirm says.
 type Builtin struct {
-	// Confirm lists built-in tools that ask before each call.
+	// Confirm lists built-in tools that ask before each call. Default
+	// ["write_file"].
 	Confirm []string `toml:"confirm"`
 }

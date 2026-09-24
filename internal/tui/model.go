@@ -73,9 +73,10 @@ type exchange struct {
 	question string
 	state    turnState
 
-	route      string  // empty until merud's "route" event
-	confidence float64 // the router's confidence in route
-	fallback   bool    // the router wasn't sure and fell back
+	route      string   // empty until merud's "route" event
+	confidence float64  // the router's confidence in route
+	fallback   bool     // the router wasn't sure and fell back
+	skills     []string // the skills the turn loaded, from the "route" event
 
 	// sources lists the excerpts from the user's files that merud put in
 	// the prompt, from its "sources" event; nil when the turn didn't
@@ -416,6 +417,10 @@ func (m *Model) handleEvent(msg eventMsg) {
 		m.session = ev.Session
 	case rpc.EventRoute:
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
+		cur.skills = nil
+		for _, s := range ev.Skills {
+			cur.skills = append(cur.skills, s.Name)
+		}
 	case rpc.EventSources:
 		cur.sources = ev.Sources
 	case rpc.EventToolCall:

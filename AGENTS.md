@@ -145,10 +145,10 @@ internal/
   dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           tools inside merud: `configure` and `remember`
+  builtin/           tools inside merud: `configure`, `remember` and `write_file`
   catalog/           the starter MCP servers and the safe append to config.toml
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
-  skills/            loads SKILL.md folders; ships writing and explainer (v0.4 groundwork)
+  skills/            loads SKILL.md folders; ships writing and explainer
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
   agent/             one turn: route, build the prompt, run tool rounds, stream the answer
   transcript/        append-only JSONL session files

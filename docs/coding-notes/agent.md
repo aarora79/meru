@@ -1,8 +1,8 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile in v0.4
-**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `skills.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `skills_test.go`, `skills_integration_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile and skills in v0.4
+**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval), [Skills](../../ARCHITECTURE.md#skills)
 
 ## What it does
 
@@ -33,6 +33,7 @@ sequenceDiagram
     participant A as Agent.Handle
     participant T as transcript
     participant R as Router
+    participant F as Engine (fast)
     participant E as Engine (main)
     participant D as ToolRunner (dispatch)
     S->>A: request
@@ -40,8 +41,12 @@ sequenceDiagram
     A->>T: History(history_turns)
     A-->>S: emit session
     A->>T: Append user line
-    A->>R: Decide(question, history)
-    A-->>S: emit route
+    par route and pick skills at once
+        A->>R: Decide(question, history)
+    and
+        A->>F: Generate(pick prompt), when there are skills
+    end
+    A-->>S: emit route (with the picked skills)
     opt route isn't direct, or the question names an indexed folder
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
@@ -230,13 +235,100 @@ tools on offer include `remember`, `withTools` adds them, as for a tool server.
 count. A wrong guess, such as "do you remember the budget?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
+### Skills (skills.go)
+
+A skill is a Markdown file of instructions for one kind of task (see
+[skills](skills.md)). The agent lists every skill in the prompt and loads the
+full instructions of only the ones a question needs. That split is called
+**progressive disclosure**: a new skill costs the prompt one line until a
+question calls for it.
+
+```go
+type Skills interface {
+    Registry(ctx context.Context) *skills.Registry
+}
+```
+
+`merud` passes its skill service, which loads the registry again when you edit
+`~/.meru/skills` (see [merud](merud.md)). Tests pass `fixedSkills`. The agent
+gets it through `UseSkills`, called once before the first turn, rather than as
+a parameter of `New`, so the many tests that build an agent without skills
+stay as they were. With no `Skills`, turns list and load none.
+
+**The pick runs beside the router.** `routeAndPick` replaces the plain
+`route` call in `Handle`. It starts two goroutines with an `errgroup`: one asks
+the router for the route, the other asks the fast model which skills the
+question needs. Neither needs the other's answer. Only the route can fail the
+turn; a failed pick logs a warning and the turn goes on with no skills.
+
+Side by side is also faster than it looks. On the development machine with
+MiniCPM5-2B, `TestIntegrationRouteAndPick` measured 70 ms a turn for the route
+then the pick, and 28 ms for both at once. One after the other, the two prompts
+take turns in one Ollama slot and each throws away the other's cached prompt;
+side by side, each keeps a slot and its cache.
+
+**The pick call.** `pickSkills` skips the call when the registry is empty.
+Otherwise it sends the fast model a short prompt with thinking off
+(`engine.Options.NoThink`), temperature 0 and at most 20 tokens:
+
+```text
+You choose which skills help answer the user's message. A skill is a set of instructions for one kind of task.
+
+Skills:
+- explainer: Build a self-contained HTML explainer for a technical topic ...
+- writing: Write prose people will actually read. ...
+
+Reply with the names of the skills this message needs, at most 2, separated by commas. Reply "none" when no skill fits, as for a plain question, a lookup or small talk. Reply with names only, no other words.
+```
+
+The question follows as the user's message. `parsePick` splits the answer at
+anything that can't be part of a skill name, keeps the words that name a loaded
+skill, drops repeats and stops at two. "none", "None." or a made-up name all
+give no skills, so the model can't load something that isn't there. On the
+built-in skills, `TestIntegrationPickSkills` saw it pick `writing` for "write a
+short email to my landlord" and for a paragraph to tidy, nothing for a lookup,
+the weather or "hi there", and `explainer` with `writing` for an explainer page,
+each in about 35 to 65 ms.
+
+**The prompt sections.** `skillsSection` builds the text that `prompt` puts
+after the tools note and before the excerpts from your files:
+
+```text
+Skills you can use:
+- explainer: Build a self-contained HTML explainer ...
+- writing: Write prose people will actually read. ...
+
+Follow these instructions for this answer:
+
+Skill: writing
+
+# Writing Skill
+...
+```
+
+The list goes into every turn that has skills; the second part only when the
+pick chose some. `formatBodies` caps the instructions at 3,000 tokens (12,000
+characters). The first skill goes in whole even past the cap, because half a
+skill's steps can mislead the model more than none. A second skill gets what is
+left, cut at a line break and closed with a note that Meru cut the rest.
+`skillsSection` records the whole section's size as `meru.context.tokens` with
+section `skills`.
+
+**Who sees the pick.** The `route` event carries the names in `Skills`, each an
+`rpc.SkillInfo` with only `Name` set, and `meru chat` shows them in the route
+badge, as in `direct · 0.91 · writing`. The turn span gets `meru.skills`, the
+names joined with commas; they come from the registry, so the attribute stays
+a small set. The pick has its own `meru.skills.pick` span with a `gen_ai.chat`
+span under it, and a `skills picked` debug line.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
 straight to `rpc.Serve`. Its steps follow the diagram, and each is a short
 method that opens its own span under `meru.turn` and writes one debug line:
 `openSession` (`meru.session`), `appendLine` (`meru.transcript.append`),
-`route` (the router's `meru.route`), `searchFiles` (`meru.search`, with
+`routeAndPick` (the router's `meru.route` and `meru.skills.pick`, side by
+side), `searchFiles` (`meru.search`, with
 retrieval's `meru.retrieve` under it), `prompt` (`meru.prompt`) and `answer`
 (`gen_ai.chat`, once per round). Two details:
 
@@ -558,6 +650,7 @@ source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
 the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
 `transcript appended` (once per line, dispatch's tool lines included),
+`route` (from the router), `skills picked` (with the names and the time),
 `search done` (on search routes, with the result count, the section's size
 and the time), `prompt built`, and per round `answer finished` (with its
 `tool_calls` count) and `round finished` (round number, tool calls and
@@ -574,7 +667,11 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 - **Interfaces** — `Router`, `Searcher`, `ToolRunner`, `TurnRecorder`, and
   `engine.Engine`.
 - **`errgroup`** — runs a round's tool calls at the same time and waits for
-  them all. More in [go-basics/goroutines.md](go-basics/goroutines.md).
+  them all, and runs the route and the skill pick side by side. More in
+  [go-basics/goroutines.md](go-basics/goroutines.md).
+- **Embedding a struct** — the test's `pickEngine` holds a `*fakeEngine`
+  without a field name, so it gets `fakeEngine`'s methods and replaces only
+  `Generate`.
 - **Pointer receivers** — `reply.add` changes the reply it is called on.
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
@@ -624,6 +721,21 @@ keeping the newest, empty), where the section sits in the system prompt, that
 an empty or unreadable profile leaves the header out without failing the
 turn, and which questions the remember rule gives tools.
 
+`skills_test.go` checks the skills step with `pickEngine`, a fake whose
+`Generate` plays the fast model. `TestPickWritingForEmail` asks "write a short
+email to my landlord" over the real built-in skills and checks the pick call's
+options, that the `route` event names `writing`, and that the list, the header
+and the writing body land in the system prompt in that order. Other tests
+cover a pick of "none", no skills or an empty folder (no pick call at all), a
+failed pick that still answers, a failed route, `parsePick` and the cap in
+`formatBodies`.
+
+`skills_integration_test.go` runs the pick against the real local Ollama:
+
+```sh
+go test -tags integration -v -run Integration ./internal/agent/
+```
+
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each
 file once; the row the TurnRecorder gets, with its time equal to the user
@@ -656,3 +768,7 @@ hold the question or answer until `capture_content` is on.
 - **Calls in a round run at the same time.** The model asked for them
   together, so none needs another's result, and a slow MCP server doesn't
   hold up a quick built-in.
+- **A separate pick call, not a longer router.** The router reads one token's
+  probabilities and can't name skills. A second short call keeps the router's
+  prompt and its calibration as they are, and running both at once costs no
+  extra time.
