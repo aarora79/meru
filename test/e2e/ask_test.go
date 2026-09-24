@@ -91,8 +91,15 @@ func TestStreaming(t *testing.T) {
 		if events[0].Type != rpc.EventSession || events[1].Type != rpc.EventRoute {
 			t.Errorf("first events = %s, %s; want session, route", events[0].Type, events[1].Type)
 		}
-		if last := lastEvent(t, events); last.Type != rpc.EventDone {
+		last := lastEvent(t, events)
+		if last.Type != rpc.EventDone {
 			t.Errorf("last event = %+v, want done", last)
+		}
+		// "done" carries the turn's stats. The fake counts one output
+		// token per chunk, and it waits 50ms before each of the three
+		// later chunks, so the turn takes at least 150ms.
+		if last.TokensOut == 0 || last.TokensIn == 0 || last.DurationMillis < 150 || last.TTFTMillis > last.DurationMillis {
+			t.Errorf("done stats = %+v, want token counts and 0 < ttft <= duration", last)
 		}
 	})
 

@@ -10,14 +10,16 @@ import (
 	"iter"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// Run opens the chat screen and talks to the merud listening on socket. It
-// returns when the user quits (nil) or when ctx is cancelled or the terminal
-// fails (an error).
-func Run(ctx context.Context, socket string) error {
+// Run opens the chat screen and talks to the merud listening on socket. info
+// fills the header. It returns when the user quits (nil) or when ctx is
+// cancelled or the terminal fails (an error).
+func Run(ctx context.Context, socket string, info Info) error {
 	ask := func(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Event, error] {
 		return rpc.Do(ctx, socket, req)
 	}
@@ -26,7 +28,7 @@ func Run(ctx context.Context, socket string) error {
 	// built from the model. relay breaks the loop: the model gets relay now,
 	// and relay gets the program one line later.
 	relay := &programRelay{}
-	p := tea.NewProgram(newModel(ask, relay), tea.WithAltScreen(), tea.WithContext(ctx))
+	p := tea.NewProgram(newModel(ask, relay, info, terminalLook()), tea.WithAltScreen(), tea.WithContext(ctx))
 	relay.p = p
 
 	final, err := p.Run()
@@ -41,6 +43,27 @@ func Run(ctx context.Context, socket string) error {
 		return fmt.Errorf("chat: %w", err)
 	}
 	return nil
+}
+
+// terminalLook picks how to draw on this terminal. Lip Gloss's default
+// renderer checks stdout: how many colours it supports, whether NO_COLOR is
+// set, and whether the background is dark. Asking now, before Bubble Tea
+// takes over the terminal, keeps the background query's reply from landing
+// in the input box.
+//
+// Glamour's "dark" and "light" styles colour the answer for each kind of
+// background. With colour off, "notty" draws the same structure with no
+// escape codes at all; the other two would still send bold codes.
+func terminalLook() look {
+	r := lipgloss.DefaultRenderer()
+	style := "light"
+	switch {
+	case r.ColorProfile() == termenv.Ascii:
+		style = "notty"
+	case r.HasDarkBackground():
+		style = "dark"
+	}
+	return look{renderer: r, markdownStyle: style}
 }
 
 // programRelay forwards Send calls to a *tea.Program set after the model is

@@ -36,7 +36,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
 | `internal/rpc` | the socket protocol between `meru` and `merud` | `protocol.go`, then `client.go` and `server.go` |
 | `internal/obs` | OpenTelemetry metrics and traces | `obs.go` |
-| `internal/tui` | the `meru chat` screen (Bubble Tea) | `run.go`: `Run`, then `model.go` |
+| `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour) | `run.go`: `Run`, then `model.go` and `view.go` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
 
 Three more packages exist only for testing: `internal/policy` (tests that enforce
@@ -110,13 +110,24 @@ type Event struct {
     Text       string
     Route      string
     Confidence float64
+    Fallback   bool   // route event: the router wasn't sure and fell back
     Error      string
+
+    // Stats, on the "done" event that ends an ask:
+    TTFTMillis     int64 // question received to first token, routing included
+    DurationMillis int64 // question received to end of turn
+    EvalMillis     int64 // the model's own time spent writing the answer
+    TokensIn       int   // prompt tokens
+    TokensOut      int   // answer tokens
 }
 ```
 
 `meru` sends one `Request`, as one line of JSON. `merud` answers with a stream of
-`Event`s, one per line: first `session`, then `route`, then one `token` per piece
-of the answer, and finally `done` or `error`.
+`Event`s, one per line: first `session`, then `route` (with `Fallback` set when the
+router wasn't sure), then one `token` per piece of the answer, and finally `done` or
+`error`. The `done` that ends an ask carries the turn's timings and token counts,
+which `meru chat` shows under each answer. Fields are only ever added, so an older
+client reads a newer `merud` without trouble.
 
 ### `rpc.Handler`: what the server calls for each request
 
@@ -128,6 +139,9 @@ type Handler func(ctx context.Context, req Request, emit func(Event) error) erro
 This is a *function type*: any function with this shape is a `Handler`. The server
 reads a request, calls the handler, and passes it `emit`, a function the handler
 calls to send each event back. `agent.Agent.Handle` is the handler `merud` uses.
+A handler may emit its own `done`, carrying stats: the server holds it back and
+sends it last if the handler returns nil, or drops it and sends `error` if the
+handler fails, so every reply ends with exactly one closing event.
 
 ### `agent.Router`: how the agent asks for a route
 
@@ -217,7 +231,8 @@ sequenceDiagram
         A-->>U: emit token event
     end
     A->>T: Append(assistant line, token counts)
-    S-->>U: done event
+    A-->>S: emit done event with the turn's stats
+    S-->>U: done event (sent last)
 ```
 
 The same path as a reading list, in order:
@@ -230,8 +245,9 @@ The same path as a reading list, in order:
    handler. If the client hangs up, `watchHangup` cancels the turn's context.
 4. **`internal/agent/agent.go` → `Handle`** runs the turn: it opens the session,
    reads the history, saves the question, asks for a route, builds the prompt,
-   streams the answer and saves it. Each step is a short function below `Handle`:
-   `session`, `route`, `buildMessages` and `answer`.
+   streams the answer and saves it, then emits a `done` event with the turn's
+   stats (`doneEvent`). Each step is a short function below `Handle`: `session`,
+   `route`, `buildMessages` and `answer`.
 5. **`internal/router/router.go` → `Decide`** writes the A-to-D prompt (`prompt.go`),
    asks the fast model for one token, and turns the log probabilities into a route
    (`probs.go`).
@@ -243,10 +259,10 @@ The same path as a reading list, in order:
 Along the way, `internal/obs` records the timings and token counts. When no
 metrics endpoint is set, those calls do nothing.
 
-`meru chat` takes the same path. The only difference is at the start:
-`internal/tui` sends the `Request` and draws the events on screen instead of
-printing them, and it passes the session ID back each time so the conversation
-continues.
+`meru chat` takes the same path. The only difference is at the ends:
+`internal/tui` sends the `Request`, draws the events on screen with Lip Gloss
+instead of printing them, renders the finished answer as Markdown with Glamour,
+and passes the session ID back each time so the conversation continues.
 
 ## 6. Where errors and cancellation go
 

@@ -78,9 +78,10 @@ func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) 
 }
 
 // Handle runs one turn for req and sends its events through emit, in this
-// order: "session", "route", then one "token" per piece of the answer. It has
-// the rpc.Handler signature, so merud passes a.Handle straight to rpc.Serve,
-// which sends the closing "done" or "error".
+// order: "session", "route", one "token" per piece of the answer, and last a
+// "done" that carries the turn's stats. It has the rpc.Handler signature, so
+// merud passes a.Handle straight to rpc.Serve. The server holds the "done"
+// back until Handle returns, and sends "error" in its place if Handle fails.
 //
 // Handle fails when the request is bad (empty question, unknown session or
 // source), when the transcript can't be written, when a model call fails, or
@@ -154,7 +155,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	route = dec.Route
-	if err := emit(rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence}); err != nil {
+	// Any outcome but "ok" means the router wasn't sure and used the
+	// fallback route; the chat screen marks such a route.
+	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok"}
+	if err := emit(routeEv); err != nil {
 		return err
 	}
 
@@ -163,21 +167,51 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// each one would have run.
 	msgs := buildMessages(a.system, history, question)
 	iterations = 1
-	answer, usage, err := a.answer(ctx, msgs, emit)
+	rep, err := a.answer(ctx, msgs, emit)
 	if err != nil {
 		return err
 	}
 	if obs.CaptureContent() {
-		span.SetAttributes(attribute.String("meru.answer", answer))
+		span.SetAttributes(attribute.String("meru.answer", rep.text))
 	}
 
-	return sess.Append(transcript.Line{
+	if err := sess.Append(transcript.Line{
 		Type:      transcript.TypeAssistant,
-		Text:      answer,
-		TokensIn:  usage.PromptTokens,
-		TokensOut: usage.OutputTokens,
+		Text:      rep.text,
+		TokensIn:  rep.usage.PromptTokens,
+		TokensOut: rep.usage.OutputTokens,
 		TraceID:   traceID,
-	})
+	}); err != nil {
+		return err
+	}
+	return emit(doneEvent(start, rep))
+}
+
+// doneEvent builds the "done" event that ends a turn, with the turn's stats.
+// Both times count from start, when merud received the question, so they
+// match what the person waiting at the terminal sees. A turn whose answer
+// was empty has no first token, and its TTFTMillis stays zero.
+func doneEvent(start time.Time, rep reply) rpc.Event {
+	ev := rpc.Event{
+		Type:           rpc.EventDone,
+		DurationMillis: time.Since(start).Milliseconds(),
+		TokensIn:       rep.usage.PromptTokens,
+		TokensOut:      rep.usage.OutputTokens,
+		EvalMillis:     rep.usage.EvalDuration.Milliseconds(),
+	}
+	if !rep.firstToken.IsZero() {
+		ev.TTFTMillis = rep.firstToken.Sub(start).Milliseconds()
+	}
+	return ev
+}
+
+// reply is what answer hands back: the whole answer text, the runtime's
+// usage counters, and when the first piece of text arrived (the zero
+// time.Time when none did).
+type reply struct {
+	text       string
+	usage      engine.Usage
+	firstToken time.Time
 }
 
 // session opens the session named id, or starts a new one when id is empty.
@@ -201,8 +235,9 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 
 // answer streams the main model's reply to msgs, sends each piece through
 // emit as a "token" event, and returns the whole text with the runtime's
-// usage counters. It records one gen_ai.chat span and the model-call metrics.
-func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc.Event) error) (string, engine.Usage, error) {
+// usage counters and the first token's arrival time. It records one
+// gen_ai.chat span and the model-call metrics.
+func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc.Event) error) (reply, error) {
 	model := a.models.Main
 	ctx, span := obs.Tracer().Start(ctx, "gen_ai.chat", trace.WithSpanKind(trace.SpanKindClient))
 	defer span.End()
@@ -213,14 +248,15 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 	)
 
 	start := time.Now()
-	var ttft time.Duration // time to first token; zero until text arrives
+	var ttft time.Duration   // time to first token; zero until text arrives
+	var firstToken time.Time // when that token arrived
 	var usage engine.Usage
 	var text strings.Builder
 
 	// fail marks the span as failed and returns err with context added.
-	fail := func(err error) (string, engine.Usage, error) {
+	fail := func(err error) (reply, error) {
 		span.SetStatus(codes.Error, err.Error())
-		return "", engine.Usage{}, fmt.Errorf("main model %s: %w", model, err)
+		return reply{}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
 	stream, err := a.engine.Stream(ctx, msgs, nil, engine.Options{Model: model})
@@ -234,7 +270,8 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 		}
 		if delta.Text != "" {
 			if ttft == 0 {
-				ttft = time.Since(start)
+				firstToken = time.Now()
+				ttft = firstToken.Sub(start)
 			}
 			text.WriteString(delta.Text)
 			if err := emit(rpc.Event{Type: rpc.EventToken, Text: delta.Text}); err != nil {
@@ -262,7 +299,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 			LoadDuration: usage.LoadDuration, EvalDuration: usage.EvalDuration,
 		},
 	})
-	return text.String(), usage, nil
+	return reply{text: text.String(), usage: usage, firstToken: firstToken}, nil
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's

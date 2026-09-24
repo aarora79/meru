@@ -8,13 +8,16 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
 	"iter"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/aarora79/meru/internal/rpc"
 )
@@ -65,6 +68,29 @@ func (f *fakeMerud) ask(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Even
 	}
 }
 
+// plainLook returns a look that draws without colour or escape codes, so
+// tests can compare the screen as plain text. The renderer writes nowhere;
+// the tests only call its styles' Render.
+func plainLook() look {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.Ascii)
+	r.SetHasDarkBackground(true)
+	return look{renderer: r, markdownStyle: "notty"}
+}
+
+// testModel returns a chat screen wired to ask and send, with a fixed header
+// and no colour.
+func testModel(ask askFunc, send sender) Model {
+	return newModel(ask, send, Info{Profile: "lite", Model: "minicpm5:2b"}, plainLook())
+}
+
+// bare returns e without its Glamour cache, so tests can compare turns with
+// == and ignore how the answer was drawn.
+func bare(e exchange) exchange {
+	e.rendered, e.renderedWidth = "", 0
+	return e
+}
+
 // update runs msgs through Update in order and returns the final model and
 // the last command.
 func update(t *testing.T, m Model, msgs ...tea.Msg) (Model, tea.Cmd) {
@@ -83,8 +109,8 @@ func typeText(s string) tea.Msg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
-// key returns the message for one special key.
-func key(k tea.KeyType) tea.Msg {
+// press returns the message for one special key.
+func press(k tea.KeyType) tea.Msg {
 	return tea.KeyMsg{Type: k}
 }
 
@@ -92,7 +118,7 @@ func key(k tea.KeyType) tea.Msg {
 // every resulting message back into the model.
 func ask(t *testing.T, m Model, merud *fakeMerud, snd *fakeSender, q string) Model {
 	t.Helper()
-	m, cmd := update(t, m, typeText(q), key(tea.KeyEnter))
+	m, cmd := update(t, m, typeText(q), press(tea.KeyEnter))
 	done := runStream(t, cmd)
 	m = drain(t, m, snd)
 	m, _ = update(t, m, done)
@@ -163,7 +189,7 @@ var reply = []rpc.Event{
 }
 
 func TestTypingFillsInput(t *testing.T) {
-	m := newModel(nil, nil)
+	m := testModel(nil, nil)
 	m, _ = update(t, m, typeText("hi"), typeText(" there"))
 	if got := m.input.Value(); got != "hi there" {
 		t.Errorf("input = %q, want %q", got, "hi there")
@@ -172,8 +198,8 @@ func TestTypingFillsInput(t *testing.T) {
 
 func TestEnterSendsQuestion(t *testing.T) {
 	merud := &fakeMerud{events: reply}
-	m := newModel(merud.ask, newFakeSender())
-	m, cmd := update(t, m, typeText("  hello  "), key(tea.KeyEnter))
+	m := testModel(merud.ask, newFakeSender())
+	m, cmd := update(t, m, typeText("  hello  "), press(tea.KeyEnter))
 
 	if !m.streaming {
 		t.Error("not streaming after Enter")
@@ -181,8 +207,8 @@ func TestEnterSendsQuestion(t *testing.T) {
 	if m.input.Value() != "" {
 		t.Errorf("input = %q after Enter, want empty", m.input.Value())
 	}
-	if len(m.entries) != 1 || m.entries[0] != (entry{entryQuestion, "hello"}) {
-		t.Errorf("entries = %+v, want the question alone", m.entries)
+	if len(m.turns) != 1 || bare(m.turns[0]) != (exchange{question: "hello", state: stateActive}) {
+		t.Errorf("turns = %+v, want the question alone", m.turns)
 	}
 
 	runStream(t, cmd)
@@ -209,14 +235,14 @@ func TestEnterIgnored(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := tt.setup(newModel(nil, nil))
-			before := len(m.entries)
-			m, cmd := update(t, m, key(tea.KeyEnter))
+			m := tt.setup(testModel(nil, nil))
+			before := len(m.turns)
+			m, cmd := update(t, m, press(tea.KeyEnter))
 			if cmd != nil {
 				t.Error("Enter returned a command, want none")
 			}
-			if len(m.entries) != before {
-				t.Errorf("entries grew from %d to %d", before, len(m.entries))
+			if len(m.turns) != before {
+				t.Errorf("turns grew from %d to %d", before, len(m.turns))
 			}
 		})
 	}
@@ -225,20 +251,15 @@ func TestEnterIgnored(t *testing.T) {
 func TestStreamedAnswer(t *testing.T) {
 	merud := &fakeMerud{events: reply}
 	snd := newFakeSender()
-	m := ask(t, newModel(merud.ask, snd), merud, snd, "hello")
+	m := ask(t, testModel(merud.ask, snd), merud, snd, "hello")
 
-	want := []entry{
-		{entryQuestion, "hello"},
-		{entryRoute, "route: direct (0.93)"},
-		{entryAnswer, "Hello."},
+	want := exchange{
+		question: "hello", state: stateDone,
+		route: "direct", confidence: 0.93,
+		answer: "Hello.", stats: rpc.Event{Type: rpc.EventDone},
 	}
-	if len(m.entries) != len(want) {
-		t.Fatalf("entries = %+v, want %+v", m.entries, want)
-	}
-	for i := range want {
-		if m.entries[i] != want[i] {
-			t.Errorf("entry %d = %+v, want %+v", i, m.entries[i], want[i])
-		}
+	if len(m.turns) != 1 || bare(m.turns[0]) != want {
+		t.Fatalf("turns = %+v, want [%+v]", m.turns, want)
 	}
 	if m.streaming {
 		t.Error("still streaming after the turn ended")
@@ -247,7 +268,7 @@ func TestStreamedAnswer(t *testing.T) {
 		t.Error("cancel kept after the turn ended")
 	}
 	view := m.View()
-	for _, s := range []string{"> hello", "route: direct (0.93)", "Hello."} {
+	for _, s := range []string{"You", "│ hello", "Meru  direct · 0.93", "Hello."} {
 		if !strings.Contains(view, s) {
 			t.Errorf("view lacks %q:\n%s", s, view)
 		}
@@ -257,7 +278,7 @@ func TestStreamedAnswer(t *testing.T) {
 func TestSessionReused(t *testing.T) {
 	merud := &fakeMerud{events: reply}
 	snd := newFakeSender()
-	m := ask(t, newModel(merud.ask, snd), merud, snd, "first")
+	m := ask(t, testModel(merud.ask, snd), merud, snd, "first")
 	if m.session != "s1" {
 		t.Fatalf("session = %q, want s1", m.session)
 	}
@@ -272,10 +293,9 @@ func TestSessionReused(t *testing.T) {
 	if merud.reqs[1].Session != "s1" {
 		t.Errorf("second request session = %q, want s1", merud.reqs[1].Session)
 	}
-	// The second answer must be its own entry, not glued to the first.
-	last := m.entries[len(m.entries)-1]
-	if last != (entry{entryAnswer, "Hello."}) {
-		t.Errorf("last entry = %+v, want a fresh answer", last)
+	// The second answer must be its own turn, not glued to the first.
+	if len(m.turns) != 2 || m.turns[1].answer != "Hello." {
+		t.Errorf("turns = %+v, want a fresh second answer", m.turns)
 	}
 }
 
@@ -302,10 +322,10 @@ func TestErrorsShowInline(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			snd := newFakeSender()
-			m := ask(t, newModel(tt.merud.ask, snd), tt.merud, snd, "hello")
-			last := m.entries[len(m.entries)-1]
-			if last != (entry{entryError, tt.want}) {
-				t.Errorf("last entry = %+v, want error %q", last, tt.want)
+			m := ask(t, testModel(tt.merud.ask, snd), tt.merud, snd, "hello")
+			last := m.turns[len(m.turns)-1]
+			if last.state != stateFailed || "error: "+last.err != tt.want {
+				t.Errorf("last turn = %+v, want failed with %q", last, tt.want)
 			}
 			if m.streaming {
 				t.Error("still streaming after an error")
@@ -331,15 +351,17 @@ func TestQuitKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newModel(nil, nil)
+			m := testModel(nil, nil)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if tt.streaming {
+				// A streaming screen always has the turn it streams.
+				m.turns = []exchange{{question: "q", state: stateActive}}
 				m.streaming = true
 				m.cancel = cancel
 			}
 
-			m, cmd := update(t, m, key(tt.key))
+			m, cmd := update(t, m, press(tt.key))
 
 			quit := cmd != nil && cmd() == tea.Quit()
 			if quit != tt.wantQuit {
@@ -367,7 +389,7 @@ func TestCancelMidStream(t *testing.T) {
 		block: true,
 	}
 	snd := newFakeSender()
-	m, cmd := update(t, newModel(merud.ask, snd), typeText("long question"), key(tea.KeyEnter))
+	m, cmd := update(t, testModel(merud.ask, snd), typeText("long question"), press(tea.KeyEnter))
 
 	// A channel of size 1 lets the goroutine hand back its result without
 	// waiting for the test to read it.
@@ -384,7 +406,7 @@ func TestCancelMidStream(t *testing.T) {
 		}
 	}
 
-	m, cmd = update(t, m, key(tea.KeyCtrlC))
+	m, cmd = update(t, m, press(tea.KeyCtrlC))
 	if cmd != nil {
 		t.Error("Ctrl-C mid-stream returned a command, want none")
 	}
@@ -406,18 +428,12 @@ func TestCancelMidStream(t *testing.T) {
 	// Messages from the cancelled turn still arrive; Update must drop them.
 	m, _ = update(t, m, eventMsg{turn: 1, ev: rpc.Event{Type: rpc.EventToken, Text: "late"}}, done)
 
-	want := []entry{
-		{entryQuestion, "long question"},
-		{entryAnswer, "Part"},
-		{entryNote, "(cancelled)"},
+	want := exchange{question: "long question", state: stateStopped, answer: "Part"}
+	if len(m.turns) != 1 || bare(m.turns[0]) != want {
+		t.Fatalf("turns = %+v, want [%+v]", m.turns, want)
 	}
-	if len(m.entries) != len(want) {
-		t.Fatalf("entries = %+v, want %+v", m.entries, want)
-	}
-	for i := range want {
-		if m.entries[i] != want[i] {
-			t.Errorf("entry %d = %+v, want %+v", i, m.entries[i], want[i])
-		}
+	if !strings.Contains(m.View(), "stopped") {
+		t.Errorf("view doesn't say the turn stopped:\n%s", m.View())
 	}
 	if m.session != "s1" {
 		t.Errorf("session = %q, want s1 kept from the cancelled turn", m.session)
@@ -427,15 +443,15 @@ func TestCancelMidStream(t *testing.T) {
 func TestUpRecallsLastQuestion(t *testing.T) {
 	merud := &fakeMerud{events: reply}
 	snd := newFakeSender()
-	m := newModel(merud.ask, snd)
+	m := testModel(merud.ask, snd)
 
-	m, _ = update(t, m, key(tea.KeyUp))
+	m, _ = update(t, m, press(tea.KeyUp))
 	if m.input.Value() != "" {
 		t.Errorf("Up with no history set input to %q", m.input.Value())
 	}
 
 	m = ask(t, m, merud, snd, "what time is it")
-	m, _ = update(t, m, key(tea.KeyUp))
+	m, _ = update(t, m, press(tea.KeyUp))
 	if got := m.input.Value(); got != "what time is it" {
 		t.Errorf("input after Up = %q, want the last question", got)
 	}
@@ -447,12 +463,14 @@ func TestResizeReflows(t *testing.T) {
 		{Type: rpc.EventDone},
 	}}
 	snd := newFakeSender()
-	m := ask(t, newModel(merud.ask, snd), merud, snd, "talk")
+	m := ask(t, testModel(merud.ask, snd), merud, snd, "talk")
 
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 20, Height: 10})
 
-	if m.transcript.Width != 20 || m.transcript.Height != 10-footerLines {
-		t.Errorf("transcript = %dx%d, want 20x%d", m.transcript.Width, m.transcript.Height, 10-footerLines)
+	// 10 rows less the header and rule (2), a one-line input box (3) and
+	// the help line (1) leaves 4.
+	if m.conversation.Width != 20 || m.conversation.Height != 4 {
+		t.Errorf("conversation = %dx%d, want 20x4", m.conversation.Width, m.conversation.Height)
 	}
 	lines := strings.Split(m.View(), "\n")
 	if len(lines) != 10 {
@@ -463,8 +481,81 @@ func TestResizeReflows(t *testing.T) {
 			t.Errorf("line %q is %d wide, want at most 20", line, w)
 		}
 	}
-	// The transcript follows the newest text, so the answer's end shows.
-	if !strings.Contains(m.transcript.View(), "word") {
-		t.Errorf("transcript lost the answer after resize:\n%s", m.transcript.View())
+	// The conversation follows the newest text, so the answer's end shows.
+	if !strings.Contains(m.conversation.View(), "word") {
+		t.Errorf("conversation lost the answer after resize:\n%s", m.conversation.View())
+	}
+}
+
+// TestNewlineGrowsInput checks that Ctrl-J adds a line instead of sending,
+// that the input box grows to fit, and that Enter then sends both lines.
+func TestNewlineGrowsInput(t *testing.T) {
+	merud := &fakeMerud{events: reply}
+	m := testModel(merud.ask, newFakeSender())
+	before := m.conversation.Height
+
+	m, _ = update(t, m, typeText("first"), press(tea.KeyCtrlJ), typeText("second"))
+	if len(m.turns) != 0 || m.streaming {
+		t.Fatal("Ctrl-J sent the question")
+	}
+	if got := m.input.Value(); got != "first\nsecond" {
+		t.Errorf("input = %q, want two lines", got)
+	}
+	if m.conversation.Height != before-1 {
+		t.Errorf("conversation height = %d, want %d: the input box should grow by one row", m.conversation.Height, before-1)
+	}
+
+	// Up on the second line moves the cursor; it doesn't recall anything.
+	m, _ = update(t, m, press(tea.KeyUp))
+	if got := m.input.Value(); got != "first\nsecond" {
+		t.Errorf("input after Up = %q, want it unchanged", got)
+	}
+
+	m, _ = update(t, m, press(tea.KeyEnter))
+	if len(m.turns) != 1 || m.turns[0].question != "first\nsecond" {
+		t.Errorf("turns = %+v, want one two-line question", m.turns)
+	}
+	if m.conversation.Height != before {
+		t.Errorf("conversation height = %d after sending, want %d", m.conversation.Height, before)
+	}
+}
+
+// TestConnectionErrorMarksMerudDown checks that a failed connection turns the
+// header's status red, and that the next event from merud turns it back.
+func TestConnectionErrorMarksMerudDown(t *testing.T) {
+	down := &fakeMerud{err: errors.New("connect to merud: no such file")}
+	snd := newFakeSender()
+	m := ask(t, testModel(down.ask, snd), down, snd, "hello")
+	if m.link != linkDown {
+		t.Errorf("link = %v after a failed connection, want down", m.link)
+	}
+
+	up := &fakeMerud{events: reply}
+	m.ask = up.ask
+	m = ask(t, m, up, snd, "again")
+	if m.link != linkUp {
+		t.Errorf("link = %v after a reply, want up", m.link)
+	}
+}
+
+// TestDoneStatsKept checks that the stats on merud's "done" event land on the
+// turn, and that the finished answer is drawn through Glamour.
+func TestDoneStatsKept(t *testing.T) {
+	stats := rpc.Event{Type: rpc.EventDone, TTFTMillis: 300, DurationMillis: 1300, TokensIn: 10, TokensOut: 20}
+	merud := &fakeMerud{events: []rpc.Event{
+		{Type: rpc.EventSession, Session: "s1"},
+		{Type: rpc.EventToken, Text: "- a\n- b\n"},
+		stats,
+	}}
+	snd := newFakeSender()
+	m := ask(t, testModel(merud.ask, snd), merud, snd, "list")
+	if got := m.turns[0].stats; got != stats {
+		t.Errorf("stats = %+v, want %+v", got, stats)
+	}
+	view := m.View()
+	for _, s := range []string{"• a", "• b", "0.3s to first token · 20.0 tok/s · 1.3s"} {
+		if !strings.Contains(view, s) {
+			t.Errorf("view lacks %q:\n%s", s, view)
+		}
 	}
 }

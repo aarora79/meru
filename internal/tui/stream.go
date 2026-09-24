@@ -1,11 +1,14 @@
-// This file holds the code that runs one turn in the background: it sends the
-// question to merud and feeds each reply event back into the Bubble Tea loop.
+// This file holds the code that talks to merud in the background: the command
+// that runs one turn and feeds each reply event back into the Bubble Tea
+// loop, and the command that pings merud when the chat opens.
 
 package tui
 
 import (
 	"context"
+	"errors"
 	"iter"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -62,5 +65,32 @@ func streamCmd(ctx context.Context, ask askFunc, send sender, turn int, req rpc.
 			send.Send(eventMsg{turn: turn, ev: ev})
 		}
 		return turnDoneMsg{turn: turn}
+	}
+}
+
+// pingTimeout bounds how long the opening ping waits for merud.
+const pingTimeout = 2 * time.Second
+
+// pingMsg reports the opening ping's result: err is nil when merud answered.
+type pingMsg struct {
+	err error
+}
+
+// pingCmd returns a command that pings merud once, so the header can say
+// whether it is up before the user asks anything.
+func pingCmd(ask askFunc) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		// defer runs cancel when this function returns, freeing the timer.
+		defer cancel()
+		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpPing}) {
+			if err != nil {
+				return pingMsg{err: err}
+			}
+			if ev.Type == rpc.EventDone {
+				return pingMsg{}
+			}
+		}
+		return pingMsg{err: errors.New("merud sent no reply to ping")}
 	}
 }

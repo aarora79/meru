@@ -25,7 +25,11 @@ import (
 // ("session", "route", "token") and returns when the reply is complete.
 //
 // The server writes the closing event itself: "done" when Handler returns
-// nil, "error" with the error's text when it doesn't. ctx is cancelled when
+// nil, "error" with the error's text when it doesn't. A Handler that wants
+// the "done" event to carry stats emits one: the server holds it back and
+// sends it as the closing event if Handler returns nil, or drops it if
+// Handler fails. So the client always sees exactly one closing event, and it
+// comes last. ctx is cancelled when
 // the client disconnects or merud shuts down; Handler should then stop and
 // return ctx.Err().
 //
@@ -180,9 +184,18 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	defer wg.Wait()
 	defer cancel()
 
+	// done is the closing event for a successful turn. The Handler may
+	// replace it with its own, which carries the turn's stats. Only this
+	// goroutine touches it: the Handler calls emit from the goroutine that
+	// called it.
+	done := Event{Type: EventDone}
 	emit := func(ev Event) error {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if ev.Type == EventDone {
+			done = ev // hold it back until the Handler returns
+			return nil
 		}
 		if err := write(ev); err != nil {
 			return fmt.Errorf("send event: %w", err)
@@ -198,7 +211,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	case herr != nil:
 		_ = write(Event{Type: EventError, Error: herr.Error()})
 	default:
-		_ = write(Event{Type: EventDone})
+		_ = write(done)
 	}
 }
 

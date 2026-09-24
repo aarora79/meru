@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
@@ -152,7 +153,7 @@ func readLines(t *testing.T, cfg config.Config, id string) []transcript.Line {
 
 func TestTurnEventsAndTranscript(t *testing.T) {
 	cfg := testConfig(t)
-	eng := &fakeEngine{pieces: []string{"Hel", "lo", "!"}, usage: engine.Usage{PromptTokens: 42, OutputTokens: 3}}
+	eng := &fakeEngine{pieces: []string{"Hel", "lo", "!"}, usage: engine.Usage{PromptTokens: 42, OutputTokens: 3, EvalDuration: 250 * time.Millisecond}}
 	router := &fakeRouter{dec: Decision{Route: "search", Confidence: 0.8, Outcome: "ok"}}
 	a := New(cfg, eng, router, quietLog())
 
@@ -161,8 +162,8 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		t.Fatalf("Handle: %v", err)
 	}
 
-	if len(evs) != 5 {
-		t.Fatalf("got %d events, want 5: %+v", len(evs), evs)
+	if len(evs) != 6 {
+		t.Fatalf("got %d events, want 6: %+v", len(evs), evs)
 	}
 	id := evs[0].Session
 	want := []rpc.Event{
@@ -172,8 +173,17 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		{Type: rpc.EventToken, Text: "lo"},
 		{Type: rpc.EventToken, Text: "!"},
 	}
-	if id == "" || !slices.Equal(evs, want) {
-		t.Errorf("events = %+v\nwant %+v", evs, want)
+	if id == "" || !slices.Equal(evs[:5], want) {
+		t.Errorf("events = %+v\nwant %+v", evs[:5], want)
+	}
+	// The last event is "done" with the turn's stats. The times depend on
+	// the clock, so the test checks only that they make sense.
+	done := evs[5]
+	if done.Type != rpc.EventDone || done.TokensIn != 42 || done.TokensOut != 3 || done.EvalMillis != 250 {
+		t.Errorf("last event = %+v, want done with 42 tokens in, 3 out and 250ms writing", done)
+	}
+	if done.TTFTMillis < 0 || done.DurationMillis < done.TTFTMillis {
+		t.Errorf("done times = ttft %dms, duration %dms; want 0 <= ttft <= duration", done.TTFTMillis, done.DurationMillis)
 	}
 
 	lines := readLines(t, cfg, id)
@@ -313,6 +323,33 @@ func TestTurnCancelled(t *testing.T) {
 	lines := readLines(t, cfg, id)
 	if len(lines) != 1 || lines[0].Type != "user" {
 		t.Errorf("transcript = %+v, want only the user line", lines)
+	}
+}
+
+// TestRouteFallbackFlag checks that a route event says when the router fell
+// back, so the chat screen can mark it.
+func TestRouteFallbackFlag(t *testing.T) {
+	tests := []struct {
+		outcome string
+		want    bool
+	}{
+		{"ok", false},
+		{"low_confidence", true},
+		{"degraded", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.outcome, func(t *testing.T) {
+			eng := &fakeEngine{pieces: []string{"x"}}
+			router := &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.3, Outcome: tt.outcome}}
+			a := New(testConfig(t), eng, router, quietLog())
+			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "hi"})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			if len(evs) < 2 || evs[1].Type != rpc.EventRoute || evs[1].Fallback != tt.want {
+				t.Errorf("route event = %+v, want fallback %v", evs[1], tt.want)
+			}
+		})
 	}
 }
 

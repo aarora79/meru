@@ -89,7 +89,7 @@ flags:`)
 		err = ping(ctx, *socket, stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "chat":
 		// tui.Run starts the Bubble Tea terminal UI (internal/tui).
-		err = tui.Run(ctx, *socket)
+		err = tui.Run(ctx, *socket, chatInfo())
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
@@ -105,6 +105,22 @@ flags:`)
 		return exitError
 	}
 	return exitOK
+}
+
+// chatInfo reads the profile and main model from the default config file for
+// the chat screen's header. They only label the screen, so a config that
+// doesn't load leaves the header without them instead of stopping the chat;
+// merud reports config errors when it starts.
+func chatInfo() tui.Info {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return tui.Info{}
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return tui.Info{}
+	}
+	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main}
 }
 
 // ping asks merud whether it is up and prints the answer.

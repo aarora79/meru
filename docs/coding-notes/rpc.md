@@ -31,8 +31,9 @@ sequenceDiagram
     S-->>C: {"type":"route","route":"direct"}
     H->>S: emit(token) …
     S-->>C: {"type":"token","text":"Hi"}
+    H->>S: emit(done + stats), held back
     H-->>S: return nil
-    S-->>C: {"type":"done"}
+    S-->>C: {"type":"done","ttft_ms":420,"tokens_out":12,…}
     Note over C,S: if the client hangs up early,<br/>the server cancels ctx and H stops
 ```
 
@@ -42,7 +43,14 @@ sequenceDiagram
 
 The message types. `Request` has an `Op` (`ask` or `ping`), an optional
 `Session` to continue, the question `Text`, and a `Source` (`cli`, `tui` or
-`job`). `Event` has a `Type` and only the fields that type needs.
+`job`). `Event` has a `Type` and only the fields that type needs. A `route`
+event sets `Fallback` when the router wasn't sure and used its fallback route.
+The `done` that ends an ask carries the turn's stats: time to first token
+(`ttft_ms`), total time (`duration_ms`), the main model's token counts
+(`tokens_in`, `tokens_out`), and the time the model spent writing
+(`eval_ms`). Every field has `omitempty`, so a `ping`'s `done` stays
+`{"type":"done"}`, and a client built before these fields existed skips
+them.
 
 ### client.go
 
@@ -104,6 +112,26 @@ The handler calls `emit` for each event. When it returns, the server writes the
 closing `done` (on `nil`) or `error` (with the error's text). Keeping the last
 event in the server means every reply ends the same way.
 
+A handler that wants its `done` to carry stats emits one. `emit` doesn't send
+it; the server keeps it in a local variable and sends it in place of the plain
+`done` if the handler returns `nil`:
+
+```go
+done := Event{Type: EventDone}
+emit := func(ev Event) error {
+    ...
+    if ev.Type == EventDone {
+        done = ev // hold it back until the handler returns
+        return nil
+    }
+    ...
+}
+```
+
+If the handler fails after emitting its `done`, the server sends `error` and
+drops the `done`, so the client still sees one closing event, and it comes
+last.
+
 The client sends nothing after its request, so any further read returns only
 when the client hangs up. A small goroutine waits for that and cancels the
 handler's context:
@@ -150,4 +178,5 @@ handler's context ends with `context.Canceled`.
 - **Newline-delimited JSON** instead of gRPC or HTTP. You can debug it with
   `nc -U ~/.meru/merud.sock`, and it needs nothing outside the standard library.
 - **The server writes `done` and `error`**, so a handler can't forget to end
-  the reply or end it twice.
+  the reply or end it twice. The stats ride on `done` instead of a separate
+  `stats` event, so clients keep one rule: the last event ends the reply.

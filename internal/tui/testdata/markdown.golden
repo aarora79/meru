@@ -1,0 +1,30 @@
+Meru मेरु lite · minicpm5:2b · session 101500-ab12                     ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+You
+  │ How do I reverse a slice in Go?
+
+Meru  direct · 0.91
+  ## Reverse a list
+
+  Use **slices.Reverse**. It works in place:
+
+  • no copy
+  • any element type
+
+    s := []int{1, 2, 3}
+    slices.Reverse(s)
+  0.8s to first token · 40.0 tok/s · 2.4s
+
+
+
+
+
+
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll

@@ -36,7 +36,8 @@ sequenceDiagram
         A-->>S: emit token
     end
     A->>T: Append assistant line (tokens in/out)
-    A-->>S: return nil (server sends done)
+    A-->>S: emit done with stats
+    A-->>S: return nil (server sends the done)
 ```
 
 ## Walk through the code
@@ -93,7 +94,8 @@ for delta, err := range stream {
     }
     if delta.Text != "" {
         if ttft == 0 {
-            ttft = time.Since(start)
+            firstToken = time.Now()
+            ttft = firstToken.Sub(start)
         }
         text.WriteString(delta.Text)
         if err := emit(rpc.Event{Type: rpc.EventToken, Text: delta.Text}); err != nil { ... }
@@ -110,6 +112,24 @@ for delta, err := range stream {
 - The last delta carries Ollama's token counts, which go into the transcript
   line and the metrics. Meru never estimates them.
 - If `emit` fails, the client has gone, and the turn stops.
+
+`answer` returns a small `reply` struct: the text, the usage counters, and
+`firstToken`, the moment the first text arrived. Once the assistant line is in
+the transcript, `Handle` sends a last event built by `doneEvent`:
+
+```go
+return emit(doneEvent(start, rep))
+```
+
+`doneEvent` measures time to first token and total time from `start`, when
+`merud` received the question, so both include routing. That is the wait the
+person at the terminal sees. It adds the token counts and Ollama's
+`eval_duration` (the model's own writing time), which `meru chat` shows under
+the answer. The rpc server holds this `done` back and sends it last, or drops
+it if `Handle` fails.
+
+The `route` event also says whether the router fell back: `Fallback` is true
+for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
 ### Cancellation
 

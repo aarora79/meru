@@ -8,9 +8,10 @@
 //
 // A question travels to merud through rpc.Do in a goroutine. Each event that
 // comes back enters the loop through program.Send, so the answer grows on
-// screen token by token. See ARCHITECTURE.md, "The shape" -> "Terminal UI".
+// screen token by token. Lip Gloss styles the screen, and Glamour renders
+// each finished answer as Markdown. See ARCHITECTURE.md, "The shape" ->
+// "Terminal UI".
 //
 // The package holds no model or store logic; it draws what merud sends. It
-// also leaves out, for now: markdown rendering, colour beyond one dim style,
-// mouse scrolling, and tool approval prompts (v0.3).
+// also leaves out, for now: mouse scrolling, and tool approval prompts (v0.3).
 package tui

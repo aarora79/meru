@@ -90,6 +90,21 @@ func TestRoundTrip(t *testing.T) {
 	fail := func(ctx context.Context, req Request, emit func(Event) error) error {
 		return errors.New("model fell over")
 	}
+	// stats emits its own "done" first, to show the server holds it back
+	// until the handler returns and then sends it last.
+	stats := func(ctx context.Context, req Request, emit func(Event) error) error {
+		if err := emit(Event{Type: EventDone, TTFTMillis: 120, DurationMillis: 900, TokensIn: 30, TokensOut: 12}); err != nil {
+			return err
+		}
+		return emit(Event{Type: EventToken, Text: "hi"})
+	}
+	// statsThenFail emits a "done" and then fails; the error must win.
+	statsThenFail := func(ctx context.Context, req Request, emit func(Event) error) error {
+		if err := emit(Event{Type: EventDone, TokensOut: 5}); err != nil {
+			return err
+		}
+		return errors.New("transcript write failed")
+	}
 
 	tests := []struct {
 		name    string
@@ -103,6 +118,13 @@ func TestRoundTrip(t *testing.T) {
 			{Type: EventToken, Text: "a"},
 			{Type: EventToken, Text: "b"},
 			{Type: EventDone},
+		}},
+		{"done with stats", stats, Request{Op: OpAsk, Text: "x"}, []Event{
+			{Type: EventToken, Text: "hi"},
+			{Type: EventDone, TTFTMillis: 120, DurationMillis: 900, TokensIn: 30, TokensOut: 12},
+		}},
+		{"stats dropped on error", statsThenFail, Request{Op: OpAsk, Text: "x"}, []Event{
+			{Type: EventError, Error: "transcript write failed"},
 		}},
 		{"handler error", fail, Request{Op: OpAsk, Text: "x"}, []Event{
 			{Type: EventError, Error: "model fell over"},

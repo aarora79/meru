@@ -1,69 +1,124 @@
-// This file holds the chat screen's state (Model) and the two methods Bubble
-// Tea calls on it: Update, which turns a message into a new state, and View,
-// which draws the state as text. Neither touches the terminal or the socket,
-// so tests drive them with plain values.
+// This file holds the chat screen's state (Model) and Update, the method
+// Bubble Tea calls to turn each message into a new state. view.go draws the
+// state. Neither file touches the terminal or the socket, so tests drive them
+// with plain values.
 
 package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// prompt starts the input line and marks each question in the transcript.
-const prompt = "> "
-
-// footerLines counts the rows below the transcript: one status line and one
-// input line. The transcript gets the rest of the window.
-const footerLines = 2
-
-// dim draws the route line and the status line in the terminal's faint style.
-// Lip Gloss comes in with Bubbles already; this is the only style we use.
-var dim = lipgloss.NewStyle().Faint(true)
-
-// entryKind says what a transcript line is, which decides how View draws it.
-type entryKind int
-
-// The kinds of transcript entry. iota counts up from zero inside a const
-// block, so each name gets the next number without us writing it out.
+// The screen, top to bottom: a header line and a rule under it, the
+// conversation, the input box, and one line of key help. The conversation
+// gets whatever height the others leave.
 const (
-	entryQuestion entryKind = iota // what the user asked
-	entryRoute                     // the route merud picked, drawn dim
-	entryAnswer                    // the answer text, grown token by token
-	entryError                     // an error, from merud or the connection
-	entryNote                      // a note from the UI itself, like "(cancelled)"
+	headerLines = 2 // the header and the rule under it
+	helpLines   = 1
+	// inputChromeW and inputChromeH are the input box's width and height
+	// beyond the text area: one column or row of border on each side, plus
+	// one column of padding on the left and right.
+	inputChromeW = 4
+	inputChromeH = 2
+	// maxInputLines caps how tall the input box grows as a question gains
+	// lines. Past that, the text area scrolls.
+	maxInputLines = 5
 )
 
-// entry is one block in the transcript.
-type entry struct {
-	kind entryKind
-	text string
+// Info is what the header shows about merud's setup. meru reads it from
+// config.toml, so it can be empty when the file doesn't load.
+type Info struct {
+	Profile string // "lite" or "full"
+	Model   string // the main model, such as "minicpm5:2b"
 }
+
+// look is how the screen draws itself: a Lip Gloss renderer that knows the
+// terminal's colour support, and the Glamour style for rendering answers.
+type look struct {
+	renderer      *lipgloss.Renderer
+	markdownStyle string // a Glamour built-in style: "dark", "light" or "notty"
+}
+
+// turnState says where one question and its answer stand.
+type turnState int
+
+// The states of a turn. iota counts up from zero inside a const block, so
+// each name gets the next number without us writing it out.
+const (
+	stateActive  turnState = iota // sent; waiting for the answer or streaming it
+	stateDone                     // merud finished the answer
+	stateStopped                  // the user pressed Ctrl-C
+	stateFailed                   // merud or the connection reported an error
+)
+
+// exchange is one question and its answer, as the screen shows them.
+type exchange struct {
+	question string
+	state    turnState
+
+	route      string  // empty until merud's "route" event
+	confidence float64 // the router's confidence in route
+	fallback   bool    // the router wasn't sure and fell back
+
+	answer string    // the answer's raw text, grown token by token
+	err    string    // why the turn failed, for stateFailed
+	stats  rpc.Event // the closing "done" event and its stats; zero if none came
+
+	// rendered caches the finished answer as Glamour drew it, and
+	// renderedWidth the width it was drawn for. A resize redraws it.
+	rendered      string
+	renderedWidth int
+}
+
+// link says whether merud answered last time we heard from it.
+type link int
+
+// The states of the link to merud, shown on the right of the header.
+const (
+	linkUnknown link = iota // no ping answer yet
+	linkUp                  // merud answered
+	linkDown                // the last attempt to reach merud failed
+)
 
 // Model is everything the chat screen knows. Bubble Tea keeps one Model and
 // replaces it with whatever Update returns.
 type Model struct {
-	ask  askFunc // sends a question to merud
+	ask  askFunc // sends a request to merud
 	send sender  // puts stream events back into the program
+	info Info    // what the header shows
 
-	input      textinput.Model // the line the user types in
-	transcript viewport.Model  // the scrolling pane above it
-	spin       spinner.Model   // spins in the status line while an answer streams
+	look  look
+	style styles
+	keys  keyMap
+	// markdown renders finished answers. renderMarkdown builds it on first
+	// use and again when the width changes; markdownWidth is the width it
+	// wraps to.
+	markdown      *glamour.TermRenderer
+	markdownWidth int
 
-	entries      []entry
-	width        int    // terminal width, for wrapping
+	input        textarea.Model // where the user types
+	conversation viewport.Model // the scrolling pane above the input
+	spin         spinner.Model  // spins while merud thinks
+	help         help.Model     // the key help at the bottom
+
+	turns        []exchange
+	width        int // terminal width, for wrapping
+	height       int
 	session      string // from merud's "session" event; empty until the first reply
-	lastQuestion string // what Up arrow puts back in the input
+	lastQuestion string // what Up puts back in the input
+	link         link
 
 	// streaming is true from Enter until the turn ends or the user cancels.
 	streaming bool
@@ -75,28 +130,65 @@ type Model struct {
 	cancel context.CancelFunc
 }
 
-// newModel builds the starting screen: an empty transcript and a focused
-// input line, sized for an 80x24 terminal until the first resize message.
-func newModel(ask askFunc, send sender) Model {
-	in := textinput.New()
-	in.Prompt = prompt
-	in.Placeholder = "Ask Meru something"
+// newModel builds the starting screen: an empty conversation and a focused
+// input box, sized for an 80x24 terminal until the first resize message.
+func newModel(ask askFunc, send sender, info Info, lk look) Model {
+	st := newStyles(lk.renderer)
+	keys := newKeyMap()
+
+	in := textarea.New()
+	in.Placeholder = "Ask Meru anything…"
+	in.Prompt = ""
+	in.ShowLineNumbers = false
+	in.CharLimit = 0 // no limit; merud decides what is too long
+	// Enter sends the question, so a new line needs another key.
+	in.KeyMap.InsertNewline = keys.Newline
+	// The text area's own styles would come from the default renderer, and
+	// its default highlights the cursor's line. Plain styles from our
+	// renderer keep it quiet and let the tests see plain text.
+	plain := lk.renderer.NewStyle()
+	in.FocusedStyle = textarea.Style{
+		Base: plain, CursorLine: plain, CursorLineNumber: plain, EndOfBuffer: plain,
+		LineNumber: plain, Placeholder: st.dim, Prompt: plain, Text: plain,
+	}
+	in.BlurredStyle = in.FocusedStyle
+	in.Cursor.Style = plain // the cursor adds reverse video on top of this
 	in.Focus()
 
-	m := Model{
-		ask:        ask,
-		send:       send,
-		input:      in,
-		transcript: viewport.New(80, 24-footerLines),
-		spin:       spinner.New(spinner.WithSpinner(spinner.Dot)),
+	h := help.New()
+	h.Styles = help.Styles{
+		ShortKey: st.dim.Bold(true), ShortDesc: st.dim, ShortSeparator: st.dim,
+		FullKey: st.dim.Bold(true), FullDesc: st.dim, FullSeparator: st.dim, Ellipsis: st.dim,
 	}
+	h.ShortSeparator = " · "
+
+	m := Model{
+		ask:          ask,
+		send:         send,
+		info:         info,
+		look:         lk,
+		style:        st,
+		keys:         keys,
+		input:        in,
+		conversation: viewport.New(80, 10),
+		spin:         spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(st.spinner)),
+		help:         h,
+	}
+	// The viewport's own keys would scroll on j, k, space and the arrows,
+	// which the user types into the input. Update scrolls it on PgUp and
+	// PgDn itself.
+	m.conversation.KeyMap = viewport.KeyMap{}
 	m.resize(80, 24)
 	return m
 }
 
-// Init returns the first command Bubble Tea runs: start the cursor blinking.
+// Init returns the commands Bubble Tea runs first: blink the cursor, and
+// ping merud so the header can say whether it is up.
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	if m.ask == nil {
+		return textarea.Blink
+	}
+	return tea.Batch(textarea.Blink, pingCmd(m.ask))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -115,6 +207,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case pingMsg:
+		m.link = linkUp
+		if msg.err != nil {
+			m.link = linkDown
+		}
+		return m, nil
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
@@ -128,51 +226,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
+		m.refresh() // the spinner is drawn inside the conversation
 		return m, cmd
 	}
-	// Anything else, such as the cursor blink, belongs to the input line.
+	// Anything else, such as the cursor blink, belongs to the input box.
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
 }
 
 // handleKey reacts to a key press. Keys the chat screen doesn't claim go to
-// the input line as typing.
+// the input box as typing.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlD:
+	// key.Matches reports whether msg is one of the binding's keys.
+	switch {
+	case key.Matches(msg, m.keys.Quit):
 		m.stopTurn()
 		return m, tea.Quit
-	case tea.KeyCtrlC:
+	case key.Matches(msg, m.keys.Stop):
 		if !m.streaming {
 			return m, tea.Quit
 		}
-		// While an answer streams, Ctrl-C cancels that turn and keeps the
+		// While an answer streams, Ctrl-C stops that turn and keeps the
 		// chat open, the way Ctrl-C stops a command in a shell.
 		m.stopTurn()
-		m.add(entryNote, "(cancelled)")
+		m.current().state = stateStopped
+		m.refresh()
 		return m, nil
-	case tea.KeyEnter:
+	case key.Matches(msg, m.keys.Send):
 		return m.submit()
-	case tea.KeyUp:
+	case key.Matches(msg, m.keys.Recall) && m.input.Line() == 0:
+		// Up on the input's first line recalls the last question. On a
+		// later line it moves the cursor up, as in any editor.
 		if m.lastQuestion != "" {
 			m.input.SetValue(m.lastQuestion)
-			m.input.CursorEnd()
+			m.layout()
 		}
 		return m, nil
-	case tea.KeyPgUp:
-		m.transcript.PageUp()
+	case msg.Type == tea.KeyPgUp:
+		m.conversation.PageUp()
 		return m, nil
-	case tea.KeyPgDown:
-		m.transcript.PageDown()
+	case msg.Type == tea.KeyPgDown:
+		m.conversation.PageDown()
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	m.layout() // a new line may have made the input box taller
 	return m, cmd
 }
 
-// submit sends the typed question, unless the line is blank or an answer is
+// submit sends the typed question, unless the input is blank or an answer is
 // still streaming. It returns the command that runs the turn and the command
 // that starts the spinner; tea.Batch runs both.
 func (m Model) submit() (tea.Model, tea.Cmd) {
@@ -181,6 +285,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.input.Reset()
+	m.layout()
 	m.lastQuestion = text
 	m.turn++
 	m.streaming = true
@@ -191,7 +296,9 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	m.add(entryQuestion, text)
+	m.turns = append(m.turns, exchange{question: text, state: stateActive})
+	m.conversation.GotoBottom() // asking a question jumps to the newest text
+	m.refresh()
 	req := rpc.Request{
 		Op:      rpc.OpAsk,
 		Session: m.session, // empty on the first question, so merud starts a session
@@ -201,38 +308,59 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(streamCmd(ctx, m.ask, m.send, m.turn, req), m.spin.Tick)
 }
 
-// handleEvent applies one event from merud to the transcript. It ignores
+// handleEvent applies one event from merud to the current turn. It ignores
 // events from any turn but the one streaming now.
 func (m *Model) handleEvent(msg eventMsg) {
 	if !m.streaming || msg.turn != m.turn {
 		return
 	}
+	m.link = linkUp // an event means merud is there
+	cur := m.current()
 	ev := msg.ev
 	switch ev.Type {
 	case rpc.EventSession:
 		m.session = ev.Session
 	case rpc.EventRoute:
-		m.add(entryRoute, fmt.Sprintf("route: %s (%.2f)", ev.Route, ev.Confidence))
+		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
 	case rpc.EventToken:
-		m.appendToken(ev.Text)
+		cur.answer += ev.Text
+	case rpc.EventDone:
+		// The turnDoneMsg right behind this event ends the turn; keep the
+		// stats for the line under the answer.
+		cur.stats = ev
 	case rpc.EventError:
-		m.add(entryError, "error: "+ev.Error)
+		cur.state = stateFailed
+		cur.err = ev.Error
 	}
-	// EventDone needs nothing here; the turnDoneMsg right behind it ends the
-	// turn. Unknown types are skipped, so a newer merud can't break an older
+	// Unknown types are skipped, so a newer merud can't break an older
 	// client.
+	m.refresh()
 }
 
-// handleDone ends the current turn. A connection error shows inline. A turn
-// the user already cancelled is ignored, because Ctrl-C ended it.
+// handleDone ends the current turn. A connection error shows in the turn,
+// and marks merud as unreachable in the header. A turn the user already
+// stopped is ignored, because Ctrl-C ended it.
 func (m *Model) handleDone(msg turnDoneMsg) {
 	if !m.streaming || msg.turn != m.turn {
 		return
 	}
 	m.stopTurn()
-	if msg.err != nil {
-		m.add(entryError, "error: "+msg.err.Error())
+	cur := m.current()
+	switch {
+	case msg.err != nil:
+		cur.state = stateFailed
+		cur.err = msg.err.Error()
+		m.link = linkDown
+	case cur.state == stateActive:
+		cur.state = stateDone
 	}
+	m.refresh()
+}
+
+// current returns a pointer to the newest turn, so callers can change it in
+// place. It is only called while a turn exists: after submit has added one.
+func (m *Model) current() *exchange {
+	return &m.turns[len(m.turns)-1]
 }
 
 // stopTurn cancels the running turn, if any, and marks the screen idle.
@@ -244,76 +372,38 @@ func (m *Model) stopTurn() {
 	m.streaming = false
 }
 
-// add appends a transcript entry and redraws the transcript.
-func (m *Model) add(kind entryKind, text string) {
-	m.entries = append(m.entries, entry{kind: kind, text: text})
-	m.refresh()
-}
-
-// appendToken grows the answer being streamed. The first token of a turn
-// starts a new answer entry; later tokens extend it.
-func (m *Model) appendToken(text string) {
-	last := len(m.entries) - 1
-	if last >= 0 && m.entries[last].kind == entryAnswer {
-		m.entries[last].text += text
-		m.refresh()
-		return
-	}
-	m.add(entryAnswer, text)
-}
-
-// resize fits the transcript and input line to a new window size and
-// rewraps the transcript for the new width.
+// resize fits every part of the screen to a new window size and re-wraps the
+// conversation for the new width.
 func (m *Model) resize(width, height int) {
-	m.width = width
-	m.transcript.Width = width
-	m.transcript.Height = max(height-footerLines, 1)
-	m.input.Width = max(width-len(prompt)-1, 1)
+	m.width = max(width, 1)
+	m.height = max(height, 1)
+	m.input.SetWidth(max(m.width-inputChromeW, 1))
+	m.help.Width = m.width
+	m.conversation.Width = m.width
+	m.layout()
 	m.refresh()
 }
 
-// refresh redraws the transcript text. If the user was already at the
-// bottom, it follows the new text down; if they scrolled up to read, it
-// leaves them where they are.
-func (m *Model) refresh() {
-	follow := m.transcript.AtBottom()
-	m.transcript.SetContent(m.render())
+// layout grows or shrinks the input box to fit its text, up to
+// maxInputLines, and gives the conversation the rows that are left. A
+// conversation scrolled to the bottom stays at the bottom.
+func (m *Model) layout() {
+	follow := m.conversation.AtBottom()
+	lines := min(max(m.input.LineCount(), 1), maxInputLines)
+	m.input.SetHeight(lines)
+	m.conversation.Height = max(m.height-headerLines-(lines+inputChromeH)-helpLines, 1)
 	if follow {
-		m.transcript.GotoBottom()
+		m.conversation.GotoBottom()
 	}
 }
 
-// render draws every transcript entry as text wrapped to the window width,
-// with a blank line before each question after the first.
-func (m *Model) render() string {
-	var b strings.Builder
-	for i, e := range m.entries {
-		if e.kind == entryQuestion && i > 0 {
-			b.WriteString("\n")
-		}
-		text := e.text
-		if e.kind == entryQuestion {
-			text = prompt + text
-		}
-		// ansi.Wrap breaks at spaces where it can, and mid-word where a word
-		// is wider than the window.
-		text = ansi.Wrap(text, m.width, "")
-		if e.kind == entryRoute {
-			text = dim.Render(text)
-		}
-		b.WriteString(text)
-		b.WriteString("\n")
+// refresh redraws the conversation. If the user was already at the bottom,
+// it follows the new text down; if they scrolled up to read, it leaves them
+// where they are.
+func (m *Model) refresh() {
+	follow := m.conversation.AtBottom()
+	m.conversation.SetContent(m.renderConversation())
+	if follow {
+		m.conversation.GotoBottom()
 	}
-	return strings.TrimSuffix(b.String(), "\n")
-}
-
-// View draws the whole screen: the transcript, a status line, and the input
-// line. Bubble Tea calls it after every Update and repaints what changed.
-func (m Model) View() string {
-	status := "enter: send · up: last question · pgup/pgdn: scroll · ctrl-d: quit"
-	if m.streaming {
-		status = m.spin.View() + " answering · ctrl-c: cancel"
-	}
-	status = dim.Render(ansi.Truncate(status, m.width, "…"))
-	return m.transcript.View() + "\n" + status + "\n" + m.input.View()
 }

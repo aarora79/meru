@@ -208,8 +208,19 @@ and passes each one to the program with `program.Send`, so the answer grows on s
 as it arrives.
 
 `meru chat` also uses Bubbles, from the same authors, for the text input and the
-scrolling answer pane. We'll add Glamour (markdown rendering) or Lip Gloss (styling)
-only if plain text proves hard to read.
+scrolling answer pane, and two more Charm libraries for its look:
+
+- **Lip Gloss** styles the screen: a header with the profile, model, session and
+  whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
+  answer, amber when the router fell back; and a stats line with time to first
+  token, tokens per second and total time. Colors adapt to light and dark
+  terminals, and `NO_COLOR` turns them off.
+- **Glamour** renders each finished answer as Markdown: headings, lists, and code
+  blocks with syntax highlighting. While the answer streams, the screen shows the
+  raw text with a cursor, because half-written Markdown renders wrong.
+
+The stats come from the `done` event that ends each reply, which carries the
+turn's timings and token counts.
 
 Answers always stream: `meru chat` and one-shot `meru` both show text as the model
 writes it. When `dispatch` needs your approval, `meru chat` shows the tool name and
@@ -1152,8 +1163,9 @@ We'll settle these with working code and measurements.
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each
   added "for you" (with approval of the exact config block) or by copy-paste.
-- **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, in `meru chat`
-  only. Answers always stream.
+- **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
+  styling and Glamour for Markdown answers, in `meru chat` only. Answers always
+  stream.
 - **Tool approvals:** approve once, approve for this session, or deny. Session
   approvals never touch config; lasting trust comes only from editing the `confirm`
   list. With no one to ask (scripts, scheduled jobs), `dispatch` denies.

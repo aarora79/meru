@@ -4,6 +4,9 @@
 // one line. The client opens a connection, writes one Request, then reads
 // Events until one has Type "done" or "error". One connection carries one
 // request.
+//
+// New fields only ever get added, each with omitempty, so an older client
+// reading a newer merud's events sees the fields it knows and skips the rest.
 
 package rpc
 
@@ -46,10 +49,15 @@ const (
 	// comes first on every OpAsk reply.
 	EventSession EventType = "session"
 	// EventRoute reports the route the router picked, with its confidence.
+	// Fallback is true when the router wasn't sure and used the fallback
+	// route instead.
 	EventRoute EventType = "route"
 	// EventToken carries the next piece of the answer text.
 	EventToken EventType = "token"
-	// EventDone ends a successful reply.
+	// EventDone ends a successful reply. After an ask it carries the turn's
+	// stats: TTFTMillis, DurationMillis, TokensIn, TokensOut and EvalMillis.
+	// After a ping
+	// those fields are zero and left out of the JSON.
 	EventDone EventType = "done"
 	// EventError ends a failed reply; Error says why.
 	EventError EventType = "error"
@@ -63,5 +71,23 @@ type Event struct {
 	Text       string    `json:"text,omitempty"`
 	Route      string    `json:"route,omitempty"`
 	Confidence float64   `json:"confidence,omitempty"`
+	Fallback   bool      `json:"fallback,omitempty"` // route event: the router fell back
 	Error      string    `json:"error,omitempty"`
+
+	// The turn's stats, on the "done" event that ends an ask.
+
+	// TTFTMillis is the time from receiving the question to the first token
+	// of the answer, routing included, in milliseconds.
+	TTFTMillis int64 `json:"ttft_ms,omitempty"`
+	// DurationMillis is the time from receiving the question to the end of
+	// the turn, in milliseconds.
+	DurationMillis int64 `json:"duration_ms,omitempty"`
+	// TokensIn and TokensOut are the main model's prompt and answer token
+	// counts, as the model runtime reported them.
+	TokensIn  int `json:"tokens_in,omitempty"`
+	TokensOut int `json:"tokens_out,omitempty"`
+	// EvalMillis is the time the model runtime reports spending on writing
+	// the answer's tokens. TokensOut / EvalMillis gives the model's speed
+	// without the network, routing or buffering in between.
+	EvalMillis int64 `json:"eval_ms,omitempty"`
 }

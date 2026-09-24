@@ -441,7 +441,12 @@
 
 <p><code>meru chat</code> uses <a href="https://github.com/charmbracelet/bubbletea">Bubble Tea</a>, a Go library for interactive terminal apps. A Bubble Tea program has three parts: a model struct that holds the screen's state, an <code>Update</code> function that turns each event (a key press, a window resize, a streamed <b>token</b>, one of the word pieces a model reads and writes) into a new state, and a <code>View</code> function that draws the state as text. The client reads tokens from the socket in a <b>goroutine</b>, a function Go runs alongside the rest of the program, and passes each one to the program with <code>program.Send</code>, so the answer grows on screen as it arrives.</p>
 
-<p><code>meru chat</code> also uses Bubbles, from the same authors, for the text input and the scrolling answer pane. We'll add Glamour (markdown rendering) or Lip Gloss (styling) only if plain text proves hard to read.</p>
+<p><code>meru chat</code> also uses Bubbles, from the same authors, for the text input and the scrolling answer pane, and two more Charm libraries for its look:</p>
+<ul>
+  <li><b>Lip Gloss</b> styles the screen: a header with the profile, model, session and whether <code>merud</code> is reachable; "You" and "Meru" labels; a route badge on each answer, amber when the router fell back; and a stats line with time to first token, tokens per second and total time. Colors adapt to light and dark terminals, and <code>NO_COLOR</code> turns them off.</li>
+  <li><b>Glamour</b> renders each finished answer as Markdown: headings, lists, and code blocks with syntax highlighting. While the answer streams, the screen shows the raw text with a cursor, because half-written Markdown renders wrong.</li>
+</ul>
+<p>The stats come from the <code>done</code> event that ends each reply, which carries the turn's timings and token counts.</p>
 
 <p>Answers always stream: <code>meru chat</code> and one-shot <code>meru</code> both show text as the model writes it. When a tool call needs your approval, <code>meru chat</code> shows the tool name and arguments with three choices: approve once, approve for this session, or deny (see <a href="#approving">Approving a tool call</a>).</p>
 
@@ -1545,7 +1550,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus <code>sqlite-vec</code> similarity, merged in Go with reciprocal-rank fusion.</td></tr>
     <tr><td>Built-in skills</td><td><code>writing</code> and <code>explainer</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> runs on first use and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste.</td></tr>
-    <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, in <code>meru chat</code> only. Answers always stream.</td></tr>
+    <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for styling and Glamour for Markdown answers, in <code>meru chat</code> only. Answers always stream.</td></tr>
     <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask (scripts, scheduled jobs), <code>dispatch</code> denies.</td></tr>
     <tr><td>Memory</td><td>One Markdown file per memory under <code>~/.meru/memory/&lt;kind&gt;/</code>, no index file. Session summaries in the transcripts serve as episodic memory. Memories save without asking, through the <code>remember</code> tool and <code>dispatch</code>.</td></tr>
     <tr><td>Other agents</td><td>An A2A client, through the same <code>dispatch</code> path as MCP tools.</td></tr>
