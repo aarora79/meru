@@ -1,0 +1,30 @@
+# Host names of cloud-model APIs. No string literal in a shipped Go file may
+# contain one of these (AGENTS.md, non-negotiable 1). The match is a
+# case-insensitive substring, so "bedrock-runtime" catches every AWS region.
+#
+# These live here, not in a Go file, so that the policy tests themselves hold
+# no string literal naming a provider host. Text after "#" is a comment.
+
+api.openai.com
+openai.azure.com
+api.anthropic.com
+generativelanguage.googleapis.com
+aiplatform.googleapis.com
+bedrock-runtime
+api.cohere.ai
+api.cohere.com
+api.mistral.ai
+api.groq.com
+openrouter.ai
+api.together.xyz
+api.together.ai
+api.fireworks.ai
+api.deepseek.com
+api.x.ai
+api.perplexity.ai
+api-inference.huggingface.co
+router.huggingface.co
+api.replicate.com
+inference.cerebras.ai
+api.cerebras.ai
+api.deepinfra.com

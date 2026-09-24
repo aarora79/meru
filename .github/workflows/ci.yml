@@ -1,0 +1,124 @@
+# CI: format, vet, lint, module hygiene, tests with coverage on Linux and
+# macOS, a cross-compile for every release platform, and the end-to-end
+# tests. docs/ci.md explains each check and how to run it locally; most steps
+# call a Makefile target so local runs and CI stay the same.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# Read-only by default. No job here writes to the repository.
+permissions:
+  contents: read
+
+# A new push to the same branch or pull request cancels the run in progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: format, vet, staticcheck, modules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: make fmt-check
+      - name: go vet
+        run: make vet
+      - name: staticcheck
+        run: make lint
+      - name: go mod verify and tidy
+        run: make tidy-check
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: go test -race with coverage
+        run: make cover
+      - name: coverage summary
+        shell: bash
+        run: |
+          total="$(go tool cover -func=coverage.out | tail -n 1 | awk '{print $NF}')"
+          {
+            echo "### Coverage on ${{ matrix.os }}"
+            echo
+            echo "Total statement coverage: **${total}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: coverage.out
+          retention-days: 14
+
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: go build ./cmd/...
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -o "bin/${GOOS}-${GOARCH}/" ./cmd/...
+
+  e2e:
+    name: end-to-end
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # The target prints "no test files" and passes until test/e2e exists.
+      - name: go test -tags e2e ./test/e2e/...
+        run: make e2e
+
+  actionlint:
+    name: workflow lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: actionlint
+        run: make actionlint

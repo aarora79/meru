@@ -1,0 +1,25 @@
+# Go module path prefixes of telemetry, analytics, crash-report and
+# self-update libraries. Meru sends nothing off the machine and never checks
+# for updates (AGENTS.md, non-negotiable 2). OpenTelemetry is absent from this
+# list on purpose: Meru uses it, and internal/obs refuses a non-loopback
+# endpoint.
+#
+# Same format as model_provider_modules.txt.
+
+github.com/getsentry                   # Sentry crash reports
+github.com/bugsnag                     # Bugsnag crash reports
+github.com/rollbar                     # Rollbar crash reports
+github.com/honeybadger-io              # Honeybadger crash reports
+github.com/segmentio/analytics-go      # Segment analytics
+github.com/posthog                     # PostHog analytics
+github.com/mixpanel                    # Mixpanel analytics
+github.com/amplitude                   # Amplitude analytics
+github.com/DataDog                     # Datadog agents and tracers
+gopkg.in/DataDog                       # Datadog tracer, old path
+github.com/newrelic                    # New Relic agent
+github.com/honeycombio                 # Honeycomb exporters
+github.com/rhysd/go-github-selfupdate  # self-update from GitHub releases
+github.com/creativeprojects/go-selfupdate  # self-update
+github.com/minio/selfupdate            # self-update
+github.com/inconshreveable/go-update   # self-update
+github.com/sanbornm/go-selfupdate      # self-update

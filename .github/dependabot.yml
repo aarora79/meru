@@ -1,0 +1,28 @@
+# Dependabot opens a pull request each week when a Go module or a GitHub
+# Action has a newer version. Each PR still runs CI and the security checks,
+# and still needs a reason for any new module (AGENTS.md, "Dependencies").
+
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
