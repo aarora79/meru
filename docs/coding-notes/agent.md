@@ -1,7 +1,7 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile in v0.4
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile and recall in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -46,6 +46,7 @@ sequenceDiagram
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
     end
+    A->>A: Profile.Recall(question), on every route
     loop each round, up to max_rounds
         A->>E: Stream(system + excerpts + history + question + earlier rounds, tool schemas)
         E-->>A: text deltas (emit token) and tool calls
@@ -138,13 +139,19 @@ have to reopen the session file after each turn to find them.
 ```go
 type Profile interface {
     Profile() ([]memory.Memory, error)
+    Recall(ctx context.Context, query string) ([]retrieve.Memory, error)
 }
 ```
 
 The profile is what Meru knows about you: the memory files in `me/` and
 `preferences/` (`rpc.ProfileKinds()`). `merud` passes `profileAdapter`, which
 reads those two folders with `memory.Store.ListKind`. Tests pass
-`fakeProfile`. A `nil` Profile leaves the section out.
+`fakeProfile`. A `nil` Profile leaves the section out, and recall with it.
+
+`Recall` returns the memories outside the profile kinds that fit a question,
+best first. `profileAdapter` calls `retrieve.SearchMemories` over the store. The
+two methods share one interface because both hand the agent your memories, and
+one more parameter on `New` would touch every test that builds an agent.
 
 `Profile` may return memories and an error together, when one file can't be
 read and the rest can. The agent logs the error as a warning and uses what it
@@ -216,8 +223,39 @@ call it with any memories:
   no header. `meru chat` is the one that tells you Meru doesn't know you yet.
 
 `profileSection` reads the files on every turn, so a hand edit shows in the next
-answer. Reading 20 files takes about 0.6 ms, too little to earn a cache. It
-records the section's size as `meru.context.tokens` with section `memories`.
+answer. Reading 20 files takes about 0.6 ms, too little to earn a cache.
+
+### Recalled memories (recall.go)
+
+`Handle` calls `memorySection` on every route, `direct` included, right before it
+builds the prompt. A preference such as "always ask before trading" matters most
+on a turn that runs tools, and a fact about a person matters on a direct question
+about them. The query is the same `searchQuery` the file search uses, so a
+follow-up borrows the earlier question's subject.
+
+`memorySection` asks `Profile.Recall` and hands the result to `formatMemories`:
+
+```text
+Things you remember that may matter here:
+- (people) Sam Lee is the user's manager
+- (projects) Plans a vegetable garden
+```
+
+- **One line each, with the kind.** The kind tells the model what sort of fact it
+  reads. A fact's line breaks become spaces, as in the profile.
+- **Best first, capped.** The lines keep recall's order. The section holds at most
+  2,400 characters (600 tokens at four characters a token), header included; a
+  line that doesn't fit is left out, and a shorter one after it may still fit.
+- **Its own section.** It sits right after the profile and before `filesNote`,
+  apart from the numbered excerpts, so the model never cites a memory as a file.
+- **A failure is a warning.** When recall fails, the turn goes on without the
+  section.
+
+**One metric for both sections.** `prompt` records the profile and the recalled
+memories together as `meru.context.tokens` with section `memories`, through
+`recordMemoryTokens`. Two records under one label would count two samples per
+turn and halve the average; one number gives the prompt's whole share of memory,
+which is what a context budget needs.
 
 ### The remember rule
 
@@ -624,6 +662,17 @@ keeping the newest, empty), where the section sits in the system prompt, that
 an empty or unreadable profile leaves the header out without failing the
 turn, and which questions the remember rule gives tools.
 
+`recall_test.go` checks `formatMemories` (order, the kind, one line per fact,
+the cap), where the section sits on each route and that a failed recall leaves
+it out. `TestRecallAcrossSessions` is the v0.4 "Done when" for recall. It builds
+the real remember tool, dispatcher, memory folder, store and syncer, with a fake
+embedding model that puts "manager" and "boss" on one axis. In one session the
+model saves "Sam Lee is the user's manager". The test moves the memory's created
+date back a week and holds six unrelated memories, so recency alone would leave
+Sam out of the five. In a new session, "Draft a note to my boss about launch
+slipping", which shares no word with the memory, brings Sam back into the prompt
+by meaning.
+
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each
 file once; the row the TurnRecorder gets, with its time equal to the user
@@ -647,7 +696,9 @@ hold the question or answer until `capture_content` is on.
   search (v0.2) and tools (v0.3) real numbers to test against.
 - **A failed search doesn't fail the turn.** The excerpts help the answer, but
   the model can still answer without them, and the note in the prompt stops it
-  from pretending it looked.
+  from pretending it looked. A failed recall works the same way.
+- **Recall on every route.** It costs one embedding of the question and three
+  small queries, about 10 ms against the local Ollama, well under a model call.
 - **Sources before the answer.** The client learns what the model read while
   the answer streams, and picks which to show once it has the whole text.
 - **The agent never runs a tool itself.** It hands every call to the

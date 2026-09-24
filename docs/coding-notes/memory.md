@@ -11,7 +11,7 @@ Meru remembers facts about you as small Markdown files, one fact per file, under
 `projects`, `people`, `reference`, `other`, or any folder you create. This package
 adds, lists, reads and deletes those files.
 
-Three callers use it from v0.4, all inside `merud`, which owns the folder:
+Four callers use it from v0.4, all inside `merud`, which owns the folder:
 
 - **The profile.** Every turn, the agent reads the `me` and `preferences` folders
   and puts each fact into the system prompt (see [agent](agent.md)).
@@ -19,8 +19,9 @@ Three callers use it from v0.4, all inside `merud`, which owns the folder:
   [builtin](builtin.md)).
 - **The memory ops.** `meru memory list | add | forget` and `meru setup user` ask
   `merud` over the socket (see [merud](merud.md)).
-
-The indexer, which makes every memory searchable, comes later in v0.4.
+- **The memory syncer.** `index.Memories` calls `List` and copies every memory into
+  the store's `memories` table, where recall searches it by meaning, keyword and
+  recency (see [index](index.md), [store](store.md) and [retrieve](retrieve.md)).
 
 A memory file looks like this:
 
@@ -182,8 +183,8 @@ go test -run 'TestRefuses' -v ./internal/memory/
   or losing hand-edited memories, so each package keeps its own small reader.
 - **The file name comes from the text.** A random ID would be unique for free, but a
   name you can read is how you find a memory in a file manager.
-- **Search comes later.** Indexing memories for vector and keyword search arrives
-  in a later step. It needs the stable `ID`, `Text` and `Modified`, which `List`
-  and `Get` already return.
+- **Search lives elsewhere.** This package only reads and writes files. The syncer
+  keys its rows on the stable `ID` and spots hand edits by `Modified` and a hash of
+  the parsed fields, so this package needs no index of its own.
 - **Read on each turn, no cache.** The profile is a few small files, so reading
   them costs well under a millisecond, and a hand edit shows in the next answer.

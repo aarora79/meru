@@ -15,7 +15,7 @@ import (
 
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/memory"
-	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -28,19 +28,26 @@ const profileHeader = "What you know about the user:"
 // files and the history.
 const maxProfileChars = 2000
 
-// Profile hands the agent the memories that go into every prompt. merud
-// passes a small adapter around memory.Store that lists the memories in
-// rpc.ProfileKinds; tests pass a fake. It may return some memories along
-// with an error, when one file can't be read and the rest can.
+// Profile hands the agent the user's memories: the profile that goes into
+// every prompt, and the memories recalled for one question. merud passes a
+// small adapter around memory.Store and retrieve.SearchMemories; tests pass
+// a fake.
 type Profile interface {
+	// Profile lists the memories in rpc.ProfileKinds. It may return some
+	// memories along with an error, when one file can't be read and the
+	// rest can.
 	Profile() ([]memory.Memory, error)
+	// Recall returns the memories outside the profile kinds that best fit
+	// query, best first. It fails when the embedding or the store fails.
+	Recall(ctx context.Context, query string) ([]retrieve.Memory, error)
 }
 
 // profileSection reads the profile and formats it for the system prompt.
 // It returns "" when there is no profile or it holds nothing. It reads the
 // files on every turn, so a turn sees a hand edit at once. They are a few
 // small files: merud reads 20 of them in about 0.6 ms, too little to earn a
-// cache.
+// cache. prompt records the section's size, added to the recalled
+// memories', as meru.context.tokens section "memories".
 //
 // A read that fails is a warning, not the turn's error: the section keeps
 // whatever memories did read, and none when the folder couldn't be read.
@@ -59,9 +66,6 @@ func (a *Agent) profileSection(ctx context.Context) string {
 			"left_out", dropped, "cap_chars", maxProfileChars)
 	}
 	chars := utf8.RuneCountInString(section)
-	if chars > 0 {
-		obs.RecordContextTokens(ctx, "memories", chars/4)
-	}
 	a.log.DebugContext(ctx, "profile read", "memories", len(mems)-dropped, "chars", chars,
 		"ms", time.Since(start).Milliseconds())
 	return section

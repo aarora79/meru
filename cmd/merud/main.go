@@ -196,30 +196,33 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	// merud owns the memory folder: the agent reads the profile from it,
-	// remember writes to it, and the memory ops answer `meru memory`.
+	// remember writes to it, and the memory ops answer `meru memory`. Its
+	// syncer copies the files into the store, where recall searches them.
 	mem, err := memory.Open(filepath.Join(cfg.Dir, "memory"))
 	if err != nil {
 		return err
 	}
-	mems := memoryService{mem: mem, log: log}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, log)
+	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, profileAdapter{mem: mem}, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, st, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
 	// An errgroup runs each function in its own goroutine and Wait waits
 	// for all of them. gctx is cancelled when ctx is, or when one of them
-	// returns an error, so a failed server stops the scan and the watcher
-	// too. The scan and the watcher log their own errors and return nil.
+	// returns an error, so a failed server stops the scan and the watchers
+	// too. The scan and the two watchers, of the [index] folders and of the
+	// memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
+	g.Go(func() error { mems.watch(gctx); return nil })
 	return g.Wait()
 }
 
@@ -294,9 +297,9 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 		case rpc.OpMemoryList:
 			return mems.handleList(emit)
 		case rpc.OpMemoryAdd:
-			return mems.handleAdd(req, emit)
+			return mems.handleAdd(ctx, req, emit)
 		case rpc.OpMemoryForget:
-			return mems.handleForget(req)
+			return mems.handleForget(ctx, req)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

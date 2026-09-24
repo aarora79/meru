@@ -19,6 +19,8 @@
 //     session transcripts (v0.3).
 //   - turns.go: the turns table, one row per answered question, its
 //     rebuild from the transcripts, and the usage windows (v0.3).
+//   - memories.go: one row, one vector and one keyword entry per memory
+//     file, and the three searches recall merges (v0.4).
 //
 // What this package deliberately doesn't do: it doesn't read files, chunk
 // text or call models. The indexer does those and hands the store finished

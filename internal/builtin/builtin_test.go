@@ -93,7 +93,7 @@ func TestConfigure(t *testing.T) {
 			tools := New(configPath, config.Builtin{}, nil, func(context.Context) error {
 				changes++
 				return nil
-			})
+			}, nil)
 
 			res, err := tools.Call(context.Background(), Configure, json.RawMessage(tt.args))
 			if err != nil {
@@ -138,7 +138,7 @@ func TestConfigure(t *testing.T) {
 }
 
 func TestConfigureTwiceRefuses(t *testing.T) {
-	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, nil)
+	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, nil, nil)
 	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`)
 	if res, _ := tools.Call(context.Background(), Configure, args); res.IsError {
 		t.Fatalf("first call: %s", res.Text)
@@ -151,7 +151,7 @@ func TestConfigureTwiceRefuses(t *testing.T) {
 
 func TestConfigureReloadFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	tools := New(path, config.Builtin{}, nil, func(context.Context) error { return errors.New("pool broke") })
+	tools := New(path, config.Builtin{}, nil, func(context.Context) error { return errors.New("pool broke") }, nil)
 	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`))
 	if !res.IsError || !strings.Contains(res.Text, "restart merud") || !strings.Contains(res.Text, "pool broke") {
 		t.Errorf("Result = %+v, want an error that says to restart merud", res)
@@ -162,7 +162,7 @@ func TestConfigureReloadFails(t *testing.T) {
 }
 
 func TestBackend(t *testing.T) {
-	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil, nil)
+	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil, nil, nil)
 
 	confirms := []struct {
 		name string
@@ -217,7 +217,7 @@ func rememberTools(t *testing.T, cfg config.Builtin) (*Tools, *memory.Store, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(filepath.Join(dir, "config.toml"), cfg, mem, nil), mem, dir
+	return New(filepath.Join(dir, "config.toml"), cfg, mem, nil, nil), mem, dir
 }
 
 // TestRemember runs each call through a real Dispatcher, the only path the
@@ -334,5 +334,27 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 	}
 	if st := asking.Status(); !st[0].Tools[1].Confirm {
 		t.Errorf("Status = %+v, want remember to show confirm", st)
+	}
+}
+
+// TestRememberRunsHook checks onRemember runs once after a save, so merud
+// can sync the new memory into the store, and not at all after a refusal.
+func TestRememberRunsHook(t *testing.T) {
+	dir := t.TempDir()
+	mem, err := memory.Open(filepath.Join(dir, "memory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{}, mem, nil, func(context.Context) { runs++ })
+	ctx := context.Background()
+	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":"Sam is the user's manager"}`)); res.IsError {
+		t.Fatalf("remember failed: %s", res.Text)
+	}
+	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":" "}`)); !res.IsError {
+		t.Fatal("an empty text was saved")
+	}
+	if runs != 1 {
+		t.Errorf("onRemember ran %d times, want 1", runs)
 	}
 }

@@ -1,6 +1,6 @@
 // This file runs merud over a fake engine and drives the memory ops the way
-// `meru memory` and `meru setup user` do: add, list, forget, and the counts
-// in the index status.
+// `meru memory` and `meru setup user` do: add, list and forget, the counts
+// in the index status, and how adds, forgets and hand edits reach recall.
 
 package main
 
@@ -25,6 +25,13 @@ func memories(t *testing.T, sock string, req rpc.Request) ([]rpc.MemoryInfo, rpc
 		}
 	}
 	return out, evs[len(evs)-1]
+}
+
+// lastSystem returns the system prompt of the engine's latest Stream call.
+func (f *fakeEngine) lastSystem() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.system
 }
 
 func TestMemoryOps(t *testing.T) {
@@ -59,14 +66,14 @@ func TestMemoryOps(t *testing.T) {
 		t.Errorf("status = %d memories, %d profile; want 2, 1", st.Memories, st.Profile)
 	}
 
-	// The next question's system prompt holds the profile, and only the
-	// profile kinds: the project waits for recall.
+	// The next question's system prompt holds the profile, with only the
+	// profile kinds, and the project in the recalled memories: the add
+	// synced it into the store at once.
 	call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "who am I?"})
-	eng.mu.Lock()
-	system := eng.system
-	eng.mu.Unlock()
-	if !strings.Contains(system, "What you know about the user:\n- Name is Amit Arora") || strings.Contains(system, "Building Meru") {
-		t.Errorf("system prompt = %q, want the profile and not the project", system)
+	system := eng.lastSystem()
+	if !strings.Contains(system, "What you know about the user:\n- Name is Amit Arora\n\n") ||
+		!strings.Contains(system, "Things you remember that may matter here:\n- (projects) Building Meru") {
+		t.Errorf("system prompt = %q, want the profile, then the project as a recalled memory", system)
 	}
 
 	errs := []struct {
@@ -95,5 +102,47 @@ func TestMemoryOps(t *testing.T) {
 	}
 	if st := status(t, d.sock); st.Memories != 1 || st.Profile != 0 {
 		t.Errorf("status after forget = %d memories, %d profile; want 1, 0", st.Memories, st.Profile)
+	}
+
+	// Forgetting the project takes it out of recall on the next question.
+	evs = call(t, d.sock, rpc.Request{Op: rpc.OpMemoryForget, ID: "projects/building-meru.md"})
+	if last := evs[len(evs)-1]; last.Type != rpc.EventDone {
+		t.Fatalf("forget = %+v, want done", last)
+	}
+	call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "what am I building?"})
+	if system := eng.lastSystem(); strings.Contains(system, "Building Meru") {
+		t.Errorf("system prompt = %q, want the forgotten project gone", system)
+	}
+}
+
+// TestMemoryHandEdit checks merud picks up a memory file written by hand
+// while it runs: the watcher syncs it, and the next question recalls it.
+func TestMemoryHandEdit(t *testing.T) {
+	dir := shortDir(t)
+	eng := &fakeEngine{version: "0.13.0"}
+	d := startDaemon(t, dir, "", eng)
+
+	path := filepath.Join(dir, "memory", "people", "sam.md")
+	write := func() {
+		if err := os.WriteFile(path, []byte("Sam is the user's manager\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	deadline := time.Now().Add(10 * time.Second)
+	for i := 0; ; i++ {
+		call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "who is Sam?"})
+		if strings.Contains(eng.lastSystem(), "- (people) Sam is the user's manager") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the hand-written memory never reached the prompt:\n%s", eng.lastSystem())
+		}
+		// Write again now and then, in case the first write landed
+		// before the watcher was listening.
+		if i%10 == 9 {
+			write()
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

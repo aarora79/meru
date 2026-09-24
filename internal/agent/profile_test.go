@@ -14,16 +14,20 @@ import (
 
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/memory"
+	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// fakeProfile hands back fixed memories and an error.
+// fakeProfile hands back fixed memories and an error. Its Recall finds
+// nothing; recall_test.go has a fake that recalls.
 type fakeProfile struct {
 	mems []memory.Memory
 	err  error
 }
 
 func (f fakeProfile) Profile() ([]memory.Memory, error) { return f.mems, f.err }
+
+func (f fakeProfile) Recall(context.Context, string) ([]retrieve.Memory, error) { return nil, nil }
 
 // mem builds a memory of kind with text, created on day (a day of
 // September 2026) and modified at minute past midnight that day.

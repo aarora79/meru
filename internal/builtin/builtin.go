@@ -39,6 +39,7 @@ type Tools struct {
 	confirm    []string      // [builtin] confirm from config.toml
 	memory     *memory.Store // where remember saves; nil leaves remember out
 	onChange   func(context.Context) error
+	onRemember func(context.Context) // runs after remember saves; nil for none
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -49,14 +50,17 @@ type Tools struct {
 // sits next to it. cfg is the [builtin] section. mem is the memory folder
 // that remember saves to; a nil mem leaves remember out, for tests of
 // configure alone. onChange runs after configure writes config.toml; merud
-// passes a function that rebuilds the MCP pool. A nil onChange does
-// nothing.
-func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func(context.Context) error) *Tools {
+// passes a function that rebuilds the MCP pool. onRemember runs after
+// remember saves a memory; merud passes a function that syncs the memory
+// folder into the store, so the next turn can recall the new fact. A nil
+// onChange or onRemember does nothing.
+func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
 		onChange:   onChange,
+		onRemember: onRemember,
 	}
 }
 

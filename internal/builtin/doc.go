@@ -13,6 +13,8 @@
 // remember saves without asking unless [builtin] confirm lists it. It
 // writes through memory.Store.Add, the same code `meru memory add` reaches
 // through merud, and records the chat's session as the memory's source.
+// After a save it runs merud's onRemember hook, which syncs the new memory
+// into the store so the next turn can recall it.
 //
 // What it doesn't do: it never takes an API key. A server that needs a key
 // not yet in secrets.toml isn't written; the tool tells the model to send
