@@ -1064,6 +1064,16 @@ Meru keeps no index file. The database already indexes the files, and
 
 ### How Meru uses them
 
+0. **Your profile, in every prompt.** Every file in `me/` and `preferences/` goes
+   into the system prompt of every turn, under "What you know about the user",
+   up to 2,000 characters; past that, the newest files win and the rest wait
+   for recall. These are the facts Meru should never have to search for: your
+   name, your work, where you live, how you like answers. Without them, the
+   model can't tell whether "Sam" in a letter is you or someone you know.
+   `meru setup user` asks for them one at a time and saves each as a memory,
+   and you can add more in chat ("remember that I work on the registry team").
+   While both folders are empty, `meru chat` says Meru doesn't know you yet and
+   points at `meru setup user`.
 1. **Indexing.** The indexer treats `~/.meru/memory/` like any folder you index: each
    file gets a vector and a keyword entry. It picks up hand edits through the usual
    mtime and content-hash check.
@@ -1076,7 +1086,8 @@ Meru keeps no index file. The database already indexes the files, and
    a folder and the text. The call goes through `dispatch` like any other tool, so it
    lands in `tool_calls` and the transcript. Memories save without asking; add
    `remember` to `builtin.confirm` in `config.toml` if you want to approve each one.
-4. **Your commands.** `meru memory list | add | forget` work on the files.
+4. **Your commands.** `meru memory list | add | forget` work on the files,
+   through `merud`, which owns the memory folder.
 
 If Meru believes something wrong about you, you can find the file and fix or delete
 it. A vector blob you can't read would leave you no way to audit or correct it.
