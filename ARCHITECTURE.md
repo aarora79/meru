@@ -520,9 +520,29 @@ order.
    question that names a connected tool server gets tools, and so does a
    question that says "remember". From v0.4, a separate
    short call picks the skills to load.
-2. **Build the context.** System prompt, skill descriptions, relevant memories,
-   retrieved chunks, this session's history and, on the `tools` and `search+tools`
-   routes, the allowed tools' schemas, each within its own token budget.
+2. **Build the context.** The system prompt puts the parts that stay the same
+   from turn to turn first: the configured prompt, the rule that "I" means the
+   user, your profile, the note on your folders, the tools note, and the list of
+   skills. The parts each question changes come after: recalled memories, the
+   picked skills' instructions, and file excerpts with earlier conversations.
+   Ollama reuses its work on a prompt's opening until the first token that
+   differs, so this order lets a follow-up reprocess only the changing parts, the
+   history and the question. Each part has its own cap, in characters (a token is
+   about four):
+
+   | Part | Cap | Past the cap |
+   | --- | --- | --- |
+   | Profile (`me`, `preferences`) | 2,000 | the oldest facts drop |
+   | Recalled memories | 2,400 | the lowest-ranked drop |
+   | Skill instructions | 12,000 | the first skill stays whole; the second is cut |
+   | Earlier conversations | 2,400 | the lowest-ranked drop |
+   | History | 8,000 | the oldest turns drop, each question with its answer |
+
+   File excerpts need no cap of their own: a search keeps 10 chunks of about 500
+   tokens. The caps keep one part from crowding out the others; a `lite` turn
+   uses well under a tenth of the model's 131k-token window. On the `tools` and
+   `search+tools` routes the model also gets the allowed tools' schemas.
+   `meru.context.tokens` records each part's size per turn, to tune the caps by.
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
    client about each call with a `tool_call` event.
@@ -1650,8 +1670,10 @@ We'll settle these with working code and measurements.
    alex that I'm on my way" to search. Next:
    label real turns from transcripts, refit, and decide whether `lite` needs a
    larger `fast` model for tool-heavy use.
-2. **Context order.** Skills, memories and retrieved chunks compete for the same
-   window. `meru.context.tokens` will supply the numbers to set a budget per section.
+2. **Context caps.** v0.4 sets a cap per part of the prompt and orders the parts
+   for Ollama's prompt reuse (see [Agent loop](#agent-loop), step 2). The caps are
+   first guesses; `meru.context.tokens` will show whether any part runs into its
+   cap often.
 3. **PDF extraction.** v0.2 reads each page's plain text with a pure-Go library and
    keeps no layout, so tables and columns come out as running text. A scanned PDF
    with no text layer yields nothing. Local tools that keep layout are weak, and Go

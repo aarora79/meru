@@ -36,12 +36,6 @@ const (
 // a small model's context.
 const maxPicked = 2
 
-// maxSkillChars caps the instructions a turn loads: 3,000 tokens at about
-// four characters a token. The first skill always loads whole, even past
-// the cap, because half a skill's steps can mislead the model; the second
-// is cut to fit, with a note.
-const maxSkillChars = 3000 * 4
-
 // pickMaxTokens caps the pick call's answer. Two skill names and a comma
 // fit in well under 20 tokens; the cap stops a model that starts to chat.
 const pickMaxTokens = 20
@@ -204,44 +198,46 @@ func parsePick(text string, reg *skills.Registry) []string {
 	return names
 }
 
-// skillsSection builds the skills part of the system prompt: the list of
-// every skill's name and description, then the picked skills'
-// instructions. It returns "" when there are no skills. It records the
-// section's size as meru.context.tokens with section "skills".
+// skillsSection builds the two skills parts of the system prompt: the list
+// of every skill's name and description, which stays the same from turn to
+// turn, and the picked skills' instructions, which change with the
+// question. They go in different places (see budget.go). Both are "" when
+// there are no skills. It records their size as meru.context.tokens with
+// section "skills".
 //
 // A picked skill whose file can't be read now, say because it was deleted
 // a moment ago, is left out with a warning.
-func (a *Agent) skillsSection(ctx context.Context, p pickedSkills) string {
+func (a *Agent) skillsSection(ctx context.Context, p pickedSkills) (list, bodies string) {
 	if p.reg == nil {
-		return ""
+		return "", ""
 	}
-	list := p.reg.List()
-	if len(list) == 0 {
-		return ""
+	skills := p.reg.List()
+	if len(skills) == 0 {
+		return "", ""
 	}
 	lines := []string{skillsListHeader}
-	for _, s := range list {
+	for _, s := range skills {
 		lines = append(lines, "- "+s.Name+": "+strings.Join(strings.Fields(s.Description), " "))
 	}
-	section := strings.Join(lines, "\n")
+	list = strings.Join(lines, "\n")
 
-	var bodies []namedBody
+	var bodyList []namedBody
 	for _, name := range p.names {
 		body, err := p.reg.Body(name)
 		if err != nil {
 			a.log.WarnContext(ctx, "skill left out of the prompt", "skill", name, "err", err)
 			continue
 		}
-		bodies = append(bodies, namedBody{name: name, body: body})
+		bodyList = append(bodyList, namedBody{name: name, body: body})
 	}
-	if text, cut := formatBodies(bodies, maxSkillChars); text != "" {
-		section += "\n\n" + text
+	if text, cut := formatBodies(bodyList, maxSkillChars); text != "" {
+		bodies = text
 		if cut {
 			a.log.DebugContext(ctx, "skills over their cap; cut the last one", "cap_chars", maxSkillChars)
 		}
 	}
-	obs.RecordContextTokens(ctx, "skills", utf8.RuneCountInString(section)/4)
-	return section
+	obs.RecordContextTokens(ctx, "skills", (utf8.RuneCountInString(list)+utf8.RuneCountInString(bodies))/4)
+	return list, bodies
 }
 
 // namedBody is one picked skill's name and instructions.

@@ -28,10 +28,6 @@ const earlierHeader = "From earlier conversations:\n" +
 const (
 	// earlierSessions is how many past sessions a turn recalls at most.
 	earlierSessions = 3
-	// maxEarlierChars caps the whole section at about 600 tokens, at four
-	// characters a token. The files, the history and the profile need the
-	// rest of a small model's window.
-	maxEarlierChars = 2400
 	// maxEarlierSummary and maxEarlierMatch cap the two parts of one line,
 	// so a single session can't fill the section.
 	maxEarlierSummary = 400

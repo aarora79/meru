@@ -216,10 +216,31 @@ facts about who the user is sit side by side. Without them, the 2B model read a
 visa letter and guessed that you were the co-applicant it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`, the
-profile, the recalled memories, `filesNote`, `toolsNote` on a turn that offers
-tools, the skills, and last the files section, which holds the numbered
-excerpts and then the earlier conversations. `prompt` leaves out each empty
-part.
+profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
+skills; then the recalled memories, the picked skills' instructions, and last
+the files section, which holds the numbered excerpts and then the earlier
+conversations. `prompt` takes the changing parts in one `sections` struct and
+leaves out each empty part.
+
+### budget.go
+
+`budget.go` holds the context budget in one place: a cap per section in
+characters, and the order above. The order puts every part that stays the same
+from turn to turn before every part the question changes. Ollama reuses its
+work on a prompt's opening and stops at the first token that differs, so a
+follow-up in the same session reprocesses only the changing parts, the history
+and the question. Before v0.4's budget, the recalled memories sat right after
+the profile, and each question's new memories cost Ollama the rest of the
+prompt.
+
+`skillsSection` returns two strings for that reason: the list of skills, which
+stays put, and the picked skills' instructions, which move with the question.
+
+`trimHistory` cuts the history to `maxHistoryChars`, oldest first. It drops a
+question together with its answer, so the history never opens with an answer
+to a question that isn't there. `[agent] history_turns` still caps the number
+of turns; the character cap catches a few long answers that the turn count
+would let through. `budget_test.go` checks both the cut and the order.
 
 `formatProfile` builds the section, and it is a plain function so the tests can
 call it with any memories:

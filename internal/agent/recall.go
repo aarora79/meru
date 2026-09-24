@@ -18,12 +18,6 @@ import (
 // memoryHeader opens the recalled-memories section.
 const memoryHeader = "Things you remember that may matter here:"
 
-// maxMemoryChars caps the recalled-memories section, header included: 600
-// tokens at four characters a token. Five short facts use a fifth of it;
-// the cap stops one long hand-edited memory from crowding out the files
-// and the history.
-const maxMemoryChars = 600 * 4
-
 // memorySection recalls the memories that fit query and formats them for
 // the system prompt. It runs on every route, direct included: a preference
 // such as "always ask before trading" matters most on a turn that runs

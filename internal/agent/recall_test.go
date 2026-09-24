@@ -168,8 +168,10 @@ func TestMemorySectionInPrompt(t *testing.T) {
 				}
 				return
 			}
-			if prof < 0 || mems < 0 || files < 0 || !(prof < mems && mems < files) {
-				t.Errorf("system prompt = %q\nwant the profile, then %q, then filesNote", system, section)
+			// The parts that stay the same come first (budget.go): the
+			// profile, then filesNote, then the recalled memories.
+			if prof < 0 || mems < 0 || files < 0 || !(prof < files && files < mems) {
+				t.Errorf("system prompt = %q\nwant the profile, then filesNote, then %q", system, section)
 			}
 			// The excerpts, when the route searched, come after and apart.
 			if excerpts := strings.Index(system, "From your files"); excerpts >= 0 && excerpts < mems {
@@ -349,7 +351,10 @@ func TestRecallAcrossSessions(t *testing.T) {
 		t.Fatalf("no memory section in the prompt:\n%s", system)
 	}
 	section := system[start:]
-	section = section[:strings.Index(section, "\n\n")]
+	// The section may be the last in the prompt, with no blank line after.
+	if end := strings.Index(section, "\n\n"); end >= 0 {
+		section = section[:end]
+	}
 	lines := strings.Split(section, "\n")[1:]
 	// Sam's memory is the oldest of seven, so recency alone would leave it
 	// out of the five, and the question shares no word with it. Its vector,

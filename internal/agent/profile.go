@@ -22,12 +22,6 @@ import (
 // profileHeader opens the profile section.
 const profileHeader = "What you know about the user:"
 
-// maxProfileChars caps the profile section, header included. 2,000
-// characters is about 500 tokens: room for a name, a job, a home town and
-// a dozen preferences, while a 2B model's short context keeps space for the
-// files and the history.
-const maxProfileChars = 2000
-
 // Profile hands the agent the user's memories: the profile that goes into
 // every prompt, and the memories recalled for one question. merud passes a
 // small adapter around memory.Store and retrieve.SearchMemories; tests pass
