@@ -1,0 +1,57 @@
+# Meru config: an example with every key and its default.
+#
+# merud reads ~/.meru/config.toml at startup (or the file named by -config).
+# Without a file, merud uses the defaults shown here. Meru never writes this
+# file itself. Copy what you want to change into ~/.meru/config.toml; any key
+# you leave out keeps its default. merud refuses to start on an unknown key or
+# a bad value, and names the key.
+#
+# The directory that holds the config file is Meru's home: sessions/,
+# merud.sock and merud.log live next to it.
+
+# Which models fill the three tiers (see ARCHITECTURE.md, "Model tiers").
+#   "lite" (default): MiniCPM5-2B for fast and main, nomic-embed-text for embed.
+#                     Needs about 16 GB of RAM.
+#   "full":           MiniCPM5-2B for fast, qwen3.8:27b for main,
+#                     qwen3-embedding:0.6b for embed. Needs 32 GB or more.
+profile = "lite"
+
+[models]
+# Set a tier here to override the profile's model for it. Empty means "use
+# the profile". Names are Ollama model names, as `ollama list` shows them.
+fast  = ""   # routing and quick answers
+main  = ""   # writes the answer
+embed = ""   # embeddings (used from v0.2)
+
+[ollama]
+# Where Ollama listens. Loopback only: 127.0.0.1, ::1 or localhost.
+base_url   = "http://127.0.0.1:11434"
+# How long Ollama keeps a model in memory after a call. "-1" means for as
+# long as Ollama runs, which keeps answers fast. Also accepts seconds ("300")
+# or a duration ("30m").
+keep_alive = "-1"
+
+[agent]
+# Most model calls in one turn. v0.1 makes one; tools (v0.3) make more.
+max_rounds    = 8
+# How many earlier question-and-answer pairs from the session go into the
+# prompt. 0 sends none.
+history_turns = 10
+# The persona and rules sent at the start of every turn. Empty means the
+# built-in default.
+system_prompt = ""
+
+[router]
+# The one-token route classifier. See docs/fast-router.md.
+top_logprobs   = 20              # alternatives to read, 1 to 20 (Ollama's cap)
+temperature    = 1.0             # above 0; 1.0 means raw probabilities
+min_confidence = 0.45            # 0 to 1; below it, take the fallback route
+fallback       = "search+tools"  # "direct", "search", "tools" or "search+tools"
+
+[observability]
+# OpenTelemetry export over OTLP/HTTP. Empty endpoint (the default) turns
+# export off. A non-loopback endpoint is refused; nothing leaves this machine.
+otlp_endpoint    = ""            # for example "http://127.0.0.1:4318"
+metrics_interval = "10s"         # how often metrics are sent
+traces           = true          # send traces too, when an endpoint is set
+capture_content  = false         # put prompt and answer text into spans

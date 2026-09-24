@@ -1,0 +1,230 @@
+// This file tests Load: defaults, profiles, overrides and every validation
+// error, plus the loopback check on its own.
+
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// writeConfig writes body to config.toml in a fresh temporary directory and
+// returns the file's path.
+func writeConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLoadMissingFileGivesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := defaults()
+	want.Models = profiles["lite"]
+	want.Dir = dir
+	if cfg != want {
+		t.Errorf("Load of a missing file:\n got %+v\nwant %+v", cfg, want)
+	}
+}
+
+func TestLoadProfilesAndOverrides(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want Models
+	}{
+		{"empty file is lite", "", profiles["lite"]},
+		{"lite", `profile = "lite"`, profiles["lite"]},
+		{"full", `profile = "full"`, Models{
+			Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
+			Main:  "qwen3.8:27b",
+			Embed: "qwen3-embedding:0.6b",
+		}},
+		{"full with main override", "profile = \"full\"\n[models]\nmain = \"my-model\"", Models{
+			Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
+			Main:  "my-model",
+			Embed: "qwen3-embedding:0.6b",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, tt.body))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Models != tt.want {
+				t.Errorf("models = %+v, want %+v", cfg.Models, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadKeepsExplicitValues(t *testing.T) {
+	body := `
+[ollama]
+base_url = "http://localhost:11434"
+keep_alive = "30m"
+
+[agent]
+max_rounds = 3
+history_turns = 0
+system_prompt = "Be brief."
+
+[router]
+top_logprobs = 5
+temperature = 0.7
+min_confidence = 0
+fallback = "direct"
+
+[observability]
+otlp_endpoint = "http://[::1]:4318"
+metrics_interval = "1m"
+traces = false
+capture_content = true
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := Config{
+		Profile:       "lite",
+		Models:        profiles["lite"],
+		Ollama:        Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
+		Agent:         Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief."},
+		Router:        Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct"},
+		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
+	}
+	cfg.Dir = ""
+	if cfg != want {
+		t.Errorf("got  %+v\nwant %+v", cfg, want)
+	}
+}
+
+func TestLoadErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string // a piece of the error message
+	}{
+		{"bad toml", "profile = ", "read config"},
+		{"unknown key", "profil = \"lite\"", "unknown keys: profil"},
+		{"unknown nested key", "[router]\ntop = 3", "unknown keys: router.top"},
+		{"unknown profile", `profile = "huge"`, `profile "huge" is unknown`},
+		{"ollama not loopback", "[ollama]\nbase_url = \"http://10.0.0.5:11434\"", "ollama.base_url"},
+		{"ollama hostname", "[ollama]\nbase_url = \"http://ollama.example.com\"", "ollama.base_url"},
+		{"ollama scheme", "[ollama]\nbase_url = \"ftp://127.0.0.1\"", "http:// or https://"},
+		{"ollama empty", "[ollama]\nbase_url = \"\"", "ollama.base_url"},
+		{"keep_alive", "[ollama]\nkeep_alive = \"forever\"", "ollama.keep_alive"},
+		{"max_rounds", "[agent]\nmax_rounds = 0", "agent.max_rounds"},
+		{"history_turns", "[agent]\nhistory_turns = -1", "agent.history_turns"},
+		{"top_logprobs low", "[router]\ntop_logprobs = 0", "router.top_logprobs"},
+		{"top_logprobs high", "[router]\ntop_logprobs = 21", "router.top_logprobs"},
+		{"temperature zero", "[router]\ntemperature = 0.0", "router.temperature"},
+		{"temperature negative", "[router]\ntemperature = -1.0", "router.temperature"},
+		{"temperature inf", "[router]\ntemperature = inf", "router.temperature"},
+		{"min_confidence high", "[router]\nmin_confidence = 1.5", "router.min_confidence"},
+		{"min_confidence nan", "[router]\nmin_confidence = nan", "router.min_confidence"},
+		{"fallback", "[router]\nfallback = \"guess\"", `router.fallback "guess"`},
+		{"otlp not loopback", "[observability]\notlp_endpoint = \"http://collector.example.com:4318\"", "observability.otlp_endpoint"},
+		{"otlp all interfaces", "[observability]\notlp_endpoint = \"http://0.0.0.0:4318\"", "observability.otlp_endpoint"},
+		{"interval bad", "[observability]\nmetrics_interval = \"often\"", "observability.metrics_interval"},
+		{"interval zero", "[observability]\nmetrics_interval = \"0s\"", "observability.metrics_interval"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tt.body))
+			if err == nil {
+				t.Fatalf("Load succeeded; want an error containing %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadReportsEveryProblem(t *testing.T) {
+	body := "profile = \"huge\"\n[agent]\nmax_rounds = 0\n[router]\nfallback = \"guess\""
+	_, err := Load(writeConfig(t, body))
+	if err == nil {
+		t.Fatal("Load succeeded; want an error")
+	}
+	for _, want := range []string{"profile", "agent.max_rounds", "router.fallback"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q doesn't mention %s", err, want)
+		}
+	}
+}
+
+func TestCheckLoopbackURL(t *testing.T) {
+	tests := []struct {
+		url string
+		ok  bool
+	}{
+		{"http://127.0.0.1:11434", true},
+		{"http://127.1.2.3:11434", true},
+		{"https://127.0.0.1", true},
+		{"http://[::1]:4318", true},
+		{"http://[::ffff:127.0.0.1]:4318", true},
+		{"http://localhost:11434", true},
+		{"http://LOCALHOST:11434", true},
+		{"http://10.0.0.1:11434", false},
+		{"http://0.0.0.0:11434", false},
+		{"http://[::]:11434", false},
+		{"http://example.com", false},
+		{"http://127.0.0.1.example.com", false},
+		{"unix:///tmp/ollama.sock", false},
+		{"127.0.0.1:11434", false},
+		{"http://", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			err := checkLoopbackURL(tt.url)
+			if tt.ok && err != nil {
+				t.Errorf("checkLoopbackURL(%q) = %v, want nil", tt.url, err)
+			}
+			if !tt.ok && err == nil {
+				t.Errorf("checkLoopbackURL(%q) = nil, want an error", tt.url)
+			}
+		})
+	}
+}
+
+// TestExampleMatchesDefaults checks that config.example.toml at the repo root
+// parses, uses only known keys, and shows the real defaults.
+func TestExampleMatchesDefaults(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config.example.toml"))
+	if err != nil {
+		t.Fatalf("Load example: %v", err)
+	}
+	want := defaults()
+	want.Models = profiles["lite"]
+	cfg.Dir = ""
+	if cfg != want {
+		t.Errorf("example config:\n got %+v\nwant %+v", cfg, want)
+	}
+}
+
+func TestDefaultPath(t *testing.T) {
+	home := t.TempDir()
+	// t.Setenv sets an environment variable for this test only.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads this one on Windows
+	got, err := DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".meru", "config.toml")
+	if got != want {
+		t.Errorf("DefaultPath() = %q, want %q", got, want)
+	}
+}
