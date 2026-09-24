@@ -525,7 +525,7 @@
 
 <p><b>Turn 2.</b> You type "sell half of the one that dropped most". <code>merud</code> loads this session's earlier questions and answers, newest first, until their share of the prompt fills. The router reads them too, and picks "call tools". It doesn't rewrite your words. The main model reads turn 1's answer and works out which stock dropped most. On a turn that searches, <code>merud</code> adds an earlier question to the search, so a follow-up such as "and the one after that?" still finds the right files. It skips questions such as "try that again" that name no subject. The model asks for <code>place_order</code>, which sits on the server's <b>confirm list</b>, the tools that need your yes on every call. So <code>dispatch</code> stops and asks.</p>
 
-<p>Within a turn the main model either asks for tools or answers. Each time it asks, <code>merud</code> runs the calls at the same time and hands back the results, and the client shows a line for each call as it starts and ends. The turn ends when the model answers, or after 8 rounds (a config setting); the last round offers no tools, so the model has to answer. The two routes with tools send every allowed tool's description. The search route sends only the three read-only file tools, so the model can open a whole file when ten excerpts fall short. A model can't call a tool it hasn't seen. The model reads up to 16,000 characters of each result; the log keeps the first 4,000.</p>
+<p>Within a turn the main model either asks for tools or answers. Each time it asks, <code>merud</code> runs the calls at the same time and hands back the results, and the client shows a line for each call as it starts and ends. The turn ends when the model answers, or after 8 rounds (a config setting); the last round offers no tools, so the model has to answer. The two routes with tools send every allowed tool's description. The search route sends the three read-only file tools, so the model can open a whole file when ten excerpts fall short, and the local commands that don't ask first, so "what changed in the meru repo this week?" can run a <code>git log</code> you declared. A model can't call a tool it hasn't seen. The model reads up to 16,000 characters of each result; the log keeps the first 4,000.</p>
 
 <h3 id="approving">Approving a tool call</h3>
 
@@ -801,7 +801,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
   <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave. The A2A client checks each address again as it connects, and follows no redirects, so an agent's card can't point the calls somewhere else.</li>
-  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>remember</code>, <code>write_file</code>, and three that only read: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches. The built-in tools need no allow entry: the model always sees them. The three file tools reach only your <code>[index] folders</code> and skip what the indexer skips, so they read nothing search couldn't.</li>
+  <li><b>One door.</b> MCP tools, A2A agents, local commands and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>remember</code>, <code>write_file</code>, and three that only read: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches. The built-in tools need no allow entry: the model always sees them. The three file tools reach only your <code>[index] folders</code> and skip what the indexer skips, so they read nothing search couldn't.</li>
 </ul>
 
 <figure id="fig-dispatch">
@@ -876,10 +876,29 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 
 <p>Meru doesn't confine MCP servers. Each runs as an ordinary program with your permissions and can read files or reach the network on its own. The allowlist decides which tools the model may call; the server decides what each call does. Adding a server means trusting it, as with any program you install.</p>
 
+<h3 id="local-commands">Local commands</h3>
+
+<p>To let the model run a program on your machine, you declare the whole command in <code>config.toml</code>, and the model fills in its blanks:</p>
+
+<pre><code>[[commands]]
+name        = "git-log"
+description = "Commits from the past week in one of the user's repositories"
+argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
+
+  [commands.params.repo]
+  type  = "path"
+  under = "~/repos"</code></pre>
+
+<p>The model sees the tool <code>cmd.git-log</code> and passes <code>{"repo": "meru"}</code>. <code>merud</code> checks the value against its type: a <code>path</code> must exist and, with every link followed, lie inside <code>under</code>; a <code>string</code>, <code>int</code> or <code>enum</code> has limits of its own. Each value fills one argument, whatever spaces, quotes or semicolons it holds, and <code>merud</code> starts <code>git</code> directly, with no shell. So the model can't add a flag, chain a second program or reach a shell. <code>merud</code> refuses at startup a command whose program is a shell or a script interpreter, such as <code>bash</code> or <code>python</code>.</p>
+
+<p>A program you declare gets <code>PATH</code>, <code>HOME</code> and <code>LANG</code> and nothing else from <code>merud</code>'s environment, unless the entry names more. It runs for at most 30 seconds unless the entry sets a timeout, and the timeout kills every process it started. The model reads the exit code and what it printed; a failed exit is a result it can react to. <code>confirm = true</code> makes a command ask first. <code>meru tools</code> shows what each command runs, and <code>meru log</code> shows the exact arguments of every run.</p>
+
+<p>Meru uses no MCP shell server. A shell server confines nothing Meru doesn't, adds a runtime to install, and keeps the real rules, which program with which arguments, where <code>dispatch</code> can't log them. A plain list of allowed programs isn't safe either: <code>find -exec</code>, <code>git -c core.pager=…</code> and <code>ssh host …</code> each run anything.</p>
+
 <!-- ============================================================ -->
 <h2 id="jobs">Scheduled jobs</h2>
 
-<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so no tool on a confirm list runs, and the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
+<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so no tool on a confirm list runs, and no local command with <code>confirm = true</code>; the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
 
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
@@ -895,7 +914,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li><b>A test question</b>, when <code>merud</code> runs, so you see it work.</li>
 </ol>
 
-<p>The starter catalog covers Brave web search, web page fetch, files in folders you name, shell commands, Gmail, Calendar, Drive and Docs (one entry for all four, or one each), Obsidian, and on Windows the desktop. Each entry knows how to start its server, what it needs (an API key, a Google sign-in, folders), and safe starting lists: reading allowed, anything that sends, writes, runs or changes something on the confirm list. The files, shell and Windows entries act as you, with no sandbox, and say so. For each server you pick <b>"Do it for me"</b>, where Meru asks for what the server needs and writes the config block after you approve it, or <b>"Show me how"</b>, where Meru prints the block and you paste it in. Later, <code>meru mcp add gmail</code> offers the same choice, and <code>meru mcp add filesystem ~/notes</code> passes the folders on the command line. <code>meru mcp list</code> shows the catalog and your servers; <code>meru mcp remove &lt;name&gt;</code> takes one out of config.</p>
+<p>The starter catalog covers Brave web search, web page fetch, files in folders you name, Gmail, Calendar, Drive and Docs (one entry for all four, or one each), Obsidian, and on Windows the desktop. Each entry knows how to start its server, what it needs (an API key, a Google sign-in, folders), and safe starting lists: reading allowed, anything that sends, writes, runs or changes something on the confirm list. The files and Windows entries act as you, with no sandbox, and say so. The catalog has no shell server; declare the programs you want in <code>[[commands]]</code> instead. For each server you pick <b>"Do it for me"</b>, where Meru asks for what the server needs and writes the config block after you approve it, or <b>"Show me how"</b>, where Meru prints the block and you paste it in. Later, <code>meru mcp add gmail</code> offers the same choice, and <code>meru mcp add filesystem ~/notes</code> passes the folders on the command line. <code>meru mcp list</code> shows the catalog and your servers; <code>meru mcp remove &lt;name&gt;</code> takes one out of config.</p>
 
 <p>For a server outside the catalog, run <code>meru mcp add stdio &lt;name&gt; -- &lt;command&gt;</code>, or <code>meru mcp add http &lt;name&gt; &lt;url&gt;</code> for one that runs already; a URL on another machine needs <code>--network</code>. Meru can't know a server's tool names before it connects, so <code>merud</code> <em>probes</em> the server first: it starts it for a moment, lists every tool it offers, and stops it, calling none of them. Many servers mark each tool with two hints: <em>read-only</em> (it changes nothing) or <em>destructive</em> (it may delete or overwrite). From those, Meru proposes a split: read-only tools allowed, tools that change something allowed but asking first. You edit the split before Meru writes the entry, since a server can mislabel a tool. A catalog entry is probed too, but its own lists win over the hints. Then <code>merud</code> reloads its servers, so the new one works without a restart. A reload also drops a server you removed from config and stops its program.</p>
 
@@ -925,6 +944,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
+  <li>A local command runs as you, and reaches the network if you declare one that does, such as <code>curl</code>. You chose it, and <code>meru log</code> shows every run.</li>
   <li>API keys sit in one file only you can read, never in config, and never pass through the model.</li>
   <li>No telemetry leaves your machine. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
