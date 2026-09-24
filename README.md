@@ -67,7 +67,7 @@ You need [Go](https://go.dev/dl/) 1.26 or later and [Ollama](https://ollama.com)
 $ ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # the lite profile's chat model
 $ ollama pull nomic-embed-text                         # the lite profile's embedding model
 $ git clone https://github.com/aarora79/meru.git && cd meru
-$ go install ./cmd/merud ./cmd/meru                    # into ~/go/bin
+$ go install ./cmd/merud ./cmd/meru                    # into ~/go/bin; silent on success
 $ merud &                                              # loads the models and listens
 $ meru "what is the capital of France?"
 $ meru chat                                            # a conversation in the terminal
@@ -83,6 +83,9 @@ $ go install ./cmd/merud ./cmd/meru
 $ pkill merud; merud -v &
 $ meru chat
 ```
+
+`go install` prints nothing when it works. Add `-v` to list each package as it
+compiles, or `-a -x` to rebuild everything and print each command.
 
 [docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,
 `meru chat`, running `merud` as a service, the local dashboard, troubleshooting and

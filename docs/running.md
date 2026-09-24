@@ -47,6 +47,20 @@ go install ./cmd/merud ./cmd/meru
 `PATH`: add `export PATH="$HOME/go/bin:$PATH"` to your shell's startup file if
 `which merud` finds nothing.
 
+`go install` prints nothing when it succeeds, and it reuses packages it compiled
+before, so a second build often finishes in a second or two. To see what it does:
+
+```sh
+go install -v ./cmd/merud ./cmd/meru      # list each package as it compiles
+go install -a -x ./cmd/merud ./cmd/meru   # rebuild every package and print each command
+```
+
+`-v` names each package it compiles; with everything cached it may print little.
+`-a` ignores the cache and rebuilds every package, and `-x` prints every command
+Go runs, which is long. To check the install, `ls -la ~/go/bin/merud` shows when
+the file was written, and `go version -m ~/go/bin/merud` shows the Go version and
+module it was built from.
+
 To build for another platform instead, `make build` writes binaries for macOS,
 Linux and Windows to `bin/<os>-<arch>/`.
 
