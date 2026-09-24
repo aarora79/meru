@@ -200,12 +200,14 @@
   @media (max-width: 480px) { .levels .repo-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
 </style>
 <script>
-  // Theme: apply a saved choice before the page paints. Without one, the page follows the system setting.
+  // Theme: apply the saved choice before the page paints. Without one, the page starts dark.
   (function () {
+    var theme = "dark";
     try {
       var saved = localStorage.getItem("meru-theme");
-      if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+      if (saved === "light" || saved === "dark") theme = saved;
     } catch (e) {}
+    document.documentElement.setAttribute("data-theme", theme);
   })();
 </script>
 </head>
