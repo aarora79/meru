@@ -5,9 +5,14 @@
 //
 // Usage:
 //
-//	meru [-socket path] "question"   ask one question; the answer streams to stdout
-//	meru [-socket path] ping          check that merud is up
-//	meru [-socket path] chat          open the terminal UI
+//	meru [-socket path] "question"      ask one question; the answer streams to stdout
+//	meru [-socket path] ping             check that merud is up
+//	meru [-socket path] chat             open the terminal UI
+//	meru [-socket path] index [folder]   rescan the [index] folders, or just one
+//	meru [-socket path] index -status    show what the search index holds
+//
+// A question whose first word is ping, chat or index needs quotes, so meru
+// reads it as a question and not as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -55,9 +60,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, `usage:
-  meru "question"   ask one question
-  meru ping         check that merud is up
-  meru chat         open the terminal UI
+  meru "question"       ask one question
+  meru ping             check that merud is up
+  meru chat             open the terminal UI
+  meru index [folder]   rescan the [index] folders, or just one
+  meru index -status    show what the search index holds
 
 flags:`)
 		flags.PrintDefaults()
@@ -90,6 +97,8 @@ flags:`)
 	case flags.NArg() == 1 && flags.Arg(0) == "chat":
 		// tui.Run starts the Bubble Tea terminal UI (internal/tui).
 		err = tui.Run(ctx, *socket, chatInfo())
+	case flags.Arg(0) == "index":
+		err = indexCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
@@ -138,32 +147,42 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 }
 
 // ask sends question to merud and writes the answer to stdout as it streams
-// in, ending with a newline. It fails when merud can't be reached or replies
-// with an error.
+// in, ending with a newline. When merud searched your files for the answer,
+// a "Sources:" list follows: the files the answer cites, numbered as it
+// cites them. It fails when merud can't be reached or replies with an error.
 func ask(ctx context.Context, socket, question string, stdout io.Writer) error {
 	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
-	printed := false
+	var answer strings.Builder // the whole answer, to find its citations
+	var sources []rpc.Citation
 	endsInNewline := false
 	for ev, err := range rpc.Do(ctx, socket, req) {
 		if err != nil {
 			return err
 		}
 		switch ev.Type {
+		case rpc.EventSources:
+			sources = ev.Sources
 		case rpc.EventToken:
 			if _, err := io.WriteString(stdout, ev.Text); err != nil {
 				return err // stdout closed, as with `meru ... | head -1`
 			}
-			printed = true
+			answer.WriteString(ev.Text)
 			endsInNewline = strings.HasSuffix(ev.Text, "\n")
 		case rpc.EventError:
-			if printed && !endsInNewline {
+			if answer.Len() > 0 && !endsInNewline {
 				fmt.Fprintln(stdout)
 			}
 			return errors.New(ev.Error)
 		}
 	}
-	if printed && !endsInNewline {
+	if answer.Len() > 0 && !endsInNewline {
 		fmt.Fprintln(stdout)
+	}
+	if len(sources) > 0 {
+		fmt.Fprintln(stdout, "\nSources:")
+		for _, c := range rpc.Cited(answer.String(), sources) {
+			fmt.Fprintln(stdout, c)
+		}
 	}
 	return nil
 }

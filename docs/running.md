@@ -1,9 +1,10 @@
 # Running Meru
 
 This guide takes you from nothing to asking Meru a question, then covers settings,
-running it as a service, the dashboard, and fixing common problems. It describes
-v0.1: questions, streamed answers, session transcripts and routing. File search,
-tools and memory arrive in later milestones ([ROADMAP.md](../ROADMAP.md)).
+indexing your files, running it as a service, the dashboard, and fixing common
+problems. It describes v0.2: questions, streamed answers, session transcripts,
+routing, and answers from your own files with citations. Tools and memory arrive in
+later milestones ([ROADMAP.md](../ROADMAP.md)).
 
 ## 1. Install the prerequisites
 
@@ -24,7 +25,7 @@ The default `lite` profile uses two small models, about 2 GB in total:
 
 ```sh
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # answers and routes questions
-ollama pull nomic-embed-text                         # embeddings (used from v0.2)
+ollama pull nomic-embed-text                         # embeddings, for searching your files
 ```
 
 For the `full` profile (32 GB of RAM or more, or a GPU with about 24 GB), also pull:
@@ -45,6 +46,20 @@ go install ./cmd/merud ./cmd/meru
 `go install` puts both programs in `~/go/bin`. Make sure that folder is on your
 `PATH`: add `export PATH="$HOME/go/bin:$PATH"` to your shell's startup file if
 `which merud` finds nothing.
+
+`go install` prints nothing when it succeeds, and it reuses packages it compiled
+before, so a second build often finishes in a second or two. To see what it does:
+
+```sh
+go install -v ./cmd/merud ./cmd/meru      # list each package as it compiles
+go install -a -x ./cmd/merud ./cmd/meru   # rebuild every package and print each command
+```
+
+`-v` names each package it compiles; with everything cached it may print little.
+`-a` ignores the cache and rebuilds every package, and `-x` prints every command
+Go runs, which is long. To check the install, `ls -la ~/go/bin/merud` shows when
+the file was written, and `go version -m ~/go/bin/merud` shows the Go version and
+module it was built from.
 
 To build for another platform instead, `make build` writes binaries for macOS,
 Linux and Windows to `bin/<os>-<arch>/`.
@@ -68,6 +83,7 @@ running in its own terminal, or start it in the background with `merud &`.
 | `~/.meru/merud.sock` | the socket `meru` connects to (only while `merud` runs) |
 | `~/.meru/merud.log` | `merud`'s log |
 | `~/.meru/sessions/YYYY/MM/*.jsonl` | one transcript file per conversation |
+| `~/.meru/meru.db` | the search index over your files, readable only by you (see step 7) |
 
 Stop `merud` with Ctrl-C, or `kill` its process. It finishes cleanly and removes
 its socket.
@@ -82,6 +98,10 @@ meru "what is the capital of France?"       # one question; the answer streams o
 meru what is the capital of France          # quotes are optional
 meru chat                                   # a conversation in the terminal
 ```
+
+Quotes are optional unless the question starts with the word `ping`, `chat` or
+`index`. Without quotes, `meru` reads that word as a command: write
+`meru "index cards or a notebook?"`, not `meru index cards or a notebook?`.
 
 In `meru chat`:
 
@@ -147,7 +167,103 @@ merud -config /tmp/meru-test/config.toml          # home is /tmp/meru-test
 meru -socket /tmp/meru-test/merud.sock "hello"
 ```
 
-## 7. Keep merud running
+## 7. Index your files
+
+`merud` searches only the folders you name, and none by default. Add them to
+`~/.meru/config.toml`:
+
+```toml
+[index]
+folders = ["~/notes"]              # absolute paths, or paths starting with ~/
+```
+
+Restart `merud`: it reads the folder list only when it starts, and `meru index`
+can't add a folder that isn't listed. At startup it scans every listed folder, cuts each file into
+chunks, embeds them with the `embed` model and stores them in `~/.meru/meru.db`.
+The first scan of a large folder takes a while, because every chunk goes through
+the embedding model; later scans re-read only files whose content changed. While
+`merud` runs it watches the folders and re-indexes a file about half a second after
+you save it.
+
+Then ask about your notes. When the router sends a question to search, the answer
+cites the excerpts it used by number, and `meru` lists them after it:
+
+```text
+$ meru "what is the Q3 budget for the garden project?"
+The Q3 budget for the garden project is 4,200 dollars [1].
+
+Sources:
+[1] ~/notes/garden.md, "Budget", lines 3–5
+```
+
+Each source gives the file, the heading it sits under, and the lines (or the page,
+for a PDF). `meru` lists only the sources the answer cites. When the answer cites
+none, it lists every source the prompt held, which with a small index can be every
+file. `meru chat` shows the same list under each answer. A question the router
+answers directly, such as "what is the capital of France?", gets no search and no
+list, unless it names one of your folders, such as "meru" for `~/repos/meru`.
+
+**What it skips.** `merud` reads Markdown, plain text, HTML, PDF and source code.
+It never reads symlinks, hidden files and folders, secret files such as `.env`,
+`*.pem` or `id_rsa`, build folders such as `node_modules` or `.venv`, images,
+audio, video, archives, binaries, or files over 5 MB (`max_file_mb`). It also
+follows each folder's `.gitignore`. To skip more, put a `.meruignore` in any
+indexed folder. It uses `.gitignore` syntax, and `!name` brings back a file that
+`.gitignore` leaves out:
+
+```text
+# .meruignore
+drafts/
+*.log
+!notes.log
+```
+
+Patterns under `[index] ignore` in `config.toml` apply to every folder.
+[ARCHITECTURE.md](../ARCHITECTURE.md#getting-your-content-in) lists every rule and
+the order they run in.
+
+**Rescan or check.** With `merud` running:
+
+```sh
+meru index                 # rescan every configured folder now
+meru index ~/notes/work    # rescan one folder or file inside an [index] folder
+meru index -status         # what the index holds; --status works too
+```
+
+`meru index` prints progress to standard error and one summary line to standard
+output, such as `3 files indexed (5 chunks), 9 unchanged, 0 removed, 0 failed,
+2 skipped, in 1.2s`. A path outside every `[index]` folder gets an error that names
+the config file to change; add the folder there and restart `merud`.
+`meru index -status` prints the folders, the counts of files, chunks and vectors,
+whether a scan is running, and the last scan's summary:
+
+```text
+Folders:    ~/notes
+Index:      12 files, 87 chunks, 87 vectors
+Scanning:   no
+Last scan:  2026-09-23T10:15:00-04:00, 12 files indexed (87 chunks), 0 unchanged, 0 removed, 0 failed, 2 skipped, in 3.1s
+```
+
+**Why a file is missing.** Start `merud` with `-v` and search the log for the
+file's name. Each skipped path gets a debug line with its reason, such as
+`secret`, `ignored` or `too-large`.
+
+**On Linux, the watch limit.** Linux lets each user watch a fixed number of folders
+(`fs.inotify.max_user_watches`). When a large tree passes it, `merud` logs one
+warning, keeps the watches it has, and picks up the other folders' changes at the
+next startup. To raise the limit:
+
+```sh
+sudo sysctl fs.inotify.max_user_watches=524288
+echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
+```
+
+**Starting over.** `meru.db` holds nothing you can't rebuild. Stop `merud`, delete
+`~/.meru/meru.db`, and start `merud` again to re-index from scratch. Changing the
+`embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
+search working, and re-embeds your files.
+
+## 8. Keep merud running
 
 To start `merud` at login and restart it if it stops, install the service file for
 your system. [deploy/README.md](../deploy/README.md) has the exact commands:
@@ -156,7 +272,7 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
 
-## 8. Watch it on a dashboard (optional)
+## 9. Watch it on a dashboard (optional)
 
 With Docker installed, one command starts a local Grafana with a ready-made Meru
 dashboard:
@@ -194,7 +310,25 @@ two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
 load, prompt and answer times; the answer's span has a `first_token` event. Spans
 carry no question or answer text unless `capture_content = true`.
 
-## 9. Troubleshooting
+## 10. Update to a newer version
+
+From your clone of the repo, pull the latest code, rebuild both programs and
+restart `merud`:
+
+```sh
+git pull
+go install ./cmd/merud ./cmd/meru
+pkill merud; merud -v &
+meru chat
+```
+
+`merud` keeps running the old program until you restart it, and `meru` talks to
+whichever `merud` is running, so restart it every time you rebuild. `-v` turns on
+the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off for
+the shorter log. If `merud` runs as a service, restart it with the service
+manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
+
+## 11. Troubleshooting
 
 | What you see | What it means and what to do |
 | --- | --- |
@@ -203,16 +337,18 @@ carry no question or answer text unless `capture_content = true`.
 | `merud` can't reach Ollama | Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. |
 | `model … not found` in the answer or the log | Pull the model named in the error with `ollama pull`. |
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
+| A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
+| `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `config.example.toml` shows the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
-## 10. Uninstall
+## 12. Uninstall
 
 ```sh
 rm ~/go/bin/merud ~/go/bin/meru
-rm -rf ~/.meru          # deletes your settings and every transcript
+rm -rf ~/.meru          # deletes your settings, every transcript and the index
 ```
 
 If you installed the service file, remove it first with the `bootout` (macOS) or

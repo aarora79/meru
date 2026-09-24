@@ -346,7 +346,9 @@ func startStack(t *testing.T) *stack {
 	t.Helper()
 	f := startFake(t)
 	h := newHome(t)
-	h.writeConfig(t, fakeConfig(f.url, ""))
+	// Temperature 1.0 leaves the router's probabilities as the fake scripts
+	// them, so a test can expect the confidence it put in.
+	h.writeConfig(t, fakeConfig(f.url, "[router]\ntemperature = 1.0\n"))
 	m := startMerud(t, h, nil)
 	waitReady(t, h, m, readyTimeout)
 	return &stack{home: h, fake: f, merud: m}

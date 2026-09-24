@@ -26,15 +26,29 @@ integration test got its first token in 185 ms, and the Grafana dashboard showed
 the timing.
 
 ## v0.2 — It knows your files
-- SQLite store via `ncruces/go-sqlite3` + `sqlite-vec` + FTS5 schema, rebuilt from files
-- Transcripts replayed into `messages` + `message_fts`
-- Structure-aware chunking (markdown, code, PDF)
-- Incremental indexer (`meru index`, mtime + hash)
-- Hybrid retrieval: FTS5 BM25 + `sqlite-vec` similarity, merged with reciprocal-rank
+- [x] SQLite store via `ncruces/go-sqlite3`: FTS5 for keywords, vectors in a plain
+  table compared with vec1's distance function, rebuilt from files
+- [x] Structure-aware chunking (Markdown, code, HTML, PDF)
+- [x] Incremental indexer (`meru index`, mtime + hash), with skip rules,
+  `.meruignore` and a file watcher
+- [x] Hybrid retrieval: FTS5 BM25 + vector distance, merged with reciprocal-rank
   fusion in Go
-- Citations in answers
+- [x] Citations in answers: a `sources` event, and a `Sources:` list in `meru` and
+  `meru chat`
+- [x] Router calibration: a labelled set of 135 questions and `make router-eval`
 
 **Done when:** it answers a question about a local note and cites the file.
+
+**Measured:** on the development machine with the `lite` profile, the end-to-end
+integration test indexed a notes folder, routed its question to `search+tools`,
+searched in 10 ms, and answered "The Q3 budget for the garden project is 4,200
+dollars … [1]", citing `garden.md`, with its first token at 565 ms.
+
+With 768-dimension vectors on the same machine, the store indexes 100,000 chunks in
+6.1 s, replaces a 100-chunk file in about 6 ms, and searches them in 147 ms by
+vector and 90 ms by keyword. The calibrated router, told which folders you index,
+picks the labelled route for 32 of 40 held-out questions in about 28 ms; the v0.1
+prompt picked 17 of 36.
 
 ## v0.3 — It can do things
 - MCP client: stdio + Streamable HTTP transports
@@ -56,6 +70,8 @@ the timing.
   keyword search
 - Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
 - Session summaries appended to transcripts and embedded, for recall by episode
+- Transcripts replayed into `messages` + `message_fts`, so search can find past
+  conversations
 - `meru memory list | add | forget`, working on the files
 - Skill registry with progressive disclosure
 - `meru skills list | show | reset`

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -162,7 +163,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"Hel", "lo", "!"}, usage: engine.Usage{PromptTokens: 42, OutputTokens: 3, EvalDuration: 250 * time.Millisecond}}
 	router := &fakeRouter{dec: Decision{Route: "search", Confidence: 0.8, Outcome: "ok"}}
-	a := New(cfg, eng, router, quietLog())
+	a := New(cfg, eng, router, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "  hi  ", Source: rpc.SourceCLI})
 	if err != nil {
@@ -180,7 +181,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		{Type: rpc.EventToken, Text: "lo"},
 		{Type: rpc.EventToken, Text: "!"},
 	}
-	if id == "" || !slices.Equal(evs[:5], want) {
+	if id == "" || !reflect.DeepEqual(evs[:5], want) {
 		t.Errorf("events = %+v\nwant %+v", evs[:5], want)
 	}
 	// The last event is "done" with the turn's stats. The times depend on
@@ -209,7 +210,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		t.Errorf("model = %q, want the main tier %q", call.opts.Model, cfg.Models.Main)
 	}
 	wantMsgs := []engine.Message{
-		{Role: engine.RoleSystem, Content: DefaultSystemPrompt},
+		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + filesNote(nil)},
 		{Role: engine.RoleUser, Content: "hi"},
 	}
 	if !slices.EqualFunc(call.msgs, wantMsgs, sameMessage) {
@@ -225,7 +226,7 @@ func TestTurnContinuesSession(t *testing.T) {
 	cfg.Agent.SystemPrompt = "Be brief."
 	eng := &fakeEngine{pieces: []string{"one"}}
 	router := &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}
-	a := New(cfg, eng, router, quietLog())
+	a := New(cfg, eng, router, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "first"})
 	if err != nil {
@@ -249,7 +250,7 @@ func TestTurnContinuesSession(t *testing.T) {
 	if !slices.EqualFunc(router.history, history, sameMessage) {
 		t.Errorf("router saw history %+v, want %+v", router.history, history)
 	}
-	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief."}}, history...)
+	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief.\n\n" + filesNote(nil)}}, history...)
 	wantMsgs = append(wantMsgs, engine.Message{Role: engine.RoleUser, Content: "second"})
 	if got := eng.lastCall().msgs; !slices.EqualFunc(got, wantMsgs, sameMessage) {
 		t.Errorf("prompt = %+v\nwant %+v", got, wantMsgs)
@@ -279,7 +280,7 @@ func TestTurnErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := New(testConfig(t), tt.eng, tt.router, quietLog())
+			a := New(testConfig(t), tt.eng, tt.router, nil, quietLog())
 			_, err := run(context.Background(), a, tt.req)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("Handle error = %v, want one containing %q", err, tt.want)
@@ -289,7 +290,7 @@ func TestTurnErrors(t *testing.T) {
 }
 
 func TestTurnStopsWhenEmitFails(t *testing.T) {
-	a := New(testConfig(t), &fakeEngine{pieces: []string{"a", "b"}}, &fakeRouter{dec: Decision{Route: "direct"}}, quietLog())
+	a := New(testConfig(t), &fakeEngine{pieces: []string{"a", "b"}}, &fakeRouter{dec: Decision{Route: "direct"}}, nil, quietLog())
 	gone := errors.New("client gone")
 	n := 0
 	err := a.Handle(context.Background(), rpc.Request{Text: "q"}, func(ev rpc.Event) error {
@@ -310,7 +311,7 @@ func TestTurnStopsWhenEmitFails(t *testing.T) {
 func TestTurnCancelled(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"partial", "never"}, block: true}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}, nil, quietLog())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -348,7 +349,7 @@ func TestRouteFallbackFlag(t *testing.T) {
 		t.Run(tt.outcome, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"x"}}
 			router := &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.3, Outcome: tt.outcome}}
-			a := New(testConfig(t), eng, router, quietLog())
+			a := New(testConfig(t), eng, router, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "hi"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)

@@ -24,6 +24,8 @@ type Config struct {
 	Observability Observability `toml:"observability"`
 	// Log sets how much merud writes to merud.log.
 	Log Log `toml:"log"`
+	// Index says which folders merud indexes for search (v0.2).
+	Index Index `toml:"index"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -88,4 +90,26 @@ type Log struct {
 	// startup and shutdown lines; "debug" adds a line for each stage of a
 	// turn. merud's -v flag forces "debug".
 	Level string `toml:"level"`
+}
+
+// Index controls which files merud reads into its search index. See
+// ARCHITECTURE.md, "Storage" and "Retrieval".
+type Index struct {
+	// Folders lists the folders to index, for example ["~/notes"]. A leading
+	// "~" means the home directory. Empty means nothing is indexed.
+	Folders []string `toml:"folders"`
+	// Ignore adds .gitignore-style patterns to the built-in skip list (hidden
+	// folders, node_modules, build output, secret files and so on).
+	Ignore []string `toml:"ignore"`
+	// MaxFileMB skips files larger than this many megabytes. Default 5.
+	MaxFileMB int `toml:"max_file_mb"`
+	// ChunkTokens is the target size of one chunk, in estimated tokens.
+	// Default 500.
+	ChunkTokens int `toml:"chunk_tokens"`
+	// OverlapTokens is how much each chunk repeats of the one before it, so a
+	// sentence cut at a boundary still appears whole in one chunk. Default 50.
+	OverlapTokens int `toml:"overlap_tokens"`
+	// Watch re-indexes a file as soon as it changes while merud runs. Default
+	// true. merud also rescans every folder at startup.
+	Watch bool `toml:"watch"`
 }

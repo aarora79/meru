@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -207,7 +208,7 @@ func TestEnterSendsQuestion(t *testing.T) {
 	if m.input.Value() != "" {
 		t.Errorf("input = %q after Enter, want empty", m.input.Value())
 	}
-	if len(m.turns) != 1 || bare(m.turns[0]) != (exchange{question: "hello", state: stateActive}) {
+	if len(m.turns) != 1 || !reflect.DeepEqual(bare(m.turns[0]), exchange{question: "hello", state: stateActive}) {
 		t.Errorf("turns = %+v, want the question alone", m.turns)
 	}
 
@@ -258,7 +259,7 @@ func TestStreamedAnswer(t *testing.T) {
 		route: "direct", confidence: 0.93,
 		answer: "Hello.", stats: rpc.Event{Type: rpc.EventDone},
 	}
-	if len(m.turns) != 1 || bare(m.turns[0]) != want {
+	if len(m.turns) != 1 || !reflect.DeepEqual(bare(m.turns[0]), want) {
 		t.Fatalf("turns = %+v, want [%+v]", m.turns, want)
 	}
 	if m.streaming {
@@ -429,7 +430,7 @@ func TestCancelMidStream(t *testing.T) {
 	m, _ = update(t, m, eventMsg{turn: 1, ev: rpc.Event{Type: rpc.EventToken, Text: "late"}}, done)
 
 	want := exchange{question: "long question", state: stateStopped, answer: "Part"}
-	if len(m.turns) != 1 || bare(m.turns[0]) != want {
+	if len(m.turns) != 1 || !reflect.DeepEqual(bare(m.turns[0]), want) {
 		t.Fatalf("turns = %+v, want [%+v]", m.turns, want)
 	}
 	if !strings.Contains(m.View(), "stopped") {
@@ -549,7 +550,7 @@ func TestDoneStatsKept(t *testing.T) {
 	}}
 	snd := newFakeSender()
 	m := ask(t, testModel(merud.ask, snd), merud, snd, "list")
-	if got := m.turns[0].stats; got != stats {
+	if got := m.turns[0].stats; !reflect.DeepEqual(got, stats) {
 		t.Errorf("stats = %+v, want %+v", got, stats)
 	}
 	view := m.View()

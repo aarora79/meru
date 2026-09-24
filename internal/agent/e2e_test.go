@@ -18,7 +18,7 @@ import (
 func TestEndToEnd(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"The answer ", "is 42."}, usage: engine.Usage{PromptTokens: 20, OutputTokens: 4}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, nil, quietLog())
 
 	// A short socket path: macOS caps them at 104 bytes.
 	sockDir, err := os.MkdirTemp("", "meru")

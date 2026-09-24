@@ -29,6 +29,7 @@ const (
 	metricTurnIterations    = "meru.turn.iterations"
 	metricContextTokens     = "meru.context.tokens"
 	metricActiveStreams     = "meru.rpc.active_streams"
+	metricRetrievalDuration = "meru.retrieval.duration"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -42,6 +43,7 @@ const (
 	keySource    = "meru.source"
 	keyOutcome   = "meru.outcome"
 	keySection   = "meru.section"
+	keyStage     = "meru.stage"
 )
 
 // other replaces any attribute value outside its allowed set. It keeps a
@@ -59,6 +61,7 @@ var (
 	turnOutcomes  = []string{"ok", "error", "cancelled"}
 	routeOutcomes = []string{"ok", "low_confidence", "degraded"}
 	sections      = []string{"system", "skills", "memories", "chunks", "history", "tools"}
+	stages        = []string{"vector", "fts", "fusion", "memories"}
 )
 
 // operationNames maps Meru's own operation words to the values the GenAI
@@ -81,6 +84,9 @@ var (
 	perTokenBuckets   = []float64{0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2.5}
 	tokenBuckets      = []float64{1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576}
 	iterationBuckets  = []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16}
+	// Retrieval stages run inside merud and take micro- to milliseconds,
+	// so their edges start far below the model-call ones.
+	retrievalBuckets = []float64{0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
 )
 
 // bounded returns v when it is one of allowed, and "other" when it isn't.
@@ -118,6 +124,7 @@ type instruments struct {
 	turnIterations    metric.Int64Histogram
 	contextTokens     metric.Int64Histogram
 	activeStreams     metric.Int64UpDownCounter
+	retrievalDuration metric.Float64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -188,6 +195,11 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 	in.activeStreams, err = meter.Int64UpDownCounter(metricActiveStreams,
 		metric.WithUnit("{stream}"),
 		metric.WithDescription("Client sessions streaming from merud right now."))
+	keep(err)
+	in.retrievalDuration, err = meter.Float64Histogram(metricRetrievalDuration,
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of one retrieval stage: vector search, keyword search, fusion or memory recall."),
+		metric.WithExplicitBucketBoundaries(retrievalBuckets...))
 	keep(err)
 
 	if err := errors.Join(errs...); err != nil {

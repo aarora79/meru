@@ -28,6 +28,12 @@ type fakeEngine struct {
 	version  string
 	infoErr  error
 	failWarm string // Generate fails for this model
+	// dims is the size of each vector Embed returns; 0 means 1.
+	dims int
+	// hold, when not nil, makes Embed wait for it to close (or for ctx to
+	// end) before embedding any text that contains holdMarker. Tests use
+	// it to keep the startup scan busy.
+	hold chan struct{}
 
 	mu     sync.Mutex // guards models and embeds
 	models []string
@@ -53,11 +59,32 @@ func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []
 	}, nil
 }
 
+// holdMarker is the text that makes Embed wait for fakeEngine.hold.
+const holdMarker = "HOLD-THE-SCAN"
+
+// Embed returns one vector per text, each the length of its text in every
+// place, so the vectors differ between texts.
 func (f *fakeEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.embeds++
-	return []engine.Vector{{0.1}}, nil
+	f.mu.Unlock()
+	dims := max(f.dims, 1)
+	out := make([]engine.Vector, len(texts))
+	for i, t := range texts {
+		if f.hold != nil && strings.Contains(t, holdMarker) {
+			select {
+			case <-f.hold:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		v := make(engine.Vector, dims)
+		for j := range v {
+			v[j] = float32(len(t) + j)
+		}
+		out[i] = v
+	}
+	return out, nil
 }
 
 func (f *fakeEngine) Info(ctx context.Context) (engine.ModelInfo, error) {

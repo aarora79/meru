@@ -12,6 +12,8 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // streamCursor ends an answer while it streams, to show more is coming.
@@ -94,8 +96,9 @@ func (m *Model) renderConversation() string {
 }
 
 // renderTurn draws one turn: the "You" label and the question, then the
-// "Meru" label with the route badge, the answer, and a closing line that
-// depends on how the turn ended.
+// "Meru" label with the route badge, the answer, and closing lines that
+// depend on how the turn ended: for a finished answer, the files it cites
+// and its stats.
 func (m *Model) renderTurn(t *exchange) string {
 	// Text inside the turn wraps to the width left after the indent.
 	width := max(m.width-answerIndent, 10)
@@ -123,6 +126,9 @@ func (m *Model) renderTurn(t *exchange) string {
 
 	switch t.state {
 	case stateDone:
+		if src := m.sourcesBlock(t, width); src != "" {
+			lines = append(lines, src)
+		}
 		if s := statsLine(t); s != "" {
 			lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Wrap(s, width, ""))))
 		}
@@ -134,6 +140,21 @@ func (m *Model) renderTurn(t *exchange) string {
 		lines = append(lines, m.style.errorBox.Render(msg))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// sourcesBlock draws the files a finished answer cites, dim, under the
+// answer: a "Sources" line, then one numbered line per file, as the answer
+// numbers them. It returns "" when the turn has no sources. Each line wraps
+// to width, so a long path can't push the screen out of shape.
+func (m *Model) sourcesBlock(t *exchange, width int) string {
+	if len(t.sources) == 0 {
+		return ""
+	}
+	lines := []string{"Sources"}
+	for _, c := range rpc.Cited(t.answer, t.sources) {
+		lines = append(lines, ansi.Wrap(c.String(), width, ""))
+	}
+	return m.style.raw.Render(m.style.dim.Render(strings.Join(lines, "\n")))
 }
 
 // badge draws the route next to the "Meru" label, such as "direct · 0.91".

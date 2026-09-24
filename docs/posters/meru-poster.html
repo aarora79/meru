@@ -289,7 +289,7 @@ tr:last-child td{border-bottom:none}
     <h2><span class="chip">02</span>Pick the profile your machine can hold<span class="tail">lite is the default</span></h2>
     <table>
       <tr><th>Tier</th><th>Job</th><th><span style="color:var(--teal-d)">lite</span> (default)</th><th>full</th></tr>
-      <tr><td class="n">fast</td><td>routing, query rewrites</td><td class="lite">MiniCPM5-2B, 1.6&#8239;GB</td><td>same</td></tr>
+      <tr><td class="n">fast</td><td>routing, trivial answers</td><td class="lite">MiniCPM5-2B, 1.6&#8239;GB</td><td>same</td></tr>
       <tr><td class="n">main</td><td>reasoning, choosing tools</td><td class="lite">same model as <span class="mono">fast</span></td><td><span class="mono">qwen3.8:27b</span>, ~18&#8239;GB at 4-bit</td></tr>
       <tr><td class="n">embed</td><td>vectors for search</td><td class="lite"><span class="mono">nomic-embed-text</span>, 768 dims</td><td><span class="mono">qwen3-embedding:0.6b</span>, 1024 dims</td></tr>
       <tr><td class="n">needs</td><td>hardware</td><td class="lite">16&#8239;GB of RAM; a CPU is enough</td><td>Apple silicon with 32&#8239;GB+, or a ~24&#8239;GB GPU</td></tr>
@@ -310,7 +310,7 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <div class="warn">
-    <div class="fine"><b>Pre-alpha, design phase.</b> Meru&#8217;s design in ARCHITECTURE.md came first, and the code follows it. Timings on this poster are design targets that no one has measured yet.</div>
+    <div class="fine"><b>Pre-alpha, v0.2.</b> The design came first, and the code follows it. Meru answers from the folders you index and cites the files.</div>
   </div>
 
 </section>
@@ -321,7 +321,7 @@ tr:last-child td{border-bottom:none}
   <div class="card">
     <h2><span class="chip">04</span>One turn, five steps, in a loop we wrote<span class="tail">no agent framework &#183; traced locally</span></h2>
     <div class="five">
-      <div class="q"><div class="k">1 &#183; Route</div><div class="a"><span class="mono">fast</span> rewrites the question, picks a route.</div></div>
+      <div class="q"><div class="k">1 &#183; Route</div><div class="a"><span class="mono">fast</span> picks a route from one token.</div></div>
       <div class="q"><div class="k">2 &#183; Context</div><div class="a">Skills, memories, hits, history, each on a budget.</div></div>
       <div class="q"><div class="k">3 &#183; Main</div><div class="a"><span class="mono">main</span> streams the answer to you, or asks for a tool.</div></div>
       <div class="q"><div class="k">4 &#183; Dispatch</div><div class="a">Checks, asks if needed, runs and logs each call.</div></div>
@@ -331,8 +331,8 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <div class="card">
-    <h2><span class="chip">05</span>Two searches, merged by rank<span class="tail">BM25 + sqlite-vec + reciprocal-rank fusion</span></h2>
-    <p style="margin-bottom:6px">Each turn searches your files, your memories and past chat summaries. Keyword search (BM25) finds exact strings such as tickers, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
+    <h2><span class="chip">05</span>Two searches, merged by rank<span class="tail">BM25 + vec1 distance + reciprocal-rank fusion</span></h2>
+    <p style="margin-bottom:6px">Search turns look in your files; memories and chat summaries join in v0.4. Keyword search (BM25) finds exact strings such as tickers, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
     <div class="chart"><svg viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid search pipeline and reciprocal-rank fusion scores"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker></defs>
 
 <text x="0" y="12" class="cl">RRF SCORE = Σ 1/(60 + RANK) · RANKS INVENTED, SCORES COMPUTED</text>
@@ -410,7 +410,7 @@ other/        <span class="c">anything else</span></pre>
         <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Each file carries its date and source chat. Delete the file and Meru forgets it.</span></div>
         <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>The model saves one with the built-in <span class="mono">remember</span> tool, through <span class="mono">dispatch</span>.</span></div>
         <div class="li" style="margin-bottom:3px"><b>&#9632;</b><span>Each chat ends with a short summary, so &#8220;what did we decide last week?&#8221; finds it.</span></div>
-        <div class="li"><b>&#9632;</b><span>Files hold the truth. The SQLite index, <span class="mono">meru.db</span>, rebuilds from them.</span></div>
+        <div class="li"><b>&#9632;</b><span>Files hold the truth. <span class="mono">meru.db</span>, one SQLite file with keywords and vectors, rebuilds from them.</span></div>
       </div>
     </div>
   </div>
@@ -451,7 +451,7 @@ prompt   = <span class="s">"Brief me on today..."</span></pre>
   </div>
 
   <div class="warn">
-    <div class="fine"><b>Pre-alpha, design phase.</b> The code will follow ARCHITECTURE.md. The 50&#8239;ms start and first-token target are unmeasured goals; panel 05&#8217;s ranks are made up.</div>
+    <div class="fine"><b>Pre-alpha, v0.2.</b> On the lite profile the first token came at 565&#8239;ms with a search of your notes. Panel 05&#8217;s ranks are made up.</div>
   </div>
 
   <div class="foot">

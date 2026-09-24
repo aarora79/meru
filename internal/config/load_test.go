@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestLoadMissingFileGivesDefaults(t *testing.T) {
 	want := defaults()
 	want.Models = profiles["lite"]
 	want.Dir = dir
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load of a missing file:\n got %+v\nwant %+v", cfg, want)
 	}
 }
@@ -95,6 +96,14 @@ capture_content = true
 
 [log]
 level = "debug"
+
+[index]
+folders = ["~/notes", "~"]
+ignore = ["*.log", "drafts/"]
+max_file_mb = 20
+chunk_tokens = 300
+overlap_tokens = 0
+watch = false
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -108,9 +117,17 @@ level = "debug"
 		Router:        Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct"},
 		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
 		Log:           Log{Level: "debug"},
+		Index: Index{
+			Folders:       []string{"~/notes", "~"},
+			Ignore:        []string{"*.log", "drafts/"},
+			MaxFileMB:     20,
+			ChunkTokens:   300,
+			OverlapTokens: 0,
+			Watch:         false,
+		},
 	}
 	cfg.Dir = ""
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("got  %+v\nwant %+v", cfg, want)
 	}
 }
@@ -147,6 +164,17 @@ func TestLoadErrors(t *testing.T) {
 		{"log level unknown", "[log]\nlevel = \"loud\"", `log.level "loud" is unknown`},
 		{"log level empty", "[log]\nlevel = \"\"", `log.level "" is unknown`},
 		{"log level upper case", "[log]\nlevel = \"DEBUG\"", `log.level "DEBUG" is unknown`},
+		{"index relative folder", "[index]\nfolders = [\"notes\"]", `index.folders: "notes" must be an absolute path`},
+		{"index tilde user", "[index]\nfolders = [\"~bob/notes\"]", `index.folders: "~bob/notes"`},
+		{"index empty folder", "[index]\nfolders = [\"\"]", `index.folders: ""`},
+		{"index empty ignore", "[index]\nignore = [\" \"]", "index.ignore"},
+		{"index max_file_mb zero", "[index]\nmax_file_mb = 0", "index.max_file_mb"},
+		{"index max_file_mb huge", "[index]\nmax_file_mb = 5000", "index.max_file_mb"},
+		{"index chunk_tokens low", "[index]\nchunk_tokens = 10", "index.chunk_tokens"},
+		{"index chunk_tokens high", "[index]\nchunk_tokens = 10000", "index.chunk_tokens"},
+		{"index overlap negative", "[index]\noverlap_tokens = -1", "index.overlap_tokens"},
+		{"index overlap past half", "[index]\nchunk_tokens = 100\noverlap_tokens = 51", "index.overlap_tokens"},
+		{"index unknown key", "[index]\nfolder = []", "unknown keys: index.folder"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -221,7 +249,7 @@ func TestExampleMatchesDefaults(t *testing.T) {
 	want := defaults()
 	want.Models = profiles["lite"]
 	cfg.Dir = ""
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("example config:\n got %+v\nwant %+v", cfg, want)
 	}
 }
