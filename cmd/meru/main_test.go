@@ -78,7 +78,7 @@ func TestRun(t *testing.T) {
 		{"ask unquoted", answer(t, "what is up", "x\n"), []string{"what", "is", "up"}, 0, "x\n", ""},
 		{"ping", answer(t, ""), []string{"ping"}, 0, "merud is up\n", ""},
 		{"error event", failing, []string{"hi"}, 1, "", "meru: model not found"},
-		{"chat not built", answer(t, ""), []string{"chat"}, 1, "", "chat not built"},
+		{"chat without a terminal", answer(t, ""), []string{"chat"}, 1, "", "meru: chat:"},
 		{"no arguments", answer(t, ""), nil, 1, "", "usage:"},
 	}
 	for _, tt := range tests {

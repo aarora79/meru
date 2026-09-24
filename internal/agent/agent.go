@@ -188,23 +188,14 @@ func (a *Agent) session(id string) (*transcript.Session, error) {
 	return transcript.Open(a.sessionsDir, id)
 }
 
-// route asks the router for a decision inside a meru.route span and records
-// it in meru.route.decisions.
+// route asks the router for this turn's route. The router records the
+// meru.route span and the meru.route.decisions metric itself, so the agent
+// records neither.
 func (a *Agent) route(ctx context.Context, question string, history []engine.Message) (Decision, error) {
-	ctx, span := obs.Tracer().Start(ctx, "meru.route")
-	defer span.End()
-
 	dec, err := a.router.Decide(ctx, question, history)
 	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
 		return Decision{}, fmt.Errorf("route: %w", err)
 	}
-	span.SetAttributes(
-		attribute.String("meru.route.decision", dec.Route),
-		attribute.Float64("meru.route.confidence", dec.Confidence),
-		attribute.String("meru.route.outcome", dec.Outcome),
-	)
-	obs.RecordRoute(ctx, dec.Route, dec.Outcome)
 	return dec, nil
 }
 

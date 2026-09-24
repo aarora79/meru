@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aarora79/meru/internal/tui"
+
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/rpc"
 )
@@ -35,15 +37,6 @@ const (
 	exitError       = 1
 	exitInterrupted = 130
 )
-
-// runChat runs `meru chat`, the Bubble Tea terminal UI. chat.go sets it from
-// its init function; when chat.go isn't part of the build, it stays nil and
-// `meru chat` says so.
-//
-// TODO(coordinator): chat.go (agent D) sets this. If the team would rather
-// avoid init(), replace the variable with a plain call to a runChat function
-// defined in chat.go.
-var runChat func(ctx context.Context, socket string) error
 
 // main turns Ctrl-C into a cancelled context and exits with run's status.
 func main() {
@@ -95,11 +88,8 @@ flags:`)
 	case flags.NArg() == 1 && flags.Arg(0) == "ping":
 		err = ping(ctx, *socket, stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "chat":
-		if runChat == nil {
-			err = errors.New("chat not built")
-		} else {
-			err = runChat(ctx, *socket)
-		}
+		// tui.Run starts the Bubble Tea terminal UI (internal/tui).
+		err = tui.Run(ctx, *socket)
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it

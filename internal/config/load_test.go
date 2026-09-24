@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aarora79/meru/internal/engine"
 )
 
 // writeConfig writes body to config.toml in a fresh temporary directory and
@@ -120,7 +122,7 @@ func TestLoadErrors(t *testing.T) {
 		{"unknown profile", `profile = "huge"`, `profile "huge" is unknown`},
 		{"ollama not loopback", "[ollama]\nbase_url = \"http://10.0.0.5:11434\"", "ollama.base_url"},
 		{"ollama hostname", "[ollama]\nbase_url = \"http://ollama.example.com\"", "ollama.base_url"},
-		{"ollama scheme", "[ollama]\nbase_url = \"ftp://127.0.0.1\"", "http:// or https://"},
+		{"ollama scheme", "[ollama]\nbase_url = \"ftp://127.0.0.1\"", "scheme must be http or https"},
 		{"ollama empty", "[ollama]\nbase_url = \"\"", "ollama.base_url"},
 		{"keep_alive", "[ollama]\nkeep_alive = \"forever\"", "ollama.keep_alive"},
 		{"max_rounds", "[agent]\nmax_rounds = 0", "agent.max_rounds"},
@@ -164,6 +166,8 @@ func TestLoadReportsEveryProblem(t *testing.T) {
 	}
 }
 
+// TestCheckLoopbackURL pins the loopback rule config relies on for the Ollama
+// and OTLP addresses. The check itself lives in internal/engine.
 func TestCheckLoopbackURL(t *testing.T) {
 	tests := []struct {
 		url string
@@ -188,12 +192,12 @@ func TestCheckLoopbackURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			err := checkLoopbackURL(tt.url)
+			err := engine.CheckLoopbackURL(tt.url)
 			if tt.ok && err != nil {
-				t.Errorf("checkLoopbackURL(%q) = %v, want nil", tt.url, err)
+				t.Errorf("CheckLoopbackURL(%q) = %v, want nil", tt.url, err)
 			}
 			if !tt.ok && err == nil {
-				t.Errorf("checkLoopbackURL(%q) = nil, want an error", tt.url)
+				t.Errorf("CheckLoopbackURL(%q) = nil, want an error", tt.url)
 			}
 		})
 	}

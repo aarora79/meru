@@ -249,7 +249,7 @@ func TestRunStartupErrors(t *testing.T) {
 		want  string
 	}{
 		{"bad config", []string{"-config", badCfg, "-socket", sock}, okEngine, "profile"},
-		{"no engine yet", []string{"-config", good, "-socket", sock}, newEngine, "isn't wired in yet"},
+		{"engine fails", []string{"-config", good, "-socket", sock}, failEngine, "engine: boom"},
 		{"old ollama", []string{"-config", good, "-socket", sock}, oldEngine, "too old"},
 		{"stray argument", []string{"-config", good, "extra"}, okEngine, "unexpected arguments"},
 		{"unknown flag", []string{"-nope"}, okEngine, "not defined"},
@@ -262,4 +262,10 @@ func TestRunStartupErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// failEngine stands in for an engine that can't be built, so run must report
+// the failure instead of starting.
+func failEngine(config.Config) (engine.Engine, error) {
+	return nil, errors.New("boom")
 }

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aarora79/meru/internal/engine"
+
 	"github.com/BurntSushi/toml"
 )
 
@@ -156,7 +158,7 @@ func validate(cfg Config) error {
 		add("profile %q is unknown; use \"lite\" or \"full\"", cfg.Profile)
 	}
 
-	if err := checkLoopbackURL(cfg.Ollama.BaseURL); err != nil {
+	if err := engine.CheckLoopbackURL(cfg.Ollama.BaseURL); err != nil {
 		add("ollama.base_url: %w", err)
 	}
 	if err := checkKeepAlive(cfg.Ollama.KeepAlive); err != nil {
@@ -186,7 +188,7 @@ func validate(cfg Config) error {
 
 	o := cfg.Observability
 	if o.OTLPEndpoint != "" {
-		if err := checkLoopbackURL(o.OTLPEndpoint); err != nil {
+		if err := engine.CheckLoopbackURL(o.OTLPEndpoint); err != nil {
 			add("observability.otlp_endpoint: %w", err)
 		}
 	}

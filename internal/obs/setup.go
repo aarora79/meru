@@ -9,13 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/aarora79/meru/internal/engine"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -149,45 +149,16 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 }
 
 // loopbackURL parses endpoint and returns it when its host is a loopback
-// address. It accepts a literal loopback IP (127.0.0.0/8 or ::1) or the name
-// "localhost", and only when every address localhost resolves to is
-// loopback. It refuses every other host name without looking it up: a name
-// that points at loopback today can point somewhere else tomorrow.
+// address. The rule itself (127.0.0.0/8, ::1, or "localhost" only when every
+// address it resolves to is loopback) lives in engine.CheckLoopbackURL, so
+// config, the engine and this package all apply the same check.
 func loopbackURL(ctx context.Context, endpoint string) (*url.URL, error) {
+	if err := engine.CheckLoopbackURL(endpoint); err != nil {
+		return nil, fmt.Errorf("observability.otlp_endpoint: %w; Meru sends telemetry only to this machine", err)
+	}
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("observability.otlp_endpoint %q: %w", endpoint, err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("observability.otlp_endpoint %q: must start with http:// or https://", endpoint)
-	}
-	host := u.Hostname() // strips the port and the brackets around an IPv6 address
-	if host == "" {
-		return nil, fmt.Errorf("observability.otlp_endpoint %q: no host", endpoint)
-	}
-	refuse := fmt.Errorf("observability.otlp_endpoint %q: host %q is not loopback; "+
-		"Meru sends telemetry only to this machine (use 127.0.0.1, ::1 or localhost)", endpoint, host)
-
-	if strings.EqualFold(host, "localhost") {
-		addrs, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-		if err != nil {
-			return nil, fmt.Errorf("observability.otlp_endpoint %q: resolve localhost: %w", endpoint, err)
-		}
-		if len(addrs) == 0 {
-			return nil, refuse
-		}
-		// `for _, a := range addrs` visits each element; `_` discards the index.
-		for _, a := range addrs {
-			if !a.IsLoopback() {
-				return nil, refuse
-			}
-		}
-		return u, nil
-	}
-
-	addr, err := netip.ParseAddr(host)
-	if err != nil || !addr.IsLoopback() {
-		return nil, refuse
 	}
 	return u, nil
 }

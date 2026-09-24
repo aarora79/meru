@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +21,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/aarora79/meru/internal/router"
 
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
@@ -142,7 +143,12 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 		return err
 	}
 
-	a := agent.New(cfg, eng, newRouter(cfg, eng), log)
+	rt, err := newRouter(cfg, eng)
+	if err != nil {
+		ln.Close()
+		return err
+	}
+	a := agent.New(cfg, eng, rt, log)
 	log.Info("listening", "socket", socketPath)
 	return rpc.Serve(ctx, ln, a.Handle, log)
 }
@@ -159,37 +165,37 @@ func openLog(path string) (*slog.Logger, func(), error) {
 	return log, func() { f.Close() }, nil
 }
 
-// errNoEngine is what newEngine returns until the Ollama engine is wired in.
-var errNoEngine = errors.New("the Ollama engine isn't wired in yet")
-
-// newEngine builds the engine merud answers with.
-//
-// TODO(coordinator): return engine.NewOllama(...) from agent A's
-// internal/engine once it lands, built from cfg.Ollama (base URL, keep_alive)
-// and cfg.Models (the embed model for Embed). Until then merud refuses to
-// start with errNoEngine.
+// newEngine builds the engine merud answers with: an OllamaEngine on the
+// loopback address from config, which also knows the embed model for Embed.
+// A nil *http.Client makes the engine use its own default client.
 func newEngine(cfg config.Config) (engine.Engine, error) {
-	return nil, errNoEngine
+	return engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil)
 }
 
-// newRouter builds the router the agent asks for each turn's route.
-//
-// TODO(coordinator): replace fallbackRouter with a small adapter that calls
-// router.Decide(ctx, eng, routerConfig(cfg), turn) from agent A's
-// internal/router and copies Route, Confidence and Outcome into an
-// agent.Decision.
-func newRouter(cfg config.Config, eng engine.Engine) agent.Router {
-	return fallbackRouter{route: cfg.Router.Fallback}
+// newRouter builds the router the agent asks for each turn's route: the
+// one-token classifier in internal/router, running on the fast model.
+func newRouter(cfg config.Config, eng engine.Engine) (agent.Router, error) {
+	rc, err := router.ConfigFrom(cfg.Router, cfg.Models.Fast)
+	if err != nil {
+		return nil, fmt.Errorf("router: %w", err)
+	}
+	return routerAdapter{eng: eng, cfg: rc}, nil
 }
 
-// fallbackRouter stands in for the real router until it is wired in. It
-// always picks the configured fallback route and reports the outcome as
-// "degraded", which is what the real router does when it can't decide.
-type fallbackRouter struct {
-	route string
+// routerAdapter lets router.Decide serve as an agent.Router. The two packages
+// don't import each other, so this small type in main joins them.
+type routerAdapter struct {
+	eng engine.Engine
+	cfg router.Config
 }
 
-// Decide returns the fallback route. It never fails.
-func (r fallbackRouter) Decide(ctx context.Context, question string, history []engine.Message) (agent.Decision, error) {
-	return agent.Decision{Route: r.route, Confidence: 0, Outcome: "degraded"}, nil
+// Decide asks the router for this turn's route and copies the result into the
+// agent's own Decision type. router.Decide records the meru.route span and
+// metric itself.
+func (r routerAdapter) Decide(ctx context.Context, question string, history []engine.Message) (agent.Decision, error) {
+	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question})
+	if err != nil {
+		return agent.Decision{}, err
+	}
+	return agent.Decision{Route: string(d.Route), Confidence: d.Confidence, Outcome: string(d.Outcome)}, nil
 }
