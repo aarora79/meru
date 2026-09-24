@@ -32,10 +32,13 @@ Read them in this order; each builds on the ones before it.
 11. [merud and meru](merud.md): the two programs and how they start
 12. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
 13. [mcp](mcp.md): the MCP client pool, groundwork for tools in v0.3
-14. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
-15. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
-16. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-17. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+14. [secrets](secrets.md): `secrets.toml`, where API keys live, and redacting them
+15. [catalog](catalog.md): the starter MCP servers and the safe way to add one to `config.toml`
+16. [builtin](builtin.md): merud's built-in tools, starting with `configure`
+17. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
+18. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
+19. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+20. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 

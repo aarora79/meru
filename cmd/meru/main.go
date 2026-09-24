@@ -10,9 +10,11 @@
 //	meru [-socket path] chat             open the terminal UI
 //	meru [-socket path] index [folder]   rescan the [index] folders, or just one
 //	meru [-socket path] index -status    show what the search index holds
+//	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
+//	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
 //
-// A question whose first word is ping, chat or index needs quotes, so meru
-// reads it as a question and not as a command.
+// A question whose first word is ping, chat, index, setup or mcp needs
+// quotes, so meru reads it as a question and not as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -65,6 +67,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru chat             open the terminal UI
   meru index [folder]   rescan the [index] folders, or just one
   meru index -status    show what the search index holds
+  meru setup            set up Ollama, the models, config and tools
+  meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
+  meru mcp add <name> -- <command> [args...] | --url <url>
+                        add a server that isn't in the catalog
 
 flags:`)
 		flags.PrintDefaults()
@@ -99,6 +105,10 @@ flags:`)
 		err = tui.Run(ctx, *socket, chatInfo())
 	case flags.Arg(0) == "index":
 		err = indexCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+	case flags.NArg() == 1 && flags.Arg(0) == "setup":
+		err = setupCmd(ctx, *socket, terminal(stdout))
+	case flags.Arg(0) == "mcp":
+		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
