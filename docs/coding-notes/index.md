@@ -78,6 +78,16 @@ never store two versions of one file in the wrong order:
 4. Chunk it, number the chunks, embed them 32 at a time, and call
    `ReplaceDocument`.
 
+An empty file gets a document row and no chunks; the store accepts a
+`ReplaceDocument` with zero chunks, so the next scan sees it as unchanged.
+
+**Re-embedding.** `Reembed` is `Scan` with the "unchanged" check in step 3
+turned off: it chunks and embeds every file again. merud calls it in place of
+`Scan` when `store.NeedsReembed` says some chunks have no vector, which happens
+after the embedding model or its vector size changes. The `force` flag travels
+from `scan` through `scanTree` and `indexFile` to `indexFileLocked`;
+`IndexPaths`, and so the watcher, never forces.
+
 A file that can't be read or parsed counts as `Failed` and the scan moves on.
 An error from the engine or the store stops the scan, because Ollama being down
 would fail every file after it too.
@@ -205,6 +215,12 @@ go test -race ./internal/index/
 go test -race -run TestSkipRules -v ./internal/index/
 go test -race -run TestWatch -v ./internal/index/
 ```
+
+`store_test.go` runs the indexer against the real SQLite store to check the
+contract between the two packages: a deleted file in `notes` leaves
+`notes2/c.md` alone (the store treats a prefix as a folder), an empty file
+stores with zero chunks, and after a change of embedding model `Scan` leaves
+the vectors missing while `Reembed` restores them.
 
 `TestSkipRules` builds a folder with one file for every skip rule and checks
 what got indexed and the count for each reason. `TestWatch` starts `Watch` on a

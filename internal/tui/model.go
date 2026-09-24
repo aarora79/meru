@@ -72,6 +72,11 @@ type exchange struct {
 	confidence float64 // the router's confidence in route
 	fallback   bool    // the router wasn't sure and fell back
 
+	// sources lists the excerpts from the user's files that merud put in
+	// the prompt, from its "sources" event; nil when the turn didn't
+	// search or found nothing.
+	sources []rpc.Citation
+
 	answer string    // the answer's raw text, grown token by token
 	err    string    // why the turn failed, for stateFailed
 	stats  rpc.Event // the closing "done" event and its stats; zero if none came
@@ -322,6 +327,8 @@ func (m *Model) handleEvent(msg eventMsg) {
 		m.session = ev.Session
 	case rpc.EventRoute:
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
+	case rpc.EventSources:
+		cur.sources = ev.Sources
 	case rpc.EventToken:
 		cur.answer += ev.Text
 	case rpc.EventDone:

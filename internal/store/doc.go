@@ -1,7 +1,8 @@
 // Package store is Meru's SQLite database, ~/.meru/meru.db: documents,
 // chunks, one vector per chunk, and a keyword index (FTS5), all in one
-// file. Vector search compares the query with every stored vector, using
-// the cosine distance function from SQLite's vec1 extension.
+// file. Vector search compares the query with every stored vector. Vectors
+// are stored at length 1, so half of vec1's squared L2 distance equals the
+// cosine distance, and the L2 function is the cheaper of the two.
 //
 // The database is a projection: merud can rebuild all of it from your files,
 // so deleting meru.db loses nothing. See ARCHITECTURE.md, "Storage". The

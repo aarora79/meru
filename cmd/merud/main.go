@@ -1,5 +1,6 @@
 // Command merud is Meru's resident daemon. It loads config, keeps the models
-// warm in Ollama, and answers questions from meru over a Unix socket at
+// warm in Ollama, keeps the search index of your [index] folders up to date
+// in ~/.meru/meru.db, and answers questions from meru over a Unix socket at
 // ~/.meru/merud.sock. See ARCHITECTURE.md, "The shape: daemon + thin client".
 //
 // Usage:
@@ -13,6 +14,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,13 +25,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aarora79/meru/internal/router"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/router"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/store"
 )
 
 // main wires the operating system to run: it turns SIGINT and SIGTERM into a
@@ -101,9 +106,9 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 		"base_url", cfg.Ollama.BaseURL, "keep_alive", cfg.Ollama.KeepAlive,
 		"history_turns", cfg.Agent.HistoryTurns, "otlp", otlp,
 		"traces", cfg.Observability.Traces, "capture_content", cfg.Observability.CaptureContent,
-		"log_level", cfg.Log.Level)
+		"log_level", cfg.Log.Level, "index_folders", len(cfg.Index.Folders))
 
-	err = serve(ctx, cfg, *socketPath, log, buildEngine)
+	err = serve(ctx, cfg, *configPath, *socketPath, log, buildEngine)
 	if err != nil {
 		log.Error("merud stopped", "err", err)
 		return err
@@ -113,9 +118,12 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 }
 
 // serve does the work between reading config and shutting down: telemetry,
-// the engine, the runtime check, claiming the socket, warming the models and
-// then answering requests until ctx is cancelled.
-func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
+// the engine, the runtime check, claiming the socket, warming the models,
+// opening the store, and then three jobs side by side until ctx is
+// cancelled: answering requests, the startup scan of the [index] folders,
+// and the file watcher. Questions get answers while the first scan runs;
+// they search whatever the index holds so far.
+func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
 	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
 	if err != nil {
 		return fmt.Errorf("observability: %w", err)
@@ -148,22 +156,97 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 	if err != nil {
 		return err
 	}
+	// served turns true once rpc.Serve owns the listener; until then, any
+	// return below must close it. This deferred function reads served when
+	// serve returns, not now.
+	served := false
+	defer func() {
+		if !served {
+			_ = ln.Close()
+		}
+	}()
+
 	if err := warm(ctx, eng, cfg.Models, log); err != nil {
-		_ = ln.Close()
 		if ctx.Err() != nil {
 			return nil // stopped during warm-up
 		}
 		return err
 	}
+	st, err := openStore(ctx, cfg, eng, log)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Warn("close store", "err", err)
+		}
+	}()
+	ix, err := index.New(cfg.Index, st, eng, log)
+	if err != nil {
+		return fmt.Errorf("index: %w", err)
+	}
 
 	rt, err := newRouter(cfg, eng, log)
 	if err != nil {
-		_ = ln.Close()
 		return err
 	}
-	a := agent.New(cfg, eng, rt, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, log)
+	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
-	return rpc.Serve(ctx, ln, a.Handle, log)
+
+	// An errgroup runs each function in its own goroutine and Wait waits
+	// for all of them. gctx is cancelled when ctx is, or when one of them
+	// returns an error, so a failed server stops the scan and the watcher
+	// too. The scan and the watcher log their own errors and return nil.
+	served = true
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx), log) })
+	g.Go(func() error { idx.startupScan(gctx); return nil })
+	g.Go(func() error { idx.watch(gctx); return nil })
+	return g.Wait()
+}
+
+// openStore opens the search index at meru.db in the Meru home. It asks the
+// embedding model for one vector to learn the vector size first. When the
+// model or size changed since the last run, the store drops the old
+// vectors and the startup scan embeds every file again.
+func openStore(ctx context.Context, cfg config.Config, eng engine.Engine, log *slog.Logger) (*store.Store, error) {
+	dims, err := embedDims(ctx, eng)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", cfg.Models.Embed, err)
+	}
+	path := filepath.Join(cfg.Dir, "meru.db")
+	st, err := store.Open(ctx, store.Options{Path: path, EmbedModel: cfg.Models.Embed, Dims: dims})
+	if err != nil {
+		return nil, err
+	}
+	stats, err := st.Stats(ctx)
+	if err != nil {
+		return nil, errors.Join(err, st.Close())
+	}
+	log.Info("store open", "path", path, "embed", cfg.Models.Embed, "dims", dims,
+		"documents", stats.Documents, "chunks", stats.Chunks, "vectors", stats.Vectors)
+	return st, nil
+}
+
+// handler returns the rpc.Handler merud serves: questions go to the agent,
+// the index ops to the index service. The rpc server answers pings itself.
+func handler(a *agent.Agent, idx *indexService) rpc.Handler {
+	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+		switch req.Op {
+		case rpc.OpAsk:
+			return a.Handle(ctx, req, emit)
+		case rpc.OpIndex:
+			return idx.handleIndex(ctx, req, emit)
+		case rpc.OpIndexStatus:
+			return idx.handleStatus(ctx, emit)
+		default:
+			return fmt.Errorf("unknown op %q", req.Op)
+		}
+	}
 }
 
 // openLog opens (or creates) the log file at path for appending, with mode

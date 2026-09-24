@@ -183,9 +183,26 @@ func (ix *Indexer) roots() (resolved []string, missing []error) {
 // engine or the store returns an error, since those would fail every file
 // after it too.
 func (ix *Indexer) Scan(ctx context.Context) (Report, error) {
+	return ix.scan(ctx, false)
+}
+
+// Reembed is Scan for after a change of embedding model: it chunks and
+// embeds every file again, even one the store holds unchanged, because the
+// store has dropped the old model's vectors (store.NeedsReembed). merud
+// runs it at startup in place of Scan when the store asks for it.
+func (ix *Indexer) Reembed(ctx context.Context) (Report, error) {
+	return ix.scan(ctx, true)
+}
+
+// scan does the work of Scan and Reembed. force skips the "unchanged"
+// check, so every file gets chunked and embedded again.
+func (ix *Indexer) scan(ctx context.Context, force bool) (Report, error) {
 	start := time.Now()
 	ctx, span := obs.Tracer().Start(ctx, "meru.index.scan",
-		trace.WithAttributes(attribute.Int("meru.index.folders", len(ix.folders))))
+		trace.WithAttributes(
+			attribute.Int("meru.index.folders", len(ix.folders)),
+			attribute.Bool("meru.index.reembed", force),
+		))
 	defer span.End()
 
 	var rep Report
@@ -197,14 +214,14 @@ func (ix *Indexer) Scan(ctx context.Context) (Report, error) {
 		ix.log.WarnContext(ctx, "index: folder unavailable; keeping its index entries", "err", m)
 	}
 	for _, root := range roots {
-		if err = ix.scanTree(ctx, root, root, &rep); err != nil {
+		if err = ix.scanTree(ctx, root, root, force, &rep); err != nil {
 			break
 		}
 	}
 	rep.Duration = time.Since(start)
 	span.SetAttributes(reportAttrs(rep)...)
 	obs.EndSpanErr(ctx, span, err)
-	ix.log.InfoContext(ctx, "index: scan done",
+	ix.log.InfoContext(ctx, "index: scan done", "reembed", force,
 		"seen", rep.Seen, "indexed", rep.Indexed, "unchanged", rep.Unchanged,
 		"removed", rep.Removed, "failed", rep.Failed, "chunks", rep.Chunks,
 		"skipped", rep.Skipped, "ms", rep.Duration.Milliseconds())
@@ -231,7 +248,7 @@ func reportAttrs(rep Report) []attribute.KeyValue {
 // IndexPaths indexes the given files and folders now, with the same rules
 // as Scan: a folder is walked, a file is indexed or skipped, and a path that
 // no longer exists (or that the rules now skip) is removed from the store,
-// along with everything under it. The watcher uses it, and so will
+// along with everything under it. The watcher uses it, and so does
 // `meru index <folder>`.
 //
 // Each path must sit inside an [index] folder; one that doesn't fails with
@@ -288,10 +305,10 @@ func (ix *Indexer) indexPath(ctx context.Context, roots []string, p string, rep 
 		}
 	}
 	if info.IsDir() {
-		return ix.scanTree(ctx, root, abs, rep)
+		return ix.scanTree(ctx, root, abs, false, rep)
 	}
 	rep.Seen++
-	res, err := ix.indexFile(ctx, root, abs, info.Mode())
+	res, err := ix.indexFile(ctx, root, abs, info.Mode(), false)
 	if err != nil {
 		return err
 	}
@@ -363,11 +380,12 @@ func (ix *Indexer) remove(ctx context.Context, p string, rep *Report) error {
 }
 
 // scanTree walks the folder start, which sits inside root (or is root),
-// indexing every file the skip rules keep. Then it removes from the store
+// indexing every file the skip rules keep; force re-embeds unchanged files
+// too (see Reembed). Then it removes from the store
 // every path under start that the walk didn't keep, except under folders it
 // couldn't read: a folder with a permission problem today shouldn't lose
 // its entries.
-func (ix *Indexer) scanTree(ctx context.Context, root, start string, rep *Report) error {
+func (ix *Indexer) scanTree(ctx context.Context, root, start string, force bool, rep *Report) error {
 	ix.forgetRules(start)
 	kept := map[string]bool{} // files indexed, unchanged or failed: the store keeps them
 	var unreadable []string   // folders the walk couldn't list
@@ -402,7 +420,7 @@ func (ix *Indexer) scanTree(ctx context.Context, root, start string, rep *Report
 			return nil
 		}
 		rep.Seen++
-		res, err := ix.indexFile(ctx, root, p, d.Type())
+		res, err := ix.indexFile(ctx, root, p, d.Type(), force)
 		if err != nil {
 			return err
 		}
@@ -483,13 +501,14 @@ func (r *Report) add(res fileResult) {
 
 // indexFile brings the store's copy of the file at p up to date. It checks
 // the skip rules, reads the file, and compares its mtime and SHA-256 with
-// what the store holds; when both match it stops there. Otherwise it chunks
-// the file, embeds the chunks and replaces the store's copy.
+// what the store holds; when both match it stops there, unless force is
+// set. Otherwise it chunks the file, embeds the chunks and replaces the
+// store's copy.
 //
 // A problem with the file itself (unreadable, unparseable PDF) comes back as
 // outFailed with a nil error. An error from the engine, the store or ctx
 // comes back as the error, because it would fail the next file too.
-func (ix *Indexer) indexFile(ctx context.Context, root, p string, mode fs.FileMode) (fileResult, error) {
+func (ix *Indexer) indexFile(ctx context.Context, root, p string, mode fs.FileMode, force bool) (fileResult, error) {
 	if reason := ix.skipReason(root, p, mode); reason != "" {
 		ix.log.DebugContext(ctx, "index: skip", "path", p, "reason", reason)
 		return fileResult{outcome: outSkipped, reason: reason}, nil
@@ -500,7 +519,7 @@ func (ix *Indexer) indexFile(ctx context.Context, root, p string, mode fs.FileMo
 
 	ctx, span := obs.Tracer().Start(ctx, "meru.index.file")
 	defer span.End()
-	res, bytesRead, kind, err := ix.indexFileLocked(ctx, p)
+	res, bytesRead, kind, err := ix.indexFileLocked(ctx, p, force)
 	span.SetAttributes(
 		attribute.String("meru.index.kind", kind),
 		attribute.String("meru.index.outcome", outcomeName(res.outcome)),
@@ -517,7 +536,7 @@ func (ix *Indexer) indexFile(ctx context.Context, root, p string, mode fs.FileMo
 // indexFileLocked does indexFile's work once the name-based skip rules have
 // passed and fileMu is held. It also returns the file's size in bytes and
 // its kind, for the span.
-func (ix *Indexer) indexFileLocked(ctx context.Context, p string) (fileResult, int, string, error) {
+func (ix *Indexer) indexFileLocked(ctx context.Context, p string, force bool) (fileResult, int, string, error) {
 	kind, _ := kindOf(p)
 	info, err := os.Lstat(p)
 	if err != nil {
@@ -548,7 +567,7 @@ func (ix *Indexer) indexFileLocked(ctx context.Context, p string) (fileResult, i
 	if err != nil {
 		return fileResult{}, len(data), kind, fmt.Errorf("look up %s: %w", p, err)
 	}
-	if ok && old.Hash == hash && sameMTime(old.MTime, info.ModTime()) {
+	if !force && ok && old.Hash == hash && sameMTime(old.MTime, info.ModTime()) {
 		ix.log.DebugContext(ctx, "index: unchanged", "path", p)
 		return fileResult{outcome: outUnchanged}, len(data), kind, nil
 	}

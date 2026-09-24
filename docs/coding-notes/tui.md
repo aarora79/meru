@@ -1,7 +1,7 @@
 # tui
 
 **Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1
+**Milestone:** v0.1; sources under answers in v0.2
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui)
 
 ## What it does
@@ -255,7 +255,23 @@ an ellipsis, then disappear.
 - streaming: the raw text, wrapped, with a teal `▍` at the end;
 - finished or stopped: the answer rendered as Markdown;
 
-and then, on its own line, the stats, "stopped", or the error box.
+and then, on lines of their own: for a finished answer, the files it cites and the
+stats; "stopped"; or the error box.
+
+`sourcesBlock` draws the files, dim, like the stats line under them:
+
+```text
+  The Q3 budget for the garden project is 4,200 dollars [1].
+  Sources
+  [1] ~/notes/garden.md, "Budget", lines 3–5
+  0.8s to first token · 40.0 tok/s · 2.4s
+```
+
+The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
+turn's `sources` field. It waits until the answer is finished, because
+`rpc.Cited` needs the whole text to see which numbers it cites; when it cites
+none, the block lists every excerpt the model read. `Citation.String`, shared
+with `meru`, writes each line, and each wraps to the screen width.
 
 The answer stays raw while it streams for two reasons. Half-written Markdown renders
 badly: an open code fence swallows everything after it. And Glamour takes longer to
@@ -384,8 +400,8 @@ go test -race ./internal/tui/...
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
-streaming, a finished Markdown answer, a fallback route, an error, a stopped answer,
-and a 40-column terminal. After a deliberate change to the look, rewrite them and read
+streaming, a finished Markdown answer, a fallback route, an answer with sources, an
+error, a stopped answer, and a 40-column terminal. After a deliberate change to the look, rewrite them and read
 the diff:
 
 ```sh

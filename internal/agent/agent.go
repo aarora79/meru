@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/transcript"
 )
@@ -27,6 +29,26 @@ import (
 // DefaultSystemPrompt is the system prompt when config sets none.
 const DefaultSystemPrompt = "You are Meru, a personal assistant that runs entirely on the user's own computer. " +
 	"Answer clearly and briefly. If you don't know something, say so."
+
+// citeRule joins the system prompt on turns that search the user's files.
+// Small models invent sources when they aren't told not to, so the rule
+// says it plainly.
+const citeRule = "Below, under \"From your files\", are numbered excerpts from the user's own files. " +
+	"When they help answer the question, answer from them and cite each excerpt you use by its number " +
+	"in square brackets, like [1]. Cite only the numbers listed there. " +
+	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
+
+// noResults stands in for the excerpts when a search finds nothing, or when
+// nothing is indexed yet, so the model answers without pretending it looked.
+const noResults = "A search of the user's files found nothing relevant to this question. " +
+	"Answer from what you know, and don't cite any files."
+
+// Searcher finds the excerpts from the user's files that best answer query,
+// best first. merud passes an adapter around retrieve.Search; tests pass a
+// fake. It fails when the embedding or the store fails.
+type Searcher interface {
+	Search(ctx context.Context, query string) ([]retrieve.Result, error)
+}
 
 // Router picks a route for one turn. The agent defines the interface with
 // only the method it calls, so this package doesn't depend on the router's
@@ -50,19 +72,27 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
+	search      Searcher // nil turns search off
 	models      config.Models
 	historyN    int          // earlier turns to put in the prompt
 	system      string       // system prompt
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
+	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
 }
 
-// New returns an Agent that answers with eng, routes with router and keeps
-// transcripts under cfg.Dir/sessions. log may be nil, which means no log
-// lines.
-func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) *Agent {
+// New returns an Agent that answers with eng, routes with router, searches
+// the user's files with search on the "search" and "search+tools" routes,
+// and keeps transcripts under cfg.Dir/sessions. search may be nil, which
+// turns search off. log may be nil, which means no log lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
+	}
+	// Without a home folder, paths show in full; that is only cosmetic.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
 	}
 	system := cfg.Agent.SystemPrompt
 	if system == "" {
@@ -73,17 +103,20 @@ func New(cfg config.Config, eng engine.Engine, router Router, log *slog.Logger) 
 	return &Agent{
 		engine:      eng,
 		router:      router,
+		search:      search,
 		models:      cfg.Models,
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
+		home:        home,
 		log:         log,
 	}
 }
 
 // Handle runs one turn for req and sends its events through emit, in this
-// order: "session", "route", one "token" per piece of the answer, and last a
-// "done" that carries the turn's stats. It has the rpc.Handler signature, so
+// order: "session", "route", "sources" when the turn searched the user's
+// files and found something, one "token" per piece of the answer, and last
+// a "done" that carries the turn's stats. It has the rpc.Handler signature, so
 // merud passes a.Handle straight to rpc.Serve. The server holds the "done"
 // back until Handle returns, and sends "error" in its place if Handle fails.
 //
@@ -163,10 +196,22 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// v0.1 answers every route directly: search arrives in v0.2 and tools in
-	// v0.3. The route is still recorded above, so the metrics show how often
-	// each one would have run.
-	msgs := a.prompt(ctx, history, question)
+	// The "search" and "search+tools" routes look in the user's files
+	// first. Tools arrive in v0.3; until then "tools" answers directly.
+	var files string
+	if searches(dec.Route) && a.search != nil {
+		var sources []rpc.Citation
+		files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+		if err != nil {
+			return err
+		}
+		if len(sources) > 0 {
+			if err := emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
+				return err
+			}
+		}
+	}
+	msgs := a.prompt(ctx, history, question, files)
 	iterations = 1
 	rep, err = a.answer(ctx, msgs, emit)
 	if err != nil {
@@ -322,13 +367,103 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
+// searches reports whether a route looks in the user's files.
+func searches(route string) bool {
+	return route == "search" || route == "search+tools"
+}
+
+// searchQuery is the text a turn searches for. The router doesn't rewrite
+// queries yet, so it is the question itself; on a follow-up it also holds
+// the session's last question, because "and the one after that?" means
+// nothing to a search on its own. The current question comes first: keyword
+// search keeps only a query's first words.
+func searchQuery(question string, history []engine.Message) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == engine.RoleUser {
+			return question + "\n" + history[i].Content
+		}
+	}
+	return question
+}
+
+// searchFiles searches the user's files for query inside a meru.search
+// span. It returns the prompt section to add under the system prompt, and
+// the citations for the "sources" event, numbered as the section numbers
+// them.
+//
+// A search that finds nothing, or runs before anything is indexed, gives a
+// short section saying so and no citations. A search that fails for any
+// reason but a cancelled turn is logged and treated the same way: the
+// answer can still come from the model alone. It returns an error only when
+// ctx ends.
+func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, error) {
+	ctx, span := obs.Tracer().Start(ctx, "meru.search")
+	defer span.End()
+	start := time.Now()
+
+	results, err := a.search.Search(ctx, query)
+	if err != nil {
+		if ctx.Err() != nil {
+			obs.EndSpanErr(ctx, span, err)
+			return "", nil, fmt.Errorf("search: %w", err)
+		}
+		// The turn goes on without excerpts, so this is a warning, not the
+		// turn's error.
+		a.log.WarnContext(ctx, "search failed; answering without your files", "err", err)
+		obs.EndSpanErr(ctx, span, err)
+		results = nil
+	}
+
+	// Show each path as ~/... to the model and to the client: it is shorter,
+	// and the model has no use for the full path.
+	for i := range results {
+		results[i].Path = shortPath(a.home, results[i].Path)
+	}
+	section := noResults
+	if len(results) > 0 {
+		section = citeRule + "\n\nFrom your files\n\n" + retrieve.Format(results)
+	}
+	obs.RecordContextTokens(ctx, "chunks", utf8.RuneCountInString(section)/4)
+
+	sources := make([]rpc.Citation, len(results))
+	for i, r := range results {
+		sources[i] = rpc.Citation{
+			N: i + 1, Path: r.Path, Heading: r.Heading,
+			StartLine: r.StartLine, EndLine: r.EndLine, Page: r.Page, Score: r.Score,
+		}
+	}
+	span.SetAttributes(attribute.Int("meru.search.results", len(results)))
+	a.log.DebugContext(ctx, "search done", "results", len(results),
+		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
+	return section, sources, nil
+}
+
+// shortPath writes p under the home folder as ~/..., using the OS's path
+// separator. Any other path, or any path when home is "", stays as it is.
+func shortPath(home, p string) string {
+	if home == "" {
+		return p
+	}
+	rel, err := filepath.Rel(home, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return p
+	}
+	return "~" + string(filepath.Separator) + rel
+}
+
 // prompt builds the messages for the main model inside a meru.prompt span,
-// and reports their size. est_tokens is characters divided by four, a rough
-// rule for English text; the model's own count arrives with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string) []engine.Message {
+// and reports their size. files is the "From your files" section for a turn
+// that searched, or "" for one that didn't. est_tokens is characters divided
+// by four, a rough rule for English text; the model's own count arrives
+// with its answer.
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
-	msgs := buildMessages(a.system, history, question)
+	system := a.system
+	if files != "" {
+		system += "\n\n" + files
+	}
+	msgs := buildMessages(system, history, question)
 	chars := 0
 	for _, m := range msgs {
 		chars += utf8.RuneCountInString(m.Content)
@@ -416,7 +551,9 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's
-// earlier turns, then the new question.
+// earlier turns, then the new question. The excerpts from the user's files,
+// when a turn has them, sit at the end of the system prompt: some models'
+// chat templates accept a system message only in first place.
 func buildMessages(system string, history []engine.Message, question string) []engine.Message {
 	msgs := make([]engine.Message, 0, len(history)+2)
 	msgs = append(msgs, engine.Message{Role: engine.RoleSystem, Content: system})

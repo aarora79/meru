@@ -69,6 +69,9 @@ level = "info"
 # nothing; merud never indexes your whole home directory unless you list "~".
 # Each entry is an absolute path or starts with "~/", for example
 # folders = ["~/notes", "~/Documents/papers"]
+# Restart merud after changing this list. `meru index` rescans the folders
+# now, `meru index <folder>` rescans one of them, and `meru index -status`
+# shows what the index holds.
 folders = []
 # Extra .gitignore-style patterns to skip in every folder, on top of the
 # built-in list: hidden files and folders, node_modules, .venv, vendor,
