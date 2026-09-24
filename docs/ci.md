@@ -36,8 +36,9 @@ and windows/amd64, all with `CGO_ENABLED=0`. Meru promises plain native
 binaries, and a cgo dependency would break that promise on the first platform
 without a C compiler.
 
-The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. Until
-that directory exists, `make e2e` prints "no test files" and passes.
+The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. They build
+the real `merud`, `meru` and `fakeollama` binaries and drive them as separate
+processes; [docs/coding-notes/e2e.md](coding-notes/e2e.md) explains how.
 
 gosec and CodeQL send their findings to the repository's Security tab, where
 GitHub keeps them next to the lines they point at. A pull request from a fork

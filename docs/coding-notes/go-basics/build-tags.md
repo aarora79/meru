@@ -42,7 +42,8 @@ form for platform code.
   the real binaries and take longer. `make e2e` runs them, and so does the
   `e2e` job in CI.
 - Meru reserves the `integration` tag for tests that need a real Ollama on
-  this machine. Run them with `go test -tags integration ./...`. CI doesn't, because
+  this machine. Run them with `go test -tags integration ./...`, and the end-to-end
+  one with `go test -tags 'e2e integration' ./test/e2e/...`. CI doesn't, because
   its runners have no model.
 - `internal/policy` parses files regardless of tags, so a file behind `e2e`
   still has to follow the rules.

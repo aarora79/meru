@@ -28,6 +28,7 @@ Read them in this order; each builds on the ones before it.
 8. [merud and meru](merud.md): the two programs and how they start
 9. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
 10. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+11. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 

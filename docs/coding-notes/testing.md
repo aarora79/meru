@@ -148,7 +148,7 @@ go test -race ./...                             # unit and policy tests
 go test -run TestNoNonLoopbackURLLiterals -v ./internal/policy/
 go run ./cmd/fakeollama -addr 127.0.0.1:11500   # then, in another terminal:
 curl -s 127.0.0.1:11500/api/chat -d '{"model":"m","messages":[]}'
-make e2e                                        # end-to-end, once test/e2e exists
+make e2e                                        # end-to-end: real binaries, fake Ollama
 ```
 
 The `curl` call prints five NDJSON lines: four words, then the `done` line.
