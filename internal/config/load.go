@@ -87,6 +87,16 @@ func defaults() Config {
 			Traces:          true,
 		},
 		Log: Log{Level: "info"},
+		// Folders and Ignore start as empty lists rather than nil, so the
+		// defaults compare equal to a file that says `folders = []`.
+		Index: Index{
+			Folders:       []string{},
+			Ignore:        []string{},
+			MaxFileMB:     5,
+			ChunkTokens:   500,
+			OverlapTokens: 50,
+			Watch:         true,
+		},
 	}
 }
 
@@ -202,6 +212,10 @@ func validate(cfg Config) error {
 		add("log.level %q is unknown; use \"debug\", \"info\", \"warn\" or \"error\"", cfg.Log.Level)
 	}
 
+	for _, err := range checkIndex(cfg.Index) {
+		add("%w", err)
+	}
+
 	// errors.Join returns nil when errs is empty.
 	return errors.Join(errs...)
 }
@@ -217,6 +231,44 @@ func checkKeepAlive(s string) error {
 		return nil
 	}
 	return fmt.Errorf("%q must be a number of seconds (\"-1\" keeps models loaded) or a duration such as \"30m\"", s)
+}
+
+// checkIndex checks the [index] section and returns one error per problem.
+// It checks the shape of each folder, not whether it exists: a folder on an
+// unplugged drive shouldn't stop merud from starting. The indexer checks the
+// ignore patterns themselves, because it owns the pattern syntax.
+func checkIndex(ix Index) []error {
+	var errs []error
+	for _, f := range ix.Folders {
+		// A folder must name one place, whatever directory merud starts in:
+		// an absolute path, or one under the home directory.
+		home := f == "~" || strings.HasPrefix(f, "~/") || strings.HasPrefix(f, `~\`)
+		if !home && !filepath.IsAbs(f) {
+			errs = append(errs, fmt.Errorf("index.folders: %q must be an absolute path or start with \"~/\"", f))
+		}
+	}
+	for _, p := range ix.Ignore {
+		if strings.TrimSpace(p) == "" {
+			errs = append(errs, errors.New("index.ignore: a pattern can't be empty"))
+		}
+	}
+	// 1 GB is far past any note or source file; the cap catches a typo that
+	// would have merud read whole disk images.
+	if ix.MaxFileMB < 1 || ix.MaxFileMB > 1024 {
+		errs = append(errs, fmt.Errorf("index.max_file_mb is %d; it must be between 1 and 1024", ix.MaxFileMB))
+	}
+	// Below 50 tokens a chunk holds a sentence or two, too little to answer
+	// from. Above 8192 it outgrows what small embedding models read.
+	if ix.ChunkTokens < 50 || ix.ChunkTokens > 8192 {
+		errs = append(errs, fmt.Errorf("index.chunk_tokens is %d; it must be between 50 and 8192", ix.ChunkTokens))
+	}
+	// Overlap past half a chunk would make each chunk mostly a copy of the
+	// one before it.
+	if ix.OverlapTokens < 0 || ix.OverlapTokens > ix.ChunkTokens/2 {
+		errs = append(errs, fmt.Errorf("index.overlap_tokens is %d; it must be between 0 and half of chunk_tokens (%d)",
+			ix.OverlapTokens, ix.ChunkTokens/2))
+	}
+	return errs
 }
 
 // LogLevel turns a [log] level name into the slog level merud logs at. It

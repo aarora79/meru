@@ -63,3 +63,28 @@ capture_content  = false         # put prompt and answer text into spans
 # trace ID. Neither level writes question or answer text unless
 # capture_content is on. Also "warn" or "error". `merud -v` forces "debug".
 level = "info"
+
+[index]
+# Folders merud reads into its search index. Empty (the default) indexes
+# nothing; merud never indexes your whole home directory unless you list "~".
+# Each entry is an absolute path or starts with "~/", for example
+# folders = ["~/notes", "~/Documents/papers"]
+folders = []
+# Extra .gitignore-style patterns to skip in every folder, on top of the
+# built-in list: hidden files and folders, node_modules, .venv, vendor,
+# build output, binaries, media, archives and secret files such as .env,
+# *.pem and id_rsa. A .gitignore or .meruignore in any indexed folder adds
+# rules too. For example ignore = ["*.log", "drafts/"]
+ignore = []
+# Skip files larger than this many megabytes.
+max_file_mb = 5
+# Target size of one chunk of text, in tokens. Meru estimates a token as
+# four characters.
+chunk_tokens = 500
+# How much of the previous chunk each chunk repeats, in tokens, so a sentence
+# cut at a boundary still appears whole in one chunk. At most half of
+# chunk_tokens.
+overlap_tokens = 50
+# Re-index a file as soon as it changes while merud runs. merud also rescans
+# every folder when it starts, so changes made while it was stopped get in.
+watch = true
