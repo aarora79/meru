@@ -32,7 +32,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | Package | What it does | Start reading at |
 | --- | --- | --- |
 | `cmd/merud` | the daemon: starts everything, serves questions, the index ops and the tool ops | `main.go`: `main`, `run`, `serve`, then `index.go` and `tools.go` |
-| `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp add` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go` |
+| `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go`, `mcp.go`, `probe.go` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
@@ -575,12 +575,15 @@ and passes the session ID back each time so the conversation continues. Its
 
 ### `meru setup` and `meru mcp add`
 
-These talk to you, not to `merud`, so they live in the client
-(`cmd/meru/setup.go`). They read the catalog from `internal/catalog`, save keys
-with `secrets.Set`, and add a server with `catalog.AppendServer`, which appends
-the block to `config.toml`, loads the result from a temporary copy, and renames
-it into place only when it loads. The built-in `configure` tool calls the same
-`AppendServer`, so chat and terminal write the same block.
+These talk to you, so they live in the client (`cmd/meru/setup.go`, `mcp.go`
+and `probe.go`). They read the catalog from `internal/catalog` and save keys
+with `secrets.Set`. Before writing, `probeAndPick` sends `mcp_probe`, shows the
+tools `merud` found, and lets you pick which the model may use.
+`catalog.AppendServer` then appends the block to `config.toml`, loads the result
+from a temporary copy, and renames it into place only when it loads; `meru mcp
+remove` takes a block out the same way with `catalog.RemoveServer`. Both end
+with `mcp_reload`. The built-in `configure` tool calls the same `AppendServer`,
+so chat and terminal write the same block.
 
 ### `meru index`, function by function
 

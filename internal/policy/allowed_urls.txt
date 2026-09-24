@@ -24,6 +24,9 @@ https://github.com/brave/brave-search-mcp-server             # the web search se
 https://github.com/modelcontextprotocol/servers/tree/main/src/fetch  # the fetch server's docs
 https://github.com/taylorwilsdon/google_workspace_mcp        # the Google Workspace server's docs
 https://github.com/MarkusPfundstein/mcp-obsidian             # the Obsidian server's docs
+https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem  # the filesystem server's docs
+https://github.com/tumf/mcp-shell-server                     # the shell server's docs
+https://github.com/CursorTouch/Windows-MCP                   # the Windows server's docs
 https://brave.com/search/api/                                # where to get a Brave Search API key
 https://workspacemcp.com/quick-start                         # how to make a Google OAuth client
 https://docs.astral.sh/uv/getting-started/installation/      # how to install uv, which runs uvx

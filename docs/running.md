@@ -557,59 +557,164 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### meru mcp add
 
-An MCP server gives the model tools. Meru knows six:
+An MCP server gives the model tools. Meru knows ten, and `meru mcp list` shows
+them:
 
 ```sh
-meru mcp list-catalog
+meru mcp list
 ```
 
 | Name | What the model gets | What you need |
 | --- | --- | --- |
 | `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
 | `fetch` | reading a web page | `uv`, which provides `uvx` |
-| `gmail` | search and read mail; drafting and sending ask first | a Google OAuth client and `uv`; you sign in to Google on first use |
-| `calendar` | calendars and events; changing an event asks first | as for `gmail` |
-| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `gmail` |
+| `filesystem` | list, search and read files in the folders you name; writing, editing, moving and making folders ask first | the folders, and Node.js |
+| `shell` | running the programs you allow; each command asks first | the list of programs, and `uv` |
+| `google` | `gmail`, `calendar` and `drive` in one server | a Google OAuth client and `uv`; you sign in to Google on first use |
+| `gmail` | search and read mail; drafting and sending ask first | as for `google` |
+| `calendar` | calendars and events; changing an event asks first | as for `google` |
+| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `google` |
 | `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
+| `windows` | see the screen and open apps; clicking, typing, PowerShell and file changes ask first | Windows, and `uv` |
 
-To add one:
+To add one, name it. An entry that takes arguments gets them after its name:
 
 ```sh
 meru mcp add brave
+meru mcp add filesystem ~/Documents ~/notes
 ```
 
 Meru shows what the server does and offers two paths:
 
 - **d) Do it for me.** Meru asks for each thing the server needs, one at a time.
   It reads an API key without showing it on screen and saves it to
-  `~/.meru/secrets.toml`, never to `config.toml`. Then it shows the exact block
-  it will add to `config.toml` and writes it only after you say yes.
+  `~/.meru/secrets.toml`, never to `config.toml`. Then it tries the server (see
+  below), shows the exact block it will add to `config.toml`, and writes it only
+  after you say yes.
 - **s) Show me how.** Meru prints the install step, the block, the file to paste
   it into, and the lines to add to `secrets.toml`. It writes nothing.
 
-A server outside the catalog works too:
+A server outside the catalog takes one command too:
 
 ```sh
-meru mcp add notes -- /usr/local/bin/notes-mcp --vault ~/notes   # a stdio server
-meru mcp add calendar --url http://127.0.0.1:8123/mcp            # a running HTTP server
+meru mcp add stdio notes -- /usr/local/bin/notes-mcp --vault ~/notes   # merud starts it
+meru mcp add http calendar http://127.0.0.1:8123/mcp                   # it runs already
+meru mcp add http team https://mcp.example.com/mcp --network           # on another machine
 ```
 
-Meru doesn't know such a server's tool names, so its `allow` list starts empty
-and the model gets none of its tools. After the restart below, run `meru tools`
-to see what the server offers, and name the tools to allow in `config.toml`.
+A URL off this machine needs `--network`. Every call to one of its tools sends
+your data to that machine, and Meru says so before it writes anything. The older
+forms, `meru mcp add notes -- <command>` and `meru mcp add calendar --url <url>`,
+still work.
 
-`merud` reads `config.toml` only when it starts. After adding a server, restart it
-and check what the model now has:
+#### Meru tries the server first
+
+When `merud` runs, Meru asks it to start the server for a moment and list its
+tools. `merud` calls none of them. Many servers mark each tool as read-only or as
+one that may delete. From those marks Meru proposes which tools the model may use:
+
+```text
+Starting notes to see what it offers. The first run of an npx or uvx server downloads it, which can take a minute.
+notes-mcp 1.2.0 offers 4 tools.
+  allow  search       Searches the notes.  read-only
+  ask    write_note   Writes a note.       changes things
+  ask    delete_note  Deletes a note.      may delete
+  ask    mystery      Does something.      no hint
+Enter accepts. Or type changes: -name leaves a tool out, +name allows it without asking, ?name makes it ask.
+> -delete_note
+```
+
+- `allow` runs without asking. Meru proposes it for a tool the server marks
+  read-only.
+- `ask` is allowed, and asks you before each call. Meru proposes it for every
+  other tool, including one with no mark.
+- `off` leaves the tool out: the model never sees it.
+
+For a catalog entry, the catalog's own lists win over the marks, and a tool the
+catalog doesn't name starts `off`. A server can mark a tool wrong, so read the list
+before you press Enter. Type `-name`, `+name` or `?name` (several at once work)
+and Meru shows the table again.
+
+After you say yes to the block, Meru writes it and asks `merud` to reload its
+servers, so the new tools work at once:
+
+```text
+merud reloaded. No restart needed:
+notes  mcp · stdio · connected
+  notes.search
+  notes.write_note  asks first
+  2 of 4 tools allowed
+```
+
+When the server doesn't start (a wrong command, or a slow first download), Meru
+prints why and offers `r` to try again, `w` to write the entry anyway, or `c` to
+cancel. Written anyway, a catalog entry keeps the catalog's lists and a server of
+your own allows no tools yet: run `meru tools` once it works, and name the tools
+in `config.toml`.
+
+When `merud` isn't running, Meru can't try the server. It writes the catalog's
+lists, or an empty `allow` for a server of your own, and the server loads when
+`merud` starts.
+
+#### The filesystem, shell and windows entries
+
+These three let the model change your files or run programs. Each one runs as
+you, with no sandbox: an approved call can do anything you can.
+
+- **`filesystem`** reads only inside the folders you name. Meru turns `~` into
+  your home folder and checks that each folder exists. Reading, listing and
+  searching run without asking; `write_file`, `edit_file`, `move_file` and
+  `create_directory` ask first.
+- **`shell`** runs [mcp-shell-server](https://github.com/tumf/mcp-shell-server),
+  which runs only the programs in its `ALLOW_COMMANDS` list, with no shell in
+  between. Meru starts you with programs that read and report (`ls`, `cat`,
+  `grep`, `df` and a few more) and asks whether to change the list. An allowed
+  program does whatever its arguments say: `git`, `python` or `bash` in the list
+  can do anything. Each command asks first. Read it and approve it once: a
+  session approval lets the model run any allowed program without asking again.
+- **`windows`** runs [Windows-MCP](https://github.com/CursorTouch/Windows-MCP),
+  and only on Windows. Looking at the screen runs without asking. Clicking, typing,
+  PowerShell, files and processes ask first, and the registry tool stays off.
+  Windows-MCP sends usage data to its makers unless told not to, so the entry
+  sets `ANONYMIZED_TELEMETRY = "false"`.
+
+The `google` entry adds Gmail, Calendar, Drive and Docs in one server, with one
+Google sign-in. Use `gmail`, `calendar` or `drive` instead when you want only one
+of them: each asks Google for its own permissions and no more.
+
+#### See and remove servers
+
+`meru mcp list` ends with the servers in your `config.toml` and what `merud` says
+about each:
+
+```text
+Your servers:
+  brave      stdio · npx · connected · offers 2, 2 allowed
+  notes      stdio · notes-mcp · not connected: exit status 1 · 2 allowed in config
+```
+
+To take one out:
 
 ```sh
-pkill merud; merud &
-meru tools
+meru mcp remove notes          # asks first; --yes skips the question
 ```
+
+Meru deletes that server's `[[mcp.servers]]` block and the comment lines right
+above it, keeps the rest of `config.toml` as it was, and asks `merud` to reload.
+Keys stay in `secrets.toml`, since another server may use them.
 
 In chat you can also ask Meru to "connect my Gmail". The model calls the built-in
 `configure` tool, which asks you every time, with only "approve once" and "deny".
 A server that needs an API key you haven't saved yet isn't added from chat, because
 keys never pass through the model; Meru tells you to run `meru mcp add` instead.
+The same goes for `filesystem`, which needs its folders on the command line.
+
+If you edit `config.toml` by hand, restart `merud` to load the change:
+
+```sh
+pkill merud; merud &
+meru tools
+```
 
 `secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
 other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.

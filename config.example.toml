@@ -96,7 +96,7 @@ overlap_tokens = 50
 watch = true
 
 # MCP servers (v0.3): programs that give the model tools. None by default.
-# `meru mcp add <name>` writes an entry for you, and `meru mcp list-catalog`
+# `meru mcp add <name>` writes an entry for you, and `meru mcp list`
 # lists the servers it knows. See ARCHITECTURE.md, "MCP".
 #
 # Each [[mcp.servers]] entry has either command (merud starts the server

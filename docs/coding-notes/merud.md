@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`, `skills.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -519,9 +519,21 @@ type console struct {
 - `ollamaVersion` makes one `GET /api/version` with `net/http`. The client may
   not import the engine, and one plain call is all the check needs.
 
-`offer` shows one server and asks for a path: `d` asks for each key without
-echo, shows the block, and writes it after a yes; `s` prints the block, the
-install step and the `secrets.toml` lines, and writes nothing; `k` skips.
+`offer` shows one server and asks for a path: `d` runs `doIt`; `s` prints the
+block, the install step and the `secrets.toml` lines, and writes nothing; `k`
+skips. `doIt` goes in this order:
+
+1. Ask for what the entry needs: each key without echo, and the folders for
+   `filesystem` when they didn't come on the command line.
+2. Ping `merud`. When it answers, save the keys to `secrets.toml` now, because
+   `merud` starts the server in the next step and reads them from there.
+3. Try the server (`probeAndPick` in `probe.go`, below) and let the user pick
+   its tools. Without `merud`, skip this: a catalog entry keeps its own lists,
+   and a server of your own gets an empty `allow`.
+4. Show the block and write it after a yes.
+5. Send `mcp_reload` (`reload` in `mcp.go`), so the server works without a
+   restart, and print its state as `meru tools` would.
+
 `setupCmd` runs the five steps from ARCHITECTURE.md "First run and setup". It
 writes `config.toml` only when none exists. Rewriting an existing one would
 drop your comments, so setup tells you what to change instead.
@@ -535,6 +547,68 @@ works on the Meru home in `/tmp/x`, the same one `merud -config
 
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
+
+Setup offers each catalog entry that runs on this system (`setupEntries`), so
+`windows` shows up only on Windows.
+
+### meru: mcp.go
+
+`mcpCmd` reads the words after `meru mcp`. `addEntry` turns the words after
+`add` into a `catalog.Entry`:
+
+| Words | Entry |
+| --- | --- |
+| `stdio <name> -- <command> [args...]` | `catalog.Custom`, a server `merud` starts |
+| `http <name> <url> [--network]` | `catalog.Custom` with a URL; a URL off this machine needs `--network` |
+| `<name> -- <command>`, `<name> --url <url>` | the older forms, read as `stdio` and `http` |
+| `<catalog-name> [args...]` | `catalog.Find`, then `Entry.WithArgs` for the folders `filesystem` takes |
+
+`mcpList` prints the catalog, then each server in `config.toml` with what
+`merud` says about it (from `tools`): connected or not, how many tools it offers,
+and how many the model may use. A server in the file that `merud` doesn't list
+says "not loaded yet". Without `merud`, the list comes from the file alone.
+
+`remove` asks first (or not, with `--yes`), calls `catalog.RemoveServer`, prints
+the lines it took out, and sends `mcp_reload`. It leaves `secrets.toml` alone,
+since another server may use the same key.
+
+`reload` sends `mcp_reload` and prints the new server's block with `toolsText`,
+the function behind `meru tools`. A reload that fails doesn't fail the command:
+`config.toml` is already written, so `reload` prints how to restart `merud`
+instead.
+
+### meru: probe.go
+
+`probeAndPick` sends `mcp_probe` with the entry's command, args, env and URL.
+Env values go as written, so `secret:brave_api_key` stays a reference and
+`merud` looks up the key. When the probe fails (a missing program, a timeout on
+a first `npx` download), it prints `merud`'s reason and offers `r` to try again,
+`w` to write the entry anyway, or `c` to cancel.
+
+`propose` gives each tool a state: `off`, `ask` (allowed, in `confirm`) or
+`allow`. The three are constants numbered by `iota`, which counts up from 0
+inside one `const` block.
+
+- For a catalog entry, the catalog's lists decide. A tool the catalog doesn't
+  name starts `off`, with its hint shown, since nobody has read it.
+- For a server of your own, the hints decide. A tool that says `readOnlyHint`
+  starts as `allow`; every other tool starts as `ask`. A hint is the server's
+  claim, so a tool with no hint counts as one that may change something.
+
+The table's last column comes from `hint`: `read-only`, `may delete`,
+`changes things` (the tool carries hints, but neither of those), or `no hint`.
+The hints arrive as `*bool` pointers, and nil means the server said nothing.
+merud's MCP library reads a missing `readOnlyHint` as false, so `ReadOnly` is
+nil only for a tool with no hints at all.
+
+`pickTools` prints the table and reads one line. Enter accepts. Any other line
+is a list of edits: `-name` turns a tool off, `+name` allows it without asking,
+`?name` makes it ask. `applyEdits` checks every word before it changes any
+state, so a typo in the third word doesn't leave the first two applied.
+
+`mcp_test.go` runs each command against `fakeMerud`, a few lines that speak the
+socket protocol by hand: read one JSON request, write events. It records the ops
+it saw, so a test can check that a write ends with `mcp_reload`.
 
 ### meru: user.go
 

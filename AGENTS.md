@@ -135,7 +135,7 @@ The repo as it stands. Each package has a `doc.go` and a note in
 cmd/
   merud/             the daemon: config, engine, router, store, indexer, tools, socket, agent loop
   meru/              the thin client: one question, `meru chat`, `ping`, `index`, `tools`, `log`,
-                     `setup`, `mcp add`, and the approval prompt
+                     `setup`, `mcp add`/`list`/`remove`, and the approval prompt
   fakeollama/        a fake Ollama server for end-to-end tests
   fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/

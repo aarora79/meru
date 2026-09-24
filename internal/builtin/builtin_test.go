@@ -72,6 +72,7 @@ func TestConfigure(t *testing.T) {
 		{"unknown key", `{"action":"add_mcp_server","catalog":"fetch","allow":["*"]}`, nil, "valid JSON", "", ""},
 		{"not an object", `"fetch"`, nil, "valid JSON", "", ""},
 		{"unknown catalog name", `{"action":"add_mcp_server","catalog":"slack"}`, nil, "not in the catalog", "", ""},
+		{"catalog entry that takes folders", `{"action":"add_mcp_server","catalog":"filesystem"}`, nil, "meru mcp add filesystem <folder>", "", ""},
 		{"catalog and custom", `{"action":"add_mcp_server","catalog":"fetch","name":"x","command":"y"}`, nil, "not both", "", ""},
 		{"nothing to add", `{"action":"add_mcp_server"}`, nil, "give catalog", "", ""},
 		{"command and url", `{"action":"add_mcp_server","name":"x","command":"y","url":"http://127.0.0.1:1/mcp"}`, nil, "exactly one", "", ""},

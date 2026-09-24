@@ -1,7 +1,8 @@
-// This file holds `meru setup` and `meru mcp add`: the terminal flows that
-// write config.toml and secrets.toml for you. `meru setup user` lives in
-// user.go. See ARCHITECTURE.md, "First
-// run and setup" and "Adding an MCP server".
+// This file holds `meru setup` and the "do it for me / show me how" flow it
+// shares with `meru mcp add`: the terminal flows that write config.toml and
+// secrets.toml for you. The `meru mcp` commands live in mcp.go, the step
+// that tries a server first in probe.go, and `meru setup user` in user.go.
+// See ARCHITECTURE.md, "First run and setup" and "Adding an MCP server".
 //
 // Both flows run in the thin client, because they talk to a person, not to
 // a model. They touch files and Ollama's command line; they never import
@@ -34,9 +35,9 @@ import (
 	"github.com/aarora79/meru/internal/secrets"
 )
 
-// restartHint tells the user how to make merud pick up a config change.
-// merud reads config.toml only when it starts.
-const restartHint = "Restart merud to start it: pkill merud; merud &\nThen run `meru tools` to see the tools it gives the model."
+// restartHint tells the user how to make merud pick up a config change they
+// make by hand. A change meru makes itself asks merud to reload instead.
+const restartHint = "Restart merud to load the change: pkill merud; merud &\nThen run `meru tools` to see the tools it gives the model."
 
 // testQuestion is the question setup asks merud at the end.
 const testQuestion = "In one sentence, what can you help me with?"
@@ -124,64 +125,17 @@ func configPathFor(socket string) string {
 	return filepath.Join(filepath.Dir(socket), "config.toml")
 }
 
-// mcpCmd runs `meru mcp ...`. args are the words after "mcp":
-//
-//	list-catalog                       list the catalog
-//	add                                list the catalog
-//	add <catalog-name>                 add a catalog server
-//	add <name> -- <command> [args...]  add a stdio server of your own
-//	add <name> --url <url>             add a Streamable HTTP server of your own
-func mcpCmd(ctx context.Context, socket string, args []string, c *console) error {
-	usage := errors.New("usage: meru mcp add <name> | meru mcp add <name> -- <command> [args...] | meru mcp add <name> --url <url> | meru mcp list-catalog")
-	switch {
-	case len(args) == 1 && (args[0] == "list-catalog" || args[0] == "add"):
-		listCatalog(c.out)
-		return nil
-	case len(args) < 2 || args[0] != "add":
-		return usage
-	}
-
-	name := args[1]
-	var e catalog.Entry
-	switch {
-	case len(args) == 2:
-		var ok bool
-		if e, ok = catalog.Find(name); !ok {
-			return fmt.Errorf("%q is not in the catalog; run `meru mcp list-catalog`, or give its command: meru mcp add %s -- <command> [args...]", name, name)
-		}
-	case args[2] == "--" && len(args) >= 4:
-		e = catalog.Custom(name, args[3], args[4:])
-	case (args[2] == "--url" || args[2] == "-url") && len(args) == 4:
-		if !strings.HasPrefix(args[3], "http://") && !strings.HasPrefix(args[3], "https://") {
-			return fmt.Errorf("url %q must start with http:// or https://", args[3])
-		}
-		e = catalog.Custom(name, args[3], nil)
-	default:
-		return usage
-	}
-	if err := catalog.CheckName(e.Name); err != nil {
-		return err
-	}
-	_, err := c.offer(configPathFor(socket), e)
-	return err
-}
-
-// listCatalog prints each catalog entry on one line.
-func listCatalog(out io.Writer) {
-	fmt.Fprintln(out, "Servers Meru knows how to add (meru mcp add <name>):")
-	for _, e := range catalog.Entries() {
-		fmt.Fprintf(out, "  %-9s %s: %s\n", e.Name, e.Title, e.Description)
-	}
-	fmt.Fprintln(out, "For another server: meru mcp add <name> -- <command> [args...], or meru mcp add <name> --url <url>")
-}
-
 // offer shows one server and lets the user pick a path: do it, show how, or
 // skip. It returns true when it wrote the server to config.toml. It skips a
 // server config already has.
-func (c *console) offer(configPath string, e catalog.Entry) (bool, error) {
+func (c *console) offer(ctx context.Context, socket string, e catalog.Entry) (bool, error) {
+	configPath := configPathFor(socket)
 	fmt.Fprintf(c.out, "\n%s: %s\n", e.Title, e.Description)
 	if e.Docs != "" {
 		fmt.Fprintf(c.out, "  %s\n", e.Docs)
+	}
+	if e.Network {
+		fmt.Fprintf(c.out, "%s is on another machine. Each tool call sends your data there.\n", e.URL)
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -189,7 +143,7 @@ func (c *console) offer(configPath string, e catalog.Entry) (bool, error) {
 	}
 	for _, s := range cfg.MCP.Servers {
 		if s.Name == e.Name {
-			fmt.Fprintf(c.out, "%s already has a server named %q; skipping it.\n", configPath, e.Name)
+			fmt.Fprintf(c.out, "%s already has a server named %q; skipping it. To replace it, run meru mcp remove %s first.\n", configPath, e.Name, e.Name)
 			return false, nil
 		}
 	}
@@ -200,7 +154,7 @@ func (c *console) offer(configPath string, e catalog.Entry) (bool, error) {
 		}
 		switch strings.ToLower(a) {
 		case "d":
-			return c.doIt(configPath, e)
+			return c.doIt(ctx, socket, e)
 		case "s":
 			c.showHow(configPath, e)
 			return false, nil
@@ -210,10 +164,14 @@ func (c *console) offer(configPath string, e catalog.Entry) (bool, error) {
 	}
 }
 
-// doIt asks for what e needs, shows the block, and after a yes saves the
-// keys to secrets.toml and the block to config.toml. It returns true when
-// it wrote the block. A key already in secrets.toml isn't asked for again.
-func (c *console) doIt(configPath string, e catalog.Entry) (bool, error) {
+// doIt asks for what e needs, tries the server through merud to learn its
+// tools, lets the user pick the ones the model may use, shows the block,
+// and after a yes saves the keys to secrets.toml and the block to
+// config.toml. Then it asks merud to reload, so the server works at once.
+// It returns true when it wrote the block. A key already in secrets.toml
+// isn't asked for again.
+func (c *console) doIt(ctx context.Context, socket string, e catalog.Entry) (bool, error) {
+	configPath := configPathFor(socket)
 	secretsPath := secrets.Path(filepath.Dir(configPath))
 	saved, err := secrets.Load(secretsPath)
 	if err != nil {
@@ -247,54 +205,136 @@ func (c *console) doIt(configPath string, e catalog.Entry) (bool, error) {
 				return false, nil
 			}
 			pending[n.SecretName] = v
-		case catalog.NeedPath, catalog.NeedURL:
+		case catalog.NeedPath, catalog.NeedURL, catalog.NeedText:
 			if n.Help != "" {
 				fmt.Fprintln(c.out, n.Help)
 			}
-			v, err := c.ask(n.Prompt + ":")
+			// A value the entry already has is the default.
+			prompt := n.Prompt + ":"
+			if cur := env[n.Env]; cur != "" {
+				prompt = fmt.Sprintf("%s [Enter keeps %s]:", n.Prompt, cur)
+			}
+			v, err := c.ask(prompt)
 			if err != nil {
 				return false, err
 			}
-			if v == "" {
+			if v == "" && env[n.Env] == "" {
 				fmt.Fprintln(c.out, "No answer given, so nothing was written.")
 				return false, nil
 			}
-			env[n.Env] = v
+			if v != "" {
+				env[n.Env] = v
+			}
+		case catalog.NeedFolders:
+			// The folders didn't come on the command line, as in meru
+			// setup, so ask for them.
+			filled, ok, err := c.askFolders(e, n)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				fmt.Fprintln(c.out, "No folder given, so nothing was written.")
+				return false, nil
+			}
+			e.Args = filled.Args
 		case catalog.NeedNote:
 			fmt.Fprintln(c.out, "Note: "+n.Prompt)
 		}
 	}
 	e.Env = env
 
+	// Try the server before writing anything to config.toml. merud starts
+	// it and resolves its secret: references, so the keys must be in
+	// secrets.toml first.
+	up := ping(ctx, socket, io.Discard) == nil
+	if up {
+		if len(pending) > 0 {
+			if err := saveSecrets(secretsPath, pending); err != nil {
+				return false, err
+			}
+			// maps.Keys yields the keys in random order; slices.Sorted sorts them.
+			fmt.Fprintf(c.out, "Saved %s in %s, readable only by you, so merud can start the server.\n",
+				strings.Join(slices.Sorted(maps.Keys(pending)), " and "), secretsPath)
+			pending = map[string]string{}
+		}
+		picked, ok, err := c.probeAndPick(ctx, socket, e)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			fmt.Fprintln(c.out, "Nothing was written to config.toml.")
+			return false, nil
+		}
+		e = picked
+	} else {
+		fmt.Fprintln(c.out, "merud isn't running, so Meru can't start the server to see its tools first.")
+	}
+
 	block := catalog.Block(e)
 	fmt.Fprintf(c.out, "\nMeru will add this to the end of %s:\n\n%s\n", configPath, block)
 	if len(pending) > 0 {
-		// maps.Keys yields the keys in random order; slices.Sorted sorts them.
 		names := slices.Sorted(maps.Keys(pending))
 		fmt.Fprintf(c.out, "and save %s in %s, readable only by you.\n", strings.Join(names, " and "), secretsPath)
 	}
 	ok, err := c.yes("Write it?", false)
 	if err != nil || !ok {
-		if err == nil {
+		switch {
+		case err != nil:
+		case up:
+			// The keys went to secrets.toml before the probe.
+			fmt.Fprintln(c.out, "Nothing was written to config.toml.")
+		default:
 			fmt.Fprintln(c.out, "Nothing was written.")
 		}
 		return false, err
 	}
 
-	for name, v := range pending {
-		if err := secrets.Set(secretsPath, name, v); err != nil {
-			return false, err
-		}
+	if err := saveSecrets(secretsPath, pending); err != nil {
+		return false, err
 	}
 	if err := catalog.AppendServer(configPath, block); err != nil {
 		return false, err
 	}
 	fmt.Fprintf(c.out, "Added %q to %s.\n", e.Name, configPath)
-	if e.Install != "" {
+	if !up && e.Install != "" {
 		fmt.Fprintln(c.out, e.Install)
 	}
-	fmt.Fprintln(c.out, restartHint)
+	c.reload(ctx, socket, e.Name, up)
 	return true, nil
+}
+
+// askFolders asks for the folders need n wants and returns e with them
+// added to its args. It asks again when a folder doesn't exist. The bool is
+// false when the user gives no folder.
+func (c *console) askFolders(e catalog.Entry, n catalog.Need) (catalog.Entry, bool, error) {
+	for {
+		a, err := c.ask(n.Prompt + ", separated by commas (for example ~/Documents):")
+		if err != nil || a == "" {
+			return e, false, err
+		}
+		var folders []string
+		for _, f := range strings.Split(a, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				folders = append(folders, f)
+			}
+		}
+		filled, err := e.WithArgs(folders)
+		if err == nil {
+			return filled, true, nil
+		}
+		fmt.Fprintln(c.out, err)
+	}
+}
+
+// saveSecrets writes each key in pending to secrets.toml. It does nothing
+// for an empty map.
+func saveSecrets(secretsPath string, pending map[string]string) error {
+	for name, v := range pending {
+		if err := secrets.Set(secretsPath, name, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // showHow prints what to install, the block and where it goes, and the
@@ -321,6 +361,18 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 		}
 	}
 	fmt.Fprintln(c.out, restartHint)
+}
+
+// setupEntries returns the catalog entries setup offers on the system goos:
+// all but the ones made for another system.
+func setupEntries(goos string) []catalog.Entry {
+	var out []catalog.Entry
+	for _, e := range catalog.Entries() {
+		if e.RunsOn(goos) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // setupCmd runs `meru setup`: check Ollama, download the models, write
@@ -363,14 +415,9 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 
 	fmt.Fprintln(c.out, "\n4. Tools")
 	fmt.Fprintln(c.out, "Meru can connect to these servers. Pick a path for each, or skip it and run meru mcp add later.")
-	added := 0
-	for _, e := range catalog.Entries() {
-		wrote, err := c.offer(configPath, e)
-		if err != nil {
+	for _, e := range setupEntries(runtime.GOOS) {
+		if _, err := c.offer(ctx, socket, e); err != nil {
 			return err
-		}
-		if wrote {
-			added++
 		}
 	}
 
@@ -391,7 +438,9 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 	if err := ask(ctx, socket, testQuestion, c.out, c.out, nil); err != nil {
 		return err
 	}
-	if added > 0 || !haveConfig {
+	if !haveConfig {
+		// A server added above works already, because doIt asks merud to
+		// reload. A new config.toml's profile and folders need a restart.
 		fmt.Fprintln(c.out, "Restart merud to load the new config: pkill merud; merud &")
 	}
 	return nil

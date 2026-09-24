@@ -1,6 +1,7 @@
-// This file tests `meru setup` and `meru mcp` with scripted input: each test
-// feeds the answers a person would type and checks what landed in
-// config.toml and secrets.toml, and what the user saw.
+// This file tests `meru setup`, and `meru mcp add` with merud down, with
+// scripted input: each test feeds the answers a person would type and
+// checks what landed in config.toml and secrets.toml, and what the user
+// saw. mcp_test.go tests the probe step against a fake merud.
 
 package main
 
@@ -13,10 +14,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
@@ -74,7 +77,7 @@ func TestMCPAddDoIt(t *testing.T) {
 	if strings.Contains(out.String(), fakeKey) {
 		t.Error("the key shows in the output")
 	}
-	for _, want := range []string{"[[mcp.servers]]", "pkill merud", "meru tools"} {
+	for _, want := range []string{"[[mcp.servers]]", "merud isn't running", "merud &"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -126,71 +129,13 @@ func TestMCPAddWritesNothing(t *testing.T) {
 	}
 }
 
-func TestMCPAddCustom(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want config.MCPServer
-	}{
-		{"command", []string{"add", "notes", "--", "notes-mcp", "--dir", "/x"},
-			config.MCPServer{Name: "notes", Command: "notes-mcp", Args: []string{"--dir", "/x"}}},
-		{"url", []string{"add", "cal", "--url", "http://127.0.0.1:8123/mcp"},
-			config.MCPServer{Name: "cal", URL: "http://127.0.0.1:8123/mcp"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			c, out, _ := scripted("d\ny\n")
-			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), tt.args, c); err != nil {
-				t.Fatalf("mcp add: %v\n%s", err, out)
-			}
-			servers := loadServers(t, dir)
-			if len(servers) != 1 {
-				t.Fatalf("servers = %+v", servers)
-			}
-			s := servers[0]
-			if s.Name != tt.want.Name || s.Command != tt.want.Command || s.URL != tt.want.URL ||
-				!slices.Equal(s.Args, tt.want.Args) || len(s.Allow) != 0 {
-				t.Errorf("server = %+v, want %+v with an empty allow", s, tt.want)
-			}
-			if !strings.Contains(out.String(), "meru tools") {
-				t.Errorf("output doesn't point at meru tools:\n%s", out)
-			}
-		})
-	}
-}
-
-func TestMCPErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
-	}{
-		{"not in catalog", []string{"add", "slack"}, "not in the catalog"},
-		{"unknown subcommand", []string{"remove", "brave"}, "usage"},
-		{"no words", nil, "usage"},
-		{"bad name", []string{"add", "a.b", "--", "x"}, "letters, digits"},
-		{"url without scheme", []string{"add", "x", "--url", "127.0.0.1:1"}, "http://"},
-		{"dash dash without command", []string{"add", "x", "--"}, "usage"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, _, _ := scripted("")
-			err := mcpCmd(context.Background(), filepath.Join(t.TempDir(), "merud.sock"), tt.args, c)
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("error = %v, want one containing %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestMCPListCatalog(t *testing.T) {
 	for _, args := range [][]string{{"list-catalog"}, {"add"}} {
 		c, out, _ := scripted("")
 		if err := mcpCmd(context.Background(), "merud.sock", args, c); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"brave", "fetch", "gmail", "calendar", "drive", "obsidian"} {
+		for _, name := range catalog.Names() {
 			if !strings.Contains(out.String(), name) {
 				t.Errorf("%v: listing lacks %s", args, name)
 			}
@@ -223,7 +168,7 @@ func TestSetupFirstRun(t *testing.T) {
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
 		"~/notes, /srv/papers\n" +
-		strings.Repeat("k\n", 6) // skip each catalog server
+		strings.Repeat("k\n", len(setupEntries(runtime.GOOS))) // skip each catalog server
 	c, out, ran := scripted(input)
 	checks := 0
 	c.ollamaVersion = func(context.Context, string) (string, error) {
@@ -274,7 +219,7 @@ func TestSetupExistingConfig(t *testing.T) {
 	}
 
 	// No download, skip each server, and no to setup user.
-	c, out, ran := scripted("n\n" + strings.Repeat("k\n", 6) + "n\n")
+	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(setupEntries(runtime.GOOS))) + "n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}

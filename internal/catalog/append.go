@@ -1,5 +1,6 @@
 // This file adds a server block to config.toml without touching the rest of
 // the file, and checks the result before it replaces the original.
+// RemoveServer, in remove.go, uses the same safe write.
 
 package catalog
 
@@ -21,10 +22,9 @@ import (
 // included, stays as it is: AppendServer adds a blank line and the block as
 // plain text. It creates the file (and its folder) when missing.
 //
-// It writes the new text to a temporary file next to the original, loads
-// that with config.Load, checks the server entries, and only then renames it
-// over the original with mode 0600. So a block that would break config, or
-// a crash halfway, leaves the original file as it was.
+// It writes through writeChecked, which loads the new text and checks the
+// server entries before it replaces the file. So a block that would break
+// config, or a crash halfway, leaves the original file as it was.
 //
 // It fails when block doesn't hold exactly one server, when config already
 // has a server with that name, or when the result doesn't load.
@@ -61,6 +61,18 @@ func AppendServer(configPath, block string) error {
 		text += "\n"
 	}
 
+	return writeChecked(configPath, text, func(next config.Config) error {
+		return CheckServers(next.MCP.Servers)
+	})
+}
+
+// writeChecked replaces the config file at configPath with text, safely.
+// It writes text to a temporary file next to the original, loads that with
+// config.Load, runs check on the result, and only then renames it over the
+// original with mode 0600. So text that would break config, or a crash
+// halfway, leaves the original file as it was. It creates the folder when
+// missing.
+func writeChecked(configPath, text string, check func(config.Config) error) error {
 	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
@@ -72,7 +84,7 @@ func AppendServer(configPath, block string) error {
 	if err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
-	// defer runs os.Remove when AppendServer returns. After a successful
+	// defer runs os.Remove when writeChecked returns. After a successful
 	// rename the temporary name is gone and Remove does nothing.
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.WriteString(text); err != nil {
@@ -85,9 +97,9 @@ func AppendServer(configPath, block string) error {
 
 	next, err := config.Load(tmp.Name())
 	if err != nil {
-		return fmt.Errorf("the new server entry would break config.toml: %w", err)
+		return fmt.Errorf("the change would break config.toml: %w", err)
 	}
-	if err := CheckServers(next.MCP.Servers); err != nil {
+	if err := check(next); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), configPath); err != nil {
