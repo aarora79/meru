@@ -4,6 +4,9 @@
 // Export is off until config sets an endpoint, and Setup refuses any endpoint
 // that isn't loopback, so no telemetry leaves the machine. Prompt and response
 // text stay out of spans unless capture_content is on. Metric attributes are
-// small fixed sets (model, tier, route, outcome), never IDs, paths or text.
+// small fixed sets (model, tier, route, outcome), never IDs, paths or text;
+// a value outside its set is recorded as "other".
+//
+// The package doesn't export logs. merud's slog file stays on disk.
 // See ARCHITECTURE.md, "Observability".
 package obs

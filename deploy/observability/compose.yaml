@@ -1,0 +1,47 @@
+# Local observability stack for merud: one grafana/otel-lgtm container with an
+# OpenTelemetry Collector, Prometheus, Tempo, Loki and Grafana, plus the Meru
+# dashboard. See ARCHITECTURE.md, "Observability" → "The stack".
+#
+# Start:  docker compose -f deploy/observability/compose.yaml up -d
+# Then set otlp_endpoint = "http://127.0.0.1:4318" in ~/.meru/config.toml and
+# open http://127.0.0.1:3000 (user admin, password admin).
+#
+# Every port binds to 127.0.0.1, so nothing on the network can reach the
+# stack. The environment block turns off each component's own reporting and
+# update checks, so the stack sends nothing off the machine either.
+
+name: meru-observability
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: meru-lgtm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4318:4318" # OTLP over HTTP, where merud sends metrics and traces
+      - "127.0.0.1:3000:3000" # Grafana
+    environment:
+      # Grafana: no usage reports, no update or plugin-update checks.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Grafana also fetches a news feed and Gravatar pictures, and can
+      # publish snapshots to grafana.com. Turn all three off.
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      # Open on the Meru dashboard.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/meru/meru.json
+      # Loki, Tempo and Pyroscope send anonymous usage statistics to Grafana
+      # Labs unless told not to.
+      LOKI_EXTRA_ARGS: "-reporting.enabled=false"
+      TEMPO_EXTRA_ARGS: "-reporting.enabled=false"
+      PYROSCOPE_EXTRA_ARGS: "-usage-stats.enabled=false"
+    volumes:
+      - ./grafana/meru-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/meru.yaml:ro
+      - ./dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/meru:ro
+      - lgtm-data:/data
+
+volumes:
+  # Keeps metrics, traces and Grafana state across container restarts.
+  lgtm-data:

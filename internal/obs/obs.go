@@ -3,30 +3,62 @@
 // directly, so metric names and attribute rules live in one place.
 //
 // Until Setup runs with an endpoint, every function here is a no-op that costs
-// next to nothing.
+// next to nothing: it loads one pointer, finds it nil and returns.
 
 package obs
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
 
+// state is what Setup decides and the record functions read.
+type state struct {
+	// inst is nil when export is off; every record call then returns at once.
+	inst *instruments
+	// captureContent mirrors config's capture_content.
+	captureContent bool
+}
+
+// current holds the live state. AGENTS.md rules out package-level mutable
+// state, and this is the one exception: the record functions are called from
+// every package, and passing a handle through all of them would touch every
+// signature for no gain. Setup writes it once at startup.
+//
+// atomic.Pointer lets many goroutines read the pointer while Setup swaps it,
+// without a lock and without a data race. Its zero value holds nil, which
+// means "not set up": record calls are no-ops and CaptureContent is false.
+var current atomic.Pointer[state]
+
+// load returns the instruments to record into, or nil when export is off.
+func load() *instruments {
+	s := current.Load()
+	if s == nil {
+		return nil
+	}
+	return s.inst
+}
+
 // Setup starts metric and trace export to cfg.OTLPEndpoint. With no endpoint
 // it leaves OpenTelemetry's no-op providers in place. It refuses a
 // non-loopback endpoint. Call the returned shutdown function before exiting,
 // so the last batch of data is sent.
+//
+// The body lives in setup.go.
 func Setup(ctx context.Context, cfg config.Observability) (shutdown func(context.Context) error, err error) {
-	return func(context.Context) error { return nil }, nil
+	return setup(ctx, cfg)
 }
 
-// Tracer returns the tracer every Meru span comes from.
+// Tracer returns the tracer every Meru span comes from. Before Setup, or with
+// traces off, it is OpenTelemetry's no-op tracer.
 func Tracer() trace.Tracer {
 	return otel.Tracer("github.com/aarora79/meru")
 }
@@ -45,7 +77,51 @@ type ModelCall struct {
 // RecordModelCall records gen_ai.client.token.usage,
 // gen_ai.client.operation.duration, gen_ai.server.time_to_first_token,
 // gen_ai.server.time_per_output_token and meru.engine.load.duration.
-func RecordModelCall(ctx context.Context, c ModelCall) {}
+//
+// The model name comes from config.toml, so it is a small set in practice.
+// Tier and operation outside their known sets become "other". Operation is
+// reported with the GenAI convention's words: "generate" becomes
+// "text_completion" and "embed" becomes "embeddings".
+func RecordModelCall(ctx context.Context, c ModelCall) {
+	in := load()
+	if in == nil {
+		return
+	}
+	model := attr(keyModel, c.Model)
+	tier := attr(keyTier, bounded(c.Tier, tiers...))
+	op := operationName(c.Operation)
+
+	// metric.WithAttributes attaches key/value pairs to one measurement.
+	in.operationDuration.Record(ctx, c.Duration.Seconds(),
+		metric.WithAttributes(model, tier, attr(keyOperation, op)))
+
+	in.tokenUsage.Record(ctx, int64(c.Usage.PromptTokens),
+		metric.WithAttributes(model, tier, attr(keyOperation, op), attr(keyTokenType, "input")))
+	// An embedding call writes no tokens, and a stream of zeros would drag
+	// the output histogram toward nothing.
+	if op != "embeddings" {
+		in.tokenUsage.Record(ctx, int64(c.Usage.OutputTokens),
+			metric.WithAttributes(model, tier, attr(keyOperation, op), attr(keyTokenType, "output")))
+	}
+
+	if c.TimeToFirstToken > 0 {
+		in.timeToFirstToken.Record(ctx, c.TimeToFirstToken.Seconds(),
+			metric.WithAttributes(model, tier))
+	}
+
+	// Decode speed comes from the runtime's own clock (EvalDuration), which
+	// leaves out queueing and prompt reading. Both counters must be positive,
+	// or the division means nothing.
+	if c.Usage.OutputTokens > 0 && c.Usage.EvalDuration > 0 {
+		perToken := c.Usage.EvalDuration.Seconds() / float64(c.Usage.OutputTokens)
+		in.timePerOutputTok.Record(ctx, perToken, metric.WithAttributes(model, tier))
+	}
+
+	// Record the load time on every call, zero included, so the histogram's
+	// count is the number of calls and a dashboard can show what share of
+	// them paid for a cold load.
+	in.loadDuration.Record(ctx, c.Usage.LoadDuration.Seconds(), metric.WithAttributes(model))
+}
 
 // Turn describes one finished turn, for RecordTurn.
 type Turn struct {
@@ -57,19 +133,59 @@ type Turn struct {
 }
 
 // RecordTurn records meru.turn.duration and meru.turn.iterations.
-func RecordTurn(ctx context.Context, t Turn) {}
+// Values outside the known sets become "other".
+func RecordTurn(ctx context.Context, t Turn) {
+	in := load()
+	if in == nil {
+		return
+	}
+	route := attr(keyRoute, bounded(t.Route, routes...))
+	in.turnDuration.Record(ctx, t.Duration.Seconds(), metric.WithAttributes(
+		route,
+		attr(keySource, bounded(t.Source, sources...)),
+		attr(keyOutcome, bounded(t.Outcome, turnOutcomes...)),
+	))
+	in.turnIterations.Record(ctx, int64(t.Iterations), metric.WithAttributes(route))
+}
 
 // RecordRoute records one router decision in meru.route.decisions.
-// outcome is "ok", "low_confidence" or "degraded".
-func RecordRoute(ctx context.Context, route, outcome string) {}
+// outcome is "ok", "low_confidence" or "degraded". Values outside the known
+// sets become "other".
+func RecordRoute(ctx context.Context, route, outcome string) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.routeDecisions.Add(ctx, 1, metric.WithAttributes(
+		attr(keyRoute, bounded(route, routes...)),
+		attr(keyOutcome, bounded(outcome, routeOutcomes...)),
+	))
+}
 
 // RecordContextTokens records meru.context.tokens for one prompt section:
-// "system", "skills", "memories", "chunks", "history" or "tools".
-func RecordContextTokens(ctx context.Context, section string, tokens int) {}
+// "system", "skills", "memories", "chunks", "history" or "tools". Any other
+// section becomes "other".
+func RecordContextTokens(ctx context.Context, section string, tokens int) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.contextTokens.Record(ctx, int64(tokens),
+		metric.WithAttributes(attr(keySection, bounded(section, sections...))))
+}
 
 // ActiveStreams adds delta (+1 or -1) to meru.rpc.active_streams.
-func ActiveStreams(ctx context.Context, delta int64) {}
+func ActiveStreams(ctx context.Context, delta int64) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.activeStreams.Add(ctx, delta)
+}
 
 // CaptureContent reports whether spans may carry prompt and response text.
 // It is false unless config set capture_content = true.
-func CaptureContent() bool { return false }
+func CaptureContent() bool {
+	s := current.Load()
+	return s != nil && s.captureContent
+}
