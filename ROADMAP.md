@@ -4,7 +4,10 @@ Each milestone is useful on its own. We ship them in this order.
 
 ## v0.1 — It talks, and answers fast
 - `merud` daemon + Unix socket protocol
-- `Engine` interface; `OllamaEngine` (loopback only)
+- `Engine` interface; `OllamaEngine` (loopback only), with log probabilities for
+  routing (Ollama v0.12.11 or later)
+- Router: one-token route classification with a confidence floor and a
+  `search+tools` fallback ([docs/fast-router.md](docs/fast-router.md))
 - Model tiers (`fast`, `main`, `embed`) kept warm in Ollama; `lite` profile by default,
   `full` profile in config
 - OpenTelemetry metrics + traces for turns and model calls, OTLP export (loopback only)

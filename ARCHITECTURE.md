@@ -294,7 +294,7 @@ sequenceDiagram
 
 | Decision | Made by | How |
 | --- | --- | --- |
-| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the question and the history, and returns a route, a rewritten query and the skills to load |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. A separate short call rewrites the query and picks the skills to load |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's `allow` list reach the model; the rest don't exist to it |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in the server's `confirm` list, unless you already approved that tool for this session |
@@ -394,6 +394,11 @@ Two profiles ship in `config.toml`. **`lite` is the default.**
 tier at startup. Ollama must allow enough models in memory at once
 (`OLLAMA_MAX_LOADED_MODELS`, 3 for `full`).
 
+The `fast` tier needs a runtime that reports log probabilities, because
+[routing](#routing) reads them. Ollama added them in v0.12.11; `merud` reads
+`/api/version` at startup and refuses to start on anything older, naming both
+versions. Routing costs no extra model: the `fast` model is already loaded.
+
 A new embedding model makes vectors of a different size, and every stored vector
 goes stale. The store records the embedding model's name and vector size. When
 either stops matching config, `merud` rebuilds the vectors from your files (see
@@ -427,6 +432,11 @@ sees a model-specific token. Each `Completion` also carries Ollama's counters
 (`prompt_eval_count`, `eval_count`, `load_duration`, `prompt_eval_duration`,
 `eval_duration`), which feed [Observability](#observability).
 
+For [routing](#routing), `Options` gains two fields, `LogProbs` and `TopLogProbs`,
+and `Completion` gains `LogProbs`: for each generated position, the chosen token and
+the alternatives the model weighed, each with its log probability. Both default to
+off, so other callers see no change, and the interface keeps its four methods.
+
 Two engines may come later, behind the same interface:
 
 - **`LlamaCppEngine`** would compile llama.cpp into `merud` through cgo, using the
@@ -448,9 +458,11 @@ third-party code in the loop is the official MCP Go SDK and the A2A Go SDK.
 A turn has five steps. [A question, end to end](#a-question-end-to-end) shows them in
 order.
 
-1. **Route.** The `fast` model rewrites the query, picks the skills to load, and picks
-   one of four routes: answer directly, search your files first (RAG,
-   retrieval-augmented generation), call tools, or search and call tools.
+1. **Route.** The `fast` model picks one of four routes: answer directly, search your
+   files first (RAG, retrieval-augmented generation), call tools, or search and call
+   tools. It picks by classification, reading one decoded token's probabilities (see
+   [Routing](#routing)). A separate short generation call rewrites the query and
+   picks the skills to load.
 2. **Build the context.** System prompt, skill descriptions, relevant memories,
    retrieved chunks, this session's history and the allowed tools' schemas, each
    within its own token budget.
@@ -463,8 +475,7 @@ order.
    doesn't run and its outcome is `declined`. A call to a tool outside the allowlist
    doesn't run either; its outcome is `denied`, and it still gets a `tool_calls` row,
    so a model that keeps reaching for forbidden tools shows up in the log. No other
-   code path reaches a server,
-   agent or built-in tool. Independent calls run at the same time (`errgroup`), each
+   code path reaches a server, agent or built-in tool. Independent calls run at the same time (`errgroup`), each
    with its own timeout.
 5. **Repeat** from step 3 with the tool results, until the model answers without
    calling a tool or the loop hits its iteration cap (config, default 8).
@@ -472,6 +483,47 @@ order.
 A `context.Context` runs through the whole turn. If the client disconnects or you
 press Ctrl-C, `merud` cancels the turn: generation stops, in-flight tool calls are
 dropped, and their `tool_calls` rows record the cancellation.
+
+### Routing
+
+A small model asked to write its route as JSON (JavaScript Object Notation) fails in
+three ways: it writes broken JSON, invents a fifth route, or answers wrong with no
+sign that it was unsure. So the router doesn't ask for text. It treats the route as a
+classification and reads the answer from the model's probabilities:
+
+1. The prompt gives the question, the session history and four lettered options
+   (A = answer directly, B = search, C = tools, D = search and tools), each with a
+   one-line description, and ends with `Answer: `.
+2. `merud` asks Ollama for one token with log probabilities (`num_predict = 1`,
+   `logprobs = true`, `top_logprobs = 20`).
+3. The router keeps the alternatives whose text is one of the four letters, turns
+   each log probability back into a probability, divides by a fitted temperature,
+   and normalizes the four so they sum to 1.
+4. The most likely letter is the route, and its probability is the confidence.
+
+The model decodes one token, so routing costs a prompt evaluation and nothing more,
+and it can't name a route that doesn't exist. When the confidence falls below
+`min_confidence`, or fewer than two letters appear at all, the router takes the
+fallback route, `search+tools`. That's the one route that can't fail a turn for
+lack of context: an unsure router spends tokens rather than guesses.
+
+```toml
+[router]
+top_logprobs   = 20             # Ollama's cap
+temperature    = 1.0            # raw; fit later from labelled turns
+min_confidence = 0.45           # below this, take the fallback
+fallback       = "search+tools"
+```
+
+The router lives in `internal/router` as one function, `Decide`, which returns the
+route, its confidence, the full distribution and an outcome (`ok`,
+`low_confidence` or `degraded`). A model that answers unclearly isn't an error;
+`Decide` returns the fallback and says why. Small models are overconfident, so
+`min_confidence` means little until a temperature is fitted from about 200 labelled
+turns.
+
+The full design, with the prompt contract, tests and calibration plan, is in
+[docs/fast-router.md](docs/fast-router.md).
 
 ---
 
@@ -959,7 +1011,7 @@ Each turn produces one trace, whether it came from the CLI or a scheduled job:
 
 ```text
 meru.turn                         route, iterations, outcome
-├── meru.route                    fast-tier call
+├── meru.route                    one-token route pick: decision, confidence, outcome
 ├── meru.retrieve                 vector, fts, fusion (v0.2); memories (v0.4)
 ├── gen_ai.chat  main             one span per model call in the loop
 ├── mcp.tool_call  obsidian.search
@@ -983,6 +1035,7 @@ for the rest.
 | `gen_ai.server.time_to_first_token` | histogram | model, tier | the v0.1 "first token < 1 s" target |
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
+| `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
 | `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency |
 | `meru.turn.iterations` | histogram | route | loop depth |
 | `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
@@ -1055,9 +1108,11 @@ them.
 
 We'll settle these with working code and measurements.
 
-1. **Router quality.** In `lite`, a 2B model both routes and answers. Can it choose
-   between a direct answer, RAG and tools? `meru.turn.*` metrics by route will show.
-   If it can't, `lite` gets a separate, larger `main`.
+1. **Router quality.** The router no longer has to write valid output; it reads
+   probabilities (see [Routing](#routing)). The open question is whether a 2B model's
+   probabilities separate the four routes well enough to act on.
+   `meru.route.decisions` by outcome, and a temperature fitted from labelled turns,
+   will show. If they don't, `lite` gets a larger `fast` model.
 2. **Context order.** Skills, memories and retrieved chunks compete for the same
    window. `meru.context.tokens` will supply the numbers to set a budget per section.
 3. **PDF extraction.** Local tools that keep a PDF's layout are weak, and Go has fewer
@@ -1084,6 +1139,8 @@ We'll settle these with working code and measurements.
   `qwen3-embedding:0.6b`).
 - **Storage:** JSONL transcripts as the source of truth; SQLite via
   `ncruces/go-sqlite3` with `sqlite-vec` as the index. No separate vector database.
+- **Routing:** a one-token classification read from log probabilities, falling back
+  to search and tools when unsure ([docs/fast-router.md](docs/fast-router.md)).
 - **Hybrid search:** FTS5 BM25 plus `sqlite-vec` similarity, merged in Go with
   reciprocal-rank fusion.
 - **Built-in skills:** `writing`, `explainer` and `poster-making` ship in the binary
