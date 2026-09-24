@@ -13,9 +13,10 @@ config: MCP (Model Context Protocol) servers such as web search or Gmail, and ot
 agents over A2A (Agent2Agent). Meru allows none of their tools until you name them,
 and logs every call.
 
-> **Status: pre-alpha, design phase.** We wrote the architecture first, and the code
-> follows it. The commands below show the planned interface; no binary exists yet.
-> [ROADMAP.md](ROADMAP.md) lists the milestones.
+> **Status: pre-alpha, v0.1.** `merud` and `meru` answer questions with local models,
+> stream the answer, keep session transcripts and pick a route with the one-token
+> router. Search over your files, tools, memory and scheduled jobs come in later
+> milestones; [ROADMAP.md](ROADMAP.md) lists them in order.
 
 ---
 
@@ -27,15 +28,49 @@ jobs. `meru` is the command-line client; it connects to the daemon over a local
 socket and starts in milliseconds. Go builds each program into one file that runs on
 macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
 
+Working in v0.1:
+
 ```
-$ meru setup                       # first run: models, folders, MCP servers
-$ meru "what did I change in the portfolio repo this week?"
-$ meru chat                        # interactive terminal UI
-$ meru index ~/notes ~/repos       # build the local knowledge index
-$ meru memory list                 # what it knows about you, in plain text
-$ meru skills list                 # what it knows how to do
-$ meru brief                       # today's digest, prepared in advance
+$ meru "what is the capital of France?"   # one question, answer streamed as text
+$ meru chat                                # interactive terminal UI
+$ meru ping                                # is merud running?
 ```
+
+Planned for later milestones:
+
+```
+$ meru setup                       # first run: models, folders, MCP servers (v0.3)
+$ meru index ~/notes ~/repos       # build the local knowledge index (v0.2)
+$ meru memory list                 # what it knows about you, in plain text (v0.4)
+$ meru skills list                 # what it knows how to do (v0.4)
+$ meru brief                       # today's digest, prepared in advance (v0.5)
+```
+
+## Quick start
+
+You need [Go](https://go.dev/dl/) 1.26 or later and [Ollama](https://ollama.com)
+0.12.11 or later, running on this machine.
+
+```
+$ ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # the lite profile's chat model
+$ ollama pull nomic-embed-text                         # the lite profile's embedding model
+$ git clone https://github.com/aarora79/meru.git && cd meru
+$ go install ./cmd/merud ./cmd/meru                    # into ~/go/bin
+$ merud &                                              # loads the models and listens
+$ meru "what is the capital of France?"
+```
+
+[docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,
+`meru chat`, running `merud` as a service, the local dashboard, troubleshooting and
+uninstalling.
+
+## Development
+
+`make check` runs everything CI runs: formatting, `go vet`, staticcheck, the race
+detector over every test, builds for five platforms, govulncheck, gosec, gitleaks
+and actionlint. `make e2e` runs the end-to-end tests against a fake Ollama.
+[docs/ci.md](docs/ci.md) explains each check, and [AGENTS.md](AGENTS.md) holds the
+rules for changing the code.
 
 ## What it does
 
@@ -121,6 +156,7 @@ call.
   - [200: how it works](docs/architecture/200.md)
   - [300: the full design](ARCHITECTURE.md), the design contract
 - [docs/posters/](docs/posters/) — the Meru poster
+- [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents
 
