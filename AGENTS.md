@@ -95,8 +95,9 @@ personal-finance examples.
 The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
 `explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
-repo tool only and doesn't ship. Update the built-ins by copying from `my-ai-assets`,
-never by editing them in place.
+repo tool only and doesn't ship. Update those two built-ins by copying from
+`my-ai-assets`, never by editing them in place. The third built-in, `web-research`,
+is Meru's own; its only copy lives in `internal/skills/builtin/web-research/`.
 
 ## Non-negotiables
 
@@ -111,8 +112,11 @@ never by editing them in place.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, and
-   to public web pages through `web_url_read` when `[web] read_pages = true`. That
-   tool refuses loopback and private addresses at connect time.
+   to public web pages through `web_fetch`, which is on by default and fetches only
+   when the model asks; `[web] fetch = false` turns it off. That tool refuses
+   loopback and private addresses at connect time, and asks the user before it
+   fetches a URL that no search result or question of the user's gave in the same
+   session, and before any download.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.

