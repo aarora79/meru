@@ -88,8 +88,8 @@ committing. In short: short words, active voice with a named actor, no `-ly` pad
 no stale phrases, acronyms spelled out on first use, and none of the sentence-shape
 tells it lists.
 
-Examples come from the catalog servers (`google` for mail and calendar, `brave` for
-web search, `obsidian` for notes), and the repository carries no trading or
+Examples come from the catalog servers (`google` for mail and calendar, `obsidian`
+for notes) and the built-in `web_search`, and the repository carries no trading or
 personal-finance examples.
 
 The skills `writing`, `explainer` and `poster-making` come from the owner's
@@ -110,7 +110,9 @@ never by editing them in place.
    response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
-   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`.
+   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, and
+   to public web pages through `web_url_read` when `[web] read_pages = true`. That
+   tool refuses loopback and private addresses at connect time.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.

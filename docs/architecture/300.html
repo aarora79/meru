@@ -259,6 +259,7 @@
     <li><a href="#mcp">Tools over MCP</a></li>
     <li><a href="#local-commands">Local commands</a></li>
     <li><a href="#setup">First run and setup</a></li>
+    <li><a href="#web-search">Web search</a></li>
     <li><a href="#a2a">Other agents over A2A</a></li>
     <li><a href="#scheduler">Scheduled jobs</a></li>
     <li><a href="#observability">Seeing where the time went</a></li>
@@ -279,7 +280,7 @@
 <p>Six principles shape every choice below:</p>
 
 <ol>
-  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. MCP servers are separate programs: one you add, such as web search or Gmail, can reach the network on its own (see <a href="#mcp">Tools over MCP</a>).</li>
+  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, and to public web pages when you turn on <code>[web] read_pages</code>. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
   <li><b>Files are the source of truth; SQLite is a projection.</b> Meru can rebuild everything in the database from your files and config. Delete <code>meru.db</code> and it re-indexes.</li>
   <li><b>You can inspect everything.</b> Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn, so you can find out why it said something and why it took so long.</li>
   <li><b>Few, narrow abstractions.</b> One engine interface, one store, one agent loop we own, and two wire protocols: <b>MCP</b> (Model Context Protocol) for tools and <b>A2A</b> (Agent2Agent) for other agents. Broad frameworks for large language models change their APIs every few releases, and we don't want to chase them.</li>
@@ -407,8 +408,7 @@
   <text x="364" y="442" class="t1" font-size="13" font-weight="700">MCP servers</text>
   <text x="364" y="460" class="t3" font-size="11">separate processes</text>
   <text x="364" y="486" class="t2 mono" font-size="11.5">google</text>
-  <text x="364" y="508" class="t2 mono" font-size="11.5">brave</text>
-  <text x="364" y="530" class="t2 mono" font-size="11.5">obsidian</text>
+  <text x="364" y="508" class="t2 mono" font-size="11.5">obsidian</text>
   <path d="M400 352 L400 418" class="lna" marker-end="url(#f1b)"/>
   <text x="408" y="392" class="t3" font-size="10.5">stdio or</text>
   <text x="408" y="406" class="t3" font-size="10.5">Streamable HTTP</text>
@@ -683,7 +683,7 @@
   </tbody>
 </table></div>
 
-<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers the three read-only file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, and the local commands that don't ask first. A question such as "write about everything in my work folder" lands on <code>search</code>, and ten excerpts can't cover a folder. So does "what changed in the meru repo this week?" when <code>meru</code> is an indexed folder, and a declared <code>git log</code> answers it. A command with <code>confirm = true</code> changes something, so it waits for a tools route. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
+<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers the three read-only file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, and the local commands that don't ask first. A question such as "write about everything in my work folder" lands on <code>search</code>, and ten excerpts can't cover a folder. So does "what changed in the meru repo this week?" when <code>meru</code> is an indexed folder, and a declared <code>git log</code> answers it. A command with <code>confirm = true</code> changes something, so it waits for a tools route. So do <code>web_search</code> and <code>web_url_read</code>: the router's option C names the web, so a question that needs it lands on a tools route. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
 
 <h3 id="approving">Approving a tool call</h3>
 
@@ -706,13 +706,15 @@
   <li><b>Built-in tools have their own confirm list.</b> A <b>built-in tool</b> is one that <code>merud</code> provides itself instead of an MCP server. They belong to no server entry, so <code>config.toml</code> gives them one section:
 <pre><code>[builtin]
 confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory</code></pre>
-  The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever this list says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it here; <code>write_file</code>, which asks before each file it saves because the shipped list names it; and three read-only file tools that run without asking unless you list them:
+  The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever this list says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it here; <code>write_file</code>, which asks before each file it saves because the shipped list names it; the two web tools, <code>web_search</code> and <code>web_url_read</code> (see <a href="#web-search">Web search</a>); and three read-only file tools. The web and file tools run without asking unless you list them:
 <div class="tbl"><table>
   <thead><tr><th>Tool</th><th>What it returns</th></tr></thead>
   <tbody>
     <tr><td><code>read_file</code></td><td>A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page.</td></tr>
     <tr><td><code>list_folder</code></td><td>A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries.</td></tr>
     <tr><td><code>grep</code></td><td>Every line that holds a word or an RE2 regular expression, as <code>path:line: text</code>, until 200 lines, 5 seconds or 20,000 files.</td></tr>
+    <tr><td><code>web_search</code></td><td>Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when <code>[web] searxng_url</code> is set.</td></tr>
+    <tr><td><code>web_url_read</code></td><td>One public web page's text, 12,000 characters per call, like <code>read_file</code>. Offered only when <code>[web] read_pages = true</code>.</td></tr>
   </tbody>
 </table></div>
   The file tools reach only the <code>[index] folders</code>, and they skip what the indexer skips (see <a href="#getting-your-content-in">Getting your content in</a>): they never follow a symlink, and they refuse secret, hidden, ignored, binary and oversized files with the indexer's reason. They read nothing that search couldn't already put in the prompt. <code>merud</code> leaves them out when no folder is listed. In <code>tool_calls</code> and the metrics, a built-in call has <code>kind = "builtin"</code> and <code>server = "meru"</code>.</li>
@@ -1457,7 +1459,6 @@ remote  = false                          # true only if the URL isn't loopback</
 <pre><code>$ meru mcp
 SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
 google     http       connected       124        8        2   127.0.0.1:8000/mcp
-brave      stdio      connected         4        2        0
 obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH</code></pre>
 
 <div class="tbl"><table>
@@ -1566,6 +1567,7 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
   <li><b>Ollama.</b> Meru checks that Ollama answers. If it doesn't, Meru prints the install step for your platform and waits for you to press Enter.</li>
   <li><b>Models.</b> With no <code>config.toml</code> yet, you pick <code>lite</code> (the default) or <code>full</code>. Meru names the profile's models and, after a yes, downloads each with <code>ollama pull</code>, which draws its own progress bar.</li>
   <li><b>Your files.</b> Meru asks which folders to index (for example <code>~/notes</code>) and writes a short <code>config.toml</code> with the profile and the folders. It writes the file only when none exists: rewriting yours would drop your comments, so for an existing file setup says what to edit instead. <code>merud</code> creates the rest of <code>~/.meru/</code> when it starts; setup doesn't write <code>prompt.md</code> or the built-in skills yet.</li>
+  <li><b>Web search.</b> Meru checks that SearXNG answers JSON at <code>[web] searxng_url</code>. When nothing answers, it prints the commands that start SearXNG in Docker; when SearXNG answers HTML, it names the <code>search.formats</code> setting to change. Then it waits: Enter checks again, <code>s</code> skips. Meru works without web search (see <a href="#web-search">Web search</a>).</li>
   <li><b>Tools.</b> Meru offers the catalog's servers, one at a time, and you pick a path for each (see below). You can skip any of them and add them later.</li>
   <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
   <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new <code>config.toml</code> takes a restart of <code>merud</code>; a new server doesn't (see <a href="#mcp">MCP</a>).</li>
@@ -1573,13 +1575,12 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
 
 <h3>Adding an MCP server</h3>
 
-<p>The binary carries a small catalog of known servers, one for each kind of example this document uses: mail and calendar, web search, and notes.</p>
+<p>The binary carries a small catalog of known servers, one for each kind of example this document uses: mail and calendar, and notes. Web search needs no server; it is built in (see <a href="#web-search">Web search</a>).</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Name</th><th>Server</th><th>Transport</th><th>Needs</th><th>Asks first</th></tr></thead>
   <tbody>
     <tr><td><code>google</code></td><td><code>taylorwilsdon/google_workspace_mcp</code> (<code>uvx workspace-mcp</code>)</td><td>Streamable HTTP on <code>127.0.0.1:8000/mcp</code></td><td>a Google OAuth client, a sign-in, and you running it</td><td>sending mail, changing an event</td></tr>
-    <tr><td><code>brave</code></td><td>Brave Search (<code>@brave/brave-search-mcp-server</code>)</td><td>stdio</td><td>an API key in <code>secrets.toml</code></td><td>nothing</td></tr>
     <tr><td><code>obsidian</code></td><td><code>mcp-obsidian</code>, through Obsidian's Local REST API plugin</td><td>stdio</td><td>the plugin's API key</td><td>appending to a note</td></tr>
   </tbody>
 </table></div>
@@ -1598,7 +1599,7 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
 <p>For each server, you choose one of two paths:</p>
 
 <ul>
-  <li><b>"Do it for me."</b> Meru asks only for what the server needs, one question at a time, and reads each key without showing it on screen: "Paste your Brave Search API key". For <code>google</code>, Meru prints the command that starts the server and never runs it, and notes that the server gives you a sign-in link the first time the model uses a Google tool. Then Meru shows you the exact config block it will add, and writes it only after you approve.</li>
+  <li><b>"Do it for me."</b> Meru asks only for what the server needs, one question at a time, and reads each key without showing it on screen: "Paste the API key from Obsidian's Local REST API plugin". For <code>google</code>, Meru prints the command that starts the server and never runs it, and notes that the server gives you a sign-in link the first time the model uses a Google tool. Then Meru shows you the exact config block it will add, and writes it only after you approve.</li>
   <li><b>"Show me how."</b> Meru prints the config block, any install command and the <code>secrets.toml</code> lines, and names the file to paste them into. Nothing changes until you do it yourself.</li>
 </ul>
 
@@ -1624,12 +1625,44 @@ meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HT
 
 <p><b>Secrets stay out of config.</b> API keys go in <code>~/.meru/secrets.toml</code>, a flat list of <code>name = "value"</code> lines. A config value refers to one as <code>secret:&lt;name&gt;</code>, in an MCP server's <code>env</code> or <code>headers</code> or an A2A agent's <code>headers</code>:</p>
 
-<pre><code>env = { BRAVE_API_KEY = "secret:brave_api_key" }</code></pre>
+<pre><code>env = { OBSIDIAN_API_KEY = "secret:obsidian_api_key" }</code></pre>
 
 <p><code>env</code> belongs to a stdio server, which <code>merud</code> starts. A <code>url</code> entry with <code>env</code> fails at startup: <code>merud</code> starts no process for it, so the variables would go nowhere. The message names the server and points at <code>headers</code>, the way to send a key to an HTTP server.</p>
 
 <p><code>merud</code> swaps in the value when it starts a server or calls an agent, and refuses to start when group or other users can read <code>secrets.toml</code> (it says to run <code>chmod 600</code>). <code>meru mcp add</code> writes the file with mode <code>0600</code>. Before <code>dispatch</code> writes a transcript line, a <code>tool_calls</code> row, a log line or a span, it replaces each stored value of 8 or more characters with <code>[secret:&lt;name&gt;]</code>; shorter values would match ordinary words. A config file you share or commit holds names only.</p>
 
+<h2 id="web-search">Web search</h2>
+
+<p>Meru searches the web through <b>SearXNG</b>, a metasearch engine you run on your own machine. SearXNG keeps no index of its own. It passes the search words to engines such as Google, Bing, DuckDuckGo and Wikipedia, drops the cookies and headers that identify you, and merges what comes back. It needs no account and no API key. You start it once, in Docker (<code>docs/running.md</code>, "Web search"), and <code>merud</code> reaches it on loopback, as it reaches Ollama.</p>
+
+<p>Two built-in tools use it. Both go through <code>dispatch</code>, so every search and page lands in the transcript and in <code>tool_calls</code>, and both wait for a tools route:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Tool</th><th>Offered when</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>web_search</code></td><td><code>[web] searxng_url</code> is set, as it is by default</td><td>One GET to <code>&lt;searxng_url&gt;/search?format=json</code>, with a 15-second limit. It returns up to <code>max_results</code> results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL.</td></tr>
+    <tr><td><code>web_url_read</code></td><td><code>[web] read_pages = true</code>; off by default</td><td>Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds) and returns its text 12,000 characters per call, with the offset for the next call, as <code>read_file</code> does. HTML and PDF go through the indexer's own readers.</td></tr>
+  </tbody>
+</table></div>
+
+<pre><code>[web]
+searxng_url = "http://127.0.0.1:8888"   # loopback only; "" turns web_search off
+max_results = 8                         # 1 to 20
+read_pages  = false                     # true adds web_url_read</code></pre>
+
+<p>Both run without asking unless <code>[builtin] confirm</code> lists them.</p>
+
+<p><b>Why built in.</b> SearXNG's API is one GET that returns JSON. The MCP server that wraps it, <code>mcp-searxng</code>, needs Node.js, an npm package to pin and a child process per start; the built-in tools need a few hundred lines of Go and nothing to install. SearXNG needs no key, account or card, so web search works on day one.</p>
+
+<p><b>What stays on the machine.</b> <code>searxng_url</code> must be a loopback address, and <code>merud</code> refuses to start otherwise. The search client uses no proxy and follows no redirect. Your question, your files and the answer stay here.</p>
+
+<p><b>What leaves.</b> SearXNG sends the search words to the engines it asks, with no account and no cookies, spread across several companies. The model writes those words, so they can hold words from your question.</p>
+
+<p><b>Reading pages is the opt-in.</b> With <code>read_pages = true</code>, <code>merud</code> itself connects to web servers off this machine: the one case where it does so with no <code>remote = true</code> entry. The site sees your IP address and a User-Agent that names Meru. <code>web_url_read</code> keeps no cookies and uses no proxy. It checks each address as it connects, after DNS, and refuses loopback, private networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local addresses (169.254/16, where cloud metadata services answer, and fe80::/10), unspecified and multicast addresses, 0.0.0.0/8 and 100.64.0.0/10. The check runs on the connection itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS name that points inside your network, and the model can't use the tool to read a service on your machine or LAN.</p>
+
+<p><b>When SearXNG isn't there.</b> <code>merud</code> starts anyway, and logs one line that says whether SearXNG answers JSON. The check sends an empty query, which SearXNG refuses without asking any engine, so it sends nothing off the machine. A <code>web_search</code> call then fails with "SearXNG isn't answering on &lt;url&gt;. See "Web search" in docs/running.md.", and the model tells you. A SearXNG that answers HTML has JSON turned off, and the error names the <code>search.formats</code> setting in <code>settings.yml</code>. <code>meru setup</code> runs the same check in its Web search step.</p>
+
+<!-- ============================================================ -->
 <!-- ============================================================ -->
 <h2 id="a2a">Other agents over A2A</h2>
 
@@ -1920,6 +1953,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>The codebase contains no path to a cloud model. The engine talks only to a model runtime on loopback.</li>
   <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>remote = true</code> in its config entry. <code>remote</code> says where <code>merud</code> may connect, not what the server reaches: a loopback server such as <code>google</code> still talks to Google. The A2A client checks each address again as it connects and follows no redirects, so an agent card can't send your messages elsewhere.</li>
   <li>API keys live in <code>~/.meru/secrets.toml</code>, which <code>merud</code> refuses to read when other users can. Config names them, never holds them, and <code>dispatch</code> strips their values from transcripts, <code>tool_calls</code>, logs and spans. No key passes through the model: <code>configure</code> sends you to <code>meru mcp add</code> to type one.</li>
+  <li>Web search sends the search words to SearXNG on loopback, and SearXNG sends them to the search engines it asks. That is the one part of a question that leaves the machine when the model searches. <code>[web] read_pages</code> is the one setting that makes <code>merud</code> fetch pages off this machine; it refuses any address on this machine or your network (see <a href="#web-search">Web search</a>).</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
   <li>A local command runs with your permissions too, and reaches the network if you declare one that does, such as <code>curl</code> or <code>ssh</code>. You chose it, and the <code>tool_calls</code> row records each run with its argv.</li>
   <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
