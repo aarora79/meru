@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestLoadMissingFileGivesDefaults(t *testing.T) {
 	want := defaults()
 	want.Models = profiles["lite"]
 	want.Dir = dir
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load of a missing file:\n got %+v\nwant %+v", cfg, want)
 	}
 }
@@ -110,7 +111,7 @@ level = "debug"
 		Log:           Log{Level: "debug"},
 	}
 	cfg.Dir = ""
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("got  %+v\nwant %+v", cfg, want)
 	}
 }
@@ -221,7 +222,7 @@ func TestExampleMatchesDefaults(t *testing.T) {
 	want := defaults()
 	want.Models = profiles["lite"]
 	cfg.Dir = ""
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("example config:\n got %+v\nwant %+v", cfg, want)
 	}
 }
