@@ -307,14 +307,19 @@ func tidy(s string) string {
 }
 
 // docCount writes how many documents the search index holds, such as
-// "68 docs" or "1 doc". It returns "" before merud has answered, so the
+// "68 docs" or "1 doc", with "· indexing" while a scan runs, because the
+// number is still climbing. It returns "" before merud has answered, so the
 // header leaves the part out rather than show a wrong zero.
 func docCount(ix *rpc.IndexStatus) string {
 	if ix == nil {
 		return ""
 	}
+	s := fmt.Sprintf("%d docs", ix.Documents)
 	if ix.Documents == 1 {
-		return "1 doc"
+		s = "1 doc"
 	}
-	return fmt.Sprintf("%d docs", ix.Documents)
+	if ix.Scanning {
+		s += " · indexing"
+	}
+	return s
 }

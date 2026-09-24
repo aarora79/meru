@@ -114,6 +114,35 @@ type pingMsg struct {
 	index *rpc.IndexStatus
 }
 
+// How often the chat asks merud for its status: often while a scan runs
+// (or before merud has answered at all), so the document count climbs as
+// files land, and rarely otherwise, when only the watcher adds files. Each
+// check is one count query on meru.db.
+const (
+	refreshScanning = 5 * time.Second
+	refreshIdle     = 30 * time.Second
+)
+
+// nextRefresh returns how long to wait before the next status check, given
+// what the last one said: refreshScanning while a scan runs or before any
+// answer, refreshIdle otherwise.
+func nextRefresh(ix *rpc.IndexStatus) time.Duration {
+	if ix == nil || ix.Scanning {
+		return refreshScanning
+	}
+	return refreshIdle
+}
+
+// refreshMsg tells the model it is time for the next status check.
+type refreshMsg struct{}
+
+// refreshAfter returns a command that sends a refreshMsg after d.
+// tea.Tick runs the timer in Bubble Tea's own goroutine, so nothing here
+// needs stopping when the chat quits.
+func refreshAfter(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg { return refreshMsg{} })
+}
+
 // pingCmd returns a command that asks merud once what its index holds. The
 // answer says two things for the header: that merud is up, and how many
 // documents it can search. The chat runs it at start and after each

@@ -223,7 +223,7 @@ func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
 	}
-	return tea.Batch(textarea.Blink, pingCmd(m.ask))
+	return tea.Batch(textarea.Blink, pingCmd(m.ask), refreshAfter(refreshScanning))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -251,6 +251,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.index = msg.index
 		}
 		return m, nil
+	case refreshMsg:
+		// Check now, and book the next check. Only this branch books one,
+		// so there is one chain of checks however many answers arrive.
+		return m, tea.Batch(pingCmd(m.ask), refreshAfter(nextRefresh(m.index)))
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -216,6 +217,43 @@ func TestHeaderDocCount(t *testing.T) {
 	m, _ = update(t, m, pingMsg{err: errors.New("no socket")})
 	if h := m.header(); !strings.Contains(h, "1 doc") {
 		t.Errorf("header after a failed check = %q, want the last count kept", h)
+	}
+}
+
+// TestHeaderIndexing checks the marker that says a scan is still running.
+func TestHeaderIndexing(t *testing.T) {
+	m := testModel(nil, newFakeSender())
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Scanning: true}})
+	if h := m.header(); !strings.Contains(h, "2637 docs · indexing") {
+		t.Errorf("header = %q, want the count and the indexing marker", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2700}})
+	if h := m.header(); !strings.Contains(h, "2700 docs") || strings.Contains(h, "indexing") {
+		t.Errorf("header = %q, want the new count without the marker", h)
+	}
+}
+
+// TestRefresh checks the periodic status check: a refreshMsg asks merud
+// again and books the next check, sooner while a scan runs.
+func TestRefresh(t *testing.T) {
+	tests := []struct {
+		name string
+		ix   *rpc.IndexStatus
+		want time.Duration
+	}{
+		{"before any answer", nil, refreshScanning},
+		{"while scanning", &rpc.IndexStatus{Scanning: true}, refreshScanning},
+		{"idle", &rpc.IndexStatus{Documents: 5}, refreshIdle},
+	}
+	for _, tt := range tests {
+		if got := nextRefresh(tt.ix); got != tt.want {
+			t.Errorf("%s: nextRefresh = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	m := testModel(nil, newFakeSender())
+	if _, cmd := update(t, m, refreshMsg{}); cmd == nil {
+		t.Errorf("refreshMsg gave no command; want a check and the next tick")
 	}
 }
 

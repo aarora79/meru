@@ -400,8 +400,12 @@ turn isn't the one streaming now.
 `pingCmd` is the other command. It asks `merud` for its index status, with a
 two-second timeout, and returns a `pingMsg`. The answer does two jobs: it shows that
 `merud` is up, and it carries the document count for the header. The chat runs it
-when it opens and again after each answer, because the watcher indexes new files
-while `merud` runs. A later version can put more in the same line, such as the count
+when it opens, after each answer, and on a timer: every 5 seconds while a scan runs
+(the header then reads `2637 docs · indexing`), every 30 seconds otherwise, when only
+the watcher adds files. `nextRefresh` picks the wait. The timer is a `tea.Tick`, a
+command that sends a `refreshMsg` once the time is up. Update answers it with a
+check and the next tick, and only that branch books a tick, so there is one chain of
+checks however many answers come in. A later version can put more in the same line, such as the count
 of memory files and the size of `meru.db`, by adding them to the status `merud`
 sends.
 
