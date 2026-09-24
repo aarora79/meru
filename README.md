@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/img/meru-logo.png" width="140" alt="Meru logo: a mountain with the sun and moon circling its axis"></p>
+
 # Meru
 
 **A personal AI assistant that runs entirely on your own machine.**
