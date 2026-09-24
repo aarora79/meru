@@ -401,8 +401,12 @@ leave `merud` with a pool whose servers all failed to start.
 and then removes it, and checks each old process is gone.
 
 **Web search.** `newToolService` hands `cfg.Web` to `builtin.New`, which offers
-`web_search` when `searxng_url` is set and `web_url_read` when `read_pages` is
-true. Right after, `run` calls `logWebSearch`, which runs
+`web_search` when `searxng_url` is set and `web_fetch` when `fetch` is true, the
+default. Before that it calls `ix.ReadAlso` on `<output_dir>/downloads`, so the
+file tools can read what `web_fetch` downloads; after, it calls
+`bt.UseModel(eng, cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the
+fast model. `newToolService` takes the engine as a `builtin.Generator`, the one
+method that needs. Right after, `run` calls `logWebSearch`, which runs
 `catalog.CheckSearXNG` and writes one info line: `web search ready`,
 `web search not ready` with the reason, or `web search off`. The check never
 stops `merud`: SearXNG may start later, and `web_search` tells the model what's

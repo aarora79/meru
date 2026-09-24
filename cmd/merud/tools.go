@@ -54,9 +54,9 @@ type toolService struct {
 
 // newToolService loads secrets.toml, checks the [[commands]] entries,
 // starts the MCP pool and the A2A client, builds the built-in tools over the memory folder mem, with
-// onRemember to run after remember saves a memory, and over the indexer
-// ix, which the file tools read through, and joins them in one dispatcher
-// that
+// onRemember to run after remember saves a memory, over the indexer
+// ix, which the file tools read through, and over eng, whose fast model
+// answers web_fetch's prompt, and joins them in one dispatcher that
 // writes its rows to st. It then rebuilds the tool_calls table from the
 // transcripts if the table is empty, so a deleted meru.db loses no history.
 //
@@ -64,7 +64,7 @@ type toolService struct {
 // when a command, server or agent entry is wrong; merud then refuses to
 // start, so a bad entry shows at once. A command's program missing from
 // PATH is only a warning in the log.
-func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
+func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, eng builtin.Generator, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
@@ -98,7 +98,14 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// The file tools share merud's indexer, so they skip what it skips.
 	// They don't reload when configure changes config.toml: a change to
 	// [index] needs a restart anyway.
+	// The file tools may also read what web_fetch downloads. The indexer
+	// never indexes that folder; see index.ReadAlso.
+	if ix != nil && cfg.Web.Fetch {
+		ix.ReadAlso(filepath.Join(outputDir, "downloads"))
+	}
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
+	// web_fetch's prompt runs on the fast model, the router's.
+	bt.UseModel(eng, cfg.Models.Fast)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure, then the
 	// commands, so an MCP server named "cmd" can't shadow one.
@@ -135,7 +142,7 @@ func logWebSearch(ctx context.Context, web config.Web, log *slog.Logger) {
 		log.Info("web search not ready", "searxng", web.SearXNGURL, "err", err)
 		return
 	}
-	log.Info("web search ready", "searxng", web.SearXNGURL, "read_pages", web.ReadPages)
+	log.Info("web search ready", "searxng", web.SearXNGURL, "fetch", web.Fetch)
 }
 
 // newPool resolves the secrets in each server entry and starts the MCP

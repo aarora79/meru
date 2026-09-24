@@ -14,15 +14,15 @@ header with a `name` and a `description`, then Markdown instructions. This packa
 reads those folders into a `Registry`. `merud` puts each skill's name and
 description in the system prompt, and reads the instructions only when a turn
 picks the skill (see [agent](agent.md) for the pick). The package also carries
-Meru's two built-in skills, `writing` and `explainer`, inside the binary, and
-copies them to disk on first run.
+Meru's three built-in skills, `writing`, `explainer` and `web-research`, inside
+the binary, and copies each to disk when its folder is missing.
 
 ## The picture
 
 ```mermaid
 flowchart LR
     subgraph binary["merud binary"]
-        embedded["builtin/writing/SKILL.md<br/>builtin/explainer/SKILL.md"]
+        embedded["builtin/writing/SKILL.md<br/>builtin/explainer/SKILL.md<br/>builtin/web-research/SKILL.md"]
     end
     embedded -- "InstallBuiltins<br/>(only if the folder is missing)" --> disk["~/.meru/skills/&lt;name&gt;/SKILL.md"]
     embedded -- "Reset(name)" --> disk
@@ -162,6 +162,22 @@ of `.claude/skills/writing/SKILL.md` and `.claude/skills/explainer/SKILL.md`, wh
 come from the owner's `my-ai-assets` repo. Nobody edits them here. To update one,
 copy the new version into both places. `TestBuiltinsMatchRepo` fails when the two
 copies differ.
+
+`builtin/web-research/SKILL.md` is Meru's own, so it has no twin in
+`.claude/skills/`, and `TestBuiltinsMatchRepo` checks only the two copied skills
+against the repo (the `fromAssets` list). It tells the model how to answer a
+question about current facts with `web_search` and `web_fetch`: search first,
+treat a snippet as a pointer, read the one or two best pages with a prompt,
+prefer the project's own site, check dates against today, quote versions from
+the page, cite each URL and say when sources disagree. Its description decides
+when the fast model picks it, so it names the questions that need it: "the
+latest version or release of something, news, prices", and "when asked to search
+the web". The integration test in `internal/agent` checks that the `lite` model
+picks it for "search the web for the latest Go release".
+
+`merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
+folder is missing. So a user who installed Meru before `web-research` shipped
+gets it on the next start, and keeps any edits to the other two.
 
 The explainer skill tells the model to build a printable poster with the
 `poster-making` skill. Meru doesn't ship `poster-making` (AGENTS.md keeps it a repo

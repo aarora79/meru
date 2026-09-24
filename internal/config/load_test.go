@@ -110,7 +110,7 @@ confirm = ["configure"]
 
 [web]
 searxng_url = "http://localhost:8889"
-read_pages  = true
+fetch       = false
 max_results = 5
 
 [[mcp.servers]]
@@ -157,7 +157,7 @@ remote  = false
 			Watch:         false,
 		},
 		Builtin: Builtin{Confirm: []string{"configure"}},
-		Web:     Web{SearXNGURL: "http://localhost:8889", ReadPages: true, MaxResults: 5},
+		Web:     Web{SearXNGURL: "http://localhost:8889", Fetch: false, MaxResults: 5},
 		MCP: MCP{Servers: []MCPServer{
 			{
 				Name: "notes", Command: "notes-mcp", Args: []string{"--root", "~/notes"},
@@ -233,6 +233,7 @@ func TestLoadErrors(t *testing.T) {
 		{"web max_results zero", "[web]\nmax_results = 0", "web.max_results"},
 		{"web max_results high", "[web]\nmax_results = 21", "web.max_results"},
 		{"web unknown key", "[web]\nread_page = true", "unknown keys: web.read_page"},
+		{"old web read_pages key", "[web]\nread_pages = true", "read_pages was renamed fetch"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,21 +268,21 @@ func TestBuiltinConfirmDefault(t *testing.T) {
 }
 
 // TestWebDefaults checks the [web] defaults: search on at the SearXNG
-// port the docs use, page reading off, and an empty URL turning search off.
+// port the docs use, page fetching on, and an empty URL turning search off.
 func TestWebDefaults(t *testing.T) {
 	cfg, err := Load(writeConfig(t, ""))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
+	want := Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true, MaxResults: 8}
 	if cfg.Web != want {
 		t.Errorf("default web = %+v, want %+v", cfg.Web, want)
 	}
-	cfg, err = Load(writeConfig(t, "[web]\nsearxng_url = \"\"\nread_pages = true\nmax_results = 20"))
+	cfg, err = Load(writeConfig(t, "[web]\nsearxng_url = \"\"\nfetch = false\nmax_results = 20"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want = Web{SearXNGURL: "", ReadPages: true, MaxResults: 20}
+	want = Web{SearXNGURL: "", Fetch: false, MaxResults: 20}
 	if cfg.Web != want {
 		t.Errorf("web = %+v, want %+v", cfg.Web, want)
 	}

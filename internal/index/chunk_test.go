@@ -448,7 +448,7 @@ func TestChunkPDFFailures(t *testing.T) {
 	}
 }
 
-// TestHTMLText checks the exported reader web_url_read uses: the first
+// TestHTMLText checks the exported reader web_fetch uses: the first
 // <title> comes back on its own, and the text leaves out <head>.
 func TestHTMLText(t *testing.T) {
 	tests := []struct {

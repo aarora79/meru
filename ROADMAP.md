@@ -62,7 +62,9 @@ prompt picked 17 of 36.
   for Gmail, Calendar, Drive and Docs, `obsidian` for notes), added for you or by
   copy-paste
 - [x] Web search: built-in `web_search` through a SearXNG the user runs on loopback,
-  and `web_url_read` for public pages behind `[web] read_pages`; `meru setup` checks
+  and `web_fetch` for public pages, on by default behind `[web] fetch`: raw text, an
+  answer from the fast model to a prompt, or a download to `~/meru-output/downloads/`.
+  A URL that no search result or question gave asks first. `meru setup` checks
   SearXNG
 - [x] `meru mcp` and `/mcp` in `meru chat`: each server's state and tool counts.
   `merud` tries each server once at startup and once more per turn that offers tools,
@@ -91,7 +93,7 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 - [x] `meru memory list | add | forget`, working on the files
 - [x] Skill registry with progressive disclosure
 - [x] `meru skills list | show | reset`
-- [x] Built-in skills `writing` and `explainer`, plus the `write_file`
+- [x] Built-in skills `writing`, `explainer` and `web-research`, plus the `write_file`
   tool limited to `~/meru-output/`
 - [x] Context budget policy across skills / memories / chunks
 - [x] Read-only `read_file`, `list_folder` and `grep` over the `[index]` folders,

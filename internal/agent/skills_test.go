@@ -218,7 +218,7 @@ func TestRouteErrorStopsPick(t *testing.T) {
 
 func TestParsePick(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"writing", "explainer", "meeting-notes"} {
+	for _, name := range []string{"writing", "explainer", "meeting-notes", "web-research"} {
 		if err := os.MkdirAll(filepath.Join(dir, name), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -247,6 +247,9 @@ func TestParsePick(t *testing.T) {
 		{"", nil},
 		{"poetry", nil},
 		{"`writing`", []string{"writing"}},
+		{"web-research", []string{"web-research"}},
+		{"web-research, writing", []string{"web-research", "writing"}},
+		{"Web-Research.", []string{"web-research"}},
 	}
 	for _, tt := range tests {
 		if got := parsePick(tt.in, reg); !slices.Equal(got, tt.want) {

@@ -1,7 +1,7 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
-// and web_search and web_url_read in web.go.
+// and web_search and web_fetch in web.go, webguard.go and webdownload.go.
 
 package builtin
 
@@ -43,7 +43,7 @@ type Tools struct {
 	memory     *memory.Store  // where remember saves; nil leaves remember out
 	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
 	files      *index.Indexer // what the file tools read through; nil leaves them out
-	web        *webClients    // web_search and web_url_read, as [web] sets them
+	web        *webClients    // web_search and web_fetch, as [web] sets them
 	onChange   func(context.Context) error
 	onRemember func(context.Context) // runs after remember saves; nil for none
 
@@ -64,8 +64,9 @@ type Tools struct {
 // nothing. files is merud's indexer, which read_file, list_folder and grep
 // read through, so they see the [index] folders with the indexer's skip
 // rules; a nil files leaves the three out. web is the [web] section:
-// web_search comes when it names a SearXNG URL, and web_url_read when it
-// sets read_pages.
+// web_search comes when it names a SearXNG URL, and web_fetch when it
+// sets fetch. web_fetch saves downloads in outputDir's downloads folder,
+// and answers a prompt only after UseModel.
 func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		configPath: configPath,
@@ -109,14 +110,16 @@ func (t *Tools) Tools() []engine.ToolSpec {
 	if t.files != nil {
 		specs = append(specs, t.fileToolSpecs()...)
 	}
-	return append(specs, t.web.toolSpecs()...)
+	return append(specs, t.web.toolSpecs(t.saveDir())...)
 }
 
 // Confirm says configure always asks, with no session approval. Any other
 // built-in asks when [builtin] confirm lists it, and runs without asking
 // otherwise. The shipped list holds write_file alone, so remember saves
 // without asking, as ARCHITECTURE.md "Memory" says, write_file asks, and
-// the read-only file tools and the web tools run without asking.
+// the read-only file tools and web_search run without asking. web_fetch
+// also runs without asking, but only for a URL the session knows and only
+// without save; ConfirmCall, in webguard.go, decides the rest per call.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case name == Configure:
@@ -126,6 +129,15 @@ func (t *Tools) Confirm(name string) dispatch.Confirm {
 	default:
 		return dispatch.ConfirmNever
 	}
+}
+
+// saveDir returns the folder web_fetch saves downloads in, or "" when
+// there is no output folder and so no save.
+func (t *Tools) saveDir() string {
+	if t.outputDir == "" {
+		return ""
+	}
+	return filepath.Join(t.outputDir, downloadsFolder)
 }
 
 // Locate returns ("meru", name): a built-in belongs to no server, so rows
@@ -176,11 +188,12 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Confirm:     t.Confirm(WebSearch) != dispatch.ConfirmNever,
 		})
 	}
-	if t.web.readPages {
+	if t.web.fetch {
 		tools = append(tools, rpc.ToolInfo{
-			Name:        WebURLRead,
-			Description: "Fetches a public web page and reads its text.",
-			Confirm:     t.Confirm(WebURLRead) != dispatch.ConfirmNever,
+			Name: WebFetch,
+			Description: "Reads a public web page, or answers a question from it. " +
+				"Asks first for a URL no search or question of yours gave, and before any download.",
+			Confirm: t.Confirm(WebFetch) != dispatch.ConfirmNever,
 		})
 	}
 	return []rpc.ServerInfo{{
@@ -214,8 +227,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.grep(ctx, args)
 	case name == WebSearch && t.web.searxngURL != "":
 		text, err = t.webSearch(ctx, args)
-	case name == WebURLRead && t.web.readPages:
-		text, err = t.webURLRead(ctx, args)
+	case name == WebFetch && t.web.fetch:
+		text, err = t.webFetch(ctx, args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}

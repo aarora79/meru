@@ -209,10 +209,12 @@ half a minute of the first memory.
 
 ### Skills
 
-A skill is a Markdown file of instructions for one kind of task. Meru ships two:
-`writing`, plain-English rules for emails, summaries and reports, and
-`explainer`, which builds a one-page HTML explainer on a topic. On its first
-start, `merud` copies both to `~/.meru/skills/<name>/SKILL.md`.
+A skill is a Markdown file of instructions for one kind of task. Meru ships
+three: `writing`, plain-English rules for emails, summaries and reports;
+`explainer`, which builds a one-page HTML explainer on a topic; and
+`web-research`, which tells the model how to search and read pages for a
+question about current facts. When it starts, `merud` copies each one it
+doesn't find to `~/.meru/skills/<name>/SKILL.md`.
 
 Every prompt lists each skill's name and description. For each question, a short
 call to the fast model picks the skills it needs, at most two, and only their
@@ -226,7 +228,7 @@ meru skills reset writing     # put the shipped copy back
 ```
 
 `reset` replaces your edits, so on a terminal it asks first; in a script, add
-`--yes`. It works only on the two built-ins.
+`--yes`. It works only on the three built-ins.
 
 **Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
 change on the next question; no restart. `merud` never overwrites your copy, even
@@ -532,8 +534,8 @@ can use three read-only tools on the same folders:
 - `list_folder` lists a folder, 1 to 3 levels deep;
 - `grep` finds every line that holds a word or a pattern.
 
-They reach only your `[index] folders` and skip what the indexer skips, so they
-read nothing search couldn't. They run without asking; to approve each call, add
+They reach only your `[index] folders`, and the folder `web_fetch` downloads
+into, and skip what the indexer skips. They run without asking; to approve each call, add
 them to `[builtin] confirm`. `meru` shows each call as it runs:
 
 ```text
@@ -633,33 +635,74 @@ Wait, or turn off the offending engine in `settings.yml`.
 
 #### Reading web pages
 
-`web_search` returns titles, URLs and snippets. To let the model read a whole
-page, turn on `web_url_read`:
+`web_search` returns titles, URLs and snippets. A snippet is short and often
+months old, so Meru also offers `web_fetch`, which reads a whole public page. It
+is on by default. It fetches only when the model asks, and it does one of three
+things:
+
+- **Read a page.** With no prompt, the model gets the page's text, HTML, PDF or
+  plain text, up to 5 MB, 12,000 characters at a time, as `read_file` does for
+  your files.
+- **Answer from a page.** With a prompt, such as "what is the latest stable
+  release, and when did it come out?", the fast model reads up to 48,000
+  characters of the page and answers from the page alone. The model sees one
+  line such as `From https://go.dev/doc/devel/release (fetched 2026-09-24): ...`
+  instead of the whole page.
+- **Download a file.** With `save`, the file goes to
+  `~/meru-output/downloads/` (under `[skills] output_dir`), up to 50 MB and 2
+  minutes. Meru never overwrites: a second `report.pdf` becomes `report-2.pdf`.
+
+A fetch brings the page's text into the conversation and keeps nothing on disk.
+A download writes the file to your disk and keeps it there after the chat ends;
+the model sees only the path, the size, the type and the first 2,000 characters.
+`read_file` and `grep` can then read the file, as long as you index at least one
+folder, which turns those tools on. Search never indexes the downloads folder.
+
+The built-in `web-research` skill tells the model how to use the two tools:
+search first, read the one or two best pages with a prompt, prefer the project's
+own site, check dates against today, and cite each URL.
+
+**When it asks you.** A web address can carry your data out, as in
+`https://example.com/?notes=my+tax+return`. A page the model reads could ask it
+to build one. So `web_fetch` runs without asking only for an address that a
+search result or your own question showed earlier in the same chat. For any
+other address it asks, offering once or deny, every time. Every download asks
+too, even from a search result, because the file stays on your disk; there you
+may approve it for the rest of the chat. A scheduled job has nobody to ask, so it
+skips those calls.
+
+```text
+$ meru "search the web for the latest Go release and tell me its version, with sources"
+→ web_search {"query":"latest Go release version"}
+✓ web_search 2.2s
+→ web_fetch {"url":"https://go.dev/doc/devel/release","prompt":"List the newest releases with their dates."}
+✓ web_fetch 1.1s
+...
+```
+
+**What it costs you.** `merud` itself connects to web sites: the one case where
+it connects off this machine without a `remote = true` entry. Each site you read
+sees your IP address and a User-Agent that names Meru, and can log that you read
+the page. The tool keeps no cookies and uses no proxy. It refuses any address on
+this machine or your local network (127.0.0.1, 192.168.x.x, 10.x.x.x, cloud
+metadata at 169.254.169.254 and the like), checked after DNS as it connects, and
+it follows at most 5 redirects, each checked the same way. So a page can't steer
+it at your router or another service on your network.
+
+**To turn it off**, set `fetch = false` and restart `merud`:
 
 ```toml
 [web]
-read_pages = true
+fetch = false
 ```
 
-Restart `merud`. `web_url_read` fetches one page, HTML, PDF or plain text, up to
-5 MB, and hands the model its text 12,000 characters at a time, as `read_file`
-does for your files.
-
-It is off by default because it has a privacy cost. With it on, `merud` itself
-connects to web sites: the one case where it connects off this machine without a
-`remote = true` entry. Each site you read sees your IP address and a User-Agent
-that names Meru, and can log that you read the page. The tool keeps no cookies
-and uses no proxy. It refuses any address on this machine or your local network
-(127.0.0.1, 192.168.x.x, 10.x.x.x, cloud metadata at 169.254.169.254 and the
-like), checked after DNS as it connects, and it follows at most 5 redirects, each
-checked the same way. So a page can't steer it at your router or another service
-on your network.
-
-To approve each page before Meru reads it, add it to `[builtin] confirm`:
+A config from before this change that says `read_pages` stops `merud` with
+"read_pages was renamed fetch"; delete the line. To approve every fetch, even of
+a search result, add it to `[builtin] confirm`:
 
 ```toml
 [builtin]
-confirm = ["write_file", "web_url_read"]
+confirm = ["write_file", "web_fetch"]
 ```
 
 ### meru mcp add

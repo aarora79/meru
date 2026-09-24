@@ -174,7 +174,7 @@ back to blank-line blocks.
 HTML goes through `golang.org/x/net/html`'s tokenizer, which copes with broken
 markup. Scripts, styles, `<head>` and `<title>` drop out of the text, entities
 decode, and white space collapses except in `<pre>`. `readHTML` keeps the first
-`<title>` on the side, for `web_url_read`. The extracted text doesn't line up with lines in
+`<title>` on the side, for `web_fetch`. The extracted text doesn't line up with lines in
 the file, so HTML chunks carry no line numbers.
 
 PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
@@ -182,7 +182,7 @@ never cross a page. That library panics on some broken files, so `chunkPDF`
 recovers the panic and returns it as an error; the file counts as `Failed`. The
 page reading lives in `pdfPages`, which `chunkPDF` shares with `PDFText`, and
 the HTML reading in `readHTML`, which `chunkHTML` shares with `HTMLText`.
-`ReadText` calls the two exported readers, and so does the `web_url_read` tool
+`ReadText` calls the two exported readers, and so does the `web_fetch` tool
 in [builtin](builtin.md), so a page from the web reads the way a file on disk
 does. A PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
@@ -218,7 +218,7 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
 ```
 
 - **`Roots`** returns the `[index] folders` with symlinks resolved, leaving out
-  the ones that don't exist now.
+  the ones that don't exist now, then any folder `ReadAlso` added.
 - **`Check`** takes one absolute path and returns a `Checked`: the path under
   its folder, the folder, what `os.Lstat` says, and a `Reason…` constant, or
   `""` when the indexer reads it. It runs `skipPath`, which checks every folder
@@ -237,6 +237,15 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
   on its folder, so `..` or a link swapped in after the check can't lead out,
   and it checks the size and the NUL byte again. `reason` is set when the file
   turns out to be skipped; `err` when it can't be read or a PDF has no text.
+
+**`ReadAlso(dir)`** adds a folder the four methods reach but `Scan` and the
+watcher never see. `merud` adds `web_fetch`'s downloads folder this way, so the
+model can `read_file` and `grep` what it downloaded under the same rules: no
+symlinks, no hidden or secret files, the size cap. Nothing in the folder reaches
+the store or search, so a web page can't reach a later turn through search.
+`merud` calls it once at startup, before any tool call, because the methods read
+the list without a lock. `locate` loops over `slices.Concat(ix.folders,
+ix.readOnly)`, a new slice that holds both lists.
 
 `Check` and `Walk` clear the cached ignore rules for the folder first, so a
 `.meruignore` you edited a moment ago counts even with `[index] watch = false`.

@@ -218,7 +218,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if len(cfg.Index.Folders) == 0 {
 		files = nil
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, mems.syncNow, log)
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, eng, mems.syncNow, log)
 	if err != nil {
 		return err
 	}

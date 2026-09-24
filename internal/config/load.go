@@ -106,10 +106,12 @@ func defaults() Config {
 		// disk after the chat ends (ARCHITECTURE.md, "Approving a tool call").
 		Builtin: Builtin{Confirm: []string{"write_file"}},
 		Skills:  Skills{OutputDir: "~/meru-output"},
-		// web_search runs through a SearXNG the user starts on this port;
-		// web_url_read, which fetches pages off this machine, stays off
-		// until the user turns it on.
-		Web: Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
+		// web_search runs through a SearXNG the user starts on this port.
+		// web_fetch, which fetches public pages off this machine, is on:
+		// a small model needs the page itself to answer "what's the latest
+		// release?" right, and the URL guard in internal/builtin asks
+		// before any fetch the model could use to leak data.
+		Web: Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true, MaxResults: 8},
 	}
 }
 
@@ -140,6 +142,10 @@ func Load(path string) (Config, error) {
 				if renamedNetwork(k) {
 					return Config{}, fmt.Errorf("config %s: network was renamed remote: write remote = true in %s "+
 						"to let merud connect to a URL on another machine", path, k[0]+"."+k[1])
+				}
+				if k.String() == "web.read_pages" {
+					return Config{}, fmt.Errorf("config %s: web.read_pages was renamed fetch, and fetch is on by default: "+
+						"delete read_pages, or write fetch = false to turn page fetching off", path)
 				}
 				keys[i] = k.String()
 			}

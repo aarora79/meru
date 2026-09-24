@@ -1,5 +1,5 @@
 // This file tests the web tools. web_search runs against an httptest
-// server that plays SearXNG. web_url_read runs against httptest servers on
+// server that plays SearXNG. web_fetch runs against httptest servers on
 // 127.0.0.1, with the dial-time check swapped so that one port counts as
 // public; every other address goes through the real checkPublic. No test
 // leaves the machine.
@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -184,7 +185,7 @@ func TestWebSearchRefused(t *testing.T) {
 	}
 }
 
-// pageServer starts an httptest server for web_url_read with a set of
+// pageServer starts an httptest server for web_fetch with a set of
 // pages, and returns it with built-in tools whose dial check treats this
 // server's port as public. Every other address, including other httptest
 // servers on 127.0.0.1, goes through the real checkPublic.
@@ -193,7 +194,7 @@ func pageServer(t *testing.T, mux *http.ServeMux) (*httptest.Server, *Tools) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	public := netip.MustParseAddrPort(srv.Listener.Addr().String())
-	tools := webTools(t, config.Web{ReadPages: true})
+	tools := webTools(t, config.Web{Fetch: true})
 	tools.web.allowAddr = func(ap netip.AddrPort) error {
 		if ap == public {
 			return nil
@@ -203,7 +204,7 @@ func pageServer(t *testing.T, mux *http.ServeMux) (*httptest.Server, *Tools) {
 	return srv, tools
 }
 
-func TestWebURLRead(t *testing.T) {
+func TestWebFetch(t *testing.T) {
 	pdf, err := os.ReadFile(filepath.Join("testdata", "two-pages.pdf"))
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +292,7 @@ func TestWebURLRead(t *testing.T) {
 		{name: "plain text", args: `{"url":"` + srv.URL + `/notes.txt"}`, want: []string{"plain text.", "plain notes\nline two"}},
 		{
 			name: "first page of a long text", args: `{"url":"` + srv.URL + `/long.txt"}`,
-			want: []string{"Characters 0 to 12000 of 13000.", "[1000 more characters. To read on, call web_url_read with offset 12000.]"},
+			want: []string{"Characters 0 to 12000 of 13000.", "[1000 more characters. To read on, call web_fetch with offset 12000.]"},
 		},
 		{
 			name: "offset reads on", args: `{"url":"` + srv.URL + `/long.txt","offset":12000}`,
@@ -322,7 +323,7 @@ func TestWebURLRead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			text, isErr := call(t, tools, WebURLRead, tt.args)
+			text, isErr := call(t, tools, WebFetch, tt.args)
 			if isErr != tt.isErr {
 				t.Fatalf("IsError = %v, want %v:\n%s", isErr, tt.isErr, text)
 			}
@@ -340,11 +341,11 @@ func TestWebURLRead(t *testing.T) {
 	}
 }
 
-// TestWebURLReadNameToLoopback reads a server on 127.0.0.1 through the
+// TestWebFetchNameToLoopback reads a server on 127.0.0.1 through the
 // name localhost, with the real dial check in place. The name resolves to
 // 127.0.0.1, and the check runs on that resolved address, so the name
 // doesn't get the request through.
-func TestWebURLReadNameToLoopback(t *testing.T) {
+func TestWebFetchNameToLoopback(t *testing.T) {
 	// reached is set from the server's goroutine; atomic.Bool makes that
 	// safe to read here.
 	var reached atomic.Bool
@@ -354,9 +355,9 @@ func TestWebURLReadNameToLoopback(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
-	tools := webTools(t, config.Web{ReadPages: true})
+	tools := webTools(t, config.Web{Fetch: true})
 
-	text, isErr := call(t, tools, WebURLRead, `{"url":"http://localhost:`+port+`/"}`)
+	text, isErr := call(t, tools, WebFetch, `{"url":"http://localhost:`+port+`/"}`)
 	if !isErr || !strings.Contains(text, "is this machine") || reached.Load() {
 		t.Errorf("got IsError %v, reached %v, text %q; want a refusal before any request", isErr, reached.Load(), text)
 	}
@@ -410,7 +411,8 @@ func TestWebToolsOffered(t *testing.T) {
 		want []string
 	}{
 		{"search only", config.Web{SearXNGURL: "http://127.0.0.1:8888"}, []string{WebSearch}},
-		{"search and pages", config.Web{SearXNGURL: "http://127.0.0.1:8888", ReadPages: true}, []string{WebSearch, WebURLRead}},
+		{"search and fetch", config.Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true}, []string{WebSearch, WebFetch}},
+		{"fetch only", config.Web{Fetch: true}, []string{WebFetch}},
 		{"search off", config.Web{}, nil},
 	}
 	for _, tt := range tests {
@@ -418,12 +420,12 @@ func TestWebToolsOffered(t *testing.T) {
 			tools := webTools(t, tt.web)
 			var specs, listed []string
 			for _, s := range tools.Tools() {
-				if s.Name == WebSearch || s.Name == WebURLRead {
+				if s.Name == WebSearch || s.Name == WebFetch {
 					specs = append(specs, s.Name)
 				}
 			}
 			for _, ti := range tools.Status()[0].Tools {
-				if ti.Name == WebSearch || ti.Name == WebURLRead {
+				if ti.Name == WebSearch || ti.Name == WebFetch {
 					listed = append(listed, ti.Name)
 					if ti.Confirm {
 						t.Errorf("%s asks by default", ti.Name)
@@ -433,17 +435,17 @@ func TestWebToolsOffered(t *testing.T) {
 			if strings.Join(specs, ",") != strings.Join(tt.want, ",") || strings.Join(listed, ",") != strings.Join(tt.want, ",") {
 				t.Errorf("specs %v, listed %v; want %v", specs, listed, tt.want)
 			}
-			if len(tt.want) < 2 {
+			if !slices.Contains(tt.want, WebFetch) {
 				// A tool that is off isn't a built-in at all.
-				if _, err := tools.Call(context.Background(), WebURLRead, []byte(`{"url":"https://go.dev"}`)); err == nil {
-					t.Error("web_url_read ran while read_pages is off")
+				if _, err := tools.Call(context.Background(), WebFetch, []byte(`{"url":"https://go.dev"}`)); err == nil {
+					t.Error("web_fetch ran while fetch is off")
 				}
 			}
 		})
 	}
 
-	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888", ReadPages: true}, WebURLRead)
-	if tools.Confirm(WebSearch) != dispatch.ConfirmNever || tools.Confirm(WebURLRead) != dispatch.ConfirmAsk {
-		t.Errorf("Confirm = %v, %v; want web_search never, web_url_read ask", tools.Confirm(WebSearch), tools.Confirm(WebURLRead))
+	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true}, WebFetch)
+	if tools.Confirm(WebSearch) != dispatch.ConfirmNever || tools.Confirm(WebFetch) != dispatch.ConfirmAsk {
+		t.Errorf("Confirm = %v, %v; want web_search never, web_fetch ask", tools.Confirm(WebSearch), tools.Confirm(WebFetch))
 	}
 }

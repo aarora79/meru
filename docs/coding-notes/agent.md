@@ -364,9 +364,14 @@ anything that can't be part of a skill name, keeps the words that name a loaded
 skill, drops repeats and stops at two. "none", "None." or a made-up name all
 give no skills, so the model can't load something that isn't there. On the
 built-in skills, `TestIntegrationPickSkills` saw it pick `writing` for "write a
-short email to my landlord" and for a paragraph to tidy, nothing for a lookup,
-the weather or "hi there", and `explainer` with `writing` for an explainer page,
-each in about 35 to 65 ms.
+short email to my landlord" and for a paragraph to tidy, `web-research` for
+"search the web for the latest Go release" and for the weather, nothing for
+"what is the capital of France?" or "hi there", and `web-research` with
+`explainer` for an explainer page, each in about 35 to 65 ms. It asserts the
+landlord and Go release picks; the rest it logs, because a 2B model's second
+choice moves with every skill added. With `web-research` loaded, questions about
+the latest version also pull in `writing` as a second skill, which costs prompt
+space but no wrong answer.
 
 **The prompt sections.** `skillsSection` builds the text that `prompt` puts
 after the tools note and before the excerpts from your files:
@@ -761,9 +766,14 @@ for {
    command, any other dot an MCP server, and no dot a built-in tool.
 2. It starts every call at once in an `errgroup`, each with a
    `dispatch.Call` holding the ID, name, arguments (`{}` when the model sent
-   none), session ID, source, trace ID, `approve`, and `Append`. `Append`
-   writes to this session's transcript through `appendLine`, so dispatch's
-   tool lines get the same span and debug line as the agent's own.
+   none), session ID, source, trace ID, `approve`, `Append` and `Question`.
+   `Append` writes to this session's transcript through `appendLine`, so
+   dispatch's tool lines get the same span and debug line as the agent's own.
+   `Question` is `t.question`, which `Handle` fills once per turn with
+   `userWords`: the question, then the user's earlier questions from the
+   history, one per line. It holds only what the user typed, never the
+   excerpts, memories or tool results, because `web_fetch`'s guard trusts the
+   URLs in it (see [builtin](builtin.md)).
 3. Each goroutine writes its result into its own slot of a slice, so the
    results come out in call order with no lock, and emits its `tool_result`
    event (outcome and milliseconds) as soon as it ends. A quick call reports

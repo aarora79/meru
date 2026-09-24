@@ -153,6 +153,14 @@ func (s *skillService) handleShow(ctx context.Context, req rpc.Request, emit fun
 	return emit(rpc.Event{Type: rpc.EventSkills, Skills: []rpc.SkillInfo{info}})
 }
 
+// joinAnd joins names as English does: "a", "a and b", "a, b and c".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
 // handleReset answers OpSkillReset: it puts the shipped copy of the
 // built-in skill named req.ID back in the skills directory and loads the
 // registry again. The reply is "done" alone. It fails for a skill Meru
@@ -162,7 +170,7 @@ func (s *skillService) handleReset(ctx context.Context, req rpc.Request) error {
 	defer s.mu.Unlock()
 	err := skills.Reset(s.dir, req.ID)
 	if errors.Is(err, skills.ErrNotBuiltin) {
-		return fmt.Errorf("%q isn't a built-in skill; reset restores only %s", req.ID, strings.Join(skills.Builtins(), " and "))
+		return fmt.Errorf("%q isn't a built-in skill; reset restores only %s", req.ID, joinAnd(skills.Builtins()))
 	}
 	if err != nil {
 		return err

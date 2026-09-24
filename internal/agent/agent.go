@@ -254,6 +254,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
+	t.question = userWords(question, history)
 	// The user line carries start as its time, so a turns row rebuilt from
 	// the transcript gets the same time as the row written live.
 	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {

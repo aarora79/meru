@@ -203,7 +203,8 @@ func (d *Dispatcher) find(name string) Backend {
 //  1. finds the backend that offers the tool; with none, the call is
 //     "denied" and doesn't run;
 //  2. writes the tool_call line to the transcript;
-//  3. asks the user when the tool needs a yes (see approve);
+//  3. asks the user when the tool, or this one call, needs a yes (see
+//     confirmFor and approve);
 //  4. runs the call on the backend, which enforces its own timeout, with
 //     the call's session on ctx (see SessionFrom);
 //  5. cuts the result for the model and removes secrets from it;
@@ -319,7 +320,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 // the outcome, the user's choice ("" when nobody was asked) and how long
 // the tool ran.
 func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, tool string, args json.RawMessage) (res Result, outcome, approval string, ran time.Duration) {
-	approval, outcome = d.approve(ctx, c, b.Confirm(c.Name), kind, server, tool, args)
+	approval, outcome = d.approve(ctx, c, confirmFor(b, c), kind, server, tool, args)
 	switch outcome {
 	case "":
 		// Approved, or no approval needed: run it.
@@ -353,6 +354,18 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 	default:
 		return Result{IsError: true, Text: "The tool call failed: " + err.Error()}, OutcomeError, approval, ran
 	}
+}
+
+// confirmFor says whether call c to backend b asks first: what b's
+// ConfirmCall says, when b is a CallConfirmer with an answer for c, and
+// b.Confirm(c.Name) otherwise.
+func confirmFor(b Backend, c Call) Confirm {
+	if cc, ok := b.(CallConfirmer); ok {
+		if confirm, ok := cc.ConfirmCall(c); ok {
+			return confirm
+		}
+	}
+	return b.Confirm(c.Name)
 }
 
 // approve decides whether the call may run, asking the user when the tool

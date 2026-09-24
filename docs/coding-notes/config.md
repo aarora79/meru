@@ -79,7 +79,7 @@ entry, because `merud` starts no process whose environment it could set (see
 ```go
 type Web struct {
     SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
-    ReadPages  bool   `toml:"read_pages"`  // default false; true adds web_url_read
+    Fetch      bool   `toml:"fetch"`       // default true; false leaves web_fetch out
     MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
 }
 ```
@@ -90,6 +90,12 @@ empty URL, which is how you turn web search off. The default URL isn't empty, so
 a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
 explains what to do when nothing answers there. `MaxWebResults` is exported
 because `web_search` checks a call's own `max_results` against the same cap.
+
+`Fetch` defaults to true in `defaults()`. A file that leaves it out gets
+`web_fetch`, and `fetch = false` turns it off; the TOML parser writes over the
+default only when the key is there, so `false` sticks. `web_fetch` connects off
+this machine, which is why its own guard, and not config, decides when it asks
+(see [builtin](builtin.md)).
 
 ### load.go
 
@@ -136,6 +142,13 @@ A `toml.Key` is a slice of strings, one per level of the key's path, so
 When it matches, `Load` fails with "network was renamed remote: write remote =
 true in mcp.servers to let merud connect to a URL on another machine".
 `TestLoadErrors` covers the old key in both tables.
+
+`[web] read_pages`, the old name of `fetch`, gets the same treatment. `Load`
+compares the key's dotted form, `k.String() == "web.read_pages"`, and fails with
+"web.read_pages was renamed fetch, and fetch is on by default: delete
+read_pages, or write fetch = false to turn page fetching off". The meaning
+changed with the name: `read_pages = true` turned a tool on, while fetching is
+now on unless you say otherwise, so `Load` doesn't read the old value across.
 
 Next, `Load` sets `Dir` to the folder that holds the config file. Pointing
 `merud -config` at another folder moves the whole Meru home there, which is

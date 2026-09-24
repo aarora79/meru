@@ -92,6 +92,20 @@ type Auditor interface {
 	AuditArgs(name string, args json.RawMessage) json.RawMessage
 }
 
+// CallConfirmer is an extra method a Backend may have. Confirm decides per
+// tool; ConfirmCall decides per call, from the call's arguments, session
+// and question. Dispatch asks ConfirmCall first, and uses what it returns
+// when ok is true; with ok false, Confirm decides as usual.
+//
+// The built-in tools are the one CallConfirmer. web_fetch runs without
+// asking for a URL that a web_search result or the user's own question in
+// the same session showed, and asks for any other URL, because a URL the
+// model made up can carry the user's data to a stranger's server in its
+// path or query (ARCHITECTURE.md, "Web search").
+type CallConfirmer interface {
+	ConfirmCall(c Call) (confirm Confirm, ok bool)
+}
+
 // Connector is an extra method a Backend may have. ConnectMissing tries
 // once to reach each of the backend's servers that isn't connected, and
 // returns when every try has ended. The agent loop calls it, through
@@ -121,6 +135,12 @@ type Call struct {
 	Args json.RawMessage
 	// Session is the session's ID. Session approvals are kept per session.
 	Session string
+	// Question is what the user typed: this turn's question, then the
+	// user's earlier questions that the model sees in its history, one per
+	// line. The agent fills it. A CallConfirmer reads it to tell a URL the
+	// user gave from one the model made up. It never reaches the transcript
+	// or the tool_calls row, which already hold the question.
+	Question string
 	// Source is where the question came from. A "job" has nobody to ask,
 	// so every call that needs a yes is declined.
 	Source rpc.Source

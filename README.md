@@ -12,7 +12,9 @@ Two kinds of program can reach beyond your machine, and only once you add them t
 config: MCP (Model Context Protocol) servers, such as Gmail and Calendar or your
 Obsidian notes, and other agents over A2A (Agent2Agent). Meru allows none of their
 tools until you name them, and logs every call. Web search goes through SearXNG, a
-search engine you run on your machine, so only the search words leave it.
+search engine you run on your machine, so only the search words leave it. When the
+model needs what a page says, `merud` fetches that public page itself, and asks you
+first for any address that no search or question of yours gave.
 
 > **Status: pre-alpha, v0.3.** `merud` and `meru` answer questions with local models,
 > stream the answer, keep session transcripts and pick a route with the one-token
@@ -123,11 +125,11 @@ rules for changing the code.
 | --- | --- |
 | **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
 | **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
-| **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. Turn on `[web] read_pages` to let the model read whole pages. [docs/running.md](docs/running.md#web-search) shows the setup. |
+| **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. The built-in `web_fetch` tool reads a whole public page, answers a question from it with the fast model, or downloads a file; it asks you before it opens an address no search or question of yours gave. `[web] fetch = false` turns it off. [docs/running.md](docs/running.md#web-search) shows the setup. |
 | **MCP tools** | `meru setup` offers two servers: `google` for Gmail, Calendar and Drive, and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
-| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing` and `explainer`. |
+| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer` and `web-research`. |
 | **Scheduled jobs** | Meru runs briefs and other jobs on a schedule, so it can tell you things before you ask. |
 | **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces, and shows them in Grafana on your machine. |
 

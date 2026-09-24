@@ -144,8 +144,9 @@ func TestToolRefused(t *testing.T) {
 
 // TestWebSearchMissingSearXNG runs merud with [web] searxng_url pointing at
 // a port nothing listens on. merud starts anyway and logs why web search
-// isn't ready; `meru tools` lists web_search; and a turn in which the model
-// calls it completes, with the tool's error in front of the model.
+// isn't ready; `meru tools` lists web_search and web_fetch; and a turn in
+// which the model calls web_search completes, with the tool's error in
+// front of the model.
 func TestWebSearchMissingSearXNG(t *testing.T) {
 	t.Parallel()
 	// Take a free port and close it, so nothing answers there.
@@ -198,7 +199,8 @@ func TestWebSearchMissingSearXNG(t *testing.T) {
 	}
 
 	tools := runMeru(t, s.home, "tools")
-	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || strings.Contains(tools.stdout, "web_url_read") {
+	// [web] fetch is on by default, so meru tools lists both web tools.
+	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || !strings.Contains(tools.stdout, "web_fetch") {
 		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
 	}
 }

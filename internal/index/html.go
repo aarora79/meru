@@ -144,7 +144,7 @@ func readHTML(src string) *htmlText {
 }
 
 // HTMLText returns the title and the plain text of the HTML page src: the
-// same text the indexer chunks and read_file returns. The web_url_read
+// same text the indexer chunks and read_file returns. The web_fetch
 // tool in internal/builtin uses it for pages it fetches, so a web page and
 // an indexed file read the same way. title is "" when the page has no
 // <title>.

@@ -575,6 +575,57 @@ func TestAuditor(t *testing.T) {
 	}
 }
 
+// callConfirmBackend is a fakeBackend that is also a CallConfirmer: a
+// call whose arguments say "ask" asks every time, and any other call
+// leaves the choice to Confirm.
+type callConfirmBackend struct {
+	fakeBackend
+	seen []Call // the calls ConfirmCall got
+}
+
+// ConfirmCall returns ConfirmAlways for arguments holding "ask", and ok =
+// false otherwise.
+func (b *callConfirmBackend) ConfirmCall(c Call) (Confirm, bool) {
+	b.seen = append(b.seen, c)
+	if strings.Contains(string(c.Args), "ask") {
+		return ConfirmAlways, true
+	}
+	return ConfirmNever, false
+}
+
+// TestCallConfirmer checks that dispatch prefers a backend's per-call
+// answer, falls back to Confirm when there is none, passes the question
+// through, and declines a job's call that asks.
+func TestCallConfirmer(t *testing.T) {
+	b := &callConfirmBackend{fakeBackend: fakeBackend{kind: KindBuiltin, tools: []string{"fetch"},
+		confirm: map[string]Confirm{"fetch": ConfirmNever}}}
+	d := New([]Backend{b}, nil, Options{})
+	a := &approver{choice: rpc.ChoiceOnce}
+
+	c := newCall("fetch", &sink{}, a)
+	c.Args = json.RawMessage(`{"url":"known"}`)
+	c.Question = "what does https://go.dev say?"
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK || a.askCount() != 0 {
+		t.Errorf("known call: outcome %q after %d prompts; want ok with none", out.Outcome, a.askCount())
+	}
+	if b.seen[0].Question != c.Question {
+		t.Errorf("ConfirmCall got question %q, want %q", b.seen[0].Question, c.Question)
+	}
+
+	c.Args = json.RawMessage(`{"url":"ask"}`)
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK || a.askCount() != 1 {
+		t.Fatalf("asking call: outcome %q after %d prompts; want ok after one", out.Outcome, a.askCount())
+	}
+	if got := a.asked[0].Choices; len(got) != 2 || got[0] != rpc.ChoiceOnce || got[1] != rpc.ChoiceDeny {
+		t.Errorf("choices = %v, want once and deny", got)
+	}
+
+	c.Source = rpc.SourceJob
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeDeclined || a.askCount() != 1 {
+		t.Errorf("job call: outcome %q after %d prompts; want declined with no new prompt", out.Outcome, a.askCount())
+	}
+}
+
 func TestAsks(t *testing.T) {
 	b := &fakeBackend{kind: KindCommand, tools: []string{"cmd.a", "cmd.b"}, confirm: map[string]Confirm{"cmd.b": ConfirmAsk}}
 	d := New([]Backend{b}, nil, Options{})

@@ -224,8 +224,10 @@ watch = true
 # write without asking. remember saves a memory without asking; add
 # "remember" here to approve each call. read_file, list_folder and grep only
 # read the [index] folders and run without asking; list them here to approve
-# each call. So do web_search and web_url_read; list them to approve each
-# search or page.
+# each call. So does web_search; list it to approve each search. web_fetch
+# runs without asking only for a URL that a search result or your own
+# question gave, and asks for any other URL and before any download,
+# whatever this list says; list it to approve every fetch.
 confirm = ["write_file"]
 
 [web]
@@ -238,13 +240,18 @@ confirm = ["write_file"]
 searxng_url = "http://127.0.0.1:8888"
 # How many results web_search returns when the model doesn't say. 1 to 20.
 max_results = 8
-# true adds the web_url_read tool, which fetches a public web page and gives
-# the model its text. merud then connects to sites off this machine, the one
-# place it does so on its own; those sites see your IP address. It refuses
-# addresses on this machine and your local network.
-read_pages = false
+# The web_fetch tool fetches a public web page when the model asks, and
+# gives the model its text or the fast model's answer to a question about
+# it; it can also download a file to <output_dir>/downloads. merud then
+# connects to sites off this machine, the one place it does so on its own,
+# and those sites see your IP address. It refuses addresses on this machine
+# and your local network. It asks you first for a URL that neither a
+# web_search result nor your question gave, so the model can't send your
+# data out in a URL it made up. false leaves the tool out.
+fetch = true
 
 [skills]
-# The one folder the write_file tool may write in. merud creates it on the
+# The one folder the write_file tool may write in, and the parent of the
+# downloads folder where web_fetch saves files. merud creates it on the
 # first write.
 output_dir = "~/meru-output"

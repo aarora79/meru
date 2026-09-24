@@ -176,15 +176,21 @@ func repoSkill(t *testing.T, name string) []byte {
 	return data
 }
 
-// TestBuiltinsMatchRepo checks that each embedded skill is byte-for-byte the
-// copy in .claude/skills. AGENTS.md says the built-ins are copies, never
-// edited in place; this test catches drift in either direction.
+// fromAssets lists the built-in skills copied from the owner's
+// my-ai-assets repo, which .claude/skills also holds. web-research is
+// Meru's own and lives only under internal/skills/builtin.
+var fromAssets = []string{"explainer", "writing"}
+
+// TestBuiltinsMatchRepo checks the list of built-in skills, and that each
+// one copied from my-ai-assets is byte-for-byte the copy in .claude/skills.
+// AGENTS.md says those are copies, never edited in place; this test
+// catches drift in either direction.
 func TestBuiltinsMatchRepo(t *testing.T) {
 	names := Builtins()
-	if !slices.Equal(names, []string{"explainer", "writing"}) {
-		t.Fatalf("Builtins = %v, want [explainer writing]", names)
+	if !slices.Equal(names, []string{"explainer", "web-research", "writing"}) {
+		t.Fatalf("Builtins = %v, want [explainer web-research writing]", names)
 	}
-	for _, name := range names {
+	for _, name := range fromAssets {
 		t.Run(name, func(t *testing.T) {
 			shipped, err := builtinFS.ReadFile("builtin/" + name + "/" + fileName)
 			if err != nil {
@@ -197,15 +203,16 @@ func TestBuiltinsMatchRepo(t *testing.T) {
 	}
 }
 
-// TestInstallBuiltins checks the first-run install: both skills land and
-// load cleanly with private permissions, and a second run changes nothing.
+// TestInstallBuiltins checks the first-run install: all three skills land
+// and load cleanly with private permissions, and a second run changes
+// nothing.
 func TestInstallBuiltins(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "skills")
 	installed, err := InstallBuiltins(dir)
 	if err != nil {
 		t.Fatalf("InstallBuiltins: %v", err)
 	}
-	if !slices.Equal(installed, []string{"explainer", "writing"}) {
+	if !slices.Equal(installed, []string{"explainer", "web-research", "writing"}) {
 		t.Errorf("installed = %v", installed)
 	}
 
@@ -231,8 +238,8 @@ func TestInstallBuiltins(t *testing.T) {
 	if err != nil || len(again) != 0 {
 		t.Errorf("second InstallBuiltins = %v, %v; want nothing installed", again, err)
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
-		t.Errorf("skills dir holds %d entries, want 2 (no temp folders left)", len(entries))
+	if entries, _ := os.ReadDir(dir); len(entries) != 3 {
+		t.Errorf("skills dir holds %d entries, want 3 (no temp folders left)", len(entries))
 	}
 }
 
@@ -251,9 +258,11 @@ func TestInstallKeepsEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Only the skill with no folder yet goes in. This is also how a user
+	// who installed Meru before web-research shipped gets it.
 	installed, err := InstallBuiltins(dir)
-	if err != nil || len(installed) != 0 {
-		t.Fatalf("InstallBuiltins = %v, %v; want nothing installed", installed, err)
+	if err != nil || !slices.Equal(installed, []string{"web-research"}) {
+		t.Fatalf("InstallBuiltins = %v, %v; want [web-research] alone", installed, err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "writing", fileName)) // #nosec G304 -- a test temp dir
 	if err != nil || string(got) != edited {

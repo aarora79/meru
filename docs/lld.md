@@ -42,7 +42,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder` and `grep`, and the web tools `web_search` and `web_url_read` | `builtin.go`: `Confirm`, `Call`; then `files.go` and `web.go` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder` and `grep`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
@@ -335,6 +335,13 @@ type Backend interface {
 type Connector interface {
     ConnectMissing(ctx context.Context)
 }
+
+// A Backend may also be a CallConfirmer: it decides per call whether the
+// call asks, and dispatch asks it before Confirm. ok = false leaves the
+// choice to Confirm. builtin.Tools uses it for web_fetch's URL guard.
+type CallConfirmer interface {
+    ConfirmCall(c Call) (confirm Confirm, ok bool)
+}
 ```
 
 The agent sees tools only through `ToolRunner`. `merud` passes a
@@ -344,7 +351,9 @@ returns no error. A call that couldn't run still comes back with an outcome
 tells the model what happened.
 
 A `dispatch.Call` carries the call's ID, the tool's full name, the arguments, the
-session, the source, the trace ID, and two functions: `Append`, which writes a
+session, the user's words (`Question`: this turn's question and the earlier ones
+in the history, which `web_fetch`'s guard reads), the source, the trace ID, and
+two functions: `Append`, which writes a
 transcript line through the agent, and `Approve`, the rpc server's
 `ApproveFunc`. `dispatch` never touches the socket or the session file itself.
 
@@ -395,7 +404,7 @@ type Config struct {
     MCP           MCP           // Servers: the [[mcp.servers]] entries (v0.3)
     A2A           A2A           // Agents: the [[a2a.agents]] entries (v0.3)
     Builtin       Builtin       // Confirm: built-in tools that ask first (v0.3)
-    Web           Web           // SearXNGURL (loopback only), ReadPages, MaxResults (v0.3)
+    Web           Web           // SearXNGURL (loopback only), Fetch, MaxResults (v0.3)
     Dir           string        // Meru's home, usually ~/.meru
 }
 ```
@@ -510,9 +519,9 @@ sequenceDiagram
     A->>E: round 1: Stream(messages, toolSpecs(route))
     E-->>A: Delta{ToolCalls: obsidian.obsidian_simple_search}
     A-->>U: emit tool_call event
-    A->>D: Dispatch(Call{ID, Name, Args, Append, Approve})
+    A->>D: Dispatch(Call{ID, Name, Args, Question, Append, Approve})
     D->>T: Append(tool_call line)
-    opt the tool is on a confirm list
+    opt the tool is on a confirm list, or ConfirmCall says this call asks
         D-->>U: approval event (through Approve)
         U-->>D: Reply{Choice}
         D->>T: Append(approval line)

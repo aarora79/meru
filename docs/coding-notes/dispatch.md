@@ -116,8 +116,38 @@ loop calls this at the start of a turn that offers tools, before it lists them
 (see [mcp.md](mcp.md)). The built-ins, the commands and the A2A client have no
 servers to reach this way, so they don't need a stub method.
 
+**CallConfirmer.** `Confirm` answers per tool. `web_fetch` needs an answer per
+call: a URL a search showed may run, a URL the model made up must ask. So a
+backend may also have `ConfirmCall`:
+
+```go
+type CallConfirmer interface {
+    ConfirmCall(c Call) (confirm Confirm, ok bool)
+}
+```
+
+`confirmFor` asks it first, and falls back to `Confirm` when the backend isn't a
+`CallConfirmer` or says `ok = false`:
+
+```go
+func confirmFor(b Backend, c Call) Confirm {
+    if cc, ok := b.(CallConfirmer); ok {
+        if confirm, ok := cc.ConfirmCall(c); ok {
+            return confirm
+        }
+    }
+    return b.Confirm(c.Name)
+}
+```
+
+The built-ins are the one `CallConfirmer` (see [builtin](builtin.md)). Nothing
+else in `Dispatch` changed: the answer feeds the same `approve`, with the same
+job rule and the same lines.
+
 `Call` carries one tool call: its ID, the tool's full name, the arguments, the
-session, where the question came from, and two functions: `Append` writes a line to
+session, `Question` (the user's words, which the agent fills: this turn's question
+and the earlier ones in the history), where the question came from, and two
+functions: `Append` writes a line to
 the transcript, and `Approve` asks the user. A nil `Approve` means nobody can answer.
 
 **SessionFrom.** `Backend.Call` takes no session, but the `remember` tool needs one:
@@ -278,7 +308,9 @@ a series of calls through the approval rules. `TestRedaction` plants a secret in
 the arguments and the error text and checks it reaches no line, row or prompt.
 `TestSessionOnContext` checks that a backend reads the call's session with
 `SessionFrom`. `TestAuditor` checks that an Auditor's arguments reach the line,
-the prompt and the row, redacted. `TestMCPBackend` runs the backend against a real
+the prompt and the row, redacted. `TestCallConfirmer` checks that a per-call
+answer wins, that `Confirm` decides when there is none, that the question
+reaches the backend, and that a job's asking call is declined. `TestMCPBackend` runs the backend against a real
 MCP server on 127.0.0.1.
 
 ## Why it's built this way
@@ -292,9 +324,9 @@ MCP server on 127.0.0.1.
   wording and the same records.
 - **The session on the context, not in the interface.** One tool needs it, so
   one small function beats a new parameter on every backend's `Call`.
-- **Optional interfaces for the audit and the connect.** One backend needs each,
-  so a type assertion beats a new method on `Backend` that three backends would
-  stub out.
+- **Optional interfaces for the audit, the connect and the per-call confirm.**
+  One backend needs each, so a type assertion beats a new method on `Backend`
+  that three backends would stub out.
 - **Session approvals in memory.** Writing them to disk would make them outlive the
   session, which ARCHITECTURE.md rules out. Config stays the one place that grants
   lasting trust.

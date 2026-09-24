@@ -1,4 +1,4 @@
-// This file holds the built-in skills: the copies of writing and explainer
+// This file holds the built-in skills: writing, explainer and web-research,
 // compiled into the binary, InstallBuiltins to put them on disk on first run,
 // and Reset to restore one after you've edited it.
 
