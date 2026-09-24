@@ -32,6 +32,8 @@ type Config struct {
 	A2A A2A `toml:"a2a"`
 	// Builtin sets which built-in tools ask before they run (v0.3).
 	Builtin Builtin `toml:"builtin"`
+	// Skills configures the skill registry and the files skills write (v0.4).
+	Skills Skills `toml:"skills"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -65,6 +67,9 @@ type Agent struct {
 	// SystemPrompt is the persona and rules sent at the start of every turn.
 	// Empty means the built-in default.
 	SystemPrompt string `toml:"system_prompt"`
+	// SummaryIdle is how long a session must go without a question before
+	// merud writes its summary, as a Go duration. Default "30m".
+	SummaryIdle string `toml:"summary_idle"`
 }
 
 // Router tunes the route classifier. See docs/fast-router.md.
@@ -177,6 +182,13 @@ type A2AAgent struct {
 	Confirm []string `toml:"confirm"`
 	// Timeout caps one call, as a Go duration. Empty means 60s.
 	Timeout string `toml:"timeout"`
+}
+
+// Skills configures skills. See ARCHITECTURE.md, "Skills".
+type Skills struct {
+	// OutputDir is the one folder the write_file tool may write in. A
+	// leading "~" means the home directory. Default "~/meru-output".
+	OutputDir string `toml:"output_dir"`
 }
 
 // Builtin configures the tools built into merud. configure always asks,

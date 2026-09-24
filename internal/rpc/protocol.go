@@ -52,6 +52,15 @@ const (
 	// OpMemoryForget deletes the memory whose ID is Request.ID, such as
 	// "me/name-amit-arora.md". The reply is "done".
 	OpMemoryForget Op = "memory_forget"
+	// OpSkills lists the skills. The reply is one "skills" event and "done".
+	OpSkills Op = "skills"
+	// OpSkillShow asks for the SKILL.md of the skill named Request.ID. The
+	// reply is one "skills" event holding that skill, with its Body, and
+	// "done".
+	OpSkillShow Op = "skill_show"
+	// OpSkillReset puts the shipped copy of the built-in skill named
+	// Request.ID back in place of the user's. The reply is "done".
+	OpSkillReset Op = "skill_reset"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -121,6 +130,8 @@ const (
 	EventUsage EventType = "usage"
 	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories.
 	EventMemories EventType = "memories"
+	// EventSkills answers OpSkills and OpSkillShow, in Skills.
+	EventSkills EventType = "skills"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -167,6 +178,8 @@ type Event struct {
 	Usage []UsageWindow `json:"usage,omitempty"`
 	// Memories is set on a "memories" event.
 	Memories []MemoryInfo `json:"memories,omitempty"`
+	// Skills is set on a "skills" event.
+	Skills []SkillInfo `json:"skills,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -408,4 +421,16 @@ type MemoryInfo struct {
 	// "meru setup user" or "session 2026-09-24T144512-cdc3".
 	Created string `json:"created,omitempty"`
 	Source  string `json:"source,omitempty"`
+}
+
+// SkillInfo is one skill, as the skill ops show it.
+type SkillInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Builtin is true for a skill that ships inside merud; Edited is true
+	// when the user's copy differs from the shipped one.
+	Builtin bool `json:"builtin,omitempty"`
+	Edited  bool `json:"edited,omitempty"`
+	// Body is the SKILL.md text, on OpSkillShow only.
+	Body string `json:"body,omitempty"`
 }

@@ -75,6 +75,7 @@ func defaults() Config {
 		Agent: Agent{
 			MaxRounds:    8,
 			HistoryTurns: 10,
+			SummaryIdle:  "30m",
 		},
 		Router: Router{
 			TopLogProbs:   20,
@@ -98,6 +99,7 @@ func defaults() Config {
 			Watch:         true,
 		},
 		Builtin: Builtin{Confirm: []string{}},
+		Skills:  Skills{OutputDir: "~/meru-output"},
 	}
 }
 
@@ -180,6 +182,12 @@ func validate(cfg Config) error {
 
 	if cfg.Agent.MaxRounds < 1 {
 		add("agent.max_rounds is %d; it must be 1 or more", cfg.Agent.MaxRounds)
+	}
+	if d, err := time.ParseDuration(cfg.Agent.SummaryIdle); err != nil || d <= 0 {
+		add("agent.summary_idle %q must be a positive duration such as \"30m\"", cfg.Agent.SummaryIdle)
+	}
+	if cfg.Skills.OutputDir == "" {
+		add("skills.output_dir is empty; set a folder such as \"~/meru-output\"")
 	}
 	if cfg.Agent.HistoryTurns < 0 {
 		add("agent.history_turns is %d; it must be 0 or more", cfg.Agent.HistoryTurns)

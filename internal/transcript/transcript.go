@@ -27,6 +27,9 @@ const (
 	TypeToolCall   = "tool_call"
 	TypeApproval   = "approval"
 	TypeToolResult = "tool_result"
+	// TypeSummary holds, in Text, a one- or two-sentence summary of the
+	// session, which merud appends once the session has gone quiet (v0.4).
+	TypeSummary = "summary"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type

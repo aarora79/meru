@@ -40,6 +40,9 @@ history_turns = 10
 # The persona and rules sent at the start of every turn. Empty means the
 # built-in default.
 system_prompt = ""
+# How long a session must go without a question before merud writes its
+# one- or two-sentence summary, which search can later find.
+summary_idle  = "30m"
 
 [router]
 # The one-token route classifier. See docs/fast-router.md.
@@ -149,5 +152,10 @@ watch = true
 [builtin]
 # Built-in tools that ask before each call. configure, which edits this
 # file, always asks and offers no approval for the session, whatever this
-# list says. Add "remember" or "write_file" here when they arrive (v0.4).
+# list says. remember saves a memory without asking; add "remember" or
+# "write_file" here to approve each call.
 confirm = []
+
+[skills]
+# The one folder the write_file tool may write in.
+output_dir = "~/meru-output"
