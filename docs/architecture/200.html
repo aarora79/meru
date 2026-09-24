@@ -897,6 +897,8 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 
 <p>The trace ID ties the two views together: a slow step in Grafana leads to the exact messages and tool calls in the log, and back.</p>
 
+<p>Without the dashboard, <code>merud</code>'s own log file answers the same question. By default it writes one line per turn with its route, total time and time to first token. Started with <code>merud -v</code>, it writes a line for each step as well, each with the turn's trace ID and none with your text.</p>
+
 <!-- ============================================================ -->
 <h2 id="privacy">The privacy rules</h2>
 

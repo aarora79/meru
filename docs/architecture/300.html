@@ -1377,7 +1377,7 @@ output   = "notification"          # or "digest", or a file path</code></pre>
 <p>Meru collects this data about itself, and none of it leaves your machine. It goes only to an endpoint you run on this machine:</p>
 
 <ul>
-  <li>The <b>OTLP</b> (OpenTelemetry Protocol) exporter stays <b>off until you set <code>observability.otlp_endpoint</code>.</b> Without an endpoint, <code>merud</code> uses no-op providers, and instrumentation costs almost nothing.</li>
+  <li>The <b>OTLP</b> (OpenTelemetry Protocol) exporter stays <b>off until you set <code>observability.otlp_endpoint</code>.</b> Without an endpoint, metrics go to a no-op provider and spans record nothing. Each span still gets a trace ID, so the log and the transcript can name the turn. Instrumentation then costs almost nothing.</li>
   <li><code>merud</code> <b>refuses to start if the endpoint isn't a loopback address.</b> No setting sends metrics or traces anywhere else.</li>
   <li><b>Spans carry no prompt or response text</b> unless you set <code>capture_content = true</code>. They always carry token counts, durations, model names and tool names, which reveal nothing about what you asked.</li>
 </ul>
@@ -1390,60 +1390,80 @@ capture_content  = false                     # prompt/response text in spans</co
 
 <h3>Traces</h3>
 
-<p>Each turn produces one trace, whether it came from the CLI or a scheduled job.</p>
+<p>Each turn produces one trace. A question over the socket starts at <code>rpc.request</code>; a scheduled job (v0.5) starts at <code>meru.turn</code>. In v0.1 a turn looks like this:</p>
 
 <figure id="fig-trace">
 <div class="figbox">
-<svg viewBox="0 0 960 350" role="img" aria-labelledby="f6t f6d">
-  <title id="f6t">Trace tree for one turn</title>
-  <desc id="f6d">The root span meru.turn carries route, iterations and outcome. Its children are meru.route, the one-token route pick, carrying decision, confidence and outcome; meru.retrieve, covering vector and fts search and fusion from v0.2 and memories from v0.4; gen_ai.chat main, one span per model call in the loop; mcp.tool_call obsidian.search; and a final gen_ai.chat main for the answer. The same trace ID is written to the messages and tool_calls rows.</desc>
+<svg viewBox="0 0 960 574" role="img" aria-labelledby="f6t f6d">
+  <title id="f6t">Trace tree for one v0.1 turn</title>
+  <desc id="f6d">The root span rpc.request carries op, source and question length. Under it, meru.turn carries route, source, session, iterations and outcome. The children of meru.turn, in order: meru.session, new or opened, with history turns and messages; meru.transcript.append for the user line; meru.route with decision, confidence, outcome and meru.route.p per route, whose child gen_ai.chat fast asks for one token with log probabilities and has a POST /api/chat child with the HTTP status; meru.prompt with messages, characters and estimated tokens; gen_ai.chat main, the streamed answer with a first_token event, whose POST /api/chat child carries the HTTP status and thinking chunks; and meru.transcript.append for the assistant line. The same trace ID goes to the transcript, the messages and tool_calls rows, and every log line of the turn. Later milestones add meru.retrieve, more gen_ai.chat calls in the tool loop, and mcp.tool_call.</desc>
   <defs>
     <marker id="f6a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
-  <rect x="16" y="16" width="300" height="54" rx="8" class="ba"/>
-  <text x="32" y="39" class="t1 mono" font-size="14" font-weight="600">meru.turn</text>
-  <text x="32" y="59" class="t3" font-size="11.5">route · iterations · outcome</text>
+  <rect x="16" y="16" width="324" height="50" rx="8" class="ba"/>
+  <text x="30" y="37" class="t1 mono" font-size="14" font-weight="600">rpc.request</text>
+  <text x="30" y="56" class="t3" font-size="11.5">op · source · question length</text>
 
-  <rect x="700" y="16" width="244" height="54" rx="8" class="b"/>
-  <text x="716" y="39" class="t1 mono" font-size="12.5">messages · tool_calls</text>
-  <text x="716" y="59" class="t3" font-size="11.5">rows in meru.db</text>
-  <path d="M316 43 L698 43" class="lna" marker-end="url(#f6a)"/>
-  <text x="507" y="35" class="t2" font-size="12" text-anchor="middle">same trace ID written to</text>
+  <rect x="640" y="16" width="304" height="50" rx="8" class="b"/>
+  <text x="656" y="37" class="t1 mono" font-size="12.5">transcript · messages · tool_calls</text>
+  <text x="656" y="56" class="t3" font-size="11.5">and every log line of the turn</text>
+  <path d="M340 41 L638 41" class="lna" marker-end="url(#f6a)"/>
+  <text x="489" y="33" class="t2" font-size="12" text-anchor="middle">same trace ID written to</text>
 
-  <path d="M40 70 L40 296" class="ln"/>
+  <rect x="44" y="86" width="296" height="50" rx="8" class="ba"/>
+  <text x="58" y="107" class="t1 mono" font-size="14" font-weight="600">meru.turn</text>
+  <text x="58" y="126" class="t3" font-size="11.5">route · source · session · iterations · outcome</text>
+
+  <path d="M30 66 L30 111 L44 111" class="ln"/>
+  <path d="M58 136 L58 487" class="ln"/>
+  <path d="M58 167 L72 167" class="ln"/>
+  <path d="M58 207 L72 207" class="ln"/>
+  <path d="M58 247 L72 247" class="ln"/>
+  <path d="M58 367 L72 367" class="ln"/>
+  <path d="M58 407 L72 407" class="ln"/>
+  <path d="M58 487 L72 487" class="ln"/>
+  <path d="M86 262 L86 287 L100 287" class="ln"/>
+  <path d="M114 302 L114 327 L128 327" class="ln"/>
+  <path d="M86 422 L86 447 L100 447" class="ln"/>
   <g font-size="12">
-    <path d="M40 104 L64 104" class="ln"/>
-    <rect x="64" y="86" width="300" height="36" rx="6" class="b"/>
-    <text x="78" y="109" class="t1 mono" font-size="12.5">meru.route</text>
-    <text x="384" y="109" class="t2">one-token route pick: decision, confidence, outcome</text>
-
-    <path d="M40 152 L64 152" class="ln"/>
-    <rect x="64" y="134" width="300" height="36" rx="6" class="b"/>
-    <text x="78" y="157" class="t1 mono" font-size="12.5">meru.retrieve</text>
-    <text x="384" y="157" class="t2">vector, fts, fusion (v0.2); memories (v0.4)</text>
-
-    <path d="M40 200 L64 200" class="ln"/>
-    <rect x="64" y="182" width="300" height="36" rx="6" class="b"/>
-    <text x="78" y="205" class="t1 mono" font-size="12.5">gen_ai.chat  main</text>
-    <text x="384" y="205" class="t2">one span per model call in the loop</text>
-
-    <path d="M40 248 L64 248" class="ln"/>
-    <rect x="64" y="230" width="300" height="36" rx="6" class="ba2"/>
-    <text x="78" y="253" class="t1 mono" font-size="12.5">mcp.tool_call  obsidian.search</text>
-    <text x="384" y="253" class="t2">adds meru.tool.server, meru.tool.allowed</text>
-
-    <path d="M40 296 L64 296" class="ln"/>
-    <rect x="64" y="278" width="300" height="36" rx="6" class="b"/>
-    <text x="78" y="301" class="t1 mono" font-size="12.5">gen_ai.chat  main</text>
-    <text x="384" y="301" class="t2">final answer</text>
+    <rect x="72" y="152" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="172" class="t1 mono" font-size="12.5">meru.session</text>
+    <text x="372" y="172" class="t2">new or opened; history turns and messages</text>
+    <rect x="72" y="192" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="212" class="t1 mono" font-size="12.5">meru.transcript.append</text>
+    <text x="372" y="212" class="t2">the user line</text>
+    <rect x="72" y="232" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="252" class="t1 mono" font-size="12.5">meru.route</text>
+    <text x="372" y="252" class="t2">decision, confidence, outcome, meru.route.p.&lt;route&gt;</text>
+    <rect x="100" y="272" width="240" height="30" rx="6" class="b"/>
+    <text x="114" y="292" class="t1 mono" font-size="12.5">gen_ai.chat  fast</text>
+    <text x="372" y="292" class="t2">one token with log probabilities</text>
+    <rect x="128" y="312" width="212" height="30" rx="6" class="b"/>
+    <text x="142" y="332" class="t1 mono" font-size="12.5">POST /api/chat</text>
+    <text x="372" y="332" class="t2">HTTP status</text>
+    <rect x="72" y="352" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="372" class="t1 mono" font-size="12.5">meru.prompt</text>
+    <text x="372" y="372" class="t2">messages, characters, estimated tokens</text>
+    <rect x="72" y="392" width="268" height="30" rx="6" class="ba2"/>
+    <text x="86" y="412" class="t1 mono" font-size="12.5">gen_ai.chat  main</text>
+    <text x="372" y="412" class="t2">the streamed answer; first_token event</text>
+    <rect x="100" y="432" width="240" height="30" rx="6" class="b"/>
+    <text x="114" y="452" class="t1 mono" font-size="12.5">POST /api/chat</text>
+    <text x="372" y="452" class="t2">HTTP status, thinking chunks</text>
+    <rect x="72" y="472" width="268" height="30" rx="6" class="b"/>
+    <text x="86" y="492" class="t1 mono" font-size="12.5">meru.transcript.append</text>
+    <text x="372" y="492" class="t2">the assistant line</text>
   </g>
-  <text x="16" y="340" class="t3" font-size="11.5">Model spans follow the OTel GenAI conventions; tool spans follow the MCP conventions. No prompt text unless capture_content = true.</text>
+  <text x="16" y="532" class="t3" font-size="11.5">Later milestones add meru.retrieve (v0.2, v0.4), a gen_ai.chat per model call in the tool loop, and mcp.tool_call per tool (v0.3).</text>
+  <text x="16" y="554" class="t3" font-size="11.5">Model spans follow the OTel GenAI conventions; HTTP spans the OTel HTTP conventions. No prompt text unless capture_content = true.</text>
 </svg>
 </div>
-<figcaption><b>Figure 7.</b> One turn with one tool call. The trace ID on the root span also sits on the rows the turn wrote, so a slow bar in Grafana leads to the exact <code>tool_calls</code> row, and a row leads back to its timing.</figcaption>
+<figcaption><b>Figure 7.</b> One v0.1 turn. The router's one-token call and the streamed answer each get a <code>gen_ai.chat</code> span with its HTTP request under it. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in Grafana leads to the exact lines, and a line leads back to its timing.</figcaption>
 </figure>
 
-<p>Model spans follow the OTel GenAI semantic conventions (<code>gen_ai.operation.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>). Tool spans follow the MCP semantic conventions and add <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. <code>merud</code> writes each trace ID to <code>messages</code> and <code>tool_calls</code>.</p>
+<p>Later milestones add spans under <code>meru.turn</code>: <code>meru.retrieve</code> (vector, fts, fusion in v0.2; memories in v0.4), one <code>gen_ai.chat</code> per model call in the tool loop, and <code>mcp.tool_call</code> for each tool (v0.3).</p>
+
+<p>Model spans follow the OTel GenAI semantic conventions (<code>gen_ai.operation.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.request.max_tokens</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code>, <code>gen_ai.response.finish_reasons</code>) and add <code>meru.tier</code> plus Ollama's own timings: <code>meru.ollama.load_ms</code>, <code>meru.ollama.prompt_eval_ms</code> and <code>meru.ollama.eval_ms</code>. The HTTP spans follow the OTel HTTP conventions. A failed span records the error and sets its status to Error; a cancelled one gets a <code>cancelled</code> event instead. Tool spans follow the MCP semantic conventions and add <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. <code>merud</code> writes each trace ID to the session transcript, <code>messages</code> and <code>tool_calls</code>, and to every log line of the turn.</p>
 
 <h3>Metrics</h3>
 
@@ -1486,7 +1506,16 @@ capture_content  = false                     # prompt/response text in spans</co
 
 <p>To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), point <code>otlp_endpoint</code> at the Collector. <code>merud</code> needs no change.</p>
 
-<p><code>merud</code> writes application logs to a local file with <code>log/slog</code> and doesn't export them.</p>
+<h3>Logs</h3>
+
+<p><code>merud</code> writes <code>key=value</code> lines with <code>log/slog</code> to <code>merud.log</code> in its home folder, and doesn't export them. <code>[log] level</code> picks how much it writes; <code>merud -v</code> forces <code>debug</code>.</p>
+
+<ul>
+  <li><b><code>info</code></b> (the default): startup settings, each model warm-up, shutdown, and one <code>turn</code> line per turn with its route, outcome, total time, time to first token and token counts.</li>
+  <li><b><code>debug</code></b>: adds a line for each stage of a turn: the request, the session, the history, each transcript write, the route with its whole distribution, the prompt's size, each Ollama call (status, time to headers, first token, Ollama's own timings, tokens per second) and the reply.</li>
+</ul>
+
+<p>Every line of a turn carries its <code>trace_id</code>, the same ID the trace and the transcript lines hold. No level writes question or answer text. With <code>capture_content = true</code>, the debug lines add the first 200 characters of each.</p>
 
 <!-- ============================================================ -->
 <h2 id="privacy">The privacy boundary</h2>
