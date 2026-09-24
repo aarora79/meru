@@ -15,14 +15,14 @@ import (
 )
 
 // A profile question and the label its answer is saved under. Each answer
-// becomes one memory written as "Label: answer", such as "Name: Amit
+// becomes one memory written as "Label: answer", such as "Name: Dana
 // Arora". The label says what the fact is, and the prompt section these go
 // into ("What you know about the user") says whose it is, so every line
 // reads as a fact about the user in the third person. A full sentence such
-// as "The user's name is Amit Arora" says the same thing in more words, and
+// as "The user's name is Dana Reyes" says the same thing in more words, and
 // many answers ("staff engineer at Acme") don't fit into one without
 // rewording. merud names each file after its text, so the label also gives
-// tidy IDs such as me/name-amit-arora.md.
+// tidy IDs such as me/name-dana-reyes.md.
 type profileQuestion struct {
 	prompt string
 	label  string
@@ -109,9 +109,11 @@ func askProfile(ctx context.Context, socket string, c *console) ([]rpc.MemoryInf
 	// Free lines go in as the user typed them: Meru can't turn "I have
 	// two kids" into the third person without a model, and the prompt
 	// already says that "I" means the user.
-	fmt.Fprintln(c.out, "Anything else Meru should always know about you? One fact per line; an empty line ends.")
+	// Each line's prompt says how to stop, because a line such as "that's
+	// all for now" would otherwise be saved as a fact about the user.
+	fmt.Fprintln(c.out, "Anything else Meru should always know about you? One fact per line.")
 	for {
-		a, err := c.ask(">")
+		a, err := c.ask("  fact (Enter on an empty line when done):")
 		if err != nil {
 			return saved, err
 		}

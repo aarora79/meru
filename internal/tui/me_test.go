@@ -53,7 +53,7 @@ func TestSlashMeOpensBox(t *testing.T) {
 		t.Fatalf("me box = %+v, want the %d profile memories", b, len(profileFixture))
 	}
 	view := m.View()
-	for _, want := range []string{"About you", "Name: Amit Arora", "Answers: short", "remember that", "meru setup user", "esc/q close"} {
+	for _, want := range []string{"About you", "Name: Dana Reyes", "Answers: short", "remember that", "meru setup user", "esc/q close"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view lacks %q:\n%s", want, view)
 		}

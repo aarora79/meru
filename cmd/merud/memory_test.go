@@ -44,9 +44,9 @@ func TestMemoryOps(t *testing.T) {
 		t.Errorf("status before any memory = %d memories, %d profile; want 0, 0", st.Memories, st.Profile)
 	}
 
-	added, last := memories(t, d.sock, rpc.Request{Op: rpc.OpMemoryAdd, Kind: "me", Text: "Name is Amit Arora"})
+	added, last := memories(t, d.sock, rpc.Request{Op: rpc.OpMemoryAdd, Kind: "me", Text: "Name is Dana Reyes"})
 	today := time.Now().Format("2006-01-02")
-	if last.Type != rpc.EventDone || len(added) != 1 || added[0].ID != "me/name-is-amit-arora.md" ||
+	if last.Type != rpc.EventDone || len(added) != 1 || added[0].ID != "me/name-is-dana-reyes.md" ||
 		added[0].Kind != "me" || added[0].Source != "meru" || added[0].Created != today {
 		t.Fatalf("add = %+v, closing %+v", added, last)
 	}
@@ -54,12 +54,12 @@ func TestMemoryOps(t *testing.T) {
 		t.Fatalf("second add closed with %+v", last)
 	}
 	// The file is on disk, where the user can read and edit it.
-	if _, err := os.Stat(filepath.Join(dir, "memory", "me", "name-is-amit-arora.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "memory", "me", "name-is-dana-reyes.md")); err != nil {
 		t.Errorf("memory file: %v", err)
 	}
 
 	list, _ := memories(t, d.sock, rpc.Request{Op: rpc.OpMemoryList})
-	if len(list) != 2 || list[0].ID != "me/name-is-amit-arora.md" || list[1].Kind != "projects" {
+	if len(list) != 2 || list[0].ID != "me/name-is-dana-reyes.md" || list[1].Kind != "projects" {
 		t.Errorf("list = %+v, want the two memories by ID", list)
 	}
 	if st := status(t, d.sock); st.Memories != 2 || st.Profile != 1 {
@@ -71,7 +71,7 @@ func TestMemoryOps(t *testing.T) {
 	// synced it into the store at once.
 	call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "who am I?"})
 	system := eng.lastSystem()
-	if !strings.Contains(system, "What you know about the user:\n- Name is Amit Arora\n\n") ||
+	if !strings.Contains(system, "What you know about the user:\n- Name is Dana Reyes\n\n") ||
 		!strings.Contains(system, "Things you remember that may matter here:\n- (projects) Building Meru") {
 		t.Errorf("system prompt = %q, want the profile, then the project as a recalled memory", system)
 	}
@@ -96,7 +96,7 @@ func TestMemoryOps(t *testing.T) {
 		})
 	}
 
-	evs := call(t, d.sock, rpc.Request{Op: rpc.OpMemoryForget, ID: "me/name-is-amit-arora.md"})
+	evs := call(t, d.sock, rpc.Request{Op: rpc.OpMemoryForget, ID: "me/name-is-dana-reyes.md"})
 	if last := evs[len(evs)-1]; last.Type != rpc.EventDone {
 		t.Fatalf("forget = %+v, want done", last)
 	}

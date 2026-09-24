@@ -112,7 +112,7 @@ func (s memoryService) handleForget(ctx context.Context, req rpc.Request) error 
 	case errors.Is(err, memory.ErrNotFound):
 		return fmt.Errorf("no memory %q; meru memory list shows each memory's ID", req.ID)
 	case errors.Is(err, memory.ErrBadID):
-		return fmt.Errorf("%q isn't a memory ID; IDs look like me/name-amit-arora.md", req.ID)
+		return fmt.Errorf("%q isn't a memory ID; IDs look like me/name-dana-reyes.md", req.ID)
 	case err != nil:
 		return fmt.Errorf("forget %s: %w", req.ID, err)
 	}

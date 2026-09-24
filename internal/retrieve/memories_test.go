@@ -20,7 +20,7 @@ import (
 // memoryStore opens a store with four memories, stored in this order (so
 // with row IDs 1 to 4), their vectors on the three axes:
 //
-//	1  me/name.md          "Name is Amit"               day 23  axis 0  (a profile kind)
+//	1  me/name.md          "Name is Dana"               day 23  axis 0  (a profile kind)
 //	2  people/sam.md       "Sam is the user's manager"  day 10  axis 0
 //	3  projects/garden.md  "Plans a vegetable garden"   day 20  axis 1
 //	4  other/tea.md        "Drinks green tea"           day 22  axis 2
@@ -37,7 +37,7 @@ func memoryStore(t *testing.T) *store.Store {
 		day      int
 		vec      engine.Vector
 	}{
-		{"me/name.md", "Name is Amit", 23, engine.Vector{1, 0, 0}},
+		{"me/name.md", "Name is Dana", 23, engine.Vector{1, 0, 0}},
 		{"people/sam.md", "Sam is the user's manager", 10, engine.Vector{1, 0, 0}},
 		{"projects/garden.md", "Plans a vegetable garden", 20, engine.Vector{0, 1, 0}},
 		{"other/tea.md", "Drinks green tea", 22, engine.Vector{0, 0, 1}},

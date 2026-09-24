@@ -92,7 +92,7 @@ func (m *Model) applyMe(msg meMsg) {
 //	│ About you                                                            │
 //	│                                                                      │
 //	│ me                                                                   │
-//	│ Name: Amit Arora                                                     │
+//	│ Name: Dana Reyes                                                     │
 //	│ …                                                                    │
 //	│                                                                      │
 //	│ Say "remember that …" in a message, or run meru setup user in        │

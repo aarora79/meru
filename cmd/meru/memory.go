@@ -73,7 +73,7 @@ func forgetCmd(ctx context.Context, socket, id string, stdout io.Writer) error {
 // and the date and source dim at the end:
 //
 //	me
-//	  me/name-amit-arora.md  Name: Amit Arora  2026-09-24 · meru setup user
+//	  me/name-dana-reyes.md  Name: Dana Reyes  2026-09-24 · meru setup user
 //
 // The profile kinds come first, since every prompt carries them, then the
 // rest in alphabetical order. kinds holds the kind the user asked for, if

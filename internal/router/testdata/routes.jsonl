@@ -87,7 +87,7 @@
 {"q": "how much is a tesla model 3 these days", "route": "tools", "why": "live data: current price"}
 {"q": "schedule a 30 min call with priya next week", "route": "tools", "why": "an action on the calendar"}
 {"q": "what's the weather going to be like there?", "route": "tools", "why": "follow-up; place known from history, weather is live", "history": [{"q": "what did I write about the Lisbon trip?", "a": "Your notes say: flights on 12 Oct, hotel in Alfama, a day trip to Sintra, and dinner at a fado bar."}]}
-{"q": "looks good, send it", "route": "tools", "why": "follow-up; the draft is in history, sending is an action", "history": [{"q": "draft a note to my landlord about the leak", "a": "Hi Mark, the kitchen sink has been leaking since Monday. Could someone take a look this week? Thanks, Amit"}]}
+{"q": "looks good, send it", "route": "tools", "why": "follow-up; the draft is in history, sending is an action", "history": [{"q": "draft a note to my landlord about the leak", "a": "Hi Mark, the kitchen sink has been leaking since Monday. Could someone take a look this week? Thanks, Dana"}]}
 {"q": "how many unread emails do I have", "route": "tools", "why": "live data: email inbox"}
 {"q": "email sam the summary of my offsite notes", "route": "search+tools", "why": "read the user's notes, then send email"}
 {"q": "compare my notes on the vendor contract with the vendor's stock price today", "route": "search+tools", "why": "the user's notes plus a live price"}

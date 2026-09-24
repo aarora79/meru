@@ -73,12 +73,12 @@ func (f *fakeMemories) texts() []string {
 var someMemories = []rpc.MemoryInfo{
 	{ID: "project/garden.md", Kind: "project", Text: "The garden budget is\n4,200 dollars.", Created: "2026-09-20"},
 	{ID: "preferences/answers-short.md", Kind: "preferences", Text: "Answers: short", Created: "2026-09-24", Source: "meru setup user"},
-	{ID: "me/name-amit-arora.md", Kind: "me", Text: "Name: Amit Arora", Created: "2026-09-24", Source: "meru setup user"},
+	{ID: "me/name-dana-reyes.md", Kind: "me", Text: "Name: Dana Reyes", Created: "2026-09-24", Source: "meru setup user"},
 }
 
 func TestMemoryCommand(t *testing.T) {
 	all := `me
-  me/name-amit-arora.md         Name: Amit Arora  2026-09-24 · meru setup user
+  me/name-dana-reyes.md         Name: Dana Reyes  2026-09-24 · meru setup user
 
 preferences
   preferences/answers-short.md  Answers: short  2026-09-24 · meru setup user
@@ -97,13 +97,13 @@ project
 	}{
 		{name: "list", start: someMemories, args: []string{"list"}, wantOut: all},
 		{name: "list one kind", start: someMemories, args: []string{"list", "me"},
-			wantOut: "me\n  me/name-amit-arora.md  Name: Amit Arora  2026-09-24 · meru setup user\n"},
+			wantOut: "me\n  me/name-dana-reyes.md  Name: Dana Reyes  2026-09-24 · meru setup user\n"},
 		{name: "list a kind with none", start: someMemories, args: []string{"list", "work"}, wantOut: "No memories of kind \"work\".\n"},
 		{name: "list none", args: []string{"list"}, wantOut: "Meru has no memories yet. Run `meru setup user` to tell it about you.\n"},
 		{name: "add", args: []string{"add", "me", "I", "have", "two", "kids"},
 			wantOut: "Saved me/m1.md\n", wantTexts: []string{"me I have two kids"}},
-		{name: "forget", start: someMemories, args: []string{"forget", "me/name-amit-arora.md"},
-			wantOut:   "Forgot me/name-amit-arora.md: Name: Amit Arora\n",
+		{name: "forget", start: someMemories, args: []string{"forget", "me/name-dana-reyes.md"},
+			wantOut:   "Forgot me/name-dana-reyes.md: Name: Dana Reyes\n",
 			wantTexts: []string{"project The garden budget is\n4,200 dollars.", "preferences Answers: short"}},
 		{name: "forget an unknown ID", start: someMemories, args: []string{"forget", "me/nobody.md"},
 			wantCode: 1, wantErr: `no memory has the ID "me/nobody.md"`},
@@ -162,15 +162,15 @@ func TestSetupUser(t *testing.T) {
 	}{
 		{
 			name: "first time, every answer",
-			input: "Amit Arora\nstaff engineer at Acme\nBoston\n" +
+			input: "Dana Reyes\nstaff engineer at Acme\nBoston\n" +
 				"I have two kids\nSam is my brother\n\n" +
 				"short, with bullet points\n",
 			wantTexts: []string{
-				"me Name: Amit Arora", "me Work: staff engineer at Acme", "me Lives in: Boston",
+				"me Name: Dana Reyes", "me Work: staff engineer at Acme", "me Lives in: Boston",
 				"me I have two kids", "me Sam is my brother",
 				"preferences Answers: short, with bullet points",
 			},
-			wantOut: []string{"Saved:", "me/m1.md  Name: Amit Arora", "preferences/m6.md  Answers: short", "meru memory list", "remember that"},
+			wantOut: []string{"Saved:", "me/m1.md  Name: Dana Reyes", "preferences/m6.md  Answers: short", "meru memory list", "remember that"},
 		},
 		{
 			name:      "skip everything",
@@ -181,15 +181,15 @@ func TestSetupUser(t *testing.T) {
 		{
 			name:      "keep what Meru knows",
 			start:     known,
-			input:     "\nAmit\n\n\n\n\n",
-			wantTexts: []string{"me Name: Sam", "project Garden budget", "me Name: Amit"},
+			input:     "\nDana\n\n\n\n\n",
+			wantTexts: []string{"me Name: Sam", "project Garden budget", "me Name: Dana"},
 			wantOut:   []string{"already knows", "Name: Sam"},
 		},
 		{
 			name:      "replace what Meru knows",
 			start:     known,
-			input:     "n\nAmit\n\n\n\n\n",
-			wantTexts: []string{"project Garden budget", "me Name: Amit"},
+			input:     "n\nDana\n\n\n\n\n",
+			wantTexts: []string{"project Garden budget", "me Name: Dana"},
 			wantOut:   []string{"Forgot all of it"},
 		},
 	}
@@ -231,11 +231,11 @@ func TestSetupOffersProfile(t *testing.T) {
 	sock := startServer(t, f.handle)
 	writeConfig(t, sock)
 	// No download, skip the servers, yes to the profile, a name, skip the rest.
-	c, out, _ := scripted("n\n" + strings.Repeat("k\n", 6) + "\nAmit\n\n\n\n\n")
+	c, out, _ := scripted("n\n" + strings.Repeat("k\n", 6) + "\nDana\n\n\n\n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
-	if got := f.texts(); !slices.Equal(got, []string{"me Name: Amit"}) {
+	if got := f.texts(); !slices.Equal(got, []string{"me Name: Dana"}) {
 		t.Errorf("memories = %q, want the name", got)
 	}
 	about := strings.Index(out.String(), "5. About you")

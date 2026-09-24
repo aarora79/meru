@@ -522,7 +522,8 @@ order.
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
-   user, your profile, the note on your folders, the tools note, and the list of
+   user, today's date (a model knows only its training data, so without it a trip
+   that ended last week reads as one still to come), your profile, the note on your folders, the tools note, and the list of
    skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that

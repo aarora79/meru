@@ -176,7 +176,7 @@ var noProfileIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 1
 
 // profileFixture is the profile part of merud's answer to OpMemoryList.
 var profileFixture = []rpc.MemoryInfo{
-	{ID: "me/name-amit-arora.md", Kind: "me", Text: "Name: Amit Arora"},
+	{ID: "me/name-dana-reyes.md", Kind: "me", Text: "Name: Dana Reyes"},
 	{ID: "preferences/answers-short.md", Kind: "preferences", Text: "Answers: short, with bullet points"},
 	{ID: "me/work.md", Kind: "me", Text: "Work: staff engineer on the registry team at Acme, in the platform group"},
 }

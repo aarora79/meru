@@ -123,7 +123,7 @@ func TestReplaceMemoryRejects(t *testing.T) {
 func TestMemorySearches(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
-	putMemory(t, s, "me/name.md", "me", "Name is Amit, manager of the registry team", 25, 0, unit(0))
+	putMemory(t, s, "me/name.md", "me", "Name is Dana, manager of the registry team", 25, 0, unit(0))
 	putMemory(t, s, "people/sam.md", "people", "Sam is the user's manager", 10, 0, engine.Vector{0.9, 0.1, 0})
 	putMemory(t, s, "projects/garden.md", "projects", "Plans a vegetable garden", 20, 0, unit(1))
 	putMemory(t, s, "other/tea.md", "other", "Drinks green tea", 20, 9, unit(2))

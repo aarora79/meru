@@ -6,6 +6,7 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aarora79/meru/internal/engine"
 )
@@ -54,7 +55,7 @@ func TestPromptOrder(t *testing.T) {
 		tools:       true,
 	})
 	system := msgs[0].Content
-	order := []string{whoIsWho, a.filesNote, toolsNote, "SKILL-LIST", "MEMORIES", "SKILL-BODIES", "FILES"}
+	order := []string{whoIsWho, "Today is ", a.filesNote, toolsNote, "SKILL-LIST", "MEMORIES", "SKILL-BODIES", "FILES"}
 	last := -1
 	for _, part := range order {
 		i := strings.Index(system, part)
@@ -65,5 +66,12 @@ func TestPromptOrder(t *testing.T) {
 			t.Errorf("%q comes too early; want the order %q", part, order)
 		}
 		last = i
+	}
+}
+
+func TestToday(t *testing.T) {
+	now := time.Date(2026, 9, 24, 15, 4, 0, 0, time.Local)
+	if got, want := today(now), "Today is Thursday, 24 September 2026."; got != want {
+		t.Errorf("today = %q, want %q", got, want)
 	}
 }

@@ -50,7 +50,7 @@ const (
 	// the new memory, and "done".
 	OpMemoryAdd Op = "memory_add"
 	// OpMemoryForget deletes the memory whose ID is Request.ID, such as
-	// "me/name-amit-arora.md". The reply is "done".
+	// "me/name-dana-reyes.md". The reply is "done".
 	OpMemoryForget Op = "memory_forget"
 	// OpSkills lists the skills. The reply is one "skills" event and "done".
 	// The event's Text holds the reasons merud skipped any skill folders,
@@ -416,7 +416,7 @@ func ProfileKinds() []string { return []string{"me", "preferences"} }
 // MemoryInfo is one memory file, as the memory ops show it.
 type MemoryInfo struct {
 	// ID is the file's path inside ~/.meru/memory, such as
-	// "me/name-amit-arora.md"; OpMemoryForget takes it.
+	// "me/name-dana-reyes.md"; OpMemoryForget takes it.
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
 	Text string `json:"text"`

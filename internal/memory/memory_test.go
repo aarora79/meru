@@ -404,7 +404,7 @@ func TestListSkipsBadFiles(t *testing.T) {
 func TestListKind(t *testing.T) {
 	s := openTest(t)
 	for _, m := range []struct{ kind, text string }{
-		{"me", "Name is Amit."}, {"me", "Lives in Washington."}, {"projects", "Builds Meru."},
+		{"me", "Name is Dana."}, {"me", "Lives in Washington."}, {"projects", "Builds Meru."},
 	} {
 		if _, err := s.Add(m.kind, m.text, ""); err != nil {
 			t.Fatal(err)
@@ -420,7 +420,7 @@ func TestListKind(t *testing.T) {
 		wantIDs []string
 		wantErr string // "" for none
 	}{
-		{"me", []string{"me/lives-in-washington.md", "me/name-is-amit.md"}, ""},
+		{"me", []string{"me/lives-in-washington.md", "me/name-is-dana.md"}, ""},
 		{"projects", []string{"projects/builds-meru.md"}, ""},
 		{"preferences", nil, "big.md"},
 		{"travel", nil, ""}, // no folder, no memories

@@ -204,7 +204,7 @@ note in `a.filesNote`. On each turn, `prompt` puts the profile between them:
 <whoIsWho>
 
 What you know about the user:
-- Name is Amit Arora
+- Name is Dana Reyes
 - Works on the AI registry team at Example Corp
 - Likes short answers
 
@@ -215,8 +215,8 @@ The profile follows `whoIsWho`, so the rule that "I" means the user and the
 facts about who the user is sit side by side. Without them, the 2B model read a
 visa letter and guessed that you were the co-applicant it named.
 
-The whole system prompt, in order: the configured prompt, `whoIsWho`, the
-profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
+The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
+date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
 skills; then the recalled memories, the picked skills' instructions, and last
 the files section, which holds the numbered excerpts and then the earlier
 conversations. `prompt` takes the changing parts in one `sections` struct and
@@ -296,7 +296,7 @@ which is what a context budget needs.
 ### The remember rule
 
 A third rule gives tools to a turn that asks Meru to remember something. The
-router can send "remember that my name is Amit" to `direct`, which offers no
+router can send "remember that my name is Dana" to `direct`, which offers no
 tools, and the model then says it will remember and saves nothing. So when the
 question holds `remember` as a whole word, the route has no tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.

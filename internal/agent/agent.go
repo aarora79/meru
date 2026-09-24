@@ -280,7 +280,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
-	// And for memory: the router can send "remember that my name is Amit"
+	// And for memory: the router can send "remember that my name is Dana"
 	// to direct, and a direct turn offers no remember tool, so the model
 	// would say it will remember and save nothing. When the question holds
 	// "remember" as a whole word and the route has no tools, add them. A
@@ -773,6 +773,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 			system += "\n\n" + part
 		}
 	}
+	add(today(time.Now()))
 	profile := a.profileSection(ctx)
 	add(profile)
 	add(a.filesNote)

@@ -165,7 +165,7 @@ It asks one short question at a time, and Enter skips any of them:
 
 ```text
 Answer a few questions about you. Press Enter to skip one.
-Your name: Amit Arora
+Your name: Dana Reyes
 What you do, your role and where you work: staff engineer at Acme
 Where you live (a city is enough): Boston
 Anything else Meru should always know about you? One fact per line; an empty line ends.
@@ -174,7 +174,7 @@ Anything else Meru should always know about you? One fact per line; an empty lin
 How you like answers, for example "short, with bullet points": short, with bullet points
 
 Saved:
-  me/name-amit-arora.md  Name: Amit Arora
+  me/name-dana-reyes.md  Name: Dana Reyes
   ...
 ```
 

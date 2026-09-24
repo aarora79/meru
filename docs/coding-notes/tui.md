@@ -95,7 +95,7 @@ knows about you, the memories that go into every prompt:
   │ About you                                                                  │
   │                                                                            │
   │ me                                                                         │
-  │ Name: Amit Arora                                                           │
+  │ Name: Dana Reyes                                                           │
   │ Work: staff engineer on the registry team at Acme, in the platform group   │
   │                                                                            │
   │ preferences                                                                │

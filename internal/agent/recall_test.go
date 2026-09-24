@@ -130,7 +130,7 @@ func TestFormatMemoriesCap(t *testing.T) {
 // leaves it out without failing the turn.
 func TestMemorySectionInPrompt(t *testing.T) {
 	section := "Things you remember that may matter here:\n- (people) Sam is the user's manager"
-	profile := []memory.Memory{mem("me", "Name is Amit Arora", 1, 0)}
+	profile := []memory.Memory{mem("me", "Name is Dana Reyes", 1, 0)}
 	sam := []retrieve.Memory{recalled("people", "Sam is the user's manager")}
 	tests := []struct {
 		name  string
@@ -159,7 +159,7 @@ func TestMemorySectionInPrompt(t *testing.T) {
 				t.Errorf("recall queries = %q, want the question once", got)
 			}
 			system := eng.lastCall().msgs[0].Content
-			prof := strings.Index(system, "- Name is Amit Arora")
+			prof := strings.Index(system, "- Name is Dana Reyes")
 			mems := strings.Index(system, section)
 			files := strings.Index(system, filesNote(nil))
 			if !tt.want {
@@ -276,7 +276,7 @@ func TestRecallAcrossSessions(t *testing.T) {
 			t.Errorf("Sync: %v", err)
 		}
 	}
-	if _, err := mem.Add("me", "Name is Amit Arora", "meru"); err != nil {
+	if _, err := mem.Add("me", "Name is Dana Reyes", "meru"); err != nil {
 		t.Fatal(err)
 	}
 	// Six things Meru already knows, none about a boss: more than the five
@@ -362,7 +362,7 @@ func TestRecallAcrossSessions(t *testing.T) {
 	if len(lines) != 5 || !slices.Contains(lines, "- (people) Sam Lee is the user's manager") {
 		t.Errorf("recalled lines = %q\nwant 5, Sam's among them", lines)
 	}
-	if strings.Contains(section, "Amit Arora") || !strings.Contains(system, "What you know about the user:\n- Name is Amit Arora") {
+	if strings.Contains(section, "Dana Reyes") || !strings.Contains(system, "What you know about the user:\n- Name is Dana Reyes") {
 		t.Errorf("the profile belongs in its own section:\n%s", system)
 	}
 }

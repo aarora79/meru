@@ -5,6 +5,7 @@
 package agent
 
 import (
+	"time"
 	"unicode/utf8"
 
 	"github.com/aarora79/meru/internal/engine"
@@ -38,7 +39,8 @@ const (
 )
 
 // The order of the system prompt's sections. The parts that stay the same
-// from turn to turn come first: the system prompt, whoIsWho, the profile,
+// from turn to turn come first: the system prompt, whoIsWho, today's date,
+// the profile,
 // the files note, the tools note and the list of skills. Then come the
 // parts each question changes: recalled memories, the picked skills'
 // instructions, and the file excerpts with earlier conversations.
@@ -47,6 +49,16 @@ const (
 // tokens when the next prompt starts the same way, and it stops reusing at
 // the first token that differs. With the changing parts last, a follow-up
 // in the same session reprocesses only them, the history and the question.
+
+// today tells the model the date, in merud's local time zone, such as
+// "Today is Thursday, 24 September 2026." A model knows only its training
+// data, so without this it read "a trip from 15 to 20 September 2026" in a
+// visa letter on the 24th and said no visit was on record. The date changes
+// once a day, so it can sit among the parts that stay the same from turn to
+// turn; the time of day would change every minute and cost the reuse.
+func today(now time.Time) string {
+	return "Today is " + now.Format("Monday, 2 January 2006") + "."
+}
 
 // sections is what a turn adds to the system prompt, beyond the parts
 // every turn gets.

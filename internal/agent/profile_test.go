@@ -59,11 +59,11 @@ func TestFormatProfile(t *testing.T) {
 				mem("me", "Lives in Washington DC", 3, 0),
 				mem("preferences", "Prefers metric units", 1, 0),
 				mem("me", "Works on the registry team", 2, 5),
-				mem("me", "Name is Amit Arora", 2, 1),
+				mem("me", "Name is Dana Reyes", 2, 1),
 			},
 			limit: 2000,
 			want: "What you know about the user:\n" +
-				"- Name is Amit Arora\n" +
+				"- Name is Dana Reyes\n" +
 				"- Works on the registry team\n" +
 				"- Lives in Washington DC\n" +
 				"- Prefers metric units\n" +
@@ -71,9 +71,9 @@ func TestFormatProfile(t *testing.T) {
 		},
 		{
 			name:  "line breaks become spaces",
-			mems:  []memory.Memory{mem("me", "Name is\nAmit   Arora\n", 1, 0)},
+			mems:  []memory.Memory{mem("me", "Name is\nDana   Reyes\n", 1, 0)},
 			limit: 2000,
-			want:  "What you know about the user:\n- Name is Amit Arora",
+			want:  "What you know about the user:\n- Name is Dana Reyes",
 		},
 		{
 			// The header is 29 characters and each line below adds 1 + 8,
@@ -116,7 +116,7 @@ func TestFormatProfile(t *testing.T) {
 // and that an empty or unreadable profile leaves the header out without
 // failing the turn.
 func TestProfileInPrompt(t *testing.T) {
-	name := mem("me", "Name is Amit Arora", 1, 0)
+	name := mem("me", "Name is Dana Reyes", 1, 0)
 	tests := []struct {
 		name    string
 		profile Profile
@@ -124,9 +124,9 @@ func TestProfileInPrompt(t *testing.T) {
 	}{
 		{"no profile", nil, ""},
 		{"empty profile", fakeProfile{}, ""},
-		{"a profile", fakeProfile{mems: []memory.Memory{name}}, "What you know about the user:\n- Name is Amit Arora"},
+		{"a profile", fakeProfile{mems: []memory.Memory{name}}, "What you know about the user:\n- Name is Dana Reyes"},
 		{"unreadable folder", fakeProfile{err: errors.New("permission denied")}, ""},
-		{"one bad file", fakeProfile{mems: []memory.Memory{name}, err: errors.New("me/x.md: too big")}, "- Name is Amit Arora"},
+		{"one bad file", fakeProfile{mems: []memory.Memory{name}, err: errors.New("me/x.md: too big")}, "- Name is Dana Reyes"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestProfileInPrompt(t *testing.T) {
 			}
 			system := eng.lastCall().msgs[0].Content
 			if tt.want == "" {
-				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + filesNote(nil)
+				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil)
 				if system != want {
 					t.Errorf("system prompt = %q\nwant %q", system, want)
 				}
@@ -167,11 +167,11 @@ func TestRememberGetsTools(t *testing.T) {
 		tools     *fakeTools
 		wantRoute string
 	}{
-		{"direct gets tools", "direct", "Remember that my name is Amit", both, "tools"},
+		{"direct gets tools", "direct", "Remember that my name is Dana", both, "tools"},
 		{"search keeps its search", "search", "please remember I work on the registry", both, "search+tools"},
 		{"tools stays tools", "tools", "remember this", both, "tools"},
 		{"only the whole word", "direct", "I remembered the milk", both, "direct"},
-		{"no remember tool", "direct", "remember that my name is Amit", noRemember, "direct"},
+		{"no remember tool", "direct", "remember that my name is Dana", noRemember, "direct"},
 		{"no mention", "direct", "what is the capital of France", both, "direct"},
 	}
 	for _, tt := range tests {

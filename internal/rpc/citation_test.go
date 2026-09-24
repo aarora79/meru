@@ -56,12 +56,12 @@ func TestCited(t *testing.T) {
 }
 
 func TestFileURL(t *testing.T) {
-	home := filepath.FromSlash("/Users/amit")
+	home := filepath.FromSlash("/Users/sam")
 	tests := []struct {
 		path, home, want string
 	}{
-		{filepath.FromSlash("~/notes/garden.md"), home, "file:///Users/amit/notes/garden.md"},
-		{filepath.FromSlash("~/Desktop/My Notes/a b.md"), home, "file:///Users/amit/Desktop/My%20Notes/a%20b.md"},
+		{filepath.FromSlash("~/notes/garden.md"), home, "file:///Users/sam/notes/garden.md"},
+		{filepath.FromSlash("~/Desktop/My Notes/a b.md"), home, "file:///Users/sam/Desktop/My%20Notes/a%20b.md"},
 		{filepath.FromSlash("/srv/shared/plan.md"), home, "file:///srv/shared/plan.md"},
 		{filepath.FromSlash("~/notes/garden.md"), "", ""},
 	}

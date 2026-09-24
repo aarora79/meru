@@ -52,10 +52,13 @@ const (
 
 // instructions is the system prompt of the summary call. The summary is
 // what later recall searches, so it asks for the names, numbers and
-// decisions a later question would name.
+// decisions a later question would name. It fixes how the summary names the
+// person: left free, the 2B model wrote "you" in one summary and guessed
+// "her" and a misspelt name in another.
 const instructions = "You summarize a conversation between a user and Meru, their assistant. " +
 	"Write one or two sentences in the past tense that say what the user wanted " +
 	"and what was decided, found or done. Keep names, numbers and dates. " +
+	"Call the person \"the user\" every time, never \"you\", \"he\" or \"she\". " +
 	"Write plain text with no preamble, list or heading."
 
 // Summarizer writes and embeds session summaries. Build it with New and run

@@ -502,10 +502,10 @@ empty line), and how you like answers. Each answer becomes one memory through
 `OpMemoryAdd`, of kind `me`, or `preferences` for the last one, and saves as soon
 as you type it.
 
-Answers save as `Label: answer`, such as `Name: Amit Arora` or
+Answers save as `Label: answer`, such as `Name: Dana Reyes` or
 `Lives in: Boston`. The label says what the fact is, and the prompt section they
 land in says whose it is, so each reads as a fact about you in the third person.
-A full sentence such as "The user's name is Amit Arora" says the same in more
+A full sentence such as "The user's name is Dana Reyes" says the same in more
 words, and an answer like "staff engineer at Acme" doesn't fit one without
 rewording. The free lines save as you typed them: the client has no model to
 turn "I have two kids" around, and the system prompt already tells the model
@@ -521,7 +521,7 @@ shows them and that you can also tell Meru things in chat.
 ```text
 $ meru memory list
 me
-  me/name-amit-arora.md         Name: Amit Arora  2026-09-24 · meru setup user
+  me/name-dana-reyes.md         Name: Dana Reyes  2026-09-24 · meru setup user
 
 preferences
   preferences/answers-short.md  Answers: short  2026-09-24 · meru setup user
