@@ -85,6 +85,11 @@ func TestViewGolden(t *testing.T) {
 		height int
 		// approval, when set, opens the approval box after the events.
 		approval *rpc.Approval
+		// index and usage, when set, arrive as status and usage replies
+		// before anything else; usageBox then types /usage.
+		index    *rpc.IndexStatus
+		usage    []rpc.UsageWindow
+		usageBox bool
 	}{
 		{name: "approval", width: 80, q: "Email Sam the garden budget", approval: mail,
 			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
@@ -104,6 +109,13 @@ func TestViewGolden(t *testing.T) {
 		{name: "stopped", width: 80, q: "Tell me a long story", evs: []rpc.Event{session, direct, tok("Once upon a time")}},
 		{name: "sources", width: 80, q: "What is the Q3 budget for the garden project?", evs: []rpc.Event{session, search, sources, tok("The Q3 budget for the garden project is 4,200 dollars [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
+		// The header at three widths: everything; the usage dropped; then
+		// the vectors and size dropped too.
+		{name: "header-wide", width: 120, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "header", width: 80, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "header-narrow", width: 60, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "usage", width: 80, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
+		{name: "usage-narrow", width: 40, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,6 +124,12 @@ func TestViewGolden(t *testing.T) {
 				height = 30
 			}
 			m := screen(t, tt.width, height, tt.q, tt.evs, tt.done, tt.err)
+			if tt.index != nil || tt.usage != nil {
+				m, _ = update(t, m, pingMsg{index: tt.index}, usageMsg{windows: tt.usage, answered: true})
+			}
+			if tt.usageBox {
+				m, _ = update(t, m, typeText("/usage"), press(tea.KeyEnter), usageMsg{windows: tt.usage, answered: true})
+			}
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))
 			}
@@ -134,6 +152,19 @@ func TestViewGolden(t *testing.T) {
 			golden(t, tt.name, view)
 		})
 	}
+}
+
+// bigIndex is an index status with numbers of a realistic size.
+var bigIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 11698, DBBytes: 88_080_384}
+
+// usageFixture is a usage reply with every window, in merud's order.
+var usageFixture = []rpc.UsageWindow{
+	{Name: rpc.Usage1h, Sessions: 1, Turns: 4, TokensIn: 18_000, TokensOut: 2_100, ActiveMillis: 134_000, Docs: 3, ToolCalls: 1},
+	{Name: rpc.UsageToday, Sessions: 2, Turns: 9, TokensIn: 41_200, TokensOut: 5_300, ActiveMillis: 301_000, Docs: 7, ToolCalls: 2},
+	{Name: rpc.UsageWeek, Sessions: 5, Turns: 31, TokensIn: 150_000, TokensOut: 19_400, ActiveMillis: 1_210_000, Docs: 22, ToolCalls: 6},
+	{Name: rpc.UsageMonth, Sessions: 12, Turns: 88, TokensIn: 420_000, TokensOut: 61_000, ActiveMillis: 3_700_000, Docs: 51, ToolCalls: 14},
+	{Name: rpc.Usage30d, Sessions: 14, Turns: 97, TokensIn: 468_000, TokensOut: 66_500, ActiveMillis: 4_020_000, Docs: 55, ToolCalls: 15},
+	{Name: rpc.UsageLifetime, Sessions: 30, Turns: 212, TokensIn: 1_400_000, TokensOut: 180_000, ActiveMillis: 11_100_000, Docs: 140, ToolCalls: 40},
 }
 
 // golden compares got with testdata/<name>.golden, or writes the file when
@@ -224,8 +255,8 @@ func TestHeaderDocCount(t *testing.T) {
 func TestHeaderIndexing(t *testing.T) {
 	m := testModel(nil, newFakeSender())
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
-	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Scanning: true}})
-	if h := m.header(); !strings.Contains(h, "2637 docs · indexing") {
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Vectors: 11698, Scanning: true}})
+	if h := m.header(); !strings.Contains(h, "2637 docs (11698 vectors) · indexing") {
 		t.Errorf("header = %q, want the count and the indexing marker", h)
 	}
 	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2700}})

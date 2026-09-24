@@ -1,7 +1,7 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2; tool lines and the approval box in v0.3
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `usage.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, and usage in the header and in `/usage` in v0.3
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
@@ -38,7 +38,14 @@ Meru  direct · 0.91
 ╭──────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                       │
 ╰──────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll
+enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /usage show usage
+```
+
+Once `merud` has answered the first status check, the header also says how big the
+search index is, and on a wide terminal how much you asked in the last hour:
+
+```text
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB)           1h: 4 questions · 18k in · 2.1k out  ● connected
 ```
 
 When the model calls a tool, a dim line inside the Meru message tracks it. When the
@@ -65,6 +72,28 @@ o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
 
 Once the call ends, its line changes to `✓ mail.send · 80 ms`, or to
 `✗ mail.send · declined` when you said no.
+
+Type `/usage` and press Enter, and a box takes the conversation's place with one
+column per window of time:
+
+```text
+  ╭───────────────────────────────────────────────────────────────╮
+  │ Usage                                                         │
+  │                                                               │
+  │                   1h   today     week   month     30d     all │
+  │ sessions           1       2        5      12      14      30 │
+  │ questions          4       9       31      88      97     212 │
+  │ tokens in        18k     41k     150k    420k    468k    1.4M │
+  │ tokens out      2.1k    5.3k      19k     61k     66k    180k │
+  │ active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m │
+  │ docs touched       3       7       22      51      55     140 │
+  │ tool calls         1       2        6      14      15      40 │
+  │                                                               │
+  │ Today, week and month follow the local calendar.              │
+  ╰───────────────────────────────────────────────────────────────╯
+...
+esc/q close · ctrl+c stop/quit
+```
 
 In colour, the header's name and the input border are Meru's teal. The "You" label and
 the bar beside your question are blue, and the "Meru" label is green, so a glance tells
@@ -227,6 +256,7 @@ help line and the behaviour come from one place.
 | Ctrl-D | quit | stop and quit |
 | Up (on the input's first line) | put the last question back | same |
 | PgUp / PgDn | scroll the conversation | same |
+| `/usage` then Enter | open the usage box | same; the answer keeps streaming behind it |
 
 While the approval box is open, the keys answer it instead, and typing doesn't reach
 the input:
@@ -238,11 +268,15 @@ the input:
 | Ctrl-C | stop the turn; the call doesn't run |
 | Ctrl-D | quit |
 
+While the usage box is open, Esc or q closes it. Ctrl-C and Ctrl-D work as always,
+and every other key does nothing.
+
 The input is a multi-line text area. Enter sends, so the text area's "new line" key is
 set to Ctrl-J. `layout` grows the box by one row per line, up to five, and gives the
 conversation the rows that are left.
 
-`submit` runs on Enter. It clears the input, adds an `exchange`, bumps the turn
+`submit` runs on Enter. A line that starts with `/` goes to `command` in `usage.go`
+and never reaches the model. Otherwise `submit` clears the input, adds an `exchange`, bumps the turn
 counter, and returns two commands joined by `tea.Batch`: the stream and the spinner.
 
 ```go
@@ -284,14 +318,32 @@ error marks the turn failed and turns the header's status red.
 help line.
 
 ```go
-return strings.Join([]string{m.header(), rule, m.conversation.View(), input, m.help.View(m.keys)}, "\n")
+return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 ```
 
-`header` puts the name, profile, model, the number of documents in the search index
-(`68 docs`) and a short session ID on the left, and the connection status on the
-right. The document count stays out until `merud` has answered once, so the header
-never shows a zero it hasn't checked. When the terminal is narrow, the details shrink with
-an ellipsis, then disappear.
+`pane` is the conversation, or the usage box drawn at the same size while it is open.
+`helpLine` lists the keys; while a box is open, it lists the keys that answer that
+box. `helpView` draws it and drops keys from the end until the line fits. The help
+component from Bubbles cuts a long line and ends it with "…" on its own, except
+when the keys that fit leave less than two columns: then it adds every key and the
+line runs off the screen.
+
+`header` puts the name, profile, model, the size of the search index and a short
+session ID on the left. `docCount` writes the size, such as
+`2637 docs (11698 vectors, 84 MB)`, from the `IndexStatus` that `merud` sends: the
+document and vector counts, and `DBBytes`, the size of `meru.db` on disk. A
+`DBBytes` of 0 means an older `merud` didn't send it, so the size stays out:
+`(11698 vectors)`. `humanBytes` writes the size with one decimal below ten, counting
+by 1,024 as `ls -lh` does, and labels the units KB, MB and GB. The whole count stays
+out until `merud` has answered once, so the header never shows a zero it hasn't
+checked.
+
+On the right sit the last hour's usage, dim, from `lastHour`
+(`1h: 4 questions · 18k in · 2.1k out`), and the connection status. When the
+terminal is narrow, the header gives things up in this order: the usage first,
+because `/usage` shows it in full; then the bracket with the vectors and size, whole,
+because cutting it mid-way would leave an open `(`; then the rest of the details
+shrink with an ellipsis, and last they disappear. The status always stays.
 
 `renderTurn` draws one turn. Under the "Meru" label come the tool lines first, one
 per call, dim, drawn by `toolText`: `→ notes.search` while the call runs, then
@@ -399,15 +451,21 @@ turn isn't the one streaming now.
 
 `pingCmd` is the other command. It asks `merud` for its index status, with a
 two-second timeout, and returns a `pingMsg`. The answer does two jobs: it shows that
-`merud` is up, and it carries the document count for the header. The chat runs it
-when it opens, after each answer, and on a timer: every 5 seconds while a scan runs
-(the header then reads `2637 docs · indexing`), every 30 seconds otherwise, when only
-the watcher adds files. `nextRefresh` picks the wait. The timer is a `tea.Tick`, a
-command that sends a `refreshMsg` once the time is up. Update answers it with a
-check and the next tick, and only that branch books a tick, so there is one chain of
-checks however many answers come in. A later version can put more in the same line, such as the count
-of memory files and the size of `meru.db`, by adding them to the status `merud`
-sends.
+`merud` is up, and it carries the index's size for the header. `usageCmd` runs next
+to it and asks for `OpUsage`, the usage numbers, which come back as a `usageMsg`.
+The chat runs both when it opens, after each answer, and on a timer: every 5 seconds
+while a scan runs (the header then reads `2637 docs (11698 vectors, 84 MB) ·
+indexing`), every 30 seconds otherwise, when only the watcher adds files.
+`nextRefresh` picks the wait. The timer is a `tea.Tick`, a command that sends a
+`refreshMsg` once the time is up. Update answers it with both requests and the next
+tick, and only that branch books a tick, so there is one chain of checks however
+many answers come in.
+
+`usageMsg` has an `answered` field, true when `merud` replied at all. A `merud`
+older than `OpUsage` replies with an error event, `unknown op "usage"`: the header
+then leaves the usage out, and the status stays green, because `merud` did answer.
+When `merud` can't be reached, the header keeps the last numbers, as it keeps the
+document count, and `pingCmd` alone turns the status red.
 
 **Approvals cross from the goroutine to `Update`.** When a tool call needs your
 approval, `merud` sends an `approval` event. `rpc.Do` doesn't hand that event to the
@@ -476,8 +534,43 @@ dropped connection all close the box.
 `approvalBoxView` draws the box: the name and kind, the arguments as indented JSON
 (`rpc.ArgsLines`, at most ten lines), and the choices merud offered. Square brackets
 mark the selected choice, so the selection shows with colour off too. `View` swaps
-the help line for `approvalKeys`, a slice of key bindings with the two methods the
+the help line for a `keyList`, a slice of key bindings with the two methods the
 help component needs, so the bottom line lists the keys that answer the box.
+
+An approval box closes an open usage box: the approval needs the keys, and it sits in
+the conversation the usage box covers.
+
+### usage.go
+
+`command` runs a line that starts with `/`. For `/usage` it clears the input, opens
+the box with `loading` set, hides the input's cursor and returns `usageCmd`. For any
+other command it leaves the text in the input, so you can fix a typo, and sets
+`notice`, a dim line that takes the help line's place until the next key:
+
+```text
+unknown command /usag · commands: /usage
+```
+
+`applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A
+box still loading takes the first reply that comes, whichever request it answers,
+because they all ask for the same numbers. When `merud` answered with an error, the
+box shows it.
+
+`usageBoxView` draws the box. `rpc.UsageTable` turns the windows into rows of cells,
+the same cells `meru usage` prints, and `usageTableLines` lines them up: labels on
+the left, numbers on the right of each column, two spaces between. When six columns
+don't fit, it drops windows from the right, `all` first, then `30d`, down to `1h`
+alone. The recent windows say most about how you use Meru now, and `meru usage`
+prints every window at any width. The note on the local calendar wraps to the box.
+The box pads itself to the conversation's height, so the screen keeps its shape.
+
+`usageKey` closes the box on Esc or q. `handleKey` sends it every key except Ctrl-C
+and Ctrl-D, as it does for the approval box, so typing can't slip into the input.
+
+`/usage` has no shortcut key. Ctrl-U would be the obvious one, but the text area
+already uses it to delete to the start of the line. The help line lists `/usage`
+through a key binding whose key is the text `/usage`, which no key press produces;
+Bubbles skips a binding with no keys at all.
 
 ### run.go
 
@@ -528,8 +621,9 @@ go test -race ./internal/tui/...
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
 streaming, a finished Markdown answer, a fallback route, an answer with sources, an
-error, a stopped answer, a 40-column terminal, tool lines, and the approval box at 80
-and 40 columns. After a deliberate change to the look, rewrite them and read the
+error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
+and 40 columns, the header with usage and index size at 120, 80 and 60 columns, and
+the usage box at 80 and 40 columns. After a deliberate change to the look, rewrite them and read the
 diff:
 
 ```sh
@@ -552,6 +646,12 @@ about one tool call. It checks each key (o, s, d, capitals, ←/→ with Enter, 
 not offered), that typing stays out of the input while the box is open, that Ctrl-C
 closes the box and stops the turn, and that a request from a stopped turn gets
 "deny" at once.
+
+`usage_test.go` checks `/usage` against a fake `merud`: the box opens and fills, the
+request is `OpUsage` and no question goes to the model. It checks each key while the
+box is open, that an unknown `/command` sends nothing, what an unreachable and an
+older `merud` do to the header, and, one column at a time from 140 down to 30, that
+the header gives up the usage before the index size and never cuts a bracket.
 
 ## Why it's built this way
 
@@ -589,6 +689,16 @@ still prints plain text for scripts and pipes.
 **Why render only finished answers?** Rendering on every token would redraw the whole
 answer dozens of times a second, and half-written Markdown renders wrong. The raw
 text streams at once, and the Markdown appears when the answer is complete.
+
+**Why does the usage go first when the header is narrow?** The left side says what
+Meru runs on and how much it searches, which you need to read an answer. The usage
+is a running total you can see in full with `/usage`, so it is the cheapest part to
+lose.
+
+**Why a box for `/usage` over a line in the conversation?** Seven rows of six
+numbers make a table, and a table printed into the conversation would scroll away
+with it and land in the middle of your questions. The box shows the numbers on top
+and leaves the conversation as it was.
 
 **Why a renderer passed in, not the global one?** The tests build the model with an
 ASCII renderer, so the golden files hold plain text however the tests are run. The

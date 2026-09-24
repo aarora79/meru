@@ -128,6 +128,9 @@ type Model struct {
 	// index is what merud's search index held at the last status check;
 	// nil until one answers. The header shows its document count.
 	index *rpc.IndexStatus
+	// usage is merud's last answer to OpUsage; nil until one answers, and
+	// when merud doesn't know the op. The header shows its 1h window.
+	usage []rpc.UsageWindow
 
 	look  look
 	style styles
@@ -162,6 +165,12 @@ type Model struct {
 	// While it is set, the approval box shows and the keys answer it
 	// instead of typing into the input.
 	approval *pendingApproval
+	// usageBox is the open /usage box, or nil. While it is set, the box
+	// covers the conversation and the keys go to it.
+	usageBox *usageBox
+	// notice is a dim line that takes the help line's place until the next
+	// key press, such as the answer to an unknown /command.
+	notice string
 }
 
 // newModel builds the starting screen: an empty conversation and a focused
@@ -216,14 +225,14 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 	return m
 }
 
-// Init returns the commands Bubble Tea runs first: blink the cursor, and
-// ask merud what its index holds, so the header can say whether it is up
-// and how many documents it searches.
+// Init returns the commands Bubble Tea runs first: blink the cursor, ask
+// merud what its index holds, so the header can say whether it is up and
+// how many documents it searches, and ask for the usage numbers.
 func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
 	}
-	return tea.Batch(textarea.Blink, pingCmd(m.ask), refreshAfter(refreshScanning))
+	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), refreshAfter(refreshScanning))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -251,10 +260,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.index = msg.index
 		}
 		return m, nil
+	case usageMsg:
+		m.applyUsage(msg)
+		return m, nil
 	case refreshMsg:
 		// Check now, and book the next check. Only this branch books one,
 		// so there is one chain of checks however many answers arrive.
-		return m, tea.Batch(pingCmd(m.ask), refreshAfter(nextRefresh(m.index)))
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), refreshAfter(nextRefresh(m.index)))
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
@@ -264,8 +276,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnDoneMsg:
 		m.handleDone(msg)
 		// Check merud again: the answer may have come while it indexed new
-		// files, and a turn that failed may mean merud went away.
-		return m, pingCmd(m.ask)
+		// files, and a turn that failed may mean merud went away. The
+		// answer also changed the usage numbers.
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask))
 	case spinner.TickMsg:
 		// Returning no command lets the spinner stop ticking when idle.
 		if !m.streaming {
@@ -285,6 +298,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey reacts to a key press. Keys the chat screen doesn't claim go to
 // the input box as typing.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.notice = "" // a notice lasts until the next key
 	// key.Matches reports whether msg is one of the binding's keys.
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -303,6 +317,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case m.approval != nil:
 		// The approval box has the keys until the user answers it.
 		m.approvalKey(msg)
+		return m, nil
+	case m.usageBox != nil:
+		// So does the usage box, until Esc or q closes it.
+		m.usageKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
@@ -329,9 +347,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // submit sends the typed question, unless the input is blank or an answer is
 // still streaming. It returns the command that runs the turn and the command
-// that starts the spinner; tea.Batch runs both.
+// that starts the spinner; tea.Batch runs both. A line that starts with "/"
+// is a command for the chat itself and never goes to the model; it works
+// while an answer streams too.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
+	if strings.HasPrefix(text, "/") {
+		return m.command(text)
+	}
 	if text == "" || m.streaming {
 		return m, nil
 	}

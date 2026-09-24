@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -24,19 +25,49 @@ const streamCursor = "▍"
 func (m Model) View() string {
 	rule := m.style.rule.Render(strings.Repeat("─", m.width))
 	input := m.style.inputBox.Render(m.input.View())
-	// While an approval box is open, the help line lists the keys that
-	// answer it instead.
-	helpLine := m.help.View(m.keys)
-	if m.approval != nil {
-		helpLine = m.help.View(newApprovalKeys(m.approval.ask.Choices))
+	// While a box is open, the help line lists the keys that answer it
+	// instead, and a notice takes the line until the next key.
+	helpLine := m.helpView(m.keys.ShortHelp())
+	switch {
+	case m.approval != nil:
+		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices))
+	case m.usageBox != nil:
+		helpLine = m.helpView(newUsageKeys())
+	case m.notice != "":
+		helpLine = m.style.dim.Render(ansi.Truncate(m.notice, m.width, "…"))
 	}
-	return strings.Join([]string{m.header(), rule, m.conversation.View(), input, helpLine}, "\n")
+	// The usage box takes the conversation's place, at the same size, so
+	// the conversation underneath keeps its scroll position.
+	pane := m.conversation.View()
+	if m.usageBox != nil {
+		pane = m.usageBoxView(m.width, m.conversation.Height)
+	}
+	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
+}
+
+// helpView draws the help line for keys. The help component cuts a line
+// that runs too long and ends it with "…", except when the keys that fit
+// fill the width to within two columns: then it has no room for its "…"
+// and adds every key anyway. So helpView drops keys from the end until the
+// line fits.
+func (m Model) helpView(keys []key.Binding) string {
+	line := m.help.ShortHelpView(keys)
+	for len(keys) > 1 && lipgloss.Width(line) > m.width {
+		keys = keys[:len(keys)-1]
+		line = m.help.ShortHelpView(keys)
+	}
+	return line
 }
 
 // header draws the top line: the name, the setup details (profile, main
-// model, documents in the index) and the session on the left, and whether
-// merud is reachable on the right. When the line is
-// too narrow, the details shrink first, then disappear.
+// model, the index's size) and the session on the left, and on the right the
+// last hour's usage, dim, and whether merud is reachable.
+//
+// When the line is too narrow, parts go in order of how little they are
+// missed. The usage goes first: /usage shows it in full, and the left side
+// says what Meru is running. The index's vector count and size go next, as
+// a whole, because cutting them mid-way would leave an open bracket. Then
+// the details shrink with "…", and last they disappear. The status stays.
 func (m Model) header() string {
 	brand := m.style.brand.Render("Meru मेरु")
 
@@ -50,17 +81,26 @@ func (m Model) header() string {
 		status = m.style.dim.Render("● connecting…")
 	}
 
-	var parts []string
-	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index), shortSession(m.session)} {
-		if p != "" {
-			parts = append(parts, p)
+	// fits reports whether the name, the details and the right side fit
+	// on one line, with a space after the name and at least one before the
+	// right side.
+	fits := func(details, right string) bool {
+		return lipgloss.Width(brand)+1+lipgloss.Width(details)+1+lipgloss.Width(right) <= m.width
+	}
+	details := m.details(true)
+	right := status
+	if u := lastHour(m.usage); u != "" {
+		if withUsage := m.style.dim.Render(u) + "  " + status; fits(details, withUsage) {
+			right = withUsage
 		}
 	}
-	details := strings.Join(parts, " · ")
+	if !fits(details, right) {
+		details = m.details(false)
+	}
 
-	// The details get what is left after the name, the status, one space
-	// after the name and at least one before the status.
-	room := m.width - 2 - lipgloss.Width(brand) - lipgloss.Width(status)
+	// The details get what is left after the name, the right side, one
+	// space after the name and at least one before the right side.
+	room := m.width - 2 - lipgloss.Width(brand) - lipgloss.Width(right)
 	if room < 6 {
 		details = "" // too narrow to say anything useful
 	} else {
@@ -70,8 +110,22 @@ func (m Model) header() string {
 	if details != "" {
 		left += " " + m.style.dim.Render(details)
 	}
-	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(status), 1)
-	return ansi.Truncate(left+strings.Repeat(" ", gap)+status, m.width, "")
+	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 1)
+	return ansi.Truncate(left+strings.Repeat(" ", gap)+right, m.width, "")
+}
+
+// details joins the header's setup details with " · ": profile, model, the
+// document count and the session, leaving out any that are empty. sizes
+// says whether the document count carries the vector count and the size
+// of meru.db.
+func (m Model) details(sizes bool) string {
+	var parts []string
+	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index, sizes), shortSession(m.session)} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // shortSession trims a session ID for the header. IDs look like
@@ -310,7 +364,11 @@ func tidy(s string) string {
 // "68 docs" or "1 doc", with "· indexing" while a scan runs, because the
 // number is still climbing. It returns "" before merud has answered, so the
 // header leaves the part out rather than show a wrong zero.
-func docCount(ix *rpc.IndexStatus) string {
+//
+// With sizes, the vector count and the size of meru.db follow in brackets:
+// "2637 docs (11698 vectors, 84 MB)". A DBBytes of 0 means merud didn't
+// say, as an older merud doesn't, so the size stays out: "(11698 vectors)".
+func docCount(ix *rpc.IndexStatus, sizes bool) string {
 	if ix == nil {
 		return ""
 	}
@@ -318,8 +376,43 @@ func docCount(ix *rpc.IndexStatus) string {
 	if ix.Documents == 1 {
 		s = "1 doc"
 	}
+	if sizes {
+		inside := fmt.Sprintf("%d vectors", ix.Vectors)
+		if ix.Vectors == 1 {
+			inside = "1 vector"
+		}
+		if ix.DBBytes > 0 {
+			inside += ", " + humanBytes(ix.DBBytes)
+		}
+		s += " (" + inside + ")"
+	}
 	if ix.Scanning {
 		s += " · indexing"
 	}
 	return s
+}
+
+// humanBytes writes a size on disk for people: "512 B", "8.4 MB", "84 MB",
+// "1.2 GB", with one decimal below ten. The units count by 1,024 and carry
+// the familiar labels KB, MB and GB, as macOS's `ls -lh` and `du -h` do on
+// Linux, so the number matches what those tools print for meru.db. (Finder
+// counts by 1,000 and would show a little more.)
+func humanBytes(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	v := float64(n)
+	units := []string{"KB", "MB", "GB", "TB"}
+	for i, unit := range units {
+		v /= 1024
+		// 1,023.9 KB would print as "1024 KB"; the next unit writes it
+		// "1.0 MB".
+		if v < 999.5 || i == len(units)-1 {
+			if v < 9.95 {
+				return fmt.Sprintf("%.1f %s", v, unit)
+			}
+			return fmt.Sprintf("%.0f %s", v, unit)
+		}
+	}
+	return "" // not reached: the loop returns on its last unit
 }

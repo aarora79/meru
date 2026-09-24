@@ -1,0 +1,24 @@
+Meru मेरु lite · minicpm5:2b … ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ Usage                              │
+  │                                    │
+  │                   1h   today       │
+  │ sessions           1       2       │
+  │ questions          4       9       │
+  │ tokens in        18k     41k       │
+  │ tokens out      2.1k    5.3k       │
+  │ active time   2m 14s  5m 01s       │
+  │ docs touched       3       7       │
+  │ tool calls         1       2       │
+  │                                    │
+  │ Today, week and month follow the   │
+  │ local calendar.                    │
+  ╰────────────────────────────────────╯
+
+
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+esc/q close · ctrl+c stop/quit

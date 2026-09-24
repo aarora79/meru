@@ -12,11 +12,12 @@
 //	meru [-socket path] index -status    show what the search index holds
 //	meru [-socket path] tools            list the tools the model may use
 //	meru [-socket path] log [-n N] [-v]  show the latest tool calls
+//	meru [-socket path] usage            show how much you use Meru
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
 //
-// A question whose first word is ping, chat, index, tools, log, setup or mcp needs
-// quotes, so meru reads it as a question and not as a command.
+// A question whose first word is ping, chat, index, tools, log, usage, setup or
+// mcp needs quotes, so meru reads it as a question and not as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -71,6 +72,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru index -status    show what the search index holds
   meru tools            list the tools the model may use
   meru log [-n N] [-v]  show the latest tool calls, newest first
+  meru usage            show how much you use Meru
   meru setup            set up Ollama, the models, config and tools
   meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
   meru mcp add <name> -- <command> [args...] | --url <url>
@@ -113,6 +115,8 @@ flags:`)
 		err = toolsCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.Arg(0) == "log":
 		err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+	case flags.NArg() == 1 && flags.Arg(0) == "usage":
+		err = usageCmd(ctx, *socket, stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "setup":
 		err = setupCmd(ctx, *socket, terminal(stdout))
 	case flags.Arg(0) == "mcp":

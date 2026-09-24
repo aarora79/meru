@@ -27,4 +27,4 @@ Meru  direct · 0.91
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ctrl+d quit · ↑ last question · pgup/pgdn scroll
+enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /usage show usage

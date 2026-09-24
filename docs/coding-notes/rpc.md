@@ -1,6 +1,6 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `args.go`, `client.go`, `server.go`)
+**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
 **Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
@@ -100,6 +100,25 @@ JSON (`json.RawMessage`):
 
 Arguments that aren't valid JSON come back as they are, so a broken tool can't
 hide what it sent.
+
+### usage.go
+
+Helpers both clients use to show a `usage` event, so `meru usage` and the `/usage`
+box in `meru chat` show the same numbers:
+
+- **`UsageTable(windows)`** returns rows of cells: the window names first, then one
+  row per measure (sessions, questions, tokens in and out, active time, docs
+  touched, tool calls). Each measure pairs its label with a function that reads its
+  value from a window; Go keeps a function in a struct field like any other value.
+- **`ShortCount(n)`** writes a count in a few characters: `950`, `1.2k`, `18k`,
+  `1.4M`, with one decimal below ten, counting by 1,000.
+- **`ShortDuration(ms)`** writes a time as its two largest units: `45s`, `2m 14s`,
+  `3h 05m`.
+- **`UsageNote`** is the line under the table: today, week and month follow the
+  local calendar, while 1h and 30d roll back from now.
+
+Each client lays out the cells its own way: `meru` with a `text/tabwriter`, and
+`meru chat` by hand, so it can drop windows that don't fit the terminal.
 
 ### client.go
 

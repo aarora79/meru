@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `look.go`, `setup.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup` and `meru mcp add` in v0.3
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -187,6 +187,8 @@ case flags.Arg(0) == "tools":
     err = toolsCmd(ctx, *socket, flags.Args()[1:], stdout)
 case flags.Arg(0) == "log":
     err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+case flags.NArg() == 1 && flags.Arg(0) == "usage":
+    err = usageCmd(ctx, *socket, stdout)
 default:
     p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
     err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
@@ -195,7 +197,8 @@ default:
 
 - `meru "question"` and `meru question words` both work; the words are joined.
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
-  `setup` or `mcp` needs quotes.
+  `usage`, `setup` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
+  command only as the one word, so `meru usage of semicolons` asks a question.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
@@ -278,6 +281,32 @@ result on its own line under it without breaking the columns.
 
 `rpc.ArgsLines` and `rpc.ArgsLine` format arguments for the prompt and the log,
 so `meru chat` shows them the same way.
+
+### meru: usage.go
+
+`meru usage` sends `OpUsage` and prints what `merud` counted, one column per
+window of time:
+
+```text
+                  1h   today     week   month     30d     all
+sessions           1       2        5      12      14      30
+questions          4       9       31      88      97     212
+tokens in        18k     41k     150k    420k    468k    1.4M
+tokens out      2.1k    5.3k      19k     61k     66k    180k
+active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m
+docs touched       3       7       22      51      55     140
+tool calls         1       2        6      14      15      40
+
+Today, week and month follow the local calendar.
+```
+
+`rpc.UsageTable` gives the cells, so `meru chat`'s `/usage` box shows the same
+ones. `writeUsage` lines up the numbers with a `text/tabwriter` in `AlignRight`
+mode, which pads each cell on the left so the numbers line up on their last
+digit. The labels stay out of the tabwriter, because that mode would push them
+right too; `%-*s` pads each one on the right and it joins its line afterwards.
+A `merud` older than `OpUsage` answers with an error event, and `meru usage`
+fails with `merud gave no usage numbers: unknown op "usage"`.
 
 ### meru: look.go
 

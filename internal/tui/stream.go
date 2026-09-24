@@ -1,6 +1,7 @@
 // This file holds the code that talks to merud in the background: the command
 // that runs one turn and feeds each reply event back into the Bubble Tea
-// loop, and the command that pings merud when the chat opens.
+// loop, and the commands that ask merud for its index status and its usage
+// numbers for the header.
 
 package tui
 
@@ -167,5 +168,41 @@ func pingCmd(ask askFunc) tea.Cmd {
 			}
 		}
 		return pingMsg{err: errors.New("merud sent no reply")}
+	}
+}
+
+// usageMsg reports what merud said to OpUsage. answered is true when merud
+// replied at all, even with an error event, and err says why no windows
+// came. An older merud answers OpUsage with an "unknown op" error event,
+// which gives answered true and an err.
+type usageMsg struct {
+	windows  []rpc.UsageWindow
+	answered bool
+	err      error
+}
+
+// usageCmd returns a command that asks merud once how much Meru has been
+// used, in every window. The chat runs it next to pingCmd, on the same
+// timer and after each answer, so the header's last-hour numbers stay
+// fresh, and again when the user types /usage.
+func usageCmd(ask askFunc) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		defer cancel()
+		var windows []rpc.UsageWindow
+		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpUsage}, nil) {
+			if err != nil {
+				return usageMsg{err: err}
+			}
+			switch ev.Type {
+			case rpc.EventUsage:
+				windows = ev.Usage
+			case rpc.EventDone:
+				return usageMsg{windows: windows, answered: true}
+			case rpc.EventError:
+				return usageMsg{answered: true, err: errors.New(ev.Error)}
+			}
+		}
+		return usageMsg{err: errors.New("merud sent no reply")}
 	}
 }

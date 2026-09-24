@@ -1,29 +1,7 @@
-Meru मेरु lite · minicpm5:2b                                   ● merud not running
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB)        ● connected
 ────────────────────────────────────────────────────────────────────────────────
 
-You
-  │ Hello?
-
-Meru
-  ╭───────────────────────────────────────────────────────────────────────╮
-  │ error: connect to merud at /home/u/.meru/merud.sock: no such file (is │
-  │ merud running?)                                                       │
-  ╰───────────────────────────────────────────────────────────────────────╯
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  Ask a question below. The answer comes from models on this machine.
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
