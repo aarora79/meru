@@ -41,6 +41,7 @@ type Tools struct {
 	memory     *memory.Store // where remember saves; nil leaves remember out
 	outputDir  string        // where write_file writes, absolute; "" leaves write_file out
 	onChange   func(context.Context) error
+	onRemember func(context.Context) // runs after remember saves; nil for none
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -53,14 +54,18 @@ type Tools struct {
 // configure alone. outputDir is the absolute folder write_file writes in,
 // [skills] output_dir with "~" expanded; "" leaves write_file out. onChange
 // runs after configure writes config.toml; merud passes a function that
-// rebuilds the MCP pool. A nil onChange does nothing.
-func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error) *Tools {
+// rebuilds the MCP pool. onRemember runs after remember saves a memory;
+// merud passes a function that syncs the memory folder into the store, so
+// the next turn can recall the new fact. A nil onChange or onRemember does
+// nothing.
+func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
 		outputDir:  outputDir,
 		onChange:   onChange,
+		onRemember: onRemember,
 	}
 }
 

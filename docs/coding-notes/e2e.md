@@ -104,7 +104,10 @@ test reads it.
 
 `newHome` makes the private Meru home with `os.MkdirTemp`, not `t.TempDir`.
 `t.TempDir` puts the test's name in the path, and macOS refuses a Unix socket
-path longer than 104 bytes.
+path longer than 104 bytes. It also makes an empty `skills/<name>` folder for
+each built-in skill, so `merud` installs none. With skills, each turn's skill
+pick calls the fast model while the router does, and the two race for the
+replies and failures a test queues for the router.
 
 `fakeConfig` writes a `config.toml` that points `ollama.base_url` at the fake
 and names three made-up models: `fake-fast`, `fake-main` and `fake-embed`. Fast

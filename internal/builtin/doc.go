@@ -14,6 +14,8 @@
 // remember saves without asking unless [builtin] confirm lists it. It
 // writes through memory.Store.Add, the same code `meru memory add` reaches
 // through merud, and records the chat's session as the memory's source.
+// After a save it runs merud's onRemember hook, which syncs the new memory
+// into the store so the next turn can recall it.
 //
 // write_file asks before each call, because the shipped [builtin] confirm
 // lists it. It writes only inside the output folder, through an os.Root:

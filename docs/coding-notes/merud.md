@@ -1,7 +1,7 @@
 # merud and meru
 
 **Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`, `skills.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, `meru skills`, the session replay and the summarizer in v0.4
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -37,7 +37,8 @@ flowchart TB
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
         G2 --> WA["watch the folders"]
-        R -- "SIGINT / SIGTERM" --> X["stop all three, close the store, flush telemetry"]
+        G2 --> WM["sync and watch the memory folder"]
+        R -- "SIGINT / SIGTERM" --> X["stop all four, close the store, flush telemetry"]
     end
     subgraph meru["meru"]
         A["meru \"question\""] -- "rpc.Do" --> R
@@ -76,7 +77,7 @@ short probe text, so config never holds a number that could go stale. When
 the model or the size changed since the last run, the store drops the old
 vectors (`store.NeedsReembed` then reports true).
 
-Then four jobs run side by side in an **errgroup** from
+Then five jobs run side by side in an **errgroup** from
 `golang.org/x/sync`:
 
 ```go
@@ -85,12 +86,13 @@ g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, 
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 g.Go(func() error { sum.Run(gctx); return nil })
+g.Go(func() error { mems.watch(gctx); return nil })
 return g.Wait()
 ```
 
 `g.Go` starts a function in its own goroutine, and `g.Wait` waits for all of
 them. `gctx` ends when `ctx` does, or when one function returns an error, so
-all four stop together. The scan, the watcher and the summarizer log their
+all five stop together. The scan, the summarizer and the two watchers log their
 own errors and return `nil`, so a folder that can't be read never stops `merud`. Because the
 scan runs beside the server, questions get answers during a long first scan;
 they search whatever the index holds so far.
@@ -102,9 +104,11 @@ service, and `usage` to `handleUsage`. The rpc server answers `ping` itself.
 
 **Memory.** Before the tools, `serve` opens the memory folder with
 `memory.Open(<home>/memory)`, which creates the six default kind folders. One
-`*memory.Store` then reaches three places: the built-in `remember` tool
+`*memory.Store` then reaches four places: the built-in `remember` tool
 (through `newToolService` and `builtin.New`), the agent (through
-`profileAdapter`, the agent's `Profile`), and the memory service.
+`profileAdapter`, the agent's `Profile`), the memory service, and the memory
+syncer, `index.NewMemories`, which the memory service owns. `newToolService`
+also gets `mems.syncNow`, which `builtin.New` runs after each `remember`.
 
 **Skills.** Next, `newSkillService(<home>/skills)` copies the built-in skills in
 where no folder of that name exists and loads the registry. `serve` hands it to
@@ -239,6 +243,25 @@ so every memory the model writes lands in `tool_calls` and the transcript.
 `preferences` folders with `memory.Store.ListKind`, and no others. Reading
 every folder took 13 ms per turn with 500 other memories; the two folders take
 about 0.6 ms for 20 files, so there is no cache.
+
+`profileAdapter.Recall` gives the agent the memories recalled for a question:
+`retrieve.SearchMemories` over the store, leaving out the profile kinds, top
+`recallN` (5).
+
+**Keeping the store in step.** The memory service holds the syncer and copies the
+folder into the store's `memories` table four ways:
+
+| When | How |
+| --- | --- |
+| at start | `watch` runs `Sync` once before it starts watching |
+| `memory_add` or `memory_forget` succeeds | `syncNow`, before the reply |
+| `remember` saves a memory | `syncNow`, through `builtin.New`'s `onRemember` |
+| you edit a file by hand | the watcher runs `Sync` once the folder has been quiet for 500 ms |
+
+`Sync` embeds only files whose mtime or hash changed, so the calls after an add
+cost one embedding. A failed `syncNow` logs a warning and leaves the op's reply
+alone: the file already holds the change, and the next sync copies it over. The
+next question, even a moment later, can recall a memory you just added.
 
 ### merud: skills.go
 
@@ -590,8 +613,10 @@ vector size makes the next start embed every file again, and the index ops
 answer, refuse a folder outside `[index]`, and explain an empty config.
 
 `memory_test.go` drives the memory ops over the socket: add, list, the counts
-in the index status, the profile in the next question's system prompt, each
-refusal, and forget.
+in the index status, the profile and the recalled project in the next
+question's system prompt, each refusal, and forget, after which recall drops
+the project. `TestMemoryHandEdit` writes a memory file by hand while `merud`
+runs and waits for it to reach the prompt.
 
 `skills_test.go` checks the skill service: the first-run install, a skill added
 by hand and an edited built-in picked up on the next call, a broken folder in

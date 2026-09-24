@@ -14,7 +14,8 @@
 // Symbolic links inside the memory directory are refused too.
 //
 // What this package deliberately doesn't do: it doesn't index or search
-// memories (the indexer and store do, in a later step), doesn't decide what
-// is worth remembering (the model does, through the remember tool), and keeps
+// memories (index.Memories copies them into the store, and
+// retrieve.SearchMemories searches them there), doesn't decide what is
+// worth remembering (the model does, through the remember tool), and keeps
 // no cache or index file of its own.
 package memory

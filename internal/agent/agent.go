@@ -320,7 +320,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
-	msgs := a.prompt(ctx, history, question, files, a.skillsSection(ctx, picked), len(specs) > 0)
+	memories := a.memorySection(ctx, searchQuery(question, history))
+	msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, picked), len(specs) > 0)
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
@@ -741,24 +742,32 @@ func shortPath(home, p string) string {
 
 // prompt builds the messages for the main model inside a meru.prompt span,
 // and reports their size. The system prompt holds, in order: the configured
-// prompt with whoIsWho, the user's profile when there is one, filesNote,
-// toolsNote on a turn that offers tools, the skills, and the excerpts from
-// the user's files. The profile sits right after whoIsWho, so the rule that
-// "I" means the user and the facts about who the user is read together.
+// prompt with whoIsWho, the user's profile when there is one, the recalled
+// memories, filesNote, toolsNote on a turn that offers tools, the skills,
+// and the excerpts from the user's files. The profile sits right after
+// whoIsWho, so the rule that "I" means the user and the facts about who the
+// user is read together; the recalled memories follow, apart from the
+// numbered excerpts so the model never cites a memory as a file.
 //
-// files is the "From your files" section for a turn that searched, then
-// "From earlier conversations" when past sessions match, or "" for a turn
-// that didn't search. skills is skillsSection's text, "" for none. tools is
-// true on a turn that offers tools.
+// memories is the recalled-memories section, or "" for none. files is the
+// "From your files" section for a turn that searched, then "From earlier
+// conversations" when past sessions match, or "" for a turn that didn't
+// search. skills is skillsSection's text, "" for none. tools is true on a
+// turn that offers tools.
 // est_tokens is characters divided by four, a rough rule for English text;
 // the model's own count arrives with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files, skills string, tools bool) []engine.Message {
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, memories, files, skills string, tools bool) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
 	system := a.system
-	if profile := a.profileSection(ctx); profile != "" {
+	profile := a.profileSection(ctx)
+	if profile != "" {
 		system += "\n\n" + profile
 	}
+	if memories != "" {
+		system += "\n\n" + memories
+	}
+	recordMemoryTokens(ctx, profile, memories)
 	system += "\n\n" + a.filesNote
 	if tools {
 		system += "\n\n" + toolsNote

@@ -88,6 +88,9 @@ func (t *Tools) remember(ctx context.Context, raw json.RawMessage) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("remember: %w. Nothing was saved", err)
 	}
+	if t.onRemember != nil {
+		t.onRemember(ctx)
+	}
 	return "Saved to " + m.ID + ".", nil
 }
 

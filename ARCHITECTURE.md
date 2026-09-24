@@ -719,7 +719,7 @@ files with mode `0600`, so only you can read them.
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
 | `summary_fts` (v0.4) | keyword index over session summaries | session summaries |
 | `tool_calls` | audit log: every MCP, A2A and built-in tool call, with its call ID, session, `kind` (`mcp`, `a2a` or `builtin`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
-| `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
+| `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration and files) |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
@@ -740,11 +740,12 @@ no `tool_result` line, because `merud` stopped mid-call, gets the outcome
 can jump from a slow trace in Grafana to the rows it produced, and back.
 
 When the embedding model's name or vector size in `meta` stops matching config, the
-store deletes every row of `chunk_vec` and `session_vec` and keeps `documents` and
-`chunks`. The summarizer embeds the summaries again. Keyword
-search keeps working while the indexer re-embeds. The store reports the gap by
-counting chunks that lack a vector (`NeedsReembed`), so the count stays right if
-`merud` stops halfway through.
+store deletes every row of `chunk_vec`, `memory_vec` and `session_vec` and keeps
+`documents`, `chunks`, `memories` and `sessions`. Keyword search keeps working while
+the indexer re-embeds. The store reports the gap by counting chunks that lack a
+vector (`NeedsReembed`), so the count stays right if `merud` stops halfway through.
+The memory syncer re-embeds each memory that lacks a vector, and the summarizer
+does the same for each summary.
 
 ### Why this driver and this vector store
 

@@ -13,9 +13,11 @@
 // results, up to [agent] max_rounds model calls per turn. While the router
 // decides, one short call to the fast model picks the skills the question
 // needs; the prompt lists every skill and holds the picked skills'
-// instructions (ARCHITECTURE.md, "Skills"). On the routes that search, it
-// also recalls up to three past sessions and adds them under "From earlier
-// conversations" (earlier.go).
+// instructions (ARCHITECTURE.md, "Skills"). On every route, direct
+// included, it puts the user's profile and the memories recalled for the
+// question (through the Profile interface) into the system prompt. On the
+// routes that search, it also recalls up to three past sessions and adds
+// them under "From earlier conversations" (earlier.go).
 //
 // What this package deliberately doesn't do: it holds no socket code (that's
 // internal/rpc), picks no model names (those come from config), never calls

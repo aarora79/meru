@@ -72,9 +72,9 @@ Meru answered a question from an Obsidian vault through the owner's own MCP serv
 three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 
 ## v0.4 — It knows you
-- Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and
+- [x] Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and
   keyword search
-- Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
+- [x] Built-in `remember` tool through `dispatch`; recall by meaning, keyword and recency
 - [x] Session summaries appended to transcripts and embedded, for recall by episode
 - [x] Transcripts replayed into `messages` + `message_fts`, so search can find past
   conversations

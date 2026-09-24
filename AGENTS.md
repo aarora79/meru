@@ -36,13 +36,16 @@ and `meru index`, hybrid retrieval on every route but `direct`, and citations: a
 as the one path for every call, the MCP client pool and the A2A client behind it,
 the `tool_calls` audit log, approvals over the socket in both clients, `meru tools`,
 `meru log`, `meru setup`, `meru mcp add` with its server catalog, the built-in
-`configure` tool, and secrets in `~/.meru/secrets.toml`. v0.4 has begun: your
-profile (the `me` and `preferences` memories) goes into every prompt, the built-in
-`remember` tool saves memories from chat, and `meru setup user` and `meru memory`
-manage them. Memory search and the skill registry are still to come. Work goes
-milestone by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
-features (`write_file`, the scheduler) ahead of the milestone that owns
-them.
+`configure` tool, and secrets in `~/.meru/secrets.toml`. v0.4 is most of the way
+there: your profile (the `me` and `preferences` memories) goes into every prompt,
+the built-in `remember` tool saves memories from chat, `meru setup user` and
+`meru memory` manage them, and each turn recalls the memories that fit the
+question. Quiet sessions get a summary, and search turns recall past
+conversations. Skills load with progressive disclosure, `meru skills` manages
+them, and the built-in `write_file` tool writes to `~/meru-output/`. The context
+budget across skills, memories and chunks is still to come. Work goes milestone
+by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
+features (the scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):

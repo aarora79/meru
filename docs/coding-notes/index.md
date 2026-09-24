@@ -1,8 +1,9 @@
 # index
 
 **Code:** `internal/index/` (`doc.go`, `indexer.go`, `skip.go`, `ignore.go`,
-`chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`)
-**Milestone:** v0.2
+`chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`,
+`memories.go`)
+**Milestone:** v0.2; the memory syncer v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -16,6 +17,10 @@ again; when a file goes away it tells the store to drop it.
 
 `merud` calls `Scan` at startup and runs `Watch` while it stays up. `IndexPaths`
 indexes a few paths on demand; the watcher uses it, and `meru index` will.
+
+From v0.4 the package also holds `Memories`, a small syncer that copies the memory
+folder, `~/.meru/memory`, into the store's `memories` table (see
+[memories.go](#memoriesgo) below).
 
 ## The picture
 
@@ -192,6 +197,42 @@ folder. When the OS refuses another watch (Linux's inotify limit, or the
 open-file limit that macOS's kqueue hits), `Watch` logs one warning and keeps
 the watches it has; the next startup scan catches changes in the rest.
 
+### memories.go
+
+Memory files differ from the `[index]` folders in three ways, so they get their own
+small syncer instead of the `Indexer`. They sit in one folder `merud` owns. Each is
+one short fact, so it needs no chunking and becomes one row with one vector. And
+they go to their own tables, `memories`, `memory_vec` and `memory_fts`, not to
+`documents` and `chunks`. The syncer borrows the indexer's batch size (32 texts per
+`Embed` call) and its 500 ms debounce.
+
+`Sync` compares the files with the table:
+
+1. `memory.Store.List` reads every memory file.
+2. `MemoryIDs` returns what the store holds for each memory ID: its mtime, a hash,
+   and whether it still has a vector.
+3. A memory whose mtime and hash match, and which has a vector, is unchanged. Every
+   other one gets embedded and stored with `ReplaceMemory`.
+4. A stored memory whose file is gone gets `DeleteMemory`.
+
+The hash is SHA-256 over the parsed parts the store keeps (kind, created date,
+source and text), each followed by a zero byte, so two different memories can't run
+together into the same bytes. A memory past 4 KiB, which only a hand edit makes,
+sends only its first 4 KiB to the embedding model, cut at a character boundary by
+`cutText`; keyword search still covers the whole text.
+
+When `List` can't read some files, `Sync` stores the rest and removes nothing. It
+can't tell a file it couldn't read from one that is gone, and a memory shouldn't
+drop out of recall over a permission problem. A mutex lets one `Sync` run at a time,
+because the watcher, a memory op and the `remember` tool can all ask for one at
+once.
+
+`Watch` runs `Sync` once, then again each time the folder has been quiet for 500 ms
+after a change. It watches the memory folder and each kind folder, and adds a watch
+for a new kind folder before the next sync. `watch.go` keeps a due time for each
+changed path; this watcher resets one timer on every event, because `Sync` reads
+every file anyway and has no use for a list of changed paths.
+
 ## Go ideas used here
 
 - **filepath.WalkDir and fs.SkipDir** — walking a folder tree and pruning it.
@@ -214,6 +255,7 @@ the watches it has; the next startup scan catches changes in the rest.
 go test -race ./internal/index/
 go test -race -run TestSkipRules -v ./internal/index/
 go test -race -run TestWatch -v ./internal/index/
+go test -race -run 'TestMemory' -v ./internal/index/
 ```
 
 `store_test.go` runs the indexer against the real SQLite store to check the
@@ -226,6 +268,12 @@ the vectors missing while `Reembed` restores them.
 what got indexed and the count for each reason. `TestWatch` starts `Watch` on a
 temporary folder, then creates, edits and deletes files and polls the fake
 store until each change shows up.
+
+`memories_test.go` runs the memory syncer against a real memory folder and the real
+store: add, a sync with nothing to do, a hand edit, a touched file, a forget, a
+file too big to read (its row stays), an embedding model change (the memory gets a
+vector again), and the watcher picking up a new file, a deleted one and a file in a
+new kind folder.
 
 ## Why it's built this way
 

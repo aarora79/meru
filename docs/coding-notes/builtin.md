@@ -59,18 +59,20 @@ sequenceDiagram
 ### builtin.go
 
 `New` takes the config path, the `[builtin]` section, the memory store, the
-output folder for `write_file` and an `onChange` hook:
+output folder for `write_file` and two hooks:
 
 ```go
-func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error) *Tools
+func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error, onRemember func(context.Context)) *Tools
 ```
 
-`merud` passes a hook that rebuilds its MCP pool, so a new server works without a
-restart. The package doesn't know how the pool works; it only calls the hook. A
-`nil` memory store leaves `remember` out, and an empty `outputDir` leaves
-`write_file` out, which the tests of `configure` use. `merud` expands the `~` in
-`[skills] output_dir` before it calls `New`, so this package gets an absolute
-path.
+For `onChange`, `merud` passes a hook that rebuilds its MCP pool, so a new server
+works without a restart. For `onRemember`, it passes one that syncs the memory
+folder into the store, so the next turn can recall the new fact. The package
+doesn't know how the pool or the store work; it only calls the hooks, and a `nil`
+hook does nothing. A `nil` memory store leaves `remember` out, and an empty
+`outputDir` leaves `write_file` out, which the tests of `configure` use. `merud`
+expands the `~` in `[skills] output_dir` before it calls `New`, so this package
+gets an absolute path.
 
 `Confirm` decides whether a call asks first:
 

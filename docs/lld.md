@@ -7,7 +7,8 @@ takes through the functions, so you know which file to open next.
 page explains *where* each part lives. It describes v0.3: the v0.1 question path,
 the v0.2 store, indexer and hybrid search, and v0.3's tools: `dispatch`, the MCP
 and A2A clients, the built-in `configure` tool, approvals over the socket, and
-`meru setup`. `skills` and `memory` are groundwork for v0.4.
+`meru setup`. It also covers the v0.4 work built so far: the profile, memory
+recall, session summaries and past conversations, skills and `write_file`.
 
 You need three Go ideas to follow it:
 
@@ -41,7 +42,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`; in v0.3 only `configure` | `builtin.go`: `Confirm`, `Call` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember` and `write_file` | `builtin.go`: `Confirm`, `Call` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
@@ -51,7 +52,8 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
 | `internal/mcp` | the MCP client pool: starts or connects to servers, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
 | `internal/skills` | loads `SKILL.md` folders, installs the built-in skills, and stamps the folder so `merud` sees edits | `skills.go`: `Load`, then `builtin.go` and `stamp.go` |
-| `internal/memory` | one Markdown file per memory under `memory/<kind>/` (v0.4 groundwork) | `memory.go`: `Open`, `Add`, `List` |
+| `internal/memory` | one Markdown file per memory under `memory/<kind>/`; `merud` syncs the files into the store, where recall searches them | `memory.go`: `Open`, `Add`, `List` |
+| `internal/summarize` | writes a summary line into each quiet session's transcript and embeds it, for recall of past conversations | `summarize.go`: `New`, `Run`, `Tick` |
 
 A few more packages exist only for testing: `internal/policy` (tests that enforce
 Meru's rules), `internal/testutil/fakeollama` and `cmd/fakeollama` (a fake Ollama
@@ -69,15 +71,18 @@ flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
     merud --> index & retrieve & store
     merud --> dispatch & mcp & a2a & builtin & secrets
+    merud --> memory & skills & summarize
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     tui --> rpc
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
-    builtin --> dispatch & catalog & secrets & config
+    agent --> store & memory & skills
+    builtin --> dispatch & catalog & secrets & config & memory
+    summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
     dispatch --> store & transcript & engine & rpc & obs
     catalog --> config & secrets & loopback
     router --> engine & obs & config
-    index --> store & engine & obs & config
+    index --> store & engine & obs & config & memory
     retrieve --> store & engine & obs
     store --> transcript & engine
     mcp --> engine & obs & loopback
@@ -88,8 +93,9 @@ flowchart TD
     engine --> loopback
 ```
 
-`skills`, `memory` and `secrets` import only the standard library; `skills` and
-`memory` sit off the graph, because nothing imports them until v0.4. `mcp` doesn't
+`skills`, `memory` and `secrets` import only the standard library. `agent`
+reads the profile and the skills through them, `builtin` saves memories, and
+`index` copies the memory files into the store. `mcp` doesn't
 know `dispatch`: `cmd/merud/backends.go` wraps the pool in `mcpBackend`, so the
 pool stays a plain MCP client.
 
@@ -259,11 +265,17 @@ router's prompt can name them.
 
 ```go
 // internal/agent/agent.go
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, profile Profile, log *slog.Logger) *Agent
 
 type Searcher interface {
     Search(ctx context.Context, query string) ([]retrieve.Result, error)
     SearchSessions(ctx context.Context, query, excludeSession string, n int) ([]retrieve.SessionResult, error) // v0.4
+}
+
+// internal/agent/profile.go (v0.4)
+type Profile interface {
+    Profile() ([]memory.Memory, error)
+    Recall(ctx context.Context, query string) ([]retrieve.Memory, error)
 }
 
 // internal/index/indexer.go
@@ -279,7 +291,9 @@ The same pattern again. `cmd/merud` passes `searchAdapter`, which calls
 `retrieve.Search` on the store with the fixed list sizes (50, 50, 10), as the
 agent's `Searcher`; a nil `Searcher` turns search off. From v0.4 the same
 adapter calls `retrieve.SearchSessions`, which recalls past sessions for the
-"From earlier conversations" section. It passes the
+"From earlier conversations" section. Its `profileAdapter` is the agent's
+`Profile`: it reads the `me` and `preferences` memories for every prompt, and
+recalls other memories with `retrieve.SearchMemories`. It passes the
 `*store.Store` itself as the indexer's `Sink`. Each package's tests pass a fake
 instead, so neither needs a database file or a model.
 

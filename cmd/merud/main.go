@@ -199,25 +199,26 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	// merud owns the memory folder: the agent reads the profile from it,
-	// remember writes to it, and the memory ops answer `meru memory`.
+	// remember writes to it, and the memory ops answer `meru memory`. Its
+	// syncer copies the files into the store, where recall searches them.
 	mem, err := memory.Open(filepath.Join(cfg.Dir, "memory"))
 	if err != nil {
 		return err
 	}
-	mems := memoryService{mem: mem, log: log}
+	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
 	// merud owns the skills folder too: the agent lists and loads skills
 	// from it each turn, and the skill ops answer `meru skills`.
 	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), log)
 	if err != nil {
 		return err
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, log)
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem}, log)
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
 	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
 	if err != nil {
@@ -228,14 +229,16 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 
 	// An errgroup runs each function in its own goroutine and Wait waits
 	// for all of them. gctx is cancelled when ctx is, or when one of them
-	// returns an error, so a failed server stops the scan and the watcher
-	// too. The scan and the watcher log their own errors and return nil.
+	// returns an error, so a failed server stops the other jobs too. The
+	// scan, the summarizer and the two watchers, of the [index] folders and
+	// of the memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	g.Go(func() error { sum.Run(gctx); return nil })
+	g.Go(func() error { mems.watch(gctx); return nil })
 	return g.Wait()
 }
 
@@ -311,9 +314,9 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 		case rpc.OpMemoryList:
 			return mems.handleList(emit)
 		case rpc.OpMemoryAdd:
-			return mems.handleAdd(req, emit)
+			return mems.handleAdd(ctx, req, emit)
 		case rpc.OpMemoryForget:
-			return mems.handleForget(req)
+			return mems.handleForget(ctx, req)
 		case rpc.OpSkills:
 			return sk.handleList(ctx, emit)
 		case rpc.OpSkillShow:

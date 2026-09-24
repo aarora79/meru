@@ -154,6 +154,35 @@ func migrations() []string {
 			session TEXT PRIMARY KEY,
 			vector  BLOB NOT NULL
 		);`,
+
+		// 5: memories, their vectors and their keyword index (v0.4).
+		//
+		// One row per memory file, keyed by the memory ID
+		// ("people/sam-is-my-manager.md"), which the memory folder's
+		// syncer (index.Memories) keeps in step with the files. A memory is
+		// one short fact, so it gets one row and one vector, with no chunks.
+		// memory_vec and memory_fts mirror chunk_vec and chunk_fts: a plain
+		// vector table keyed by the row ID, and an external-content FTS5
+		// table over text. created and mtime use the fixed-width form
+		// sortableTime writes, so ORDER BY on the text sorts by time.
+		`CREATE TABLE memories (
+			id      INTEGER PRIMARY KEY,
+			mem_id  TEXT NOT NULL UNIQUE,
+			kind    TEXT NOT NULL,
+			text    TEXT NOT NULL,
+			created TEXT NOT NULL DEFAULT '',
+			source  TEXT NOT NULL DEFAULT '',
+			mtime   TEXT NOT NULL,
+			hash    TEXT NOT NULL
+		);
+		CREATE INDEX memories_recent ON memories (created, mtime);
+		CREATE TABLE memory_vec (
+			memory_id INTEGER PRIMARY KEY REFERENCES memories(id),
+			vector    BLOB NOT NULL
+		);
+		CREATE VIRTUAL TABLE memory_fts USING fts5(
+			text, content='memories', content_rowid='id'
+		);`,
 	}
 }
 
@@ -200,8 +229,12 @@ func (s *Store) migrate(ctx context.Context) error {
 
 // checkVectors makes sure the stored vectors came from model with dims
 // numbers each. Vectors from two models don't compare, so when either
-// changed since the last run, it deletes every vector. Documents and chunks
-// stay, so keyword search still works, and NeedsReembed reports the gap.
+// changed since the last run, it deletes every vector: of chunks, of
+// memories and of session summaries. Documents, chunks, memories and
+// summaries stay, so keyword search still works. NeedsReembed reports the
+// gap in chunks, MemoryIDs reports each memory with no vector, so the
+// syncer embeds it again, and SummariesWithoutVector does the same for the
+// summarizer.
 func (s *Store) checkVectors(ctx context.Context, model string, dims int) error {
 	return s.write(ctx, func(tx *sql.Tx) error {
 		oldModel, err := getMeta(ctx, tx, "embed_model")
@@ -215,13 +248,9 @@ func (s *Store) checkVectors(ctx context.Context, model string, dims int) error 
 		if oldModel == model && oldDims == strconv.Itoa(dims) {
 			return nil
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM chunk_vec`); err != nil {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM chunk_vec; DELETE FROM memory_vec; DELETE FROM session_vec`); err != nil {
 			return fmt.Errorf("drop old vectors: %w", err)
-		}
-		// Session summaries lose their vectors too; the summarizer embeds
-		// them again (store.SummariesWithoutVector).
-		if _, err := tx.ExecContext(ctx, `DELETE FROM session_vec`); err != nil {
-			return fmt.Errorf("drop old session vectors: %w", err)
 		}
 		if err := setMeta(ctx, tx, "embed_model", model); err != nil {
 			return err

@@ -1,7 +1,8 @@
 # retrieve
 
-**Code:** `internal/retrieve/` (`doc.go`, `rrf.go`, `search.go`, `format.go`, `sessions.go`)
-**Milestone:** v0.2; `SearchSessions` in v0.4
+**Code:** `internal/retrieve/` (`doc.go`, `rrf.go`, `search.go`, `format.go`,
+`memories.go`, `sessions.go`)
+**Milestone:** v0.2; memory recall and `SearchSessions` in v0.4
 **Architecture:** [Retrieval](../../ARCHITECTURE.md#retrieval) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -18,6 +19,9 @@ It runs two searches and merges them:
 `Format` then turns the results into a prompt section with numbered
 citations, so the model can answer "the budget is 40k [1]" and the user can
 open the file.
+
+`retrieve.SearchMemories` does the same for memories, with a third list: the
+newest memories. See [memories.go](#memoriesgo-recall) below.
 
 ## The picture
 
@@ -100,6 +104,32 @@ A PDF chunk gets `page 3` instead of lines, and a chunk with no heading leaves
 the heading out. `Format` writes a one-line instruction ("Cite the ones you
 use by number") and then each chunk's text under its citation line.
 
+### memories.go: recall
+
+`SearchMemories(ctx, st, eng, query, exclude, n)` finds the `n` memories that best
+fit a question. It embeds the query once, then asks the store for three lists of up
+to 50 memories each, leaving out the kinds in `exclude`:
+
+1. by meaning: `SearchMemoryVector`;
+2. by keyword: `SearchMemoryKeyword`;
+3. by recency: `RecentMemories`.
+
+The same `rrf` merges the three, and `top` keeps `n`. A memory high in one list
+scores well; one high in two or three scores best. The recency list lets a fact
+saved yesterday surface even when the question shares no word with it and its
+vector sits far off. In the tests, "who is my boss?" brings back Sam (first by
+meaning and keyword) and then the newest memory, a hair ahead of an older one
+that ranks above it by meaning.
+
+The store returns whole rows, so the merge keeps each row in a map by ID and picks
+the winners from it; no second query loads the text. `Memory` embeds
+`store.Memory` and adds the RRF score.
+
+`SearchMemories` records the three queries and the merge as one
+`meru.retrieval.duration` stage, `memories`, and opens a `meru.recall` span with
+the list sizes and timings (`meru.recall.embed_ms`, `meru.recall.search_ms`),
+never text.
+
 ### sessions.go: past conversations
 
 `SearchSessions(ctx, st, eng, query, excludeSession, n)` recalls the `n` past
@@ -156,6 +186,12 @@ engine. One of its cases shows RRF at work: a PDF chunk that ranks last by
 meaning but second by keyword beats a chunk that only vector search found.
 `TestSearchSessions` fills a store from real transcripts and checks the order
 of three sessions, the best message, and that the asking session stays out.
+
+`TestSearchMemories` works the three-list sums by hand in its comments: a
+keyword hit that is second newest beats the memory nearest by meaning, and with
+no shared word and equal distances the recency list decides.
+`TestSearchMemoriesRecencyAlone` checks that a memory the question shares nothing
+with still comes back when it is the only one outside the excluded kinds.
 
 ## Why it's built this way
 
