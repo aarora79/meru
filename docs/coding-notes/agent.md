@@ -1,8 +1,8 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `agent_test.go`, `search_test.go`, `observe_test.go`)
-**Milestone:** v0.1; search in v0.2
-**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Retrieval](../../ARCHITECTURE.md#retrieval)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds in v0.3
+**Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
 
@@ -10,15 +10,20 @@
 is saved". `merud` hands `Agent.Handle` to the socket server, and the server
 calls it once per question.
 
-A turn makes one model call. The router picks a route, and the route decides
-whether the turn looks in your files first:
+The router picks a route, and the route decides whether the turn looks in
+your files first and whether the model may call tools:
 
-| Route | Searches your files? |
-| --- | --- |
-| `direct` | no, unless the question names an indexed folder |
-| `search` | yes |
-| `tools` | yes in v0.2 (tools arrive in v0.3; until then it searches, see below) |
-| `search+tools` | yes |
+| Route | Searches your files? | Offers tools? |
+| --- | --- | --- |
+| `direct` | no, unless the question names an indexed folder | no |
+| `search` | yes | no |
+| `tools` | yes (the router sends some file questions here, see below) | yes |
+| `search+tools` | yes | yes |
+
+A turn with no tools makes one model call. A turn with tools runs in
+**rounds**: each round is one model call, and a round in which the model calls
+tools runs them and starts another. The turn ends when the model answers
+without calling a tool, or at the round cap.
 
 ## The picture
 
@@ -29,6 +34,7 @@ sequenceDiagram
     participant T as transcript
     participant R as Router
     participant E as Engine (main)
+    participant D as ToolRunner (dispatch)
     S->>A: request
     A->>T: New or Open session
     A->>T: History(history_turns)
@@ -40,12 +46,19 @@ sequenceDiagram
         A->>A: Searcher.Search(question)
         A-->>S: emit sources (when it found some)
     end
-    A->>E: Stream(system + excerpts + history + question)
-    loop each piece
-        E-->>A: delta
-        A-->>S: emit token
+    loop each round, up to max_rounds
+        A->>E: Stream(system + excerpts + history + question + earlier rounds, tool schemas)
+        E-->>A: text deltas (emit token) and tool calls
+        opt the model called tools
+            A-->>S: emit tool_call (one per call)
+            par each call at the same time
+                A->>D: ToolRunner.Dispatch(call)
+                D->>T: tool lines
+                A-->>S: emit tool_result
+            end
+        end
     end
-    A->>T: Append assistant line (tokens in/out)
+    A->>T: Append assistant line (final text, tokens in/out)
     A-->>S: emit done with stats
     A-->>S: return nil (server sends the done)
 ```
@@ -78,6 +91,28 @@ passes `searchAdapter`, which calls `retrieve.Search` over the store; tests pass
 `fakeSearcher`, which returns fixed results. A `nil` Searcher turns search off,
 which is what most of the older tests pass.
 
+### The ToolRunner interface
+
+```go
+type ToolRunner interface {
+    Tools() []engine.ToolSpec
+    Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+}
+```
+
+`Tools` lists the tools config allows, with the schemas the model reads.
+`Dispatch` runs one call. Every tool call in Meru goes through dispatch, which
+checks the allowlist, asks you when the tool needs a yes, writes the
+transcript lines and the `tool_calls` row, and records the span and metrics.
+The agent only builds the `dispatch.Call` and reads what comes back.
+`Dispatch` returns no error: a call that couldn't run still comes back with
+an outcome (`denied`, `declined`, `error`, `timeout` or `cancelled`) and a
+`Result` whose text tells the model what happened.
+
+`merud` passes `*dispatch.Dispatcher`, which has these two methods. Tests
+pass `fakeTools`, which answers from a table by tool name. A `nil`
+ToolRunner turns tools off.
+
 ### New and filesNote
 
 `New` builds the system prompt once and adds `filesNote(cfg.Index.Folders)` to
@@ -105,12 +140,12 @@ method that opens its own span under `meru.turn` and writes one debug line:
 `openSession` (`meru.session`), `appendLine` (`meru.transcript.append`),
 `route` (the router's `meru.route`), `searchFiles` (`meru.search`, with
 retrieval's `meru.retrieve` under it), `prompt` (`meru.prompt`) and `answer`
-(`gen_ai.chat`). Two details:
+(`gen_ai.chat`, once per round). Two details:
 
 **The turn span and metrics are recorded in one deferred function.**
 
 ```go
-func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) (err error) {
+func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) (err error) {
     ...
     defer func() {
         outcome := outcomeOf(ctx, err)
@@ -122,9 +157,13 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 `err` is a **named result**: the deferred function reads the error `Handle`
 returns, from any of its `return` statements, and records
-`ok`, `error` or `cancelled`. `context.WithoutCancel` keeps the trace but drops
+`ok`, `error` or `cancelled`, with the number of rounds as
+`meru.turn.iterations`. `context.WithoutCancel` keeps the trace but drops
 the cancel, so a cancelled turn still gets its metric. The same function
 writes the turn's one info line, `logTurn`.
+
+`approve` is the rpc server's way to ask you about a tool call. The agent
+never calls it; it hands it to dispatch in each `dispatch.Call`.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
@@ -132,9 +171,9 @@ show up twice in the prompt.
 ### searchFiles
 
 On every route but `direct`, `Handle` calls `searchFiles` between routing and
-the prompt. `searches(route)` is `route != "direct"`. Until tools arrive in
-v0.3, `tools` searches too: the router sends some questions about your files to
-`tools`, and an answer from the files beats one from the model alone.
+the prompt. `searches(route)` is `route != "direct"`. `tools` searches too:
+the router sends some questions about your files to `tools`, and an answer
+from the files beats one from the model alone.
 
 One rule runs first. When the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
@@ -204,10 +243,10 @@ msgs := a.prompt(ctx, history, question, files)
 
 ### answer
 
-`answer` streams the main model's reply:
+`answer` streams one round of the main model's reply:
 
 ```go
-stream, err := a.engine.Stream(ctx, msgs, nil, engine.Options{Model: model})
+stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model})
 ...
 for delta, err := range stream {
     if err != nil {
@@ -221,13 +260,16 @@ for delta, err := range stream {
         text.WriteString(delta.Text)
         if err := emit(rpc.Event{Type: rpc.EventToken, Text: delta.Text}); err != nil { ... }
     }
+    calls = append(calls, delta.ToolCalls...)
     if delta.Done {
         usage = delta.Usage
     }
 }
 ```
 
-- `nil` for tools: v0.1 sends the model no tool schemas.
+- `tools` holds the schemas to offer, or `nil` for none. Ollama sends each
+  tool call whole, in a chunk of its own, so `answer` collects them with one
+  `append` and never joins pieces.
 - `ttft` (time to first token) feeds the v0.1 target "first token in under a
   second".
 - The last delta carries Ollama's token counts, which go into the transcript
@@ -255,6 +297,96 @@ it if `Handle` fails.
 The `route` event also says whether the router fell back: `Fallback` is true
 for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
+### The tool rounds (tools.go)
+
+**Which turns offer tools.** `toolSpecs(route)` returns the ToolRunner's
+schemas on `tools` and `search+tools`, and `nil` on the other routes or when
+the ToolRunner is `nil`. A model can't call a tool it hasn't seen, and the
+prompt stays shorter. On a turn that offers tools, `prompt` adds `toolsNote`
+to the system prompt: the model may call the tools, and some calls ask you
+first. `Handle` also records the schemas' size, characters divided by four,
+as `meru.context.tokens` with `section = "tools"`.
+
+**The loop.** `converse` runs the rounds:
+
+```go
+for {
+    t.rounds++
+    offer := specs
+    if t.rounds >= a.maxRounds {
+        offer = nil // the last round: answer with what you have
+    }
+    rep, err := a.answer(ctx, msgs, offer, t.emit)
+    ...
+    if len(rep.calls) == 0 || len(offer) == 0 {
+        total.text = rep.text
+        return total, nil
+    }
+    msgs = append(msgs, engine.Message{Role: engine.RoleAssistant, Content: rep.text, ToolCalls: rep.calls})
+    results, err := a.runTools(ctx, t, rep.calls)
+    ...
+    msgs = append(msgs, results...)
+}
+```
+
+- **The cap.** `[agent] max_rounds` (default 8) caps model calls per turn.
+  The last round offers no tools, so the model has to answer. A model that
+  calls a tool it wasn't offered gets no call run; that round is its answer.
+- **What the model reads next round.** Its own message with the calls, then
+  one `RoleTool` message per call, in call order, with `ToolName` set to the
+  tool's full name and `Content` set to `Result.Text`. A denied or declined
+  call reaches the model the same way, so it can answer without the tool or
+  ask you what to do.
+- **The stats.** `reply.add` sums each round's token counts and durations,
+  and keeps the turn's first text token for time to first token. The
+  transcript's assistant line holds the final round's text and the summed
+  counts. `reply.add` has a pointer receiver (`r *reply`), so it changes the
+  caller's `reply` in place.
+- **`turn`** is a small struct that carries what the rounds need: the
+  session, source, trace ID, `emit`, `approve`, and two counters, `rounds`
+  and `calls`. `Handle` reads `t.rounds` in its deferred function, so a
+  failed turn still reports how many rounds it ran.
+
+**Running the calls.** `runTools` does one round's calls:
+
+1. It gives each call an ID, `call-1`, `call-2` and so on across the turn,
+   or the engine's own ID when Ollama sent one, and emits a `tool_call`
+   event with the name, the kind and the arguments. `toolKind` reads the
+   kind from the name: `a2a.` in front means an A2A agent, any other dot
+   means an MCP server, and no dot means a built-in tool.
+2. It starts every call at once in an `errgroup`, each with a
+   `dispatch.Call` holding the ID, name, arguments (`{}` when the model sent
+   none), session ID, source, trace ID, `approve`, and `Append`. `Append`
+   writes to this session's transcript through `appendLine`, so dispatch's
+   tool lines get the same span and debug line as the agent's own.
+3. Each goroutine writes its result into its own slot of a slice, so the
+   results come out in call order with no lock, and emits its `tool_result`
+   event (outcome and milliseconds) as soon as it ends. A quick call reports
+   before a slow one.
+
+```go
+g, gctx := errgroup.WithContext(ctx)
+for i, c := range calls {
+    g.Go(func() error {
+        res, outcome := a.tools.Dispatch(gctx, dispatch.Call{...})
+        out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
+        return t.emit(rpc.Event{Type: rpc.EventToolResult, ...})
+    })
+}
+if err := g.Wait(); err != nil {
+    return nil, err
+}
+```
+
+`g.Wait` waits for every goroutine, so none outlives the turn. When one
+returns an error (only `emit` can fail, when the client has gone), `gctx`
+ends and the other calls stop.
+
+**Events from several goroutines.** While calls run, `emit` runs from
+several goroutines at once, and dispatch may call `approve` from them too.
+The rpc server's `emit` takes a lock around each write, so that is safe; the
+tests' collector takes a lock too.
+
 ### Cancellation
 
 When the client hangs up, the rpc server cancels `ctx`. The engine's stream
@@ -262,15 +394,29 @@ ends, `answer` returns `ctx.Err()`, and `Handle` returns without writing an
 assistant line. The user line stays in the file, and `History` leaves an
 unanswered question out of later prompts.
 
+A hang-up during a tool call works the same way. `gctx` ends, dispatch
+records each open call as `cancelled`, and `runTools` returns `ctx.Err()`
+once every call has returned. The model isn't called again.
+
+### The transcript
+
+The agent writes two lines per turn: the question and the final answer.
+Dispatch writes the tool lines (`tool_call`, `approval`, `tool_result`)
+between them. `transcript.History` reads only user and assistant lines, so
+earlier tool results stay out of later prompts: the answer already holds
+what mattered from them.
+
 ### What it logs
 
 At info level, one `turn` line per turn in `merud.log`: session ID, route,
 source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
 the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
-`transcript appended` (twice), `search done` (on search routes, with the
-result count, the section's size and the time), `prompt built` and `answer
-finished`.
+`transcript appended` (once per line, dispatch's tool lines included),
+`search done` (on search routes, with the result count, the section's size
+and the time), `prompt built`, and per round `answer finished` (with its
+`tool_calls` count) and `round finished` (round number, tool calls and
+milliseconds).
 
 Every line goes through `a.log.DebugContext(ctx, ...)` or `InfoContext`, so the
 log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
@@ -280,7 +426,10 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 
 ## Go ideas used here
 
-- **Interfaces** — `Router`, `Searcher`, and `engine.Engine`.
+- **Interfaces** — `Router`, `Searcher`, `ToolRunner`, and `engine.Engine`.
+- **`errgroup`** — runs a round's tool calls at the same time and waits for
+  them all. More in [go-basics/goroutines.md](go-basics/goroutines.md).
+- **Pointer receivers** — `reply.add` changes the reply it is called on.
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
 - **`context`** — one context runs through the whole turn and stops it. More in
@@ -308,9 +457,21 @@ answers, and `TestSearchQuery` checks which earlier question joins the query.
 `TestFilesNote` checks the folders reach the system prompt, and
 `TestFolderNames` checks the names the folder rule matches.
 
+`tools_test.go` checks the tool rounds with `fakeTools` and a `fakeEngine`
+that scripts one reply per round: which routes offer tools, the event order
+(`session`, `route`, `sources`, `tool_call`, `tool_result`, tokens, `done`),
+two calls that must run at the same time (one waits on a channel the other
+closes) with results in call order, the round cap, denied and declined calls
+reaching the model, `approve` and a job's source reaching dispatch, a hang-up
+during a call, one `gen_ai.chat` span per round, and a transcript and
+history that hold only the question and the answer.
+
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and
-the transcript file.
+the transcript file. `TestEndToEndToolRound` does the same with the real
+`OllamaEngine` against the fake Ollama, which answers the first chat request
+with a tool call and the second with text. It checks the events and what the
+second request sent Ollama: the call, its result and the tool schema.
 
 `observe_test.go` runs turns through the socket server, the agent and the real
 router over a fake engine. It records spans with `tracetest.SpanRecorder` and
@@ -332,3 +493,9 @@ hold the question or answer until `capture_content` is on.
   from pretending it looked.
 - **Sources before the answer.** The client learns what the model read while
   the answer streams, and picks which to show once it has the whole text.
+- **The agent never runs a tool itself.** It hands every call to the
+  ToolRunner, so dispatch stays the one path that checks allowlists, asks
+  you, and logs each call.
+- **Calls in a round run at the same time.** The model asked for them
+  together, so none needs another's result, and a slow MCP server doesn't
+  hold up a quick built-in.
