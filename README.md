@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/img/meru-logo.png" width="140" alt="Meru logo: a mountain with the sun and moon circling its axis"></p>
+<p align="center"><img src="docs/img/meru-social-preview.png" width="720" alt="Meru मेरु: a personal AI assistant that runs on a machine you control. Local models only."></p>
 
 # Meru
 
