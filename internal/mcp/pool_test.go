@@ -141,22 +141,28 @@ func TestCallRefusesToolsOutsideTheAllowList(t *testing.T) {
 }
 
 func TestNeedsConfirm(t *testing.T) {
-	cfg := ServerConfig{Name: "t", Command: "unused", Allow: []string{"echo", "add"}, Confirm: []string{"add"}}
+	cfg := ServerConfig{Name: "t", Command: "unused", Allow: []string{"echo", "add", "slow"},
+		Confirm: []string{"add"}, AlwaysConfirm: []string{"slow"}}
 	var calls atomic.Int32
 	p := openPool(t, cfg, nil, memoryDial(t, &calls))
 	tests := []struct {
-		name string
-		want bool
+		name       string
+		want       bool
+		wantAlways bool
 	}{
-		{"t.add", true},
-		{"t.echo", false},
-		{"t.secret", false},
-		{"other.add", false},
-		{"add", false},
+		{"t.add", true, false},
+		{"t.slow", true, true}, // always_confirm implies confirm
+		{"t.echo", false, false},
+		{"t.secret", false, false},
+		{"other.add", false, false},
+		{"add", false, false},
 	}
 	for _, tt := range tests {
 		if got := p.NeedsConfirm(tt.name); got != tt.want {
 			t.Errorf("NeedsConfirm(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+		if got := p.AlwaysConfirms(tt.name); got != tt.wantAlways {
+			t.Errorf("AlwaysConfirms(%q) = %v, want %v", tt.name, got, tt.wantAlways)
 		}
 	}
 }

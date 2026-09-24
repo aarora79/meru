@@ -392,8 +392,8 @@ func TestMCPAddShell(t *testing.T) {
 			if len(s) != 1 || !strings.HasPrefix(s[0].Env["ALLOW_COMMANDS"], tt.want) {
 				t.Fatalf("servers = %+v", s)
 			}
-			if !slices.Equal(s[0].Confirm, []string{"shell_execute"}) {
-				t.Errorf("confirm = %q; the command tool must ask", s[0].Confirm)
+			if !slices.Equal(s[0].AlwaysConfirm, []string{"shell_execute"}) {
+				t.Errorf("always_confirm = %q; the command tool must ask every time", s[0].AlwaysConfirm)
 			}
 			if !strings.Contains(out.String(), "no sandbox") {
 				t.Errorf("output doesn't warn that commands run as you:\n%s", out)

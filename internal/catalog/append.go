@@ -156,6 +156,11 @@ func CheckServers(servers []config.MCPServer) error {
 				errs = append(errs, fmt.Errorf("mcp server %q: confirm %q is not in allow", s.Name, t))
 			}
 		}
+		for _, t := range s.AlwaysConfirm {
+			if !allowed[t] {
+				errs = append(errs, fmt.Errorf("mcp server %q: always_confirm %q is not in allow", s.Name, t))
+			}
+		}
 	}
 	return errors.Join(errs...)
 }

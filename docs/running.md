@@ -670,11 +670,12 @@ you, with no sandbox: an approved call can do anything you can.
   between. Meru starts you with programs that read and report (`ls`, `cat`,
   `grep`, `df` and a few more) and asks whether to change the list. An allowed
   program does whatever its arguments say: `git`, `python` or `bash` in the list
-  can do anything. Each command asks first. Read it and approve it once: a
-  session approval lets the model run any allowed program without asking again.
+  can do anything. Every command asks first, and the prompt offers only
+  "once" or "deny": `always_confirm` in the entry means no approval covers the
+  session, so you read each command before it runs.
 - **`windows`** runs [Windows-MCP](https://github.com/CursorTouch/Windows-MCP),
   and only on Windows. Looking at the screen runs without asking. Clicking, typing,
-  PowerShell, files and processes ask first, and the registry tool stays off.
+  PowerShell (every time, like `shell`), files and processes ask first, and the registry tool stays off.
   Windows-MCP sends usage data to its makers unless told not to, so the entry
   sets `ANONYMIZED_TELEMETRY = "false"`.
 

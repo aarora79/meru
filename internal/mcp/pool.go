@@ -58,12 +58,14 @@ type Pool struct {
 	watchers sync.WaitGroup
 }
 
-// server is the Pool's record of one configured server. cfg, allow and
-// confirm never change after NewPool; mu guards the fields after it.
+// server is the Pool's record of one configured server. cfg, allow,
+// confirm and always never change after NewPool; mu guards the fields
+// after it.
 type server struct {
 	cfg     ServerConfig
 	allow   map[string]bool
 	confirm map[string]bool
+	always  map[string]bool // AlwaysConfirm
 
 	mu      sync.Mutex
 	session *mcp.ClientSession // nil while not connected
@@ -129,7 +131,8 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 		reconnectAfter: defaultReconnectAfter,
 	}
 	for _, cfg := range servers {
-		s := &server{cfg: cfg, allow: toSet(cfg.Allow), confirm: toSet(cfg.Confirm), stop: func() {}}
+		s := &server{cfg: cfg, allow: toSet(cfg.Allow), confirm: toSet(cfg.Confirm),
+			always: toSet(cfg.AlwaysConfirm), stop: func() {}}
 		p.servers = append(p.servers, s)
 		p.byName[cfg.Name] = s
 
@@ -389,7 +392,15 @@ func (p *Pool) Status() []ServerStatus {
 // refuses those anyway.
 func (p *Pool) NeedsConfirm(name string) bool {
 	s, tool, ok := p.lookup(name)
-	return ok && s.confirm[tool]
+	return ok && (s.confirm[tool] || s.always[tool])
+}
+
+// AlwaysConfirms reports whether the namespaced tool name is in its
+// server's always_confirm list: it asks on every call, and no approval for
+// the session covers it.
+func (p *Pool) AlwaysConfirms(name string) bool {
+	s, tool, ok := p.lookup(name)
+	return ok && s.always[tool]
 }
 
 // Close ends every session and stops every stdio child, then waits for them

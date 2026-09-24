@@ -1391,6 +1391,7 @@ command = "npx"                   # stdio: merud starts this process
 args    = ["-y", "obsidian-mcp", "serve", "--vault", "/Users/you/notes"]
 allow   = ["list_vaults", "search_vault", "read_note"]   # tool-level allowlist
 confirm = []                      # allowed tools that still need a yes per call
+always_confirm = []               # ask every call, with no approval for the session
 timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
@@ -1422,6 +1423,7 @@ network = false                          # true only if the URL isn't loopback</
 <p>Tools are <b>deny-by-default</b>. A server that offers 40 tools gives the model none until you allow specific ones.</p>
 
 <ul>
+  <li><b>Commands ask every time.</b> A tool in <code>always_confirm</code> asks before every call and offers only "approve once" and "deny", like the built-in <code>configure</code>. The catalog puts the tools that run commands there: <code>shell</code>'s <code>shell_execute</code> and Windows' <code>PowerShell</code>. A session approval would let the model run any allowed program unseen for the rest of the session.</li>
   <li><b>No wildcards.</b> <code>allow</code> and <code>confirm</code> name each tool; <code>merud</code> refuses <code>*</code> or any other pattern. A wildcard would admit tools a server adds in a later release, which nobody has read.</li>
   <li><b>A timeout per call.</b> Each server entry may set <code>timeout</code>, 60 seconds unless set. When it passes, or you cancel the turn, Meru tells the server to cancel the call.</li>
   <li><b>Lazy reconnect.</b> A server that crashes, or fails to start, restarts on the next call to one of its tools, at most once every 10 seconds. A call inside that wait fails at once. Meru runs no background restart loop, so a server that crashes on start doesn't spin.</li>

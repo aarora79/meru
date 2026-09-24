@@ -63,6 +63,10 @@ type ServerConfig struct {
 	// Confirm lists allowed tools that need the user's yes on each call.
 	// Every entry must also be in Allow.
 	Confirm []string
+	// AlwaysConfirm lists allowed tools that ask on every call, with no
+	// approval for the session: a tool that runs shell commands, say, where
+	// each command deserves its own look. Every entry must be in Allow.
+	AlwaysConfirm []string
 
 	// Timeout caps one tool call. Zero means DefaultCallTimeout.
 	Timeout time.Duration
@@ -150,6 +154,15 @@ func (c ServerConfig) Validate() error {
 			errs = append(errs, err)
 		}
 		allowed[tool] = true
+	}
+	for _, tool := range c.AlwaysConfirm {
+		if err := checkToolName("always_confirm", tool); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if !allowed[tool] {
+			add("always_confirm: %q is not in allow", tool)
+		}
 	}
 	for _, tool := range c.Confirm {
 		if err := checkToolName("confirm", tool); err != nil {

@@ -37,9 +37,13 @@ func (b mcpBackend) Kind() string { return dispatch.KindMCP }
 // Tools returns the allowed tools of every server, named "<server>.<tool>".
 func (b mcpBackend) Tools() []engine.ToolSpec { return b.pool.Tools() }
 
-// Confirm returns ConfirmAsk for a tool in its server's confirm list and
-// ConfirmNever for the rest.
+// Confirm returns ConfirmAlways for a tool in its server's always_confirm
+// list, ConfirmAsk for one in its confirm list, and ConfirmNever for the
+// rest.
 func (b mcpBackend) Confirm(name string) dispatch.Confirm {
+	if b.pool.AlwaysConfirms(name) {
+		return dispatch.ConfirmAlways
+	}
 	if b.pool.NeedsConfirm(name) {
 		return dispatch.ConfirmAsk
 	}
@@ -87,6 +91,7 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 					Name:        t.Name,
 					Description: t.Description,
 					Confirm:     b.pool.NeedsConfirm(t.Name),
+					AlwaysAsks:  b.pool.AlwaysConfirms(t.Name),
 				})
 			}
 		}
@@ -116,6 +121,8 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 			Network: s.Network,
 			Allow:   s.Allow,
 			Confirm: s.Confirm,
+
+			AlwaysConfirm: s.AlwaysConfirm,
 		}
 		if s.Timeout != "" {
 			d, err := time.ParseDuration(s.Timeout)

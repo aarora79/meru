@@ -144,6 +144,9 @@ type Entry struct {
 	// that ask before each call.
 	Allow   []string
 	Confirm []string
+	// AlwaysConfirm lists allowed tools that ask before every call, with no
+	// approval for the session: the tools that run commands.
+	AlwaysConfirm []string
 	// Install says what to install first, printed by "Show me how".
 	Install string
 	// Docs is the server's upstream page.
@@ -311,9 +314,11 @@ func Entries() []Entry {
 			},
 			Requires: "the programs to allow, and uv",
 			Allow:    []string{"shell_execute"},
-			Confirm:  []string{"shell_execute"},
-			Install:  installUV,
-			Docs:     "https://github.com/tumf/mcp-shell-server",
+			// shell_execute runs a program as the user, with no sandbox, so
+			// every command asks and no session approval covers the next.
+			AlwaysConfirm: []string{"shell_execute"},
+			Install:       installUV,
+			Docs:          "https://github.com/tumf/mcp-shell-server",
 		},
 		{
 			Name:        "google",
@@ -424,8 +429,10 @@ func Entries() []Entry {
 				"MultiSelect", "MultiEdit", "Clipboard", "Process", "Notification",
 			},
 			// Registry stays out of allow: a registry edit can break Windows.
+			// PowerShell runs commands as the user, so it asks every time.
+			AlwaysConfirm: []string{"PowerShell"},
 			Confirm: []string{
-				"App", "PowerShell", "FileSystem", "Click", "Type", "Scroll", "Move", "Shortcut",
+				"App", "FileSystem", "Click", "Type", "Scroll", "Move", "Shortcut",
 				"MultiSelect", "MultiEdit", "Clipboard", "Process", "Notification",
 			},
 			Install: installUV + " windows-mcp needs a recent Python; uv downloads one if you don't have it.",

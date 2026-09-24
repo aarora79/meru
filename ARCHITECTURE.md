@@ -1369,6 +1369,7 @@ command = "npx"                   # stdio: merud starts this process
 args    = ["-y", "obsidian-mcp", "serve", "--vault", "/Users/you/notes"]
 allow   = ["list_vaults", "search_vault", "read_note"]   # tool-level allowlist
 confirm = []                      # allowed tools that still need a yes per call
+always_confirm = []               # ask every call, with no approval for the session
 timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
@@ -1405,6 +1406,11 @@ entry the server doesn't offer, most often a typo.
 Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
 
+- **Commands ask every time.** A tool in `always_confirm` asks before every call and
+  offers only "approve once" and "deny", like the built-in `configure`. The catalog
+  puts the tools that run commands there: `shell`'s `shell_execute` and Windows'
+  `PowerShell`. A session approval would let the model run any allowed program
+  unseen for the rest of the session.
 - **No wildcards.** `allow` and `confirm` name each tool; `merud` refuses `*` or any
   other pattern. A wildcard would admit tools a server adds in a later release,
   which nobody has read.

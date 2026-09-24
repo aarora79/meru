@@ -45,6 +45,9 @@ func Block(e Entry) string {
 	}
 	fmt.Fprintf(&b, "allow   = %s\n", list(e.Allow))
 	fmt.Fprintf(&b, "confirm = %s\n", list(e.Confirm))
+	if len(e.AlwaysConfirm) > 0 {
+		fmt.Fprintf(&b, "always_confirm = %s\n", list(e.AlwaysConfirm))
+	}
 	return b.String()
 }
 

@@ -44,6 +44,8 @@ func TestValidate(t *testing.T) {
 		{"empty allow entry", func(c *ServerConfig) { c.Allow = []string{""}; c.Confirm = nil }, "not a tool name"},
 		{"allow entry with space", func(c *ServerConfig) { c.Allow = []string{"read file"}; c.Confirm = nil }, "not a tool name"},
 		{"confirm not in allow", func(c *ServerConfig) { c.Confirm = []string{"delete"} }, "not in allow"},
+		{"always_confirm not in allow", func(c *ServerConfig) { c.AlwaysConfirm = []string{"delete"} }, "always_confirm: \"delete\" is not in allow"},
+		{"always_confirm wildcard", func(c *ServerConfig) { c.AlwaysConfirm = []string{"*"} }, "always_confirm"},
 		{"bad env name", func(c *ServerConfig) { c.Env = map[string]string{"A=B": "x"} }, "variable name"},
 		{"negative timeout", func(c *ServerConfig) { c.Timeout = -time.Second }, "negative"},
 		{"valid http headers", func(c *ServerConfig) {

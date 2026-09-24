@@ -127,6 +127,7 @@ watch = true
 # network = false                    # true lets url point at another machine
 # allow   = ["list_events", "create_event"]
 # confirm = ["create_event"]         # asks before each call
+# always_confirm = []                # asks before every call, with no approval for the session
 #
 # Secrets: API keys and tokens live in secrets.toml next to this file, one
 # name = "value" per line, never in config.toml. merud refuses the file

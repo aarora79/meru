@@ -76,8 +76,9 @@ func TestMCPBackend(t *testing.T) {
 	url := startMCPServer(t)
 	pool, err := mcp.NewPool(context.Background(), []mcp.ServerConfig{{
 		Name: "files", URL: url,
-		Allow:   []string{"echo", "fail", "delete", "missing"},
-		Confirm: []string{"delete"},
+		Allow:         []string{"echo", "fail", "delete", "missing"},
+		Confirm:       []string{"delete"},
+		AlwaysConfirm: []string{"fail"},
 	}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +94,9 @@ func TestMCPBackend(t *testing.T) {
 	}
 	if b.Confirm("files.delete") != dispatch.ConfirmAsk || b.Confirm("files.echo") != dispatch.ConfirmNever {
 		t.Error("Confirm doesn't follow the confirm list")
+	}
+	if b.Confirm("files.fail") != dispatch.ConfirmAlways {
+		t.Error("a tool in always_confirm should ask every time, with no session approval")
 	}
 
 	calls := []struct {
@@ -130,8 +134,11 @@ func TestMCPBackend(t *testing.T) {
 		if tool.Description == "" {
 			t.Errorf("tool %s has no description", tool.Name)
 		}
-		if tool.Confirm != (tool.Name == "files.delete") {
+		if tool.Confirm != (tool.Name == "files.delete" || tool.Name == "files.fail") {
 			t.Errorf("tool %s Confirm = %v", tool.Name, tool.Confirm)
+		}
+		if tool.AlwaysAsks != (tool.Name == "files.fail") {
+			t.Errorf("tool %s AlwaysAsks = %v", tool.Name, tool.AlwaysAsks)
 		}
 	}
 	if got := strings.Join(names, ","); got != "files.delete,files.echo,files.fail" {

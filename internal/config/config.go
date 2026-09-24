@@ -155,6 +155,10 @@ type MCPServer struct {
 	Allow []string `toml:"allow"`
 	// Confirm lists allowed tools that ask before each call.
 	Confirm []string `toml:"confirm"`
+	// AlwaysConfirm lists allowed tools that ask before every call and
+	// offer no approval for the session, such as a tool that runs shell
+	// commands. It needs no entry in Confirm.
+	AlwaysConfirm []string `toml:"always_confirm"`
 	// Timeout caps one call, as a Go duration such as "60s". Empty means 60s.
 	Timeout string `toml:"timeout"`
 }
