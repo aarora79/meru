@@ -1,7 +1,8 @@
 # store
 
-**Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`)
-**Milestone:** v0.2
+**Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`,
+`toolcalls.go`)
+**Milestone:** v0.2; `tool_calls` in v0.3
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
 
@@ -10,7 +11,9 @@
 The store is Meru's one SQLite file, `~/.meru/meru.db`. It holds every indexed
 file (a **document**), the pieces of text the indexer cut each file into
 (**chunks**), one vector per chunk, and a keyword index over the chunk text.
-The indexer writes to it; retrieval reads from it.
+The indexer writes to it; retrieval reads from it. From v0.3 it also holds
+`tool_calls`, the audit log of every tool call, which `dispatch` writes and
+`meru log` reads.
 
 Everything in the file can be rebuilt from your files, so the store never
 holds the only copy of anything. Delete `meru.db` and `merud` builds it again.
@@ -91,8 +94,8 @@ returns an error, `write` rolls back and nothing changes.
 
 `migrations()` returns a list of SQL steps. Step `i` takes the database from
 `schema_version` `i` to `i+1`, and `meta` records the version. `migrate` runs
-each step the file hasn't seen, one transaction per step. Later milestones
-add `messages`, `tool_calls` and `memories` by appending a step. A shipped
+each step the file hasn't seen, one transaction per step. v0.3 appended step 2
+for `tool_calls`, and later milestones add `messages` and `memories` the same way. A shipped
 step never changes, because existing files have already run it.
 
 The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
@@ -200,6 +203,41 @@ the IDs as one JSON array and lets SQLite's `json_each` turn it into rows, so
 the SQL text never changes with the number of IDs. It then puts the rows back
 in the caller's order.
 
+### toolcalls.go: the audit log
+
+Migration step 2 creates `tool_calls`: one row per tool call, with its session,
+time, kind, server, tool, arguments, result, outcome, your approval choice, how
+long it ran, and the turn's trace ID. The arguments are JSON text and the result
+plain text, cut to 4,000 characters (`MaxToolResult`), so a row reads well in the
+`sqlite3` shell. Indexes on `ts` and `session` serve `meru log` and a look at one
+session.
+
+`InsertToolCall` writes one row through `write`, like every other write.
+`ToolCalls(limit)` returns the newest rows first; a limit of zero or less returns
+all of them.
+
+The transcripts hold the truth, so `ReplayToolCalls` can rebuild the table from
+them. merud calls it at startup; it does nothing when the table already has rows.
+Otherwise it walks `sessions/`, reads each `.jsonl` file with
+`transcript.ReadLines`, and pairs each call's lines by `call_id`:
+
+```go
+case transcript.TypeToolCall:
+    calls = append(calls, ToolCall{CallID: l.CallID, Outcome: "cancelled", ...})
+    open[l.CallID] = len(calls) - 1
+case transcript.TypeToolResult:
+    i, ok := open[l.CallID]
+    ...
+    delete(open, l.CallID)
+```
+
+A `tool_call` line opens a call and its `tool_result` line closes it. Tracking
+open calls, instead of one map entry per ID, handles a model that reuses a call ID
+in a later turn. A call that never closed, because merud stopped mid-call, keeps
+the outcome `cancelled`. `dispatch` compacts the arguments and cuts times to the
+second, as the transcript does, so a replayed row matches the row written live;
+`TestReplayMatchesLive` checks it.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,
@@ -215,6 +253,8 @@ in the caller's order.
   a real failure. More in [go-basics/errors.md](go-basics/errors.md).
 - **Struct embedding** — `ChunkWithDoc` embeds `Chunk`, so `c.Text` works
   without writing `c.Chunk.Text`.
+- **`filepath.WalkDir`** — visits every file under a folder; `ReplayToolCalls`
+  uses it to find the session files. More in [go-basics/filepath.md](go-basics/filepath.md).
 
 ## Try it
 

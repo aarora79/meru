@@ -51,6 +51,10 @@ type ServerConfig struct {
 	// "this server may be on another machine" (ARCHITECTURE.md, "Privacy
 	// boundary").
 	Network bool
+	// Headers go on every HTTP request to a Streamable HTTP server, such
+	// as an Authorization header with an API key. merud resolves secrets
+	// before they get here, so the values are the real ones.
+	Headers map[string]string
 
 	// Allow lists the tools the model may call, by the name the server
 	// gives them. An empty list gives the model nothing: tools are
@@ -112,6 +116,20 @@ func (c ServerConfig) Validate() error {
 	}
 	if !hasURL && c.Network {
 		add("network applies only to a Streamable HTTP server (url)")
+	}
+	if !hasURL && len(c.Headers) > 0 {
+		add("headers apply only to a Streamable HTTP server (url)")
+	}
+	for k, v := range c.Headers {
+		// A newline in a header would let a value start a second header.
+		// Go's HTTP client refuses such a request anyway; catching it here
+		// names the entry at startup instead of failing each call.
+		if k == "" || strings.ContainsAny(k, " :\r\n\x00") {
+			add("headers: %q is not a valid header name", k)
+		}
+		if strings.ContainsAny(v, "\r\n\x00") {
+			add("headers: the value of %q holds a line break", k)
+		}
 	}
 
 	if hasURL {

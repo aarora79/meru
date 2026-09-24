@@ -198,6 +198,45 @@ func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
 		metric.WithAttributes(attr(keyStage, bounded(stage, stages...))))
 }
 
+// ToolCallMetric describes one finished tool call, for RecordToolCall.
+type ToolCallMetric struct {
+	Kind    string // "mcp", "a2a" or "builtin"
+	Server  string // the MCP server or A2A agent; "meru" for a built-in
+	Tool    string // the tool's name without the server
+	Outcome string // "ok", "error", "denied", "declined", "cancelled" or "timeout"
+	// Duration is how long the tool ran. It is zero for a call that never
+	// ran: denied, declined, or cancelled before it started.
+	Duration time.Duration
+}
+
+// RecordToolCall records meru.tool.calls and, for a call that ran,
+// meru.tool.duration.
+//
+// Server and tool names come from config, so they form a small set, with
+// one exception: a denied call names a tool the model made up, and a model
+// can make up any number. RecordToolCall reports those as "other". Kind
+// and outcome outside their known sets become "other" too.
+func RecordToolCall(ctx context.Context, c ToolCallMetric) {
+	in := load()
+	if in == nil {
+		return
+	}
+	server, tool := c.Server, c.Tool
+	if c.Outcome == "denied" {
+		server, tool = other, other
+	}
+	kind := attr(keyToolKind, bounded(c.Kind, toolKinds...))
+	serverAttr := attr(keyToolServer, server)
+	toolAttr := attr(keyToolName, tool)
+	in.toolCalls.Add(ctx, 1, metric.WithAttributes(
+		kind, serverAttr, toolAttr,
+		attr(keyOutcome, bounded(c.Outcome, toolOutcomes...)),
+	))
+	if c.Duration > 0 {
+		in.toolDuration.Record(ctx, c.Duration.Seconds(), metric.WithAttributes(kind, serverAttr, toolAttr))
+	}
+}
+
 // ActiveStreams adds delta (+1 or -1) to meru.rpc.active_streams.
 func ActiveStreams(ctx context.Context, delta int64) {
 	in := load()

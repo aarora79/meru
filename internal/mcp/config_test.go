@@ -46,6 +46,22 @@ func TestValidate(t *testing.T) {
 		{"confirm not in allow", func(c *ServerConfig) { c.Confirm = []string{"delete"} }, "not in allow"},
 		{"bad env name", func(c *ServerConfig) { c.Env = map[string]string{"A=B": "x"} }, "variable name"},
 		{"negative timeout", func(c *ServerConfig) { c.Timeout = -time.Second }, "negative"},
+		{"valid http headers", func(c *ServerConfig) {
+			c.Command = ""
+			c.URL = "http://127.0.0.1:1/mcp"
+			c.Headers = map[string]string{"Authorization": "Bearer x"}
+		}, ""},
+		{"headers on stdio", func(c *ServerConfig) { c.Headers = map[string]string{"X-Key": "k"} }, "headers apply only"},
+		{"bad header name", func(c *ServerConfig) {
+			c.Command = ""
+			c.URL = "http://127.0.0.1:1/mcp"
+			c.Headers = map[string]string{"X Key": "k"}
+		}, "not a valid header name"},
+		{"header value with newline", func(c *ServerConfig) {
+			c.Command = ""
+			c.URL = "http://127.0.0.1:1/mcp"
+			c.Headers = map[string]string{"X-Key": "k\r\nX-Other: y"}
+		}, "line break"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

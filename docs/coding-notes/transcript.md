@@ -96,6 +96,13 @@ writes on the end of it, so a damaged line can turn up anywhere in the file.
 `read` skips any line that isn't valid JSON, which loses that one event and
 keeps the rest of the session usable.
 
+### ReadLines
+
+`ReadLines(path)` returns every line of one session file, by path, with the same
+skip rule as `read`; both share `readFile`. The store's `ReplayToolCalls` uses it
+to rebuild `tool_calls` from the `tool_call`, `approval` and `tool_result` lines
+that `dispatch` writes.
+
 ## Go ideas used here
 
 - **Pointer receivers** — `func (s *Session) Append(...)` makes `Append` a

@@ -228,9 +228,23 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 // in the file, not only at the end. Skipping it loses that one event and
 // keeps the rest of the session readable.
 func (s *Session) read() ([]Line, error) {
-	f, err := os.Open(s.path)
+	return readFile(s.path, s.id)
+}
+
+// ReadLines parses every line of the transcript file at path and skips the
+// lines that aren't valid JSON, as History does. The store's replay uses it
+// to rebuild tool_calls from the files. It fails only when the file can't be
+// read.
+func ReadLines(path string) ([]Line, error) {
+	return readFile(path, filepath.Base(path))
+}
+
+// readFile does the work of read and ReadLines. name identifies the file in
+// errors.
+func readFile(path, name string) ([]Line, error) {
+	f, err := os.Open(path) // #nosec G304 -- a session file under merud's own sessions directory
 	if err != nil {
-		return nil, fmt.Errorf("read session %s: %w", s.id, err)
+		return nil, fmt.Errorf("read session %s: %w", name, err)
 	}
 	defer f.Close() // we only read, so Close has nothing useful to report
 
@@ -245,7 +259,7 @@ func (s *Session) read() ([]Line, error) {
 		lines = append(lines, l)
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("read session %s: %w", s.id, err)
+		return nil, fmt.Errorf("read session %s: %w", name, err)
 	}
 	return lines, nil
 }

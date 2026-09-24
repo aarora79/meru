@@ -95,6 +95,15 @@ func RecordRoute(ctx context.Context, route, outcome string) {
 means export is off. The functions are safe to call before `Setup`, after shutdown
 and from many goroutines at once.
 
+`RecordToolCall` (v0.3) takes one finished tool call from `dispatch` and writes
+two metrics: `meru.tool.calls`, a counter by kind, server, tool and outcome, and
+`meru.tool.duration`, a histogram by kind, server and tool. The duration covers
+only the time the tool ran, so a call that never ran (denied, declined, or
+cancelled before it started) adds to the counter and records no duration. Server
+and tool names come from config, so they form a small set, with one exception: a
+denied call names a tool the model made up. `RecordToolCall` reports those names
+as `other`, so a model that invents names can't grow the series without end.
+
 `RecordModelCall` writes five metrics from one struct. It works out decode speed as
 `EvalDuration / OutputTokens`, using Ollama's own clock, and skips it when either
 number is zero. It skips time to first token for calls that didn't stream. It records
