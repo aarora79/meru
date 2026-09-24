@@ -178,6 +178,7 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
+	usedTools := false // the turn called a tool; see rpc.Cited
 	endsInNewline := false
 	dim := newLook(stderr).dim
 	// breakLine starts a new line on the terminal before a tool line or a
@@ -203,6 +204,7 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 		case rpc.EventSources:
 			sources = ev.Sources
 		case rpc.EventToolCall, rpc.EventToolResult:
+			usedTools = true
 			if line := toolLine(ev); line != "" {
 				breakLine()
 				fmt.Fprintln(stderr, dim.Render(line))
@@ -224,9 +226,9 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	if answer.Len() > 0 && !endsInNewline {
 		fmt.Fprintln(stdout)
 	}
-	if len(sources) > 0 {
+	if cited := rpc.Cited(answer.String(), sources, usedTools); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")
-		for _, c := range rpc.Cited(answer.String(), sources) {
+		for _, c := range cited {
 			fmt.Fprintln(stdout, c)
 		}
 	}

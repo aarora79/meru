@@ -27,21 +27,24 @@ func TestCitationString(t *testing.T) {
 func TestCited(t *testing.T) {
 	srcs := []Citation{{N: 1, Path: "a"}, {N: 2, Path: "b"}, {N: 3, Path: "c"}}
 	tests := []struct {
-		name   string
-		answer string
-		want   []int
+		name      string
+		answer    string
+		usedTools bool
+		want      []int
 	}{
-		{"one mark", "It is 4,200 dollars [1].", []int{1}},
-		{"marks in any order", "See [3] and [1].", []int{1, 3}},
-		{"list in one pair", "Both say so [2, 3].", []int{2, 3}},
-		{"no marks gives all", "It is 4,200 dollars.", []int{1, 2, 3}},
-		{"unknown number gives all", "See [9].", []int{1, 2, 3}},
-		{"not a mark", "an array a[i] of [x]", []int{1, 2, 3}},
+		{"one mark", "It is 4,200 dollars [1].", false, []int{1}},
+		{"marks in any order", "See [3] and [1].", false, []int{1, 3}},
+		{"list in one pair", "Both say so [2, 3].", false, []int{2, 3}},
+		{"no marks gives all", "It is 4,200 dollars.", false, []int{1, 2, 3}},
+		{"unknown number gives all", "See [9].", false, []int{1, 2, 3}},
+		{"not a mark", "an array a[i] of [x]", false, []int{1, 2, 3}},
+		{"tools and no marks gives none", "Two notes mention AI.", true, nil},
+		{"tools and a mark gives that one", "Your notes agree [2].", true, []int{2}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []int
-			for _, c := range Cited(tt.answer, srcs) {
+			for _, c := range Cited(tt.answer, srcs, tt.usedTools) {
 				got = append(got, c.N)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
@@ -49,7 +52,7 @@ func TestCited(t *testing.T) {
 			}
 		})
 	}
-	if got := Cited("[1]", nil); got != nil {
+	if got := Cited("[1]", nil, false); got != nil {
 		t.Errorf("Cited with no sources = %v, want nil", got)
 	}
 }

@@ -184,14 +184,15 @@ func millis(ms int64) string {
 
 // sourcesBlock draws the files a finished answer cites, dim, under the
 // answer: a "Sources" line, then one numbered line per file, as the answer
-// numbers them. It returns "" when the turn has no sources. Each line wraps
+// numbers them. It returns "" when there are none to show (see rpc.Cited). Each line wraps
 // to width, so a long path can't push the screen out of shape.
 func (m *Model) sourcesBlock(t *exchange, width int) string {
-	if len(t.sources) == 0 {
+	cited := rpc.Cited(t.answer, t.sources, len(t.tools) > 0)
+	if len(cited) == 0 {
 		return ""
 	}
 	lines := []string{"Sources"}
-	for _, c := range rpc.Cited(t.answer, t.sources) {
+	for _, c := range cited {
 		lines = append(lines, ansi.Wrap(c.String(), width, ""))
 	}
 	return m.style.raw.Render(m.style.dim.Render(strings.Join(lines, "\n")))
