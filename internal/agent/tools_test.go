@@ -545,7 +545,7 @@ func TestToolKind(t *testing.T) {
 // question that names a connected server gets that server's tools, even
 // when the router picked a route without tools.
 func TestQuestionNamingAToolServerGetsTools(t *testing.T) {
-	tools := &fakeTools{specs: []engine.ToolSpec{spec("obsidian.search_vault"), spec("a2a.research.summarize"), spec("configure")}}
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("obsidian.obsidian_simple_search"), spec("a2a.research.summarize"), spec("configure")}}
 	tests := []struct {
 		route, question, wantRoute string
 	}{
@@ -584,22 +584,24 @@ func TestToolServers(t *testing.T) {
 // TestTurnConnectsMissingServersOnce checks the connect-on-demand rule
 // from the agent's side: a turn that offers tools asks the tool runner to
 // reach missing servers once, before it lists the tools, so a server that
-// connects then is offered in the same turn. A turn that offers no tools
-// never asks.
+// connects then is offered in the same turn. The search route offers the
+// file tools but never a server's, so it doesn't wait on a server; a turn
+// that offers no tools never asks either.
 func TestTurnConnectsMissingServersOnce(t *testing.T) {
 	tests := []struct {
 		route        string
 		wantConnects int
 		wantOffered  []string
 	}{
-		{"tools", 1, []string{"notes.search", "google.search_gmail_messages"}},
-		{"search+tools", 1, []string{"notes.search", "google.search_gmail_messages"}},
+		{"tools", 1, []string{"read_file", "notes.search", "google.search_gmail_messages"}},
+		{"search+tools", 1, []string{"read_file", "notes.search", "google.search_gmail_messages"}},
+		{"search", 0, []string{"read_file"}},
 		{"direct", 0, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.route, func(t *testing.T) {
 			tools := &fakeTools{
-				specs: []engine.ToolSpec{spec("notes.search")},
+				specs: []engine.ToolSpec{spec("read_file"), spec("notes.search")},
 				late:  []engine.ToolSpec{spec("google.search_gmail_messages")},
 			}
 			eng := &fakeEngine{rounds: []fakeRound{{pieces: []string{"ok"}}}}

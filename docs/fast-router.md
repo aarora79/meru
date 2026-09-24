@@ -517,7 +517,7 @@ use", "what is sqlite good for", "what language is kubernetes written in".
   loop adds tools when the question names a connected MCP server or A2A agent as
   a whole word and the route offers none: `direct` becomes `tools`, and `search`
   becomes `search+tools`. The names come from the tools dispatch offers, such as
-  "obsidian" from `obsidian.search_vault` and "research" from
+  "obsidian" from `obsidian.obsidian_simple_search` and "research" from
   `a2a.research.summarize`, read on each turn because `configure` can add a
   server while merud runs. Built-in tools don't count: their owner is "meru",
   the assistant's own name. With the rule, the same question listed the vaults,

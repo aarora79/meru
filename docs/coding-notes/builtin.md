@@ -19,7 +19,7 @@ so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 There are six built-ins. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
-yourself; `merud` connects to it on the next turn that offers tools. It can also add a server outside
+yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
 the catalog, from a name and a command or URL.
 
 When you say "remember that I work on the registry team", the model calls

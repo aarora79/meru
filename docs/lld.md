@@ -211,7 +211,7 @@ more line back on the same connection:
 // internal/rpc/protocol.go
 type Approval struct {
     ID      string          // the Reply must carry it back
-    Name    string          // the tool's full name, such as "obsidian.search_vault"
+    Name    string          // the tool's full name, such as "obsidian.obsidian_simple_search"
     Kind    string          // "mcp", "a2a" or "builtin"
     Args    json.RawMessage // the call's arguments
     Choices []Choice        // what the client may offer: "once", "session", "deny"
@@ -362,7 +362,7 @@ after `configure` changes the servers. `dispatch.Recorder`, one method,
 
 `mcpBackend` is the one `Connector`. `merud` tries each MCP server once, in
 `mcp.NewPool`, and never again on its own: no timer, no background goroutine, no
-retry loop. On a turn that offers tools, `Handle` calls
+retry loop. On a turn on a tools route, `Handle` calls
 `ToolRunner.ConnectMissing`, which `Dispatcher.ConnectMissing` passes to each
 backend that is a `Connector`, and `mcp.Pool.ConnectMissing` gives each server
 that isn't connected one try: 5 seconds for an HTTP server (`httpRetryTimeout`),
@@ -500,7 +500,7 @@ sequenceDiagram
     end
     A->>A: prompt(system prompt + excerpts + toolsNote, history, question)
     A->>E: round 1: Stream(messages, toolSpecs(route))
-    E-->>A: Delta{ToolCalls: obsidian.search_vault}
+    E-->>A: Delta{ToolCalls: obsidian.obsidian_simple_search}
     A-->>U: emit tool_call event
     A->>D: Dispatch(Call{ID, Name, Args, Append, Approve})
     D->>T: Append(tool_call line)

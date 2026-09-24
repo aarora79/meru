@@ -42,7 +42,7 @@ never restarts either one on its own, checks its health or retries on a timer:
 | When | What the Pool does |
 | --- | --- |
 | `NewPool`, at `merud`'s start | one try per server |
-| a turn that offers tools (`ConnectMissing`) | one try per server that isn't connected |
+| a turn on a tools route (`ConnectMissing`) | one try per server that isn't connected |
 | a turn that offers no tools, or no turn at all | nothing |
 | a call to a server that isn't connected | fails at once with `ErrUnavailable` |
 
@@ -64,7 +64,7 @@ flowchart LR
     call -- "allowed" --> http
 ```
 
-A stdio server that crashes, and comes back on the next turn that offers tools:
+A stdio server that crashes, and comes back on the next turn on a tools route:
 
 ```mermaid
 sequenceDiagram
@@ -77,7 +77,7 @@ sequenceDiagram
     W->>P: session = nil, lastErr = "server went away"
     D->>P: Call("files.read", args), later in the same turn
     P-->>D: ErrUnavailable: files: not connected
-    Note over A,S: the next turn that offers tools
+    Note over A,S: the next turn on a tools route
     A->>D: ConnectMissing(ctx)
     D->>P: ConnectMissing(ctx)
     P->>S: start a new process, handshake, list tools

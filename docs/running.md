@@ -734,7 +734,7 @@ so the table comes back at once. `meru mcp --json` prints the same rows as JSON,
 and `/mcp` in `meru chat` shows the table in a box.
 
 `merud` connects to each server once when it starts. A server that isn't connected
-gets one more try at the start of each turn that offers tools: 5 seconds for an
+gets one more try at the start of each turn on a tools route: 5 seconds for an
 HTTP server, 30 for a stdio server. Nothing retries between turns. So when `google`
 shows `not connected`, start it, and ask your question: `merud` connects on that
 turn, with no restart. A stdio server that crashed comes back the same way. A

@@ -467,7 +467,7 @@ A second rule does the same for tools. When a question names a connected tool
 server, such as "search my obsidian vault", and the route is `direct` or
 `search`, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
 `search+tools`. `toolServers` reads the server names from the tool names:
-`obsidian` from `obsidian.search_vault`, `research` from
+`obsidian` from `obsidian.obsidian_simple_search`, `research` from
 `a2a.research.summarize`. It leaves out the built-in tools, whose owner,
 `meru`, is also the assistant's name. It reads them on each turn, because the
 configure tool can add a server while `merud` runs. In testing, the router

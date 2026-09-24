@@ -674,7 +674,7 @@ France" searches too, because the assistant shares its name with the folder.
 The second: when the question names a connected MCP server or A2A agent as a whole
 word, and the route is `direct` or `search`, the agent loop adds the rest. `direct` becomes
 `tools`, and `search` becomes `search+tools`. The names come from the tools
-`dispatch` offers, such as "obsidian" from `obsidian.search_vault` and "research"
+`dispatch` offers, such as "obsidian" from `obsidian.obsidian_simple_search` and "research"
 from `a2a.research.summarize`, and the loop reads them on each turn, because
 `configure` can add a server while `merud` runs. Built-in tools don't count: their
 owner is `meru`, the assistant's own name, which would match most questions. The
@@ -1376,7 +1376,7 @@ match ordinary words. A config file you share or commit holds names only.
 
 Meru is an MCP **client**; it hosts no servers. `config.toml` lists the servers, and
 Meru merges their tools into one set of names, prefixed per server: the model sees
-`search_vault` from the `obsidian` server as `obsidian.search_vault`. It supports the
+`obsidian_simple_search` from the `obsidian` server as `obsidian.obsidian_simple_search`. It supports the
 two transports in the current MCP spec, both provided by the official Go SDK:
 
 - **stdio:** `merud` starts the server as a child process and talks to it over
@@ -1404,7 +1404,7 @@ start it with `launchd`, `systemd` or by hand, the way you start Ollama.
 server once when it starts: connect, `initialize`, `tools/list`. A failure is
 recorded with its reason, and the server stays listed as not connected. A server
 that isn't connected has no tool list, so its tools aren't offered. At the start
-of each turn that offers tools, before it lists them, `merud` tries each server
+of each turn on a tools route, before it lists them, `merud` tries each server
 that isn't connected once more, inside that turn: 5 seconds for an HTTP server, 30
 seconds for a stdio child, which may still be downloading. If the try fails, the
 turn carries on without that server. A stdio child that crashed counts as not
@@ -1414,7 +1414,7 @@ run the handshake; for HTTP, connect to the URL.
 | | What happens |
 | --- | --- |
 | `merud` starts | one try per server |
-| a turn that offers tools | one try per server that isn't connected, before the tool list |
+| a turn on a tools route | one try per server that isn't connected, before the tool list |
 | a turn that offers no tools, or no turn at all | nothing |
 | a call to a server that died mid-turn | fails at once; the next turn tries again |
 
@@ -1513,7 +1513,7 @@ until you allow specific ones.
   set. When it passes, or you cancel the turn, Meru tells the server to cancel the
   call.
 - **One try per turn, no retry loop.** A server that crashes, or fails to start,
-  gets one try at the start of the next turn that offers tools (see above). A call
+  gets one try at the start of the next turn on a tools route (see above). A call
   to a server that isn't connected fails at once. Nothing retries on a timer, so a
   server that crashes on start doesn't spin.
 - **A short environment for stdio servers.** A child process gets only `PATH`,

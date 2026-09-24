@@ -321,12 +321,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
-	// A turn that offers tools first gives each tool server that isn't
+	// A turn on a tools route first gives each tool server that isn't
 	// connected one try, then lists the tools again: a server the user
 	// started after merud, or one that crashed, is back for this turn. This
 	// is the only place merud reconnects, so nothing runs while nobody
 	// asks (ARCHITECTURE.md, "MCP"). A server that still fails is left out.
-	if len(specs) > 0 {
+	// The search route offers only the file tools and commands, never a
+	// server's tools, so it doesn't wait on a server that may take 30
+	// seconds to start.
+	if len(specs) > 0 && (dec.Route == "tools" || dec.Route == "search+tools") {
 		a.tools.ConnectMissing(ctx)
 		specs = a.toolSpecs(dec.Route)
 	}
@@ -562,7 +565,7 @@ func withTools(route string) (string, bool) {
 }
 
 // toolServers returns, in lower case, the names of the MCP servers and A2A
-// agents behind specs: "obsidian" for "obsidian.search_vault" and
+// agents behind specs: "obsidian" for "obsidian.obsidian_simple_search" and
 // "research" for "a2a.research.summarize". Built-in tools belong to no
 // server; their owner, "meru", is also the assistant's name, so it would
 // match nearly every question addressed to it.
