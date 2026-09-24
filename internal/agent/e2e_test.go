@@ -52,7 +52,7 @@ func serveOnSocket(t *testing.T, a *Agent) string {
 func TestEndToEnd(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"The answer ", "is 42."}, usage: engine.Usage{PromptTokens: 20, OutputTokens: 4}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, nil, nil, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, nil, nil, nil, quietLog())
 	sock := serveOnSocket(t, a)
 
 	// Ping first, as meru ping would.
@@ -119,7 +119,7 @@ func TestEndToEndToolRound(t *testing.T) {
 		specs:   []engine.ToolSpec{spec("weather.now")},
 		results: map[string]fakeResult{"weather.now": {text: "sunny, 21C"}},
 	}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, quietLog())
 	sock := serveOnSocket(t, a)
 
 	var got []rpc.EventType

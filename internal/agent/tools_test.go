@@ -116,7 +116,7 @@ func types(evs []rpc.Event) []rpc.EventType {
 // toolsAgent builds an agent on route over eng and tools, with no search.
 func toolsAgent(t *testing.T, route string, eng *fakeEngine, tools ToolRunner) *Agent {
 	t.Helper()
-	return New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, nil, tools, quietLog())
+	return New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, quietLog())
 }
 
 func TestToolsOfferedOnlyOnToolRoutes(t *testing.T) {
@@ -162,7 +162,7 @@ func TestToolRoundThenAnswer(t *testing.T) {
 		results: map[string]fakeResult{"notes.search": {text: "garden.md: budget 4,200"}},
 	}
 	search := &fakeSearcher{results: []retrieve.Result{result("/srv/plan.md", "", "Plant tomatoes in May.", 1, 1, 0.02)}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.9, Outcome: "ok"}}, search, tools, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.9, Outcome: "ok"}}, search, tools, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Text: "What is the garden budget?"})
 	if err != nil {
@@ -269,7 +269,7 @@ func TestRoundCapForcesAnswer(t *testing.T) {
 		{pieces: []string{"Here is what I have."}, calls: []engine.ToolCall{call("loop", `{}`)}},
 	}}
 	tools := &fakeTools{specs: []engine.ToolSpec{spec("loop")}, results: map[string]fakeResult{"loop": {text: "again"}}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Text: "loop forever"})
 	if err != nil {
@@ -378,7 +378,7 @@ func TestCancelledDuringToolCall(t *testing.T) {
 		{calls: []engine.ToolCall{call("slow.op", `{}`)}},
 		{pieces: []string{"never"}},
 	}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, quietLog())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -420,7 +420,7 @@ func TestTranscriptAndHistoryAfterToolTurn(t *testing.T) {
 		{pieces: []string{"Found it."}},
 	}}
 	router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
-	a := New(cfg, eng, router, nil, tools, quietLog())
+	a := New(cfg, eng, router, nil, tools, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Text: "find it"})
 	if err != nil {

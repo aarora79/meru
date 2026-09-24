@@ -1,7 +1,7 @@
 # transcript
 
 **Code:** `internal/transcript/` (`doc.go`, `transcript.go`)
-**Milestone:** v0.1
+**Milestone:** v0.1; tool lines and the assistant line's route, ms and sources in v0.3
 **Architecture:** [Session transcripts](../../ARCHITECTURE.md#session-transcripts)
 
 ## What it does
@@ -21,8 +21,15 @@ them for search and can always be rebuilt from them.
 
 ```json
 {"ts":"2026-09-23T10:15:02Z","type":"user","text":"hello","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:03Z","type":"assistant","text":"Hi!","tokens_in":31,"tokens_out":2,"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:03Z","type":"assistant","text":"Hi!","tokens_in":31,"tokens_out":2,"route":"search","ms":1480,"sources":["/Users/me/notes/hello.md"],"trace_id":"4bf9…"}
 ```
+
+From v0.3 the assistant line also records the turn's facts: `route` is the
+route the turn took, `ms` how long it took from question to answer, and
+`sources` the full paths of the files whose excerpts went into the prompt, each
+once. The store's `turns` table, which `meru usage` adds up, rebuilds from
+these fields. Lines written before v0.3 lack them, and a turn that didn't
+search has no `sources`.
 
 ## The picture
 
@@ -101,7 +108,8 @@ keeps the rest of the session usable.
 `ReadLines(path)` returns every line of one session file, by path, with the same
 skip rule as `read`; both share `readFile`. The store's `ReplayToolCalls` uses it
 to rebuild `tool_calls` from the `tool_call`, `approval` and `tool_result` lines
-that `dispatch` writes.
+that `dispatch` writes, and `ReplayTurns` to rebuild `turns` from the user,
+`tool_call` and assistant lines.
 
 ## Go ideas used here
 

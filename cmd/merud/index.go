@@ -206,9 +206,14 @@ func (s *indexService) handleIndex(ctx context.Context, req rpc.Request, emit fu
 	return emit(rpc.Event{Type: rpc.EventReport, Report: &r})
 }
 
-// handleStatus answers OpIndexStatus with one "status" event.
+// handleStatus answers OpIndexStatus with one "status" event, which
+// includes the size of meru.db on disk.
 func (s *indexService) handleStatus(ctx context.Context, emit func(rpc.Event) error) error {
 	stats, err := s.st.Stats(ctx)
+	if err != nil {
+		return err
+	}
+	size, err := s.st.DiskBytes()
 	if err != nil {
 		return err
 	}
@@ -217,6 +222,7 @@ func (s *indexService) handleStatus(ctx context.Context, emit func(rpc.Event) er
 		Documents: stats.Documents,
 		Chunks:    stats.Chunks,
 		Vectors:   stats.Vectors,
+		DBBytes:   size,
 	}
 	s.mu.Lock()
 	st.Scanning = s.scanning

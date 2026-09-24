@@ -1,7 +1,7 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `e2e_test.go`)
-**Milestone:** v0.1; search in v0.2; tool rounds in v0.3
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `e2e_test.go`)
+**Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -58,7 +58,8 @@ sequenceDiagram
             end
         end
     end
-    A->>T: Append assistant line (final text, tokens in/out)
+    A->>T: Append assistant line (text, tokens, route, ms, sources)
+    A->>A: TurnRecorder.InsertTurn (turns row)
     A-->>S: emit done with stats
     A-->>S: return nil (server sends the done)
 ```
@@ -112,6 +113,25 @@ an outcome (`denied`, `declined`, `error`, `timeout` or `cancelled`) and a
 `merud` passes `*dispatch.Dispatcher`, which has these two methods. Tests
 pass `fakeTools`, which answers from a table by tool name. A `nil`
 ToolRunner turns tools off.
+
+### The TurnRecorder interface
+
+```go
+type TurnRecorder interface {
+    InsertTurn(ctx context.Context, t store.Turn) error
+}
+```
+
+After each answered turn the agent hands a `store.Turn` row to its
+TurnRecorder, and `meru usage` adds the rows up. `merud` passes the
+`*store.Store` itself, which has this method, so no adapter sits between them.
+Tests pass `fakeTurns`, which keeps the rows in a slice. A `nil` TurnRecorder
+keeps no rows, which is what most tests pass.
+
+The agent writes the row, rather than `merud` reading it back from the
+transcript, because the agent already holds every fact the row needs: the
+session, the source, the final route and the tool-call count. `merud` would
+have to reopen the session file after each turn to find them.
 
 ### New and filesNote
 
@@ -211,7 +231,7 @@ Then the search:
 ```go
 if searches(dec.Route) && a.search != nil {
     var sources []rpc.Citation
-    files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+    files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
     ...
     if len(sources) > 0 {
         emit(rpc.Event{Type: rpc.EventSources, Sources: sources})
@@ -244,7 +264,10 @@ msgs := a.prompt(ctx, history, question, files)
   turn stops here.
 - **Paths.** `shortPath` writes a file under your home folder as
   `~/notes/garden.md`, for the model and for the client. Other paths stay
-  whole.
+  whole. Before it shortens them, `searchFiles` keeps each file's full path
+  once, in the order the results rank them, and returns that list as `docs`
+  for the transcript. A shortened path would read differently on a machine
+  with another home folder.
 - **The sources event** lists every excerpt the model got, numbered as the
   prompt numbers them, with its heading, lines or page, and score. It goes out
   before the first token, so a client can show it however it likes; `meru`
@@ -291,8 +314,33 @@ for delta, err := range stream {
   Ollama's timings on the span.
 
 `answer` returns a small `reply` struct: the text, the usage counters, and
-`firstToken`, the moment the first text arrived. Once the assistant line is in
-the transcript, `Handle` sends a last event built by `doneEvent`:
+`firstToken`, the moment the first text arrived.
+
+The assistant line holds the answer and the turn's facts, so the `turns`
+table can rebuild from the transcript:
+
+```go
+answer := transcript.Line{
+    Type: transcript.TypeAssistant, Text: rep.text,
+    TokensIn: rep.usage.PromptTokens, TokensOut: rep.usage.OutputTokens,
+    Route: route, Ms: time.Since(start).Milliseconds(), Sources: docs, ...
+}
+```
+
+`Route` is the route after both override rules, the one the `route` event
+showed. `Ms` counts from `start`, when `merud` received the question. `Sources`
+is the `docs` list from `searchFiles`, empty on a turn that didn't search. The
+user line carries `start` as its time too, so a row rebuilt from the file gets
+the same time as the row written live.
+
+Then `recordUsage` writes the `turns` row through the TurnRecorder and records
+`meru.turn.tokens` and `meru.turn.docs`. A failed insert logs a warning and the
+turn goes on: the transcript already holds the turn, and a rebuilt `meru.db`
+brings the row back. When `Handle` starts a new session it also adds one to
+`meru.sessions`.
+
+Once the assistant line is in the transcript, `Handle` sends a last event
+built by `doneEvent`:
 
 ```go
 return emit(doneEvent(start, rep))
@@ -402,7 +450,7 @@ tests' collector takes a lock too.
 
 When the client hangs up, the rpc server cancels `ctx`. The engine's stream
 ends, `answer` returns `ctx.Err()`, and `Handle` returns without writing an
-assistant line. The user line stays in the file, and `History` leaves an
+assistant line or a `turns` row. The user line stays in the file, and `History` leaves an
 unanswered question out of later prompts.
 
 A hang-up during a tool call works the same way. `gctx` ends, dispatch
@@ -437,7 +485,8 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 
 ## Go ideas used here
 
-- **Interfaces** — `Router`, `Searcher`, `ToolRunner`, and `engine.Engine`.
+- **Interfaces** — `Router`, `Searcher`, `ToolRunner`, `TurnRecorder`, and
+  `engine.Engine`.
 - **`errgroup`** — runs a round's tool calls at the same time and waits for
   them all. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 - **Pointer receivers** — `reply.add` changes the reply it is called on.
@@ -483,6 +532,12 @@ the transcript file. `TestEndToEndToolRound` does the same with the real
 `OllamaEngine` against the fake Ollama, which answers the first chat request
 with a tool call and the second with text. It checks the events and what the
 second request sent Ollama: the call, its result and the tool schema.
+
+`usage_test.go` checks what a turn keeps for `meru usage`: the assistant
+line's route (after the override rules), duration and full source paths, each
+file once; the row the TurnRecorder gets, with its time equal to the user
+line's; a failed insert that leaves the answer alone; and no row for a turn
+that failed.
 
 `observe_test.go` runs turns through the socket server, the agent and the real
 router over a fake engine. It records spans with `tracetest.SpanRecorder` and

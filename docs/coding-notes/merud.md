@@ -29,7 +29,8 @@ flowchart TB
         S --> W["warm fast, main, embed"]
         W --> D["embed a probe text: vector size"]
         D --> ST["store.Open(meru.db, embed model, size)"]
-        ST --> IX["index.New"]
+        ST --> RT["ReplayTurns: rebuild turns if empty"]
+        RT --> IX["index.New"]
         IX --> G2["errgroup"]
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
@@ -78,7 +79,7 @@ Then three jobs run side by side in an **errgroup** from
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx), log) })
+g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 return g.Wait()
@@ -92,7 +93,17 @@ scan runs beside the server, questions get answers during a long first scan;
 they search whatever the index holds so far.
 
 `handler` sends each request to the right place: `ask` to the agent, `index`
-and `index_status` to the index service. The rpc server answers `ping` itself.
+and `index_status` to the index service, `tools` and `log` to the tool service,
+and `usage` to `handleUsage`. The rpc server answers `ping` itself.
+
+**Usage.** Right after `openStore`, `replayTurns` calls `store.ReplayTurns`,
+which fills the `turns` table from the session transcripts when the table is
+empty, and logs how many rows it wrote. A failed replay logs a warning and
+`merud` starts anyway: it costs `meru usage` some history, not the answer to
+any question. `serve` passes the store to `agent.New` as the agent's
+`TurnRecorder`, so each answered turn adds its row. `handleUsage` answers
+`OpUsage` with one `usage` event that holds `store.Usage(ctx, time.Now())`: six
+windows, with today, week and month in `merud`'s local time.
 
 Shutdown needs no special code. The cancelled context makes `rpc.Serve` close
 the listener, cancel every open turn, wait for them and return; the scan and
@@ -150,7 +161,8 @@ it loads that model once. A failure says which model and suggests
   names the config file and says to restart `merud`. For v0.2, config is the
   only way to add a folder.
 - **`handleStatus`** answers `meru index -status` with the store's counts,
-  whether a scan runs, and the last full scan's report.
+  the size of `meru.db` with its `-wal` and `-shm` files (`DBBytes`, from
+  `store.DiskBytes`), whether a scan runs, and the last full scan's report.
 
 `searchAdapter` joins the agent's `Searcher` interface to `retrieve.Search`
 over the store, the way `routerAdapter` joins the router.

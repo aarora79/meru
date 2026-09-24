@@ -475,6 +475,77 @@ func TestRecordToolCall(t *testing.T) {
 	}
 }
 
+// sumPoints returns a counter's values, keyed by the values of the given
+// attributes joined with "/". It fails the test when m isn't a counter.
+func sumPoints(t *testing.T, m metricdata.Metrics, keys ...string) map[string]int64 {
+	t.Helper()
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	if !ok || !sum.IsMonotonic {
+		t.Fatalf("%s is %T, want a counter", m.Name, m.Data)
+	}
+	out := map[string]int64{}
+	for _, dp := range sum.DataPoints {
+		var parts []string
+		for _, k := range keys {
+			v, _ := dp.Attributes.Value(attribute.Key(k))
+			parts = append(parts, v.AsString())
+		}
+		out[strings.Join(parts, "/")] = dp.Value
+	}
+	return out
+}
+
+// TestRecordUsage checks meru.sessions, meru.turn.tokens and
+// meru.turn.docs, and that unknown values become "other".
+func TestRecordUsage(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	RecordSession(ctx, "tui")
+	RecordSession(ctx, "tui")
+	RecordSession(ctx, "session-7f3a")
+	RecordTurnUsage(ctx, TurnUsage{Route: "search", Source: "tui", TokensIn: 1200, TokensOut: 80, Docs: 3})
+	RecordTurnUsage(ctx, TurnUsage{Route: "search", Source: "tui", TokensIn: 800, TokensOut: 20, Docs: 1})
+	RecordTurnUsage(ctx, TurnUsage{Route: "direct", Source: "cli", TokensIn: 100, TokensOut: 10})
+	RecordTurnUsage(ctx, TurnUsage{Route: "notes-a.md", Source: "web", TokensIn: 1, TokensOut: 1})
+	got := collect(t, reader)
+
+	if u := got[metricSessions].Unit; u != "{session}" {
+		t.Errorf("sessions unit = %q, want {session}", u)
+	}
+	sessions := sumPoints(t, got[metricSessions], keySource)
+	if sessions["tui"] != 2 || sessions["other"] != 1 || len(sessions) != 2 {
+		t.Errorf("sessions = %v, want tui=2 and other=1", sessions)
+	}
+
+	tokens := sumPoints(t, got[metricTurnTokens], keyTokenType, keyRoute, keySource)
+	want := map[string]int64{
+		"input/search/tui":   2000,
+		"output/search/tui":  100,
+		"input/direct/cli":   100,
+		"output/direct/cli":  10,
+		"input/other/other":  1,
+		"output/other/other": 1,
+	}
+	if len(tokens) != len(want) {
+		t.Errorf("turn tokens = %v, want %v", tokens, want)
+	}
+	for k, v := range want {
+		if tokens[k] != v {
+			t.Errorf("turn tokens[%s] = %d, want %d", k, tokens[k], v)
+		}
+	}
+
+	docs := histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "search"))
+	if docs.Count != 2 || docs.Sum != 4 {
+		t.Errorf("search docs count=%d sum=%d, want 2 and 4", docs.Count, docs.Sum)
+	}
+	// A turn that used no file still counts, with 0.
+	if d := histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "direct")); d.Count != 1 || d.Sum != 0 {
+		t.Errorf("direct docs count=%d sum=%d, want 1 and 0", d.Count, d.Sum)
+	}
+	histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "other"))
+}
+
 // TestTracerUsesGlobalProvider checks that Tracer follows the installed
 // provider and names Meru as the scope.
 func TestTracerUsesGlobalProvider(t *testing.T) {

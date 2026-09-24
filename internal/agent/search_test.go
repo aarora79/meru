@@ -66,7 +66,7 @@ func TestSearchRouteAddsExcerptsAndSources(t *testing.T) {
 	for _, route := range []string{"search", "search+tools"} {
 		t.Run(route, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"It is 4,200 dollars [1]."}}
-			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "What is the garden budget?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
@@ -116,7 +116,7 @@ func TestSearchRouteAddsExcerptsAndSources(t *testing.T) {
 func TestDirectRouteDoesNotSearch(t *testing.T) {
 	search := &fakeSearcher{results: []retrieve.Result{result("/n/a.md", "", "x", 1, 1, 0.01)}}
 	eng := &fakeEngine{pieces: []string{"hi"}}
-	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "hello"})
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestDirectRouteDoesNotSearch(t *testing.T) {
 func TestToolsRouteSearches(t *testing.T) {
 	search := &fakeSearcher{results: []retrieve.Result{result("/n/a.md", "", "x", 1, 1, 0.01)}}
 	eng := &fakeEngine{pieces: []string{"hi"}}
-	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "what database does meru use"})
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestFilesNote(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.Index.Folders = []string{"~/notes", "~/repos/meru"}
 	eng := &fakeEngine{pieces: []string{"hi"}}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, nil, nil, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, nil, nil, nil, quietLog())
 	if _, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "what files can you see"}); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestSearchFindsNothing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"I don't know."}}
-			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, tt.search, nil, quietLog())
+			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, tt.search, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "where are my notes?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
@@ -204,7 +204,7 @@ func TestSearchFindsNothing(t *testing.T) {
 func TestSearchCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	search := &fakeSearcher{err: context.Canceled}
-	a := New(testConfig(t), &fakeEngine{pieces: []string{"x"}}, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+	a := New(testConfig(t), &fakeEngine{pieces: []string{"x"}}, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 	err := a.Handle(ctx, rpc.Request{Text: "q"}, func(ev rpc.Event) error {
 		if ev.Type == rpc.EventRoute {
 			cancel() // the client hangs up before the search
@@ -219,7 +219,7 @@ func TestSearchCancelled(t *testing.T) {
 func TestSearchQueryOnFollowUp(t *testing.T) {
 	search := &fakeSearcher{}
 	eng := &fakeEngine{pieces: []string{"ok"}}
-	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+	a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 	evs, err := run(context.Background(), a, rpc.Request{Text: "What did I plan for the garden?"})
 	if err != nil {
 		t.Fatal(err)
@@ -302,7 +302,7 @@ func TestDirectQuestionNamingAFolderSearches(t *testing.T) {
 			cfg := testConfig(t)
 			cfg.Index.Folders = []string{"~/repos/meru", "~/n"}
 			search := &fakeSearcher{results: []retrieve.Result{result("/n/a.md", "", "x", 1, 1, 0.01)}}
-			a := New(cfg, &fakeEngine{pieces: []string{"ok"}}, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, search, nil, quietLog())
+			a := New(cfg, &fakeEngine{pieces: []string{"ok"}}, &fakeRouter{dec: Decision{Route: "direct", Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Text: tt.question})
 			if err != nil {
 				t.Fatal(err)
