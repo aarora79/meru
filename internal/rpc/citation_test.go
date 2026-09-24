@@ -3,6 +3,7 @@
 package rpc
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -54,5 +55,32 @@ func TestCited(t *testing.T) {
 	}
 	if got := Cited("[1]", nil, false); got != nil {
 		t.Errorf("Cited with no sources = %v, want nil", got)
+	}
+}
+
+func TestFileURL(t *testing.T) {
+	home := filepath.FromSlash("/Users/amit")
+	tests := []struct {
+		path, home, want string
+	}{
+		{filepath.FromSlash("~/notes/garden.md"), home, "file:///Users/amit/notes/garden.md"},
+		{filepath.FromSlash("~/Desktop/My Notes/a b.md"), home, "file:///Users/amit/Desktop/My%20Notes/a%20b.md"},
+		{filepath.FromSlash("/srv/shared/plan.md"), home, "file:///srv/shared/plan.md"},
+		{filepath.FromSlash("~/notes/garden.md"), "", ""},
+	}
+	for _, tt := range tests {
+		if got := FileURL(tt.path, tt.home); got != tt.want {
+			t.Errorf("FileURL(%q, %q) = %q, want %q", tt.path, tt.home, got, tt.want)
+		}
+	}
+}
+
+func TestHyperlink(t *testing.T) {
+	got := Hyperlink("file:///a.md", "[1] a.md")
+	if want := "\x1b]8;;file:///a.md\x1b\\[1] a.md\x1b]8;;\x1b\\"; got != want {
+		t.Errorf("Hyperlink = %q, want %q", got, want)
+	}
+	if got := Hyperlink("", "[1] a.md"); got != "[1] a.md" {
+		t.Errorf("Hyperlink with no URL = %q, want the text alone", got)
 	}
 }

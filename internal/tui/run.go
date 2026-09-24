@@ -63,7 +63,7 @@ func terminalLook() look {
 	case r.HasDarkBackground():
 		style = "dark"
 	}
-	return look{renderer: r, markdownStyle: style}
+	return look{renderer: r, markdownStyle: style, links: style != "notty"}
 }
 
 // programRelay forwards Send calls to a *tea.Program set after the model is

@@ -135,12 +135,13 @@ type keyMap struct {
 	Recall  key.Binding
 	Scroll  key.Binding
 	Newline key.Binding
-	// Usage is the /usage command. It has no key: Ctrl-U, the obvious one,
-	// already deletes to the start of the line in the input box. The
-	// binding exists only so the help line lists the command. The help
-	// line skips a binding with no keys, so it gets "/usage", which no key
-	// press ever reads as; submit runs the command.
-	Usage key.Binding
+	// Commands lists the slash commands, /new and /usage. They have no
+	// key: Ctrl-U, the obvious one for usage, already deletes to the start
+	// of the line in the input box. The binding exists only so the help
+	// line lists them. The help line skips a binding with no keys, so it
+	// gets "/new /usage", which no key press ever reads as; submit runs
+	// the commands.
+	Commands key.Binding
 }
 
 // newKeyMap returns the chat screen's keys.
@@ -152,7 +153,10 @@ func newKeyMap() keyMap {
 		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
 		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "scroll")),
 		Newline: key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
-		Usage:   key.NewBinding(key.WithKeys("/usage"), key.WithHelp("/usage", "show usage")),
+		// The help text splits "/new /usage" across the key and the
+		// description slots, so the line reads "/new /usage" and still
+		// fits in 80 columns.
+		Commands: key.NewBinding(key.WithKeys("/new /usage"), key.WithHelp("/new", "/usage")),
 	}
 }
 
@@ -163,13 +167,13 @@ func newKeyMap() keyMap {
 // fit. Ctrl-C already quits when no answer streams, so Ctrl-D is the one to
 // spare.
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Send, k.Stop, k.Recall, k.Scroll, k.Usage}
+	return []key.Binding{k.Send, k.Stop, k.Recall, k.Scroll, k.Commands}
 }
 
 // FullHelp returns every key as one column. The help component asks for it
 // only in its expanded mode, which the chat screen never turns on.
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Usage}}
+	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Commands}}
 }
 
 // keyList is a list of keys for the help line while a box is open: the

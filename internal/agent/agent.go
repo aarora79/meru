@@ -559,17 +559,32 @@ func words(text string) []string {
 	})
 }
 
-// searchQuery is the text a turn searches for. No model rewrites the query,
-// so it is the question itself plus the session's latest earlier question
-// that names a subject, because "and the one after that?" means nothing to a
-// search on its own. The current question comes first: keyword search keeps
-// only a query's first words.
+// standaloneWords is how many subject words make a question stand on its
+// own. "and the budget?" has one and "how much did it cost?" two, so both
+// borrow the earlier question; "i did some work on the bakery site, remind
+// me" has four (work, bakery, site, remind) and doesn't. Two would be too few:
+// "how much did it cost" would lose what "it" is.
+const standaloneWords = 3
+
+// searchQuery is the text a turn searches for. No model rewrites the query.
+// A question with at least standaloneWords subject words is searched on
+// its own. A shorter one is a follow-up: it gets the session's latest
+// earlier question that names a subject, because "and the one after that?"
+// means nothing to a search on its own. The current question comes first:
+// keyword search keeps only a query's first words.
+//
+// The standalone test came from a real miss: a question about a work project,
+// asked after one about a trip, searched for both, and the travel papers
+// crowded out every note on the project.
 //
 // An earlier question made only of filler, such as "try the last question
 // again", names no subject, so the walk skips it and keeps going back.
 // Without the skip, "search again" after "try again" searched for those
 // words alone and found nothing on the subject.
 func searchQuery(question string, history []engine.Message) string {
+	if subjectWords(question) >= standaloneWords {
+		return question
+	}
 	for i := len(history) - 1; i >= 0; i-- {
 		if history[i].Role == engine.RoleUser && namesSubject(history[i].Content) {
 			return question + "\n" + history[i].Content
@@ -581,12 +596,18 @@ func searchQuery(question string, history []engine.Message) string {
 // namesSubject reports whether text holds at least one word that isn't
 // filler, so it can steer a search.
 func namesSubject(text string) bool {
+	return subjectWords(text) > 0
+}
+
+// subjectWords counts the distinct words in text that aren't filler.
+func subjectWords(text string) int {
+	var seen []string
 	for _, w := range words(text) {
-		if !isFiller(w) {
-			return true
+		if !isFiller(w) && !slices.Contains(seen, w) {
+			seen = append(seen, w)
 		}
 	}
-	return false
+	return len(seen)
 }
 
 // isFiller reports whether w is a word that says nothing about a subject:
@@ -601,7 +622,12 @@ func isFiller(w string) bool {
 		"to", "in", "on", "of", "for", "at", "about", "again", "try", "retry", "search",
 		"look", "check", "find", "last", "previous", "question", "answer", "now", "think",
 		"sure", "time", "once", "more", "docs", "files", "notes", "what", "how", "why",
-		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned":
+		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned",
+		// Words that point back at something said before, and the pieces
+		// an apostrophe leaves: "what's" splits into "what" and "s".
+		"one", "ones", "other", "else", "after", "before", "next", "first", "then",
+		"they", "them", "those", "these", "some", "much", "many", "with", "from", "as",
+		"s", "t", "d", "ll", "re", "ve", "m":
 		return true
 	}
 	return false

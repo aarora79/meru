@@ -222,7 +222,10 @@ scrolling answer pane, and two more Charm libraries for its look:
   otherwise. Typing `/usage` opens a table of sessions, questions, tokens in
   and out, active time, files touched and tool calls for the last hour, today,
   this week, this month, the last 30 days and all time; `meru usage` prints
-  the same table.
+  the same table. Typing `/new` starts a new session, so a conversation that
+  went wrong stops shaping the answers after it. In both clients, each source
+  line is a link (OSC 8) to its `file://` path, which terminals that support
+  links open on a click.
 - **Glamour** renders each finished answer as Markdown: headings, lists, and code
   blocks with syntax highlighting. While the answer streams, the screen shows the
   raw text with a cursor, because half-written Markdown renders wrong.
@@ -318,7 +321,7 @@ sequenceDiagram
 | Decision | Made by | How |
 | --- | --- | --- |
 | Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load |
-| What to search for | `merud`, with no model | The question as you typed it. On a follow-up, `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
+| What to search for | `merud`, with no model | The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. The built-in tools need no entry |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server or agent card wrote them, and picks |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, unless you already approved that tool for this session. `configure` asks every time |
@@ -393,9 +396,12 @@ and arguments and offers the choices `merud` sends, at most these three:
 - **The router sees the history too**, so it can tell that a follow-up like "sell
   half of the one that dropped most" needs tools. It picks a route and nothing else;
   no model rewrites the follow-up.
-- **Search adds an earlier question.** On the search routes, `merud` searches for
-  the new question with the session's latest earlier question appended, so "and the
-  one after that?" still finds the right files. It skips earlier questions made only
+- **A follow-up search adds an earlier question.** On the search routes, a short
+  question (fewer than three words that aren't filler) gets the session's latest
+  earlier question appended, so "and the one after that?" still finds the right
+  files. A longer question names its own subject and is searched alone: appending
+  a question about a trip to one about a work project filled the results with
+  travel papers. It skips earlier questions made only
   of filler words, so "search again" after "try that again" still carries the
   subject from before them.
 - **The `main` model resolves the reference.** It reads turn 1's answer in the
@@ -1661,8 +1667,8 @@ We'll settle these with working code and measurements.
   Temperature 1.25 and `min_confidence = 0.45`, fitted with `make router-eval`.
 - **Hybrid search:** FTS5 BM25 plus vector distance over every stored vector,
   merged in Go with reciprocal-rank fusion. The query is the question, plus on a
-  follow-up the session's latest earlier question that isn't only filler words; no
-  model call rewrites it. List sizes
+  short follow-up the session's latest earlier question that isn't only filler
+  words; no model call rewrites it. List sizes
   are constants (50, 50, 10) until measurements say otherwise.
 - **Indexing:** only the folders in `[index] folders`, nothing by default; secrets,
   hidden files, build folders and ignored files skipped; symlinks never followed;

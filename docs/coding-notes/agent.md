@@ -241,8 +241,16 @@ msgs := a.prompt(ctx, history, question, files)
 ```
 
 - **What it searches for.** No model rewrites the query, so `searchQuery`
-  uses the question. On a follow-up it adds one earlier question after it,
-  because "and the one after that?" finds nothing alone. It walks back from the
+  uses the question. A question with at least three words that aren't filler
+  (`subjectWords`, `standaloneWords`) is searched alone: it names its own
+  subject. "i think i did some work on the bakery site, remind me" has four
+  (work, bakery, site, remind). In testing, a question like it about a work
+  project, searched together with the question before it about a trip, came
+  back with travel papers and no project notes. A shorter question is a follow-up, and `searchQuery` adds one earlier
+  question after it, because "and the one after that?" finds nothing alone.
+  "how much did it cost?" has two subject words, so it still borrows; the
+  filler list also holds words that point back, such as one, other, after and
+  those. It walks back from the
   newest and takes the first one that `namesSubject`: a question with at least
   one word that `isFiller` doesn't list. The filler list holds short common
   words and the words people use to retry, such as try, again, search, check,

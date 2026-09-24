@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // look holds the styles for one writer, such as stderr.
@@ -23,6 +24,10 @@ type look struct {
 	good  lipgloss.Style // green: connected, ok
 	bad   lipgloss.Style // red: not connected, failed
 	amber lipgloss.Style // warnings, and tools that ask first
+	// links is true when the writer is a terminal with styling on, so a
+	// source line can be a clickable link (rpc.Hyperlink). A pipe, a file
+	// or NO_COLOR gets plain text.
+	links bool
 }
 
 // newLook builds the styles for w. The colours are the terminal's own
@@ -31,6 +36,7 @@ type look struct {
 func newLook(w io.Writer) look {
 	r := lipgloss.NewRenderer(w)
 	return look{
+		links: r.ColorProfile() != termenv.Ascii,
 		dim:   r.NewStyle().Faint(true),
 		bold:  r.NewStyle().Bold(true),
 		good:  r.NewStyle().Foreground(lipgloss.Color("2")),

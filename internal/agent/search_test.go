@@ -257,6 +257,12 @@ func TestSearchQuery(t *testing.T) {
 			hist("what database does meru use", "try the last question again now"),
 			"search again i think it is specified\nwhat database does meru use"},
 		{"only filler before", "search again", hist("try again", "check my docs"), "search again"},
+		{"a new topic stands alone", "i think i did some work on the bakery site what was it remind me again",
+			hist("so when did i visit lisbon"), "i think i did some work on the bakery site what was it remind me again"},
+		{"two subject words still borrow", "how much did it cost?", hist("what did I pay for the hotel in Lisbon"),
+			"how much did it cost?\nwhat did I pay for the hotel in Lisbon"},
+		{"pointing words don't count", "and the one after that?", hist("what is on my calendar Monday"),
+			"and the one after that?\nwhat is on my calendar Monday"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

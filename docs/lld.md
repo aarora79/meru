@@ -500,7 +500,8 @@ The same path as a reading list, in order:
 6. **`internal/agent/agent.go` → `searchFiles`**, on every route but `direct`
    (`searches`; `tools` searches too), calls
    **`internal/retrieve/search.go` → `Search`** with the query from `searchQuery`:
-   the question, plus on a follow-up the session's latest earlier question that
+   the question alone when it has three or more subject words (`subjectWords`),
+   and otherwise the question plus the session's latest earlier question that
    isn't only filler words (`namesSubject`). No model rewrites it. `Search` embeds the query, runs
    `store.SearchVector` and `store.SearchKeyword`, merges the two lists with `rrf`
    (50 hits from each, 10 kept), and loads the top chunks with `store.Chunks`. `retrieve.Format`

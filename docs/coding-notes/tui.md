@@ -540,6 +540,27 @@ help component needs, so the bottom line lists the keys that answer the box.
 An approval box closes an open usage box: the approval needs the keys, and it sits in
 the conversation the usage box covers.
 
+### commands.go
+
+A line that starts with `/` never reaches the model; `submit` hands it to
+`command`. `/usage` opens the usage box (below). `/new` calls `newSession`, which
+stops a streaming answer, clears the screen and forgets the session ID, so the next
+question asks `merud` for a new session. It also counts up `m.turn`: the stopped
+answer may still send events, and `handleEvent` drops any event whose turn number
+isn't the current one, so a late `session` event can't bring the old session back.
+Any other `/word` stays in the input and the help line lists the commands.
+
+`/new` exists because a conversation carries forward: each turn's prompt holds the
+turns before it. After a small model answers "I don't know" twice, it tends to say it
+again even when the next search finds the right files.
+
+**Source links.** `sourcesBlock` wraps each source line to the screen width, then,
+when `look.links` is on, wraps every resulting screen line in `rpc.Hyperlink` with
+the file's URL. Linking after wrapping keeps a link from spanning a line break, which
+some terminals draw badly. `look.links` follows styling: `terminalLook` turns it off
+with `NO_COLOR` or on a terminal with no colour, and the tests' plain renderer leaves
+it off, so the golden files stay plain text.
+
 ### usage.go
 
 `command` runs a line that starts with `/`. For `/usage` it clears the input, opens

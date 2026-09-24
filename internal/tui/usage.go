@@ -1,6 +1,6 @@
 // This file holds what the chat screen shows of merud's usage numbers: the
-// slash commands the input box understands, the /usage box that opens over
-// the conversation, and the last hour's summary for the header.
+// /usage box that opens over the conversation, and the last hour's summary
+// for the header.
 
 package tui
 
@@ -14,33 +14,12 @@ import (
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// commandList names the slash commands the chat understands, for the line
-// that answers an unknown one.
-const commandList = "/usage"
-
 // usageBox is the open /usage box. It opens at once with loading set, and
 // the next usage reply fills in windows or err.
 type usageBox struct {
 	loading bool
 	windows []rpc.UsageWindow
 	err     string // why merud gave no numbers
-}
-
-// command runs a line that starts with "/" instead of sending it as a
-// question. /usage opens the usage box and asks merud for the numbers. Any
-// other command leaves the text in the input, so the user can fix a typo,
-// and shows one dim line with the commands the chat knows.
-func (m Model) command(text string) (tea.Model, tea.Cmd) {
-	name, _, _ := strings.Cut(text, " ")
-	if name != "/usage" {
-		m.notice = "unknown command " + name + " · commands: " + commandList
-		return m, nil
-	}
-	m.input.Reset()
-	m.layout()
-	m.usageBox = &usageBox{loading: true}
-	m.input.Blur() // the input takes no text while the box is open
-	return m, usageCmd(m.ask)
 }
 
 // closeUsage closes the usage box and gives the input its cursor back.

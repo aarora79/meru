@@ -7,6 +7,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -49,6 +50,10 @@ type Info struct {
 type look struct {
 	renderer      *lipgloss.Renderer
 	markdownStyle string // a Glamour built-in style: "dark", "light" or "notty"
+	// links makes each source line a clickable link to its file
+	// (rpc.Hyperlink). It is on when styling is, so NO_COLOR and the
+	// tests' plain-text renderer get plain lines.
+	links bool
 }
 
 // turnState says where one question and its answer stand.
@@ -132,7 +137,10 @@ type Model struct {
 	// when merud doesn't know the op. The header shows its 1h window.
 	usage []rpc.UsageWindow
 
-	look  look
+	look look
+	// home is the home folder, for turning "~/..." source paths into
+	// file:// links; "" leaves them unlinked.
+	home  string
 	style styles
 	keys  keyMap
 	// markdown renders finished answers. renderMarkdown builds it on first
@@ -210,6 +218,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		send:         send,
 		info:         info,
 		look:         lk,
+		home:         homeDir(),
 		style:        st,
 		keys:         keys,
 		input:        in,
@@ -507,4 +516,14 @@ func (m *Model) refresh() {
 	if follow {
 		m.conversation.GotoBottom()
 	}
+}
+
+// homeDir returns the user's home folder, or "" when the system can't say.
+// Only the source links need it, and they fall back to plain text.
+func homeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }

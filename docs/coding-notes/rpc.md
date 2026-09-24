@@ -84,6 +84,13 @@ way:
   When the answer cites none, it returns them all, because the model still
   read them. A turn that called a tool is the exception: its answer may come
   from the tool's result, so no marks means no sources.
+- **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
+  `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
+- **`Hyperlink(url, text)`** wraps text in the OSC 8 escape codes, `ESC ] 8 ; ;
+  URL ESC \` before and the same with no URL after. Terminals that know them
+  (iTerm2, Ghostty, WezTerm, kitty, VS Code's terminal, Windows Terminal) make
+  the text a link; others skip the codes. Both clients call it only when their
+  output is a styled terminal.
 
 ### args.go
 

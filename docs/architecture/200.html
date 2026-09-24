@@ -742,7 +742,7 @@
 
 <p>Meru stores each embedding as a plain row in <code>meru.db</code> and compares the question with every one. On the development machine that takes 13 ms over 10,000 chunks and about 150 ms over 100,000, fast enough for a personal index.</p>
 
-<p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a follow-up. The tools route searches too, because the router sends some questions about your files there. So far it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
+<p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a short follow-up; a question that names its own subject is searched alone. The tools route searches too, because the router sends some questions about your files there. So far it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
 
 <!-- ============================================================ -->
 <h2 id="memory">Memory</h2>

@@ -118,6 +118,7 @@ In `meru chat`:
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
+| `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
 index and the session on the left:
@@ -136,7 +137,14 @@ Any other line that starts with `/` stays in the input box, and the bottom line
 lists the commands `meru chat` knows.
 
 Each `meru "..."` starts a new conversation. `meru chat` keeps one conversation
-going until you quit, so later questions see the earlier ones.
+going until you quit or type `/new`, so later questions see the earlier ones. That
+cuts both ways: after the model says "I don't know" a couple of times, it tends to
+keep saying it. Type `/new` and ask again.
+
+Each line under "Sources:" links to its file. In a terminal that supports links
+(iTerm2, Ghostty, WezTerm, kitty, VS Code's terminal, Windows Terminal), Cmd-click
+or Ctrl-click the line to open the file. macOS Terminal shows the same lines
+without the link. A pipe or a file gets plain text.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
@@ -533,6 +541,38 @@ whichever `merud` is running, so restart it every time you rebuild. `-v` turns o
 the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off for
 the shorter log. If `merud` runs as a service, restart it with the service
 manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
+
+### Check answers on your own files
+
+Unit and end-to-end tests run against fake models and made-up files. They can't
+tell whether Meru answers well from *your* files with *your* model. After each
+update, ask the same few questions and compare with last time. Keep your questions
+and the answers you expect in `~/.meru/checks.md`, outside the repo, since they
+name your own files and work.
+
+Five checks cover the ways answers have gone wrong so far. Fill in the brackets
+with something your files hold:
+
+1. **A new topic after an unrelated one.** In one `meru chat`, ask "when did I
+   visit [a place]?", then "I think I did some work for [a customer or project],
+   remind me what it was". The second answer should come from that project's
+   notes. If its sources are the first topic's files, the search mixed the two
+   questions.
+2. **A real follow-up.** Ask "what did I pay for [something]?", then "how much did
+   it cost?". The second answer should still be about the same thing: a short
+   follow-up borrows the question before it.
+3. **Recovery.** When the model says it has nothing, type `/new` and ask again in
+   one full question. It should answer.
+4. **A whole folder.** Ask "help me write about my work, using everything in
+   [folder]". In v0.3 a turn reads the 10 best excerpts, about 5,000 tokens, so
+   expect a partial answer. Whole-file tools and larger models should do better
+   here; this check shows when they do.
+5. **A tool by name.** Ask "search my [server name] for [topic]". Tool lines
+   (`→ server.tool`) should show before the answer.
+
+For each, note the route, the sources and the time from `~/.meru/merud.log`
+(`grep 'msg=turn' ~/.meru/merud.log | tail -5`), and whether the answer was right.
+With `-v`, the `search done` and `prompt built` lines show what the model read.
 
 ## 12. Troubleshooting
 

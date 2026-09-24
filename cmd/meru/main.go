@@ -232,8 +232,14 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	}
 	if cited := rpc.Cited(answer.String(), sources, usedTools); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")
+		links := newLook(stdout).links
+		home, _ := os.UserHomeDir() // "" leaves "~/..." paths unlinked
 		for _, c := range cited {
-			fmt.Fprintln(stdout, c)
+			line := c.String()
+			if links {
+				line = rpc.Hyperlink(rpc.FileURL(c.Path, home), line)
+			}
+			fmt.Fprintln(stdout, line)
 		}
 	}
 	return nil

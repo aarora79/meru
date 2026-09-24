@@ -1,11 +1,14 @@
-// This file holds the two helpers both clients use to show a turn's
-// sources: String, which writes one citation as a line of text, and Cited,
-// which picks the sources an answer refers to.
+// This file holds the helpers both clients use to show a turn's sources:
+// String, which writes one citation as a line of text; Cited, which picks
+// the sources an answer refers to; and FileURL and Hyperlink, which make a
+// source line a link to its file.
 
 package rpc
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -71,4 +74,39 @@ func Cited(answer string, sources []Citation, usedTools bool) []Citation {
 		return sources
 	}
 	return out
+}
+
+// FileURL turns a citation's path into a file:// URL a terminal can open.
+// A path that starts with "~" plus the separator gets home in its place,
+// the reverse of how merud shortens paths for display. It returns "" when
+// the path is "~/..." and home is "", since the URL would point nowhere.
+// url.URL escapes what a URL can't hold, so "My Notes" becomes
+// "My%20Notes".
+func FileURL(path, home string) string {
+	if rest, ok := strings.CutPrefix(path, "~"+string(filepath.Separator)); ok {
+		if home == "" {
+			return ""
+		}
+		path = filepath.Join(home, rest)
+	}
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p // a Windows path, C:/Users/..., becomes /C:/Users/...
+	}
+	u := url.URL{Scheme: "file", Path: p}
+	return u.String()
+}
+
+// Hyperlink wraps text in the OSC 8 escape codes that make it a link in
+// terminals that know them (iTerm2, Ghostty, WezTerm, kitty, VS Code's
+// terminal, Windows Terminal). Other terminals skip the codes and show text
+// as it is. It returns text alone when url is "". Callers use it only when
+// the output is a terminal with styling on, so a pipe or a file gets plain
+// text.
+func Hyperlink(url, text string) string {
+	if url == "" {
+		return text
+	}
+	// ESC ] 8 ; ; URL ESC \ opens the link; the same with no URL closes it.
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
 }

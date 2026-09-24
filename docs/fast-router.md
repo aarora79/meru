@@ -76,7 +76,7 @@ that emits single letters as their own tokens, which the startup probe checks.
 **In scope.** The route decision, and only that.
 
 **Out of scope, on purpose.** No model rewrites the query. Search uses the question
-itself, and on a follow-up `merud` appends the session's latest earlier question
+itself, and on a short follow-up `merud` appends the session's latest earlier question
 that isn't only filler words such as "try the last question again". That needs no
 model call (see
 [How a conversation continues](../ARCHITECTURE.md#how-a-conversation-continues)).
