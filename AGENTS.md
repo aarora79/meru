@@ -22,6 +22,8 @@ easier to review.
   without saying so.
 - [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
   "Done when" line that serves as its acceptance test.
+- [docs/lld.md](docs/lld.md) — the low-level design: packages, the interfaces between
+  them, and one question traced function by function. Start here before reading code.
 - [docs/coding-notes/](docs/coding-notes/) — plain-English explainers of the code.
 
 ## Status

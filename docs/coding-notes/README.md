@@ -6,7 +6,8 @@ feature it uses, with links to short concept notes.
 
 ## How to read these
 
-1. Start with [ARCHITECTURE.md](../../ARCHITECTURE.md) for the big picture.
+1. Start with [ARCHITECTURE.md](../../ARCHITECTURE.md) for the big picture, then
+   [docs/lld.md](../lld.md) for how the packages fit together.
 2. Read the package notes in the order the index lists them. Each one builds on the
    ones before it.
 3. When a note uses a Go idea you don't know, follow its link into `go-basics/`.

@@ -157,6 +157,7 @@ call.
   - [300: the full design](ARCHITECTURE.md), the design contract
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
+- [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents
 
