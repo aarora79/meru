@@ -32,10 +32,11 @@ Read them in this order; each builds on the ones before it.
 11. [merud and meru](merud.md): the two programs and how they start
 12. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
 13. [mcp](mcp.md): the MCP client pool, groundwork for tools in v0.3
-14. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
-15. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
-16. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-17. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+14. [a2a](a2a.md): the A2A client, which turns other agents' skills into tools
+15. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
+16. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
+17. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+18. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 
