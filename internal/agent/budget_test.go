@@ -52,7 +52,7 @@ func TestPromptOrder(t *testing.T) {
 		skillList:   "SKILL-LIST",
 		skillBodies: "SKILL-BODIES",
 		files:       "FILES",
-		tools:       true,
+		toolsNote:   toolsNote,
 	})
 	system := msgs[0].Content
 	order := []string{whoIsWho, "Today is ", a.filesNote, toolsNote, "SKILL-LIST", "MEMORIES", "SKILL-BODIES", "FILES"}

@@ -119,20 +119,23 @@ func toolsAgent(t *testing.T, route string, eng *fakeEngine, tools ToolRunner) *
 	return New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, nil, quietLog())
 }
 
-func TestToolsOfferedOnlyOnToolRoutes(t *testing.T) {
-	withTools := &fakeTools{specs: []engine.ToolSpec{spec("notes.search")}}
+func TestToolsOfferedByRoute(t *testing.T) {
+	all := &fakeTools{specs: []engine.ToolSpec{spec("notes.search"), spec("read_file"), spec("remember"), spec("list_folder"), spec("grep")}}
+	noFiles := &fakeTools{specs: []engine.ToolSpec{spec("notes.search")}}
 	tests := []struct {
 		name  string
 		route string
 		tools ToolRunner
-		want  bool
+		want  []string // the tools offered, in order
+		note  string   // the tools note in the system prompt; "" for none
 	}{
-		{"direct", "direct", withTools, false},
-		{"search", "search", withTools, false},
-		{"tools", "tools", withTools, true},
-		{"search+tools", "search+tools", withTools, true},
-		{"no runner", "tools", nil, false},
-		{"no allowed tools", "search+tools", &fakeTools{}, false},
+		{"direct offers none", "direct", all, nil, ""},
+		{"search offers the file tools", "search", all, []string{"read_file", "list_folder", "grep"}, fileToolsNote},
+		{"search with no file tools", "search", noFiles, nil, ""},
+		{"tools offers all", "tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
+		{"search+tools offers all", "search+tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
+		{"no runner", "tools", nil, nil, ""},
+		{"no allowed tools", "search+tools", &fakeTools{}, nil, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -141,11 +144,18 @@ func TestToolsOfferedOnlyOnToolRoutes(t *testing.T) {
 				t.Fatalf("Handle: %v", err)
 			}
 			c := eng.lastCall()
-			if got := len(c.tools) > 0; got != tt.want {
-				t.Errorf("tools offered = %v (%d schemas), want %v", got, len(c.tools), tt.want)
+			var got []string
+			for _, s := range c.tools {
+				got = append(got, s.Name)
 			}
-			if got := strings.Contains(c.msgs[0].Content, toolsNote); got != tt.want {
-				t.Errorf("system prompt has the tools note = %v, want %v", got, tt.want)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("tools offered = %v, want %v", got, tt.want)
+			}
+			system := c.msgs[0].Content
+			for _, note := range []string{toolsNote, fileToolsNote} {
+				if has := strings.Contains(system, note); has != (note == tt.note) {
+					t.Errorf("system prompt holds %q = %v, want %v", note, has, note == tt.note)
+				}
 			}
 		})
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
+	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/rpc"
@@ -48,15 +49,16 @@ type toolService struct {
 
 // newToolService loads secrets.toml, starts the MCP pool and the A2A
 // client, builds the built-in tools over the memory folder mem, with
-// onRemember to run after remember saves a memory, and joins
-// them in one dispatcher that
+// onRemember to run after remember saves a memory, and over the indexer
+// ix, which the file tools read through, and joins them in one dispatcher
+// that
 // writes its rows to st. It then rebuilds the tool_calls table from the
 // transcripts if the table is empty, so a deleted meru.db loses no history.
 //
 // It fails when secrets.toml can't be read or is readable by others, or
 // when a server or agent entry is wrong; merud then refuses to start, so a
 // bad entry shows at once.
-func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
+func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
@@ -81,7 +83,10 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	if err != nil {
 		return nil, fmt.Errorf("skills.output_dir: %w", err)
 	}
-	bt := builtin.New(configPath, cfg.Builtin, mem, outputDir, s.reloadMCP, onRemember)
+	// The file tools share merud's indexer, so they skip what it skips.
+	// They don't reload when configure changes config.toml: a change to
+	// [index] needs a restart anyway.
+	bt := builtin.New(configPath, cfg.Builtin, mem, outputDir, ix, s.reloadMCP, onRemember)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure.
 	s.dispatcher = dispatch.New(

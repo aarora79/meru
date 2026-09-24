@@ -21,7 +21,7 @@ import (
 func writeTools(t *testing.T) (*Tools, string) {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "meru-output")
-	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Confirm: []string{WriteFile}}, nil, out, nil, nil), out
+	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Confirm: []string{WriteFile}}, nil, out, nil, nil, nil), out
 }
 
 // callWrite calls write_file with args and returns the result.
@@ -167,7 +167,7 @@ func TestWriteFileBackend(t *testing.T) {
 		t.Errorf("Status tools = %+v, want configure and write_file, which asks", st)
 	}
 
-	none := New("config.toml", config.Builtin{}, nil, "", nil, nil)
+	none := New("config.toml", config.Builtin{}, nil, "", nil, nil, nil)
 	for _, s := range none.Tools() {
 		if s.Name == WriteFile {
 			t.Error("write_file offered with no output folder")

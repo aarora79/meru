@@ -154,7 +154,9 @@ watch = true
 # file, always asks and offers no approval for the session, whatever this
 # list says. write_file asks before it saves a file; take it out to let it
 # write without asking. remember saves a memory without asking; add
-# "remember" here to approve each call.
+# "remember" here to approve each call. read_file, list_folder and grep only
+# read the [index] folders and run without asking; list them here to approve
+# each call.
 confirm = ["write_file"]
 
 [skills]

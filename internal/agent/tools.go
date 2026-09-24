@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
@@ -25,6 +26,26 @@ import (
 // call doesn't surprise it.
 const toolsNote = "You may call the tools offered with this question when they help you answer. " +
 	"Some calls ask the user first, and the user may say no."
+
+// fileToolsNote replaces toolsNote on a turn that offers only the three
+// file tools, the "search" route. It tells the model when to reach for
+// them: when the excerpts from search don't hold enough.
+const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
+	"list folders with list_folder, and find every matching line with grep."
+
+// noteFor returns the note for a turn that offers specs: fileToolsNote
+// when they are all file tools, toolsNote otherwise, and "" for none.
+func noteFor(specs []engine.ToolSpec) string {
+	if len(specs) == 0 {
+		return ""
+	}
+	for _, s := range specs {
+		if !builtin.IsFileTool(s.Name) {
+			return toolsNote
+		}
+	}
+	return fileToolsNote
+}
 
 // ToolRunner lists the tools the model may use and runs the calls it makes.
 // merud passes *dispatch.Dispatcher, the one path every tool call takes
@@ -53,15 +74,32 @@ type turn struct {
 	calls int
 }
 
-// toolSpecs returns the tool schemas to offer on route: the ToolRunner's
-// tools on "tools" and "search+tools", and nil on every other route or when
-// tools are off. A model can't call a tool it hasn't seen, and the prompt
-// stays shorter (ARCHITECTURE.md, "Who decides what").
+// toolSpecs returns the tool schemas to offer on route: every tool the
+// ToolRunner allows on "tools" and "search+tools", only the three file
+// tools (read_file, list_folder, grep) on "search", and nil on "direct" or
+// when tools are off. A model can't call a tool it hasn't seen, and the
+// prompt stays shorter (ARCHITECTURE.md, "Who decides what").
+//
+// "search" gets the file tools because a question such as "write about
+// everything in my work folder" lands there, and ten excerpts can't cover
+// a folder. The tools only read what search could already reach.
 func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
-	if a.tools == nil || (route != "tools" && route != "search+tools") {
+	if a.tools == nil {
 		return nil
 	}
-	return a.tools.Tools()
+	switch route {
+	case "tools", "search+tools":
+		return a.tools.Tools()
+	case "search":
+		var files []engine.ToolSpec
+		for _, s := range a.tools.Tools() {
+			if builtin.IsFileTool(s.Name) {
+				files = append(files, s)
+			}
+		}
+		return files
+	}
+	return nil
 }
 
 // schemaChars returns the size of the tool schemas in characters: each

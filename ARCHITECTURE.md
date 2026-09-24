@@ -327,9 +327,11 @@ sequenceDiagram
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, unless you already approved that tool for this session. `configure` asks every time |
 | When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
 
-Only the `tools` and `search+tools` routes offer tools. On `direct` and `search`,
-`merud` sends the model no tool schemas at all. The model can't call a tool it
-hasn't seen, and the prompt stays shorter.
+The `tools` and `search+tools` routes offer every allowed tool. `search` offers
+only the three read-only file tools, `read_file`, `list_folder` and `grep`: a
+question such as "write about everything in my work folder" lands there, and ten
+excerpts can't cover a folder. `direct` offers none. The model can't call a tool
+it hasn't seen, and the prompt stays shorter.
 
 ### Approving a tool call
 
@@ -364,8 +366,21 @@ and arguments and offers the choices `merud` sends, at most these three:
 
   The built-in tools are `configure`, which always asks, whatever this list says
   (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
-  memory without asking unless you list it here; and `write_file`, which asks
-  before each file it saves because the shipped list names it.
+  memory without asking unless you list it here; `write_file`, which asks
+  before each file it saves because the shipped list names it; and three
+  read-only file tools that run without asking unless you list them:
+
+  | Tool | What it returns |
+  | --- | --- |
+  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. |
+  | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
+  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
+
+  The file tools reach only the `[index] folders`, and they skip what the
+  indexer skips (see [What stays out](#what-stays-out)): they never follow a
+  symlink, and they refuse secret, hidden, ignored, binary and oversized files
+  with the indexer's reason. They read nothing that search couldn't already
+  put in the prompt. `merud` leaves them out when no folder is listed.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -542,7 +557,9 @@ order.
    File excerpts need no cap of their own: a search keeps 10 chunks of about 500
    tokens. The caps keep one part from crowding out the others; a `lite` turn
    uses well under a tenth of the model's 131k-token window. On the `tools` and
-   `search+tools` routes the model also gets the allowed tools' schemas.
+   `search+tools` routes the model also gets the allowed tools' schemas; on
+   `search` it gets the three file tools' schemas, and a note that says it may
+   read whole files, list folders and grep when the excerpts fall short.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
@@ -640,7 +657,7 @@ any case, and skips names under three letters. "hey meru, what's the capital of
 France" searches too, because the assistant shares its name with the folder.
 
 The second: when the question names a connected MCP server or A2A agent as a whole
-word, and the route offers no tools, the agent loop adds them. `direct` becomes
+word, and the route offers at most the file tools, the agent loop adds the rest. `direct` becomes
 `tools`, and `search` becomes `search+tools`. The names come from the tools
 `dispatch` offers, such as "obsidian" from `obsidian.search_vault` and "research"
 from `a2a.research.summarize`, and the loop reads them on each turn, because
@@ -652,7 +669,7 @@ rule it listed the vaults, searched one and answered. A wrong guess costs a prom
 that holds the tool schemas.
 
 The third: when the question holds "remember" as a whole word and the route offers
-no tools, the loop adds them, so the model can call `remember`. "Remember that I
+at most the file tools, the loop adds the rest, so the model can call `remember`. "Remember that I
 work on the registry team" reads like chit-chat to the router, and a `direct` turn
 would answer "noted" and save nothing.
 
@@ -1636,7 +1653,9 @@ transcript lines hold. No level writes question or answer text. With
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
 - The indexer reads only the folders you list, never follows a symlink, and never
-  indexes a file that looks like a secret.
+  indexes a file that looks like a secret. The file tools, `read_file`,
+  `list_folder` and `grep`, apply the same rules through the indexer's own code,
+  so the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
 
 ---

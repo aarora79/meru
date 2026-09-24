@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -298,7 +298,7 @@ which is what a context budget needs.
 A third rule gives tools to a turn that asks Meru to remember something. The
 router can send "remember that my name is Dana" to `direct`, which offers no
 tools, and the model then says it will remember and saves nothing. So when the
-question holds `remember` as a whole word, the route has no tools, and the
+question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
 count. A wrong guess, such as "do you remember the budget?", costs a prompt
@@ -455,8 +455,8 @@ show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
 A second rule does the same for tools. When a question names a connected tool
-server, such as "search my obsidian vault", and the route offers no tools,
-`withTools` adds them: `direct` becomes `tools` and `search` becomes
+server, such as "search my obsidian vault", and the route offers at most the
+file tools, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
 `search+tools`. `toolServers` reads the server names from the tool names:
 `obsidian` from `obsidian.search_vault`, `research` from
 `a2a.research.summarize`. It leaves out the built-in tools, whose owner,
@@ -649,12 +649,19 @@ for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
 ### The tool rounds (tools.go)
 
-**Which turns offer tools.** `toolSpecs(route)` returns the ToolRunner's
-schemas on `tools` and `search+tools`, and `nil` on the other routes or when
-the ToolRunner is `nil`. A model can't call a tool it hasn't seen, and the
-prompt stays shorter. On a turn that offers tools, `prompt` adds `toolsNote`
-to the system prompt: the model may call the tools, and some calls ask you
-first. `Handle` also records the schemas' size, characters divided by four,
+**Which turns offer tools.** `toolSpecs(route)` returns every schema the
+ToolRunner offers on `tools` and `search+tools`. On `search` it keeps only the
+three read-only file tools, `read_file`, `list_folder` and `grep`, which
+`builtin.IsFileTool` names. Ten excerpts can't cover "everything in my work
+folder", and those three read nothing search couldn't. On `direct`, or when
+the ToolRunner is `nil`, it returns `nil`. A model can't call a tool it hasn't
+seen, and the prompt stays shorter.
+
+`noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn with
+only the file tools gets `fileToolsNote`: when the excerpts aren't enough, the
+model may read whole files, list folders and grep. Any other turn with tools
+gets `toolsNote`: the model may call the tools, and some calls ask you first.
+A turn with no tools gets neither. `Handle` also records the schemas' size, characters divided by four,
 as `meru.context.tokens` with `section = "tools"`.
 
 **The loop.** `converse` runs the rounds:
@@ -820,7 +827,12 @@ two calls that must run at the same time (one waits on a channel the other
 closes) with results in call order, the round cap, denied and declined calls
 reaching the model, `approve` and a job's source reaching dispatch, a hang-up
 during a call, one `gen_ai.chat` span per round, and a transcript and
-history that hold only the question and the answer.
+history that hold only the question and the answer. `TestToolsOfferedByRoute`
+checks which tools and which note each route gets.
+
+`files_test.go` runs a `search` turn over the real built-in tools behind a real
+`dispatch.Dispatcher`: the fake engine calls `read_file`, and the next round
+must read the file's whole text.
 
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and

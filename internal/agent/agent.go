@@ -132,7 +132,8 @@ type Agent struct {
 // search on every route but "direct", and on a direct question that names
 // one of cfg.Index.Folders. search may be nil, which turns search off. It
 // offers the model the tools from tools on the "tools" and "search+tools"
-// routes, for at most cfg.Agent.MaxRounds model calls per turn. tools may be
+// routes, and only the file tools on "search", for at most
+// cfg.Agent.MaxRounds model calls per turn. tools may be
 // nil, which turns tools off. It writes a row for each answered turn to
 // turns, which may be nil to keep none. It puts the user's profile from
 // profile into every prompt; a nil profile leaves it out. log may be nil,
@@ -273,8 +274,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		dec.Route = "search"
 	}
 	// The same gap for tools: "search my obsidian vault" can route to
-	// search, which offers no tools. When a question names a connected tool
-	// server and the route has no tools, add them.
+	// search, which offers only the file tools. When a question names a
+	// connected tool server and the route lacks the full set, add them.
 	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
 		a.log.DebugContext(ctx, "route changed: the question names a tool server",
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
@@ -324,7 +325,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
-		files: files, tools: len(specs) > 0,
+		files: files, toolsNote: noteFor(specs),
 	})
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
@@ -749,8 +750,8 @@ func shortPath(home, p string) string {
 // explains why):
 //
 //   - the parts that stay the same from turn to turn: the configured prompt
-//     with whoIsWho, the user's profile, filesNote, toolsNote on a turn that
-//     offers tools, and the list of skills;
+//     with whoIsWho, the user's profile, filesNote, the tools note on a
+//     turn that offers tools, and the list of skills;
 //   - the parts each question changes: the recalled memories, the picked
 //     skills' instructions, and the excerpts from the user's files with any
 //     earlier conversations.
@@ -777,9 +778,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	profile := a.profileSection(ctx)
 	add(profile)
 	add(a.filesNote)
-	if sec.tools {
-		add(toolsNote)
-	}
+	add(sec.toolsNote)
 	add(sec.skillList)
 	add(sec.memories)
 	add(sec.skillBodies)

@@ -84,6 +84,8 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 - [x] Built-in skills `writing` and `explainer`, plus the `write_file`
   tool limited to `~/meru-output/`
 - [x] Context budget policy across skills / memories / chunks
+- [x] Read-only `read_file`, `list_folder` and `grep` over the `[index]` folders,
+  with the indexer's skip rules, offered on the search routes
 
 **Done when:** it recalls something from last week without a reminder.
 

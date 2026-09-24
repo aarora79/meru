@@ -514,6 +514,27 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
+### Reading whole files
+
+Search puts the ten best excerpts in the prompt, about 500 tokens each. When a
+question needs more, such as "summarize everything in ~/notes/work", the model
+can use three read-only tools on the same folders:
+
+- `read_file` reads one file whole, 12,000 characters per call, PDFs page by page;
+- `list_folder` lists a folder, 1 to 3 levels deep;
+- `grep` finds every line that holds a word or a pattern.
+
+They reach only your `[index] folders` and skip what the indexer skips, so they
+read nothing search couldn't. They run without asking; to approve each call, add
+them to `[builtin] confirm`. `meru` shows each call as it runs:
+
+```text
+$ meru "grep my notes for tomatoes and tell me which files mention it"
+→ grep {"pattern":"tomatoes"}
+✓ grep 40 ms
+Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
+```
+
 ## 8. Set up and connect tools
 
 ### meru setup

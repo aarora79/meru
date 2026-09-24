@@ -67,7 +67,7 @@ type sections struct {
 	skillList   string // every skill's name and description; "" for none
 	skillBodies string // the picked skills' instructions; "" for none
 	files       string // file excerpts, then earlier conversations; "" for none
-	tools       bool   // the turn offers tools
+	toolsNote   string // toolsNote or fileToolsNote when the turn offers tools; "" for none
 }
 
 // trimHistory drops the oldest messages from history until the rest fits

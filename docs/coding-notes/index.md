@@ -2,8 +2,8 @@
 
 **Code:** `internal/index/` (`doc.go`, `indexer.go`, `skip.go`, `ignore.go`,
 `chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `watch.go`,
-`memories.go`)
-**Milestone:** v0.2; the memory syncer v0.4
+`memories.go`, `files.go`)
+**Milestone:** v0.2; the memory syncer and `files.go` v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -20,7 +20,9 @@ indexes a few paths on demand; the watcher uses it, and `meru index` will.
 
 From v0.4 the package also holds `Memories`, a small syncer that copies the memory
 folder, `~/.meru/memory`, into the store's `memories` table (see
-[memories.go](#memoriesgo) below).
+[memories.go](#memoriesgo) below), and four methods that let the file tools in
+[builtin](builtin.md) see the folders the way the indexer does (see
+[files.go](#filesgo) below).
 
 ## The picture
 
@@ -176,7 +178,9 @@ the file, so HTML chunks carry no line numbers.
 
 PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
 never cross a page. That library panics on some broken files, so `chunkPDF`
-recovers the panic and returns it as an error; the file counts as `Failed`. A
+recovers the panic and returns it as an error; the file counts as `Failed`. The
+page reading lives in `pdfPages`, which `chunkPDF` and `ReadText` share, and
+the HTML reading in `readHTML`, which `chunkHTML` and `ReadText` share. A
 PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
 
@@ -196,6 +200,45 @@ A new folder gets watches of its own before its files get indexed. A changed
 folder. When the OS refuses another watch (Linux's inotify limit, or the
 open-file limit that macOS's kqueue hits), `Watch` logs one warning and keeps
 the watches it has; the next startup scan catches changes in the rest.
+
+### files.go
+
+The file tools, `read_file`, `list_folder` and `grep`, must reach exactly what
+search reaches. Rather than copy the skip rules, `builtin` calls four methods on
+the same `*Indexer` that `merud` indexes with:
+
+```go
+func (ix *Indexer) Roots() []string
+func (ix *Indexer) Check(p string) (Checked, error)
+func (ix *Indexer) Walk(ctx context.Context, dir string, fn func(p string, info fs.FileInfo, reason string) error) error
+func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
+```
+
+- **`Roots`** returns the `[index] folders` with symlinks resolved, leaving out
+  the ones that don't exist now.
+- **`Check`** takes one absolute path and returns a `Checked`: the path under
+  its folder, the folder, what `os.Lstat` says, and a `Reason…` constant, or
+  `""` when the indexer reads it. It runs `skipPath`, which checks every folder
+  between the indexed folder and the path, then, for a file, the size cap and
+  the NUL-byte test (`contentReason`). A path outside every folder fails with
+  `ErrOutsideFolders`. `Check` first matches the path as written against each
+  folder, as configured and resolved, so `~/notes/a.md` works when `~/notes`
+  is a link. It never resolves anything below the folder, so a link there comes
+  back as `symlink`.
+- **`Walk`** walks a folder with `filepath.WalkDir`, which never follows a
+  link, and calls `fn` for each entry with its reason. It skips the inside of a
+  skipped folder itself; `fn` may return `fs.SkipDir` or `fs.SkipAll`.
+- **`ReadText`** returns a `Text`: the file's kind and its pages. A PDF has one
+  page per PDF page; every other kind has one page, the whole text. HTML comes
+  back as the text `readHTML` pulls out. It opens the file through an `os.Root`
+  on its folder, so `..` or a link swapped in after the check can't lead out,
+  and it checks the size and the NUL byte again. `reason` is set when the file
+  turns out to be skipped; `err` when it can't be read or a PDF has no text.
+
+`Check` and `Walk` clear the cached ignore rules for the folder first, so a
+`.meruignore` you edited a moment ago counts even with `[index] watch = false`.
+The four methods need no store and no engine, so a test can build the
+`Indexer` with `New(cfg, nil, nil, nil)`.
 
 ### memories.go
 
@@ -274,6 +317,11 @@ store: add, a sync with nothing to do, a hand edit, a touched file, a forget, a
 file too big to read (its row stays), an embedding model change (the memory gets a
 vector again), and the watcher picking up a new file, a deleted one and a file in a
 new kind folder.
+
+`files_test.go` checks the four methods the file tools use: `Check` on a kept
+file, a secret, a file under a folder a `.meruignore` names, a NUL byte, a file
+over the cap, a link and a path through one, a path outside and a missing one;
+`Walk`'s reasons and its stops; and `ReadText` for each kind of file.
 
 ## Why it's built this way
 

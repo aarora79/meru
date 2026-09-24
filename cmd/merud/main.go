@@ -212,7 +212,13 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, mems.syncNow, log)
+	// With no [index] folders the file tools have nothing to read, so
+	// merud leaves them out and the model never sees them.
+	files := ix
+	if len(cfg.Index.Folders) == 0 {
+		files = nil
+	}
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, mems.syncNow, log)
 	if err != nil {
 		return err
 	}

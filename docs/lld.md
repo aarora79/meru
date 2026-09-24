@@ -42,7 +42,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember` and `write_file` | `builtin.go`: `Confirm`, `Call` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file` and the read-only `read_file`, `list_folder` and `grep` | `builtin.go`: `Confirm`, `Call`; then `files.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
@@ -75,8 +75,8 @@ flowchart TD
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     tui --> rpc
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
-    agent --> store & memory & skills
-    builtin --> dispatch & catalog & secrets & config & memory
+    agent --> store & memory & skills & builtin
+    builtin --> dispatch & catalog & secrets & config & memory & index
     summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
     dispatch --> store & transcript & engine & rpc & obs
@@ -95,7 +95,9 @@ flowchart TD
 
 `skills`, `memory` and `secrets` import only the standard library. `agent`
 reads the profile and the skills through them, `builtin` saves memories, and
-`index` copies the memory files into the store. `mcp` doesn't
+`index` copies the memory files into the store. `builtin` imports `index` so the
+file tools apply the indexer's skip rules instead of a copy, and `agent` imports
+`builtin` for `IsFileTool`, which names the tools the `search` route offers. `mcp` doesn't
 know `dispatch`: `cmd/merud/backends.go` wraps the pool in `mcpBackend`, so the
 pool stays a plain MCP client.
 
