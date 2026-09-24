@@ -32,7 +32,7 @@ func TestLoad(t *testing.T) {
 		mode    os.FileMode
 		wantErr string // "" means Load succeeds
 	}{
-		{"good file", "brave_api_key = \"fake-key-0123456789\"\n", 0o600, ""},
+		{"good file", "obsidian_api_key = \"fake-key-0123456789\"\n", 0o600, ""},
 		{"empty file", "", 0o600, ""},
 		{"not a string", "port = 27124\n", 0o600, "quoted string"},
 		{"bad name", "\"bad name\" = \"x\"\n", 0o600, "letters, digits"},
@@ -67,7 +67,7 @@ func TestLoadMissingFileIsEmpty(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	s, err := Load(writeFile(t, "brave_api_key = \"fake-key-0123456789\"\nempty = \"\"\n", 0o600))
+	s, err := Load(writeFile(t, "obsidian_api_key = \"fake-key-0123456789\"\nempty = \"\"\n", 0o600))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestResolve(t *testing.T) {
 		in, want string
 		wantErr  bool
 	}{
-		{"secret:brave_api_key", "fake-key-0123456789", false},
+		{"secret:obsidian_api_key", "fake-key-0123456789", false},
 		{"plain value", "plain value", false},
 		{"", "", false},
 		{"secret:missing", "", true},

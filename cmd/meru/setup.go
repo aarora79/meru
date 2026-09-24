@@ -59,6 +59,9 @@ type console struct {
 	// answers reports whether something listens at an HTTP server's URL
 	// (see urlAnswers).
 	answers func(ctx context.Context, rawURL string) bool
+	// searxng checks that SearXNG answers JSON at a URL (see
+	// catalog.CheckSearXNG).
+	searxng func(ctx context.Context, baseURL string) error
 }
 
 // terminal returns a console on standard input and out. When standard input
@@ -71,6 +74,7 @@ func terminal(out io.Writer) *console {
 		run:           runCommand,
 		ollamaVersion: ollamaVersion,
 		answers:       urlAnswers,
+		searxng:       catalog.CheckSearXNG,
 	}
 	c.readSecret = c.line
 	fd := int(os.Stdin.Fd()) // #nosec G115 -- a file descriptor fits in an int
@@ -347,8 +351,9 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 }
 
 // setupCmd runs `meru setup`: check Ollama, download the models, write
-// config.toml if there is none, offer the catalog servers, offer `meru
-// setup user`, and ask merud a test question when it runs.
+// config.toml if there is none, check SearXNG for web search, offer the
+// catalog servers, offer `meru setup user`, and ask merud a test question
+// when it runs.
 func setupCmd(ctx context.Context, socket string, c *console) error {
 	configPath := configPathFor(socket)
 	_, statErr := os.Stat(configPath)
@@ -384,7 +389,12 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		return err
 	}
 
-	fmt.Fprintln(c.out, "\n4. Tools")
+	fmt.Fprintln(c.out, "\n4. Web search")
+	if err := c.checkWebSearch(ctx, cfg.Web.SearXNGURL); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(c.out, "\n5. Tools")
 	fmt.Fprintln(c.out, "Meru can connect to these servers. Pick a path for each, or skip it and run meru mcp add later.")
 	for _, e := range catalog.Entries() {
 		if _, err := c.offer(ctx, socket, e); err != nil {
@@ -392,13 +402,13 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		}
 	}
 
-	fmt.Fprintln(c.out, "\n5. About you")
+	fmt.Fprintln(c.out, "\n6. About you")
 	merudUp := ping(ctx, socket, io.Discard) == nil
 	if err := c.offerProfile(ctx, socket, merudUp); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(c.out, "\n6. A test question")
+	fmt.Fprintln(c.out, "\n7. A test question")
 	if !merudUp {
 		fmt.Fprintln(c.out, "merud isn't running. Start it with `merud &`, then ask it something: meru \"hello\"")
 		return nil
@@ -415,6 +425,53 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		fmt.Fprintln(c.out, "Restart merud to load the new config: pkill merud; merud &")
 	}
 	return nil
+}
+
+// searxngStart holds the commands that start SearXNG in Docker, as
+// docs/running.md gives them under "Web search". The .env lines bind it to
+// 127.0.0.1:8888; upstream's compose file listens on every interface, port
+// 8080, unless told otherwise. setup prints them; Meru never runs them.
+const searxngStart = `  mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
+  curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml \
+       -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
+  cp -i .env.example .env && printf 'SEARXNG_HOST=127.0.0.1\nSEARXNG_PORT=8888\n' >> .env
+  docker compose up -d`
+
+// checkWebSearch checks that SearXNG answers JSON at baseURL, which is
+// [web] searxng_url. When it doesn't, it says why and what to do: the
+// container commands when nothing answers, the formats setting when it
+// answers HTML. Then it waits: Enter checks again, s skips. Web search is
+// optional, so the step never stops setup; it fails only when the input
+// ends.
+func (c *console) checkWebSearch(ctx context.Context, baseURL string) error {
+	if baseURL == "" {
+		fmt.Fprintln(c.out, "Web search is off: [web] searxng_url is empty in config.toml.")
+		return nil
+	}
+	for {
+		err := c.searxng(ctx, baseURL)
+		switch {
+		case err == nil:
+			fmt.Fprintf(c.out, "SearXNG answers JSON at %s, so the model can search the web.\n", baseURL)
+			return nil
+		case errors.Is(err, catalog.ErrSearXNGNoJSON):
+			fmt.Fprintln(c.out, catalog.SearXNGFormatsHint)
+		case errors.Is(err, catalog.ErrSearXNGDown):
+			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Meru searches the web through SearXNG, "+
+				"a search engine you run in Docker. To start it:\n\n%s\n\n"+
+				"Then turn JSON on, as \"Web search\" in docs/running.md shows.\n", baseURL, searxngStart)
+		default:
+			fmt.Fprintf(c.out, "%v.\n", err)
+		}
+		a, err := c.ask("Press Enter to check again, or type s to skip web search:")
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(a, "s") {
+			fmt.Fprintln(c.out, "Skipped. Meru works without web search; the web_search tool says what's wrong when the model calls it.")
+			return nil
+		}
+	}
 }
 
 // offerProfile asks whether to run `meru setup user` now, when merud is up

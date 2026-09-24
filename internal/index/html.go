@@ -13,7 +13,7 @@ import (
 // htmlSkip lists elements whose content is never text a reader sees.
 var htmlSkip = map[string]bool{
 	"script": true, "style": true, "noscript": true, "template": true,
-	"svg": true, "head": true, "iframe": true, "object": true,
+	"svg": true, "head": true, "iframe": true, "object": true, "title": true,
 }
 
 // htmlBlocks lists elements that start and end a paragraph. Inline elements
@@ -39,6 +39,7 @@ type htmlText struct {
 	titles   [6]string
 	sections []mdSection // spans index into b's text
 	space    bool        // a space is owed before the next word
+	title    string      // the text of the page's first <title>, if any
 }
 
 // chunkHTML chunks an HTML page: readHTML pulls out its text and sections,
@@ -68,6 +69,10 @@ func readHTML(src string) *htmlText {
 	preDepth := 0     // > 0 while inside <pre>
 	headingLevel := 0 // the h1..h6 level being read, or 0
 	var heading strings.Builder
+	// <title> sits in <head>, which the text skips, so the title gets its
+	// own builder. Only the first <title> counts; an <svg> can hold more.
+	inTitle, titleDone := false, false
+	var title strings.Builder
 
 	z := html.NewTokenizer(strings.NewReader(src))
 	for {
@@ -79,6 +84,9 @@ func readHTML(src string) *htmlText {
 		tok := z.Token()
 		switch tt {
 		case html.StartTagToken, html.SelfClosingTagToken:
+			if tok.Data == "title" && tt == html.StartTagToken && !titleDone {
+				inTitle = true
+			}
 			switch {
 			case htmlSkip[tok.Data]:
 				if tt == html.StartTagToken {
@@ -95,6 +103,9 @@ func readHTML(src string) *htmlText {
 				t.paragraphBreak()
 			}
 		case html.EndTagToken:
+			if tok.Data == "title" && inTitle {
+				inTitle, titleDone = false, true
+			}
 			switch {
 			case htmlSkip[tok.Data]:
 				if skipDepth > 0 {
@@ -112,6 +123,9 @@ func readHTML(src string) *htmlText {
 				t.paragraphBreak()
 			}
 		case html.TextToken:
+			if inTitle {
+				title.WriteString(tok.Data)
+			}
 			if skipDepth > 0 {
 				continue
 			}
@@ -125,7 +139,18 @@ func readHTML(src string) *htmlText {
 	}
 
 	t.sections[len(t.sections)-1].body.end = t.b.Len()
+	t.title = strings.Join(strings.Fields(title.String()), " ")
 	return t
+}
+
+// HTMLText returns the title and the plain text of the HTML page src: the
+// same text the indexer chunks and read_file returns. The web_url_read
+// tool in internal/builtin uses it for pages it fetches, so a web page and
+// an indexed file read the same way. title is "" when the page has no
+// <title>.
+func HTMLText(src string) (title, text string) {
+	t := readHTML(src)
+	return t.title, t.b.String()
 }
 
 // write adds a run of page text. Outside <pre> it collapses white space to

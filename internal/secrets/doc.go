@@ -4,7 +4,7 @@
 //
 // The file is a flat TOML table of name = "value" pairs:
 //
-//	brave_api_key = "BSA..."
+//	obsidian_api_key = "0f3a..."
 //
 // config.toml refers to an entry by writing "secret:<name>" as the value of
 // an env variable or an HTTP header. merud calls Resolve on those values when

@@ -58,9 +58,12 @@ prompt picked 17 of 36.
 - [x] Approval prompt in `meru chat` and one-shot `meru`: approve once, approve for this
   session, or deny
 - [x] A2A client: remote agent skills exposed as tools through the same `dispatch`
-- [x] `meru setup` and `meru mcp add`: a catalog of three starter servers (`google`
-  for Gmail, Calendar, Drive and Docs, `brave` for web search, `obsidian` for notes),
-  added for you or by copy-paste
+- [x] `meru setup` and `meru mcp add`: a catalog of two starter servers (`google`
+  for Gmail, Calendar, Drive and Docs, `obsidian` for notes), added for you or by
+  copy-paste
+- [x] Web search: built-in `web_search` through a SearXNG the user runs on loopback,
+  and `web_url_read` for public pages behind `[web] read_pages`; `meru setup` checks
+  SearXNG
 - [x] `meru mcp` and `/mcp` in `meru chat`: each server's state and tool counts.
   `merud` tries each server once at startup and once more per turn that offers tools,
   with no retry loop

@@ -6,8 +6,8 @@ Meru मेरु lite · minicpm5:2b … ● connected
   │                                    │
   │ SERVER     TRANSPORT  STATE      … │
   │ google     http       connected  … │
-  │ brave      stdio      connected  … │
-  │ obsidian   stdio      not connect… │
+  │ obsidian   stdio      connected  … │
+  │ notes      stdio      not connect… │
   │                                    │
   │ meru tools lists each tool; meru   │
   │ mcp list shows the catalog and     │

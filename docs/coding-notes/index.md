@@ -172,16 +172,19 @@ brace in a string for the end of a function. A file that doesn't parse falls
 back to blank-line blocks.
 
 HTML goes through `golang.org/x/net/html`'s tokenizer, which copes with broken
-markup. Scripts, styles and `<head>` drop out, entities decode, and white space
-collapses except in `<pre>`. The extracted text doesn't line up with lines in
+markup. Scripts, styles, `<head>` and `<title>` drop out of the text, entities
+decode, and white space collapses except in `<pre>`. `readHTML` keeps the first
+`<title>` on the side, for `web_url_read`. The extracted text doesn't line up with lines in
 the file, so HTML chunks carry no line numbers.
 
 PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
 never cross a page. That library panics on some broken files, so `chunkPDF`
 recovers the panic and returns it as an error; the file counts as `Failed`. The
-page reading lives in `pdfPages`, which `chunkPDF` and `ReadText` share, and
-the HTML reading in `readHTML`, which `chunkHTML` and `ReadText` share. A
-PDF with no text layer (a scan) fails the same way. PDF quality is an open
+page reading lives in `pdfPages`, which `chunkPDF` shares with `PDFText`, and
+the HTML reading in `readHTML`, which `chunkHTML` shares with `HTMLText`.
+`ReadText` calls the two exported readers, and so does the `web_url_read` tool
+in [builtin](builtin.md), so a page from the web reads the way a file on disk
+does. A PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
 
 ### watch.go

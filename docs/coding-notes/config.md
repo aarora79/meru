@@ -2,7 +2,7 @@
 
 **Code:** `internal/config/` (`config.go`, `load.go`, `loopback.go`)
 **Milestone:** v0.1
-**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability)
+**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search)
 
 ## What it does
 
@@ -72,6 +72,24 @@ on loopback and talks to Google. `remote` names the one thing the key controls.
 `MCPServer.Env` belongs to a stdio server; the `mcp` package refuses it on a `url`
 entry, because `merud` starts no process whose environment it could set (see
 [mcp.md](mcp.md)).
+
+`Web` is the `[web]` section (v0.3), for the built-in web tools
+([builtin](builtin.md)):
+
+```go
+type Web struct {
+    SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
+    ReadPages  bool   `toml:"read_pages"`  // default false; true adds web_url_read
+    MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
+}
+```
+
+`validate` runs `searxng_url` through the same `loopback.CheckURL` as the Ollama
+and OTLP addresses, because `merud` connects to it. It skips the check for an
+empty URL, which is how you turn web search off. The default URL isn't empty, so
+a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
+explains what to do when nothing answers there. `MaxWebResults` is exported
+because `web_search` checks a call's own `max_results` against the same cap.
 
 ### load.go
 

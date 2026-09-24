@@ -3,13 +3,14 @@
 This guide takes you from nothing to asking Meru a question, then covers settings,
 indexing your files, running it as a service, the dashboard, and fixing common
 problems. It describes v0.3: questions, streamed answers, session transcripts,
-routing, answers from your own files with citations, and tools from MCP servers
-and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
+routing, answers from your own files with citations, web search through a
+SearXNG you run, and tools from MCP servers and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
 ([ROADMAP.md](../ROADMAP.md)).
 
 ## 1. Install the prerequisites
 
-You need two programs on the machine that will run Meru.
+You need two programs on the machine that will run Meru, and a third for web
+search.
 
 - **Go 1.26 or later**, to build Meru. Download it from <https://go.dev/dl/>, or on
   macOS run `brew install go`. Check with `go version`. The repo pins Go 1.26.6;
@@ -19,6 +20,11 @@ You need two programs on the machine that will run Meru.
   `http://127.0.0.1:11434`. Check with `curl http://127.0.0.1:11434/api/version`.
   `merud` refuses to start with an older Ollama, because the router needs log
   probabilities, which Ollama added in 0.12.11.
+- **Docker**, only for web search. Meru searches the web through SearXNG, which
+  runs in a container (see [Web search](#web-search)). Meru runs without Docker;
+  only the `web_search` tool stops working, and it tells the model why. On macOS,
+  Docker Desktop or Colima provides `docker compose`; check with
+  `docker compose version`.
 
 ## 2. Download the models
 
@@ -541,7 +547,7 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### meru setup
 
-`meru setup` walks through a first run in six short steps:
+`meru setup` walks through a first run in seven short steps:
 
 1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
    install command for your system and waits while you start it.
@@ -551,15 +557,114 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 3. **Your files.** With no `config.toml` yet, it asks which folders to index and
    writes the file. With one already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
-4. **Tools.** It offers each server in the catalog, one at a time (see below).
-5. **About you.** If `merud` is running, it offers `meru setup user` (see
+4. **Web search.** It checks that SearXNG answers JSON at `[web] searxng_url`. If
+   nothing answers, it prints the container commands from
+   [Web search](#web-search); if SearXNG answers a web page, it names the
+   `formats` setting. Press Enter to check again, or type `s` to skip.
+5. **Tools.** It offers each server in the catalog, one at a time (see below).
+6. **About you.** If `merud` is running, it offers `meru setup user` (see
    [Tell Meru about you](#tell-meru-about-you)).
-6. **A test question.** If `merud` is running, it asks one question and prints
+7. **A test question.** If `merud` is running, it asks one question and prints
    the answer. If not, it tells you how to start `merud`.
+
+### Web search
+
+Meru searches the web through SearXNG, a search engine you run yourself. It holds
+no index: it passes your query to Google, Bing, DuckDuckGo and others, drops the
+parts that identify you, and merges the results. No account, no API key.
+
+You run it once, in Docker, and Meru uses it from then on.
+
+```sh
+mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
+curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml \
+     -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
+cp -i .env.example .env && printf 'SEARXNG_HOST=127.0.0.1\nSEARXNG_PORT=8888\n' >> .env
+docker compose up -d
+```
+
+The two lines added to `.env` matter. Upstream's compose file listens on port
+8080 on every network interface, which would let other machines on your network
+use your SearXNG. With them, it listens on `127.0.0.1:8888` only, where Meru looks.
+
+SearXNG answers on `http://127.0.0.1:8888` and returns web pages. Meru needs JSON,
+which is off by default: SearXNG answers a JSON request with `403 Forbidden`. The
+first start writes `~/srv/searxng/core-config/settings.yml`; add JSON to the end of
+it:
+
+```sh
+cat >> ~/srv/searxng/core-config/settings.yml <<'EOF'
+
+search:
+  formats:
+    - html
+    - json
+EOF
+```
+
+Then restart it and check that JSON comes back:
+
+```sh
+docker compose restart
+curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
+```
+
+A line starting `{"query":` means it works. A line of HTML means the `formats`
+change did not take; check the file path and restart again.
+
+Meru's default config already points at `http://127.0.0.1:8888`, so there is
+nothing else to do. `merud` logs `web search ready` when it starts, `meru tools`
+lists `web_search` under `meru`, and a question such as
+`meru "search the web for the latest Go release"` uses it. To turn web search off,
+set `searxng_url = ""` under `[web]` in `~/.meru/config.toml`.
+
+To stop it: `cd ~/srv/searxng && docker compose down`. To update it:
+`docker compose pull && docker compose up -d`.
+
+**What leaves your machine.** Your search words go to the engines SearXNG asks;
+that is what web search is. They go without an account and without cookies,
+spread across engines rather than building a profile with one company. Your
+question, your files and the model's answer never leave; only the search words do.
+The model writes those words, so they can hold words from your question.
+
+**If searches stop returning anything**, an engine is rate-limiting your address.
+SearXNG spreads queries across engines, which softens this rather than curing it.
+Wait, or turn off the offending engine in `settings.yml`.
+
+#### Reading web pages
+
+`web_search` returns titles, URLs and snippets. To let the model read a whole
+page, turn on `web_url_read`:
+
+```toml
+[web]
+read_pages = true
+```
+
+Restart `merud`. `web_url_read` fetches one page, HTML, PDF or plain text, up to
+5 MB, and hands the model its text 12,000 characters at a time, as `read_file`
+does for your files.
+
+It is off by default because it has a privacy cost. With it on, `merud` itself
+connects to web sites: the one case where it connects off this machine without a
+`remote = true` entry. Each site you read sees your IP address and a User-Agent
+that names Meru, and can log that you read the page. The tool keeps no cookies
+and uses no proxy. It refuses any address on this machine or your local network
+(127.0.0.1, 192.168.x.x, 10.x.x.x, cloud metadata at 169.254.169.254 and the
+like), checked after DNS as it connects, and it follows at most 5 redirects, each
+checked the same way. So a page can't steer it at your router or another service
+on your network.
+
+To approve each page before Meru reads it, add it to `[builtin] confirm`:
+
+```toml
+[builtin]
+confirm = ["write_file", "web_url_read"]
+```
 
 ### meru mcp add
 
-An MCP server gives the model tools. Meru knows three, and `meru mcp list` shows
+An MCP server gives the model tools. Meru knows two, and `meru mcp list` shows
 them:
 
 ```sh
@@ -569,13 +674,12 @@ meru mcp list
 | Name | What the model gets | What you need |
 | --- | --- | --- |
 | `google` | search and read mail and threads, send mail, list and change calendar events, search Drive, read a doc; sending mail and changing an event ask first | a Google OAuth client, `uv`, and the server running, which you start |
-| `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
 | `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
 
 To add one, name it:
 
 ```sh
-meru mcp add brave
+meru mcp add obsidian
 ```
 
 Meru shows what the server does and offers two paths:
@@ -588,8 +692,7 @@ Meru shows what the server does and offers two paths:
 - **s) Show me how.** Meru prints the install step, the block, the file to paste
   it into, and the lines to add to `secrets.toml`. It writes nothing.
 
-`brave` and `obsidian` are stdio servers: `merud` starts each one as a child
-process. `google` is a server you start yourself (see
+`obsidian` is a stdio server: `merud` starts it as a child process. `google` is a server you start yourself (see
 [The google entry](#the-google-entry)).
 
 A server outside the catalog takes one command too:
@@ -714,7 +817,6 @@ The catalog has no shell server; to let the model run a program, declare it in
 $ meru mcp
 SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
 google     http       connected       124        8        2   127.0.0.1:8000/mcp
-brave      stdio      connected         4        2        0
 obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH
 ```
 
@@ -748,7 +850,7 @@ about each:
 
 ```text
 Your servers:
-  brave      stdio · npx · connected · offers 2, 2 allowed
+  obsidian   stdio · uvx · connected · offers 13, 5 allowed
   notes      stdio · notes-mcp · not connected: exit status 1 · 2 allowed in config
 ```
 
@@ -972,6 +1074,8 @@ With `-v`, the `search done` and `prompt built` lines show what the model read.
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
+| `web_search` answers that JSON is off, or `curl` on SearXNG prints HTML | SearXNG answers web pages only. Add `json` under `search: formats:` in `~/srv/searxng/core-config/settings.yml`, then `docker compose restart` (see [Web search](#web-search)). |
+| `web_search` says `SearXNG isn't answering on http://127.0.0.1:8888` | The container isn't running. Run `cd ~/srv/searxng && docker compose up -d`, and check that Docker itself runs. `docker compose ps` should show `127.0.0.1:8888->8888/tcp`. |
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `config.example.toml` shows the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |

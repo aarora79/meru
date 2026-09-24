@@ -108,6 +108,11 @@ watch = false
 [builtin]
 confirm = ["configure"]
 
+[web]
+searxng_url = "http://localhost:8889"
+read_pages  = true
+max_results = 5
+
 [[mcp.servers]]
 name    = "notes"
 command = "notes-mcp"
@@ -152,6 +157,7 @@ remote  = false
 			Watch:         false,
 		},
 		Builtin: Builtin{Confirm: []string{"configure"}},
+		Web:     Web{SearXNGURL: "http://localhost:8889", ReadPages: true, MaxResults: 5},
 		MCP: MCP{Servers: []MCPServer{
 			{
 				Name: "notes", Command: "notes-mcp", Args: []string{"--root", "~/notes"},
@@ -221,6 +227,12 @@ func TestLoadErrors(t *testing.T) {
 		{"old a2a network key", "[[a2a.agents]]\nname = \"r\"\nurl = \"http://127.0.0.1:9100\"\nnetwork = false", "network was renamed remote"},
 		{"output_dir empty", "[skills]\noutput_dir = \"\"", "skills.output_dir is empty"},
 		{"output_dir relative", "[skills]\noutput_dir = \"out\"", `skills.output_dir "out" must be an absolute path`},
+		{"searxng not loopback", "[web]\nsearxng_url = \"http://192.168.1.20:8888\"", "web.searxng_url"},
+		{"searxng hostname", "[web]\nsearxng_url = \"https://searx.example.org\"", "web.searxng_url"},
+		{"searxng scheme", "[web]\nsearxng_url = \"127.0.0.1:8888\"", "web.searxng_url"},
+		{"web max_results zero", "[web]\nmax_results = 0", "web.max_results"},
+		{"web max_results high", "[web]\nmax_results = 21", "web.max_results"},
+		{"web unknown key", "[web]\nread_page = true", "unknown keys: web.read_page"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,6 +263,27 @@ func TestBuiltinConfirmDefault(t *testing.T) {
 	}
 	if len(cfg.Builtin.Confirm) != 0 {
 		t.Errorf("builtin.confirm = %q after confirm = [], want empty", cfg.Builtin.Confirm)
+	}
+}
+
+// TestWebDefaults checks the [web] defaults: search on at the SearXNG
+// port the docs use, page reading off, and an empty URL turning search off.
+func TestWebDefaults(t *testing.T) {
+	cfg, err := Load(writeConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
+	if cfg.Web != want {
+		t.Errorf("default web = %+v, want %+v", cfg.Web, want)
+	}
+	cfg, err = Load(writeConfig(t, "[web]\nsearxng_url = \"\"\nread_pages = true\nmax_results = 20"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want = Web{SearXNGURL: "", ReadPages: true, MaxResults: 20}
+	if cfg.Web != want {
+		t.Errorf("web = %+v, want %+v", cfg.Web, want)
 	}
 }
 

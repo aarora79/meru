@@ -1,7 +1,9 @@
 // Package catalog is the short list of MCP servers Meru knows how to set up:
-// google (Gmail, Calendar, Drive and Docs), brave (web search) and obsidian
-// (notes). It has no shell server: merud runs the programs you declare in
-// [[commands]] itself. See ARCHITECTURE.md, "Adding an MCP server".
+// google (Gmail, Calendar, Drive and Docs) and obsidian (notes). It has no
+// shell server: merud runs the programs you declare in [[commands]] itself.
+// It has no web search server either: web search is a built-in tool, and
+// this package holds CheckSearXNG, the check meru setup and merud share for
+// it. See ARCHITECTURE.md, "Adding an MCP server" and "Web search".
 //
 // Each Entry says how to reach the server, what it needs from the user (an
 // API key, a sign-in, a server to start), and a safe starting allow list: tools that

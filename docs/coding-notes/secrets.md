@@ -7,19 +7,19 @@
 
 ## What it does
 
-Some MCP servers need an API key: Brave Search, the Google servers, Obsidian's
-REST plugin. Meru keeps every key in one file, `~/.meru/secrets.toml`, and never in
+Some MCP servers need an API key, such as Obsidian's Local REST API plugin or a
+hosted server's bearer token. Meru keeps every key in one file, `~/.meru/secrets.toml`, and never in
 `config.toml`. The file is a flat list of `name = "value"` pairs:
 
 ```toml
-brave_api_key = "BSA..."
+obsidian_api_key = "0f3a..."
 ```
 
 `config.toml` refers to a key by name, writing `secret:<name>` where the value
 would go:
 
 ```toml
-env = { BRAVE_API_KEY = "secret:brave_api_key" }
+env = { OBSIDIAN_API_KEY = "secret:obsidian_api_key" }
 ```
 
 This package reads and writes that file. `merud` uses `Resolve` to swap each
@@ -33,11 +33,11 @@ every key in text it writes to transcripts, logs and traces. `meru mcp add` uses
 flowchart LR
     you["meru mcp add"] -- "Set(path, name, value)" --> file["~/.meru/secrets.toml<br/>mode 0600"]
     file -- "Load(path)" --> s["*Secrets"]
-    cfg["config.toml<br/>secret:brave_api_key"] --> r["s.Resolve(v)"]
+    cfg["config.toml<br/>secret:obsidian_api_key"] --> r["s.Resolve(v)"]
     s --> r
-    r --> child["server env<br/>BRAVE_API_KEY=BSA..."]
+    r --> child["server env<br/>OBSIDIAN_API_KEY=0f3a..."]
     s --> red["s.Redact(text)"]
-    red --> out["transcript, log, span<br/>[secret:brave_api_key]"]
+    red --> out["transcript, log, span<br/>[secret:obsidian_api_key]"]
 ```
 
 ## Walk through the code

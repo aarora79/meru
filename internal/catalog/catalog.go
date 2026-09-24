@@ -16,15 +16,14 @@
 //     otherwise. It reads GOOGLE_OAUTH_CLIENT_ID and
 //     GOOGLE_OAUTH_CLIENT_SECRET, and on first use sends a sign-in link
 //     whose callback is http://localhost:8000/oauth2callback.
-//   - brave: https://github.com/brave/brave-search-mcp-server, package
-//     @brave/brave-search-mcp-server 2.1.4; names from src/tools/web and
-//     src/tools/news (index.ts, `export const name`).
 //   - obsidian: https://github.com/MarkusPfundstein/mcp-obsidian,
 //     mcp-obsidian 0.2.2; names from src/mcp_obsidian/tools.py. The README
 //     lists them without the "obsidian_" prefix, but the server sends it.
 //
-// The catalog holds three servers, one per kind of example the docs use:
-// mail and calendar (google), web search (brave) and notes (obsidian).
+// The catalog holds two servers, one per kind of example the docs use:
+// mail and calendar (google) and notes (obsidian). Web search is a
+// built-in tool, through a SearXNG instance the user runs, so it needs no
+// catalog entry (ARCHITECTURE.md, "Web search").
 //
 // google is the one url entry. Its README calls stdio legacy, and its
 // OAuth 2.1 mode needs HTTP, so the user runs it as a Streamable HTTP
@@ -40,7 +39,7 @@
 // that Meru's client doesn't do. workspace-mcp runs on this machine with
 // your own OAuth client, so the catalog keeps it.
 //
-// The commands aren't pinned to a version: npx and uvx fetch the latest
+// The commands aren't pinned to a version: uvx fetches the latest
 // release, which keeps security fixes coming. A later release that adds a
 // tool gives the model nothing new, because allow names each tool.
 
@@ -114,7 +113,8 @@ type Entry struct {
 	// environment.
 	Env map[string]string
 	// Needs lists what to ask the user, in order. Requires sums them up in
-	// a few words for `meru mcp list`, such as "a Brave Search API key".
+	// a few words for `meru mcp list`, such as "Obsidian's Local REST API
+	// plugin, and uv".
 	Needs    []Need
 	Requires string
 	// Allow lists the tools the model may call; Confirm the allowed tools
@@ -140,10 +140,6 @@ const googleStart = "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT
 // installUV is the Install text for the servers that run with uvx.
 const installUV = "uvx downloads the server the first time it starts. " +
 	"Install uv, which provides uvx: https://docs.astral.sh/uv/getting-started/installation/"
-
-// installNode is the Install text for the servers that run with npx.
-const installNode = "npx downloads the server the first time merud starts it. " +
-	"Install Node.js, which provides npx: https://nodejs.org/"
 
 // Entries returns the catalog, in the order setup offers it. It builds the
 // list on each call, so a caller that changes an entry changes only its
@@ -177,26 +173,6 @@ func Entries() []Entry {
 			Confirm: []string{"send_gmail_message", "manage_event"},
 			Install: installUV + " Then start the server yourself: " + googleStart,
 			Docs:    "https://github.com/taylorwilsdon/google_workspace_mcp",
-		},
-		{
-			Name:        "brave",
-			Title:       "Web search (Brave Search)",
-			Description: "Searches the web and the news with the Brave Search API.",
-			Transport:   TransportStdio,
-			Command:     "npx",
-			Args:        []string{"-y", "@brave/brave-search-mcp-server", "--transport", "stdio"},
-			Env:         map[string]string{"BRAVE_API_KEY": secrets.Prefix + "brave_api_key"},
-			// #nosec G101 -- the name of a secrets.toml entry, not a credential
-			Needs: []Need{{
-				Kind:       NeedAPIKey,
-				SecretName: "brave_api_key",
-				Prompt:     "Paste your Brave Search API key",
-				Help:       "Get a key at https://brave.com/search/api/ (the free plan works).",
-			}},
-			Requires: "a Brave Search API key, and Node.js",
-			Allow:    []string{"brave_web_search", "brave_news_search"},
-			Install:  installNode,
-			Docs:     "https://github.com/brave/brave-search-mcp-server",
 		},
 		{
 			Name:        "obsidian",

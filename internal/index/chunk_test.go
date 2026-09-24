@@ -447,3 +447,35 @@ func TestChunkPDFFailures(t *testing.T) {
 		})
 	}
 }
+
+// TestHTMLText checks the exported reader web_url_read uses: the first
+// <title> comes back on its own, and the text leaves out <head>.
+func TestHTMLText(t *testing.T) {
+	tests := []struct {
+		name, src, title, text string
+	}{
+		{"title and body", "<html><head><title> Go\n 1.26 </title><style>p{}</style></head><body><p>Released.</p></body></html>", "Go 1.26", "Released."},
+		{"no title", "<p>Just text</p>", "", "Just text"},
+		{"svg title ignored", "<title>Page</title><svg><title>Icon</title></svg><p>Body</p>", "Page", "Body"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			title, text := HTMLText(tt.src)
+			if title != tt.title || strings.TrimSpace(text) != tt.text {
+				t.Errorf("HTMLText = %q, %q; want %q, %q", title, text, tt.title, tt.text)
+			}
+		})
+	}
+}
+
+// TestPDFText checks the exported PDF reader: one string per page, and an
+// error for a PDF with no text.
+func TestPDFText(t *testing.T) {
+	pages, err := PDFText(minimalPDF([]string{"One", "Two"}))
+	if err != nil || len(pages) != 2 || !strings.Contains(pages[1], "Two") {
+		t.Fatalf("PDFText = %q, %v", pages, err)
+	}
+	if _, err := PDFText(minimalPDF([]string{""})); err == nil {
+		t.Error("PDFText of a blank PDF succeeded; want an error")
+	}
+}

@@ -13,13 +13,13 @@ import (
 	"github.com/aarora79/meru/internal/rpc"
 )
 
-// mcpFixture is the three catalog servers in the three shapes a row takes:
-// an HTTP server that is connected, a stdio server that is connected, and
-// one that isn't.
+// mcpFixture is the two catalog servers and one added by hand, in the
+// three shapes a row takes: an HTTP server that is connected, a stdio
+// server that is connected, and one that isn't.
 var mcpFixture = []rpc.MCPStatus{
 	{Name: "google", Transport: "http", State: "connected", URL: "http://127.0.0.1:8000/mcp", Tools: 124, Allowed: 6, Confirm: 2},
-	{Name: "brave", Transport: "stdio", State: "connected", Tools: 4, Allowed: 2},
-	{Name: "obsidian", Transport: "stdio", State: "not connected", Tools: -1, Allowed: 3, Confirm: 1, Err: `exec: "npx" not found`},
+	{Name: "obsidian", Transport: "stdio", State: "connected", Tools: 13, Allowed: 5, Confirm: 1},
+	{Name: "notes", Transport: "stdio", State: "not connected", Tools: -1, Allowed: 3, Confirm: 1, Err: `exec: "npx" not found`},
 }
 
 func TestMCPTable(t *testing.T) {
@@ -31,8 +31,8 @@ func TestMCPTable(t *testing.T) {
 		{"three servers", mcpFixture, []string{
 			"SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM",
 			"google     http       connected       124        6        2   127.0.0.1:8000/mcp",
-			"brave      stdio      connected         4        2        0",
-			`obsidian   stdio      not connected     —        3        1   exec: "npx" not found`,
+			"obsidian   stdio      connected        13        5        1",
+			`notes      stdio      not connected     —        3        1   exec: "npx" not found`,
 		}},
 		{"a down http server shows the reason, not the url", []rpc.MCPStatus{
 			{Name: "google", Transport: "http", State: "not connected", URL: "http://127.0.0.1:8000/mcp", Tools: -1, Allowed: 6, Confirm: 2,

@@ -223,6 +223,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	defer tools.Close()
+	logWebSearch(ctx, cfg.Web, log)
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)

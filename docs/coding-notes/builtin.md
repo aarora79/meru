@@ -1,14 +1,16 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
-`writefile.go`, `files.go`, and the tests `builtin_test.go`, `writefile_test.go`
-and `files_test.go`, with the PDF in `testdata/`)
-**Milestone:** v0.3 (`configure`), v0.4 (`remember`, `write_file`, `read_file`,
-`list_folder`, `grep`)
+`writefile.go`, `files.go`, `web.go`, and the tests `builtin_test.go`,
+`writefile_test.go`, `files_test.go` and `web_test.go`, with the PDF in
+`testdata/`)
+**Milestone:** v0.3 (`configure`, `web_search`, `web_url_read`), v0.4
+(`remember`, `write_file`, `read_file`, `list_folder`, `grep`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
 [Memory](../../ARCHITECTURE.md#memory),
-[Built-in skills](../../ARCHITECTURE.md#built-in-skills)
+[Built-in skills](../../ARCHITECTURE.md#built-in-skills),
+[Web search](../../ARCHITECTURE.md#web-search)
 
 ## What it does
 
@@ -16,7 +18,7 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are six built-ins. When you say "connect my Gmail" in chat, the model calls
+There are eight built-ins. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -37,6 +39,12 @@ see what the folder holds, `read_file` to read each file whole, and `grep` to
 find every file that names a customer. These three only read, and only inside
 the `[index] folders`, with the indexer's own skip rules.
 
+When you ask "search the web for the latest Go release", the model calls
+`web_search` with `{"query": "latest Go release"}`. The tool sends one GET to the
+SearXNG you run on `127.0.0.1:8888` and hands back numbered results with their
+URLs. With `[web] read_pages = true`, the model can also call `web_url_read` with
+a URL from those results, to read the page itself.
+
 ## The picture
 
 ```mermaid
@@ -46,15 +54,15 @@ sequenceDiagram
     participant U as you
     participant T as builtin.Tools
     participant C as catalog
-    M->>D: configure {"catalog": "brave"}
+    M->>D: configure {"catalog": "obsidian"}
     D->>T: Confirm("configure")
     T-->>D: ConfirmAlways
     D->>U: approve once / deny
     U-->>D: once
     D->>T: Call(ctx, "configure", args)
-    T->>T: brave_api_key in secrets.toml?
+    T->>T: obsidian_api_key in secrets.toml?
     alt key missing
-        T-->>D: IsError: run `meru mcp add brave` in a terminal
+        T-->>D: IsError: run `meru mcp add obsidian` in a terminal
     else key present
         T->>C: AppendServer(config.toml, Block(entry))
         T->>T: onChange(ctx), merud reloads MCP
@@ -67,12 +75,12 @@ sequenceDiagram
 
 ### builtin.go
 
-`New` takes the config path, the `[builtin]` section, the memory store, the
-output folder for `write_file`, `merud`'s indexer for the file tools, and two
-hooks:
+`New` takes the config path, the `[builtin]` and `[web]` sections, the memory
+store, the output folder for `write_file`, `merud`'s indexer for the file tools,
+and two hooks:
 
 ```go
-func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools
+func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools
 ```
 
 For `onChange`, `merud` passes a hook that rebuilds its MCP pool, so a new server
@@ -83,7 +91,9 @@ hook does nothing. A `nil` memory store leaves `remember` out, and an empty
 `outputDir` leaves `write_file` out, and a `nil` indexer leaves the three file
 tools out; the tests of `configure` use all three. `merud` expands the `~` in
 `[skills] output_dir` before it calls `New`, so this package gets an absolute
-path, and it passes a `nil` indexer when `[index] folders` is empty.
+path, and it passes a `nil` indexer when `[index] folders` is empty. An empty
+`searxng_url` leaves `web_search` out, and `read_pages = false`, the default,
+leaves `web_url_read` out.
 
 `Confirm` decides whether a call asks first:
 
@@ -105,8 +115,8 @@ setting can switch its prompt off, and `dispatch` offers only "approve once" and
 `Call` decodes the arguments with `DisallowUnknownFields`, so a key the tool
 doesn't know, such as an `allow` list the model made up, fails instead of being
 ignored. `entryFor` accepts exactly one of two shapes: `catalog`, or `name` with
-`command` (and `args`) or `url`. A catalog name must be one of the three entries,
-`google`, `brave` or `obsidian`; any other name fails with the list. No catalog
+`command` (and `args`) or `url`. A catalog name must be one of the two entries,
+`google` or `obsidian`; any other name fails with the list. No catalog
 entry now runs on one system only or takes folders on the command line, so
 `entryFor` dropped its checks for both.
 
@@ -252,7 +262,102 @@ seconds of that. That fits inside the 5-second limit, so `grep` reads PDFs.
 All three run without asking unless `[builtin] confirm` lists them. They only
 read, and only what search could already put in the prompt.
 
+### web.go
+
+`newWebClients` builds two `http.Client` values from `[web]`, one per tool, and
+`New` keeps them in a `webClients` struct. Neither uses a proxy
+(`Transport{Proxy: nil}`) or a cookie jar.
+
+**`web_search`** checks its arguments first: `query` must hold a word,
+`max_results` must be 1 to 20 (0 means `[web] max_results`), and `time_range`
+must be `day`, `week`, `month` or `year` when given. `searxng` builds the URL
+with `url.Values`, which escapes the query, and sends one GET with a 15-second
+timeout. The client's `CheckRedirect` returns an error, so it follows no
+redirect: SearXNG is on loopback, and a redirect could only lead somewhere config
+never approved. `readCapped` reads at most 2 MiB and fails past that instead of
+returning half a JSON document.
+
+Each way the request can fail gets its own message, because the model reads it
+and passes it on:
+
+| What happened | How the code tells | What the model reads |
+| --- | --- | --- |
+| nothing listens on the port | `errors.As` finds a `*net.OpError` whose `Op` is `"dial"` | `SearXNG isn't answering on <url>. See "Web search" in docs/running.md.` |
+| JSON is off | the body starts with `<`; a fresh SearXNG answers `403` with an HTML page | `catalog.SearXNGFormatsHint`, which names `search: formats:` and `settings.yml` |
+| SearXNG found nothing | `results` is empty | `SearXNG found no results for "…"` |
+| the search ran long | `isTimeout` | try again, or search with fewer words |
+
+`formatResults` writes a header line that tells the model to cite by URL, then
+for each result `[n] title — url`, the snippet with its white space collapsed and
+cut to 300 characters, and `Published 2026-02-10.` when SearXNG sends a date.
+`PublishedDate` is a `*string`, a pointer, because SearXNG sends `null` for a
+result with no date, and a pointer can hold "no value" where a plain string
+can't.
+
+**`web_url_read`** fetches a public page, so it guards where it connects. The
+check sits in the dialer, the part of the HTTP client that opens the TCP
+connection:
+
+```go
+&net.Dialer{
+    Control: func(network, address string, _ syscall.RawConn) error {
+        ap, err := netip.ParseAddrPort(address) // "93.184.216.34:443"
+        ...
+        return w.allowAddr(ap)                  // checkPublic in merud
+    },
+}
+```
+
+Go calls `Control` after DNS has turned the host name into an IP address and just
+before the socket connects, with that address. So the check sees where the
+connection goes. A URL such as `http://localhost:8080/` resolves to
+`127.0.0.1` and fails, as does a public name whose DNS record points at
+`192.168.1.1`. A redirect opens a new connection, so each hop passes the same
+check; `CheckRedirect` also stops after 5 hops and refuses a scheme other than
+http or https. There is no check before the dial, so a DNS answer that changes
+between a check and the connection has no gap to use.
+
+`checkPublic` does the work with `net/netip`'s own tests: `IsLoopback`,
+`IsPrivate` (10/8, 172.16/12, 192.168/16, fc00::/7), `IsLinkLocalUnicast`
+(169.254/16, where cloud metadata answers, and fe80::/10), `IsUnspecified` and
+the multicast ones. Two blocks netip doesn't flag sit in `privateRanges`:
+0.0.0.0/8, which reaches this machine on Linux, and 100.64.0.0/10, which carrier
+NAT and VPNs such as Tailscale use. `Unmap` first turns `::ffff:127.0.0.1` back
+into `127.0.0.1`. A refusal is a `*notPublicError`; `fetch` finds it inside the
+errors the HTTP client wraps around it with `errors.As`, and shows the model its
+reason alone.
+
+After the fetch, the `Content-Type` header picks the reader. The tool checks it
+before it reads the body, so a refused type costs no download:
+
+| Content type | Reader |
+| --- | --- |
+| `text/html`, `application/xhtml+xml` | `index.HTMLText`, the indexer's reader, which also returns the `<title>` |
+| `application/pdf` | `index.PDFText`, from the bytes in memory; no temporary file |
+| `text/plain` | as it is |
+| anything else | refused, naming the type |
+
+The body stops at 5 MiB. Paging works as in `read_file`: runes, 12,000 per call,
+and a closing line with the next `offset`. Each call fetches the page again,
+because a cache would be one more thing to keep fresh and to size. The header names the final URL after redirects, the title
+and the size.
+
+Both tools answer `ConfirmNever` unless `[builtin] confirm` lists them, like the
+file tools.
+
 ## Go ideas used here
+
+- **`net/http` clients** — an `http.Client` holds the timeout, the redirect rule
+  and the `Transport`, which holds the proxy setting and the dialer. Each web tool
+  builds its own, so one tool's rules can't leak into the other's. More in
+  [go-basics/http-clients.md](go-basics/http-clients.md).
+- **The dialer's `Control` hook** — a function `net.Dialer` calls with the
+  resolved address before it connects; returning an error stops the connection.
+- **`net/netip`** — small value types for IP addresses and prefixes, with tests
+  such as `IsPrivate` built in.
+- **`errors.As`** — walks the chain of wrapped errors and finds one of a given
+  type, here `*net.OpError` and `*notPublicError`. More in
+  [go-basics/errors.md](go-basics/errors.md).
 
 - **Interfaces** — `Tools` has the six methods of `dispatch.Backend`, so
   `dispatch` can hold it next to the MCP pool. The test line
@@ -279,6 +384,22 @@ read, and only what search could already put in the prompt.
 ```sh
 go test ./internal/builtin/
 ```
+
+`web_test.go` never leaves the machine. `TestWebSearch` runs `web_search`
+against an `httptest` server that plays SearXNG: JSON results, the `403` HTML page
+SearXNG sends with JSON off, a `200` HTML page, no results, a `500`, and each bad
+argument. `TestWebSearchQuery` checks the query string, `time_range` included,
+and `TestWebSearchRefused` points the tool at a closed port.
+
+`TestWebURLRead` serves pages from an `httptest` server on `127.0.0.1` and swaps
+`allowAddr` so that this one address and port count as public; every other
+address still goes through the real `checkPublic`. It covers HTML with its title,
+a PDF, plain text, paging, a redirect, a cookie that mustn't come back, a refused
+content type, the 5 MiB cap, a 404, a redirect loop, and refusals of a second
+server on `127.0.0.1`, of a redirect to it, of `::1`, `192.168.1.1` and
+`169.254.169.254`. `TestWebURLReadNameToLoopback` keeps the real check and asks
+for `http://localhost:<port>/`, a DNS name that resolves to `127.0.0.1`, and
+checks the server never saw a request. `TestCheckPublic` pins the address table.
 
 `TestConfigure` runs the tool against a temporary config: catalog entries with and
 without their keys, custom commands and URLs, and each kind of bad argument. It
@@ -321,6 +442,12 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 - **The indexer's rules, not a copy.** The file tools call `index.Check`,
   `Walk` and `ReadText`, so a new skip rule reaches search and the tools at
   once, and the model can never read a file search would refuse.
+- **Web search built in, not an MCP server.** SearXNG answers one GET with JSON.
+  The MCP wrapper for it would add Node.js, an npm package and a child process
+  per start; `web.go` is one file of Go.
+- **The address check at dial time.** Checking the URL's host before the request
+  would miss a name that resolves inside the network, and a redirect. `Control`
+  sees the one address that matters, the one the socket connects to.
 - **No bash tool.** Meru runs without a sandbox, so it offers three narrow
   read-only tools instead of a shell. A program you want the model to run goes
   in `[[commands]]`, whole, with the model filling only typed parameters; see

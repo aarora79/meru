@@ -1,7 +1,7 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
 // and the configure tool. The remember tool lives in remember.go,
-// write_file in writefile.go, and read_file, list_folder and grep in
-// files.go.
+// write_file in writefile.go, read_file, list_folder and grep in files.go,
+// and web_search and web_url_read in web.go.
 
 package builtin
 
@@ -43,6 +43,7 @@ type Tools struct {
 	memory     *memory.Store  // where remember saves; nil leaves remember out
 	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
 	files      *index.Indexer // what the file tools read through; nil leaves them out
+	web        *webClients    // web_search and web_url_read, as [web] sets them
 	onChange   func(context.Context) error
 	onRemember func(context.Context) // runs after remember saves; nil for none
 
@@ -62,14 +63,17 @@ type Tools struct {
 // the next turn can recall the new fact. A nil onChange or onRemember does
 // nothing. files is merud's indexer, which read_file, list_folder and grep
 // read through, so they see the [index] folders with the indexer's skip
-// rules; a nil files leaves the three out.
-func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
+// rules; a nil files leaves the three out. web is the [web] section:
+// web_search comes when it names a SearXNG URL, and web_url_read when it
+// sets read_pages.
+func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
 		outputDir:  outputDir,
 		files:      files,
+		web:        newWebClients(web),
 		onChange:   onChange,
 		onRemember: onRemember,
 	}
@@ -78,8 +82,8 @@ func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir str
 // Kind returns dispatch.KindBuiltin.
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
-// Tools returns the specs of configure, remember, write_file and the three
-// file tools for the model. It reads the memory folders on each call, so a
+// Tools returns the specs of configure, remember, write_file, the three
+// file tools and the web tools for the model. It reads the memory folders on each call, so a
 // kind folder the user adds shows up in remember's choices on the next
 // turn.
 func (t *Tools) Tools() []engine.ToolSpec {
@@ -105,14 +109,14 @@ func (t *Tools) Tools() []engine.ToolSpec {
 	if t.files != nil {
 		specs = append(specs, t.fileToolSpecs()...)
 	}
-	return specs
+	return append(specs, t.web.toolSpecs()...)
 }
 
 // Confirm says configure always asks, with no session approval. Any other
 // built-in asks when [builtin] confirm lists it, and runs without asking
 // otherwise. The shipped list holds write_file alone, so remember saves
 // without asking, as ARCHITECTURE.md "Memory" says, write_file asks, and
-// the read-only file tools run without asking.
+// the read-only file tools and the web tools run without asking.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case name == Configure:
@@ -165,6 +169,20 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			})
 		}
 	}
+	if t.web.searxngURL != "" {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        WebSearch,
+			Description: "Searches the web through SearXNG at " + t.web.searxngURL + ".",
+			Confirm:     t.Confirm(WebSearch) != dispatch.ConfirmNever,
+		})
+	}
+	if t.web.readPages {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        WebURLRead,
+			Description: "Fetches a public web page and reads its text.",
+			Confirm:     t.Confirm(WebURLRead) != dispatch.ConfirmNever,
+		})
+	}
 	return []rpc.ServerInfo{{
 		Name:      server,
 		Kind:      dispatch.KindBuiltin,
@@ -194,6 +212,10 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.listFolder(ctx, args)
 	case name == Grep && t.files != nil:
 		text, err = t.grep(ctx, args)
+	case name == WebSearch && t.web.searxngURL != "":
+		text, err = t.webSearch(ctx, args)
+	case name == WebURLRead && t.web.readPages:
+		text, err = t.webURLRead(ctx, args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}

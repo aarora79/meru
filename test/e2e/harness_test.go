@@ -239,8 +239,11 @@ func (h *home) log() string {
 // fakeConfig returns a config.toml that points merud at the fake Ollama at
 // baseURL, with the test model names. extra is appended as-is, for tests
 // that need more keys.
+//
+// Web search is off, so no test reaches a SearXNG that happens to run on
+// this machine; TestWebSearchMissingSearXNG turns it on.
 func fakeConfig(baseURL, extra string) string {
-	return fmt.Sprintf("[ollama]\nbase_url = %q\n\n[models]\nfast = %q\nmain = %q\nembed = %q\n\n%s",
+	return fmt.Sprintf("[ollama]\nbase_url = %q\n\n[models]\nfast = %q\nmain = %q\nembed = %q\n\n[web]\nsearxng_url = \"\"\n\n%s",
 		baseURL, fastModel, mainModel, embedModel, extra)
 }
 

@@ -1,10 +1,12 @@
 // Package builtin holds the tools built into merud, as one dispatch.Backend.
-// There are six: configure, which adds an MCP server to config.toml when
+// There are eight: configure, which adds an MCP server to config.toml when
 // you ask in chat ("connect my Gmail"); remember, which saves one fact about
 // you as a memory file; write_file, which saves a file the model made
-// inside [skills] output_dir; and read_file, list_folder and grep, which
-// read the [index] folders. See ARCHITECTURE.md, "First run and setup",
-// "Approving a tool call", "Memory" and "Built-in skills".
+// inside [skills] output_dir; read_file, list_folder and grep, which read
+// the [index] folders; and web_search and web_url_read, which search the
+// web through the user's SearXNG and read one public page. See
+// ARCHITECTURE.md, "First run and setup", "Approving a tool call", "Memory",
+// "Built-in skills" and "Web search".
 //
 // configure always asks. dispatch shows the user the exact arguments and
 // offers only "approve once" and "deny", whatever [builtin] confirm says,
@@ -29,6 +31,14 @@
 // the indexer's own Check, Walk and ReadText, so they skip what the indexer
 // skips: symlinks, secrets, hidden, ignored, binary and oversized files. The
 // model can read no file that search couldn't already put in its prompt.
+//
+// web_search talks only to [web] searxng_url, which config holds to
+// loopback, with no proxy and no redirects. web_url_read exists only when
+// [web] read_pages is true. It is the one tool that makes merud connect off
+// this machine, so its dialer checks every address after DNS, just before
+// the connection opens, and refuses loopback, private, link-local and
+// other non-public addresses, redirects included. Both run without asking
+// unless [builtin] confirm lists them.
 //
 // What it doesn't do: it never takes an API key. A server that needs a key
 // not yet in secrets.toml isn't written; the tool tells the model to send

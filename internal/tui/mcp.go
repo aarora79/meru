@@ -27,8 +27,8 @@ const noServers = "No MCP servers in config.toml. Add one with meru mcp add <nam
 //
 //	SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
 //	google     http       connected       124        6        2   127.0.0.1:8000/mcp
-//	brave      stdio      connected         4        2        0
-//	obsidian   stdio      not connected     —        3        1   exec: "npx" not found
+//	obsidian   stdio      connected        13        5        1
+//	notes      stdio      not connected     —        3        1   exec: "npx" not found
 //
 // TOOLS shows "—" for a server that isn't connected (Tools is -1). The last
 // field is the reason a server isn't connected, or else the URL of an HTTP

@@ -315,29 +315,29 @@ func TestMCPAddSavesKeyBeforeProbe(t *testing.T) {
 	var got rpc.ProbeServer
 	f := &fakeMerud{probe: func(s rpc.ProbeServer) (*rpc.ProbeResult, error) {
 		got = s
-		return &rpc.ProbeResult{Tools: []rpc.ProbeTool{{Name: "brave_web_search", ReadOnly: hintOf(true)}}}, nil
+		return &rpc.ProbeResult{Tools: []rpc.ProbeTool{{Name: "obsidian_simple_search", ReadOnly: hintOf(true)}}}, nil
 	}}
 	sock := f.start(t)
 	c, out, _ := scripted("d\n" + fakeKey + "\n\ny\n")
-	if err := mcpCmd(t.Context(), sock, []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(t.Context(), sock, []string{"add", "obsidian"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
-	if got.Env["BRAVE_API_KEY"] != "secret:brave_api_key" {
+	if got.Env["OBSIDIAN_API_KEY"] != "secret:obsidian_api_key" {
 		t.Errorf("probe env = %v, want the secret: reference", got.Env)
 	}
 	s, err := secrets.Load(secrets.Path(filepath.Dir(sock)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := s.Resolve("secret:brave_api_key"); v != fakeKey {
+	if v, _ := s.Resolve("secret:obsidian_api_key"); v != fakeKey {
 		t.Errorf("saved key = %q", v)
 	}
 	if strings.Contains(out.String(), fakeKey) {
 		t.Error("the key shows in the output")
 	}
-	// The catalog names brave_news_search, which this fake doesn't offer.
-	if !strings.Contains(out.String(), "brave_news_search") || !slices.Equal(serverIn(t, sock, "brave").Allow, []string{"brave_web_search"}) {
-		t.Errorf("allow = %q\n%s", serverIn(t, sock, "brave").Allow, out)
+	// The catalog names obsidian_get_file_contents, which this fake doesn't offer.
+	if !strings.Contains(out.String(), "obsidian_get_file_contents") || !slices.Equal(serverIn(t, sock, "obsidian").Allow, []string{"obsidian_simple_search"}) {
+		t.Errorf("allow = %q\n%s", serverIn(t, sock, "obsidian").Allow, out)
 	}
 }
 
@@ -400,7 +400,7 @@ func TestMCPErrors(t *testing.T) {
 		wantErr string
 	}{
 		{"not in catalog", []string{"add", "slack"}, "not in the catalog"},
-		{"unknown subcommand", []string{"rename", "brave"}, "usage"},
+		{"unknown subcommand", []string{"rename", "obsidian"}, "usage"},
 		{"status with junk", []string{"status", "--yaml"}, "usage"},
 		{"bad name", []string{"add", "stdio", "a.b", "--", "x"}, "letters, digits"},
 		{"older bad name", []string{"add", "a.b", "--", "x"}, "letters, digits"},
@@ -410,9 +410,9 @@ func TestMCPErrors(t *testing.T) {
 		{"stdio without --", []string{"add", "stdio", "x", "notes-mcp"}, "usage"},
 		{"stdio with a URL", []string{"add", "stdio", "x", "--", "http://127.0.0.1:1/mcp"}, "meru mcp add http"},
 		{"http with junk", []string{"add", "http", "x", "http://127.0.0.1:1/mcp", "--yes"}, "usage"},
-		{"args to brave", []string{"add", "brave", "extra"}, "takes no arguments"},
+		{"args to obsidian", []string{"add", "obsidian", "extra"}, "takes no arguments"},
 		{"remove without a name", []string{"remove", "--yes"}, "usage"},
-		{"remove unknown", []string{"remove", "--yes", "brave"}, "no MCP server named"},
+		{"remove unknown", []string{"remove", "--yes", "obsidian"}, "no MCP server named"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -429,12 +429,12 @@ func TestMCPErrors(t *testing.T) {
 // and down.
 func TestMCPList(t *testing.T) {
 	f := &fakeMerud{servers: []rpc.ServerInfo{
-		{Name: "brave", Kind: "mcp", Connected: true, Offered: 2, Tools: []rpc.ToolInfo{{Name: "brave.brave_web_search"}}},
+		{Name: "obsidian", Kind: "mcp", Connected: true, Offered: 2, Tools: []rpc.ToolInfo{{Name: "obsidian.obsidian_simple_search"}}},
 		{Name: "notes", Kind: "mcp", LastError: "exit status 1"},
 		{Name: "meru", Kind: "builtin", Connected: true},
 	}}
 	sock := f.start(t)
-	config := "[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\nallow = [\"brave_web_search\"]\n\n" +
+	config := "[[mcp.servers]]\nname = \"obsidian\"\ncommand = \"uvx\"\nallow = [\"obsidian_simple_search\"]\n\n" +
 		"[[mcp.servers]]\nname = \"notes\"\ncommand = \"notes-mcp\"\n\n" +
 		"[[mcp.servers]]\nname = \"fresh\"\nurl = \"http://127.0.0.1:9/mcp\"\n"
 	if err := os.WriteFile(configPathFor(sock), []byte(config), 0o600); err != nil {
@@ -445,7 +445,7 @@ func TestMCPList(t *testing.T) {
 	if err := mcpCmd(t.Context(), sock, []string{"list"}, c); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"google", "brave", "obsidian", "needs", "you start it", "connected · offers 2, 1 allowed",
+	want := []string{"google", "obsidian", "needs", "you start it", "connected · offers 2, 1 allowed",
 		"not connected: exit status 1", "not loaded yet"}
 	for _, w := range want {
 		if !strings.Contains(out.String(), w) {
@@ -476,7 +476,7 @@ func TestMCPList(t *testing.T) {
 // leaves the file alone after a no.
 func TestMCPRemove(t *testing.T) {
 	orig := "# mine\nprofile = \"lite\"\n\n" +
-		"[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\n\n" +
+		"[[mcp.servers]]\nname = \"obsidian\"\ncommand = \"uvx\"\n\n" +
 		"# my notes server\n[[mcp.servers]]\nname = \"notes\"\ncommand = \"notes-mcp\"\n"
 	tests := []struct {
 		name    string
@@ -484,9 +484,9 @@ func TestMCPRemove(t *testing.T) {
 		input   string
 		removed bool
 	}{
-		{"yes", []string{"remove", "brave"}, "y\n", true},
-		{"--yes", []string{"remove", "--yes", "brave"}, "", true},
-		{"no", []string{"remove", "brave"}, "\n", false},
+		{"yes", []string{"remove", "obsidian"}, "y\n", true},
+		{"--yes", []string{"remove", "--yes", "obsidian"}, "", true},
+		{"no", []string{"remove", "obsidian"}, "\n", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,10 +1,11 @@
 # catalog
 
 **Code:** `internal/catalog/` (`doc.go`, `catalog.go`, `block.go`, `append.go`,
-`remove.go`, and the tests `catalog_test.go` and `remove_test.go`)
+`remove.go`, `searxng.go`, and the tests `catalog_test.go`, `remove_test.go` and
+`searxng_test.go`)
 **Milestone:** v0.3
 **Architecture:** [Adding an MCP server](../../ARCHITECTURE.md#adding-an-mcp-server),
-[MCP](../../ARCHITECTURE.md#mcp)
+[MCP](../../ARCHITECTURE.md#mcp), [Web search](../../ARCHITECTURE.md#web-search)
 
 ## What it does
 
@@ -12,14 +13,14 @@ The catalog is the short list of MCP servers Meru knows how to set up, built int
 the binary. Each entry says how to reach the server, what it needs from you, and
 which of its tools the model may use at first. Three things use it: `meru setup`,
 `meru mcp` (add, list and remove), and the built-in `configure` tool that `merud`
-offers the model.
+offers the model. The package also holds `CheckSearXNG`, the check `meru setup`
+and `merud` share for web search.
 
-It holds three servers, one for each kind of example the docs use, in this order:
+It holds two servers, one for each kind of example the docs use, in this order:
 
 | Name | Server | Transport | Needs | Allowed | Asks first |
 | --- | --- | --- | --- | --- | --- |
 | `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, send mail, list and change events, search Drive, read a doc | send mail, change an event |
-| `brave` | `npx -y @brave/brave-search-mcp-server` | stdio | Brave Search API key | `brave_web_search`, `brave_news_search` | none |
 | `obsidian` | `uvx mcp-obsidian` | stdio | Local REST API plugin key | list, read and search notes, append to a note | append |
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
@@ -34,6 +35,10 @@ can't make a shell safe, since `find -exec` or `git -c core.pager=…` runs
 anything, and the real policy sat in the server where `dispatch` couldn't log it.
 `merud` now runs the programs you declare in `[[commands]]` itself; see
 [commands](commands.md).
+
+The catalog has no web search server either. Web search is the built-in
+`web_search` tool, which asks a SearXNG you run on loopback; see
+[builtin](builtin.md). It needs no key, no Node.js and no catalog entry.
 
 ## The picture
 
@@ -70,7 +75,7 @@ and a `url` entry has none, because `merud` starts no process for it.
 ```go
 func Entries() []Entry {
     return []Entry{
-        {Name: "brave", Command: "npx", ...},
+        {Name: "google", URL: "http://127.0.0.1:8000/mcp", ...},
         ...
     }
 }
@@ -111,15 +116,15 @@ and its Needs. `configure` checks them before it writes anything.
 `Block` writes an entry as the text you would type into `config.toml`:
 
 ```toml
-# Web search (Brave Search): Searches the web and the news with the Brave Search API.
-# Docs: https://github.com/brave/brave-search-mcp-server
+# Obsidian: Lists, searches and reads the notes in your open Obsidian vault; appending to a note asks first.
+# Docs: https://github.com/MarkusPfundstein/mcp-obsidian
 [[mcp.servers]]
-name    = "brave"
-command = "npx"
-args    = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
-env     = { BRAVE_API_KEY = "secret:brave_api_key" }
-allow   = ["brave_web_search", "brave_news_search"]
-confirm = []
+name    = "obsidian"
+command = "uvx"
+args    = ["mcp-obsidian"]
+env     = { OBSIDIAN_API_KEY = "secret:obsidian_api_key", OBSIDIAN_HOST = "127.0.0.1", OBSIDIAN_PORT = "27124" }
+allow   = ["obsidian_list_files_in_vault", "obsidian_list_files_in_dir", "obsidian_get_file_contents", "obsidian_simple_search", "obsidian_append_content"]
+confirm = ["obsidian_append_content"]
 ```
 
 For a `url` entry, `Block` writes `url` in place of `command` and `args`, and
@@ -174,9 +179,34 @@ Line-based editing can misread a file, so `writeChecked` checks the result:
 it must load, and hold the same servers in the same order, minus the one
 removed. If not, nothing changes and the error says to edit the file by hand.
 
+### searxng.go
+
+`CheckSearXNG(ctx, baseURL)` answers one question: does SearXNG answer JSON at
+this URL? `meru setup` asks it in its Web search step, and `merud` asks it once at
+startup to log `web search ready` or why not. It lives here because the thin
+client may import `catalog` and not `builtin`, which pulls in the indexer.
+
+It sends `GET <baseURL>/search?q=&format=json` with a 3-second limit, no proxy
+and no redirects. The empty query matters: SearXNG refuses it at once, before it
+asks any search engine, so the check sends nothing off the machine. How it
+refuses tells the two setups apart:
+
+| SearXNG | Answer | `CheckSearXNG` returns |
+| --- | --- | --- |
+| JSON on | `400` and `{"error": "No query"}` | `nil` |
+| JSON off (a fresh install) | `403` and an HTML page | an error wrapping `ErrSearXNGNoJSON` |
+| not running | the dial fails | an error wrapping `ErrSearXNGDown` |
+| anything else | say, a `500` | an error naming the status |
+
+`classify` reads the status and the first 512 bytes. The two sentinel errors
+let `meru setup` pick its message with `errors.Is`: the container commands for
+`ErrSearXNGDown`, and `SearXNGFormatsHint`, the text that names
+`search: formats:` in `settings.yml`, for `ErrSearXNGNoJSON`. `web_search` uses
+the same hint text, so the terminal and the model say the same thing.
+
 ## Go ideas used here
 
-- **Struct literals** — `Entry{Name: "brave", ...}` builds a value by naming its
+- **Struct literals** — `Entry{Name: "obsidian", ...}` builds a value by naming its
   fields; fields you leave out get their zero value.
 - **`strings.Builder`** — collects text piece by piece without copying it on each
   append; `fmt.Fprintf(&b, ...)` writes formatted text into it.
@@ -184,6 +214,9 @@ removed. If not, nothing changes and the error says to edit the file by hand.
   More in [go-basics/iterators.md](go-basics/iterators.md).
 - **`defer`** — removes the temporary file on every return path. More in
   [go-basics/defer.md](go-basics/defer.md).
+- **Sentinel errors** — `ErrSearXNGDown` and `ErrSearXNGNoJSON` are values
+  callers compare against with `errors.Is`, through any `%w` wrapping. More in
+  [go-basics/errors.md](go-basics/errors.md).
 
 ## Try it
 
@@ -197,9 +230,11 @@ through byte for byte. `TestAppendServerRefuses` feeds duplicates, wildcards and
 broken blocks, and checks that the file stays as it was. `TestRemoveServer`
 removes the first, middle and last of three servers (one with a sub-table and a
 multi-line array) and checks every other line stays; `TestAppendThenRemove`
-gets back the file it started with. `TestCatalogIsThreeServers` checks the
+gets back the file it started with. `TestCatalogIsTwoServers` checks the
 names and their order, `google`'s URL and start command, and that its sending
-and changing tools ask first.
+and changing tools ask first. `TestCheckSearXNG` runs the check against
+`httptest` servers that answer JSON, the `403` page, HTML with a `200` and a
+`500`, and against a closed port.
 
 ## Why it's built this way
 
@@ -211,6 +246,6 @@ and changing tools ask first.
   list later in `config.toml`.
 - **Edit lines, then check.** Removing a block by lines keeps your comments,
   and loading the result before the rename catches a line read wrong.
-- **Unpinned versions.** `npx` and `uvx` fetch the latest release, so security
+- **Unpinned versions.** `uvx` fetches the latest release, so security
   fixes arrive. A new tool in a later release gives the model nothing until you
   allow it.

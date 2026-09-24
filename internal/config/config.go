@@ -34,6 +34,8 @@ type Config struct {
 	Builtin Builtin `toml:"builtin"`
 	// Skills configures the skill registry and the files skills write (v0.4).
 	Skills Skills `toml:"skills"`
+	// Web configures the built-in web_search and web_url_read tools (v0.3).
+	Web Web `toml:"web"`
 	// Commands lists the local programs the model may run, one tool each
 	// (v0.3). The commands package checks them when merud starts.
 	Commands []Command `toml:"commands"`
@@ -209,6 +211,21 @@ type Builtin struct {
 	// Confirm lists built-in tools that ask before each call. Default
 	// ["write_file"].
 	Confirm []string `toml:"confirm"`
+}
+
+// Web configures web search. merud searches through a SearXNG instance the
+// user runs on this machine. See ARCHITECTURE.md, "Web search".
+type Web struct {
+	// SearXNGURL is where SearXNG answers, such as http://127.0.0.1:8888.
+	// It must be loopback, because merud connects to it. Empty turns
+	// web_search off.
+	SearXNGURL string `toml:"searxng_url"`
+	// ReadPages turns on web_url_read, which lets merud fetch a public web
+	// page itself. Default false.
+	ReadPages bool `toml:"read_pages"`
+	// MaxResults is how many results web_search returns when the model
+	// doesn't say. Default 8, at most 20.
+	MaxResults int `toml:"max_results"`
 }
 
 // Command is one [[commands]] entry: a program the user declared, which the

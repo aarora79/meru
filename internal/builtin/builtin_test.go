@@ -40,10 +40,10 @@ func TestConfigure(t *testing.T) {
 		},
 		{
 			name:       "catalog entry with its secret",
-			args:       `{"action":"add_mcp_server","catalog":"brave"}`,
-			secrets:    map[string]string{"brave_api_key": "fake-key-0123456789"},
-			wantText:   "brave_web_search",
-			wantServer: "brave",
+			args:       `{"action":"add_mcp_server","catalog":"obsidian"}`,
+			secrets:    map[string]string{"obsidian_api_key": "fake-key-0123456789"},
+			wantText:   "obsidian_simple_search",
+			wantServer: "obsidian",
 		},
 		{
 			name:     "catalog entry that asks first",
@@ -52,8 +52,8 @@ func TestConfigure(t *testing.T) {
 		},
 		{
 			name:    "missing secret",
-			args:    `{"action":"add_mcp_server","catalog":"brave"}`,
-			wantErr: "meru mcp add brave",
+			args:    `{"action":"add_mcp_server","catalog":"obsidian"}`,
+			wantErr: "meru mcp add obsidian",
 		},
 		{
 			name:       "custom command",
@@ -89,7 +89,7 @@ func TestConfigure(t *testing.T) {
 				}
 			}
 			changes := 0
-			tools := New(configPath, config.Builtin{}, nil, "", nil, func(context.Context) error {
+			tools := New(configPath, config.Builtin{}, config.Web{}, nil, "", nil, func(context.Context) error {
 				changes++
 				return nil
 			}, nil)
@@ -137,7 +137,7 @@ func TestConfigure(t *testing.T) {
 }
 
 func TestConfigureTwiceRefuses(t *testing.T) {
-	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, "", nil, nil, nil)
+	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, config.Web{}, nil, "", nil, nil, nil)
 	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`)
 	if res, _ := tools.Call(context.Background(), Configure, args); res.IsError {
 		t.Fatalf("first call: %s", res.Text)
@@ -150,7 +150,7 @@ func TestConfigureTwiceRefuses(t *testing.T) {
 
 func TestConfigureReloadFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	tools := New(path, config.Builtin{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
+	tools := New(path, config.Builtin{}, config.Web{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
 	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`))
 	if !res.IsError || !strings.Contains(res.Text, "restart merud") || !strings.Contains(res.Text, "pool broke") {
 		t.Errorf("Result = %+v, want an error that says to restart merud", res)
@@ -161,7 +161,7 @@ func TestConfigureReloadFails(t *testing.T) {
 }
 
 func TestBackend(t *testing.T) {
-	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil, "", nil, nil, nil)
+	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, config.Web{}, nil, "", nil, nil, nil)
 
 	confirms := []struct {
 		name string
@@ -216,7 +216,7 @@ func rememberTools(t *testing.T, cfg config.Builtin) (*Tools, *memory.Store, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(filepath.Join(dir, "config.toml"), cfg, mem, "", nil, nil, nil), mem, dir
+	return New(filepath.Join(dir, "config.toml"), cfg, config.Web{}, mem, "", nil, nil, nil), mem, dir
 }
 
 // TestRemember runs each call through a real Dispatcher, the only path the
@@ -250,14 +250,14 @@ func TestRemember(t *testing.T) {
 		{"no kind", `{"text":"x"}`, "", "is unknown", "", "", ""},
 		{"empty text", `{"kind":"me","text":"  "}`, "", "text is empty", "", "", ""},
 		{"text over 4 KiB", `{"kind":"me","text":"` + strings.Repeat("a", 4097) + `"}`, "", "over the 4096-byte limit", "", "", ""},
-		{"a secret in the text", `{"kind":"reference","text":"The brave key is fake-key-0123456789"}`, "", "holds a secret", "", "", ""},
+		{"a secret in the text", `{"kind":"reference","text":"The obsidian key is fake-key-0123456789"}`, "", "holds a secret", "", "", ""},
 		{"unknown key", `{"kind":"me","text":"x","folder":"me"}`, "", "valid JSON", "", "", ""},
 		{"not an object", `"x"`, "", "valid JSON", "", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tools, mem, dir := rememberTools(t, config.Builtin{})
-			if err := secrets.Set(secrets.Path(dir), "brave_api_key", "fake-key-0123456789"); err != nil {
+			if err := secrets.Set(secrets.Path(dir), "obsidian_api_key", "fake-key-0123456789"); err != nil {
 				t.Fatal(err)
 			}
 			d := dispatch.New([]dispatch.Backend{tools}, nil, dispatch.Options{})
@@ -345,7 +345,7 @@ func TestRememberRunsHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := 0
-	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{}, mem, "", nil, nil, func(context.Context) { runs++ })
+	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{}, config.Web{}, mem, "", nil, nil, func(context.Context) { runs++ })
 	ctx := context.Background()
 	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":"Sam is the user's manager"}`)); res.IsError {
 		t.Fatalf("remember failed: %s", res.Text)

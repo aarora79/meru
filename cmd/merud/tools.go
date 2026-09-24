@@ -18,6 +18,7 @@ import (
 
 	"github.com/aarora79/meru/internal/a2a"
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/commands"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
@@ -97,7 +98,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// The file tools share merud's indexer, so they skip what it skips.
 	// They don't reload when configure changes config.toml: a change to
 	// [index] needs a restart anyway.
-	bt := builtin.New(configPath, cfg.Builtin, mem, outputDir, ix, s.reloadMCP, onRemember)
+	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure, then the
 	// commands, so an MCP server named "cmd" can't shadow one.
@@ -118,6 +119,23 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	log.Info("tools ready", "mcp_servers", len(cfg.MCP.Servers), "a2a_agents", len(agents),
 		"commands", cmds.Len(), "tools", len(s.dispatcher.Tools()))
 	return s, nil
+}
+
+// logWebSearch writes one info line saying whether web search works: off,
+// SearXNG answering JSON at [web] searxng_url, or why not. It never stops
+// merud, because web search is optional and SearXNG may start later;
+// web_search reports the same problem to the model when it calls the tool.
+// The check takes at most 3 seconds.
+func logWebSearch(ctx context.Context, web config.Web, log *slog.Logger) {
+	if web.SearXNGURL == "" {
+		log.Info("web search off", "reason", "[web] searxng_url is empty")
+		return
+	}
+	if err := catalog.CheckSearXNG(ctx, web.SearXNGURL); err != nil {
+		log.Info("web search not ready", "searxng", web.SearXNGURL, "err", err)
+		return
+	}
+	log.Info("web search ready", "searxng", web.SearXNGURL, "read_pages", web.ReadPages)
 }
 
 // newPool resolves the secrets in each server entry and starts the MCP

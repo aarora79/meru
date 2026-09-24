@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,5 +139,66 @@ func TestToolRefused(t *testing.T) {
 		if strings.Contains(string(r.Body), "you should not see this") || strings.Contains(string(r.Body), "sent to sam") {
 			t.Errorf("a refused tool ran; the model saw its result")
 		}
+	}
+}
+
+// TestWebSearchMissingSearXNG runs merud with [web] searxng_url pointing at
+// a port nothing listens on. merud starts anyway and logs why web search
+// isn't ready; `meru tools` lists web_search; and a turn in which the model
+// calls it completes, with the tool's error in front of the model.
+func TestWebSearchMissingSearXNG(t *testing.T) {
+	t.Parallel()
+	// Take a free port and close it, so nothing answers there.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	searxng := "http://" + ln.Addr().String()
+	ln.Close()
+
+	f := startFake(t)
+	h := newHome(t)
+	cfg := strings.Replace(fakeConfig(f.url, "[router]\ntemperature = 1.0\n"),
+		`searxng_url = ""`, fmt.Sprintf("searxng_url = %q", searxng), 1)
+	h.writeConfig(t, cfg)
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	s := &stack{home: h, fake: f, merud: m}
+	if !strings.Contains(h.log(), "web search not ready") {
+		t.Errorf("merud.log lacks the web search line:\n%s", h.log())
+	}
+
+	const answer = "I couldn't search the web: SearXNG isn't running."
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "web_search", Arguments: map[string]any{"query": "latest Go release"}}}},
+		fakeollama.Reply{Text: answer})
+
+	res := runMeru(t, s.home, "search the web for the latest Go release")
+	if res.code != 0 || res.stdout != answer+"\n" {
+		t.Fatalf("meru exited %d, stdout %q, stderr:\n%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, s.home.log())
+	}
+	want := "SearXNG isn't answering on " + searxng
+	var sawError bool
+	for _, r := range s.fake.chatRequests(t, mainModel) {
+		if strings.Contains(string(r.Body), want) {
+			sawError = true
+		}
+	}
+	if !sawError {
+		t.Errorf("no request to the model carried %q", want)
+	}
+	for _, l := range readTranscript(t, sessionFiles(t, s.home)[0]) {
+		switch {
+		case l.Type == transcript.TypeToolCall && (l.Tool != "web_search" || l.Server != "meru" || l.Kind != "builtin"):
+			t.Errorf("tool_call line = %+v, want the built-in web_search", l)
+		case l.Type == transcript.TypeToolResult && l.Outcome != "error":
+			t.Errorf("tool_result line = %+v, want outcome error", l)
+		}
+	}
+
+	tools := runMeru(t, s.home, "tools")
+	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || strings.Contains(tools.stdout, "web_url_read") {
+		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
 	}
 }

@@ -22,6 +22,10 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// MaxWebResults caps [web] max_results, and the max_results a web_search
+// call may ask for.
+const MaxWebResults = 20
+
 // routes lists the four routes the router can pick, in the router's letter
 // order (A to D). The fallback must be one of them. See docs/fast-router.md.
 var routes = []string{"direct", "search", "tools", "search+tools"}
@@ -102,6 +106,10 @@ func defaults() Config {
 		// disk after the chat ends (ARCHITECTURE.md, "Approving a tool call").
 		Builtin: Builtin{Confirm: []string{"write_file"}},
 		Skills:  Skills{OutputDir: "~/meru-output"},
+		// web_search runs through a SearXNG the user starts on this port;
+		// web_url_read, which fetches pages off this machine, stays off
+		// until the user turns it on.
+		Web: Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
 	}
 }
 
@@ -229,6 +237,16 @@ func validate(cfg Config) error {
 
 	if _, ok := LogLevel(cfg.Log.Level); !ok {
 		add("log.level %q is unknown; use \"debug\", \"info\", \"warn\" or \"error\"", cfg.Log.Level)
+	}
+
+	if u := cfg.Web.SearXNGURL; u != "" {
+		if err := loopback.CheckURL(u); err != nil {
+			add("web.searxng_url: %w; SearXNG must run on this machine, or set searxng_url = \"\" to turn web search off", err)
+		}
+	}
+	// 20 results already fill a few thousand tokens of the prompt.
+	if n := cfg.Web.MaxResults; n < 1 || n > MaxWebResults {
+		add("web.max_results is %d; it must be between 1 and %d", n, MaxWebResults)
 	}
 
 	for _, err := range checkIndex(cfg.Index) {

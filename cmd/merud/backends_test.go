@@ -154,7 +154,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		if !ok {
 			return v, nil
 		}
-		if name == "brave" {
+		if name == "obsidian_api_key" {
 			return "sk-123", nil
 		}
 		return "", errors.New("no secret named " + name)
@@ -168,15 +168,15 @@ func TestMCPServerConfigs(t *testing.T) {
 	}{
 		{
 			name: "stdio with a secret in env",
-			servers: []config.MCPServer{{Name: "search", Command: "brave-mcp", Args: []string{"--stdio"},
-				Env: map[string]string{"BRAVE_KEY": "secret:brave", "MODE": "plain"}, Allow: []string{"web_search"},
+			servers: []config.MCPServer{{Name: "obsidian", Command: "uvx", Args: []string{"mcp-obsidian"},
+				Env: map[string]string{"OBSIDIAN_API_KEY": "secret:obsidian_api_key", "OBSIDIAN_PORT": "27124"}, Allow: []string{"obsidian_simple_search"},
 				Timeout: "90s"}},
 			check: func(t *testing.T, got []mcp.ServerConfig) {
 				c := got[0]
-				if c.Env["BRAVE_KEY"] != "sk-123" || c.Env["MODE"] != "plain" {
+				if c.Env["OBSIDIAN_API_KEY"] != "sk-123" || c.Env["OBSIDIAN_PORT"] != "27124" {
 					t.Errorf("Env = %v", c.Env)
 				}
-				if c.Timeout != 90*time.Second || c.Command != "brave-mcp" || c.Args[0] != "--stdio" {
+				if c.Timeout != 90*time.Second || c.Command != "uvx" || c.Args[0] != "mcp-obsidian" {
 					t.Errorf("config = %+v", c)
 				}
 			},
@@ -184,7 +184,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		{
 			name: "http with a secret header",
 			servers: []config.MCPServer{{Name: "cal", URL: "http://127.0.0.1:8123/mcp",
-				Headers: map[string]string{"Authorization": "secret:brave"}, Allow: []string{"list"}, Confirm: []string{"list"}}},
+				Headers: map[string]string{"Authorization": "secret:obsidian_api_key"}, Allow: []string{"list"}, Confirm: []string{"list"}}},
 			check: func(t *testing.T, got []mcp.ServerConfig) {
 				c := got[0]
 				if c.Headers["Authorization"] != "sk-123" || c.Timeout != 0 || c.Confirm[0] != "list" {

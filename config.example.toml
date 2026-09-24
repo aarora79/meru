@@ -116,12 +116,12 @@ watch = true
 # A stdio server:
 #
 # [[mcp.servers]]
-# name    = "brave"                  # letters, digits, - and _; tools become "brave.<tool>"
-# command = "npx"                    # run as is, with no shell
-# args    = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
-# env     = { BRAVE_API_KEY = "secret:brave_api_key" }   # stdio only; "secret:" values come from secrets.toml
-# allow   = ["brave_web_search", "brave_news_search"]
-# confirm = []
+# name    = "obsidian"               # letters, digits, - and _; tools become "obsidian.<tool>"
+# command = "uvx"                    # run as is, with no shell
+# args    = ["mcp-obsidian"]
+# env     = { OBSIDIAN_API_KEY = "secret:obsidian_api_key", OBSIDIAN_PORT = "27124" }  # stdio only; "secret:" values come from secrets.toml
+# allow   = ["obsidian_simple_search", "obsidian_get_file_contents", "obsidian_append_content"]
+# confirm = ["obsidian_append_content"]   # asks before each call
 # timeout = "60s"                    # longest one call may take; the default
 #
 # A Streamable HTTP server. env isn't allowed here, because merud doesn't
@@ -142,7 +142,7 @@ watch = true
 # unless only you can read it (chmod 600), and hides every value from
 # transcripts, logs and traces. `meru mcp add` writes it for you:
 #
-#   brave_api_key = "..."
+#   obsidian_api_key = "..."
 
 # Other agents (v0.3) that Meru may hand a task to over A2A (Agent2Agent).
 # None by default. Each allowed skill, named by the ID on the agent's card,
@@ -224,8 +224,25 @@ watch = true
 # write without asking. remember saves a memory without asking; add
 # "remember" here to approve each call. read_file, list_folder and grep only
 # read the [index] folders and run without asking; list them here to approve
-# each call.
+# each call. So do web_search and web_url_read; list them to approve each
+# search or page.
 confirm = ["write_file"]
+
+[web]
+# Web search (v0.3), through SearXNG, a search engine you run on this
+# machine. See "Web search" in docs/running.md for the container and the
+# JSON setting, and ARCHITECTURE.md, "Web search".
+# Where SearXNG answers. Loopback only, because merud connects to it. The
+# web_search tool sends your search words there, and SearXNG passes them to
+# the search engines it asks. Empty turns web_search off.
+searxng_url = "http://127.0.0.1:8888"
+# How many results web_search returns when the model doesn't say. 1 to 20.
+max_results = 8
+# true adds the web_url_read tool, which fetches a public web page and gives
+# the model its text. merud then connects to sites off this machine, the one
+# place it does so on its own; those sites see your IP address. It refuses
+# addresses on this machine and your local network.
+read_pages = false
 
 [skills]
 # The one folder the write_file tool may write in. merud creates it on the

@@ -400,6 +400,18 @@ leave `merud` with a pool whose servers all failed to start.
 `TestMCPReloadStopsOldChildren` runs the test binary as a stdio server, changes
 and then removes it, and checks each old process is gone.
 
+**Web search.** `newToolService` hands `cfg.Web` to `builtin.New`, which offers
+`web_search` when `searxng_url` is set and `web_url_read` when `read_pages` is
+true. Right after, `run` calls `logWebSearch`, which runs
+`catalog.CheckSearXNG` and writes one info line: `web search ready`,
+`web search not ready` with the reason, or `web search off`. The check never
+stops `merud`: SearXNG may start later, and `web_search` tells the model what's
+wrong when it runs. It sends SearXNG an empty query, which SearXNG refuses before
+it asks any search engine, so starting `merud` sends nothing off the machine.
+`TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with nothing on the
+SearXNG port, checks the log line, and runs a turn in which the model calls
+`web_search` and still answers.
+
 ### meru: main.go
 
 ```go
@@ -561,7 +573,7 @@ in the client. They write `config.toml` and `secrets.toml` through
 import besides `rpc`, `config`, `tui` and `loopback`.
 
 Every flow runs on a `console`: a reader for the answers, a writer for the
-prompts, and three functions that touch the world, so a test can swap each one:
+prompts, and the functions that touch the world, so a test can swap each one:
 
 ```go
 type console struct {
@@ -571,6 +583,7 @@ type console struct {
     run           func(ctx context.Context, name string, args ...string) error
     ollamaVersion func(ctx context.Context, baseURL string) (string, error)
     answers       func(ctx context.Context, rawURL string) bool
+    searxng       func(ctx context.Context, baseURL string) error
 }
 ```
 
@@ -582,6 +595,10 @@ type console struct {
   not import the engine, and one plain call is all the check needs.
 - `answers` is `urlAnswers` from `probe.go`: does anything accept a TCP
   connection at a server's URL within a second?
+- `searxng` is `catalog.CheckSearXNG`: does SearXNG answer JSON at
+  `[web] searxng_url`? `TestSetupWebSearch` swaps it for a script of answers;
+  `TestSetupWebSearchReal` keeps the real check and runs it against `httptest`
+  servers and a closed port.
 
 `offer` shows one server and asks for a path: `d` runs `doIt`; `s` prints the
 block, the install step and the `secrets.toml` lines, and writes nothing; `k`
@@ -602,11 +619,20 @@ skips. `doIt` goes in this order:
 5. Send `mcp_reload` (`reload` in `mcp.go`), so the server works without a
    restart, and print its state as `meru tools` would.
 
-`setupCmd` runs the five steps from ARCHITECTURE.md "First run and setup". It
+`setupCmd` runs the seven steps from ARCHITECTURE.md "First run and setup". It
 writes `config.toml` only when none exists. Rewriting an existing one would
 drop your comments, so setup tells you what to change instead.
 
-Step 5 offers `meru setup user` when `merud` answers a ping, and says to run it
+Step 4, Web search, is `checkWebSearch`. It calls `c.searxng`, which is
+`catalog.CheckSearXNG` outside tests, on `[web] searxng_url`. When SearXNG answers
+JSON it says so and moves on. When nothing answers (`ErrSearXNGDown`) it prints
+`searxngStart`, the commands from docs/running.md that start SearXNG in Docker
+on `127.0.0.1:8888`; when SearXNG answers HTML (`ErrSearXNGNoJSON`) it prints
+`catalog.SearXNGFormatsHint`. Then it waits: Enter checks again, `s` skips. Web
+search is optional, so the step never stops setup. An empty `searxng_url` says
+web search is off and asks nothing.
+
+Step 6 offers `meru setup user` when `merud` answers a ping, and says to run it
 later when it doesn't: the answers go to `merud`, which owns the memory folder.
 
 `config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
@@ -616,8 +642,7 @@ works on the Meru home in `/tmp/x`, the same one `merud -config
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
 
-Setup offers each catalog entry, in catalog order: `google`, `brave`,
-`obsidian`.
+Setup offers each catalog entry, in catalog order: `google`, then `obsidian`.
 
 ### meru: mcp.go
 
@@ -654,7 +679,7 @@ instead.
 ### meru: probe.go
 
 `probeAndPick` sends `mcp_probe` with the entry's command, args, env and URL.
-Env values go as written, so `secret:brave_api_key` stays a reference and
+Env values go as written, so `secret:obsidian_api_key` stays a reference and
 `merud` looks up the key. When the probe fails (a missing program, a timeout on
 a first `npx` download), it prints `merud`'s reason and offers `r` to try again,
 `w` to write the entry anyway, or `c` to cancel.

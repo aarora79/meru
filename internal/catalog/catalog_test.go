@@ -183,7 +183,7 @@ func TestAppendServerKeepsFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e, _ := Find("brave")
+	e, _ := Find("obsidian")
 	if err := AppendServer(path, Block(e)); err != nil {
 		t.Fatalf("AppendServer: %v", err)
 	}
@@ -213,15 +213,15 @@ func TestAppendServerKeepsFile(t *testing.T) {
 }
 
 func TestAppendServerRefuses(t *testing.T) {
-	brave, _ := Find("brave")
+	obsidian, _ := Find("obsidian")
 	tests := []struct {
 		name     string
 		existing string // config.toml before the append; "" means no file
 		block    string
 		wantErr  string
 	}{
-		{"duplicate name", Block(brave), Block(brave), "already has"},
-		{"broken config", "profile = \"huge\"\n", Block(brave), "fix config.toml"},
+		{"duplicate name", Block(obsidian), Block(obsidian), "already has"},
+		{"broken config", "profile = \"huge\"\n", Block(obsidian), "fix config.toml"},
 		{"not toml", "", "[[mcp.servers]\nname = ", "server block"},
 		{"no server", "", "profile = \"lite\"\n", "holds 0 servers"},
 		{"wildcard", "", "[[mcp.servers]]\nname = \"w\"\ncommand = \"x\"\nallow = [\"*\"]\n", "wildcards"},
@@ -272,10 +272,11 @@ func TestSecretNames(t *testing.T) {
 	}
 }
 
-// TestCatalogIsThreeServers pins the catalog to the three servers the docs
-// draw their examples from, in the order setup offers them.
-func TestCatalogIsThreeServers(t *testing.T) {
-	if got, want := Names(), []string{"google", "brave", "obsidian"}; !slices.Equal(got, want) {
+// TestCatalogIsTwoServers pins the catalog to the two servers the docs
+// draw their examples from, in the order setup offers them. Web search is
+// a built-in, so no search server belongs here.
+func TestCatalogIsTwoServers(t *testing.T) {
+	if got, want := Names(), []string{"google", "obsidian"}; !slices.Equal(got, want) {
 		t.Errorf("Names() = %v, want %v", got, want)
 	}
 	google, _ := Find("google")

@@ -42,7 +42,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file` and the read-only `read_file`, `list_folder` and `grep` | `builtin.go`: `Confirm`, `Call`; then `files.go` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder` and `grep`, and the web tools `web_search` and `web_url_read` | `builtin.go`: `Confirm`, `Call`; then `files.go` and `web.go` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
@@ -395,6 +395,7 @@ type Config struct {
     MCP           MCP           // Servers: the [[mcp.servers]] entries (v0.3)
     A2A           A2A           // Agents: the [[a2a.agents]] entries (v0.3)
     Builtin       Builtin       // Confirm: built-in tools that ask first (v0.3)
+    Web           Web           // SearXNGURL (loopback only), ReadPages, MaxResults (v0.3)
     Dir           string        // Meru's home, usually ~/.meru
 }
 ```
@@ -424,6 +425,7 @@ sequenceDiagram
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
     M->>M: newToolService: secrets.Load, commands.New, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
+    M->>M: logWebSearch: catalog.CheckSearXNG, one info line, never fatal
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     par errgroup, until Ctrl-C, SIGTERM or a server error
@@ -437,8 +439,8 @@ sequenceDiagram
 
 All of this is in `cmd/merud/main.go` (`run` and `serve`), `cmd/merud/runtime.go`
 (`checkRuntime` and `warm`), `cmd/merud/index.go` (`startupScan`, `watch` and the
-adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`
-and `reloadMCP`).
+adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`,
+`reloadMCP` and `logWebSearch`).
 
 `newToolService` loads `secrets.toml` first and fails when other users can read
 it, then checks the `[[commands]]` entries with `commands.New`, starts the MCP
@@ -459,6 +461,12 @@ errors and never stop the server. A scan and a `meru index` run take turns, so t
 walks never race over the same files. `signal.NotifyContext` turns Ctrl-C into a
 cancelled `context.Context`, and every step watches that context, so `merud` stops
 cleanly wherever it is. ([more on context](coding-notes/go-basics/context.md))
+
+`logWebSearch` runs `catalog.CheckSearXNG` against `[web] searxng_url` and logs
+`web search ready`, `web search not ready` with the reason, or `web search off`.
+The check asks SearXNG for an empty query, which SearXNG refuses without asking
+any search engine, and gives up after 3 seconds. A missing SearXNG never stops
+`merud`: `web_search` reports the same problem to the model when it runs.
 
 ## 5. One question, function by function
 
@@ -626,8 +634,11 @@ remove` takes a block out the same way with `catalog.RemoveServer`. Both end
 with `mcp_reload`. The built-in `configure` tool calls the same `AppendServer`,
 so chat and terminal write the same block.
 
-The catalog holds three entries, in this order: `google` (Gmail, Calendar, Drive
-and Docs), `brave` (web search) and `obsidian` (notes). `google` is a `url` entry
+The catalog holds two entries, in this order: `google` (Gmail, Calendar, Drive
+and Docs) and `obsidian` (notes). Web search is built in, so it has no entry;
+`setupCmd`'s Web search step calls `checkWebSearch`, which runs
+`catalog.CheckSearXNG` and on failure prints the container commands or the
+`formats` setting, then waits for Enter or `s`. `google` is a `url` entry
 the user starts; its `Entry.Start` holds the command, which `meru mcp add` prints
 and never runs. Before it probes such an entry, `doIt` asks `urlAnswers`, a
 one-second TCP dial to the URL's host and port. When nothing answers, it skips

@@ -115,8 +115,8 @@ prints:
   │                                                                                             │
   │ SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM                                 │
   │ google     http       connected       124        6        2   127.0.0.1:8000/mcp            │
-  │ brave      stdio      connected         4        2        0                                 │
-  │ obsidian   stdio      not connected     —        3        1   exec: "npx" not found         │
+  │ obsidian   stdio      connected        13        5        1                                 │
+  │ notes      stdio      not connected     —        3        1   exec: "npx" not found         │
   │                                                                                             │
   │ meru tools lists each tool; meru mcp list shows the catalog and meru mcp add adds a server. │
   ╰─────────────────────────────────────────────────────────────────────────────────────────────╯

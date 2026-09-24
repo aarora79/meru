@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,7 @@ import (
 
 // fakeKey stands in for an API key. It is long enough for Redact and
 // obviously not a real one.
-const fakeKey = "fake-brave-key-0123456789"
+const fakeKey = "fake-obsidian-key-0123456789"
 
 // scripted returns a console that reads input as typed answers, runs no
 // programs (it records them in ran), and finds Ollama up.
@@ -43,6 +44,8 @@ func scripted(input string) (c *console, out *bytes.Buffer, ran *[]string) {
 		ollamaVersion: func(context.Context, string) (string, error) { return "0.12.11", nil },
 		// Nothing answers at a server's URL unless a test says so.
 		answers: func(context.Context, string) bool { return false },
+		// SearXNG answers unless a test says otherwise.
+		searxng: func(context.Context, string) error { return nil },
 	}
 	c.readSecret = c.line
 	return c, out, ran
@@ -61,18 +64,18 @@ func loadServers(t *testing.T, dir string) []config.MCPServer {
 func TestMCPAddDoIt(t *testing.T) {
 	dir := t.TempDir()
 	c, out, _ := scripted("d\n" + fakeKey + "\ny\n")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
 	servers := loadServers(t, dir)
-	if len(servers) != 1 || servers[0].Name != "brave" || servers[0].Env["BRAVE_API_KEY"] != "secret:brave_api_key" {
+	if len(servers) != 1 || servers[0].Name != "obsidian" || servers[0].Env["OBSIDIAN_API_KEY"] != "secret:obsidian_api_key" {
 		t.Errorf("servers = %+v", servers)
 	}
 	s, err := secrets.Load(secrets.Path(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Resolve("secret:brave_api_key"); got != fakeKey {
+	if got, _ := s.Resolve("secret:obsidian_api_key"); got != fakeKey {
 		t.Errorf("saved key = %q", got)
 	}
 	if strings.Contains(out.String(), fakeKey) {
@@ -87,14 +90,14 @@ func TestMCPAddDoIt(t *testing.T) {
 
 func TestMCPAddReusesSavedKey(t *testing.T) {
 	dir := t.TempDir()
-	if err := secrets.Set(secrets.Path(dir), "brave_api_key", fakeKey); err != nil {
+	if err := secrets.Set(secrets.Path(dir), "obsidian_api_key", fakeKey); err != nil {
 		t.Fatal(err)
 	}
 	c, out, _ := scripted("d\ny\n")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
-	if !strings.Contains(out.String(), "Using brave_api_key") {
+	if !strings.Contains(out.String(), "Using obsidian_api_key") {
 		t.Errorf("output doesn't say it reused the key:\n%s", out)
 	}
 	if len(loadServers(t, dir)) != 1 {
@@ -108,7 +111,7 @@ func TestMCPAddWritesNothing(t *testing.T) {
 	tests := []struct {
 		name, input, wantOut string
 	}{
-		{"show me how", "s\n", "brave_api_key = \"<paste it here>\""},
+		{"show me how", "s\n", "obsidian_api_key = \"<paste it here>\""},
 		{"skip", "x\nk\n", "[d/s/k]"},
 		{"say no", "d\n" + fakeKey + "\nn\n", "Nothing was written"},
 		{"empty key", "d\n\n", "No key given"},
@@ -117,7 +120,7 @@ func TestMCPAddWritesNothing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			c, out, _ := scripted(tt.input)
-			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 				t.Fatalf("mcp add: %v", err)
 			}
 			if !strings.Contains(out.String(), tt.wantOut) {
@@ -147,11 +150,11 @@ func TestMCPListCatalog(t *testing.T) {
 func TestMCPAddAlreadyThere(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"),
-		[]byte("[[mcp.servers]]\nname = \"brave\"\ncommand = \"npx\"\n"), 0o600); err != nil {
+		[]byte("[[mcp.servers]]\nname = \"obsidian\"\ncommand = \"uvx\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, out, _ := scripted("")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "already has") {
@@ -234,6 +237,95 @@ func TestSetupExistingConfig(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestSetupWebSearch walks the web search step: SearXNG down, then
+// answering HTML, then JSON; an empty URL; and a skip.
+func TestSetupWebSearch(t *testing.T) {
+	down := fmt.Errorf("%w on http://127.0.0.1:8888", catalog.ErrSearXNGDown)
+	html := fmt.Errorf("%w on http://127.0.0.1:8888", catalog.ErrSearXNGNoJSON)
+	tests := []struct {
+		name    string
+		url     string
+		answers []error // what each check returns, in order
+		input   string
+		want    []string
+	}{
+		{"answers", "http://127.0.0.1:8888", []error{nil}, "", []string{"SearXNG answers JSON at http://127.0.0.1:8888"}},
+		{
+			"down, then html, then json", "http://127.0.0.1:8888", []error{down, html, nil}, "\n\n",
+			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "docker compose up -d",
+				"SEARXNG_PORT=8888", "JSON is off", "settings.yml", "SearXNG answers JSON"},
+		},
+		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"docker compose up -d", "Skipped."}},
+		{"off", "", nil, "", []string{"Web search is off"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, out, _ := scripted(tt.input)
+			checks := 0
+			c.searxng = func(_ context.Context, u string) error {
+				if u != tt.url {
+					t.Errorf("checked %q, want %q", u, tt.url)
+				}
+				checks++
+				return tt.answers[checks-1]
+			}
+			if err := c.checkWebSearch(context.Background(), tt.url); err != nil {
+				t.Fatalf("checkWebSearch: %v\n%s", err, out)
+			}
+			if checks != len(tt.answers) {
+				t.Errorf("checked %d times, want %d", checks, len(tt.answers))
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(out.String(), w) {
+					t.Errorf("output lacks %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupWebSearchReal runs the step's real check against httptest
+// servers: one answers JSON, one answers HTML then gets fixed, and one
+// port is closed.
+func TestSetupWebSearchReal(t *testing.T) {
+	jsonOn := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !jsonOn {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, "<!doctype html><title>403 Forbidden</title>")
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error": "No query"}`)
+	}))
+	defer srv.Close()
+
+	c, out, _ := scripted("\n")
+	c.searxng = func(ctx context.Context, u string) error {
+		err := catalog.CheckSearXNG(ctx, u)
+		jsonOn = true // the user fixes settings.yml before pressing Enter
+		return err
+	}
+	if err := c.checkWebSearch(context.Background(), srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "JSON is off") || !strings.Contains(out.String(), "SearXNG answers JSON") {
+		t.Errorf("output:\n%s", out)
+	}
+
+	closed := httptest.NewServer(http.NotFoundHandler())
+	addr := closed.URL
+	closed.Close()
+	c, out, _ = scripted("s\n")
+	c.searxng = catalog.CheckSearXNG
+	if err := c.checkWebSearch(context.Background(), addr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "SearXNG isn't answering on "+addr) {
+		t.Errorf("output:\n%s", out)
 	}
 }
 

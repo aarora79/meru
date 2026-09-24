@@ -14,7 +14,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Roots returns the [index] folders with symlinks resolved, leaving out the
@@ -226,16 +225,14 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error) {
 	}
 	switch kind {
 	case KindPDF:
-		pages, err := pdfPages(data)
+		pages, err := PDFText(data)
 		if err != nil {
 			return Text{}, "", err
 		}
-		if strings.TrimSpace(strings.Join(pages, "")) == "" {
-			return Text{}, "", errNoText
-		}
 		return Text{Kind: kind, Pages: pages}, "", nil
 	case KindHTML:
-		return Text{Kind: kind, Pages: []string{readHTML(string(data)).b.String()}}, "", nil
+		_, text := HTMLText(string(data))
+		return Text{Kind: kind, Pages: []string{text}}, "", nil
 	default:
 		return Text{Kind: kind, Pages: []string{string(data)}}, "", nil
 	}
