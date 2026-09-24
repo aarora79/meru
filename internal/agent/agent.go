@@ -109,11 +109,13 @@ type Agent struct {
 	search      Searcher     // nil turns search off
 	tools       ToolRunner   // nil turns tools off
 	turns       TurnRecorder // nil keeps no turn rows
+	profile     Profile      // nil leaves the profile out of the prompt
 	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
-	system      string       // system prompt
+	system      string       // system prompt, with whoIsWho; the profile follows it
+	filesNote   string       // filesNote for the [index] folders; follows the profile
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
 	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
@@ -126,9 +128,10 @@ type Agent struct {
 // offers the model the tools from tools on the "tools" and "search+tools"
 // routes, for at most cfg.Agent.MaxRounds model calls per turn. tools may be
 // nil, which turns tools off. It writes a row for each answered turn to
-// turns, which may be nil to keep none. log may be nil, which means no log
-// lines.
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent {
+// turns, which may be nil to keep none. It puts the user's profile from
+// profile into every prompt; a nil profile leaves it out. log may be nil,
+// which means no log lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, profile Profile, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
 	}
@@ -141,7 +144,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
-	system += "\n\n" + whoIsWho + "\n\n" + filesNote(cfg.Index.Folders)
+	system += "\n\n" + whoIsWho
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
@@ -150,11 +153,13 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		search:      search,
 		tools:       tools,
 		turns:       turns,
+		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
+		filesNote:   filesNote(cfg.Index.Folders),
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
 		home:        home,
 		log:         log,
@@ -266,6 +271,17 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// server and the route has no tools, add them.
 	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
 		a.log.DebugContext(ctx, "route changed: the question names a tool server",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
+	// And for memory: the router can send "remember that my name is Amit"
+	// to direct, and a direct turn offers no remember tool, so the model
+	// would say it will remember and save nothing. When the question holds
+	// "remember" as a whole word and the route has no tools, add them. A
+	// wrong guess ("do you remember the budget?") costs a prompt that holds
+	// the tool schemas, and the model need not call any.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksToRemember(question, a.tools.Tools()) {
+		a.log.DebugContext(ctx, "route changed: the question asks Meru to remember",
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
@@ -716,15 +732,24 @@ func shortPath(home, p string) string {
 }
 
 // prompt builds the messages for the main model inside a meru.prompt span,
-// and reports their size. files is the "From your files" section for a turn
-// that searched, or "" for one that didn't. tools is true on a turn that
-// offers tools, and adds toolsNote to the system prompt. est_tokens is
-// characters divided by four, a rough rule for English text; the model's
-// own count arrives with its answer.
+// and reports their size. The system prompt holds, in order: the configured
+// prompt with whoIsWho, the user's profile when there is one, filesNote,
+// toolsNote on a turn that offers tools, and the excerpts from the user's
+// files. The profile sits right after whoIsWho, so the rule that "I" means
+// the user and the facts about who the user is read together.
+//
+// files is the "From your files" section for a turn that searched, or ""
+// for one that didn't. tools is true on a turn that offers tools.
+// est_tokens is characters divided by four, a rough rule for English text;
+// the model's own count arrives with its answer.
 func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string, tools bool) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
 	system := a.system
+	if profile := a.profileSection(ctx); profile != "" {
+		system += "\n\n" + profile
+	}
+	system += "\n\n" + a.filesNote
 	if tools {
 		system += "\n\n" + toolsNote
 	}

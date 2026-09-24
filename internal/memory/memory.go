@@ -253,27 +253,66 @@ func (s *Store) List() ([]Memory, error) {
 			problems = append(problems, fmt.Errorf("%s: skipped; folder names use letters, digits, - and _", kind))
 			continue
 		}
-		files, err := fs.ReadDir(fsys, kind)
-		if err != nil {
-			problems = append(problems, fmt.Errorf("%s: %w", kind, err))
-			continue
-		}
-		for _, f := range files {
-			name := f.Name()
-			if strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".md") || f.IsDir() {
-				continue
-			}
-			m, err := s.read(root, path.Join(kind, name))
-			if err != nil {
-				problems = append(problems, err)
-				continue
-			}
-			memories = append(memories, m)
-		}
+		found, errs := s.listKind(root, kind)
+		memories = append(memories, found...)
+		problems = append(problems, errs...)
 	}
 	// errors.Join returns nil when problems is empty, and otherwise one
 	// error whose text lists them all.
 	return memories, errors.Join(problems...)
+}
+
+// ListKind returns the memory files of one kind, sorted by ID, and reads no
+// other folder. The agent reads the profile kinds on every turn, and
+// reading only their folders keeps that quick however many memories the
+// other kinds hold. A kind with no folder has no memories.
+//
+// Like List, it skips a file it can't read and reports it in the returned
+// error alongside the memories it could read. It fails with ErrBadID when
+// kind isn't a valid folder name or its folder is a symbolic link.
+func (s *Store) ListKind(kind string) ([]Memory, error) {
+	if !kindPattern.MatchString(kind) {
+		return nil, fmt.Errorf("%w: kind %q", ErrBadID, kind)
+	}
+	root, err := s.openRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	if err := checkKindDir(root, kind); errors.Is(err, ErrNotFound) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	memories, problems := s.listKind(root, kind)
+	return memories, errors.Join(problems...)
+}
+
+// listKind reads every memory file in the kind folder, which the caller
+// has checked, and returns them sorted by name, with one error per file or
+// folder it couldn't read. It skips hidden files, files not ending in ".md"
+// and folders inside the kind folder.
+func (s *Store) listKind(root *os.Root, kind string) ([]Memory, []error) {
+	// fs.ReadDir returns the entries sorted by name.
+	files, err := fs.ReadDir(root.FS(), kind)
+	if err != nil {
+		return nil, []error{fmt.Errorf("%s: %w", kind, err)}
+	}
+	var memories []Memory
+	var problems []error
+	for _, f := range files {
+		name := f.Name()
+		if strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".md") || f.IsDir() {
+			continue
+		}
+		m, err := s.read(root, path.Join(kind, name))
+		if err != nil {
+			problems = append(problems, err)
+			continue
+		}
+		memories = append(memories, m)
+	}
+	return memories, problems
 }
 
 // Get returns the memory with the given ID ("preferences/index-funds.md") or

@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -31,7 +31,8 @@ flowchart TB
         D --> ST["store.Open(meru.db, embed model, size)"]
         ST --> RT["ReplayTurns: rebuild turns if empty"]
         RT --> IX["index.New"]
-        IX --> G2["errgroup"]
+        IX --> MO["memory.Open(~/.meru/memory)"]
+        MO --> G2["errgroup"]
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
         G2 --> WA["watch the folders"]
@@ -79,7 +80,7 @@ Then three jobs run side by side in an **errgroup** from
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, st), log) })
+g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 return g.Wait()
@@ -94,7 +95,14 @@ they search whatever the index holds so far.
 
 `handler` sends each request to the right place: `ask` to the agent, `index`
 and `index_status` to the index service, `tools` and `log` to the tool service,
-and `usage` to `handleUsage`. The rpc server answers `ping` itself.
+the three memory ops to the memory service, and `usage` to `handleUsage`. The
+rpc server answers `ping` itself.
+
+**Memory.** Before the tools, `serve` opens the memory folder with
+`memory.Open(<home>/memory)`, which creates the six default kind folders. One
+`*memory.Store` then reaches three places: the built-in `remember` tool
+(through `newToolService` and `builtin.New`), the agent (through
+`profileAdapter`, the agent's `Profile`), and the memory service.
 
 **Usage.** Right after `openStore`, `replayTurns` calls `store.ReplayTurns`,
 which fills the `turns` table from the session transcripts when the table is
@@ -164,8 +172,44 @@ it loads that model once. A failure says which model and suggests
   the size of `meru.db` with its `-wal` and `-shm` files (`DBBytes`, from
   `store.DiskBytes`), whether a scan runs, and the last full scan's report.
 
+`handleStatus` also fills `Memories` and `Profile` from the memory service:
+how many memory files there are, and how many sit in `me/` and `preferences/`.
+Both are -1 when the memory folder can't be read. A `Profile` of 0 tells `meru
+chat` that Meru doesn't know you yet.
+
 `searchAdapter` joins the agent's `Searcher` interface to `retrieve.Search`
 over the store, the way `routerAdapter` joins the router.
+
+### merud: memory.go
+
+`memoryService` answers the three ops that `meru memory` and `meru setup user`
+send:
+
+| Op | What it does | Reply |
+| --- | --- | --- |
+| `memory_list` | `memory.Store.List` | one `memories` event with every memory |
+| `memory_add` | `memory.Store.Add(req.Kind, req.Text, "meru")` | one `memories` event with the new memory |
+| `memory_forget` | `memory.Store.Forget(req.ID)` | `done` |
+
+`memoryInfo` copies each `memory.Memory` into `rpc.MemoryInfo`, with `Created`
+as `YYYY-MM-DD`, or `""` for a file you wrote by hand. `handleForget` turns
+`memory.ErrNotFound` and `memory.ErrBadID` into messages that say how to find
+the right ID, and `errors.Is` finds them through the wrapping.
+
+A memory you add through the client gets the source `meru`. `Request.Source`
+can't say whether it came from `meru setup user` or `meru memory add`: it is a
+metric attribute with three fixed values. `meru` still tells your own facts
+apart from the model's, which carry `session <id>`.
+
+These ops don't go through `dispatch`. They are your own commands
+(ARCHITECTURE.md, "Memory", "Your commands"), like editing a file by hand. The
+model's way to save a memory, the `remember` tool, does go through `dispatch`,
+so every memory the model writes lands in `tool_calls` and the transcript.
+
+`profileAdapter` gives the agent the profile. It reads the `me` and
+`preferences` folders with `memory.Store.ListKind`, and no others. Reading
+every folder took 13 ms per turn with 500 other memories; the two folders take
+about 0.6 ms for 20 files, so there is no cache.
 
 ### merud: backends.go
 
@@ -393,6 +437,10 @@ question gets its answer while the startup scan waits inside `Embed`, a new
 vector size makes the next start embed every file again, and the index ops
 answer, refuse a folder outside `[index]`, and explain an empty config.
 
+`memory_test.go` drives the memory ops over the socket: add, list, the counts
+in the index status, the profile in the next question's system prompt, each
+refusal, and forget.
+
 ## Why it's built this way
 
 - **`run` returns instead of exiting.** `os.Exit` skips deferred calls and
@@ -406,6 +454,9 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
   call that runs unseen is worse than an answer without the tool.
 - **The scan runs in the background.** A first scan of a big folder can take
   minutes of embedding; `merud` shouldn't sit silent for that long.
+- **merud owns the memory folder.** `meru` never touches `~/.meru/memory`;
+  it asks `merud`, so one process writes the files, and the thin client stays
+  free of storage code.
 - **Folders come from config only.** `meru index <folder>` rescans a folder
   you already listed; it can't add one. One place decides what `merud` may
   read.

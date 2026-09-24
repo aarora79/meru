@@ -35,9 +35,10 @@ type fakeEngine struct {
 	// it to keep the startup scan busy.
 	hold chan struct{}
 
-	mu     sync.Mutex // guards models and embeds
+	mu     sync.Mutex // guards models, embeds and system
 	models []string
 	embeds int
+	system string // the system prompt of the last Stream call
 }
 
 func (f *fakeEngine) Generate(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (engine.Completion, error) {
@@ -51,6 +52,11 @@ func (f *fakeEngine) Generate(ctx context.Context, msgs []engine.Message, tools 
 }
 
 func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (iter.Seq2[engine.Delta, error], error) {
+	f.mu.Lock()
+	if len(msgs) > 0 {
+		f.system = msgs[0].Content
+	}
+	f.mu.Unlock()
 	return func(yield func(engine.Delta, error) bool) {
 		if !yield(engine.Delta{Text: "pong"}, nil) {
 			return
