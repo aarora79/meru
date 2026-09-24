@@ -239,6 +239,7 @@ type exchange struct {
 	route      string
 	confidence float64
 	fallback   bool
+	skills     []string // skills the turn loaded, from the route event
 	sources    []rpc.Citation
 	tools      []toolCall // the turn's tool calls, in order
 	answer     string    // raw text, grown token by token
@@ -333,7 +334,9 @@ never to store a context in a struct.
 
 - `session`: remember the ID. `submit` sends it with every later question, so `merud`
   continues the same conversation.
-- `route`: keep the route, its confidence, and whether the router fell back.
+- `route`: keep the route, its confidence, whether the router fell back, and the
+  names of the skills the turn loaded. `badge` draws them after the confidence,
+  as in `direct · 0.91 · writing`.
 - `sources`: keep the excerpts for the list under the answer.
 - `tool_call`: add a tool line. `tool_result`: `finishTool` finds the line with the
   same ID and fills in the outcome and the time.
@@ -710,7 +713,8 @@ go test -race ./internal/tui/...
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
-streaming, a finished Markdown answer, a fallback route, an answer with sources, an
+streaming, a finished Markdown answer, a fallback route, a route badge with a
+skill, an answer with sources, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
 usage box and the `/me` box at 80 and 40 columns, and the empty screen with the

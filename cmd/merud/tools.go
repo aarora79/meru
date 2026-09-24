@@ -76,7 +76,11 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	}
 
 	s := &toolService{configPath: configPath, st: st, log: log, a2a: ac, secrets: sec, pool: pool}
-	bt := builtin.New(configPath, cfg.Builtin, mem, s.reloadMCP)
+	outputDir, err := expandHome(cfg.Skills.OutputDir)
+	if err != nil {
+		return nil, fmt.Errorf("skills.output_dir: %w", err)
+	}
+	bt := builtin.New(configPath, cfg.Builtin, mem, outputDir, s.reloadMCP)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure.
 	s.dispatcher = dispatch.New(

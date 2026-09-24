@@ -16,10 +16,12 @@
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] setup user       tell Meru who you are
 //	meru [-socket path] memory list      show what Meru remembers; also add, forget
+//	meru [-socket path] skills list      show the skills; also show, reset
 //	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
 //
 // A question whose first word is ping, chat, index, tools, log, usage, setup,
-// memory or mcp needs quotes, so meru reads it as a question and not as a command.
+// memory, skills or mcp needs quotes, so meru reads it as a question and not
+// as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -79,6 +81,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru setup user       tell Meru who you are
   meru memory list [kind] | add <kind> <text...> | forget <id>
                         show, save or delete what Meru remembers
+  meru skills list | show <name> | reset [--yes] <name>
+                        show the skills, print one, or restore a built-in
   meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
   meru mcp add <name> -- <command> [args...] | --url <url>
                         add a server that isn't in the catalog
@@ -128,6 +132,8 @@ flags:`)
 		err = setupUserCmd(ctx, *socket, terminal(stdout))
 	case flags.Arg(0) == "memory":
 		err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
+	case flags.Arg(0) == "skills":
+		err = skillsCmd(ctx, *socket, flags.Args()[1:], os.Stdin, stdout, isTerminal(os.Stdin))
 	case flags.Arg(0) == "mcp":
 		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
 	default:

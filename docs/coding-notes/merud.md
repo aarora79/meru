@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, the session replay and the summarizer in v0.4
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`, `skills.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, `meru skills`, the session replay and the summarizer in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -32,7 +32,8 @@ flowchart TB
         ST --> RT["ReplayTurns: rebuild turns if empty"]
         RT --> IX["index.New"]
         IX --> MO["memory.Open(~/.meru/memory)"]
-        MO --> G2["errgroup"]
+        MO --> SK["skills: install built-ins, Load"]
+        SK --> G2["errgroup"]
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
         G2 --> WA["watch the folders"]
@@ -80,7 +81,7 @@ Then four jobs run side by side in an **errgroup** from
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, st), log) })
+g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 g.Go(func() error { sum.Run(gctx); return nil })
@@ -96,14 +97,20 @@ they search whatever the index holds so far.
 
 `handler` sends each request to the right place: `ask` to the agent, `index`
 and `index_status` to the index service, `tools` and `log` to the tool service,
-the three memory ops to the memory service, and `usage` to `handleUsage`. The
-rpc server answers `ping` itself.
+the three memory ops to the memory service, the three skill ops to the skill
+service, and `usage` to `handleUsage`. The rpc server answers `ping` itself.
 
 **Memory.** Before the tools, `serve` opens the memory folder with
 `memory.Open(<home>/memory)`, which creates the six default kind folders. One
 `*memory.Store` then reaches three places: the built-in `remember` tool
 (through `newToolService` and `builtin.New`), the agent (through
 `profileAdapter`, the agent's `Profile`), and the memory service.
+
+**Skills.** Next, `newSkillService(<home>/skills)` copies the built-in skills in
+where no folder of that name exists and loads the registry. `serve` hands it to
+the agent with `a.UseSkills(sk)`. `newToolService` expands the `~` in `[skills]
+output_dir` with `expandHome` and passes the folder to `builtin.New` for
+`write_file`.
 
 **Usage.** Right after `openStore`, `replayTurns` calls `store.ReplayTurns`,
 which fills the `turns` table from the session transcripts when the table is
@@ -232,6 +239,36 @@ so every memory the model writes lands in `tool_calls` and the transcript.
 `preferences` folders with `memory.Store.ListKind`, and no others. Reading
 every folder took 13 ms per turn with 500 other memories; the two folders take
 about 0.6 ms for 20 files, so there is no cache.
+
+### merud: skills.go
+
+`skillService` owns `~/.meru/skills` while `merud` runs. It holds the last
+registry and the `skills.Stamp` taken just before loading it, both guarded by
+one `sync.Mutex`, because turns ask for the registry from many goroutines.
+
+`Registry(ctx)` is the method the agent calls once per turn. It takes a fresh
+stamp, and when the stamp differs from the one it holds, it loads the registry
+again. A stamp costs one directory read and one stat per skill, a few
+microseconds, so a skill you add or edit by hand counts from the next turn with
+no restart. A file watcher would do the same with more moving parts: a watch on
+the folder and on each skill folder, kept in step as folders come and go, and a
+goroutine to own it. Each load logs one `skill skipped` warning per bad folder
+and one `skills loaded` line with the names.
+
+The service answers three ops:
+
+| Op | What it does | Reply |
+| --- | --- | --- |
+| `skills` | every loaded skill, with `Builtin` from `skills.IsBuiltin` and `Edited` from `skills.Edited` | one `skills` event; its `Text` holds the skipped folders' reasons, one per line |
+| `skill_show` | `Registry.File(req.ID)`, the whole `SKILL.md` | one `skills` event with `Body` set |
+| `skill_reset` | `skills.Reset(dir, req.ID)`, then a reload | `done` |
+
+`Edited` compares your file's bytes with the copy inside the binary, so saving
+the file unchanged doesn't mark it. A reset of a skill Meru doesn't ship fails
+with a message that names the two built-ins.
+
+These ops don't go through `dispatch`: they are your commands, like editing a
+file by hand. The model's way to write a file, `write_file`, does.
 
 ### merud: backends.go
 
@@ -485,6 +522,39 @@ client never touches `~/.meru/memory/` and never imports `internal/memory`.
 `memory_test.go` runs both commands against an in-process server that keeps its
 memories in a slice, so each test can check what `merud` would hold afterwards.
 
+### meru: skills.go
+
+`meru skills` has three words:
+
+```text
+$ meru skills list
+explainer  Build a self-contained HTML explainer for a technical topic - what it i…  [built-in]
+notes      Take meeting notes.
+writing    Write prose people will actually read. Use for any prose you produce -…     [built-in] [edited]
+$ meru skills show notes
+---
+name: notes
+...
+$ meru skills reset writing
+Replace your copy of writing with the shipped one? [y/N] y
+Reset writing to the shipped copy.
+```
+
+`list` pads each name to one width, folds each description onto one line and
+cuts it to 72 characters, and dims the `[built-in]` and `[edited]` marks. Folders
+`merud` skipped follow under `Skipped:`, so a typo in a `SKILL.md` doesn't go
+unseen. `show` prints the file as `merud` sent it.
+
+`reset` throws your edits away, so `resetSkill` checks first. It lists the
+skills and looks the name up: a skill that isn't built-in fails at once, and a
+copy with no edits resets without a question. Otherwise it asks on a terminal
+and reads one line; only `y` or `yes` goes ahead. When standard input isn't a
+terminal, nobody can answer, so it refuses and names the `--yes` flag. `--yes`
+or `-y` may sit before or after the name.
+
+`skills_test.go` runs the three words against an in-process server and feeds
+`skillsCmd` scripted answers, with and without a terminal.
+
 ## Go ideas used here
 
 - **`signal.NotifyContext`** — a context that ends on a signal. More in
@@ -523,6 +593,11 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
 in the index status, the profile in the next question's system prompt, each
 refusal, and forget.
 
+`skills_test.go` checks the skill service: the first-run install, a skill added
+by hand and an edited built-in picked up on the next call, a broken folder in
+the warnings, `show`, `reset` and its refusal, a restart that keeps your edits,
+and `expandHome`.
+
 ## Why it's built this way
 
 - **`run` returns instead of exiting.** `os.Exit` skips deferred calls and
@@ -540,7 +615,10 @@ refusal, and forget.
   minutes of embedding; `merud` shouldn't sit silent for that long.
 - **merud owns the memory folder.** `meru` never touches `~/.meru/memory`;
   it asks `merud`, so one process writes the files, and the thin client stays
-  free of storage code.
+  free of storage code. The skills folder works the same way.
+- **A stamp per turn, not a watcher.** Checking the skills folder costs
+  microseconds and needs no goroutine; a watcher would need one watch per
+  skill folder.
 - **Folders come from config only.** `meru index <folder>` rescans a folder
   you already listed; it can't add one. One place decides what `merud` may
   read.

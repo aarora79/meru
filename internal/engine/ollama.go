@@ -373,6 +373,8 @@ func (e *OllamaEngine) chatBody(msgs []Message, tools []ToolSpec, opts Options, 
 		// is what the pointer field wants.
 		req.Options = &chatOptions{Temperature: opts.Temperature, NumPredict: opts.MaxTokens}
 	}
+	// A thinking model asked for log probabilities would spend its tokens
+	// on hidden reasoning, so LogProbs turns thinking off too.
 	if opts.LogProbs || opts.NoThink {
 		off := false
 		req.Think = &off

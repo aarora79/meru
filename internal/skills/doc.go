@@ -14,8 +14,12 @@
 // them to disk only where no folder of that name exists, so your edits win;
 // Reset puts the shipped version back.
 //
+// Stamp tells merud when the folder changed, so it can call Load again;
+// Edited and File answer `meru skills list` and `meru skills show`.
+//
 // What this package deliberately doesn't do: it doesn't pick a skill for a
-// turn (the router does), doesn't watch the folder for changes (call Load
-// again), and doesn't run anything a skill describes. It reads text files and
-// writes the built-ins, nothing more.
+// turn (internal/agent does, with one short call to the fast model), doesn't
+// watch the folder with a background goroutine (merud compares stamps), and
+// doesn't run anything a skill describes. It reads text files and writes the
+// built-ins, nothing more.
 package skills

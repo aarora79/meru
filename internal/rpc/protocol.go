@@ -53,6 +53,8 @@ const (
 	// "me/name-amit-arora.md". The reply is "done".
 	OpMemoryForget Op = "memory_forget"
 	// OpSkills lists the skills. The reply is one "skills" event and "done".
+	// The event's Text holds the reasons merud skipped any skill folders,
+	// one per line.
 	OpSkills Op = "skills"
 	// OpSkillShow asks for the SKILL.md of the skill named Request.ID. The
 	// reply is one "skills" event holding that skill, with its Body, and
@@ -102,7 +104,8 @@ const (
 	EventSession EventType = "session"
 	// EventRoute reports the route the router picked, with its confidence.
 	// Fallback is true when the router wasn't sure and used the fallback
-	// route instead.
+	// route instead. Skills names the skills the turn loaded, if any, with
+	// only Name set.
 	EventRoute EventType = "route"
 	// EventSources lists the excerpts from the user's files that merud put
 	// in the prompt, numbered as the answer cites them ([1], [2], ...). It
@@ -178,7 +181,8 @@ type Event struct {
 	Usage []UsageWindow `json:"usage,omitempty"`
 	// Memories is set on a "memories" event.
 	Memories []MemoryInfo `json:"memories,omitempty"`
-	// Skills is set on a "skills" event.
+	// Skills is set on a "skills" event, and on a "route" event that
+	// loaded skills, where each entry carries only its Name.
 	Skills []SkillInfo `json:"skills,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
@@ -426,7 +430,7 @@ type MemoryInfo struct {
 // SkillInfo is one skill, as the skill ops show it.
 type SkillInfo struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 	// Builtin is true for a skill that ships inside merud; Edited is true
 	// when the user's copy differs from the shipped one.
 	Builtin bool `json:"builtin,omitempty"`

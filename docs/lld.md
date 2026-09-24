@@ -50,7 +50,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour) | `run.go`: `Run`, then `model.go` and `view.go` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
 | `internal/mcp` | the MCP client pool: starts or connects to servers, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
-| `internal/skills` | loads `SKILL.md` folders and installs the built-in skills (v0.4 groundwork) | `skills.go`: `Load`, then `builtin.go` |
+| `internal/skills` | loads `SKILL.md` folders, installs the built-in skills, and stamps the folder so `merud` sees edits | `skills.go`: `Load`, then `builtin.go` and `stamp.go` |
 | `internal/memory` | one Markdown file per memory under `memory/<kind>/` (v0.4 groundwork) | `memory.go`: `Open`, `Add`, `List` |
 
 A few more packages exist only for testing: `internal/policy` (tests that enforce
@@ -490,8 +490,11 @@ The same path as a reading list, in order:
    reads the history, saves the question, asks for a route, builds the prompt,
    streams the answer and saves it, then emits a `done` event with the turn's
    stats (`doneEvent`). Each step is a short function below `Handle`, with its own
-   span and debug line: `openSession`, `appendLine`, `route`, `searchFiles`,
-   `prompt` and `answer`. On a route with tools, `converse` (`tools.go`) runs the
+   span and debug line: `openSession`, `appendLine`, `routeAndPick`,
+   `searchFiles`, `prompt` and `answer`. `routeAndPick` (`skills.go`) asks for
+   the route and, at the same time, asks the fast model which skills the
+   question needs; `skillsSection` then puts the skill list and the picked
+   skills' instructions into the prompt. On a route with tools, `converse` (`tools.go`) runs the
    rounds instead of one `answer`.
 5. **`internal/router/router.go` → `Decide`** writes the A-to-D prompt (`prompt.go`),
    asks the fast model for one token, and turns the log probabilities into a route

@@ -217,6 +217,8 @@ func TestLoadErrors(t *testing.T) {
 		{"index overlap negative", "[index]\noverlap_tokens = -1", "index.overlap_tokens"},
 		{"index overlap past half", "[index]\nchunk_tokens = 100\noverlap_tokens = 51", "index.overlap_tokens"},
 		{"index unknown key", "[index]\nfolder = []", "unknown keys: index.folder"},
+		{"output_dir empty", "[skills]\noutput_dir = \"\"", "skills.output_dir is empty"},
+		{"output_dir relative", "[skills]\noutput_dir = \"out\"", `skills.output_dir "out" must be an absolute path`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,6 +230,25 @@ func TestLoadErrors(t *testing.T) {
 				t.Errorf("error = %q, want it to contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestBuiltinConfirmDefault checks that write_file asks by default, and that
+// a config that lists no built-ins gets an empty list, not the default.
+func TestBuiltinConfirmDefault(t *testing.T) {
+	cfg, err := Load(writeConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Builtin.Confirm, []string{"write_file"}) {
+		t.Errorf("default builtin.confirm = %q, want [write_file]", cfg.Builtin.Confirm)
+	}
+	cfg, err = Load(writeConfig(t, "[builtin]\nconfirm = []"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Builtin.Confirm) != 0 {
+		t.Errorf("builtin.confirm = %q after confirm = [], want empty", cfg.Builtin.Confirm)
 	}
 }
 

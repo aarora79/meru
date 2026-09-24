@@ -1,11 +1,12 @@
 # builtin
 
-**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`, and the
-test `builtin_test.go`)
-**Milestone:** v0.3 (`configure`), v0.4 (`remember`)
+**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
+`writefile.go`, and the tests `builtin_test.go` and `writefile_test.go`)
+**Milestone:** v0.3 (`configure`), v0.4 (`remember`, `write_file`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
-[Memory](../../ARCHITECTURE.md#memory)
+[Memory](../../ARCHITECTURE.md#memory),
+[Built-in skills](../../ARCHITECTURE.md#built-in-skills)
 
 ## What it does
 
@@ -13,7 +14,7 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are two built-ins. When you say "connect my Gmail" in chat, the model calls
+There are three built-ins. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "gmail"}`, and
 `configure` adds the Gmail entry to `config.toml`. It can also add a server outside
 the catalog, from a name and a command or URL.
@@ -22,6 +23,10 @@ When you say "remember that I work on the registry team", the model calls
 `remember` with `{"kind": "me", "text": "Works on the registry team"}`, and
 `remember` saves that fact as a file under `~/.meru/memory/me/`. From the next
 turn on, the fact sits in every prompt (see [agent](agent.md)).
+
+When a skill asks for a file, such as the explainer's HTML page, the model calls
+`write_file` with `{"path": "dns/explainer.html", "content": "..."}`. After you
+approve, `write_file` saves it under `~/meru-output/` and hands back the full path.
 
 ## The picture
 
@@ -53,16 +58,19 @@ sequenceDiagram
 
 ### builtin.go
 
-`New` takes the config path, the `[builtin]` section, the memory store and an
-`onChange` hook:
+`New` takes the config path, the `[builtin]` section, the memory store, the
+output folder for `write_file` and an `onChange` hook:
 
 ```go
-func New(configPath string, cfg config.Builtin, mem *memory.Store, onChange func(context.Context) error) *Tools
+func New(configPath string, cfg config.Builtin, mem *memory.Store, outputDir string, onChange func(context.Context) error) *Tools
 ```
 
 `merud` passes a hook that rebuilds its MCP pool, so a new server works without a
 restart. The package doesn't know how the pool works; it only calls the hook. A
-`nil` memory store leaves `remember` out, which the tests of `configure` use.
+`nil` memory store leaves `remember` out, and an empty `outputDir` leaves
+`write_file` out, which the tests of `configure` use. `merud` expands the `~` in
+`[skills] output_dir` before it calls `New`, so this package gets an absolute
+path.
 
 `Confirm` decides whether a call asks first:
 
@@ -134,6 +142,38 @@ has no session parameter, so `remember` reads it from the context with
 memory saves without asking, as ARCHITECTURE.md says. The call still goes through
 `dispatch`, so it lands in `tool_calls` and the transcript like any other.
 
+### writefile.go
+
+`write_file` takes `path`, `content` and an optional `overwrite`. Its checks run
+in this order, and each refusal ends with "Nothing was written" so the model
+can't mistake it for a success:
+
+1. `cleanRelPath` turns down an empty path, an absolute one (`/etc/x`, `\x`,
+   `C:\x`) and any path with a `..` part. It splits at both `/` and `\`, so
+   `a\..\..\x` can't slip a `..` past a check that only knows one separator.
+2. It refuses content over 1 MiB. A model that writes that much is most likely
+   stuck in a loop.
+3. `os.MkdirAll` creates the output folder, with mode `0700`, the first time.
+4. `os.OpenRoot` opens the folder as an `os.Root`, and every later step goes
+   through it. An `os.Root` refuses any path that would leave its folder, even
+   through a symbolic link, so it backs up the checks above.
+5. `makeParents` walks down the folders above the file, creating the missing ones
+   and refusing any that is a symbolic link or a plain file.
+6. `root.Lstat` looks at the file itself without following a link. It refuses a
+   link, a folder or a device, and a plain file unless `overwrite` is true; that
+   refusal tells the model to ask you first.
+7. `writeAtomic` writes a hidden temporary file with mode `0600`, checks the
+   error from `Close`, and renames it over the target. A rename inside one folder
+   happens in one step, so nobody sees half a file, and a failed write leaves the
+   old file as it was.
+
+The result reads `Wrote 1234 bytes to /Users/you/meru-output/dns/explainer.html.`
+The model passes the path on to you, and the client shows it in the tool result.
+
+`write_file` asks before each call, because the shipped `[builtin] confirm` is
+`["write_file"]`. A file outlives the chat, so the default is to ask. Take it out
+of the list to let it write without asking.
+
 ## Go ideas used here
 
 - **Interfaces** — `Tools` has the six methods of `dispatch.Backend`, so
@@ -146,6 +186,11 @@ memory saves without asking, as ARCHITECTURE.md says. The call still goes throug
 - **`sync.Mutex`** — `mu.Lock()` then `defer mu.Unlock()` lets one caller at a
   time into the write. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 - **Functions as values** — `onChange` is a function passed in by `merud`.
+- **Named results and deferred cleanup** — `writeAtomic` names its `err` result,
+  and a deferred function removes the temporary file only when `err` is set. More
+  in [go-basics/defer.md](go-basics/defer.md).
+- **`os.Root`** — a handle on one folder that refuses any path leading out of it.
+  `internal/memory` uses the same guard.
 
 ## Try it
 
@@ -164,6 +209,12 @@ name, the source line, and that each refusal (bad kind, empty or long text, a
 secret) saves nothing. `TestRememberSpecAndConfirm` checks the kind choices, the
 description and the confirm rule.
 
+`TestWriteFile` writes a file into a folder that doesn't exist yet, checks its
+text and its `0600` mode, and checks that a second write needs `overwrite`.
+`TestWriteFileRefuses` tries each bad path and size, and checks the output folder
+stays empty. `TestWriteFileSymlinks` plants a link to a file and a link to a
+folder, both pointing outside, and checks that neither write lands.
+
 ## Why it's built this way
 
 - **One writer for config.** `configure` and `meru mcp add` both call
@@ -174,3 +225,6 @@ description and the confirm rule.
   scheme for hiding a key the model has already read.
 - **The session on the context.** Only `remember` needs the session, so putting
   it on `ctx` beats adding a parameter to every backend's `Call`.
+- **One folder, checked twice.** `write_file` checks the path itself and then
+  works through an `os.Root`. Either guard alone would stop `..` and links; both
+  together mean a gap in one doesn't open the disk.

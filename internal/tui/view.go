@@ -282,7 +282,8 @@ func (m *Model) sourcesBlock(t *exchange, width int) string {
 	return m.style.raw.Render(m.style.dim.Render(strings.Join(lines, "\n")))
 }
 
-// badge draws the route next to the "Meru" label, such as "direct · 0.91".
+// badge draws the route next to the "Meru" label, such as "direct · 0.91",
+// followed by the skills the turn loaded, as in "search · 0.91 · writing".
 // A route the router fell back to is drawn in amber and says "fallback", so
 // it still stands out with colour turned off.
 func (m *Model) badge(t *exchange) string {
@@ -290,6 +291,9 @@ func (m *Model) badge(t *exchange) string {
 		return ""
 	}
 	text := fmt.Sprintf("%s · %.2f", t.route, t.confidence)
+	if len(t.skills) > 0 {
+		text += " · " + strings.Join(t.skills, ", ")
+	}
 	if t.fallback {
 		return "  " + m.style.badgeAmber.Render(text+" · fallback")
 	}

@@ -156,9 +156,9 @@ func TestGenerateRequestDefaults(t *testing.T) {
 	}
 }
 
+// TestGenerateNoThink checks that NoThink alone sends "think": false.
 func TestGenerateNoThink(t *testing.T) {
-	// NoThink sends "think": false and asks for no log probabilities.
-	f := newFakeOllama(t, map[string]route{"/api/chat": {200, `{"message":{"content":"ok"},"done":true}`}})
+	f := newFakeOllama(t, map[string]route{"/api/chat": {200, `{"message":{"content":"none"},"done":true}`}})
 	e := newTestEngine(t, f, "")
 	if _, err := e.Generate(context.Background(), nil, nil, Options{Model: "m", NoThink: true}); err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -167,8 +167,8 @@ func TestGenerateNoThink(t *testing.T) {
 	if body["think"] != false {
 		t.Errorf("request think = %#v, want false", body["think"])
 	}
-	if v, ok := body["logprobs"]; ok {
-		t.Errorf("request has logprobs = %v, want it left out", v)
+	if _, ok := body["logprobs"]; ok {
+		t.Error("NoThink alone asked for log probabilities")
 	}
 }
 

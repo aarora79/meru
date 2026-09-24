@@ -359,13 +359,13 @@ and arguments and offers the choices `merud` sends, at most these three:
 
   ```toml
   [builtin]
-  confirm = []   # the shipped default; from v0.4, add "remember" or "write_file" here
+  confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
   The built-in tools are `configure`, which always asks, whatever this list says
-  (see [First run and setup](#first-run-and-setup)), and `remember`, which saves
-  a memory without asking unless you list it here. `write_file` arrives with
-  skills later in v0.4.
+  (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
+  memory without asking unless you list it here; and `write_file`, which asks
+  before each file it saves because the shipped list names it.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.

@@ -79,9 +79,9 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 - [x] Transcripts replayed into `messages` + `message_fts`, so search can find past
   conversations
 - `meru memory list | add | forget`, working on the files
-- Skill registry with progressive disclosure
-- `meru skills list | show | reset`
-- Built-in skills `writing` and `explainer`, plus the `write_file`
+- [x] Skill registry with progressive disclosure
+- [x] `meru skills list | show | reset`
+- [x] Built-in skills `writing` and `explainer`, plus the `write_file`
   tool limited to `~/meru-output/`
 - Context budget policy across skills / memories / chunks
 

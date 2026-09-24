@@ -1,8 +1,9 @@
 // Package builtin holds the tools built into merud, as one dispatch.Backend.
-// There are two: configure, which adds an MCP server to config.toml when you
-// ask in chat ("connect my Gmail"), and remember, which saves one fact about
-// you as a memory file. See ARCHITECTURE.md, "First run and setup",
-// "Approving a tool call" and "Memory".
+// There are three: configure, which adds an MCP server to config.toml when
+// you ask in chat ("connect my Gmail"); remember, which saves one fact about
+// you as a memory file; and write_file, which saves a file the model made
+// inside [skills] output_dir. See ARCHITECTURE.md, "First run and setup",
+// "Approving a tool call", "Memory" and "Built-in skills".
 //
 // configure always asks. dispatch shows the user the exact arguments and
 // offers only "approve once" and "deny", whatever [builtin] confirm says,
@@ -13,6 +14,12 @@
 // remember saves without asking unless [builtin] confirm lists it. It
 // writes through memory.Store.Add, the same code `meru memory add` reaches
 // through merud, and records the chat's session as the memory's source.
+//
+// write_file asks before each call, because the shipped [builtin] confirm
+// lists it. It writes only inside the output folder, through an os.Root:
+// no absolute path, no "..", no symbolic link, at most 1 MiB, and it
+// replaces a file only when the model passes overwrite. It returns the
+// absolute path, so the model can tell you where the file is.
 //
 // What it doesn't do: it never takes an API key. A server that needs a key
 // not yet in secrets.toml isn't written; the tool tells the model to send
