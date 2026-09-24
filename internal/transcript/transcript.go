@@ -19,10 +19,14 @@ import (
 	"github.com/aarora79/meru/internal/engine"
 )
 
-// The line types v0.1 writes. See ARCHITECTURE.md, "Session transcripts".
+// The line types. See ARCHITECTURE.md, "Session transcripts".
 const (
 	TypeUser      = "user"
 	TypeAssistant = "assistant"
+	// The tool lines, written by dispatch (v0.3).
+	TypeToolCall   = "tool_call"
+	TypeApproval   = "approval"
+	TypeToolResult = "tool_result"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type
@@ -33,7 +37,33 @@ type Line struct {
 	Text      string    `json:"text,omitempty"`
 	TokensIn  int       `json:"tokens_in,omitempty"`
 	TokensOut int       `json:"tokens_out,omitempty"`
-	TraceID   string    `json:"trace_id,omitempty"`
+
+	// The fields below belong to the tool lines (v0.3): "tool_call",
+	// "approval" and "tool_result". CallID ties the three lines of one call
+	// together, and replay uses it to rebuild the call's tool_calls row.
+	CallID string `json:"call_id,omitempty"`
+	// Kind is "mcp", "a2a" or "builtin". Server is the MCP server or A2A
+	// agent name ("meru" for a built-in tool) and Tool the tool or skill
+	// name without the server prefix.
+	Kind   string `json:"kind,omitempty"`
+	Server string `json:"server,omitempty"`
+	Tool   string `json:"tool,omitempty"`
+	// Args holds the call's arguments as JSON, secrets redacted.
+	Args json.RawMessage `json:"args,omitempty"`
+	// Choice is the user's answer on an approval line: "once", "session"
+	// or "deny".
+	Choice string `json:"choice,omitempty"`
+	// Outcome is how a call ended, on a tool_result line: "ok", "error",
+	// "denied", "declined", "cancelled" or "timeout". OK repeats
+	// Outcome == "ok" so the line reads plainly with grep.
+	Outcome string `json:"outcome,omitempty"`
+	OK      bool   `json:"ok,omitempty"`
+	// Ms is how long the call took, in milliseconds.
+	Ms int64 `json:"ms,omitempty"`
+	// Result is what the tool returned, as text, secrets redacted.
+	Result string `json:"result,omitempty"`
+
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 // Session is one open transcript file. It holds only the file's path, so

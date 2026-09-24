@@ -26,6 +26,12 @@ type Config struct {
 	Log Log `toml:"log"`
 	// Index says which folders merud indexes for search (v0.2).
 	Index Index `toml:"index"`
+	// MCP lists the MCP servers whose tools the model may use (v0.3).
+	MCP MCP `toml:"mcp"`
+	// A2A lists the other agents Meru may hand tasks to (v0.3).
+	A2A A2A `toml:"a2a"`
+	// Builtin sets which built-in tools ask before they run (v0.3).
+	Builtin Builtin `toml:"builtin"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -112,4 +118,70 @@ type Index struct {
 	// Watch re-indexes a file as soon as it changes while merud runs. Default
 	// true. merud also rescans every folder at startup.
 	Watch bool `toml:"watch"`
+}
+
+// MCP holds the [[mcp.servers]] entries. See ARCHITECTURE.md, "MCP".
+type MCP struct {
+	Servers []MCPServer `toml:"servers"`
+}
+
+// MCPServer is one [[mcp.servers]] entry: how to reach the server and which
+// of its tools the model may use. Exactly one of Command and URL is set.
+// merud turns it into an mcp.ServerConfig and checks it there, because the
+// rules for names, URLs and tool lists live with the MCP client.
+type MCPServer struct {
+	// Name prefixes the server's tools: "<name>.<tool>".
+	Name string `toml:"name"`
+	// Command and Args start a stdio server. merud runs Command directly,
+	// with no shell.
+	Command string   `toml:"command"`
+	Args    []string `toml:"args"`
+	// Env adds environment variables for a stdio server. A value written
+	// "secret:<name>" is replaced by that entry of ~/.meru/secrets.toml.
+	Env map[string]string `toml:"env"`
+	// URL reaches a Streamable HTTP server that is already running.
+	URL string `toml:"url"`
+	// Headers go on every HTTP request to URL. A value written
+	// "secret:<name>" is replaced from secrets.toml, as in Env.
+	Headers map[string]string `toml:"headers"`
+	// Network allows a URL that isn't loopback.
+	Network bool `toml:"network"`
+	// Allow lists the tools the model may call; empty means none.
+	Allow []string `toml:"allow"`
+	// Confirm lists allowed tools that ask before each call.
+	Confirm []string `toml:"confirm"`
+	// Timeout caps one call, as a Go duration such as "60s". Empty means 60s.
+	Timeout string `toml:"timeout"`
+}
+
+// A2A holds the [[a2a.agents]] entries. See ARCHITECTURE.md, "Other agents
+// (A2A)".
+type A2A struct {
+	Agents []A2AAgent `toml:"agents"`
+}
+
+// A2AAgent is one [[a2a.agents]] entry. Each allowed skill becomes a tool
+// named "a2a.<name>.<skill>".
+type A2AAgent struct {
+	Name string `toml:"name"`
+	// URL is where merud reads the agent card. It must be loopback unless
+	// Network is true.
+	URL     string `toml:"url"`
+	Network bool   `toml:"network"`
+	// Headers go on every request to the agent; "secret:<name>" values come
+	// from secrets.toml.
+	Headers map[string]string `toml:"headers"`
+	// Allow lists the skills, by the IDs on the agent card, that become
+	// tools; empty means none. Confirm lists allowed skills that ask first.
+	Allow   []string `toml:"allow"`
+	Confirm []string `toml:"confirm"`
+	// Timeout caps one call, as a Go duration. Empty means 60s.
+	Timeout string `toml:"timeout"`
+}
+
+// Builtin configures the tools built into merud. configure always asks,
+// whatever Confirm says.
+type Builtin struct {
+	// Confirm lists built-in tools that ask before each call.
+	Confirm []string `toml:"confirm"`
 }

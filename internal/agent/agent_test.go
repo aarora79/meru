@@ -133,7 +133,7 @@ func run(ctx context.Context, a *Agent, req rpc.Request) ([]rpc.Event, error) {
 	err := a.Handle(ctx, req, func(ev rpc.Event) error {
 		evs = append(evs, ev)
 		return nil
-	})
+	}, nil)
 	return evs, err
 }
 
@@ -299,7 +299,7 @@ func TestTurnStopsWhenEmitFails(t *testing.T) {
 			return gone
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, gone) {
 		t.Errorf("Handle error = %v, want %v", err, gone)
 	}
@@ -324,7 +324,7 @@ func TestTurnCancelled(t *testing.T) {
 			cancel() // as if the client hung up after the first token
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Handle error = %v, want context.Canceled", err)
 	}

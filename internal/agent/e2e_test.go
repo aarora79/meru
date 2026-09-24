@@ -43,7 +43,7 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	// Ping first, as meru ping would.
-	for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpPing}) {
+	for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpPing}, nil) {
 		if err != nil || ev.Type != rpc.EventDone {
 			t.Fatalf("ping: event %+v, err %v", ev, err)
 		}
@@ -52,7 +52,7 @@ func TestEndToEnd(t *testing.T) {
 	var answer strings.Builder
 	var session, route string
 	var last rpc.EventType
-	for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpAsk, Text: "what is the answer?", Source: rpc.SourceCLI}) {
+	for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpAsk, Text: "what is the answer?", Source: rpc.SourceCLI}, nil) {
 		if err != nil {
 			t.Fatalf("ask: %v", err)
 		}

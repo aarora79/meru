@@ -48,7 +48,7 @@ func indexCmd(ctx context.Context, socket string, args []string, stdout, stderr 
 		}
 		req.Path = abs
 	}
-	for ev, err := range rpc.Do(ctx, socket, req) {
+	for ev, err := range rpc.Do(ctx, socket, req, nil) {
 		if err != nil {
 			return err
 		}
@@ -69,7 +69,7 @@ func indexCmd(ctx context.Context, socket string, args []string, stdout, stderr 
 
 // indexStatus asks merud what the index holds and prints it.
 func indexStatus(ctx context.Context, socket string, stdout io.Writer) error {
-	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpIndexStatus}) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpIndexStatus}, nil) {
 		if err != nil {
 			return err
 		}

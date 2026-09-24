@@ -9,15 +9,17 @@ package rpc
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net"
 	"os"
+	"slices"
+	"strconv"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -41,9 +43,12 @@ import (
 // the client disconnects or merud shuts down; Handler should then stop and
 // return ctx.Err().
 //
+// approve asks the client about one tool call: it sends an "approval" event
+// and waits for the client's Reply. Handlers that run no tools ignore it.
+//
 // Handler is a function type, so any function with this signature, such as a
 // method value like agent.Handle, can serve requests.
-type Handler func(ctx context.Context, req Request, emit func(Event) error) error
+type Handler func(ctx context.Context, req Request, emit func(Event) error, approve ApproveFunc) error
 
 // pingTimeout bounds how long Listen waits for an existing merud to answer.
 const pingTimeout = time.Second
@@ -93,7 +98,7 @@ func Listen(ctx context.Context, path string) (net.Listener, error) {
 func pingOK(ctx context.Context, path string) bool {
 	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
-	for ev, err := range Do(ctx, path, Request{Op: OpPing}) {
+	for ev, err := range Do(ctx, path, Request{Op: OpPing}, nil) {
 		return err == nil && ev.Type == EventDone
 	}
 	return false
@@ -180,7 +185,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		log.DebugContext(ctx, "rpc ping")
 		_ = write(Event{Type: EventDone})
 		return
-	case OpAsk, OpIndex, OpIndexStatus:
+	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
@@ -204,10 +209,12 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	log.DebugContext(ctx, "rpc request", "op", req.Op, "source", req.Source,
 		"session", req.Session, "question_chars", chars)
 
-	// The client sends nothing after its Request, so the next read returns
-	// only when the client hangs up. watchHangup turns that into a cancel.
+	// After its Request the client sends only Replies to approval events.
+	// readReplies hands each one to the approval waiting for it, and
+	// cancels the turn when the client hangs up.
+	replies := newReplyBox()
 	var wg sync.WaitGroup
-	wg.Go(func() { watchHangup(br, cancel) })
+	wg.Go(func() { readReplies(br, replies, cancel, log) })
 	// Deferred calls run last-in, first-out: this Wait runs after cancel
 	// (registered below) has unblocked the read, and before conn.Close.
 	defer wg.Wait()
@@ -232,7 +239,10 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		return nil
 	}
 
-	herr := h(ctx, req, emit)
+	approve := func(ctx context.Context, a Approval) (Choice, error) {
+		return replies.ask(ctx, a, emit)
+	}
+	herr := h(ctx, req, emit, approve)
 	ms := time.Since(start).Milliseconds()
 	switch {
 	case ctx.Err() != nil:
@@ -278,10 +288,91 @@ func readRequest(r *bufio.Reader) (Request, error) {
 	return req, nil
 }
 
-// watchHangup reads from r until the read fails, which happens when the
-// client closes its end or the server sets the deadline, and then calls
-// cancel. Any bytes the client sends meanwhile are thrown away.
-func watchHangup(r io.Reader, cancel context.CancelFunc) {
-	_, _ = io.Copy(io.Discard, r) // drain only; nothing to report
-	cancel()
+// replyBox pairs each approval event with the Reply that answers it. The
+// turn's goroutine registers a channel under the approval's ID and waits on
+// it; readReplies, in another goroutine, delivers each Reply to its channel.
+type replyBox struct {
+	mu      sync.Mutex             // guards next and pending
+	next    int                    // the last approval ID handed out
+	pending map[string]chan Choice // open approvals, by ID
+}
+
+// newReplyBox returns an empty replyBox.
+func newReplyBox() *replyBox {
+	return &replyBox{pending: map[string]chan Choice{}}
+}
+
+// ask sends a as an "approval" event with a fresh ID, then waits for the
+// client's answer. An answer the approval didn't offer counts as "deny",
+// so a confused client can't widen what the user agreed to. ask fails when
+// the event can't be sent or ctx ends first, which includes the client
+// hanging up.
+func (b *replyBox) ask(ctx context.Context, a Approval, emit func(Event) error) (Choice, error) {
+	// A buffer of one lets readReplies deliver without waiting, even if
+	// this function has already given up.
+	ch := make(chan Choice, 1)
+	b.mu.Lock()
+	b.next++
+	a.ID = strconv.Itoa(b.next)
+	b.pending[a.ID] = ch
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		delete(b.pending, a.ID)
+		b.mu.Unlock()
+	}()
+
+	if err := emit(Event{Type: EventApproval, Approval: &a}); err != nil {
+		return "", err
+	}
+	// select waits for whichever happens first: the answer or the end of
+	// the turn.
+	select {
+	case c := <-ch:
+		if !slices.Contains(a.Choices, c) {
+			return ChoiceDeny, nil
+		}
+		return c, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// deliver hands r to the approval waiting for it. A Reply for no open
+// approval is dropped: the approval may have timed out already.
+func (b *replyBox) deliver(r Reply) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch, ok := b.pending[r.ApprovalID]
+	if !ok {
+		return false
+	}
+	delete(b.pending, r.ApprovalID)
+	ch <- r.Choice
+	return true
+}
+
+// readReplies reads Reply lines from the client until the connection
+// closes, then calls cancel, because a client that hangs up has given up
+// on the turn. A line that isn't a Reply is logged and skipped.
+func readReplies(br *bufio.Reader, box *replyBox, cancel context.CancelFunc, log *slog.Logger) {
+	defer cancel()
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > maxLine {
+			log.Debug("reply line too long; closing")
+			return
+		}
+		if len(bytes.TrimSpace(line)) > 0 {
+			var r Reply
+			if jerr := json.Unmarshal(line, &r); jerr != nil || r.ApprovalID == "" {
+				log.Debug("bad reply line", "err", jerr)
+			} else if !box.deliver(r) {
+				log.Debug("reply for no open approval", "id", r.ApprovalID)
+			}
+		}
+		if err != nil {
+			return // the client hung up, or the connection broke
+		}
+	}
 }

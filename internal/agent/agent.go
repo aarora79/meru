@@ -151,7 +151,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 //
 // err is a named result, so the deferred function below can read the final
 // error and record the turn's outcome whichever return statement ran.
-func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) (err error) {
+func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) (err error) {
 	start := time.Now()
 	question := strings.TrimSpace(req.Text)
 	if question == "" {

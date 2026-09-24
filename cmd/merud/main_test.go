@@ -216,7 +216,7 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	// Wait for merud to answer a ping.
 	up := false
 	for range 100 {
-		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}) {
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}, nil) {
 			up = err == nil && ev.Type == rpc.EventDone
 		}
 		if up {
@@ -229,7 +229,7 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	}
 
 	var answer strings.Builder
-	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpAsk, Text: "ping?"}) {
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpAsk, Text: "ping?"}, nil) {
 		if err != nil {
 			t.Fatalf("ask: %v", err)
 		}

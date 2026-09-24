@@ -17,7 +17,7 @@ import (
 
 // withSources returns a handler that sends srcs and then streams answer.
 func withSources(answer string, srcs []rpc.Citation) rpc.Handler {
-	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
 		emit(rpc.Event{Type: rpc.EventSession, Session: "s"})
 		emit(rpc.Event{Type: rpc.EventRoute, Route: "search"})
 		if srcs != nil {
@@ -64,7 +64,7 @@ type fakeIndexer struct {
 	req rpc.Request
 }
 
-func (f *fakeIndexer) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+func (f *fakeIndexer) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
 	f.req = req
 	switch req.Op {
 	case rpc.OpIndexStatus:

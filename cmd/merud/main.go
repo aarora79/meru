@@ -235,10 +235,10 @@ func openStore(ctx context.Context, cfg config.Config, eng engine.Engine, log *s
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index ops to the index service. The rpc server answers pings itself.
 func handler(a *agent.Agent, idx *indexService) rpc.Handler {
-	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
-			return a.Handle(ctx, req, emit)
+			return a.Handle(ctx, req, emit, approve)
 		case rpc.OpIndex:
 			return idx.handleIndex(ctx, req, emit)
 		case rpc.OpIndexStatus:

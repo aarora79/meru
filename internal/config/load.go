@@ -97,6 +97,7 @@ func defaults() Config {
 			OverlapTokens: 50,
 			Watch:         true,
 		},
+		Builtin: Builtin{Confirm: []string{}},
 	}
 }
 

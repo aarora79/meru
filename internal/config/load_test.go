@@ -104,6 +104,31 @@ max_file_mb = 20
 chunk_tokens = 300
 overlap_tokens = 0
 watch = false
+
+[builtin]
+confirm = ["configure"]
+
+[[mcp.servers]]
+name    = "notes"
+command = "notes-mcp"
+args    = ["--root", "~/notes"]
+env     = { NOTES_TOKEN = "secret:notes_token" }
+allow   = ["search", "read"]
+confirm = ["read"]
+timeout = "30s"
+
+[[mcp.servers]]
+name    = "calendar"
+url     = "http://127.0.0.1:8123/mcp"
+headers = { Authorization = "secret:calendar_auth" }
+allow   = ["list_events"]
+
+[[a2a.agents]]
+name    = "research"
+url     = "http://127.0.0.1:9100"
+allow   = ["summarize"]
+confirm = ["summarize"]
+network = false
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -125,6 +150,22 @@ watch = false
 			OverlapTokens: 0,
 			Watch:         false,
 		},
+		Builtin: Builtin{Confirm: []string{"configure"}},
+		MCP: MCP{Servers: []MCPServer{
+			{
+				Name: "notes", Command: "notes-mcp", Args: []string{"--root", "~/notes"},
+				Env:   map[string]string{"NOTES_TOKEN": "secret:notes_token"},
+				Allow: []string{"search", "read"}, Confirm: []string{"read"}, Timeout: "30s",
+			},
+			{
+				Name: "calendar", URL: "http://127.0.0.1:8123/mcp",
+				Headers: map[string]string{"Authorization": "secret:calendar_auth"},
+				Allow:   []string{"list_events"},
+			},
+		}},
+		A2A: A2A{Agents: []A2AAgent{
+			{Name: "research", URL: "http://127.0.0.1:9100", Allow: []string{"summarize"}, Confirm: []string{"summarize"}},
+		}},
 	}
 	cfg.Dir = ""
 	if !reflect.DeepEqual(cfg, want) {

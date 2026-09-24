@@ -21,7 +21,7 @@ import (
 // cancelled or the terminal fails (an error).
 func Run(ctx context.Context, socket string, info Info) error {
 	ask := func(ctx context.Context, req rpc.Request) iter.Seq2[rpc.Event, error] {
-		return rpc.Do(ctx, socket, req)
+		return rpc.Do(ctx, socket, req, nil)
 	}
 
 	// The model needs a way to Send into the program, but the program is

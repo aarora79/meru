@@ -47,7 +47,7 @@ func startServer(t *testing.T, h rpc.Handler) string {
 // answer returns a handler that streams the given pieces, after checking the
 // question.
 func answer(t *testing.T, wantQuestion string, pieces ...string) rpc.Handler {
-	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
 		if req.Text != wantQuestion || req.Source != rpc.SourceCLI {
 			t.Errorf("request = %+v, want text %q from cli", req, wantQuestion)
 		}
@@ -63,7 +63,7 @@ func answer(t *testing.T, wantQuestion string, pieces ...string) rpc.Handler {
 }
 
 func TestRun(t *testing.T) {
-	failing := func(context.Context, rpc.Request, func(rpc.Event) error) error {
+	failing := func(context.Context, rpc.Request, func(rpc.Event) error, rpc.ApproveFunc) error {
 		return errors.New("model not found")
 	}
 	tests := []struct {
@@ -112,7 +112,7 @@ func TestRunNoDaemon(t *testing.T) {
 }
 
 func TestRunInterrupted(t *testing.T) {
-	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
 		emit(rpc.Event{Type: rpc.EventToken, Text: "partial"})
 		<-ctx.Done()
 		return ctx.Err()

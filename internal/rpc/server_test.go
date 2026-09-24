@@ -89,7 +89,7 @@ func TestDebugLog(t *testing.T) {
 		return buf.Write(p)
 	}), &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	path, stop := startServerLog(t, func(ctx context.Context, req Request, emit func(Event) error) error {
+	path, stop := startServerLog(t, func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		switch req.Session {
 		case "fail":
 			return errors.New("model fell over")
@@ -149,7 +149,7 @@ func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 // collect runs one request and returns every event, or the first error.
 func collect(ctx context.Context, path string, req Request) ([]Event, error) {
 	var evs []Event
-	for ev, err := range Do(ctx, path, req) {
+	for ev, err := range Do(ctx, path, req, nil) {
 		if err != nil {
 			return evs, err
 		}
@@ -159,7 +159,7 @@ func collect(ctx context.Context, path string, req Request) ([]Event, error) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	echo := func(ctx context.Context, req Request, emit func(Event) error) error {
+	echo := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		if err := emit(Event{Type: EventSession, Session: "s1"}); err != nil {
 			return err
 		}
@@ -170,19 +170,19 @@ func TestRoundTrip(t *testing.T) {
 		}
 		return nil
 	}
-	fail := func(ctx context.Context, req Request, emit func(Event) error) error {
+	fail := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		return errors.New("model fell over")
 	}
 	// stats emits its own "done" first, to show the server holds it back
 	// until the handler returns and then sends it last.
-	stats := func(ctx context.Context, req Request, emit func(Event) error) error {
+	stats := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		if err := emit(Event{Type: EventDone, TTFTMillis: 120, DurationMillis: 900, TokensIn: 30, TokensOut: 12}); err != nil {
 			return err
 		}
 		return emit(Event{Type: EventToken, Text: "hi"})
 	}
 	// statsThenFail emits a "done" and then fails; the error must win.
-	statsThenFail := func(ctx context.Context, req Request, emit func(Event) error) error {
+	statsThenFail := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		if err := emit(Event{Type: EventDone, TokensOut: 5}); err != nil {
 			return err
 		}
@@ -190,7 +190,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	// report answers the two index ops the way merud does.
-	report := func(ctx context.Context, req Request, emit func(Event) error) error {
+	report := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		if req.Op == OpIndexStatus {
 			return emit(Event{Type: EventStatus, Status: &IndexStatus{Folders: []string{"~/notes"}, Documents: 2, Chunks: 5, Vectors: 5}})
 		}
@@ -199,7 +199,7 @@ func TestRoundTrip(t *testing.T) {
 		}
 		return emit(Event{Type: EventReport, Report: &IndexReport{Seen: 2, Indexed: 1, Unchanged: 1, DurationMillis: 40}})
 	}
-	sources := func(ctx context.Context, req Request, emit func(Event) error) error {
+	sources := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		return emit(Event{Type: EventSources, Sources: []Citation{{N: 1, Path: "~/a.md", Heading: "A", StartLine: 1, EndLine: 4, Score: 0.03}}})
 	}
 
@@ -260,7 +260,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestBadRequestGetsErrorEvent(t *testing.T) {
-	path := startServer(t, func(context.Context, Request, func(Event) error) error {
+	path := startServer(t, func(context.Context, Request, func(Event) error, ApproveFunc) error {
 		t.Error("handler ran for a bad request")
 		return nil
 	})
@@ -284,7 +284,7 @@ func TestBadRequestGetsErrorEvent(t *testing.T) {
 func TestClientDisconnectCancelsHandler(t *testing.T) {
 	started := make(chan struct{})
 	cancelled := make(chan error, 1)
-	path := startServer(t, func(ctx context.Context, req Request, emit func(Event) error) error {
+	path := startServer(t, func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		if err := emit(Event{Type: EventToken, Text: "first"}); err != nil {
 			return err
 		}
@@ -302,7 +302,7 @@ func TestClientDisconnectCancelsHandler(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	for ev, err := range Do(ctx, path, Request{Op: OpAsk, Text: "q"}) {
+	for ev, err := range Do(ctx, path, Request{Op: OpAsk, Text: "q"}, nil) {
 		if err != nil {
 			break
 		}
@@ -330,7 +330,7 @@ func TestShutdownCancelsHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := make(chan struct{})
-	h := func(ctx context.Context, req Request, emit func(Event) error) error {
+	h := func(ctx context.Context, req Request, emit func(Event) error, _ ApproveFunc) error {
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()
@@ -339,7 +339,7 @@ func TestShutdownCancelsHandlers(t *testing.T) {
 	go func() { done <- Serve(ctx, ln, h, quietLog()) }()
 
 	go func() {
-		for range Do(context.Background(), path, Request{Op: OpAsk, Text: "q"}) {
+		for range Do(context.Background(), path, Request{Op: OpAsk, Text: "q"}, nil) {
 		}
 	}()
 	<-started
@@ -355,7 +355,7 @@ func TestShutdownCancelsHandlers(t *testing.T) {
 }
 
 func TestListenRefusesRunningServer(t *testing.T) {
-	path := startServer(t, func(context.Context, Request, func(Event) error) error { return nil })
+	path := startServer(t, func(context.Context, Request, func(Event) error, ApproveFunc) error { return nil })
 	_, err := Listen(context.Background(), path)
 	if err == nil || !strings.Contains(err.Error(), "already listening") {
 		t.Errorf("second Listen = %v, want 'already listening'", err)

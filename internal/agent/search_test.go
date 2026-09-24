@@ -210,7 +210,7 @@ func TestSearchCancelled(t *testing.T) {
 			cancel() // the client hangs up before the search
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Handle = %v, want context.Canceled", err)
 	}

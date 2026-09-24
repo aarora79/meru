@@ -134,7 +134,7 @@ func chatInfo() tui.Info {
 
 // ping asks merud whether it is up and prints the answer.
 func ping(ctx context.Context, socket string, stdout io.Writer) error {
-	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpPing}) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpPing}, nil) {
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func ask(ctx context.Context, socket, question string, stdout io.Writer) error {
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
 	endsInNewline := false
-	for ev, err := range rpc.Do(ctx, socket, req) {
+	for ev, err := range rpc.Do(ctx, socket, req, nil) {
 		if err != nil {
 			return err
 		}

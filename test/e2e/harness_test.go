@@ -410,7 +410,7 @@ func ask(t *testing.T, socket, session, question string) []rpc.Event {
 	req := rpc.Request{Op: rpc.OpAsk, Session: session, Text: question, Source: rpc.SourceCLI}
 	var events []rpc.Event
 	// rpc.Do returns an iterator; range calls the loop body once per event.
-	for ev, err := range rpc.Do(ctx, socket, req) {
+	for ev, err := range rpc.Do(ctx, socket, req, nil) {
 		if err != nil {
 			t.Fatalf("ask %q: %v", question, err)
 		}
