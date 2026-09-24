@@ -193,7 +193,12 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, nil, log)
+	tools, err := newToolService(ctx, cfg, configPath, st, log)
+	if err != nil {
+		return err
+	}
+	defer tools.Close()
+	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, log)
 	idx := newIndexService(ix, st, cfg.Index.Folders, configPath, log)
 	log.Info("listening", "socket", socketPath)
 
@@ -203,7 +208,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// too. The scan and the watcher log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	return g.Wait()
@@ -233,8 +238,9 @@ func openStore(ctx context.Context, cfg config.Config, eng engine.Engine, log *s
 }
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
-// the index ops to the index service. The rpc server answers pings itself.
-func handler(a *agent.Agent, idx *indexService) rpc.Handler {
+// the index ops to the index service, and the tools and log ops to the tool
+// service. The rpc server answers pings itself.
+func handler(a *agent.Agent, idx *indexService, tools *toolService) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -243,6 +249,10 @@ func handler(a *agent.Agent, idx *indexService) rpc.Handler {
 			return idx.handleIndex(ctx, req, emit)
 		case rpc.OpIndexStatus:
 			return idx.handleStatus(ctx, emit)
+		case rpc.OpTools:
+			return tools.handleTools(emit)
+		case rpc.OpLog:
+			return tools.handleLog(ctx, req.Limit, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

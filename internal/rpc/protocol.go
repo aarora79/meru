@@ -234,8 +234,8 @@ type ToolEvent struct {
 	Name string `json:"name"`
 	// Kind is "mcp", "a2a" or "builtin".
 	Kind string `json:"kind"`
-	// Args are the call's arguments as JSON, secrets redacted. Set on
-	// "tool_call" only.
+	// Args are the call's arguments as JSON, as the model wrote them. The
+	// model never sees a secret, so they hold none. Set on "tool_call" only.
 	Args json.RawMessage `json:"args,omitempty"`
 	// Outcome and DurationMillis are set on "tool_result" only. Outcome is
 	// "ok", "error", "denied", "declined", "cancelled" or "timeout".
