@@ -69,7 +69,7 @@ func (f *fakeIndexer) handle(ctx context.Context, req rpc.Request, emit func(rpc
 	switch req.Op {
 	case rpc.OpIndexStatus:
 		return emit(rpc.Event{Type: rpc.EventStatus, Status: &rpc.IndexStatus{
-			Folders: []string{"~/notes"}, Documents: 3, Chunks: 7, Vectors: 5, Scanning: true,
+			Folders: []string{"~/notes"}, Documents: 3, Chunks: 7, Vectors: 5, DBBytes: 8_808_038, Scanning: true,
 			LastScan:   &rpc.IndexReport{Seen: 3, Indexed: 3, Chunks: 7, Skipped: 1, DurationMillis: 1200},
 			LastScanAt: "2026-09-23T10:15:00Z",
 		}})
@@ -103,6 +103,7 @@ func TestIndexCommand(t *testing.T) {
 		{"status", []string{"index", "-status"}, 0, "", "Folders:    ~/notes\n" +
 			"Index:      3 files, 7 chunks, 5 vectors\n" +
 			"            2 chunks still need a vector; keyword search covers them until then\n" +
+			"On disk:    8.4 MB (meru.db and its -wal and -shm files)\n" +
 			"Scanning:   yes\n" +
 			"Last scan:  2026-09-23T10:15:00Z, 3 files indexed (7 chunks), 0 unchanged, 0 removed, 0 failed, 1 skipped, in 1.2s\n", ""},
 		{"status with a folder", []string{"index", "-status", "x"}, 1, "", "", "usage"},

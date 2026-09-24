@@ -382,7 +382,7 @@ func docCount(ix *rpc.IndexStatus, sizes bool) string {
 			inside = "1 vector"
 		}
 		if ix.DBBytes > 0 {
-			inside += ", " + humanBytes(ix.DBBytes)
+			inside += ", " + rpc.ShortBytes(ix.DBBytes)
 		}
 		s += " (" + inside + ")"
 	}
@@ -390,29 +390,4 @@ func docCount(ix *rpc.IndexStatus, sizes bool) string {
 		s += " · indexing"
 	}
 	return s
-}
-
-// humanBytes writes a size on disk for people: "512 B", "8.4 MB", "84 MB",
-// "1.2 GB", with one decimal below ten. The units count by 1,024 and carry
-// the familiar labels KB, MB and GB, as macOS's `ls -lh` and `du -h` do on
-// Linux, so the number matches what those tools print for meru.db. (Finder
-// counts by 1,000 and would show a little more.)
-func humanBytes(n int64) string {
-	if n < 1024 {
-		return fmt.Sprintf("%d B", n)
-	}
-	v := float64(n)
-	units := []string{"KB", "MB", "GB", "TB"}
-	for i, unit := range units {
-		v /= 1024
-		// 1,023.9 KB would print as "1024 KB"; the next unit writes it
-		// "1.0 MB".
-		if v < 999.5 || i == len(units)-1 {
-			if v < 9.95 {
-				return fmt.Sprintf("%.1f %s", v, unit)
-			}
-			return fmt.Sprintf("%.0f %s", v, unit)
-		}
-	}
-	return "" // not reached: the loop returns on its last unit
 }

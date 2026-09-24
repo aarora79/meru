@@ -211,12 +211,18 @@ as it arrives.
 `meru chat` also uses Bubbles, from the same authors, for the text input and the
 scrolling answer pane, and two more Charm libraries for its look:
 
-- **Lip Gloss** styles the screen: a header with the profile, model, the number
-  of documents in the search index, the session and whether `merud` is
-  reachable; "You" and "Meru" labels; a route badge on each
+- **Lip Gloss** styles the screen: a header with the profile, model, what the
+  index holds (`2637 docs (11698 vectors, 84 MB)`, with `· indexing` while a
+  scan runs), the session, the last hour's use (`1h: 4 questions · 18k in ·
+  2.1k out`) and whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
   answer, amber when the router fell back; and a stats line with time to first
   token, tokens per second and total time. Colors adapt to light and dark
-  terminals, and `NO_COLOR` turns them off.
+  terminals, and `NO_COLOR` turns them off. The chat asks `merud` for the
+  header's numbers every 5 seconds while a scan runs and every 30 seconds
+  otherwise. Typing `/usage` opens a table of sessions, questions, tokens in
+  and out, active time, files touched and tool calls for the last hour, today,
+  this week, this month, the last 30 days and all time; `meru usage` prints
+  the same table.
 - **Glamour** renders each finished answer as Markdown: headings, lists, and code
   blocks with syntax highlighting. While the answer streams, the screen shows the
   raw text with a cursor, because half-written Markdown renders wrong.
@@ -701,6 +707,7 @@ files with mode `0600`, so only you can read them.
 | `tool_calls` | audit log: every MCP, A2A and built-in tool call, with its call ID, session, `kind` (`mcp`, `a2a` or `builtin`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
 | `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
+| `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration and files) |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
 | `meta` | schema version, embedding model name and vector size | config |
 
@@ -1489,7 +1496,10 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency |
+| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.sessions` | counter | source | sessions started |
+| `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
+| `meru.turn.docs` | histogram | route | distinct files each answered question read |
 | `meru.turn.iterations` | histogram | route | loop depth |
 | `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |

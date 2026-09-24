@@ -295,26 +295,6 @@ func TestDocCountSizes(t *testing.T) {
 	}
 }
 
-func TestHumanBytes(t *testing.T) {
-	tests := []struct {
-		n    int64
-		want string
-	}{
-		{0, "0 B"},
-		{1023, "1023 B"},
-		{1024, "1.0 KB"},
-		{8_808_038, "8.4 MB"},
-		{88_080_384, "84 MB"},
-		{1_048_575, "1.0 MB"},
-		{1_288_490_189, "1.2 GB"},
-	}
-	for _, tt := range tests {
-		if got := humanBytes(tt.n); got != tt.want {
-			t.Errorf("humanBytes(%d) = %q, want %q", tt.n, got, tt.want)
-		}
-	}
-}
-
 // TestHeaderDropsUsageFirst narrows the screen one column at a time and
 // checks the order in which the header gives things up: the usage, then
 // the index sizes, then the rest of the details.

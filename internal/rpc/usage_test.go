@@ -77,3 +77,23 @@ func TestUsageTable(t *testing.T) {
 		t.Errorf("UsageTable(nil) = %q, want 8 rows of one cell", got)
 	}
 }
+
+func TestShortBytes(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KB"},
+		{8_808_038, "8.4 MB"},
+		{88_080_384, "84 MB"},
+		{1_048_575, "1.0 MB"},
+		{1_288_490_189, "1.2 GB"},
+	}
+	for _, tt := range tests {
+		if got := ShortBytes(tt.n); got != tt.want {
+			t.Errorf("ShortBytes(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}

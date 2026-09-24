@@ -444,7 +444,7 @@
 
 <p><code>meru chat</code> also uses Bubbles, from the same authors, for the text input and the scrolling answer pane, and two more Charm libraries for its look:</p>
 <ul>
-  <li><b>Lip Gloss</b> styles the screen: a header with the profile, model, the number of documents in the search index, the session and whether <code>merud</code> is reachable; "You" and "Meru" labels; a route badge on each answer, amber when the router fell back; and a stats line with time to first token, tokens per second and total time. Colors adapt to light and dark terminals, and <code>NO_COLOR</code> turns them off.</li>
+  <li><b>Lip Gloss</b> styles the screen: a header with the profile, model, what the index holds (<code>2637 docs (11698 vectors, 84 MB)</code>, with <code>· indexing</code> while a scan runs), the session, the last hour's use (<code>1h: 4 questions · 18k in · 2.1k out</code>) and whether <code>merud</code> is reachable; "You" and "Meru" labels; a route badge on each answer, amber when the router fell back; and a stats line with time to first token, tokens per second and total time. Colors adapt to light and dark terminals, and <code>NO_COLOR</code> turns them off. The chat asks <code>merud</code> for the header's numbers every 5 seconds while a scan runs and every 30 seconds otherwise. Typing <code>/usage</code> opens a table of sessions, questions, tokens in and out, active time, files touched and tool calls for the last hour, today, this week, this month, the last 30 days and all time; <code>meru usage</code> prints the same table.</li>
   <li><b>Glamour</b> renders each finished answer as Markdown: headings, lists, and code blocks with syntax highlighting. While the answer streams, the screen shows the raw text with a cursor, because half-written Markdown renders wrong.</li>
 </ul>
 <p>The stats come from the <code>done</code> event that ends each reply, which carries the turn's timings and token counts.</p>
@@ -890,6 +890,7 @@ confirm = []   # the shipped default; from v0.4, add "remember" or "write_file" 
     <tr><td><code>sessions</code> / <code>messages</code> (v0.4)</td><td>every session and message, plus each session's summary, for context and <code>meru log</code></td><td><code>sessions/*.jsonl</code></td></tr>
     <tr><td><code>session_vec</code> (v0.4)</td><td>one vector per session summary, for "what did we decide last week"</td><td>session summaries</td></tr>
     <tr><td><code>message_fts</code> (v0.4)</td><td>keyword index over messages, for "what did we say about X"</td><td>messages</td></tr>
+    <tr><td><code>turns</code></td><td>one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. <code>meru usage</code> and the chat's usage numbers count it</td><td><code>sessions/*.jsonl</code> (the assistant line holds route, duration and files)</td></tr>
     <tr><td><code>tool_calls</code></td><td>audit log: every MCP, A2A and built-in tool call, with its call ID, session, <code>kind</code> (<code>mcp</code>, <code>a2a</code> or <code>builtin</code>), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID</td><td><code>sessions/*.jsonl</code></td></tr>
     <tr><td><code>memories</code> (v0.4)</td><td>one row per memory file: path, folder (its kind), text, created, source, last used</td><td><code>memory/*/*.md</code></td></tr>
     <tr><td><code>memory_vec</code> / <code>memory_fts</code> (v0.4)</td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
@@ -1711,6 +1712,9 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>meru.turn.iterations</code></td><td>histogram</td><td>route</td><td>loop depth</td></tr>
     <tr><td><code>meru.context.tokens</code></td><td>histogram</td><td>section (system/skills/memories/chunks/history/tools)</td><td>data for the context budget policy</td></tr>
     <tr><td><code>meru.tool.calls</code></td><td>counter</td><td><code>meru.tool.kind</code> (mcp/a2a/builtin), <code>meru.tool.server</code>, <code>gen_ai.tool.name</code>, <code>meru.outcome</code> (ok/error/denied/declined/cancelled/timeout)</td><td>tool usage and failures</td></tr>
+    <tr><td><code>meru.sessions</code></td><td>counter</td><td>source</td><td>sessions started</td></tr>
+    <tr><td><code>meru.turn.tokens</code></td><td>counter</td><td><code>gen_ai.token.type</code> (input/output), route, source</td><td>the main model's tokens per answered question, summed over its model calls</td></tr>
+    <tr><td><code>meru.turn.docs</code></td><td>histogram</td><td>route</td><td>distinct files each answered question read</td></tr>
     <tr><td><code>meru.tool.duration</code></td><td>histogram</td><td><code>meru.tool.kind</code>, <code>meru.tool.server</code>, <code>gen_ai.tool.name</code></td><td>tool latency, for calls that ran</td></tr>
     <tr><td><code>meru.retrieval.duration</code></td><td>histogram</td><td>stage (vector/fts/fusion/memories)</td><td>retrieval cost (v0.2; memories stage v0.4)</td></tr>
     <tr><td><code>meru.rpc.active_streams</code></td><td>up-down counter</td><td>—</td><td>open client sessions</td></tr>

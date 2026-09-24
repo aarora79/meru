@@ -97,6 +97,7 @@ func reportLine(r rpc.IndexReport) string {
 //
 //	Folders:    ~/notes, ~/papers
 //	Index:      12 files, 87 chunks, 87 vectors
+//	On disk:    8.4 MB (meru.db and its -wal and -shm files)
 //	Scanning:   no
 //	Last scan:  2026-09-23T10:15:00-04:00, 3 files indexed (5 chunks), ...
 func statusText(s rpc.IndexStatus) string {
@@ -109,6 +110,9 @@ func statusText(s rpc.IndexStatus) string {
 	fmt.Fprintf(&b, "Index:      %s, %d chunks, %d vectors\n", plural(s.Documents, "file"), s.Chunks, s.Vectors)
 	if s.Vectors < s.Chunks {
 		fmt.Fprintf(&b, "            %d chunks still need a vector; keyword search covers them until then\n", s.Chunks-s.Vectors)
+	}
+	if s.DBBytes > 0 {
+		fmt.Fprintf(&b, "On disk:    %s (meru.db and its -wal and -shm files)\n", rpc.ShortBytes(s.DBBytes))
 	}
 	scanning := "no"
 	if s.Scanning {
