@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
@@ -231,6 +232,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"confidence", dec.Confidence)
 		dec.Route = "search"
 	}
+	// The same gap for tools: "search my obsidian vault" can route to
+	// search, which offers no tools. When a question names a connected tool
+	// server and the route has no tools, add them.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
+		a.log.DebugContext(ctx, "route changed: the question names a tool server",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
@@ -431,6 +440,44 @@ func folderNames(folders []string) []string {
 		n := strings.ToLower(filepath.Base(filepath.FromSlash(f)))
 		if utf8.RuneCountInString(n) >= 3 && !slices.Contains(names, n) {
 			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// withTools returns the route that adds tools to route: "tools" for
+// "direct" and "search+tools" for "search". ok is false for a route that
+// has tools already.
+func withTools(route string) (string, bool) {
+	switch route {
+	case "direct":
+		return "tools", true
+	case "search":
+		return "search+tools", true
+	}
+	return "", false
+}
+
+// toolServers returns, in lower case, the names of the MCP servers and A2A
+// agents behind specs: "obsidian" for "obsidian.search_vault" and
+// "research" for "a2a.research.summarize". Built-in tools belong to no
+// server; their owner, "meru", is also the assistant's name, so it would
+// match nearly every question addressed to it.
+func toolServers(specs []engine.ToolSpec) []string {
+	var names []string
+	for _, t := range specs {
+		name := strings.ToLower(t.Name)
+		var server string
+		switch toolKind(name) {
+		case dispatch.KindA2A:
+			server, _, _ = strings.Cut(strings.TrimPrefix(name, "a2a."), ".")
+		case dispatch.KindMCP:
+			server, _, _ = strings.Cut(name, ".")
+		default:
+			continue
+		}
+		if !slices.Contains(names, server) {
+			names = append(names, server)
 		}
 	}
 	return names

@@ -497,3 +497,43 @@ func TestToolKind(t *testing.T) {
 		})
 	}
 }
+
+// TestQuestionNamingAToolServerGetsTools covers the route override: a
+// question that names a connected server gets that server's tools, even
+// when the router picked a route without tools.
+func TestQuestionNamingAToolServerGetsTools(t *testing.T) {
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("obsidian.search_vault"), spec("a2a.research.summarize"), spec("configure")}}
+	tests := []struct {
+		route, question, wantRoute string
+	}{
+		{"search", "search my Obsidian vault for AI", "search+tools"},
+		{"direct", "ask research to summarize this", "tools"},
+		{"direct", "what is the capital of France", "direct"},
+		{"direct", "meru, can you configure things", "direct"}, // built-ins name no server
+		{"tools", "search obsidian", "tools"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.question, func(t *testing.T) {
+			eng := &fakeEngine{pieces: []string{"ok"}}
+			evs, err := run(context.Background(), toolsAgent(t, tt.route, eng, tools), rpc.Request{Text: tt.question})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			for _, ev := range evs {
+				if ev.Type == rpc.EventRoute && ev.Route != tt.wantRoute {
+					t.Errorf("route = %q, want %q", ev.Route, tt.wantRoute)
+				}
+			}
+			if got, want := len(eng.lastCall().tools) > 0, tt.wantRoute != "direct"; got != want {
+				t.Errorf("tools offered = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestToolServers(t *testing.T) {
+	got := toolServers([]engine.ToolSpec{spec("Obsidian.search"), spec("obsidian.read"), spec("a2a.research.summarize"), spec("configure")})
+	if want := []string{"obsidian", "research"}; !slices.Equal(got, want) {
+		t.Errorf("toolServers = %q, want %q", got, want)
+	}
+}
