@@ -17,7 +17,8 @@
 //	meru [-socket path] setup user       tell Meru who you are
 //	meru [-socket path] memory list      show what Meru remembers; also add, forget
 //	meru [-socket path] skills list      show the skills; also show, reset
-//	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
+//	meru [-socket path] mcp list         the MCP server catalog and your servers
+//	meru [-socket path] mcp add ...      add an MCP server; also remove
 //
 // A question whose first word is ping, chat, index, tools, log, usage, setup,
 // memory, skills or mcp needs quotes, so meru reads it as a question and not
@@ -83,9 +84,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
                         show, save or delete what Meru remembers
   meru skills list | show <name> | reset [--yes] <name>
                         show the skills, print one, or restore a built-in
-  meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
-  meru mcp add <name> -- <command> [args...] | --url <url>
+  meru mcp list         show the server catalog and your MCP servers
+  meru mcp add <catalog-name> [args...]
+                        add a server from the catalog
+  meru mcp add stdio <name> -- <command> [args...]
+  meru mcp add http <name> <url> [--network]
                         add a server that isn't in the catalog
+  meru mcp remove [--yes] <name>
+                        take a server out of config.toml
 
 flags:`)
 		flags.PrintDefaults()

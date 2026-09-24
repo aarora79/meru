@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -231,7 +232,7 @@ func TestSetupOffersProfile(t *testing.T) {
 	sock := startServer(t, f.handle)
 	writeConfig(t, sock)
 	// No download, skip the servers, yes to the profile, a name, skip the rest.
-	c, out, _ := scripted("n\n" + strings.Repeat("k\n", 6) + "\nDana\n\n\n\n\n")
+	c, out, _ := scripted("n\n" + strings.Repeat("k\n", len(setupEntries(runtime.GOOS))) + "\nDana\n\n\n\n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}

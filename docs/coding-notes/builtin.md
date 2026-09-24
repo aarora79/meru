@@ -104,7 +104,10 @@ setting can switch its prompt off, and `dispatch` offers only "approve once" and
 `Call` decodes the arguments with `DisallowUnknownFields`, so a key the tool
 doesn't know, such as an `allow` list the model made up, fails instead of being
 ignored. `entryFor` accepts exactly one of two shapes: `catalog`, or `name` with
-`command` (and `args`) or `url`.
+`command` (and `args`) or `url`. For a catalog entry it also refuses one made for
+another system (`windows` off Windows) and one that takes folders on the command
+line: `entry.WithArgs(nil)` fails for `filesystem`, and the error names the
+terminal command to run.
 
 Before it writes, `missingSecrets` loads `secrets.toml` next to `config.toml` and
 checks every secret the entry names. When one is missing, `configure` writes

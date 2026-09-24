@@ -27,8 +27,8 @@ func TestEntries(t *testing.T) {
 				t.Errorf("two entries named %q", e.Name)
 			}
 			seen[e.Name] = true
-			if e.Title == "" || e.Description == "" || e.Docs == "" || e.Install == "" {
-				t.Error("Title, Description, Docs and Install must all be set")
+			if e.Title == "" || e.Description == "" || e.Docs == "" || e.Install == "" || e.Requires == "" {
+				t.Error("Title, Description, Docs, Install and Requires must all be set")
 			}
 			if e.Transport != TransportStdio || e.Command == "" {
 				t.Errorf("transport %q, command %q: every starter server runs over stdio", e.Transport, e.Command)
@@ -54,11 +54,11 @@ func TestEntries(t *testing.T) {
 						t.Error("an api_key Need has no SecretName")
 					}
 					asked[n.SecretName] = true
-				case NeedPath, NeedURL:
+				case NeedPath, NeedURL, NeedText:
 					if n.Env == "" {
 						t.Errorf("a %s Need has no Env", n.Kind)
 					}
-				case NeedNote:
+				case NeedNote, NeedFolders:
 				default:
 					t.Errorf("unknown Need kind %q", n.Kind)
 				}

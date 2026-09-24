@@ -47,8 +47,11 @@ $ meru ping                                # is merud running?
 $ meru index                               # rescan the folders under [index] folders
 $ meru index ~/notes/work                  # rescan one folder or file inside them
 $ meru index -status                       # what the index holds
+$ meru mcp list                            # the server catalog, and your servers with their state
 $ meru mcp add brave                       # add a catalog server: do it for me, or show me how
-$ meru mcp add notes -- npx -y some-mcp    # add any other server; it allows no tools yet
+$ meru mcp add filesystem ~/notes          # a catalog server that takes folders
+$ meru mcp add stdio notes -- npx -y some-mcp  # any other server: Meru tries it and proposes its tools
+$ meru mcp remove notes                    # take a server out of config.toml
 $ meru tools                               # each server, its allowed tools, which ask first
 $ meru log -n 20 -v                        # the latest tool calls, with results
 ```

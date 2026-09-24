@@ -1230,16 +1230,29 @@ Meru carries a small catalog of known servers in the binary:
 | --- | --- | --- | --- |
 | `brave` | Brave Search (`@brave/brave-search-mcp-server`) | an API key | nothing |
 | `fetch` | web page fetch (`mcp-server-fetch`) | nothing | nothing |
+| `filesystem` | `@modelcontextprotocol/server-filesystem` | the folders it may use | writing, editing, moving, making a folder |
+| `shell` | `mcp-shell-server`, which runs only the programs in `ALLOW_COMMANDS` | the programs to allow | every command |
+| `google` | `workspace-mcp --tools gmail calendar drive docs` | a Google OAuth client and a sign-in | as `gmail`, `calendar` and `drive` |
 | `gmail` | `workspace-mcp --tools gmail` | a Google OAuth client and a sign-in | draft, send |
 | `calendar` | `workspace-mcp --tools calendar` | a Google OAuth client and a sign-in | changing an event |
 | `drive` | `workspace-mcp --tools drive docs` | a Google OAuth client and a sign-in | creating or editing a doc |
 | `obsidian` | `mcp-obsidian`, through Obsidian's Local REST API plugin | the plugin's API key | appending to a note |
+| `windows` | `windows-mcp` (Windows only) | nothing | clicking, typing, PowerShell, files, processes |
 
 Each entry lists the install command, what the server needs, and a starting `allow`
-and `confirm` list: reading allowed, anything that sends, writes or changes
+and `confirm` list: reading allowed, anything that sends, writes, runs or changes
 something in `confirm`. One Google Workspace server covers Gmail, Calendar, Drive
-and Docs; each entry runs it with its own `--tools` flag, so you add only the
-services you want and each asks Google only for its own permissions.
+and Docs. The `google` entry runs it once for all four; `gmail`, `calendar` and
+`drive` run it with one service each, so you can add only the services you want,
+and each asks Google only for its own permissions. Google's own Workspace MCP
+servers are remote only, so the catalog keeps the local one.
+
+`filesystem`, `shell` and `windows` can change files or run programs as you, with
+no sandbox, so their descriptions say so. `shell` runs no shell: the server starts
+only the programs its `ALLOW_COMMANDS` list names, and its one tool sits in
+`confirm`. `windows` sets `ANONYMIZED_TELEMETRY = "false"`, because the server
+sends usage data to its makers otherwise, and leaves its registry tool out of
+`allow`. Setup and `meru mcp list` offer `windows` only on Windows.
 
 For each server, you choose one of two paths:
 
@@ -1256,10 +1269,25 @@ Meru adds the block to the end of `config.toml` as plain text, so your comments
 stay. It writes a temporary copy first and loads it, and replaces the file only
 when the copy loads and its servers pass the same checks `merud` runs.
 
-Outside setup, `meru mcp add gmail` offers the same two paths, and
-`meru mcp list-catalog` lists the entries. A server that isn't in the catalog works
-too: `meru mcp add <name> -- <command> [args...]`, or `--url <url>`. Nobody knows
-a server's tool names until something connects to it, and a guess would either
+Outside setup, one command adds any server:
+
+```sh
+meru mcp add <catalog-name> [args...]              # a catalog entry
+meru mcp add stdio <name> -- <command> [args...]   # a server merud starts
+meru mcp add http <name> <url> [--network]         # a Streamable HTTP server
+```
+
+`meru mcp add gmail` offers the same two paths as setup. An entry that takes
+arguments gets them on the command line: `meru mcp add filesystem ~/notes` names
+the folders, with `~` expanded, since the server wants absolute paths. The older
+forms, `meru mcp add <name> -- <command>` and `--url <url>`, still work. `meru mcp
+list` shows the catalog, then each server in `config.toml` with what `merud` says
+about it: connected or not, and how many tools it offers and allows. `meru mcp
+remove <name>` takes one `[[mcp.servers]]` block out of `config.toml`, with the
+comment lines above it, keeps every other line, and checks the result loads before
+it replaces the file, as the append does.
+
+Nobody knows a server's tool names until something connects to it, and a guess would either
 miss or allow a tool nobody has read. So `meru` asks `merud` to **probe** the
 server first: `merud` starts it for a moment (or connects, for a URL), lists every
 tool it offers, and stops it. The probe uses the same code, trimmed environment,
@@ -1271,10 +1299,16 @@ For each tool the probe reports two MCP hints, when the server gives them:
 `readOnlyHint` (the tool changes nothing) and `destructiveHint` (it may delete or
 overwrite). From them `meru` proposes a split: read-only tools go in `allow`, and
 tools that may change something go in `allow` and `confirm`, so each call asks
-first. You edit the proposal before `meru` writes the entry. MCP calls these hints,
-not promises: a server can mislabel a tool, so the proposal is a starting point and
-you make the call. A URL off this machine gets `network = true`, because you typed
-it on purpose.
+first. A tool with no hints counts as one that may change something. For a catalog
+entry the probe runs too, but the catalog's own lists win over the hints, and a tool
+the catalog doesn't name starts out of `allow`. You edit the proposal before `meru`
+writes the entry: Enter accepts, and `-name`, `+name` and `?name` leave a tool out,
+allow it without asking, or make it ask. MCP calls these hints, not promises: a
+server can mislabel a tool, so the proposal is a starting point and you make the
+call. When the probe fails, `meru` says why and offers to try again, to write the
+entry anyway (with the catalog's lists, or an empty `allow`), or to cancel. A URL
+off this machine needs `--network`, and `meru` says that each tool call sends your
+data there; the entry gets `network = true`.
 
 After it writes the entry, `meru` asks `merud` to reload its MCP servers, so the new
 tools work without a restart.
@@ -1284,7 +1318,8 @@ tool, which adds a catalog entry, or a custom one from a name and a command or U
 `configure` never writes an entry whose secret is missing from `secrets.toml`. It
 tells the model to send you to `meru mcp add <name>` in a terminal instead, because
 a key typed into chat would pass through the model, the approval prompt and the
-transcript. After it writes, `merud` rebuilds the MCP client pool and swaps it in,
+transcript. It sends you there for `filesystem` too, which takes its folders on the
+command line. After it writes, `merud` rebuilds the MCP client pool and swaps it in,
 so the new server works without a restart.
 
 **Config changes always ask.** `configure` goes through `dispatch` and asks you
