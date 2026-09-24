@@ -17,6 +17,10 @@
 // the user's choice back on a channel. See ARCHITECTURE.md, "Approving a
 // tool call".
 //
+// A line typed with a leading "/" is a command for the chat itself and never
+// reaches the model. /usage opens a box with merud's usage numbers, and the
+// header shows the last hour of them.
+//
 // The package holds no model or store logic; it draws what merud sends. It
 // leaves out mouse scrolling.
 package tui

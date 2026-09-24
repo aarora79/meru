@@ -104,7 +104,7 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools`, `log`, `setup` or `mcp`. Without quotes, `meru` reads that word as
+`index`, `tools`, `log`, `usage`, `setup` or `mcp`. Without quotes, `meru` reads that word as
 a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
 notebook?`.
 
@@ -117,6 +117,23 @@ In `meru chat`:
 | Ctrl-D | quit |
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
+| `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
+
+The line at the top of `meru chat` shows the profile, the main model, the search
+index and the session on the left:
+
+```text
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · session 101500-ab12
+```
+
+The index part counts the files Meru searches, the vectors it holds for them, and
+the size of `meru.db` on disk; `· indexing` follows while a scan runs. On the
+right, a wide terminal shows the last hour's use, such as
+`1h: 4 questions · 18k in · 2.1k out`, then whether `merud` is running. A
+narrow one drops the last hour first, then the vectors and size.
+
+Any other line that starts with `/` stays in the input box, and the bottom line
+lists the commands `meru chat` knows.
 
 Each `meru "..."` starts a new conversation. `meru chat` keeps one conversation
 going until you quit, so later questions see the earlier ones.
@@ -203,6 +220,33 @@ meru log -v         # each call's result under it
 The columns are the local time, the session, the kind of tool, the tool, how the
 call ended, what you chose when asked (`-` when nobody was asked), how long it took,
 and its arguments, cut to fit one line.
+
+### See how much you use Meru
+
+```sh
+meru usage
+```
+
+```text
+                  1h   today     week   month     30d     all
+sessions           1       2        5      12      14      30
+questions          4       9       31      88      97     212
+tokens in        18k     41k     150k    420k    468k    1.4M
+tokens out      2.1k    5.3k      19k     61k     66k    180k
+active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m
+docs touched       3       7       22      51      55     140
+tool calls         1       2        6      14      15      40
+
+Today, week and month follow the local calendar.
+```
+
+Each column is a window of time: the last hour, today since midnight, this week
+since Monday, this month since the 1st, the last 30 days, and all time. The rows
+count the sessions you asked in, the questions Meru answered, the tokens the main
+model read and wrote, how long `merud` spent answering, the files whose excerpts went
+into a prompt, and the tool calls. A question that failed or that you stopped
+doesn't count. `k` means thousands and `M` millions. In `meru chat`, type `/usage`
+to see the same table.
 
 ## 6. Change settings
 

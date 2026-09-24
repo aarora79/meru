@@ -41,6 +41,8 @@ type styles struct {
 	approvalTitle lipgloss.Style // "Run notes.search?" at the top of that box
 	choice        lipgloss.Style // a choice in the box
 	choiceOn      lipgloss.Style // the choice Enter would pick
+
+	usageBox lipgloss.Style // the /usage box, in a teal border
 }
 
 // answerIndent is how far message text sits from the left edge. Glamour's
@@ -113,6 +115,13 @@ func newStyles(r *lipgloss.Renderer) styles {
 		approvalTitle: r.NewStyle().Foreground(amber).Bold(true),
 		choice:        r.NewStyle().Foreground(grey),
 		choiceOn:      r.NewStyle().Foreground(teal).Bold(true),
+		// Teal, like the input box: the usage box answers something the
+		// user typed, and asks for no decision.
+		usageBox: r.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(teal).
+			Padding(0, 1).
+			MarginLeft(answerIndent),
 	}
 }
 
@@ -126,6 +135,12 @@ type keyMap struct {
 	Recall  key.Binding
 	Scroll  key.Binding
 	Newline key.Binding
+	// Usage is the /usage command. It has no key: Ctrl-U, the obvious one,
+	// already deletes to the start of the line in the input box. The
+	// binding exists only so the help line lists the command. The help
+	// line skips a binding with no keys, so it gets "/usage", which no key
+	// press ever reads as; submit runs the command.
+	Usage key.Binding
 }
 
 // newKeyMap returns the chat screen's keys.
@@ -134,35 +149,38 @@ func newKeyMap() keyMap {
 		Send:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "send")),
 		Stop:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
 		Quit:    key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "quit")),
-		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "last question")),
+		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
 		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "scroll")),
 		Newline: key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
+		Usage:   key.NewBinding(key.WithKeys("/usage"), key.WithHelp("/usage", "show usage")),
 	}
 }
 
 // ShortHelp returns the keys the help line shows, in order. Having this
 // method makes keyMap satisfy help.KeyMap, the interface the Bubbles help
-// component draws from. Ctrl-J is left out: the line would no longer fit an
-// 80-column terminal, and the help component cuts what doesn't fit.
+// component draws from. Ctrl-J and Ctrl-D are left out: the line would no
+// longer fit an 80-column terminal, and the help component cuts what doesn't
+// fit. Ctrl-C already quits when no answer streams, so Ctrl-D is the one to
+// spare.
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Send, k.Stop, k.Quit, k.Recall, k.Scroll}
+	return []key.Binding{k.Send, k.Stop, k.Recall, k.Scroll, k.Usage}
 }
 
 // FullHelp returns every key as one column. The help component asks for it
 // only in its expanded mode, which the chat screen never turns on.
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll}}
+	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Usage}}
 }
 
-// approvalKeys lists the keys that answer an approval box, for the help
-// line while the box is open. A plain slice of bindings satisfies
+// keyList is a list of keys for the help line while a box is open: the
+// approval box or the usage box. A plain slice of bindings satisfies
 // help.KeyMap once it has the two methods below.
-type approvalKeys []key.Binding
+type keyList []key.Binding
 
 // newApprovalKeys returns the help line's keys for an approval that offers
 // choices: one key per choice, then ←/→ with Enter, then Ctrl-C.
-func newApprovalKeys(choices []rpc.Choice) approvalKeys {
-	var k approvalKeys
+func newApprovalKeys(choices []rpc.Choice) keyList {
+	var k keyList
 	for _, c := range choices {
 		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c))))
 	}
@@ -172,8 +190,16 @@ func newApprovalKeys(choices []rpc.Choice) approvalKeys {
 	)
 }
 
+// newUsageKeys returns the help line's keys while the usage box is open.
+func newUsageKeys() keyList {
+	return keyList{
+		key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "close")),
+		key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
+	}
+}
+
 // ShortHelp returns the keys in order.
-func (k approvalKeys) ShortHelp() []key.Binding { return k }
+func (k keyList) ShortHelp() []key.Binding { return k }
 
 // FullHelp returns the keys as one column.
-func (k approvalKeys) FullHelp() [][]key.Binding { return [][]key.Binding{k} }
+func (k keyList) FullHelp() [][]key.Binding { return [][]key.Binding{k} }

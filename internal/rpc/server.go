@@ -185,7 +185,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		log.DebugContext(ctx, "rpc ping")
 		_ = write(Event{Type: EventDone})
 		return
-	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog:
+	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
