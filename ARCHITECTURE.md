@@ -224,8 +224,11 @@ The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
 
 Answers always stream: `meru chat` and one-shot `meru` both show text as the model
-writes it. When `dispatch` needs your approval, `meru chat` shows the tool name and
-arguments with three choices: approve once, approve for this session, or deny (see
+writes it. Each tool call shows as a dim line inside the answer, `→ notes.search`
+while it runs and `✓` or `✗` with its time or outcome when it ends. When `dispatch`
+needs your approval, `meru chat` opens a box under that line with the tool's name
+and arguments and three choices: approve once, approve for this session, or deny.
+The box opens with deny selected, so a stray Enter runs nothing (see
 [Approving a tool call](#approving-a-tool-call)).
 
 The UI code holds no model or store logic; it draws what `merud` sends. One-shot
@@ -282,8 +285,8 @@ sequenceDiagram
     L->>S: load this session's recent messages
     L->>F: pick a route, reading turn 1 too
     F-->>L: route = tools
-    L->>S: recall memories
-    S-->>L: relevant memories
+    L->>S: search files, recall memories
+    S-->>L: top chunks, relevant memories
     L->>M: context (with turn 1) + tool schemas
     M-->>L: tool call robinhood.place_order
     L->>D: dispatch
@@ -294,7 +297,7 @@ sequenceDiagram
     C->>D: approved once
     D->>T: place_order
     T-->>D: order placed
-    D->>S: tool_call + tool_result lines, tool_calls row
+    D->>S: tool_call, approval + tool_result lines, tool_calls row
     D-->>L: result
     L->>M: context + tool result
     M-->>L: answer, no tool call
@@ -307,20 +310,21 @@ sequenceDiagram
 
 | Decision | Made by | How |
 | --- | --- | --- |
-| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder. From v0.4, a separate short call picks the skills to load |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load |
 | What to search for | `merud`, with no model | The question as you typed it. On a follow-up, `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
-| Which tools the model may use | you, in `config.toml` | Only tools in each server's `allow` list reach the model; the rest don't exist to it |
-| Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server wrote them, and picks |
-| Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in the server's `confirm` list, unless you already approved that tool for this session |
-| When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (config, default 8) |
+| Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. The built-in tools need no entry |
+| Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server or agent card wrote them, and picks |
+| Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, unless you already approved that tool for this session. `configure` asks every time |
+| When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
 
-When the route leaves tools out, `merud` sends the model no tool schemas at all. The
-model can't call a tool it hasn't seen, and the prompt stays shorter.
+Only the `tools` and `search+tools` routes offer tools. On `direct` and `search`,
+`merud` sends the model no tool schemas at all. The model can't call a tool it
+hasn't seen, and the prompt stays shorter.
 
 ### Approving a tool call
 
 When `dispatch` reaches a tool in the `confirm` list, the client shows the tool's name
-and arguments and offers three choices:
+and arguments and offers the choices `merud` sends, at most these three:
 
 | Choice | What happens |
 | --- | --- |
@@ -328,35 +332,45 @@ and arguments and offers three choices:
 | Approve for this session | This call runs, and `dispatch` skips the prompt for that tool until the session ends. The approval covers the tool, whatever its arguments. |
 | Deny | The call doesn't run. Its outcome is `declined`, and the model hears that you said no, so it can answer without the tool or ask you what to do. |
 
+- **The question travels on the same socket.** `merud` sends the client an
+  `approval` event with an ID, the call and the choices it offers, and holds the
+  call. The client writes back one `Reply` line with that ID and a choice. A choice
+  the approval didn't offer counts as deny.
 - **Each choice is recorded.** `merud` appends an `approval` line to the transcript,
-  and replay copies the choice into the call's `tool_calls` row:
+  between the call's `tool_call` and `tool_result` lines, and the `tool_calls` row
+  keeps the choice:
 
   ```json
-  {"ts":"2026-09-23T10:17:21Z","type":"approval","server":"robinhood","tool":"place_order","choice":"once","trace_id":"9c2e…"}
+  {"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"robinhood","tool":"place_order","choice":"once","trace_id":"9c2e…"}
   ```
 
-- **Built-in tools have their own confirm list.** Built-ins such as `remember` belong
-  to no server entry, so `config.toml` gives them one section:
+- **Built-in tools have their own confirm list.** Built-ins belong to no server
+  entry, so `config.toml` gives them one section:
 
   ```toml
   [builtin]
-  confirm = ["write_file"]   # the shipped default; add "remember" to approve each new memory
+  confirm = []   # the shipped default; from v0.4, add "remember" or "write_file" here
   ```
 
-  The built-in tools are `remember`, `write_file` and `configure`. `configure`
-  always asks, whatever this list says (see [First run and setup](#first-run-and-setup)).
+  v0.3 has one built-in tool, `configure`, which always asks, whatever this list
+  says (see [First run and setup](#first-run-and-setup)). `remember` and
+  `write_file` arrive with memory and skills in v0.4.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
-- **Session approvals stay inside the running `merud`.** They end with the session and never
-  reach `config.toml`. To stop Meru asking about a tool for good, remove it from the
-  `confirm` list yourself; config stays the one place that grants lasting trust.
-- **One-shot `meru "..."`** asks on the terminal with the same three choices. Its
-  session ends with the answer, so "for this session" covers only this question. When
-  nothing can answer the prompt, because standard input isn't a terminal (a script or
-  a pipe), the call is denied.
-- **Scheduled jobs** have no one to ask, so `dispatch` denies every tool in the
-  `confirm` list and the job's output says which calls it skipped.
+- **Session approvals stay inside the running `merud`.** `dispatch` keeps them in
+  memory, per session and tool. They end with the session or with `merud`, and
+  never reach `config.toml`. To stop Meru asking about a tool for good, remove it
+  from the `confirm` list yourself; config stays the one place that grants lasting
+  trust.
+- **One-shot `meru "..."`** asks on standard error with the same choices, as
+  `[o]nce [s]ession [d]eny`, so the answer on standard output stays clean. Its
+  session ends with the answer, so "for this session" covers only this question.
+  When standard input isn't a terminal (a script or a pipe), nobody can answer, so
+  the client denies without asking and says so.
+- **Nobody to ask means no.** A scheduled job, or a client that passed no way to
+  ask, can't say yes, so `dispatch` ends every call that needs a yes as `declined`
+  without a prompt. A job's output says which calls it skipped.
 
 ### How a conversation continues
 
@@ -485,27 +499,50 @@ order.
    tools. It picks by classification, reading one decoded token's probabilities (see
    [Routing](#routing)). On the search routes, `merud` then searches your files for
    the question, with an earlier question appended on a follow-up. No model
-   rewrites the query. Until tools arrive in v0.3, the `tools` route searches too:
-   the router sends some questions about your files there, and an answer from the
-   files beats one from the model alone. When the router picks `direct` for a
-   question that names an indexed folder, `merud` searches anyway (see
-   [Routing](#routing)). From v0.4, a separate short call picks the skills to load.
+   rewrites the query. The `tools` route searches too: the router sends some
+   questions about your files there, and an answer from the files beats one from
+   the model alone. Two rules then adjust the route (see [Routing](#routing)): a
+   `direct` question that names an indexed folder becomes `search`, and a
+   question that names a connected tool server gets tools. From v0.4, a separate
+   short call picks the skills to load.
 2. **Build the context.** System prompt, skill descriptions, relevant memories,
-   retrieved chunks, this session's history and the allowed tools' schemas, each
-   within its own token budget.
-3. **Call `main`.** Stream text to the client as it arrives. Tool-call arguments also
-   arrive in pieces; buffer each call until it is complete.
-4. **Dispatch tools.** Every call goes through one function, `dispatch`. It checks the
-   allowlist, asks you to confirm if config lists the tool under `confirm`, calls the
-   MCP server, A2A agent or built-in tool (such as `remember`), writes the
-   `tool_calls` row, and records the span and metrics. If you say no, the call
-   doesn't run and its outcome is `declined`. A call to a tool outside the allowlist
-   doesn't run either; its outcome is `denied`, and it still gets a `tool_calls` row,
-   so a model that keeps reaching for forbidden tools shows up in the log. No other
-   code path reaches a server, agent or built-in tool. Independent calls run at the same time (`errgroup`), each
-   with its own timeout.
+   retrieved chunks, this session's history and, on the `tools` and `search+tools`
+   routes, the allowed tools' schemas, each within its own token budget.
+3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
+   call whole, in a chunk of its own, and the loop collects them. It tells the
+   client about each call with a `tool_call` event.
+4. **Dispatch tools.** Every call goes through one function, `dispatch`, in this
+   order:
+   1. **Allowlist.** A tool that no backend offers is `denied`. It doesn't run,
+      but it still gets a `tool_call` line, a `tool_result` line and a
+      `tool_calls` row, so a model that keeps reaching for forbidden tools shows
+      up in the log.
+   2. **Transcript.** The `tool_call` line goes in before the call runs. If it
+      can't be written, the call doesn't run.
+   3. **Confirm.** Each tool asks never, asks unless approved for this session, or
+      asks every time (`configure` only). If you say no, or nobody can be asked,
+      the outcome is `declined`.
+   4. **Call.** The MCP server, A2A agent or built-in tool runs, under its own
+      timeout. The outcome is `ok`, `error`, `timeout` or `cancelled`.
+   5. **Record.** `dispatch` removes secret values from the arguments, the result
+      and any error text, then writes the `tool_result` line, the `tool_calls` row,
+      the metrics and the `meru.dispatch` span. The model reads up to 16,000
+      characters of the result, with a note when `dispatch` cut it; the transcript
+      and the row keep 4,000.
+
+   No other code path reaches a server, agent or built-in tool. The calls of one
+   round run at the same time (`errgroup`), and each sends its `tool_result` event
+   to the client as it ends. A denied or declined call still reaches the model as
+   a result, so it can answer without the tool or ask you what to do.
 5. **Repeat** from step 3 with the tool results, until the model answers without
-   calling a tool or the loop hits its iteration cap (config, default 8).
+   calling a tool or the turn reaches `[agent] max_rounds` model calls (default 8).
+   The last allowed round offers no tools, so the model has to answer with what it
+   has.
+
+`dispatch` sees the tools through one interface, `Backend`, with three
+implementations in a fixed order: the built-in tools, the MCP client pool, then
+the A2A client. When two backends offer the same name, the first keeps it, so no
+MCP server can shadow `configure`.
 
 A `context.Context` runs through the whole turn. If the client disconnects or you
 press Ctrl-C, `merud` cancels the turn: generation stops, in-flight tool calls are
@@ -555,16 +592,28 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
-One rule overrides the router. When it picks `direct` and the question names an
-indexed folder as a whole word, such as "meru" for `~/repos/meru`, the agent loop
-changes the route to `search`. Even with the folders in the prompt, the router sent
-"what database does Meru use to store its index?" to `direct` at 0.621, and the
-model made up an answer. A wrong guess costs one search of about 50 ms, and the
-model uses only the excerpts that help. The turn's route event, log line and span
-show `search`; the `meru.route` span and metric still record what the router
-chose. The rule matches the last part of each folder path, in any case, and skips
-names under three letters. "hey meru, what's the capital of France" searches too,
-because the assistant shares its name with the folder.
+Two rules override the router, in this order. The first: when it picks `direct` and
+the question names an indexed folder as a whole word, such as "meru" for
+`~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
+in the prompt, the router sent "what database does Meru use to store its index?" to
+`direct` at 0.621, and the model made up an answer. A wrong guess costs one search
+of about 50 ms, and the model uses only the excerpts that help. The turn's route
+event, log line and span show `search`; the `meru.route` span and metric still
+record what the router chose. The rule matches the last part of each folder path, in
+any case, and skips names under three letters. "hey meru, what's the capital of
+France" searches too, because the assistant shares its name with the folder.
+
+The second: when the question names a connected MCP server or A2A agent as a whole
+word, and the route offers no tools, the agent loop adds them. `direct` becomes
+`tools`, and `search` becomes `search+tools`. The names come from the tools
+`dispatch` offers, such as "obsidian" from `obsidian.search_vault` and "research"
+from `a2a.research.summarize`, and the loop reads them on each turn, because
+`configure` can add a server while `merud` runs. Built-in tools don't count: their
+owner is `meru`, the assistant's own name, which would match most questions. The
+router sent "Search my Obsidian vault for notes mentioning 'AI'" to `search` at
+0.65; with no tools offered, the model said it couldn't search the vault. With the
+rule it listed the vaults, searched one and answered. A wrong guess costs a prompt
+that holds the tool schemas.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
 135 questions, 40 of them held out, and fits the temperature. At 1.25 the
@@ -616,11 +665,16 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 
 ```json
 {"ts":"2026-09-23T10:15:02Z","type":"user","text":"what changed in my portfolio this week?","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:03Z","type":"tool_call","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:04Z","type":"tool_result","ok":true,"ms":812,"result":{…},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:04Z","type":"tool_result","call_id":"call-1","outcome":"ok","ok":true,"ms":812,"result":"NVDA 120 shares…","trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Reviewed the week's portfolio changes; two positions fell more than 5%."}
 ```
+
+A tool call's lines share a `call_id`, because the calls of one round run at the
+same time and their lines can interleave. An `approval` line sits between the two
+when the call asked you first. `result` holds the first 4,000 characters of what
+the tool returned, with secrets removed.
 
 You can `grep`, `tail -f` or back up these files with no special tools, and a crash
 loses at most the line being written. The database keeps a copy for search and for
@@ -643,20 +697,25 @@ files with mode `0600`, so only you can read them.
 | `sessions` / `messages` (v0.4) | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
-| `tool_calls` (v0.3) | audit log: every MCP, A2A and built-in tool call, with `kind` (`mcp`, `a2a` or `builtin`), args, result, duration, approval choice, trace ID | `sessions/*.jsonl` |
+| `tool_calls` | audit log: every MCP, A2A and built-in tool call, with its call ID, session, `kind` (`mcp`, `a2a` or `builtin`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
 | `memories` (v0.4) | one row per memory file: path, folder (its kind), text, created, source, last used | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
 | `meta` | schema version, embedding model name and vector size | config |
 
-v0.2 builds `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`. Each other
-table arrives with the milestone marked beside it. Replaying transcripts into
-`messages` and `message_fts` waits for v0.4, where session summaries need it; until
-then the JSONL files are the only copy of a conversation.
+v0.2 built `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`, and v0.3
+added `tool_calls`. Each other table arrives with the milestone marked beside it.
+Replaying transcripts into `messages` and `message_fts` waits for v0.4, where
+session summaries need it; until then the JSONL files are the only copy of a
+conversation.
 
 `tool_calls` is mandatory. An assistant with tools that change things needs a record
-you can read afterwards. `messages` and `tool_calls` store the trace ID of their turn,
-so you can jump from a slow trace in Grafana to the rows it produced, and back.
+you can read afterwards. `dispatch` writes a row as each call ends, and `meru log`
+reads the newest rows. When `merud` starts and finds the table empty, it rebuilds
+the table from the transcripts, pairing each call's lines by `call_id`; a call with
+no `tool_result` line, because `merud` stopped mid-call, gets the outcome
+`cancelled`. `messages` and `tool_calls` store the trace ID of their turn, so you
+can jump from a slow trace in Grafana to the rows it produced, and back.
 
 When the embedding model's name or vector size in `meta` stops matching config, the
 store deletes every row of `chunk_vec` and keeps `documents` and `chunks`. Keyword
@@ -816,13 +875,14 @@ plain text with no layout.
 
 SQLite does both searches; our code merges the results.
 
-A search runs on the `search` and `search+tools` routes, and in v0.2 on `tools`
-as well, until tools arrive in v0.3. It also runs on a `direct` question that
+A search runs on the `search`, `tools` and `search+tools` routes. `tools` searches
+because the router sends some questions about your files there. It also runs on a
+`direct` question that
 names an indexed folder (see [Routing](#routing)). Its query is the question, with an earlier
 question appended on a follow-up (see
 [How a conversation continues](#how-a-conversation-continues)).
 
-In v0.2 a turn searches file chunks. From v0.4 it also searches memories and the
+So far a turn searches file chunks. From v0.4 it also searches memories and the
 summaries of past sessions. Each source gets the same keyword and meaning search,
 `rrf` merges the results within that source, and each source has its own share of
 the context budget, so one busy source can't crowd out the others.
@@ -911,9 +971,11 @@ Meru indexes.
 Before the first token, `merud` sends the client a `sources` event that lists each
 excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
-same list under the answer. Both list only the sources the answer cites; when it
+same list under the answer. Both list only the sources the answer cites. When it
 cites none, as a small model sometimes forgets to, they list every source the prompt
-held.
+held, with one exception: on a turn that called a tool, they list none. That
+answer may come from the tool's result, and in a live test an answer built from an
+Obsidian search listed ten unrelated repo files as its sources.
 
 ```text
 The Q3 budget for the garden project is 4,200 dollars [1].
@@ -923,8 +985,9 @@ Sources:
 ```
 
 With a tiny index, every chunk lands in the top 10, so an answer that cites nothing
-lists every file. A minimum fused score, or keeping fewer than 10 chunks, would trim
-that list; choosing either waits for measurements (see [Open questions](#open-questions)).
+and called no tool lists every file. A minimum fused score, or keeping fewer than 10
+chunks, would trim that list; choosing either waits for measurements (see [Open
+questions](#open-questions)).
 
 ---
 
@@ -1049,7 +1112,7 @@ Meru ships with two skills, taken from the owner's `my-ai-assets` repo:
 - **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
   counts, whether you wrote it or copied it from elsewhere.
 - **Skills that make files need somewhere to put them.** The built-in `write_file`
-  tool writes only inside `~/meru-output/` (configurable). It can't touch any other
+  tool (v0.4) writes only inside `~/meru-output/` (configurable). It can't touch any other
   path, and it goes through `dispatch` like every tool.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
   model writes weaker explainers.
@@ -1058,57 +1121,108 @@ Meru ships with two skills, taken from the owner's `my-ai-assets` repo:
 
 ## First run and setup
 
-The first time you run `meru`, or any time you run `meru setup`, Meru walks you
-through setup in the terminal. Nothing in it needs you to know how MCP works.
+`meru setup` walks you through setup in the terminal. Nothing in it needs you to
+know how MCP works. You can run it again at any time. v0.3 doesn't start it on its
+own the first time you run `meru`.
 
-1. **Ollama.** Meru checks that Ollama is running. If it isn't, Meru prints the one
-   install command for your platform and waits.
-2. **Models.** You pick `lite` (the default) or `full`, and Meru downloads the models
-   with a progress bar.
-3. **Your files.** Meru writes `config.toml`, `prompt.md` and the built-in skills to
-   `~/.meru/`, then asks which folders to index (for example `~/notes`).
-4. **Tools.** Meru offers the starter MCP servers, one at a time, and you pick a path
+1. **Ollama.** Meru checks that Ollama answers. If it doesn't, Meru prints the
+   install step for your platform and waits for you to press Enter.
+2. **Models.** With no `config.toml` yet, you pick `lite` (the default) or `full`.
+   Meru names the profile's models and, after a yes, downloads each with
+   `ollama pull`, which draws its own progress bar.
+3. **Your files.** Meru asks which folders to index (for example `~/notes`) and
+   writes a short `config.toml` with the profile and the folders. It writes the
+   file only when none exists: rewriting yours would drop your comments, so for an
+   existing file setup says what to edit instead. `merud` creates the rest of
+   `~/.meru/` when it starts; setup doesn't write `prompt.md` or the built-in
+   skills yet.
+4. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
-5. **A test question.** Meru answers one question so you see it working.
+5. **A test question.** When `merud` runs, Meru asks it one question so you see it
+   working. Otherwise it tells you how to start `merud`. A new server or a new
+   `config.toml` takes a restart of `merud`.
 
 ### Adding an MCP server
 
-Meru carries a small catalog of known servers in the binary: web search, web page
-fetch, Gmail, Calendar, Drive and Docs, and Obsidian. Each catalog entry lists the
-install command, what the server needs (a URL, an API key, or a Google sign-in), and
-a safe starting `allow` and `confirm` list: reading allowed, anything that sends,
-deletes or shares in `confirm`.
+Meru carries a small catalog of known servers in the binary:
+
+| Name | Server | Needs | Asks first |
+| --- | --- | --- | --- |
+| `brave` | Brave Search (`@brave/brave-search-mcp-server`) | an API key | nothing |
+| `fetch` | web page fetch (`mcp-server-fetch`) | nothing | nothing |
+| `gmail` | `workspace-mcp --tools gmail` | a Google OAuth client and a sign-in | draft, send |
+| `calendar` | `workspace-mcp --tools calendar` | a Google OAuth client and a sign-in | changing an event |
+| `drive` | `workspace-mcp --tools drive docs` | a Google OAuth client and a sign-in | creating or editing a doc |
+| `obsidian` | `mcp-obsidian`, through Obsidian's Local REST API plugin | the plugin's API key | appending to a note |
+
+Each entry lists the install command, what the server needs, and a starting `allow`
+and `confirm` list: reading allowed, anything that sends, writes or changes
+something in `confirm`. One Google Workspace server covers Gmail, Calendar, Drive
+and Docs; each entry runs it with its own `--tools` flag, so you add only the
+services you want and each asks Google only for its own permissions.
 
 For each server, you choose one of two paths:
 
 - **"Do it for me."** Meru asks only for what the server needs, one question at a
-  time: "Paste your Brave Search API key", or "A browser window will open; sign in to
-  Google". Then it shows you the exact config block it will add, and writes it only
-  after you approve.
-- **"Show me how."** Meru prints the config block and any install command, and names
-  the file to paste them into. Nothing changes until you do it yourself.
+  time, and reads each key without showing it on screen: "Paste your Brave Search
+  API key". A Google entry notes that the server opens a browser window for the
+  sign-in the first time Meru uses it. Then Meru shows you the exact config block
+  it will add, and writes it only after you approve.
+- **"Show me how."** Meru prints the config block, any install command and the
+  `secrets.toml` lines, and names the file to paste them into. Nothing changes
+  until you do it yourself.
 
-Outside setup, you can run `meru mcp add gmail`, or ask in chat ("connect my Gmail")
-and get the same two paths. A server that isn't in the catalog works too: give Meru
-its command or URL, and it proposes an entry with every tool in `confirm`.
+Meru adds the block to the end of `config.toml` as plain text, so your comments
+stay. It writes a temporary copy first and loads it, and replaces the file only
+when the copy loads and its servers pass the same checks `merud` runs.
 
-**Config changes always ask.** The built-in `configure` tool, which edits
-`config.toml`, goes through `dispatch` and asks you every time, and offers only
-"approve once" and "deny". A session approval isn't available for it, and
-`builtin.confirm` can't switch the prompt off. Config grants lasting trust, so the
-model can't grant any to itself. (Built-in tools need no allowlist entry: the model
-always sees `remember`, `write_file` and `configure`.)
+Outside setup, `meru mcp add gmail` offers the same two paths, and
+`meru mcp list-catalog` lists the entries. A server that isn't in the catalog works
+too: `meru mcp add <name> -- <command> [args...]`, or `--url <url>`. Its entry
+starts with an empty `allow` list. Nobody knows a server's tool names until `merud`
+connects to it, and a guess would either miss or allow a tool nobody has read. So
+the entry gives the model nothing at first; after a restart, `meru tools` lists
+what the server offers, and you add the tools you want to `allow`. A URL off this
+machine gets `network = true`, because you typed it on purpose.
 
-**Secrets stay out of config.** API keys and sign-in tokens go in
-`~/.meru/secrets.toml`, readable only by you (file mode `0600`), and config entries
-refer to them by name. `merud` redacts them from transcripts, logs and spans.
+In chat, "connect my Gmail" works too: the model calls the built-in `configure`
+tool, which adds a catalog entry, or a custom one from a name and a command or URL.
+`configure` never writes an entry whose secret is missing from `secrets.toml`. It
+tells the model to send you to `meru mcp add <name>` in a terminal instead, because
+a key typed into chat would pass through the model, the approval prompt and the
+transcript. After it writes, `merud` rebuilds the MCP client pool and swaps it in,
+so the new server works without a restart.
+
+**Config changes always ask.** `configure` goes through `dispatch` and asks you
+every time, and offers only "approve once" and "deny". A session approval isn't
+available for it, and `builtin.confirm` can't switch the prompt off. Config grants
+lasting trust, so the model can't grant any to itself. (Built-in tools need no
+allowlist entry: the model always sees `configure`, and from v0.4 `remember` and
+`write_file`.)
+
+**Secrets stay out of config.** API keys and OAuth client secrets go in
+`~/.meru/secrets.toml`, a flat list of `name = "value"` lines. A config value
+refers to one as `secret:<name>`, in an MCP server's `env` or `headers` or an A2A
+agent's `headers`:
+
+```toml
+env = { BRAVE_API_KEY = "secret:brave_api_key" }
+```
+
+`merud` swaps in the value when it starts a server or calls an agent, and refuses
+to start when group or other users can read `secrets.toml` (it says to run
+`chmod 600`). `meru mcp add` writes the file with mode `0600`. Before `dispatch`
+writes a transcript line, a `tool_calls` row, a log line or a span, it replaces each
+stored value of 8 or more characters with `[secret:<name>]`; shorter values would
+match ordinary words. A config file you share or commit holds names only.
 
 ---
 
 ## MCP
 
 Meru is an MCP **client**; it hosts no servers. `config.toml` lists the servers, and
-Meru merges their tools into one set of names, prefixed per server. It supports the
+Meru merges their tools into one set of names, prefixed per server: the model sees
+`search_vault` from the `obsidian` server as `obsidian.search_vault`. It supports the
 two transports in the current MCP spec, both provided by the official Go SDK:
 
 - **stdio:** `merud` starts the server as a child process and talks to it over
@@ -1122,21 +1236,30 @@ Every MCP server you already run becomes a Meru capability with no new code.
 ```toml
 [[mcp.servers]]
 name    = "obsidian"
-command = "..."                   # stdio: merud starts this process
-allow   = ["read", "search"]     # tool-level allowlist
+command = "npx"                   # stdio: merud starts this process
+args    = ["-y", "obsidian-mcp", "serve", "--vault", "/Users/you/notes"]
+allow   = ["list_vaults", "search_vault", "read_note"]   # tool-level allowlist
 confirm = []                      # allowed tools that still need a yes per call
 timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
 name    = "calendar"
 url     = "http://127.0.0.1:8123/mcp"   # Streamable HTTP: server already running
+headers = { Authorization = "secret:calendar_token" }   # value from secrets.toml
 allow   = ["list_events"]
 network = false                          # true only if the URL isn't loopback
 ```
 
 A server entry has either `command` or `url`. `merud` refuses a Streamable HTTP URL
 that isn't loopback unless the entry says `network = true`, the same rule A2A agents
-follow.
+follow. `env` and `headers` values may name a secret as `secret:<name>` (see
+[Adding an MCP server](#adding-an-mcp-server)).
+
+`merud` reads the servers when it starts. The one exception is `configure`: after
+it adds a server, `merud` builds a new pool from the new config and swaps it in
+while it runs. `meru tools` lists each server, whether `merud` reached it, the
+tools the model may use and which of them ask first, and warns about each `allow`
+entry the server doesn't offer, most often a typo.
 
 Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
@@ -1167,12 +1290,17 @@ and the server decides what each call does.
 
 Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work.
 As with MCP, Meru is only a client; it doesn't serve A2A. The client comes from the
-A2A project's Go SDK.
+A2A project's Go SDK, `github.com/a2aproject/a2a-go/v2` (v2.5.0), and speaks version
+1.0 of the protocol over JSON-RPC or REST. An agent whose card speaks only an older
+version fails with an error that says so.
 
 The model sees each allowed agent skill as one more tool, named
-`a2a.<agent>.<skill>`, that takes a message and returns the agent's answer. The call
-goes through the same `dispatch` function as MCP tools, so it gets the same allowlist
-check, confirmation, `tool_calls` row (with `kind = "a2a"`) and trace span.
+`a2a.<agent>.<skill>`, that takes one argument, `{"message": "..."}`, and returns
+the agent's answer as text. A2A has no field that picks a skill: the agent reads
+the message and decides. The skill in the tool name picks the description the
+model sees and the `allow` entry the call needs. The call goes through the same
+`dispatch` function as MCP tools, so it gets the same allowlist check,
+confirmation, `tool_calls` row (with `kind = "a2a"`) and trace span.
 
 ```toml
 [[a2a.agents]]
@@ -1181,6 +1309,7 @@ url     = "http://127.0.0.1:9100"   # Meru reads the agent card from here
 allow   = ["summarize"]              # skills from the agent card
 confirm = []
 network = false                      # true only if the agent isn't on loopback
+timeout = "60s"                      # the default
 ```
 
 ```mermaid
@@ -1193,7 +1322,7 @@ sequenceDiagram
     M-->>L: tool call a2a.research.summarize {message}
     L->>D: dispatch
     D->>D: allowlist ✓ · confirm? · open span
-    D->>A: A2A message/stream
+    D->>A: SendStreamingMessage
     A-->>D: task updates … final artifact
     D->>D: write tool_calls row (kind=a2a) · close span
     D-->>L: result text
@@ -1203,8 +1332,24 @@ sequenceDiagram
 Agents are deny-by-default too. Meru can reach only the agents in config, and only
 the skills in `allow` become tools. An agent on another machine may use a cloud
 model, so your data would leave the machine. Reaching one takes `network = true`;
-without it, `merud` refuses any agent URL that isn't loopback. For long tasks, Meru
-uses the protocol's streaming updates, with the same per-call timeout as a tool.
+without it, `merud` refuses any agent URL that isn't loopback.
+
+- **Lazy card fetch.** `merud` starts without contacting any agent. It reads an
+  agent's card the first time a turn needs its tools, so an agent that starts after
+  `merud` shows up on the next turn. A failed fetch waits 10 seconds before the
+  next try; inside that wait the agent offers no tools and a call fails at once.
+- **Always a stream.** Meru sends every call with `SendStreamingMessage`, under the
+  same per-call timeout as a tool (60 seconds unless the entry sets `timeout`).
+  When the card says the agent can't stream, the SDK sends a plain request instead,
+  so one code path covers both. When the timeout passes or you cancel the turn,
+  Meru asks the agent to cancel the task.
+- **No follow-up turns.** An agent that asks for more input ends the call with an
+  error result. Carrying a task across turns waits until something needs it.
+- **Guards on the connection.** The config check covers the card's URL, but the
+  card names the URLs the calls go to. So the client's dialer checks each address
+  just before it connects, after DNS, and refuses anything off loopback unless the
+  entry says `network = true`. The client follows no redirects, because a redirect
+  could carry the entry's `headers`, which may hold an API key, to another host.
 
 ---
 
@@ -1224,7 +1369,7 @@ Each run is a session with its own transcript, so a job's work lands in the same
 and traces as your questions. `merud` runs it through the same agent loop
 as a question you type, and sends the output to a digest, a file or a notification.
 Jobs don't stream, since no one is watching, and nobody can approve a tool call, so
-`dispatch` denies every tool in the `confirm` list during a job.
+`dispatch` declines every call that needs a yes during a job.
 The operating system's service manager (`launchd`, `systemd` or a Windows service)
 restarts `merud` after a reboot. The scheduler lives inside `merud`, not in the
 service manager, so jobs use the loaded models and land in the same audit log and
@@ -1264,8 +1409,8 @@ capture_content  = false                     # prompt/response text in spans
 ### Traces
 
 Each turn produces one trace. A question over the socket starts at `rpc.request`;
-a scheduled job (v0.5) starts at `meru.turn`. In v0.2 a turn on a search route looks
-like this:
+a scheduled job (v0.5) starts at `meru.turn`. In v0.3 a turn on the `search+tools`
+route with one round of tool calls looks like this:
 
 ```text
 rpc.request                       op, source, question length
@@ -1279,14 +1424,20 @@ rpc.request                       op, source, question length
     │   └── meru.retrieve         hits per list, fused count, time per stage
     │       └── POST /api/embed   the query's vector
     ├── meru.prompt               messages, characters, estimated tokens
-    ├── gen_ai.chat  main         the streamed answer; first_token event
+    ├── gen_ai.chat  main         round 1: text and tool calls; first_token event
     │   └── POST /api/chat        HTTP status, thinking chunks
+    ├── meru.dispatch             one per call: tool, kind, server, outcome, approval
+    │   └── tools/call <tool>     MCP; an A2A call is invoke_agent <agent>
+    ├── meru.transcript.append    the call's tool_call, approval and tool_result lines
+    ├── gen_ai.chat  main         round 2: the answer
+    │   └── POST /api/chat
     └── meru.transcript.append    the assistant line
 ```
 
-A turn on the `direct` route has no `meru.search`, unless the question names an indexed folder. Later milestones add
-spans under `meru.turn`: memories under `meru.retrieve` (v0.4), one `gen_ai.chat`
-per model call in the tool loop, and `tools/call <tool>` for each tool (v0.3).
+A turn on the `direct` route has no `meru.search`, unless the question names an
+indexed folder. A turn on `direct` or `search` has no tool spans, and one
+`gen_ai.chat main`. The calls of one round run at the same time, so their
+`meru.dispatch` spans overlap. v0.4 adds memories under `meru.retrieve`.
 
 Indexing has traces of its own, apart from any turn. A scan of every folder is one
 `meru.index.scan` span (folders, whether it re-embeds, and the counts it ends with),
@@ -1302,12 +1453,27 @@ Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
 plus Ollama's own timings: `meru.ollama.load_ms`, `meru.ollama.prompt_eval_ms` and
 `meru.ollama.eval_ms`. The HTTP spans follow the OTel HTTP conventions. A failed
 span records the error and sets its status to Error; a cancelled one gets a
-`cancelled` event instead. Tool spans follow the OTel MCP semantic conventions: each
-is named `tools/call <tool>` and carries `mcp.method.name` and `gen_ai.tool.name`.
-Meru adds `meru.tool.server` and `meru.tool.allowed`. A failed call's `error.type`
-says how it failed: `tool_error` (the convention's name) when the server reports
-failure, or Meru's own `denied`, `unavailable` or `timeout`. `merud` writes each trace ID to the
-session transcript, `messages` and `tool_calls`, and to every log line of the turn.
+`cancelled` event instead.
+
+Every tool call gets a `meru.dispatch` span, whatever its kind. It carries
+`gen_ai.tool.name`, `meru.tool.kind`, `meru.tool.server`, `meru.tool.outcome` and
+`meru.tool.approval`, the same keys the tool metrics use, so a dashboard can go from
+a metric to its traces. The backend's own span nests under it:
+
+- **MCP** spans follow the OTel MCP semantic conventions: each is named
+  `tools/call <tool>` and carries `mcp.method.name` and `gen_ai.tool.name`.
+- **A2A** spans follow the GenAI convention for a call to a remote agent: each is
+  named `invoke_agent <agent>`, with `gen_ai.operation.name = invoke_agent`,
+  `gen_ai.agent.name`, `server.address` and `server.port`. Meru adds
+  `meru.a2a.skill`, `meru.a2a.task.id` and `meru.a2a.task.state`.
+- **Built-in** tools have only the `meru.dispatch` span.
+
+MCP and A2A spans also carry `meru.tool.server` and `meru.tool.allowed`. A failed
+call's `error.type` says how it failed: `tool_error` (the MCP convention's name)
+when the server or agent reports failure, or Meru's own `denied`, `unavailable` or
+`timeout`. Arguments and results go on the spans only when `capture_content = true`.
+`merud` writes each trace ID to the session transcript, `messages` and
+`tool_calls`, and to every log line of the turn.
 
 ### Metrics
 
@@ -1325,8 +1491,8 @@ for the rest.
 | `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency |
 | `meru.turn.iterations` | histogram | route | loop depth |
 | `meru.context.tokens` | histogram | section (system/skills/memories/chunks/history/tools) | data for the context budget policy |
-| `meru.tool.calls` | counter | server, tool, outcome (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
-| `meru.tool.duration` | histogram | server, tool | tool latency |
+| `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
+| `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
 | `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories) | retrieval cost (v0.2; memories stage v0.4) |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
@@ -1340,7 +1506,12 @@ prompt.
 
 **Keep attribute values to small, fixed sets** such as model, tier, server, tool,
 route and outcome. Session IDs, file paths and text belong on spans, never on
-metrics.
+metrics. Server and tool names come from config, with one exception: a denied call
+names a tool the model made up, and a model can make up any number. The tool
+metrics record such a call's server and tool as `other`; its `tool_calls` row
+keeps the real names. `meru.tool.duration` covers only the time a tool ran, so a
+call that never ran (denied, declined, or cancelled before it started) adds to
+`meru.tool.calls` and records no duration.
 
 ### The stack
 
@@ -1382,7 +1553,13 @@ transcript lines hold. No level writes question or answer text. With
 - The codebase contains no path to a cloud model. The engine talks only to a model
   runtime on loopback.
 - You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
-  HTTP server needs `network = true` in its config entry.
+  HTTP server needs `network = true` in its config entry. The A2A client checks
+  each address again as it connects and follows no redirects, so an agent card
+  can't send your messages elsewhere.
+- API keys live in `~/.meru/secrets.toml`, which `merud` refuses to read when other
+  users can. Config names them, never holds them, and `dispatch` strips their
+  values from transcripts, `tool_calls`, logs and spans. No key passes through the
+  model: `configure` sends you to `meru mcp add` to type one.
 - Meru doesn't sandbox MCP servers. They run with your permissions, so choose them as
   carefully as any program you install.
 - No telemetry leaves the machine. Meru's own metrics and traces are off by default,
@@ -1434,8 +1611,9 @@ We'll settle these with working code and measurements.
    has fewer of them than Python; better extraction may need a cgo library or an
    external tool.
 4. **Leaving Ollama.** An embedded llama.cpp engine would make `merud` self-contained,
-   but Meru would take over tool-call parsing and loading models. Decide once v0.3
-   works on Ollama and we can measure the cost.
+   but Meru would take over tool-call parsing and loading models. v0.3's tool calls
+   work through Ollama's parser; decide once we can measure what taking it over
+   would cost.
 5. **WASM SQLite speed (answered in v0.2).** `ncruces/go-sqlite3` runs SQLite as
    WebAssembly, slower than native SQLite, so v0.2 measured it before building on
    it. On the development machine with 768-dimension vectors, 100,000 chunks index
@@ -1445,8 +1623,9 @@ We'll settle these with working code and measurements.
    That fits a personal index. If search must get faster, use fewer dimensions or
    compute distances in Go.
 6. **How many sources to show.** Each search keeps the top 10 chunks, and with a
-   tiny index that is every chunk. When the model cites nothing, the clients list
-   every source the prompt held, which can be every file you indexed (see
+   tiny index that is every chunk. When the model cites nothing on a turn without
+   tool calls, the clients list every source the prompt held, which can be every
+   file you indexed (see
    [Citations](#citations)). A minimum fused score or fewer than 10 chunks would
    fix it; measurements from real questions will pick one.
 
@@ -1479,17 +1658,26 @@ We'll settle these with working code and measurements.
   email, calendar and Drive reached live through MCP, not indexed.
 - **Built-in skills:** `writing` and `explainer` ship in the binary
   and are copied to `~/.meru/skills/` on first run; your edits always win.
-- **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each
-  added "for you" (with approval of the exact config block) or by copy-paste.
+- **Setup:** `meru setup` checks Ollama, pulls the models, writes a first
+  `config.toml`, and offers a catalog of MCP servers, each added "for you" (with
+  approval of the exact config block) or by copy-paste. A server outside the
+  catalog starts with an empty `allow` list.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream.
-- **Tool approvals:** approve once, approve for this session, or deny. Session
-  approvals never touch config; lasting trust comes only from editing the `confirm`
-  list. With no one to ask (scripts, scheduled jobs), `dispatch` denies.
+- **Tool approvals:** approve once, approve for this session, or deny, asked over
+  the same socket as the answer. Session approvals never touch config; lasting
+  trust comes only from editing the `confirm` list. With no one to ask (scripts,
+  scheduled jobs), `dispatch` declines the call.
+- **Tool results:** the model reads up to 16,000 characters of each result; the
+  transcript and `tool_calls` keep 4,000, with secrets removed.
+- **Secrets:** one file, `~/.meru/secrets.toml`, mode `0600`, referred to from
+  config as `secret:<name>`. No system keychain: each platform has its own, and a
+  file only you can read works the same everywhere.
 - **Memory:** one Markdown file per memory under `~/.meru/memory/<kind>/`, no index
   file; session summaries in the transcripts serve as episodic memory. Memories save
   without asking, through the `remember` tool and `dispatch`.
-- **Other agents:** an A2A client, through the same `dispatch` path as MCP tools.
+- **Other agents:** an A2A client on the A2A project's Go SDK (protocol 1.0),
+  through the same `dispatch` path as MCP tools.
 - **Isolation:** no sandbox. Meru runs as an ordinary user process, and the tool and
   agent allowlists do the controlling.

@@ -51,19 +51,25 @@ picks the labelled route for 32 of 40 held-out questions in about 28 ms; the v0.
 prompt picked 17 of 36.
 
 ## v0.3 — It can do things
-- MCP client: stdio + Streamable HTTP transports
-- Server config, per-tool allowlist, deny-by-default
-- Agent loop with single `dispatch` path: allowlist, confirmation, `tool_calls` audit
+- [x] MCP client: stdio + Streamable HTTP transports
+- [x] Server config, per-tool allowlist, deny-by-default
+- [x] Agent loop with single `dispatch` path: allowlist, confirmation, `tool_calls` audit
   trail, tool spans and metrics
-- Approval prompt in `meru chat` and one-shot `meru`: approve once, approve for this
+- [x] Approval prompt in `meru chat` and one-shot `meru`: approve once, approve for this
   session, or deny
-- A2A client: remote agent skills exposed as tools through the same `dispatch`
-- `meru setup` and `meru mcp add`: a catalog of starter servers (web search, fetch,
+- [x] A2A client: remote agent skills exposed as tools through the same `dispatch`
+- [x] `meru setup` and `meru mcp add`: a catalog of starter servers (web search, fetch,
   Gmail, Calendar, Drive and Docs, Obsidian), added for you or by copy-paste
-- Built-in `configure` tool that always asks; secrets in `~/.meru/secrets.toml`
-- `meru tools list` / `meru log`
+- [x] Built-in `configure` tool that always asks; secrets in `~/.meru/secrets.toml`
+- [x] `meru tools list` / `meru log`
 
 **Done when:** it answers a question by calling an MCP server you already run.
+
+**Measured:** on the development machine with the `lite` profile (MiniCPM5-2B),
+Meru answered a question from an Obsidian vault through the owner's own MCP server
+(`npx -y obsidian-mcp serve --vault ...`), with 3 of its 12 tools allowed:
+`obsidian_list_vaults`, `obsidian_search_vault` and `obsidian_read_note`. The model made two tool calls over
+three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 
 ## v0.4 — It knows you
 - Memory files under `~/.meru/memory/<kind>/`, indexed into `memories` with vector and

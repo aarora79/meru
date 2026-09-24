@@ -13,13 +13,17 @@ config: MCP (Model Context Protocol) servers such as web search or Gmail, and ot
 agents over A2A (Agent2Agent). Meru allows none of their tools until you name them,
 and logs every call.
 
-> **Status: pre-alpha, v0.2.** `merud` and `meru` answer questions with local models,
+> **Status: pre-alpha, v0.3.** `merud` and `meru` answer questions with local models,
 > stream the answer, keep session transcripts and pick a route with the one-token
 > router. `merud` indexes the folders you list, searches them by keyword and by
-> meaning, and the answer cites the files it used. Tools, memory and scheduled jobs
-> come in later milestones; the code for the MCP client, memory files and skills
-> exists as groundwork, but no turn uses it yet. [ROADMAP.md](ROADMAP.md) lists the
-> milestones in order.
+> meaning, and the answer cites the files it used. v0.3 adds tools: MCP servers and
+> A2A agents you allow, one `dispatch` path that asks you before risky calls and logs
+> every call, `meru setup`, and a catalog of starter servers. In the v0.3 acceptance
+> test, Meru on the 2B `lite` model answered a question from an Obsidian vault by
+> calling the vault's own MCP server twice over three rounds, in 8.3 s, and
+> `meru log` showed both calls. Memory and scheduled jobs come in later milestones;
+> the code for memory files and skills exists as groundwork, but no turn uses it
+> yet. [ROADMAP.md](ROADMAP.md) lists the milestones in order.
 
 ---
 
@@ -31,28 +35,36 @@ jobs. `meru` is the command-line client; it connects to the daemon over a local
 socket and starts in milliseconds. Go builds each program into one file that runs on
 macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
 
-Working in v0.2:
+Working in v0.3:
 
 ```
+$ meru setup                               # Ollama, models, folders, MCP servers
 $ meru "what is the capital of France?"   # one question, answer streamed as text
 $ meru "what is the Q3 garden budget?"    # searches your folders, then lists Sources:
+$ meru "search my obsidian vault for AI"  # calls the tools you allowed; asks first when config says so
 $ meru chat                                # interactive terminal UI
 $ meru ping                                # is merud running?
 $ meru index                               # rescan the folders under [index] folders
 $ meru index ~/notes/work                  # rescan one folder or file inside them
 $ meru index -status                       # what the index holds
+$ meru mcp add brave                       # add a catalog server: do it for me, or show me how
+$ meru mcp add notes -- npx -y some-mcp    # add any other server; it allows no tools yet
+$ meru tools                               # each server, its allowed tools, which ask first
+$ meru log -n 20 -v                        # the latest tool calls, with results
 ```
 
-`merud` reads `[index] folders` in `~/.meru/config.toml` when it starts, so restart
-it after changing the list. Quote a question that starts with the word `ping`,
-`chat` or `index`, or `meru` reads that word as a command.
+`merud` reads `[index] folders` and the servers in `~/.meru/config.toml` when it
+starts, so restart it after changing either. API keys go in
+`~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
+`[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
+a pipe. Quote a question that starts with the word `ping`, `chat`, `index`,
+`tools`, `log`, `setup` or `mcp`, or `meru` reads that word as a command.
 [docs/running.md](docs/running.md#7-index-your-files) shows the setup and the
 `Sources:` output.
 
 Planned for later milestones:
 
 ```
-$ meru setup                       # first run: models, folders, MCP servers (v0.3)
 $ meru memory list                 # what it knows about you, in plain text (v0.4)
 $ meru skills list                 # what it knows how to do (v0.4)
 $ meru brief                       # today's digest, prepared in advance (v0.5)

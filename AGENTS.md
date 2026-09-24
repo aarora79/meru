@@ -28,15 +28,19 @@ easier to review.
 
 ## Status
 
-Pre-alpha, **v0.2**: `merud` and `meru` answer questions with local models, stream
+Pre-alpha, **v0.3**: `merud` and `meru` answer questions with local models, stream
 the answer, keep JSONL session transcripts and route each question with the
-one-token router. v0.2 adds the SQLite store, the folder indexer with its watcher
-and `meru index`, hybrid retrieval on every route but `direct`, and citations: a `sources`
-event and a `Sources:` list in both clients. The MCP client pool, memory files and
-skill registry exist as groundwork for v0.3 and v0.4; nothing in a turn calls them
-yet. Work goes milestone
-by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features
-(`dispatch`, A2A, the scheduler) ahead of the milestone that owns them.
+one-token router. v0.2 added the SQLite store, the folder indexer with its watcher
+and `meru index`, hybrid retrieval on every route but `direct`, and citations: a
+`sources` event and a `Sources:` list in both clients. v0.3 adds tools: `dispatch`
+as the one path for every call, the MCP client pool and the A2A client behind it,
+the `tool_calls` audit log, approvals over the socket in both clients, `meru tools`,
+`meru log`, `meru setup`, `meru mcp add` with its server catalog, the built-in
+`configure` tool, and secrets in `~/.meru/secrets.toml`. Memory files and the skill
+registry exist as groundwork for v0.4; nothing in a turn calls them yet. Work goes
+milestone by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
+features (`remember`, `write_file`, the scheduler) ahead of the milestone that owns
+them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):
@@ -100,7 +104,7 @@ never by editing them in place.
    except to A2A agents and Streamable HTTP MCP servers marked `network = true`.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents and built-in tools such as
-   `remember`. Never add a second path.
+   `configure` and `remember`. Never add a second path.
 
 ## Shape
 
@@ -124,20 +128,27 @@ The repo as it stands. Each package has a `doc.go` and a note in
 
 ```text
 cmd/
-  merud/             the daemon: config, engine, router, store, indexer, socket, agent loop
-  meru/              the thin client: one question, `meru chat`, `meru ping`, `meru index`
+  merud/             the daemon: config, engine, router, store, indexer, tools, socket, agent loop
+  meru/              the thin client: one question, `meru chat`, `ping`, `index`, `tools`, `log`,
+                     `setup`, `mcp add`, and the approval prompt
   fakeollama/        a fake Ollama server for end-to-end tests
+  fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/
   config/            config.toml: defaults, profiles, validation
   engine/            the Engine interface and OllamaEngine (chat, stream, embed, info)
   router/            the one-token route classifier (docs/fast-router.md)
-  store/             meru.db: documents, chunks, vectors and the keyword index
+  store/             meru.db: documents, chunks, vectors, the keyword index, tool_calls
   retrieve/          hybrid search: vector + keyword, merged by reciprocal-rank fusion
   index/             reads [index] folders into the store: skip rules, chunking, watching
-  mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists (v0.3 groundwork)
+  dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
+  mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
+  a2a/               the A2A client: agent cards, skills as tools, streaming calls
+  builtin/           tools inside merud; v0.3 has `configure`
+  catalog/           the starter MCP servers and the safe append to config.toml
+  secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer (v0.4 groundwork)
   memory/            one Markdown file per memory under memory/<kind>/ (v0.4 groundwork)
-  agent/             one turn: route, build the prompt, stream the answer
+  agent/             one turn: route, build the prompt, run tool rounds, stream the answer
   transcript/        append-only JSONL session files
   rpc/               newline-delimited JSON over the Unix socket: client and server
   obs/               OpenTelemetry metrics and traces, loopback only
@@ -145,7 +156,7 @@ internal/
   tui/               the Bubble Tea UI behind `meru chat`
   policy/            tests that enforce the non-negotiables and the thin client
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
-test/e2e/            end-to-end tests: real binaries against the fake Ollama
+test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
 deploy/              launchd and systemd files, the local Grafana stack, dashboards
 docs/                architecture levels, coding notes, CI, running guide, posters
 .github/             CI, security scans, Dependabot
@@ -154,8 +165,10 @@ Makefile             `make check` runs everything CI runs
 ```
 
 **Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`
-and `loopback`, never `engine`, `transcript`, `agent`, `store`, `retrieve`,
-`index`, `memory`, `mcp` or anything else that talks to a model or stores data.
+and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
+use to write `config.toml` and `secrets.toml`. It never imports `engine`,
+`transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `mcp`, `dispatch`,
+`a2a`, `builtin` or anything else that talks to a model or stores data.
 `internal/policy` fails the build if that changes, directly or through another
 package. `loopback` imports only the standard library, so any package can use it.
 
@@ -229,12 +242,13 @@ or tool results at info level.
 - `go test -race ./...` must pass.
 
 **Dependencies.** Standard library first. Each new module needs a reason in the PR
-description. Expected ones: `modelcontextprotocol/go-sdk`, the A2A Go SDK,
+description. Expected ones: `modelcontextprotocol/go-sdk`, the A2A Go SDK
+(`a2aproject/a2a-go/v2`),
 `ncruces/go-sqlite3` (with its bundled vec1 and FTS5), OpenTelemetry Go, a TOML
 parser, `golang.org/x/sync` (for `errgroup`, which runs `merud`'s server, startup
 scan and watcher side by side), Bubble Tea with Bubbles for the `meru chat`
-terminal UI, and for the indexer `fsnotify`, `golang.org/x/net/html` and
-`ledongthuc/pdf`.
+terminal UI, `golang.org/x/term` so `meru setup` reads an API key without echo,
+and for the indexer `fsnotify`, `golang.org/x/net/html` and `ledongthuc/pdf`.
 
 ## Writing comments
 

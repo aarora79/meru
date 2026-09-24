@@ -2,9 +2,10 @@
 
 This guide takes you from nothing to asking Meru a question, then covers settings,
 indexing your files, running it as a service, the dashboard, and fixing common
-problems. It describes v0.2: questions, streamed answers, session transcripts,
-routing, and answers from your own files with citations. Tools and memory arrive in
-later milestones ([ROADMAP.md](../ROADMAP.md)).
+problems. It describes v0.3: questions, streamed answers, session transcripts,
+routing, answers from your own files with citations, and tools from MCP servers
+and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
+([ROADMAP.md](../ROADMAP.md)).
 
 ## 1. Install the prerequisites
 
