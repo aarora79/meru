@@ -37,23 +37,51 @@ type fakeEngine struct {
 	block bool
 	// gen is what Generate returns, for tests that run the real router.
 	gen engine.Completion
+	// rounds, when set, scripts one reply per Stream call, in order, for
+	// tests of the tool rounds. Calls past the end reuse the last one.
+	// When it is empty, every call streams pieces with usage.
+	rounds []fakeRound
 
 	mu    sync.Mutex // guards calls
 	calls []streamCall
 }
 
+// fakeRound is one scripted Stream reply: text pieces, then tool calls in
+// a chunk of their own, as Ollama sends them.
+type fakeRound struct {
+	pieces []string
+	calls  []engine.ToolCall
+	usage  engine.Usage
+}
+
 // streamCall records one Stream call.
 type streamCall struct {
-	msgs []engine.Message
-	opts engine.Options
+	msgs  []engine.Message
+	tools []engine.ToolSpec
+	opts  engine.Options
 }
 
 func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (iter.Seq2[engine.Delta, error], error) {
 	f.mu.Lock()
-	f.calls = append(f.calls, streamCall{msgs: slices.Clone(msgs), opts: opts})
+	f.calls = append(f.calls, streamCall{msgs: slices.Clone(msgs), tools: tools, opts: opts})
+	n := len(f.calls)
 	f.mu.Unlock()
 	if f.streamErr != nil {
 		return nil, f.streamErr
+	}
+	if len(f.rounds) > 0 {
+		r := f.rounds[min(n, len(f.rounds))-1]
+		return func(yield func(engine.Delta, error) bool) {
+			for _, p := range r.pieces {
+				if !yield(engine.Delta{Text: p}, nil) {
+					return
+				}
+			}
+			if len(r.calls) > 0 && !yield(engine.Delta{ToolCalls: r.calls}, nil) {
+				return
+			}
+			yield(engine.Delta{Done: true, DoneReason: "stop", Usage: r.usage}, nil)
+		}, nil
 	}
 	return func(yield func(engine.Delta, error) bool) {
 		for i, p := range f.pieces {
@@ -127,13 +155,23 @@ func testConfig(t *testing.T) config.Config {
 // quietLog returns a logger that discards everything.
 func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-// run calls Handle and collects the events it emits.
+// run calls Handle with no approve function and collects the events it
+// emits.
 func run(ctx context.Context, a *Agent, req rpc.Request) ([]rpc.Event, error) {
+	return runApprove(ctx, a, req, nil)
+}
+
+// runApprove calls Handle with approve and collects the events it emits.
+// Tool calls emit from several goroutines, so a mutex guards the list.
+func runApprove(ctx context.Context, a *Agent, req rpc.Request, approve rpc.ApproveFunc) ([]rpc.Event, error) {
+	var mu sync.Mutex
 	var evs []rpc.Event
 	err := a.Handle(ctx, req, func(ev rpc.Event) error {
+		mu.Lock()
+		defer mu.Unlock()
 		evs = append(evs, ev)
 		return nil
-	})
+	}, approve)
 	return evs, err
 }
 
@@ -163,7 +201,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"Hel", "lo", "!"}, usage: engine.Usage{PromptTokens: 42, OutputTokens: 3, EvalDuration: 250 * time.Millisecond}}
 	router := &fakeRouter{dec: Decision{Route: "search", Confidence: 0.8, Outcome: "ok"}}
-	a := New(cfg, eng, router, nil, quietLog())
+	a := New(cfg, eng, router, nil, nil, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "  hi  ", Source: rpc.SourceCLI})
 	if err != nil {
@@ -201,8 +239,9 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	if l := lines[0]; l.Type != "user" || l.Text != "hi" {
 		t.Errorf("line 1 = %+v, want the user question", l)
 	}
-	if l := lines[1]; l.Type != "assistant" || l.Text != "Hello!" || l.TokensIn != 42 || l.TokensOut != 3 {
-		t.Errorf("line 2 = %+v, want the answer with token counts", l)
+	if l := lines[1]; l.Type != "assistant" || l.Text != "Hello!" || l.TokensIn != 42 || l.TokensOut != 3 ||
+		l.Route != "search" || l.Sources != nil {
+		t.Errorf("line 2 = %+v, want the answer with token counts, the route and no sources", l)
 	}
 
 	call := eng.lastCall()
@@ -210,7 +249,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		t.Errorf("model = %q, want the main tier %q", call.opts.Model, cfg.Models.Main)
 	}
 	wantMsgs := []engine.Message{
-		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + filesNote(nil)},
+		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + filesNote(nil)},
 		{Role: engine.RoleUser, Content: "hi"},
 	}
 	if !slices.EqualFunc(call.msgs, wantMsgs, sameMessage) {
@@ -226,7 +265,7 @@ func TestTurnContinuesSession(t *testing.T) {
 	cfg.Agent.SystemPrompt = "Be brief."
 	eng := &fakeEngine{pieces: []string{"one"}}
 	router := &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}
-	a := New(cfg, eng, router, nil, quietLog())
+	a := New(cfg, eng, router, nil, nil, nil, quietLog())
 
 	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "first"})
 	if err != nil {
@@ -250,7 +289,7 @@ func TestTurnContinuesSession(t *testing.T) {
 	if !slices.EqualFunc(router.history, history, sameMessage) {
 		t.Errorf("router saw history %+v, want %+v", router.history, history)
 	}
-	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief.\n\n" + filesNote(nil)}}, history...)
+	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief.\n\n" + whoIsWho + "\n\n" + filesNote(nil)}}, history...)
 	wantMsgs = append(wantMsgs, engine.Message{Role: engine.RoleUser, Content: "second"})
 	if got := eng.lastCall().msgs; !slices.EqualFunc(got, wantMsgs, sameMessage) {
 		t.Errorf("prompt = %+v\nwant %+v", got, wantMsgs)
@@ -280,7 +319,7 @@ func TestTurnErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := New(testConfig(t), tt.eng, tt.router, nil, quietLog())
+			a := New(testConfig(t), tt.eng, tt.router, nil, nil, nil, quietLog())
 			_, err := run(context.Background(), a, tt.req)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("Handle error = %v, want one containing %q", err, tt.want)
@@ -290,7 +329,7 @@ func TestTurnErrors(t *testing.T) {
 }
 
 func TestTurnStopsWhenEmitFails(t *testing.T) {
-	a := New(testConfig(t), &fakeEngine{pieces: []string{"a", "b"}}, &fakeRouter{dec: Decision{Route: "direct"}}, nil, quietLog())
+	a := New(testConfig(t), &fakeEngine{pieces: []string{"a", "b"}}, &fakeRouter{dec: Decision{Route: "direct"}}, nil, nil, nil, quietLog())
 	gone := errors.New("client gone")
 	n := 0
 	err := a.Handle(context.Background(), rpc.Request{Text: "q"}, func(ev rpc.Event) error {
@@ -299,7 +338,7 @@ func TestTurnStopsWhenEmitFails(t *testing.T) {
 			return gone
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, gone) {
 		t.Errorf("Handle error = %v, want %v", err, gone)
 	}
@@ -311,7 +350,7 @@ func TestTurnStopsWhenEmitFails(t *testing.T) {
 func TestTurnCancelled(t *testing.T) {
 	cfg := testConfig(t)
 	eng := &fakeEngine{pieces: []string{"partial", "never"}, block: true}
-	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}, nil, quietLog())
+	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "direct", Confidence: 1, Outcome: "ok"}}, nil, nil, nil, quietLog())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -324,7 +363,7 @@ func TestTurnCancelled(t *testing.T) {
 			cancel() // as if the client hung up after the first token
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Handle error = %v, want context.Canceled", err)
 	}
@@ -349,7 +388,7 @@ func TestRouteFallbackFlag(t *testing.T) {
 		t.Run(tt.outcome, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"x"}}
 			router := &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.3, Outcome: tt.outcome}}
-			a := New(testConfig(t), eng, router, nil, quietLog())
+			a := New(testConfig(t), eng, router, nil, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "hi"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)

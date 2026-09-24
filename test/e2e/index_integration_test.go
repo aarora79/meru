@@ -56,7 +56,7 @@ func TestIntegrationNotesAnswer(t *testing.T) {
 	var route string
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	for ev, err := range rpc.Do(ctx, h.socket, rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}) {
+	for ev, err := range rpc.Do(ctx, h.socket, rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, nil) {
 		if err != nil {
 			t.Fatalf("ask: %v", err)
 		}

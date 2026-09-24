@@ -1,0 +1,56 @@
+// Command fakemcp is a small MCP server for Meru's end-to-end tests. It
+// speaks MCP over stdin and stdout, the way merud starts most servers, and
+// offers three tools:
+//
+//   - search returns a fixed note that names the query, so a test can see
+//     the arguments arrived;
+//   - send pretends to send a message; tests put it in a confirm list;
+//   - secret is never allowlisted, so a call to it must be denied.
+//
+// It is test code, built by test/e2e, and never ships.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// Argument types. The struct tags name the JSON keys, and the SDK derives
+// each tool's input schema from them.
+type (
+	searchArgs struct {
+		Query string `json:"query"`
+	}
+	sendArgs struct {
+		To   string `json:"to"`
+		Text string `json:"text"`
+	}
+	noArgs struct{}
+)
+
+// main serves MCP on stdio until merud closes stdin.
+func main() {
+	s := mcp.NewServer(&mcp.Implementation{Name: "fakemcp", Version: "1"}, nil)
+	text := func(s string) *mcp.CallToolResult {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "search", Description: "Search the user's notes."},
+		func(_ context.Context, _ *mcp.CallToolRequest, in searchArgs) (*mcp.CallToolResult, any, error) {
+			return text("note garden.md: the garden budget for " + in.Query + " is 4,200 dollars"), nil, nil
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a message."},
+		func(_ context.Context, _ *mcp.CallToolRequest, in sendArgs) (*mcp.CallToolResult, any, error) {
+			return text("sent to " + in.To), nil, nil
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "secret", Description: "Never allowed."},
+		func(context.Context, *mcp.CallToolRequest, noArgs) (*mcp.CallToolResult, any, error) {
+			return text("you should not see this"), nil, nil
+		})
+	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		fmt.Fprintln(os.Stderr, "fakemcp:", err)
+		os.Exit(1)
+	}
+}

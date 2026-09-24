@@ -1,6 +1,6 @@
 // This file holds the Agent and its one entry point, Handle, which runs a
 // whole turn for one rpc request: session, route, prompt, streamed answer,
-// transcript lines, spans and metrics.
+// transcript lines, spans and metrics. The tool rounds live in tools.go.
 
 package agent
 
@@ -21,10 +21,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/store"
 	"github.com/aarora79/meru/internal/transcript"
 )
 
@@ -39,6 +41,15 @@ const citeRule = "Below, under \"From your files\", are numbered excerpts from t
 	"When they help answer the question, answer from them and cite each excerpt you use by its number " +
 	"in square brackets, like [1]. Cite only the numbers listed there. " +
 	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
+
+// whoIsWho joins the system prompt on every turn, whatever prompt config
+// sets. Without it, a small model read "did I visit Amsterdam?" as a
+// question about Meru and answered that Meru had no record of a visit,
+// while the excerpts in front of it named the user as the traveller. The
+// user's files are about the user, so "I" in a question points at them.
+const whoIsWho = "The person asking is the user, and the files are theirs. " +
+	"In a question, \"I\", \"me\" and \"my\" mean the user, never you. " +
+	"When an excerpt names a person, that is often the user."
 
 // filesNote joins the system prompt on every turn and tells the model which
 // folders Meru searches. Without it a small model answers "I don't have
@@ -76,6 +87,13 @@ type Router interface {
 	Decide(ctx context.Context, question string, history []engine.Message) (Decision, error)
 }
 
+// TurnRecorder keeps one row per answered turn for `meru usage`. merud
+// passes *store.Store; tests pass a fake or nil. Every field but the source
+// also sits in the transcript, so the store can rebuild the rows.
+type TurnRecorder interface {
+	InsertTurn(ctx context.Context, t store.Turn) error
+}
+
 // Decision is what the router concluded. See docs/fast-router.md.
 type Decision struct {
 	Route      string  // "direct", "search", "tools" or "search+tools"
@@ -88,7 +106,10 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
-	search      Searcher // nil turns search off
+	search      Searcher     // nil turns search off
+	tools       ToolRunner   // nil turns tools off
+	turns       TurnRecorder // nil keeps no turn rows
+	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
@@ -101,9 +122,13 @@ type Agent struct {
 // New returns an Agent that answers with eng, routes with router, and keeps
 // transcripts under cfg.Dir/sessions. It searches the user's files with
 // search on every route but "direct", and on a direct question that names
-// one of cfg.Index.Folders. search may be nil, which turns search off. log
-// may be nil, which means no log lines.
-func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, log *slog.Logger) *Agent {
+// one of cfg.Index.Folders. search may be nil, which turns search off. It
+// offers the model the tools from tools on the "tools" and "search+tools"
+// routes, for at most cfg.Agent.MaxRounds model calls per turn. tools may be
+// nil, which turns tools off. It writes a row for each answered turn to
+// turns, which may be nil to keep none. log may be nil, which means no log
+// lines.
+func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, tools ToolRunner, turns TurnRecorder, log *slog.Logger) *Agent {
 	if log == nil {
 		log = obs.Discard()
 	}
@@ -116,13 +141,16 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
-	system += "\n\n" + filesNote(cfg.Index.Folders)
+	system += "\n\n" + whoIsWho + "\n\n" + filesNote(cfg.Index.Folders)
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
 		engine:      eng,
 		router:      router,
 		search:      search,
+		tools:       tools,
+		turns:       turns,
+		maxRounds:   cfg.Agent.MaxRounds,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
@@ -135,10 +163,19 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 
 // Handle runs one turn for req and sends its events through emit, in this
 // order: "session", "route", "sources" when the turn searched the user's
-// files and found something, one "token" per piece of the answer, and last
-// a "done" that carries the turn's stats. It has the rpc.Handler signature, so
-// merud passes a.Handle straight to rpc.Serve. The server holds the "done"
-// back until Handle returns, and sends "error" in its place if Handle fails.
+// files and found something, then the rounds, and last a "done" that
+// carries the turn's stats. Each round sends one "token" per piece of text;
+// a round that calls tools adds a "tool_call" per call and a "tool_result"
+// as each call ends. It has the rpc.Handler signature, so merud passes
+// a.Handle straight to rpc.Serve. The server holds the "done" back until
+// Handle returns, and sends "error" in its place if Handle fails.
+//
+// While tool calls run, Handle calls emit from several goroutines at once,
+// and dispatch calls approve from them too. The rpc server's emit takes a
+// lock for each write, so that is safe.
+//
+// A turn that answers also writes a row to the turns table and records
+// the usage metrics; see recordUsage.
 //
 // Handle fails when the request is bad (empty question, unknown session or
 // source), when the transcript can't be written, when a model call fails, or
@@ -151,7 +188,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, l
 //
 // err is a named result, so the deferred function below can read the final
 // error and record the turn's outcome whichever return statement ran.
-func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) (err error) {
+func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) (err error) {
 	start := time.Now()
 	question := strings.TrimSpace(req.Text)
 	if question == "" {
@@ -164,15 +201,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	ctx, span := obs.Tracer().Start(ctx, "meru.turn")
 	var route, sessionID string
-	var rep reply // the answer's stats, filled once the model has answered
-	iterations := 0
+	var rep reply // the answer's stats, summed over the rounds
+	// t carries what the rounds need; its rounds field counts model calls.
+	t := &turn{emit: emit, approve: approve}
 	defer func() {
 		outcome := outcomeOf(ctx, err)
 		span.SetAttributes(
 			attribute.String("meru.route", route),
 			attribute.String("meru.source", source),
 			attribute.String("meru.session.id", sessionID),
-			attribute.Int("meru.turn.iterations", iterations),
+			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.String("meru.turn.outcome", outcome),
 		)
 		obs.EndSpanErr(ctx, span, err)
@@ -181,7 +219,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		// values (the trace) but drops the cancel, so the metric still records.
 		obs.RecordTurn(context.WithoutCancel(ctx), obs.Turn{
 			Route: route, Source: source, Outcome: outcome,
-			Duration: time.Since(start), Iterations: iterations,
+			Duration: time.Since(start), Iterations: t.rounds,
 		})
 		a.logTurn(ctx, start, sessionID, route, source, outcome, rep, err)
 	}()
@@ -195,12 +233,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	sessionID = sess.ID()
+	if req.Session == "" {
+		obs.RecordSession(ctx, source)
+	}
 	if err := emit(rpc.Event{Type: rpc.EventSession, Session: sessionID}); err != nil {
 		return err
 	}
 
 	traceID := traceIDOf(span)
-	if err := a.appendLine(ctx, sess, transcript.Line{Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
+	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
+	// The user line carries start as its time, so a turns row rebuilt from
+	// the transcript gets the same time as the row written live.
+	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
 		return err
 	}
 
@@ -217,6 +261,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"confidence", dec.Confidence)
 		dec.Route = "search"
 	}
+	// The same gap for tools: "search my obsidian vault" can route to
+	// search, which offers no tools. When a question names a connected tool
+	// server and the route has no tools, add them.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
+		a.log.DebugContext(ctx, "route changed: the question names a tool server",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
@@ -225,14 +277,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// Every route but "direct" looks in the user's files first. Tools
-	// arrive in v0.3; until then "tools" searches too, because the router
-	// sends some questions about the user's files there, and an answer from
-	// the files beats one from the model alone.
+	// Every route but "direct" looks in the user's files first. "tools"
+	// searches too, because the router sends some questions about the
+	// user's files there, and an answer from the files beats one from the
+	// model alone.
 	var files string
+	var docs []string // the full paths of the files in the prompt, for the transcript
 	if searches(dec.Route) && a.search != nil {
 		var sources []rpc.Citation
-		files, sources, err = a.searchFiles(ctx, searchQuery(question, history))
+		files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
 		if err != nil {
 			return err
 		}
@@ -242,9 +295,12 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			}
 		}
 	}
-	msgs := a.prompt(ctx, history, question, files)
-	iterations = 1
-	rep, err = a.answer(ctx, msgs, emit)
+	specs := a.toolSpecs(dec.Route)
+	msgs := a.prompt(ctx, history, question, files, len(specs) > 0)
+	if len(specs) > 0 {
+		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
+	}
+	rep, err = a.converse(ctx, t, msgs, specs)
 	if err != nil {
 		return err
 	}
@@ -252,16 +308,50 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		span.SetAttributes(attribute.String("meru.answer", rep.text))
 	}
 
-	if err := a.appendLine(ctx, sess, transcript.Line{
+	// The assistant line holds the turn's facts, so `meru usage` can
+	// rebuild from the files: the route after the override rules above,
+	// how long the turn took, and which files it read.
+	answer := transcript.Line{
 		Type:      transcript.TypeAssistant,
 		Text:      rep.text,
 		TokensIn:  rep.usage.PromptTokens,
 		TokensOut: rep.usage.OutputTokens,
+		Route:     route,
+		Ms:        time.Since(start).Milliseconds(),
+		Sources:   docs,
 		TraceID:   traceID,
-	}); err != nil {
+	}
+	if err := a.appendLine(ctx, sess, answer); err != nil {
 		return err
 	}
+	a.recordUsage(ctx, sessionID, source, start, answer, t.calls)
 	return emit(doneEvent(start, rep))
+}
+
+// recordUsage writes the turns row for an answered turn and records
+// meru.turn.tokens and meru.turn.docs. answer is the assistant line just
+// written, and calls the number of tool calls the turn made.
+//
+// A failed insert only logs a warning: the transcript already holds the
+// turn, and the next rebuild of meru.db brings the row back. The insert
+// runs even when the client hung up after the answer: WithoutCancel keeps
+// ctx's values (the trace) and drops its cancel.
+func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, answer transcript.Line, calls int) {
+	obs.RecordTurnUsage(ctx, obs.TurnUsage{
+		Route: answer.Route, Source: source,
+		TokensIn: answer.TokensIn, TokensOut: answer.TokensOut, Docs: len(answer.Sources),
+	})
+	if a.turns == nil {
+		return
+	}
+	err := a.turns.InsertTurn(context.WithoutCancel(ctx), store.Turn{
+		Session: sessionID, Time: start, Source: source, Route: answer.Route,
+		TokensIn: int64(answer.TokensIn), TokensOut: int64(answer.TokensOut),
+		DurationMillis: answer.Ms, ToolCalls: calls, Docs: answer.Sources, TraceID: answer.TraceID,
+	})
+	if err != nil {
+		a.log.WarnContext(ctx, "turn row not written; the transcript still has the turn", "err", err)
+	}
 }
 
 // logStart writes the debug line that opens a turn: which session it asks
@@ -312,11 +402,12 @@ func doneEvent(start time.Time, rep reply) rpc.Event {
 	return ev
 }
 
-// reply is what answer hands back: the whole answer text, the runtime's
-// usage counters, and when the first piece of text arrived (the zero
-// time.Time when none did).
+// reply is what answer hands back: the whole answer text, the tool calls
+// the model made, the runtime's usage counters, and when the first piece of
+// text arrived (the zero time.Time when none did).
 type reply struct {
 	text       string
+	calls      []engine.ToolCall
 	usage      engine.Usage
 	firstToken time.Time
 }
@@ -398,8 +489,8 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
-// searches reports whether a route looks in the user's files. In v0.2 that
-// is every route but "direct"; see Handle.
+// searches reports whether a route looks in the user's files: every route
+// but "direct"; see Handle.
 func searches(route string) bool {
 	return route != "direct"
 }
@@ -413,6 +504,44 @@ func folderNames(folders []string) []string {
 		n := strings.ToLower(filepath.Base(filepath.FromSlash(f)))
 		if utf8.RuneCountInString(n) >= 3 && !slices.Contains(names, n) {
 			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// withTools returns the route that adds tools to route: "tools" for
+// "direct" and "search+tools" for "search". ok is false for a route that
+// has tools already.
+func withTools(route string) (string, bool) {
+	switch route {
+	case "direct":
+		return "tools", true
+	case "search":
+		return "search+tools", true
+	}
+	return "", false
+}
+
+// toolServers returns, in lower case, the names of the MCP servers and A2A
+// agents behind specs: "obsidian" for "obsidian.search_vault" and
+// "research" for "a2a.research.summarize". Built-in tools belong to no
+// server; their owner, "meru", is also the assistant's name, so it would
+// match nearly every question addressed to it.
+func toolServers(specs []engine.ToolSpec) []string {
+	var names []string
+	for _, t := range specs {
+		name := strings.ToLower(t.Name)
+		var server string
+		switch toolKind(name) {
+		case dispatch.KindA2A:
+			server, _, _ = strings.Cut(strings.TrimPrefix(name, "a2a."), ".")
+		case dispatch.KindMCP:
+			server, _, _ = strings.Cut(name, ".")
+		default:
+			continue
+		}
+		if !slices.Contains(names, server) {
+			names = append(names, server)
 		}
 	}
 	return names
@@ -439,17 +568,32 @@ func words(text string) []string {
 	})
 }
 
-// searchQuery is the text a turn searches for. No model rewrites the query,
-// so it is the question itself plus the session's latest earlier question
-// that names a subject, because "and the one after that?" means nothing to a
-// search on its own. The current question comes first: keyword search keeps
-// only a query's first words.
+// standaloneWords is how many subject words make a question stand on its
+// own. "and the budget?" has one and "how much did it cost?" two, so both
+// borrow the earlier question; "i did some work on the bakery site, remind
+// me" has four (work, bakery, site, remind) and doesn't. Two would be too few:
+// "how much did it cost" would lose what "it" is.
+const standaloneWords = 3
+
+// searchQuery is the text a turn searches for. No model rewrites the query.
+// A question with at least standaloneWords subject words is searched on
+// its own. A shorter one is a follow-up: it gets the session's latest
+// earlier question that names a subject, because "and the one after that?"
+// means nothing to a search on its own. The current question comes first:
+// keyword search keeps only a query's first words.
+//
+// The standalone test came from a real miss: a question about a work project,
+// asked after one about a trip, searched for both, and the travel papers
+// crowded out every note on the project.
 //
 // An earlier question made only of filler, such as "try the last question
 // again", names no subject, so the walk skips it and keeps going back.
 // Without the skip, "search again" after "try again" searched for those
 // words alone and found nothing on the subject.
 func searchQuery(question string, history []engine.Message) string {
+	if subjectWords(question) >= standaloneWords {
+		return question
+	}
 	for i := len(history) - 1; i >= 0; i-- {
 		if history[i].Role == engine.RoleUser && namesSubject(history[i].Content) {
 			return question + "\n" + history[i].Content
@@ -461,12 +605,18 @@ func searchQuery(question string, history []engine.Message) string {
 // namesSubject reports whether text holds at least one word that isn't
 // filler, so it can steer a search.
 func namesSubject(text string) bool {
+	return subjectWords(text) > 0
+}
+
+// subjectWords counts the distinct words in text that aren't filler.
+func subjectWords(text string) int {
+	var seen []string
 	for _, w := range words(text) {
-		if !isFiller(w) {
-			return true
+		if !isFiller(w) && !slices.Contains(seen, w) {
+			seen = append(seen, w)
 		}
 	}
-	return false
+	return len(seen)
 }
 
 // isFiller reports whether w is a word that says nothing about a subject:
@@ -481,23 +631,28 @@ func isFiller(w string) bool {
 		"to", "in", "on", "of", "for", "at", "about", "again", "try", "retry", "search",
 		"look", "check", "find", "last", "previous", "question", "answer", "now", "think",
 		"sure", "time", "once", "more", "docs", "files", "notes", "what", "how", "why",
-		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned":
+		"which", "where", "when", "who", "say", "says", "said", "tell", "specified", "mentioned",
+		// Words that point back at something said before, and the pieces
+		// an apostrophe leaves: "what's" splits into "what" and "s".
+		"one", "ones", "other", "else", "after", "before", "next", "first", "then",
+		"they", "them", "those", "these", "some", "much", "many", "with", "from", "as",
+		"s", "t", "d", "ll", "re", "ve", "m":
 		return true
 	}
 	return false
 }
 
 // searchFiles searches the user's files for query inside a meru.search
-// span. It returns the prompt section to add under the system prompt, and
-// the citations for the "sources" event, numbered as the section numbers
-// them.
+// span. It returns the prompt section to add under the system prompt, the
+// citations for the "sources" event, numbered as the section numbers them,
+// and the cited files' absolute paths, each once, for the transcript.
 //
 // A search that finds nothing, or runs before anything is indexed, gives a
 // short section saying so and no citations. A search that fails for any
 // reason but a cancelled turn is logged and treated the same way: the
 // answer can still come from the model alone. It returns an error only when
 // ctx ends.
-func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, error) {
+func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, []string, error) {
 	ctx, span := obs.Tracer().Start(ctx, "meru.search")
 	defer span.End()
 	start := time.Now()
@@ -506,7 +661,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 	if err != nil {
 		if ctx.Err() != nil {
 			obs.EndSpanErr(ctx, span, err)
-			return "", nil, fmt.Errorf("search: %w", err)
+			return "", nil, nil, fmt.Errorf("search: %w", err)
 		}
 		// The turn goes on without excerpts, so this is a warning, not the
 		// turn's error.
@@ -515,6 +670,14 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 		results = nil
 	}
 
+	// Keep each file's full path for the transcript before shortening it:
+	// the turns table must name a file the same way whoever reads it.
+	var docs []string
+	for _, r := range results {
+		if !slices.Contains(docs, r.Path) {
+			docs = append(docs, r.Path)
+		}
+	}
 	// Show each path as ~/... to the model and to the client: it is shorter,
 	// and the model has no use for the full path.
 	for i := range results {
@@ -536,7 +699,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 	span.SetAttributes(attribute.Int("meru.search.results", len(results)))
 	a.log.DebugContext(ctx, "search done", "results", len(results),
 		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
-	return section, sources, nil
+	return section, sources, docs, nil
 }
 
 // shortPath writes p under the home folder as ~/..., using the OS's path
@@ -554,13 +717,17 @@ func shortPath(home, p string) string {
 
 // prompt builds the messages for the main model inside a meru.prompt span,
 // and reports their size. files is the "From your files" section for a turn
-// that searched, or "" for one that didn't. est_tokens is characters divided
-// by four, a rough rule for English text; the model's own count arrives
-// with its answer.
-func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string) []engine.Message {
+// that searched, or "" for one that didn't. tools is true on a turn that
+// offers tools, and adds toolsNote to the system prompt. est_tokens is
+// characters divided by four, a rough rule for English text; the model's
+// own count arrives with its answer.
+func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, files string, tools bool) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
 	system := a.system
+	if tools {
+		system += "\n\n" + toolsNote
+	}
 	if files != "" {
 		system += "\n\n" + files
 	}
@@ -578,11 +745,13 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question, 
 	return msgs
 }
 
-// answer streams the main model's reply to msgs, sends each piece through
-// emit as a "token" event, and returns the whole text with the runtime's
-// usage counters and the first token's arrival time. It records one
-// gen_ai.chat span, with a first_token event, and the model-call metrics.
-func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc.Event) error) (reply, error) {
+// answer streams the main model's reply to msgs, offering it tools (nil for
+// none), sends each piece of text through emit as a "token" event, and
+// returns the whole text, the tool calls, the runtime's usage counters and
+// the first token's arrival time. It records one gen_ai.chat span, with a
+// first_token event, and the model-call metrics. Each round of a turn calls
+// it once.
+func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
 	model := a.models.Main
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()
@@ -593,6 +762,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 	var usage engine.Usage
 	var doneReason string
 	var text strings.Builder
+	var calls []engine.ToolCall
 
 	// fail marks the span as failed or cancelled and returns err with
 	// context added.
@@ -601,7 +771,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 		return reply{}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
-	stream, err := a.engine.Stream(ctx, msgs, nil, engine.Options{Model: model})
+	stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model})
 	if err != nil {
 		return fail(err)
 	}
@@ -621,6 +791,9 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 				return fail(err)
 			}
 		}
+		// Ollama sends each tool call whole, in a chunk of its own, so
+		// collecting them needs no joining of pieces.
+		calls = append(calls, delta.ToolCalls...)
 		if delta.Done {
 			usage = delta.Usage
 			doneReason = delta.DoneReason
@@ -643,12 +816,13 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 	})
 	args := []any{"model", model, "ms", time.Since(start).Milliseconds(),
 		"ttft_ms", ttft.Milliseconds(), "tokens_in", usage.PromptTokens,
-		"tokens_out", usage.OutputTokens, "answer_chars", utf8.RuneCountInString(text.String())}
+		"tokens_out", usage.OutputTokens, "answer_chars", utf8.RuneCountInString(text.String()),
+		"tool_calls", len(calls)}
 	if obs.CaptureContent() {
 		args = append(args, "answer", obs.Preview(text.String()))
 	}
 	a.log.DebugContext(ctx, "answer finished", args...)
-	return reply{text: text.String(), usage: usage, firstToken: firstToken}, nil
+	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken}, nil
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's

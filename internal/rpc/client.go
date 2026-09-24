@@ -22,12 +22,18 @@ const maxLine = 1 << 20
 //
 // The returned value is an iterator: range over it with
 //
-//	for ev, err := range rpc.Do(ctx, path, req) { ... }
+//	for ev, err := range rpc.Do(ctx, path, req, approve) { ... }
 //
 // The sequence ends after a "done" or "error" event, or with a non-nil err if
 // the connection fails. Cancelling ctx closes the connection, which tells
 // merud to stop the turn.
-func Do(ctx context.Context, socketPath string, req Request) iter.Seq2[Event, error] {
+//
+// An "approval" event doesn't reach the loop. Do calls approve with it and
+// writes the answer back as a Reply; the turn waits meanwhile. A nil approve
+// denies every call, which suits a client with no one to ask. If approve
+// fails, Do ends the sequence with its error, which closes the connection
+// and stops the turn.
+func Do(ctx context.Context, socketPath string, req Request, approve ApproveFunc) iter.Seq2[Event, error] {
 	// An iter.Seq2 is a function that calls yield once per item. The caller's
 	// loop body runs inside yield; yield returns false when the caller breaks
 	// out of the loop, and then we must stop.
@@ -48,7 +54,8 @@ func Do(ctx context.Context, socketPath string, req Request) iter.Seq2[Event, er
 		stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 		defer stop()
 
-		if err := json.NewEncoder(conn).Encode(req); err != nil {
+		enc := json.NewEncoder(conn)
+		if err := enc.Encode(req); err != nil {
 			yield(Event{}, fmt.Errorf("send request: %w", err))
 			return
 		}
@@ -60,6 +67,22 @@ func Do(ctx context.Context, socketPath string, req Request) iter.Seq2[Event, er
 			if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
 				yield(Event{}, fmt.Errorf("read reply: %w", err))
 				return
+			}
+			if ev.Type == EventApproval && ev.Approval != nil {
+				choice := ChoiceDeny
+				if approve != nil {
+					c, err := approve(ctx, *ev.Approval)
+					if err != nil {
+						yield(Event{}, fmt.Errorf("approval: %w", err))
+						return
+					}
+					choice = c
+				}
+				if err := enc.Encode(Reply{ApprovalID: ev.Approval.ID, Choice: choice}); err != nil {
+					yield(Event{}, fmt.Errorf("send approval: %w", err))
+					return
+				}
+				continue
 			}
 			if !yield(ev, nil) {
 				return // the caller stopped looping

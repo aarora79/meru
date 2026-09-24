@@ -126,7 +126,7 @@ func observedAgent(t *testing.T, log *slog.Logger) (*Agent, config.Config) {
 		t.Fatal(err)
 	}
 	rc.Log = log
-	return New(cfg, eng, realRouter{eng: eng, cfg: rc}, nil, log), cfg
+	return New(cfg, eng, realRouter{eng: eng, cfg: rc}, nil, nil, nil, log), cfg
 }
 
 // askOverSocket serves a on a fresh Unix socket, asks each question in turn
@@ -154,7 +154,7 @@ func askOverSocket(t *testing.T, a *Agent, log *slog.Logger, questions ...string
 
 	session := ""
 	for _, q := range questions {
-		for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpAsk, Text: q, Session: session, Source: rpc.SourceTUI}) {
+		for ev, err := range rpc.Do(context.Background(), sock, rpc.Request{Op: rpc.OpAsk, Text: q, Session: session, Source: rpc.SourceTUI}, nil) {
 			if err != nil {
 				t.Fatalf("ask: %v", err)
 			}

@@ -198,6 +198,89 @@ func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
 		metric.WithAttributes(attr(keyStage, bounded(stage, stages...))))
 }
 
+// ToolCallMetric describes one finished tool call, for RecordToolCall.
+type ToolCallMetric struct {
+	Kind    string // "mcp", "a2a" or "builtin"
+	Server  string // the MCP server or A2A agent; "meru" for a built-in
+	Tool    string // the tool's name without the server
+	Outcome string // "ok", "error", "denied", "declined", "cancelled" or "timeout"
+	// Duration is how long the tool ran. It is zero for a call that never
+	// ran: denied, declined, or cancelled before it started.
+	Duration time.Duration
+}
+
+// RecordToolCall records meru.tool.calls and, for a call that ran,
+// meru.tool.duration.
+//
+// Server and tool names come from config, so they form a small set, with
+// one exception: a denied call names a tool the model made up, and a model
+// can make up any number. RecordToolCall reports those as "other". Kind
+// and outcome outside their known sets become "other" too.
+func RecordToolCall(ctx context.Context, c ToolCallMetric) {
+	in := load()
+	if in == nil {
+		return
+	}
+	server, tool := c.Server, c.Tool
+	if c.Outcome == "denied" {
+		server, tool = other, other
+	}
+	kind := attr(keyToolKind, bounded(c.Kind, toolKinds...))
+	serverAttr := attr(keyToolServer, server)
+	toolAttr := attr(keyToolName, tool)
+	in.toolCalls.Add(ctx, 1, metric.WithAttributes(
+		kind, serverAttr, toolAttr,
+		attr(keyOutcome, bounded(c.Outcome, toolOutcomes...)),
+	))
+	if c.Duration > 0 {
+		in.toolDuration.Record(ctx, c.Duration.Seconds(), metric.WithAttributes(kind, serverAttr, toolAttr))
+	}
+}
+
+// RecordSession adds one to meru.sessions when a turn starts a new
+// session. source is "cli", "tui" or "job"; any other value becomes
+// "other".
+func RecordSession(ctx context.Context, source string) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.sessions.Add(ctx, 1, metric.WithAttributes(attr(keySource, bounded(source, sources...))))
+}
+
+// TurnUsage describes what one answered turn used, for RecordTurnUsage.
+type TurnUsage struct {
+	Route  string // one of the four routes
+	Source string // "cli", "tui" or "job"
+	// TokensIn and TokensOut sum the main model's tokens over the turn's
+	// model calls.
+	TokensIn  int
+	TokensOut int
+	// Docs counts the distinct files whose excerpts went into the prompt.
+	Docs int
+}
+
+// RecordTurnUsage records meru.turn.tokens and meru.turn.docs for one
+// answered turn. A failed or cancelled turn records neither, so the
+// numbers match the turns table that `meru usage` reads.
+//
+// gen_ai.client.token.usage already counts tokens, per model call and by
+// model and tier. meru.turn.tokens counts them per turn and adds the route
+// and source, which a model call doesn't know, so a dashboard can show
+// which kind of question spends the tokens. Values outside the known sets
+// become "other".
+func RecordTurnUsage(ctx context.Context, u TurnUsage) {
+	in := load()
+	if in == nil {
+		return
+	}
+	route := attr(keyRoute, bounded(u.Route, routes...))
+	source := attr(keySource, bounded(u.Source, sources...))
+	in.turnTokens.Add(ctx, int64(u.TokensIn), metric.WithAttributes(attr(keyTokenType, "input"), route, source))
+	in.turnTokens.Add(ctx, int64(u.TokensOut), metric.WithAttributes(attr(keyTokenType, "output"), route, source))
+	in.turnDocs.Record(ctx, int64(u.Docs), metric.WithAttributes(route))
+}
+
 // ActiveStreams adds delta (+1 or -1) to meru.rpc.active_streams.
 func ActiveStreams(ctx context.Context, delta int64) {
 	in := load()

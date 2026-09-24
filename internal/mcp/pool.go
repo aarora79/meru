@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -163,7 +164,7 @@ func dialTransport(procCtx context.Context, cfg ServerConfig, log *slog.Logger) 
 	}
 	return &mcp.StreamableClientTransport{
 		Endpoint:   cfg.URL,
-		HTTPClient: httpClient(cfg.Network),
+		HTTPClient: httpClient(cfg),
 		// The standalone stream carries notifications the server sends on
 		// its own, such as "my tool list changed". Meru lists tools when it
 		// connects and ignores those, so it doesn't hold the stream open.
@@ -172,23 +173,55 @@ func dialTransport(procCtx context.Context, cfg ServerConfig, log *slog.Logger) 
 }
 
 // httpClient returns the HTTP client for a Streamable HTTP server. Unless
-// network is true, it refuses to follow a redirect off this machine: a
-// loopback server must not be able to send merud's request elsewhere.
-func httpClient(network bool) *http.Client {
-	if network {
-		return &http.Client{}
+// cfg.Network is true, it refuses to follow a redirect off this machine: a
+// loopback server must not be able to send merud's request elsewhere. When
+// cfg has Headers, the client adds them to each request (see
+// headerTransport).
+func httpClient(cfg ServerConfig) *http.Client {
+	c := &http.Client{}
+	// cfg passed Validate, so its URL parses; the check only guards a nil u.
+	if u, err := url.Parse(cfg.URL); err == nil && len(cfg.Headers) > 0 {
+		c.Transport = &headerTransport{base: http.DefaultTransport, host: u.Host, headers: cfg.Headers}
 	}
-	return &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if err := loopback.CheckURL(req.URL.String()); err != nil {
-				return fmt.Errorf("redirect refused: %w", err)
-			}
-			if len(via) >= 10 {
-				return errors.New("stopped after 10 redirects")
-			}
-			return nil
-		},
+	if cfg.Network {
+		return c
 	}
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := loopback.CheckURL(req.URL.String()); err != nil {
+			return fmt.Errorf("redirect refused: %w", err)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return c
+}
+
+// headerTransport adds the server's configured headers to each request. It
+// is an http.RoundTripper, the interface an http.Client sends requests
+// through; this one wraps base, the transport that does the sending.
+//
+// It adds the headers only when the request goes to host, the server's own
+// address. A server marked network = true may redirect elsewhere, and an
+// API key must not follow the redirect.
+type headerTransport struct {
+	base    http.RoundTripper
+	host    string
+	headers map[string]string
+}
+
+// RoundTrip sends req through base with the headers added. A RoundTripper
+// must not change the request it gets, so RoundTrip changes a copy.
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host != t.host {
+		return t.base.RoundTrip(req)
+	}
+	r := req.Clone(req.Context())
+	for k, v := range t.headers {
+		r.Header.Set(k, v)
+	}
+	return t.base.RoundTrip(r)
 }
 
 // connectLocked starts or connects to s, runs the handshake and lists its

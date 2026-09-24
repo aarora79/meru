@@ -7,6 +7,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -49,6 +50,10 @@ type Info struct {
 type look struct {
 	renderer      *lipgloss.Renderer
 	markdownStyle string // a Glamour built-in style: "dark", "light" or "notty"
+	// links makes each source line a clickable link to its file
+	// (rpc.Hyperlink). It is on when styling is, so NO_COLOR and the
+	// tests' plain-text renderer get plain lines.
+	links bool
 }
 
 // turnState says where one question and its answer stand.
@@ -77,6 +82,9 @@ type exchange struct {
 	// search or found nothing.
 	sources []rpc.Citation
 
+	// tools lists the turn's tool calls in the order merud reported them.
+	tools []toolCall
+
 	answer string    // the answer's raw text, grown token by token
 	err    string    // why the turn failed, for stateFailed
 	stats  rpc.Event // the closing "done" event and its stats; zero if none came
@@ -85,6 +93,25 @@ type exchange struct {
 	// renderedWidth the width it was drawn for. A resize redraws it.
 	rendered      string
 	renderedWidth int
+}
+
+// toolCall is one tool call as the turn shows it: from its "tool_call"
+// event, and from its "tool_result" event once that arrives.
+type toolCall struct {
+	id      string
+	name    string // the full name, such as "notes.search"
+	outcome string // "" while the call runs, then "ok", "declined" and so on
+	millis  int64  // how long the call took, from "tool_result"
+}
+
+// pendingApproval is a tool call waiting for the user's answer.
+type pendingApproval struct {
+	ask rpc.Approval
+	// reply takes the choice back to the stream goroutine, which waits on
+	// it in approveVia. It has room for one value, so sending never blocks.
+	reply chan rpc.Choice
+	// selected is the index in ask.Choices that Enter picks; ←/→ move it.
+	selected int
 }
 
 // link says whether merud answered last time we heard from it.
@@ -103,8 +130,17 @@ type Model struct {
 	ask  askFunc // sends a request to merud
 	send sender  // puts stream events back into the program
 	info Info    // what the header shows
+	// index is what merud's search index held at the last status check;
+	// nil until one answers. The header shows its document count.
+	index *rpc.IndexStatus
+	// usage is merud's last answer to OpUsage; nil until one answers, and
+	// when merud doesn't know the op. The header shows its 1h window.
+	usage []rpc.UsageWindow
 
-	look  look
+	look look
+	// home is the home folder, for turning "~/..." source paths into
+	// file:// links; "" leaves them unlinked.
+	home  string
 	style styles
 	keys  keyMap
 	// markdown renders finished answers. renderMarkdown builds it on first
@@ -133,6 +169,16 @@ type Model struct {
 	// cancel stops the current turn's request. Calling it closes the socket,
 	// which tells merud to stop generating.
 	cancel context.CancelFunc
+	// approval is the tool call waiting for the user's answer, or nil.
+	// While it is set, the approval box shows and the keys answer it
+	// instead of typing into the input.
+	approval *pendingApproval
+	// usageBox is the open /usage box, or nil. While it is set, the box
+	// covers the conversation and the keys go to it.
+	usageBox *usageBox
+	// notice is a dim line that takes the help line's place until the next
+	// key press, such as the answer to an unknown /command.
+	notice string
 }
 
 // newModel builds the starting screen: an empty conversation and a focused
@@ -172,6 +218,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		send:         send,
 		info:         info,
 		look:         lk,
+		home:         homeDir(),
 		style:        st,
 		keys:         keys,
 		input:        in,
@@ -187,13 +234,14 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 	return m
 }
 
-// Init returns the commands Bubble Tea runs first: blink the cursor, and
-// ping merud so the header can say whether it is up.
+// Init returns the commands Bubble Tea runs first: blink the cursor, ask
+// merud what its index holds, so the header can say whether it is up and
+// how many documents it searches, and ask for the usage numbers.
 func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
 	}
-	return tea.Batch(textarea.Blink, pingCmd(m.ask))
+	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), refreshAfter(refreshScanning))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -217,13 +265,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.link = linkDown
 		}
+		if msg.index != nil {
+			m.index = msg.index
+		}
 		return m, nil
+	case usageMsg:
+		m.applyUsage(msg)
+		return m, nil
+	case refreshMsg:
+		// Check now, and book the next check. Only this branch books one,
+		// so there is one chain of checks however many answers arrive.
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), refreshAfter(nextRefresh(m.index)))
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
+	case approvalRequestMsg:
+		m.openApproval(msg)
+		return m, nil
 	case turnDoneMsg:
 		m.handleDone(msg)
-		return m, nil
+		// Check merud again: the answer may have come while it indexed new
+		// files, and a turn that failed may mean merud went away. The
+		// answer also changed the usage numbers.
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask))
 	case spinner.TickMsg:
 		// Returning no command lets the spinner stop ticking when idle.
 		if !m.streaming {
@@ -243,6 +307,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey reacts to a key press. Keys the chat screen doesn't claim go to
 // the input box as typing.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.notice = "" // a notice lasts until the next key
 	// key.Matches reports whether msg is one of the binding's keys.
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -257,6 +322,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.stopTurn()
 		m.current().state = stateStopped
 		m.refresh()
+		return m, nil
+	case m.approval != nil:
+		// The approval box has the keys until the user answers it.
+		m.approvalKey(msg)
+		return m, nil
+	case m.usageBox != nil:
+		// So does the usage box, until Esc or q closes it.
+		m.usageKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
@@ -283,9 +356,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // submit sends the typed question, unless the input is blank or an answer is
 // still streaming. It returns the command that runs the turn and the command
-// that starts the spinner; tea.Batch runs both.
+// that starts the spinner; tea.Batch runs both. A line that starts with "/"
+// is a command for the chat itself and never goes to the model; it works
+// while an answer streams too.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
+	if strings.HasPrefix(text, "/") {
+		return m.command(text)
+	}
 	if text == "" || m.streaming {
 		return m, nil
 	}
@@ -329,6 +407,14 @@ func (m *Model) handleEvent(msg eventMsg) {
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
 	case rpc.EventSources:
 		cur.sources = ev.Sources
+	case rpc.EventToolCall:
+		if ev.Tool != nil {
+			cur.tools = append(cur.tools, toolCall{id: ev.Tool.ID, name: ev.Tool.Name})
+		}
+	case rpc.EventToolResult:
+		if ev.Tool != nil {
+			cur.finishTool(*ev.Tool)
+		}
 	case rpc.EventToken:
 		cur.answer += ev.Text
 	case rpc.EventDone:
@@ -370,12 +456,29 @@ func (m *Model) current() *exchange {
 	return &m.turns[len(m.turns)-1]
 }
 
-// stopTurn cancels the running turn, if any, and marks the screen idle.
+// finishTool records how the call t ended on the tool line it started. A
+// result with no matching call, which a well-behaved merud never sends, gets
+// a line of its own.
+func (e *exchange) finishTool(t rpc.ToolEvent) {
+	// Search from the newest call back: a result most often ends the call
+	// that started last.
+	for i := len(e.tools) - 1; i >= 0; i-- {
+		if e.tools[i].id == t.ID && e.tools[i].outcome == "" {
+			e.tools[i].outcome, e.tools[i].millis = t.Outcome, t.DurationMillis
+			return
+		}
+	}
+	e.tools = append(e.tools, toolCall{id: t.ID, name: t.Name, outcome: t.Outcome, millis: t.DurationMillis})
+}
+
+// stopTurn cancels the running turn, if any, closes any open approval box,
+// and marks the screen idle.
 func (m *Model) stopTurn() {
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
 	}
+	m.closeApproval(rpc.ChoiceDeny)
 	m.streaming = false
 }
 
@@ -413,4 +516,14 @@ func (m *Model) refresh() {
 	if follow {
 		m.conversation.GotoBottom()
 	}
+}
+
+// homeDir returns the user's home folder, or "" when the system can't say.
+// Only the source links need it, and they fall back to plain text.
+func homeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }

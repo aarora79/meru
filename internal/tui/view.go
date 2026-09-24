@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -24,12 +25,49 @@ const streamCursor = "▍"
 func (m Model) View() string {
 	rule := m.style.rule.Render(strings.Repeat("─", m.width))
 	input := m.style.inputBox.Render(m.input.View())
-	return strings.Join([]string{m.header(), rule, m.conversation.View(), input, m.help.View(m.keys)}, "\n")
+	// While a box is open, the help line lists the keys that answer it
+	// instead, and a notice takes the line until the next key.
+	helpLine := m.helpView(m.keys.ShortHelp())
+	switch {
+	case m.approval != nil:
+		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices))
+	case m.usageBox != nil:
+		helpLine = m.helpView(newUsageKeys())
+	case m.notice != "":
+		helpLine = m.style.dim.Render(ansi.Truncate(m.notice, m.width, "…"))
+	}
+	// The usage box takes the conversation's place, at the same size, so
+	// the conversation underneath keeps its scroll position.
+	pane := m.conversation.View()
+	if m.usageBox != nil {
+		pane = m.usageBoxView(m.width, m.conversation.Height)
+	}
+	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 }
 
-// header draws the top line: the name, the setup details and the session on
-// the left, and whether merud is reachable on the right. When the line is
-// too narrow, the details shrink first, then disappear.
+// helpView draws the help line for keys. The help component cuts a line
+// that runs too long and ends it with "…", except when the keys that fit
+// fill the width to within two columns: then it has no room for its "…"
+// and adds every key anyway. So helpView drops keys from the end until the
+// line fits.
+func (m Model) helpView(keys []key.Binding) string {
+	line := m.help.ShortHelpView(keys)
+	for len(keys) > 1 && lipgloss.Width(line) > m.width {
+		keys = keys[:len(keys)-1]
+		line = m.help.ShortHelpView(keys)
+	}
+	return line
+}
+
+// header draws the top line: the name, the setup details (profile, main
+// model, the index's size) and the session on the left, and on the right the
+// last hour's usage, dim, and whether merud is reachable.
+//
+// When the line is too narrow, parts go in order of how little they are
+// missed. The usage goes first: /usage shows it in full, and the left side
+// says what Meru is running. The index's vector count and size go next, as
+// a whole, because cutting them mid-way would leave an open bracket. Then
+// the details shrink with "…", and last they disappear. The status stays.
 func (m Model) header() string {
 	brand := m.style.brand.Render("Meru मेरु")
 
@@ -43,17 +81,26 @@ func (m Model) header() string {
 		status = m.style.dim.Render("● connecting…")
 	}
 
-	var parts []string
-	for _, p := range []string{m.info.Profile, m.info.Model, shortSession(m.session)} {
-		if p != "" {
-			parts = append(parts, p)
+	// fits reports whether the name, the details and the right side fit
+	// on one line, with a space after the name and at least one before the
+	// right side.
+	fits := func(details, right string) bool {
+		return lipgloss.Width(brand)+1+lipgloss.Width(details)+1+lipgloss.Width(right) <= m.width
+	}
+	details := m.details(true)
+	right := status
+	if u := lastHour(m.usage); u != "" {
+		if withUsage := m.style.dim.Render(u) + "  " + status; fits(details, withUsage) {
+			right = withUsage
 		}
 	}
-	details := strings.Join(parts, " · ")
+	if !fits(details, right) {
+		details = m.details(false)
+	}
 
-	// The details get what is left after the name, the status, one space
-	// after the name and at least one before the status.
-	room := m.width - 2 - lipgloss.Width(brand) - lipgloss.Width(status)
+	// The details get what is left after the name, the right side, one
+	// space after the name and at least one before the right side.
+	room := m.width - 2 - lipgloss.Width(brand) - lipgloss.Width(right)
 	if room < 6 {
 		details = "" // too narrow to say anything useful
 	} else {
@@ -63,8 +110,22 @@ func (m Model) header() string {
 	if details != "" {
 		left += " " + m.style.dim.Render(details)
 	}
-	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(status), 1)
-	return ansi.Truncate(left+strings.Repeat(" ", gap)+status, m.width, "")
+	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 1)
+	return ansi.Truncate(left+strings.Repeat(" ", gap)+right, m.width, "")
+}
+
+// details joins the header's setup details with " · ": profile, model, the
+// document count and the session, leaving out any that are empty. sizes
+// says whether the document count carries the vector count and the size
+// of meru.db.
+func (m Model) details(sizes bool) string {
+	var parts []string
+	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index, sizes), shortSession(m.session)} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // shortSession trims a session ID for the header. IDs look like
@@ -109,8 +170,18 @@ func (m *Model) renderTurn(t *exchange) string {
 		"",
 		m.style.meru.Render("Meru") + m.badge(t),
 	}
+	for _, tc := range t.tools {
+		lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Truncate(toolText(tc), width, "…"))))
+	}
+	// The approval box belongs to the turn that is streaming, the newest.
+	asking := m.approval != nil && t == &m.turns[len(m.turns)-1]
+	if asking {
+		lines = append(lines, m.approvalBoxView(width))
+	}
 
 	switch {
+	case asking && t.answer == "":
+		// The box says what Meru waits for; the spinner would only repeat it.
 	case t.state == stateActive && t.answer == "":
 		// The spinner's frames end in a space, so none goes between.
 		lines = append(lines, m.style.raw.Render(m.spin.View()+m.style.dim.Render("thinking…")))
@@ -142,17 +213,53 @@ func (m *Model) renderTurn(t *exchange) string {
 	return strings.Join(lines, "\n")
 }
 
+// toolText writes one tool call as the turn shows it:
+//
+//	→ notes.search              while it runs
+//	✓ notes.search · 120 ms     when it worked
+//	✗ mail.send · declined      when it didn't
+func toolText(tc toolCall) string {
+	switch tc.outcome {
+	case "":
+		return "→ " + tc.name
+	case "ok":
+		return "✓ " + tc.name + " · " + millis(tc.millis)
+	}
+	return "✗ " + tc.name + " · " + tc.outcome
+}
+
+// millis writes a duration in milliseconds: "120 ms" under a second,
+// "1.2s" from there up, as the stats line writes seconds.
+func millis(ms int64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%d ms", ms)
+	}
+	return seconds(ms)
+}
+
 // sourcesBlock draws the files a finished answer cites, dim, under the
 // answer: a "Sources" line, then one numbered line per file, as the answer
-// numbers them. It returns "" when the turn has no sources. Each line wraps
-// to width, so a long path can't push the screen out of shape.
+// numbers them. It returns "" when there are none to show (see rpc.Cited).
+// Each line wraps to width, so a long path can't push the screen out of
+// shape. When links are on, every screen line of a source links to its
+// file: wrapping first and linking each piece keeps a link from spanning a
+// line break, which some terminals draw badly.
 func (m *Model) sourcesBlock(t *exchange, width int) string {
-	if len(t.sources) == 0 {
+	cited := rpc.Cited(t.answer, t.sources, len(t.tools) > 0)
+	if len(cited) == 0 {
 		return ""
 	}
 	lines := []string{"Sources"}
-	for _, c := range rpc.Cited(t.answer, t.sources) {
-		lines = append(lines, ansi.Wrap(c.String(), width, ""))
+	for _, c := range cited {
+		wrapped := ansi.Wrap(c.String(), width, "")
+		if url := rpc.FileURL(c.Path, m.home); m.look.links && url != "" {
+			parts := strings.Split(wrapped, "\n")
+			for i, p := range parts {
+				parts[i] = rpc.Hyperlink(url, p)
+			}
+			wrapped = strings.Join(parts, "\n")
+		}
+		lines = append(lines, wrapped)
 	}
 	return m.style.raw.Render(m.style.dim.Render(strings.Join(lines, "\n")))
 }
@@ -262,4 +369,36 @@ func tidy(s string) string {
 		lines[i] = strings.TrimRight(l, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// docCount writes how many documents the search index holds, such as
+// "68 docs" or "1 doc", with "· indexing" while a scan runs, because the
+// number is still climbing. It returns "" before merud has answered, so the
+// header leaves the part out rather than show a wrong zero.
+//
+// With sizes, the vector count and the size of meru.db follow in brackets:
+// "2637 docs (11698 vectors, 84 MB)". A DBBytes of 0 means merud didn't
+// say, as an older merud doesn't, so the size stays out: "(11698 vectors)".
+func docCount(ix *rpc.IndexStatus, sizes bool) string {
+	if ix == nil {
+		return ""
+	}
+	s := fmt.Sprintf("%d docs", ix.Documents)
+	if ix.Documents == 1 {
+		s = "1 doc"
+	}
+	if sizes {
+		inside := fmt.Sprintf("%d vectors", ix.Vectors)
+		if ix.Vectors == 1 {
+			inside = "1 vector"
+		}
+		if ix.DBBytes > 0 {
+			inside += ", " + rpc.ShortBytes(ix.DBBytes)
+		}
+		s += " (" + inside + ")"
+	}
+	if ix.Scanning {
+		s += " · indexing"
+	}
+	return s
 }

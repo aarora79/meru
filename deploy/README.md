@@ -8,6 +8,7 @@ Files that run Meru as a service and show what it is doing:
 | `systemd/merud.service` | the same on Linux, as a systemd user unit |
 | `observability/compose.yaml` | a local Grafana stack that receives `merud`'s metrics and traces |
 | `observability/dashboards/meru.json` | the Meru dashboard that stack loads |
+| `observability/dashboards/meru-usage.json` | the Meru usage dashboard: one bar per day over 30 days |
 
 All the steps below assume you built and installed `merud` with:
 
@@ -105,6 +106,16 @@ opens on the Meru dashboard. Its panels show:
 - open client streams;
 - Go runtime memory and goroutines.
 
+The "Meru usage" dashboard, in the same folder, shows the trends behind
+`meru usage`, one bar per day over the last 30 days:
+
+- sessions started, by source;
+- questions answered, by route;
+- the main model's input and output tokens;
+- active time, the seconds `merud` spent answering;
+- files read per question, by route;
+- tool calls, by outcome.
+
 Traces go to Tempo: in Grafana, choose Explore, then Tempo, and search for service
 `merud` and span name `rpc.request`. To open the trace behind a line in
 `merud.log`, paste the line's `trace_id` into the TraceQL box.
@@ -119,9 +130,15 @@ The stack keeps its data on this machine:
   and Pyroscope send by default.
 - `merud` itself refuses any `otlp_endpoint` that isn't a loopback address.
 
+Metrics, traces and Grafana's state live in the Docker volume `lgtm-data`.
+Prometheus keeps metrics for 400 days (`PROMETHEUS_EXTRA_ARGS` in the compose file),
+so the usage dashboard can show a month's trend; its default of 15 days would cut
+that in half. Only data from after you set `otlp_endpoint` is there. For all-time
+numbers, `meru usage` reads the `turns` table instead.
+
 Stop the stack with `docker compose -f deploy/observability/compose.yaml down`. Add
 `-v` to delete the stored metrics and traces too.
 
-To edit the dashboard, change it in Grafana, export it as JSON, and save it over
-`observability/dashboards/meru.json`. Grafana reloads provisioned dashboards from
+To edit a dashboard, change it in Grafana, export it as JSON, and save it over
+its file in `observability/dashboards/`. Grafana reloads provisioned dashboards from
 that folder.

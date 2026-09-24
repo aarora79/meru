@@ -1,0 +1,30 @@
+Meru मेरु lite · minicpm5:2b … ● connected
+────────────────────────────────────────
+
+You
+  │ Email Sam
+
+Meru  tools · 0.82
+  → mail.send
+  ╭────────────────────────────────────╮
+  │ Run mail.send?  mcp                │
+  │ {                                  │
+  │   "to": "sam@example.com",         │
+  │   "subject": "Garden budget",      │
+  │   "body": "The Q3 budget is 4,200… │
+  │ }                                  │
+  │                                    │
+  │  o once   s this session  [d deny] │
+  ╰────────────────────────────────────╯
+
+
+
+
+
+
+
+
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+o once · s this session · d deny …

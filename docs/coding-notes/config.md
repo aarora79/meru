@@ -88,7 +88,9 @@ if cfg.Models.Fast == "" {
 
 `profiles` is a **map** from profile name to `Models`, like a Python dict. Looking
 up a missing key returns the zero value (all empty strings), and `validate`
-reports the unknown profile.
+reports the unknown profile. `ProfileModels(name)` hands out one profile's
+models, and `false` for a name it doesn't know; `meru setup` calls it to
+download a profile's models before any `config.toml` exists.
 
 `validate` collects every problem before it returns, so the user fixes them all
 in one pass:

@@ -15,6 +15,10 @@
 //   - schema.go: the migration steps and the embedding-model check.
 //   - documents.go: storing, replacing and deleting documents.
 //   - search.go: vector search, keyword search and loading chunks.
+//   - toolcalls.go: the tool_calls audit log, and rebuilding it from the
+//     session transcripts (v0.3).
+//   - turns.go: the turns table, one row per answered question, its
+//     rebuild from the transcripts, and the usage windows (v0.3).
 //
 // What this package deliberately doesn't do: it doesn't read files, chunk
 // text or call models. The indexer does those and hands the store finished

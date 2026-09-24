@@ -25,6 +25,10 @@ const clientDir = "cmd/meru"
 // forbiddenClientPackages lists the module's packages that hold daemon-side
 // logic, with the reason the client must not reach each one. Paths are
 // relative to the module path.
+//
+// The client may import rpc, config, tui and loopback, plus catalog and
+// secrets for `meru setup` and `meru mcp add`: those two read and write
+// config.toml and secrets.toml and talk to no model and no store.
 var forbiddenClientPackages = []struct {
 	pkg    string
 	reason string
@@ -36,6 +40,8 @@ var forbiddenClientPackages = []struct {
 	{"internal/retrieve", "retrieval runs in merud next to the store"},
 	{"internal/memory", "merud owns memory"},
 	{"internal/mcp", "merud owns the MCP clients"},
+	{"internal/dispatch", "every tool call goes through dispatch in merud"},
+	{"internal/builtin", "the built-in tools run in merud, through dispatch"},
 	{"internal/a2a", "merud owns the A2A clients"},
 	{"internal/scheduler", "the scheduler runs in merud"},
 }

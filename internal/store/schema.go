@@ -15,8 +15,8 @@ import (
 // migrations returns the schema changes in order. Step i (from 0) takes the
 // database from schema_version i to i+1. To change the schema, append a
 // step; never edit one that has shipped, because existing databases have
-// already run it. Later milestones add messages, tool_calls and memories
-// this way.
+// already run it. Later milestones add messages and memories this way, as
+// v0.3 added tool_calls and turns.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -62,6 +62,53 @@ func migrations() []string {
 		CREATE VIRTUAL TABLE chunk_fts USING fts5(
 			heading, text, content='chunks', content_rowid='id'
 		);`,
+
+		// 2: tool_calls, the audit log of every tool call (v0.3).
+		//
+		// One row per call, written by dispatch and rebuilt from the
+		// transcripts by ReplayToolCalls. call_id isn't unique: the model
+		// may reuse an ID in a later turn. args holds JSON text and result
+		// plain text, so a row reads well in the sqlite3 shell.
+		`CREATE TABLE tool_calls (
+			id          INTEGER PRIMARY KEY,
+			call_id     TEXT NOT NULL DEFAULT '',
+			session     TEXT NOT NULL DEFAULT '',
+			ts          TEXT NOT NULL,
+			kind        TEXT NOT NULL,
+			server      TEXT NOT NULL DEFAULT '',
+			tool        TEXT NOT NULL,
+			args        TEXT NOT NULL DEFAULT '',
+			result      TEXT NOT NULL DEFAULT '',
+			outcome     TEXT NOT NULL,
+			approval    TEXT NOT NULL DEFAULT '',
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			trace_id    TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX tool_calls_ts ON tool_calls (ts);
+		CREATE INDEX tool_calls_session ON tool_calls (session);`,
+
+		// 3: turns, one row per answered question (v0.3), for `meru usage`.
+		//
+		// The agent writes a row when a turn writes its answer, and
+		// ReplayTurns rebuilds the table from the transcripts. ts is when
+		// the question arrived. docs holds a JSON array of the absolute
+		// paths whose excerpts went into the prompt, so SQLite's json_each
+		// can count distinct files across rows.
+		`CREATE TABLE turns (
+			id          INTEGER PRIMARY KEY,
+			session     TEXT NOT NULL DEFAULT '',
+			ts          TEXT NOT NULL,
+			source      TEXT NOT NULL DEFAULT '',
+			route       TEXT NOT NULL DEFAULT '',
+			tokens_in   INTEGER NOT NULL DEFAULT 0,
+			tokens_out  INTEGER NOT NULL DEFAULT 0,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			tool_calls  INTEGER NOT NULL DEFAULT 0,
+			docs        TEXT NOT NULL DEFAULT '[]',
+			trace_id    TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX turns_ts ON turns (ts);
+		CREATE INDEX turns_session ON turns (session);`,
 	}
 }
 

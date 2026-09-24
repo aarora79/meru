@@ -378,7 +378,7 @@
 
 <ul>
   <li>The <b>fast model</b> acts as the <b>router</b>. It picks a <b>route</b>: answer directly, search your files, call tools, or search and call tools. It picks nothing else; from v0.4 a second short call will pick which <b>skills</b>, files of instructions for one kind of task, to load.
-    <p style="margin: 8px 0 0">The router doesn't write its choice out as text, which a small model can garble. It labels the four routes A to D, asks for a single letter, and reads how likely the model thought each letter was. The most likely letter wins, and its likelihood is the router's confidence. When the router isn't confident enough, Meru searches your files and allows tools, which costs a little more but never leaves a question without the context it needs. The router's prompt names the folders you index, so it can tell that "what database does meru use" asks about your own project. On a labelled set of questions it held back from tuning, the router picks the right route for 32 of 40, in about 28 ms. When it still picks "answer directly" for a question that names one of your folders, Meru searches anyway. (<a href="300.html#routing">Level 300</a> and the <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">router design note</a> have the details.)</p></li>
+    <p style="margin: 8px 0 0">The router doesn't write its choice out as text, which a small model can garble. It labels the four routes A to D, asks for a single letter, and reads how likely the model thought each letter was. The most likely letter wins, and its likelihood is the router's confidence. When the router isn't confident enough, Meru searches your files and allows tools, which costs a little more but never leaves a question without the context it needs. The router's prompt names the folders you index, so it can tell that "what database does meru use" asks about your own project. On a labelled set of questions it held back from tuning, the router picks the right route for 32 of 40, in about 28 ms. When it still picks "answer directly" for a question that names one of your folders, Meru searches anyway. When a question names a tool server you connected, such as "search my Obsidian vault", Meru offers the tools even if the router left them out. (<a href="300.html#routing">Level 300</a> and the <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">router design note</a> have the details.)</p></li>
   <li>The <b>main model</b> chooses tools and writes the answer.</li>
   <li><b><code>dispatch</code></b> is the one function every tool call passes through. It checks the call against your config, asks you when config says to, runs it and logs it.</li>
   <li>An <b>MCP server</b> is a separate program that offers tools, such as a brokerage server's <code>get_portfolio</code>.</li>
@@ -525,7 +525,7 @@
 
 <p><b>Turn 2.</b> You type "sell half of the one that dropped most". <code>merud</code> loads this session's earlier questions and answers, newest first, until their share of the prompt fills. The router reads them too, and picks "call tools". It doesn't rewrite your words. The main model reads turn 1's answer and works out which stock dropped most. On a turn that searches, <code>merud</code> adds an earlier question to the search, so a follow-up such as "and the one after that?" still finds the right files. It skips questions such as "try that again" that name no subject. The model asks for <code>place_order</code>, which sits on the server's <b>confirm list</b>, the tools that need your yes on every call. So <code>dispatch</code> stops and asks.</p>
 
-<p>Within a turn the main model either asks for a tool or answers. Each time it asks, <code>merud</code> runs the tool and hands back the result. The turn ends when the model answers, or after 8 rounds (a config setting). When the route leaves tools out, <code>merud</code> sends no tool descriptions, and a model can't call a tool it hasn't seen.</p>
+<p>Within a turn the main model either asks for tools or answers. Each time it asks, <code>merud</code> runs the calls at the same time and hands back the results, and the client shows a line for each call as it starts and ends. The turn ends when the model answers, or after 8 rounds (a config setting); the last round offers no tools, so the model has to answer. Only the two routes with tools send tool descriptions, and a model can't call a tool it hasn't seen. The model reads up to 16,000 characters of each result; the log keeps the first 4,000.</p>
 
 <h3 id="approving">Approving a tool call</h3>
 
@@ -538,7 +538,7 @@
   </tbody>
 </table></div>
 
-<p><code>merud</code> writes your choice to the transcript. A session approval never reaches the config file; to stop Meru asking about a tool for good, you take it off the confirm list yourself. When nobody can answer, as in a script or a scheduled job, <code>dispatch</code> denies the call.</p>
+<p>The question and your answer travel over the same socket as the answer text. <code>meru chat</code> shows the call in a box that opens with deny selected, so a stray Enter runs nothing. One-shot <code>meru</code> asks on the terminal, <code>[o]nce [s]ession [d]eny</code>. <code>merud</code> writes your choice to the transcript. A session approval never reaches the config file; to stop Meru asking about a tool for good, you take it off the confirm list yourself. When nobody can answer, as in a script, a pipe or a scheduled job, the call doesn't run, and the log records it as declined.</p>
 
 <!-- ============================================================ -->
 <h2 id="models">Models: three jobs, two profiles</h2>
@@ -583,16 +583,16 @@
 
 <p>A transcript is a <b>JSON Lines</b> file: one small JSON record per line, one line per event. <code>merud</code> adds lines and never rewrites old ones, so a crash loses at most the line it was writing, and <code>grep</code> or <code>tail -f</code> can read it. Two lines from turn 1:</p>
 
-<pre><code>{"ts":"2026-09-23T10:15:03Z","type":"tool_call","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
+<pre><code>{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}</code></pre>
 
-<p>The index is one SQLite file, <code>~/.meru/meru.db</code>, readable only by you. It holds your files cut into pieces, with a keyword index and an embedding for each piece. Later milestones add the rest: every tool call (v0.3), every message and your memories (v0.4), and your scheduled jobs with the outcome of each run (v0.5). Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
+<p>The index is one SQLite file, <code>~/.meru/meru.db</code>, readable only by you. It holds your files cut into pieces, with a keyword index and an embedding for each piece, and since v0.3 a row for every tool call. Later milestones add the rest: every message and your memories (v0.4), and your scheduled jobs with the outcome of each run (v0.5). If you delete <code>meru.db</code>, <code>merud</code> rebuilds the tool calls from the transcripts when it next starts. Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
 
 <figure id="fig-storage">
 <div class="figbox">
 <svg viewBox="0 0 800 380" role="img" aria-labelledby="f3t f3d">
   <title id="f3t">Files as truth, SQLite as a rebuildable index</title>
-  <desc id="f3d">On the left, the files that hold the truth: your folders, session transcripts, memory files, and config.toml with skills. On the right, the meru.db index. The indexer splits and embeds your folders into file pieces with keyword and meaning indexes. Replaying the transcripts fills messages and tool calls, from v0.3 and v0.4. Embedding the memory files fills memories with keyword and meaning indexes. Reading config fills jobs and settings.</desc>
+  <desc id="f3d">On the left, the files that hold the truth: your folders, session transcripts, memory files, and config.toml with skills. On the right, the meru.db index. The indexer splits and embeds your folders into file pieces with keyword and meaning indexes. Replaying the transcripts fills tool calls, and from v0.4 messages. Embedding the memory files fills memories with keyword and meaning indexes. Reading config fills jobs and settings.</desc>
   <defs>
     <marker id="f3a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -622,8 +622,8 @@
   <text x="500" y="89" class="t3" font-size="12">keyword index + embeddings</text>
 
   <rect x="484" y="124" width="290" height="60" rx="8" class="b"/>
-  <text x="500" y="148" class="t1" font-size="14" font-weight="600">messages · tool calls</text>
-  <text x="500" y="169" class="t3" font-size="12">each with its trace ID · from v0.3–v0.4</text>
+  <text x="500" y="148" class="t1" font-size="14" font-weight="600">tool calls · messages</text>
+  <text x="500" y="169" class="t3" font-size="12">each with its trace ID · messages from v0.4</text>
 
   <rect x="484" y="204" width="290" height="60" rx="8" class="b"/>
   <text x="500" y="228" class="t1" font-size="14" font-weight="600">memories</text>
@@ -738,11 +738,11 @@
   </tbody>
 </table></div>
 
-<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and numbers them in the prompt. The main model cites them as <code>[1]</code>, <code>[2]</code>, and <code>meru</code> prints the cited files under the answer. The prompt also names the folders Meru indexes, so the model doesn't claim it can't see your files while it reads them. The sizes 50 and 10 are constants in the code, not settings; we'll tune them once we have measurements.</p>
+<p>The 60 keeps first and second place within about 1.6% of each other, so a chunk both lists agree on beats one that only a single list ranks first. Meru keeps the top 10, loads their text and file paths, and numbers them in the prompt. The main model cites them as <code>[1]</code>, <code>[2]</code>, and <code>meru</code> prints the cited files under the answer. When the answer cites nothing, <code>meru</code> lists every excerpt the model read, unless the turn called a tool: then the answer may come from the tool, and <code>meru</code> lists none. The prompt also names the folders Meru indexes, so the model doesn't claim it can't see your files while it reads them. The sizes 50 and 10 are constants in the code, not settings; we'll tune them once we have measurements.</p>
 
 <p>Meru stores each embedding as a plain row in <code>meru.db</code> and compares the question with every one. On the development machine that takes 13 ms over 10,000 chunks and about 150 ms over 100,000, fast enough for a personal index.</p>
 
-<p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a follow-up. Until tools arrive in v0.3, the tools route searches too, because the router sends some questions about your files there. In v0.2 it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
+<p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a short follow-up; a question that names its own subject is searched alone. The tools route searches too, because the router sends some questions about your files there. So far it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
 
 <!-- ============================================================ -->
 <h2 id="memory">Memory</h2>
@@ -766,7 +766,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <p>The header names the session the fact came from, so you can read the exchange that produced it. To make Meru forget, delete the file or run <code>meru memory forget</code>. A new folder becomes a new kind with no code change.</p>
 
 <ul>
-  <li><b>Saving.</b> The model calls <code>remember</code>, a <b>built-in tool</b> that <code>merud</code> provides itself. The call goes through <code>dispatch</code>, so it lands in the log. Memories save without asking unless you add <code>remember</code> to the built-in confirm list, which ships holding only <code>write_file</code>.</li>
+  <li><b>Saving.</b> The model calls <code>remember</code>, a <b>built-in tool</b> that <code>merud</code> provides itself. The call goes through <code>dispatch</code>, so it lands in the log. Memories save without asking unless you add <code>remember</code> to the built-in confirm list, which ships empty. <code>remember</code> arrives in v0.4.</li>
   <li><b>Recall.</b> Every turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges the three with RRF. Recall runs on every route, so a preference such as "always ask before trading" reaches the model on the turn that trades.</li>
   <li><b>Episodes.</b> When a session ends, the fast model writes a one- or two-sentence summary into the transcript, and Meru embeds it. "What did we decide about the portfolio last week?" then finds the right session.</li>
 </ul>
@@ -788,27 +788,27 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   </tbody>
 </table></div>
 
-<p>On first run <code>merud</code> copies them to <code>~/.meru/skills/</code>. It never overwrites a skill you've edited, and <code>meru skills reset &lt;name&gt;</code> restores the shipped one. You add a skill by dropping in a folder. Skills that make files use the built-in <code>write_file</code> tool, which writes only inside <code>~/meru-output/</code> unless you change it, and asks you before each write. These skills work best on the <code>full</code> profile; the 2B model writes weaker pages.</p>
+<p>On first run <code>merud</code> copies them to <code>~/.meru/skills/</code>. It never overwrites a skill you've edited, and <code>meru skills reset &lt;name&gt;</code> restores the shipped one. You add a skill by dropping in a folder. Skills that make files will use the built-in <code>write_file</code> tool (v0.4), which writes only inside <code>~/meru-output/</code> unless you change it. These skills work best on the <code>full</code> profile; the 2B model writes weaker pages.</p>
 
 <!-- ============================================================ -->
 <h2 id="tools">Tools over MCP, other agents over A2A</h2>
 
-<p><b>MCP</b> (Model Context Protocol) is an open standard for programs that offer tools to an assistant. Meru is an MCP client. It either starts a local server and talks over its input and output (<b>stdio</b>), or connects to a server already running at a URL (<b>Streamable HTTP</b>). <b>A2A</b> (Agent2Agent) is an open standard for handing a task to another agent. The model sees each allowed agent skill as one more tool, named <code>a2a.&lt;agent&gt;.&lt;skill&gt;</code>.</p>
+<p><b>MCP</b> (Model Context Protocol) is an open standard for programs that offer tools to an assistant. Meru is an MCP client. It either starts a local server and talks over its input and output (<b>stdio</b>), or connects to a server already running at a URL (<b>Streamable HTTP</b>). The model sees each allowed tool as <code>&lt;server&gt;.&lt;tool&gt;</code>, such as <code>obsidian.search_vault</code>. <b>A2A</b> (Agent2Agent) is an open standard for handing a task to another agent. The model sees each allowed agent skill as one more tool, named <code>a2a.&lt;agent&gt;.&lt;skill&gt;</code>, that takes a message and returns the agent's answer. Meru reads an agent's <b>card</b>, the file where it lists its skills, the first time a turn needs it, so an agent that starts after <code>merud</code> still shows up.</p>
 
 <p>Both follow the same rules, set per server or agent in <code>config.toml</code>:</p>
 
 <ul>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
-  <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave.</li>
-  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools (<code>remember</code>, <code>write_file</code>, <code>configure</code>) all go through <code>dispatch</code>. No other code reaches them. The built-in tools need no allow entry: the model always sees all three.</li>
+  <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>network = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave. The A2A client checks each address again as it connects, and follows no redirects, so an agent's card can't point the calls somewhere else.</li>
+  <li><b>One door.</b> MCP tools, A2A agents and the built-in tools all go through <code>dispatch</code>. No other code reaches them. v0.3 has one built-in tool, <code>configure</code>; <code>remember</code> and <code>write_file</code> come in v0.4. The built-in tools need no allow entry: the model always sees them.</li>
 </ul>
 
 <figure id="fig-dispatch">
 <div class="figbox">
 <svg viewBox="0 0 800 318" role="img" aria-labelledby="f5t f5d">
   <title id="f5t">What dispatch does with a tool call</title>
-  <desc id="f5d">The model asks for a tool. Dispatch checks the allow list; a tool not on it is refused. An allowed tool not on the confirm list runs. An allowed tool on the confirm list asks you: approve once or for this session and it runs; deny and it is declined and the model is told. Every outcome, refused, declined or run, is logged as a transcript line and a tool_calls row with the tool, arguments, result, time taken, approval and trace ID.</desc>
+  <desc id="f5d">The model asks for a tool. Dispatch checks the allow list; a tool not on it is denied and the model is told. An allowed tool not on the confirm list runs. An allowed tool on the confirm list asks you: approve once or for this session and it runs; deny and it is declined and the model is told. Every outcome, denied, declined or run, is logged as a transcript line and a tool_calls row with the tool, arguments, result, time taken, approval and trace ID.</desc>
   <defs>
     <marker id="f5a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f5b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -836,8 +836,8 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 
   <!-- row 2 -->
   <rect x="196" y="150" width="140" height="56" rx="8" class="b"/>
-  <text x="210" y="173" class="t1" font-size="13" font-weight="600">refused</text>
-  <text x="210" y="192" class="t3" font-size="11.5">outcome: denied</text>
+  <text x="210" y="173" class="t1" font-size="13" font-weight="600">denied</text>
+  <text x="210" y="192" class="t3" font-size="11.5">the model is told</text>
   <path d="M266 96 L266 148" class="ln" marker-end="url(#f5a)"/>
   <text x="274" y="126" class="t2" font-size="11">no</text>
 
@@ -864,13 +864,13 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <path d="M770 96 L770 244" class="ln" marker-end="url(#f5a)"/>
 
   <text x="12" y="24" class="t3" font-size="11.5">Inside dispatch · the only path from the model to anything outside merud</text>
-  <text x="12" y="312" class="t3" font-size="11.5">Scripts and scheduled jobs have no one to ask, so a tool on the confirm list is denied there.</text>
+  <text x="12" y="312" class="t3" font-size="11.5">Scripts and scheduled jobs have no one to ask, so a tool on the confirm list is declined there.</text>
 </svg>
 </div>
-<figcaption><b>Figure 5.</b> Two lists in your config decide every call, and all three outcomes end in the same log, so a refused or declined call leaves the same trail as one that ran.</figcaption>
+<figcaption><b>Figure 5.</b> Two lists in your config decide every call, and all three outcomes end in the same log, so a denied or declined call leaves the same trail as one that ran.</figcaption>
 </figure>
 
-<p><code>dispatch</code> logs every call to the transcript and the <code>tool_calls</code> table, and <code>meru log</code> shows them. A call to a tool you didn't allow doesn't run, but it still gets a row, so a model that keeps reaching for forbidden tools shows up in the log. An assistant that can place orders or send email needs a record you can read afterwards.</p>
+<p><code>dispatch</code> logs every call to the transcript and the <code>tool_calls</code> table, and <code>meru log</code> shows the newest ones (<code>-n</code> for how many, <code>-v</code> for each result). <code>meru tools</code> shows each server, whether <code>merud</code> reached it, and the tools the model may use. A call to a tool you didn't allow doesn't run, but it still gets a row, so a model that keeps reaching for forbidden tools shows up in the log. An assistant that can place orders or send email needs a record you can read afterwards.</p>
 
 <p>Each call has a time limit, 60 seconds unless the server's entry sets another. A server that crashes restarts on the next call to one of its tools, at most once every 10 seconds. A server Meru starts gets only a short list of environment variables plus its own, so it can't read another tool's API key from <code>merud</code>'s environment.</p>
 
@@ -879,24 +879,28 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <!-- ============================================================ -->
 <h2 id="jobs">Scheduled jobs</h2>
 
-<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so <code>dispatch</code> denies every tool on a confirm list, and the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
+<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so no tool on a confirm list runs, and the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
 
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
 
-<p>The first time you run <code>meru</code>, or whenever you run <code>meru setup</code>, Meru walks you through five steps in the terminal:</p>
+<p><code>meru setup</code> walks you through five steps in the terminal. You can run it again at any time; v0.3 doesn't start it for you the first time you run <code>meru</code>.</p>
 
 <ol>
-  <li><b>Ollama.</b> Meru checks that Ollama runs, and if not, prints the install command.</li>
-  <li><b>Models.</b> You pick <code>lite</code> or <code>full</code>, and Meru downloads them.</li>
-  <li><b>Your files.</b> Meru writes its config and built-in skills to <code>~/.meru/</code> and asks which folders to index.</li>
+  <li><b>Ollama.</b> Meru checks that Ollama runs, and if not, prints the install step and waits.</li>
+  <li><b>Models.</b> You pick <code>lite</code> or <code>full</code>, and Meru downloads the models with <code>ollama pull</code>.</li>
+  <li><b>Your files.</b> Meru asks which folders to index and writes a short <code>config.toml</code>. It never rewrites a config file you already have, because that would drop your comments; it tells you what to edit instead.</li>
   <li><b>Tools.</b> Meru offers its starter MCP servers one at a time. You can skip any.</li>
-  <li><b>A test question</b>, so you see it work.</li>
+  <li><b>A test question</b>, when <code>merud</code> runs, so you see it work.</li>
 </ol>
 
-<p>The starter catalog covers web search, web page fetch, Gmail, Calendar, Drive and Docs, and Obsidian. Each entry knows how to install its server, what it needs (a URL, an API key or a Google sign-in), and safe starting lists: reading allowed, anything that sends, deletes or shares on the confirm list. For each server you pick <b>"Do it for me"</b>, where Meru asks for what the server needs and writes the config block after you approve it, or <b>"Show me how"</b>, where Meru prints the block and you paste it in. Later, <code>meru mcp add gmail</code> or "connect my Gmail" in chat offers the same choice. For a server outside the catalog, Meru proposes an entry with every tool on the confirm list.</p>
+<p>The starter catalog covers Brave web search, web page fetch, Gmail, Calendar, Drive and Docs, and Obsidian. Each entry knows how to start its server, what it needs (an API key, or a Google sign-in), and safe starting lists: reading allowed, anything that sends, writes or changes something on the confirm list. For each server you pick <b>"Do it for me"</b>, where Meru asks for what the server needs and writes the config block after you approve it, or <b>"Show me how"</b>, where Meru prints the block and you paste it in. Later, <code>meru mcp add gmail</code> offers the same choice.</p>
 
-<p>The built-in <code>configure</code> tool, which edits <code>config.toml</code>, asks every time and offers only "approve once" or "deny". No setting turns that prompt off, so the model can't grant itself lasting trust. API keys go in <code>~/.meru/secrets.toml</code>, readable only by you, and <code>merud</code> strips them from transcripts and logs.</p>
+<p>For a server outside the catalog, <code>meru mcp add &lt;name&gt; -- &lt;command&gt;</code> (or <code>--url</code>) writes an entry that allows no tools yet. Meru can't know a server's tool names before it connects, so after a restart you run <code>meru tools</code>, see what the server offers, and add the tools you want.</p>
+
+<p>In chat, "connect my Gmail" makes the model call the built-in <code>configure</code> tool, which adds the entry and reloads the servers without a restart. <code>configure</code> asks every time and offers only "approve once" or "deny". No setting turns that prompt off, so the model can't grant itself lasting trust. It never takes an API key: when a server needs one that isn't saved yet, it sends you to <code>meru mcp add</code> in a terminal, so the key never passes through the model.</p>
+
+<p>API keys go in <code>~/.meru/secrets.toml</code>, and config names them as <code>secret:&lt;name&gt;</code>. <code>merud</code> refuses to start if other users can read that file, and strips the keys from transcripts, the tool log, logs and traces.</p>
 
 <!-- ============================================================ -->
 <h2 id="what-you-can-see">What you can see</h2>
@@ -905,7 +909,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 
 <ul>
   <li>Export stays off until you set an address in config, and <code>merud</code> refuses to start if that address isn't on loopback.</li>
-  <li>Traces carry token counts, times, model names and tool names, and no prompt or answer text unless you switch it on.</li>
+  <li>Traces carry token counts, times, model names and tool names, and no prompt or answer text unless you switch it on. Each tool call gets a span of its own, with its outcome and your approval.</li>
   <li>The repo ships one container, <code>grafana/otel-lgtm</code>, that stores the data and shows a ready-made Meru dashboard in Grafana, listening on 127.0.0.1 only.</li>
 </ul>
 
@@ -920,6 +924,7 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
   <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>network = true</code> in its config entry.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
+  <li>API keys sit in one file only you can read, never in config, and never pass through the model.</li>
   <li>No telemetry leaves your machine. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table show every action Meru took outside itself.</li>

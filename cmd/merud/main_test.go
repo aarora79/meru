@@ -216,7 +216,7 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	// Wait for merud to answer a ping.
 	up := false
 	for range 100 {
-		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}) {
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}, nil) {
 			up = err == nil && ev.Type == rpc.EventDone
 		}
 		if up {
@@ -229,7 +229,7 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	}
 
 	var answer strings.Builder
-	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpAsk, Text: "ping?"}) {
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpAsk, Text: "ping?"}, nil) {
 		if err != nil {
 			t.Fatalf("ask: %v", err)
 		}
@@ -239,6 +239,38 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	}
 	if answer.String() != "pong" {
 		t.Errorf("answer = %q, want pong", answer.String())
+	}
+
+	// The answered question shows in every usage window, and the status
+	// op reports the database's size.
+	var usage []rpc.UsageWindow
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpUsage}, nil) {
+		if err != nil {
+			t.Fatalf("usage: %v", err)
+		}
+		if ev.Type == rpc.EventUsage {
+			usage = ev.Usage
+		}
+	}
+	if len(usage) != 6 {
+		t.Fatalf("usage has %d windows, want 6", len(usage))
+	}
+	for _, w := range usage {
+		if w.Turns != 1 || w.Sessions != 1 {
+			t.Errorf("usage window %s = %+v, want 1 turn in 1 session", w.Name, w)
+		}
+	}
+	var size int64
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpIndexStatus}, nil) {
+		if err != nil {
+			t.Fatalf("status: %v", err)
+		}
+		if ev.Type == rpc.EventStatus && ev.Status != nil {
+			size = ev.Status.DBBytes
+		}
+	}
+	if size <= 0 {
+		t.Errorf("status DBBytes = %d, want the size of meru.db", size)
 	}
 
 	cancel()

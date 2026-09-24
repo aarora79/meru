@@ -1,6 +1,7 @@
 // This file defines the store's API: the Store type, the types the indexer,
 // retrieval and the agent share, and Open and Close. The SQL behind the
-// other methods lives in schema.go, documents.go and search.go.
+// other methods lives in schema.go, documents.go, search.go, toolcalls.go
+// and turns.go.
 
 package store
 
@@ -9,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,6 +41,8 @@ type Store struct {
 	// db is database/sql's pool of connections. *sql.DB is safe to share
 	// between goroutines; it hands each query a free connection.
 	db *sql.DB
+	// path is the database file, for DiskBytes.
+	path string
 	// dims is the vector size every stored and searched vector must have.
 	dims int
 
@@ -91,7 +95,7 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	db.SetMaxOpenConns(maxConns)
 	db.SetMaxIdleConns(maxConns)
 
-	s := &Store{db: db, dims: opts.Dims}
+	s := &Store{db: db, path: opts.Path, dims: opts.Dims}
 	if err := s.migrate(ctx); err != nil {
 		// errors.Join keeps both errors if Close fails too.
 		return nil, errors.Join(fmt.Errorf("open store %s: %w", opts.Path, err), db.Close())
@@ -100,6 +104,24 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		return nil, errors.Join(fmt.Errorf("open store %s: %w", opts.Path, err), db.Close())
 	}
 	return s, nil
+}
+
+// DiskBytes returns the size on disk of the database file and its -wal and
+// -shm companions, added up. A missing file counts as 0 bytes. It fails when
+// a file exists but can't be read.
+func (s *Store) DiskBytes() (int64, error) {
+	var total int64
+	for _, p := range []string{s.path, s.path + "-wal", s.path + "-shm"} {
+		info, err := os.Stat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return 0, fmt.Errorf("size of %s: %w", p, err)
+		}
+		total += info.Size()
+	}
+	return total, nil
 }
 
 // Close closes every connection. Call it once, after the last query.

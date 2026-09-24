@@ -2,9 +2,10 @@
 
 This guide takes you from nothing to asking Meru a question, then covers settings,
 indexing your files, running it as a service, the dashboard, and fixing common
-problems. It describes v0.2: questions, streamed answers, session transcripts,
-routing, and answers from your own files with citations. Tools and memory arrive in
-later milestones ([ROADMAP.md](../ROADMAP.md)).
+problems. It describes v0.3: questions, streamed answers, session transcripts,
+routing, answers from your own files with citations, and tools from MCP servers
+and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
+([ROADMAP.md](../ROADMAP.md)).
 
 ## 1. Install the prerequisites
 
@@ -27,6 +28,8 @@ The default `lite` profile uses two small models, about 2 GB in total:
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # answers and routes questions
 ollama pull nomic-embed-text                         # embeddings, for searching your files
 ```
+
+`meru setup` (step 8) can run these downloads for you once Meru is built.
 
 For the `full` profile (32 GB of RAM or more, or a GPU with about 24 GB), also pull:
 
@@ -84,6 +87,7 @@ running in its own terminal, or start it in the background with `merud &`.
 | `~/.meru/merud.log` | `merud`'s log |
 | `~/.meru/sessions/YYYY/MM/*.jsonl` | one transcript file per conversation |
 | `~/.meru/meru.db` | the search index over your files, readable only by you (see step 7) |
+| `~/.meru/secrets.toml` | API keys for MCP servers, readable only by you (see step 8) |
 
 Stop `merud` with Ctrl-C, or `kill` its process. It finishes cleanly and removes
 its socket.
@@ -99,9 +103,10 @@ meru what is the capital of France          # quotes are optional
 meru chat                                   # a conversation in the terminal
 ```
 
-Quotes are optional unless the question starts with the word `ping`, `chat` or
-`index`. Without quotes, `meru` reads that word as a command: write
-`meru "index cards or a notebook?"`, not `meru index cards or a notebook?`.
+Quotes are optional unless the question starts with the word `ping`, `chat`,
+`index`, `tools`, `log`, `usage`, `setup` or `mcp`. Without quotes, `meru` reads that word as
+a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
+notebook?`.
 
 In `meru chat`:
 
@@ -112,12 +117,144 @@ In `meru chat`:
 | Ctrl-D | quit |
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
+| `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
+| `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
+
+The line at the top of `meru chat` shows the profile, the main model, the search
+index and the session on the left:
+
+```text
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · session 101500-ab12
+```
+
+The index part counts the files Meru searches, the vectors it holds for them, and
+the size of `meru.db` on disk; `· indexing` follows while a scan runs. On the
+right, a wide terminal shows the last hour's use, such as
+`1h: 4 questions · 18k in · 2.1k out`, then whether `merud` is running. A
+narrow one drops the last hour first, then the vectors and size.
+
+Any other line that starts with `/` stays in the input box, and the bottom line
+lists the commands `meru chat` knows.
 
 Each `meru "..."` starts a new conversation. `meru chat` keeps one conversation
-going until you quit, so later questions see the earlier ones.
+going until you quit or type `/new`, so later questions see the earlier ones. That
+cuts both ways: after the model says "I don't know" a couple of times, it tends to
+keep saying it. Type `/new` and ask again.
+
+Each line under "Sources:" links to its file. In a terminal that supports links
+(iTerm2, Ghostty, WezTerm, kitty, VS Code's terminal, Windows Terminal), Cmd-click
+or Ctrl-click the line to open the file. macOS Terminal shows the same lines
+without the link. A pipe or a file gets plain text.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
+
+### When Meru wants to run a tool
+
+While it answers, the model may call a tool, such as a search of your notes. `meru`
+shows each call on standard error, dimmed, as it starts and ends:
+
+```text
+→ notes.search {"query":"garden budget"}
+✓ notes.search 120 ms
+```
+
+A tool in a `confirm` list asks you first. `meru` shows the tool's name and
+arguments and waits:
+
+```text
+Meru wants to run mail.send (mcp) with:
+  {
+    "to": "sam@example.com",
+    "subject": "Garden budget"
+  }
+Run mail.send? [o]nce  [s]ession  [d]eny:
+```
+
+Type `o` to run this call, `s` to run it and every later call to the tool in this
+session, or `d` to refuse; the whole word works too. A one-shot session ends with
+the answer, so `s` covers only this question. A refused call shows as
+`✗ mail.send declined`, and the model answers without it. Ctrl-C stops the question.
+
+When standard input isn't a terminal, as in a script or a pipe, nobody can answer, so
+`meru` denies the call and prints one line saying so. Tool lines and the prompt go to
+standard error, so `meru "..." > answer.txt` saves only the answer.
+
+`meru chat` shows the same calls as dim lines inside Meru's reply, and asks in a box
+in the conversation. Press `o`, `s` or `d`, or pick with ← and → and press Enter.
+The box opens with deny selected, so a stray Enter can't approve a call. While the
+box is open, the input box takes no typing.
+
+### See which tools the model may use
+
+```sh
+meru tools          # meru tools list does the same
+```
+
+```text
+notes  mcp · stdio · connected
+  notes.search  asks first
+  notes.read
+  2 of 5 tools allowed
+  warning: allow lists "serch", but notes offers no such tool
+
+meru  builtin · connected
+  remember
+  write_file    asks first
+  configure     always asks
+  3 of 3 tools allowed
+```
+
+Each block is one tool source: an MCP server, another agent, or Meru's built-in
+tools. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
+asks whatever the config says. A source `merud` couldn't reach shows
+`not connected` and the reason. A warning names each `allow` entry the source
+doesn't offer, most often a typo. With no sources, `meru tools` says how to
+add one.
+
+### See what tools ran
+
+```sh
+meru log            # the last 20 tool calls, newest first
+meru log -n 50      # the last 50
+meru log -v         # each call's result under it
+```
+
+```text
+2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {"to":"sam@example.com"}
+2026-09-24 10:16:02  101500-ab12  mcp  notes.search  ok        -     120 ms  {"query":"garden"}
+```
+
+The columns are the local time, the session, the kind of tool, the tool, how the
+call ended, what you chose when asked (`-` when nobody was asked), how long it took,
+and its arguments, cut to fit one line.
+
+### See how much you use Meru
+
+```sh
+meru usage
+```
+
+```text
+                  1h   today     week   month     30d     all
+sessions           1       2        5      12      14      30
+questions          4       9       31      88      97     212
+tokens in        18k     41k     150k    420k    468k    1.4M
+tokens out      2.1k    5.3k      19k     61k     66k    180k
+active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m
+docs touched       3       7       22      51      55     140
+tool calls         1       2        6      14      15      40
+
+Today, week and month follow the local calendar.
+```
+
+Each column is a window of time: the last hour, today since midnight, this week
+since Monday, this month since the 1st, the last 30 days, and all time. The rows
+count the sessions you asked in, the questions Meru answered, the tokens the main
+model read and wrote, how long `merud` spent answering, the files whose excerpts went
+into a prompt, and the tool calls. A question that failed or that you stopped
+doesn't count. `k` means thousands and `M` millions. In `meru chat`, type `/usage`
+to see the same table.
 
 ## 6. Change settings
 
@@ -263,7 +400,84 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
-## 8. Keep merud running
+## 8. Set up and connect tools
+
+### meru setup
+
+`meru setup` walks through a first run in five short steps:
+
+1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
+   install command for your system and waits while you start it.
+2. **Models.** You pick `lite` or `full` (or it uses the profile already in
+   `config.toml`), and it runs `ollama pull` for each model, with Ollama's own
+   progress bar.
+3. **Your files.** With no `config.toml` yet, it asks which folders to index and
+   writes the file. With one already there, it leaves the file alone and tells you
+   where to add folders, so your comments and settings stay as you wrote them.
+4. **Tools.** It offers each server in the catalog, one at a time (see below).
+5. **A test question.** If `merud` is running, it asks one question and prints
+   the answer. If not, it tells you how to start `merud`.
+
+### meru mcp add
+
+An MCP server gives the model tools. Meru knows six:
+
+```sh
+meru mcp list-catalog
+```
+
+| Name | What the model gets | What you need |
+| --- | --- | --- |
+| `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
+| `fetch` | reading a web page | `uv`, which provides `uvx` |
+| `gmail` | search and read mail; drafting and sending ask first | a Google OAuth client and `uv`; you sign in to Google on first use |
+| `calendar` | calendars and events; changing an event asks first | as for `gmail` |
+| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `gmail` |
+| `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
+
+To add one:
+
+```sh
+meru mcp add brave
+```
+
+Meru shows what the server does and offers two paths:
+
+- **d) Do it for me.** Meru asks for each thing the server needs, one at a time.
+  It reads an API key without showing it on screen and saves it to
+  `~/.meru/secrets.toml`, never to `config.toml`. Then it shows the exact block
+  it will add to `config.toml` and writes it only after you say yes.
+- **s) Show me how.** Meru prints the install step, the block, the file to paste
+  it into, and the lines to add to `secrets.toml`. It writes nothing.
+
+A server outside the catalog works too:
+
+```sh
+meru mcp add notes -- /usr/local/bin/notes-mcp --vault ~/notes   # a stdio server
+meru mcp add calendar --url http://127.0.0.1:8123/mcp            # a running HTTP server
+```
+
+Meru doesn't know such a server's tool names, so its `allow` list starts empty
+and the model gets none of its tools. After the restart below, run `meru tools`
+to see what the server offers, and name the tools to allow in `config.toml`.
+
+`merud` reads `config.toml` only when it starts. After adding a server, restart it
+and check what the model now has:
+
+```sh
+pkill merud; merud &
+meru tools
+```
+
+In chat you can also ask Meru to "connect my Gmail". The model calls the built-in
+`configure` tool, which asks you every time, with only "approve once" and "deny".
+A server that needs an API key you haven't saved yet isn't added from chat, because
+keys never pass through the model; Meru tells you to run `meru mcp add` instead.
+
+`secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
+other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.
+
+## 9. Keep merud running
 
 To start `merud` at login and restart it if it stops, install the service file for
 your system. [deploy/README.md](../deploy/README.md) has the exact commands:
@@ -272,7 +486,7 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
 
-## 9. Watch it on a dashboard (optional)
+## 10. Watch it on a dashboard (optional)
 
 With Docker installed, one command starts a local Grafana with a ready-made Meru
 dashboard:
@@ -310,7 +524,7 @@ two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
 load, prompt and answer times; the answer's span has a `first_token` event. Spans
 carry no question or answer text unless `capture_content = true`.
 
-## 10. Update to a newer version
+## 11. Update to a newer version
 
 From your clone of the repo, pull the latest code, rebuild both programs and
 restart `merud`:
@@ -328,7 +542,39 @@ the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off fo
 the shorter log. If `merud` runs as a service, restart it with the service
 manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 
-## 11. Troubleshooting
+### Check answers on your own files
+
+Unit and end-to-end tests run against fake models and made-up files. They can't
+tell whether Meru answers well from *your* files with *your* model. After each
+update, ask the same few questions and compare with last time. Keep your questions
+and the answers you expect in `~/.meru/checks.md`, outside the repo, since they
+name your own files and work.
+
+Five checks cover the ways answers have gone wrong so far. Fill in the brackets
+with something your files hold:
+
+1. **A new topic after an unrelated one.** In one `meru chat`, ask "when did I
+   visit [a place]?", then "I think I did some work for [a customer or project],
+   remind me what it was". The second answer should come from that project's
+   notes. If its sources are the first topic's files, the search mixed the two
+   questions.
+2. **A real follow-up.** Ask "what did I pay for [something]?", then "how much did
+   it cost?". The second answer should still be about the same thing: a short
+   follow-up borrows the question before it.
+3. **Recovery.** When the model says it has nothing, type `/new` and ask again in
+   one full question. It should answer.
+4. **A whole folder.** Ask "help me write about my work, using everything in
+   [folder]". In v0.3 a turn reads the 10 best excerpts, about 5,000 tokens, so
+   expect a partial answer. Whole-file tools and larger models should do better
+   here; this check shows when they do.
+5. **A tool by name.** Ask "search my [server name] for [topic]". Tool lines
+   (`→ server.tool`) should show before the answer.
+
+For each, note the route, the sources and the time from `~/.meru/merud.log`
+(`grep 'msg=turn' ~/.meru/merud.log | tail -5`), and whether the answer was right.
+With `-v`, the `search done` and `prompt built` lines show what the model read.
+
+## 12. Troubleshooting
 
 | What you see | What it means and what to do |
 | --- | --- |
@@ -336,6 +582,7 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 | `merud` says Ollama is too old | Update Ollama to 0.12.11 or later. |
 | `merud` can't reach Ollama | Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. |
 | `model … not found` in the answer or the log | Pull the model named in the error with `ollama pull`. |
+| `secrets … so other users can read it; run chmod 600 …` | Run the `chmod 600` command in the message. `meru mcp add` also fixes the mode when it saves a key. |
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
@@ -344,7 +591,7 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
-## 12. Uninstall
+## 13. Uninstall
 
 ```sh
 rm ~/go/bin/merud ~/go/bin/meru

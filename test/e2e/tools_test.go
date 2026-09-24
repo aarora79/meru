@@ -1,0 +1,142 @@
+//go:build e2e
+
+// This file tests tool calls end to end: merud starts cmd/fakemcp from
+// config, the fake model calls its tools, dispatch runs or refuses each
+// call, and the transcript, `meru log` and `meru tools` show what happened.
+
+package e2e
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/aarora79/meru/internal/testutil/fakeollama"
+	"github.com/aarora79/meru/internal/transcript"
+)
+
+// toolsRoute scripts the router picking "tools" (letter C).
+func toolsRoute() fakeollama.Reply {
+	return routeReply(letter{"C", 0.9}, letter{"A", 0.05}, letter{"B", 0.03}, letter{"D", 0.02})
+}
+
+// startToolStack is startStack with cmd/fakemcp configured as the MCP server
+// "notes": search runs freely, send asks first, secret isn't allowed.
+func startToolStack(t *testing.T) *stack {
+	t.Helper()
+	f := startFake(t)
+	h := newHome(t)
+	servers := fmt.Sprintf(`[router]
+temperature = 1.0
+
+[[mcp.servers]]
+name    = "notes"
+command = %q
+allow   = ["search", "send"]
+confirm = ["send"]
+`, filepath.Join(binDir, "fakemcp"))
+	h.writeConfig(t, fakeConfig(f.url, servers))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	return &stack{home: h, fake: f, merud: m}
+}
+
+// TestToolCall is v0.3's "Done when": Meru answers a question by calling an
+// MCP server. The model calls notes.search, reads the result, and answers.
+func TestToolCall(t *testing.T) {
+	t.Parallel()
+	s := startToolStack(t)
+	const answer = "Your garden budget is 4,200 dollars."
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "notes.search", Arguments: map[string]any{"query": "garden"}}}},
+		fakeollama.Reply{Text: answer})
+
+	res := runMeru(t, s.home, "what is my garden budget?")
+	if res.code != 0 {
+		t.Fatalf("meru exited %d, stderr:\n%s\nmerud.log:\n%s", res.code, res.stderr, s.home.log())
+	}
+	if res.stdout != answer+"\n" {
+		t.Errorf("stdout = %q, want only the answer", res.stdout)
+	}
+	if !strings.Contains(res.stderr, "notes.search") {
+		t.Errorf("stderr lacks the tool line:\n%s", res.stderr)
+	}
+
+	// The model's second request must carry the tool's result.
+	var sawResult bool
+	for _, r := range s.fake.chatRequests(t, mainModel) {
+		if strings.Contains(string(r.Body), "the garden budget for garden is 4,200 dollars") {
+			sawResult = true
+		}
+	}
+	if !sawResult {
+		t.Errorf("no request to the model carried the tool result")
+	}
+
+	lines := readTranscript(t, sessionFiles(t, s.home)[0])
+	var types []string
+	for _, l := range lines {
+		types = append(types, l.Type)
+	}
+	want := []string{transcript.TypeUser, transcript.TypeToolCall, transcript.TypeToolResult, transcript.TypeAssistant}
+	if strings.Join(types, ",") != strings.Join(want, ",") {
+		t.Fatalf("transcript line types = %v, want %v", types, want)
+	}
+	call, result := lines[1], lines[2]
+	if call.Kind != "mcp" || call.Server != "notes" || call.Tool != "search" || !strings.Contains(string(call.Args), "garden") {
+		t.Errorf("tool_call line = %+v", call)
+	}
+	if result.Outcome != "ok" || !result.OK || result.CallID != call.CallID {
+		t.Errorf("tool_result line = %+v", result)
+	}
+
+	log := runMeru(t, s.home, "log")
+	if log.code != 0 || !strings.Contains(log.stdout, "notes.search") || !strings.Contains(log.stdout, "ok") {
+		t.Errorf("meru log exited %d:\n%s%s", log.code, log.stdout, log.stderr)
+	}
+	tools := runMeru(t, s.home, "tools")
+	if tools.code != 0 || !strings.Contains(tools.stdout, "notes.search") || !strings.Contains(tools.stdout, "notes.send") ||
+		strings.Contains(tools.stdout, "notes.secret") {
+		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	}
+}
+
+// TestToolRefused covers the two refusals: a tool in the confirm list, when
+// nobody can approve it (meru's stdin isn't a terminal here), and a tool no
+// allowlist names. Neither runs, and both reach the model as refusals.
+func TestToolRefused(t *testing.T) {
+	t.Parallel()
+	s := startToolStack(t)
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{
+			{Name: "notes.send", Arguments: map[string]any{"to": "sam", "text": "hi"}},
+			{Name: "notes.secret", Arguments: map[string]any{}},
+		}},
+		fakeollama.Reply{Text: "I couldn't send it."})
+
+	res := runMeru(t, s.home, "tell sam hi")
+	if res.code != 0 {
+		t.Fatalf("meru exited %d, stderr:\n%s\nmerud.log:\n%s", res.code, res.stderr, s.home.log())
+	}
+	outcomes := map[string]string{}
+	calls := map[string]string{}
+	for _, l := range readTranscript(t, sessionFiles(t, s.home)[0]) {
+		switch l.Type {
+		case transcript.TypeToolCall:
+			calls[l.CallID] = l.Server + "." + l.Tool
+		case transcript.TypeToolResult:
+			outcomes[calls[l.CallID]] = l.Outcome
+		}
+	}
+	if outcomes["notes.send"] != "declined" || outcomes["notes.secret"] != "denied" {
+		t.Errorf("outcomes = %v, want send declined and secret denied", outcomes)
+	}
+	for _, r := range s.fake.chatRequests(t, mainModel) {
+		if strings.Contains(string(r.Body), "you should not see this") || strings.Contains(string(r.Body), "sent to sam") {
+			t.Errorf("a refused tool ran; the model saw its result")
+		}
+	}
+}

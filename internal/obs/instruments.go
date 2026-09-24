@@ -30,6 +30,11 @@ const (
 	metricContextTokens     = "meru.context.tokens"
 	metricActiveStreams     = "meru.rpc.active_streams"
 	metricRetrievalDuration = "meru.retrieval.duration"
+	metricToolCalls         = "meru.tool.calls"
+	metricToolDuration      = "meru.tool.duration"
+	metricSessions          = "meru.sessions"
+	metricTurnTokens        = "meru.turn.tokens" // #nosec G101 -- a metric name, not a credential
+	metricTurnDocs          = "meru.turn.docs"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -44,6 +49,11 @@ const (
 	keyOutcome   = "meru.outcome"
 	keySection   = "meru.section"
 	keyStage     = "meru.stage"
+	// The tool keys match the attributes on the meru.dispatch span, so a
+	// dashboard can join a metric to its traces.
+	keyToolKind   = "meru.tool.kind"
+	keyToolServer = "meru.tool.server"
+	keyToolName   = "gen_ai.tool.name"
 )
 
 // other replaces any attribute value outside its allowed set. It keeps a
@@ -62,6 +72,8 @@ var (
 	routeOutcomes = []string{"ok", "low_confidence", "degraded"}
 	sections      = []string{"system", "skills", "memories", "chunks", "history", "tools"}
 	stages        = []string{"vector", "fts", "fusion", "memories"}
+	toolKinds     = []string{"mcp", "a2a", "builtin"}
+	toolOutcomes  = []string{"ok", "error", "denied", "declined", "cancelled", "timeout"}
 )
 
 // operationNames maps Meru's own operation words to the values the GenAI
@@ -87,6 +99,9 @@ var (
 	// Retrieval stages run inside merud and take micro- to milliseconds,
 	// so their edges start far below the model-call ones.
 	retrievalBuckets = []float64{0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
+	// A search puts at most a few excerpts in the prompt, so a turn cites
+	// few files. The first edge, 0, separates turns that used no file.
+	docBuckets = []float64{0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20}
 )
 
 // bounded returns v when it is one of allowed, and "other" when it isn't.
@@ -125,6 +140,11 @@ type instruments struct {
 	contextTokens     metric.Int64Histogram
 	activeStreams     metric.Int64UpDownCounter
 	retrievalDuration metric.Float64Histogram
+	toolCalls         metric.Int64Counter
+	toolDuration      metric.Float64Histogram
+	sessions          metric.Int64Counter
+	turnTokens        metric.Int64Counter
+	turnDocs          metric.Int64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -200,6 +220,30 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of one retrieval stage: vector search, keyword search, fusion or memory recall."),
 		metric.WithExplicitBucketBoundaries(retrievalBuckets...))
+	keep(err)
+	in.toolCalls, err = meter.Int64Counter(metricToolCalls,
+		metric.WithUnit("{call}"),
+		metric.WithDescription("Tool calls through dispatch, by server, tool and outcome."))
+	keep(err)
+	// Tool calls range from a local file write to a slow web fetch, the
+	// same spread as model calls, so they share the duration edges.
+	in.toolDuration, err = meter.Float64Histogram(metricToolDuration,
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of one tool call that ran, without the wait for the user's approval."),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	keep(err)
+	in.sessions, err = meter.Int64Counter(metricSessions,
+		metric.WithUnit("{session}"),
+		metric.WithDescription("Sessions started, by source."))
+	keep(err)
+	in.turnTokens, err = meter.Int64Counter(metricTurnTokens,
+		metric.WithUnit("{token}"),
+		metric.WithDescription("The main model's tokens per answered turn, summed over its model calls, by gen_ai.token.type, route and source."))
+	keep(err)
+	in.turnDocs, err = meter.Int64Histogram(metricTurnDocs,
+		metric.WithUnit("{file}"),
+		metric.WithDescription("Distinct files whose excerpts went into one answered turn's prompt."),
+		metric.WithExplicitBucketBoundaries(docBuckets...))
 	keep(err)
 
 	if err := errors.Join(errs...); err != nil {

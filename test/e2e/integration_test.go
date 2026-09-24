@@ -72,7 +72,7 @@ func timedAsk(t *testing.T, socket, question string) (time.Duration, string) {
 	var ttft time.Duration
 	var answer strings.Builder
 	start := time.Now()
-	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, nil) {
 		if err != nil {
 			t.Fatalf("ask: %v", err)
 		}

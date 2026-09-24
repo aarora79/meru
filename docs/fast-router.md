@@ -76,7 +76,7 @@ that emits single letters as their own tokens, which the startup probe checks.
 **In scope.** The route decision, and only that.
 
 **Out of scope, on purpose.** No model rewrites the query. Search uses the question
-itself, and on a follow-up `merud` appends the session's latest earlier question
+itself, and on a short follow-up `merud` appends the session's latest earlier question
 that isn't only filler words such as "try the last question again". That needs no
 model call (see
 [How a conversation continues](../ARCHITECTURE.md#how-a-conversation-continues)).
@@ -498,8 +498,9 @@ use", "what is sqlite good for", "what language is kubernetes written in".
   `search+tools`: 4 of the 9, such as "text alex that I'm on my way". The router
   also falls back less, and a fallback never misses, so the held-out missed rate
   rose from 0.056 to 0.175. In v0.2 the
-  agent searches on `tools` as well, and no route calls tools yet, so these misses
-  cost nothing until v0.3.
+  agent searched on `tools` as well, and no route called tools, so these misses
+  cost nothing then. From v0.3 a request sent to `search` gets no tools, unless it
+  names a tool server (see the second rule below).
 - **Temperature.** The sweep's lowest ECE over all rows is now at T = 1.10
   (0.050), against 0.065 at 1.25. The gap is small, so the default stays at 1.25.
 - **A rule after the router.** Even with the folder line, the router sent "what
@@ -510,3 +511,15 @@ use", "what is sqlite good for", "what language is kubernetes written in".
   50 ms. The `meru.route` span and `meru.route.decisions` still record what the
   router chose; the turn's route event, log line and span show `search`. See
   [docs/coding-notes/agent.md](coding-notes/agent.md).
+- **A second rule, for tools (v0.3).** The router sent "Search my Obsidian vault
+  for notes mentioning 'AI'" to `search` at 0.65. With no tools offered, the
+  model said it couldn't search the vault. So after the folder rule, the agent
+  loop adds tools when the question names a connected MCP server or A2A agent as
+  a whole word and the route offers none: `direct` becomes `tools`, and `search`
+  becomes `search+tools`. The names come from the tools dispatch offers, such as
+  "obsidian" from `obsidian.search_vault` and "research" from
+  `a2a.research.summarize`, read on each turn because `configure` can add a
+  server while merud runs. Built-in tools don't count: their owner is "meru",
+  the assistant's own name. With the rule, the same question listed the vaults,
+  searched one and answered. The router's span and metric keep what it chose,
+  as with the folder rule.

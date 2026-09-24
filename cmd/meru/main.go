@@ -10,9 +10,14 @@
 //	meru [-socket path] chat             open the terminal UI
 //	meru [-socket path] index [folder]   rescan the [index] folders, or just one
 //	meru [-socket path] index -status    show what the search index holds
+//	meru [-socket path] tools            list the tools the model may use
+//	meru [-socket path] log [-n N] [-v]  show the latest tool calls
+//	meru [-socket path] usage            show how much you use Meru
+//	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
+//	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
 //
-// A question whose first word is ping, chat or index needs quotes, so meru
-// reads it as a question and not as a command.
+// A question whose first word is ping, chat, index, tools, log, usage, setup or
+// mcp needs quotes, so meru reads it as a question and not as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -65,6 +70,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru chat             open the terminal UI
   meru index [folder]   rescan the [index] folders, or just one
   meru index -status    show what the search index holds
+  meru tools            list the tools the model may use
+  meru log [-n N] [-v]  show the latest tool calls, newest first
+  meru usage            show how much you use Meru
+  meru setup            set up Ollama, the models, config and tools
+  meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
+  meru mcp add <name> -- <command> [args...] | --url <url>
+                        add a server that isn't in the catalog
 
 flags:`)
 		flags.PrintDefaults()
@@ -99,10 +111,22 @@ flags:`)
 		err = tui.Run(ctx, *socket, chatInfo())
 	case flags.Arg(0) == "index":
 		err = indexCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+	case flags.Arg(0) == "tools":
+		err = toolsCmd(ctx, *socket, flags.Args()[1:], stdout)
+	case flags.Arg(0) == "log":
+		err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+	case flags.NArg() == 1 && flags.Arg(0) == "usage":
+		err = usageCmd(ctx, *socket, stdout)
+	case flags.NArg() == 1 && flags.Arg(0) == "setup":
+		err = setupCmd(ctx, *socket, terminal(stdout))
+	case flags.Arg(0) == "mcp":
+		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
-		err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout)
+		// A tool call that needs approval asks on this terminal (approve.go).
+		p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
+		err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
 	}
 
 	switch {
@@ -134,7 +158,7 @@ func chatInfo() tui.Info {
 
 // ping asks merud whether it is up and prints the answer.
 func ping(ctx context.Context, socket string, stdout io.Writer) error {
-	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpPing}) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpPing}, nil) {
 		if err != nil {
 			return err
 		}
@@ -150,24 +174,52 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 // in, ending with a newline. When merud searched your files for the answer,
 // a "Sources:" list follows: the files the answer cites, numbered as it
 // cites them. It fails when merud can't be reached or replies with an error.
-func ask(ctx context.Context, socket, question string, stdout io.Writer) error {
+//
+// Tool calls show on stderr as dim lines, and approve answers merud's
+// approval questions. Keeping both off stdout means `meru "..." > file`
+// saves only the answer.
+func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
 	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
+	usedTools := false // the turn called a tool; see rpc.Cited
 	endsInNewline := false
-	for ev, err := range rpc.Do(ctx, socket, req) {
+	dim := newLook(stderr).dim
+	// breakLine starts a new line on the terminal before a tool line or a
+	// prompt when the answer stopped mid-line. It writes to stderr, so
+	// stdout keeps the answer as the model wrote it. midLine is
+	// true while the last thing on screen is answer text with no new line.
+	midLine := false
+	breakLine := func() {
+		if midLine {
+			fmt.Fprintln(stderr)
+			midLine = false
+		}
+	}
+	prompt := func(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
+		breakLine()
+		return approve(ctx, a)
+	}
+	for ev, err := range rpc.Do(ctx, socket, req, prompt) {
 		if err != nil {
 			return err
 		}
 		switch ev.Type {
 		case rpc.EventSources:
 			sources = ev.Sources
+		case rpc.EventToolCall, rpc.EventToolResult:
+			usedTools = true
+			if line := toolLine(ev); line != "" {
+				breakLine()
+				fmt.Fprintln(stderr, dim.Render(line))
+			}
 		case rpc.EventToken:
 			if _, err := io.WriteString(stdout, ev.Text); err != nil {
 				return err // stdout closed, as with `meru ... | head -1`
 			}
 			answer.WriteString(ev.Text)
 			endsInNewline = strings.HasSuffix(ev.Text, "\n")
+			midLine = !endsInNewline
 		case rpc.EventError:
 			if answer.Len() > 0 && !endsInNewline {
 				fmt.Fprintln(stdout)
@@ -178,10 +230,16 @@ func ask(ctx context.Context, socket, question string, stdout io.Writer) error {
 	if answer.Len() > 0 && !endsInNewline {
 		fmt.Fprintln(stdout)
 	}
-	if len(sources) > 0 {
+	if cited := rpc.Cited(answer.String(), sources, usedTools); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")
-		for _, c := range rpc.Cited(answer.String(), sources) {
-			fmt.Fprintln(stdout, c)
+		links := newLook(stdout).links
+		home, _ := os.UserHomeDir() // "" leaves "~/..." paths unlinked
+		for _, c := range cited {
+			line := c.String()
+			if links {
+				line = rpc.Hyperlink(rpc.FileURL(c.Path, home), line)
+			}
+			fmt.Fprintln(stdout, line)
 		}
 	}
 	return nil

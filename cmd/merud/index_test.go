@@ -63,7 +63,7 @@ func startDaemon(t *testing.T, dir, cfgBody string, eng *fakeEngine) daemon {
 
 	waitUntil(t, "merud answers a ping", func() bool {
 		up := false
-		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}) {
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}, nil) {
 			up = err == nil && ev.Type == rpc.EventDone
 		}
 		return up
@@ -89,7 +89,7 @@ func call(t *testing.T, sock string, req rpc.Request) []rpc.Event {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var evs []rpc.Event
-	for ev, err := range rpc.Do(ctx, sock, req) {
+	for ev, err := range rpc.Do(ctx, sock, req, nil) {
 		if err != nil {
 			t.Fatalf("%s: %v", req.Op, err)
 		}

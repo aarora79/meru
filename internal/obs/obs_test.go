@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -166,6 +167,7 @@ func TestNoOpBeforeSetup(t *testing.T) {
 	RecordTurn(ctx, Turn{Route: "direct", Source: "cli", Outcome: "ok"})
 	RecordRoute(ctx, "direct", "ok")
 	RecordContextTokens(ctx, "system", 10)
+	RecordToolCall(ctx, ToolCallMetric{Kind: "mcp", Server: "s", Tool: "t", Outcome: "ok", Duration: time.Second})
 	ActiveStreams(ctx, 1)
 	if CaptureContent() {
 		t.Error("CaptureContent() = true before Setup, want false")
@@ -413,6 +415,135 @@ func TestRecordRetrieval(t *testing.T) {
 	}
 	histPoint[float64](t, m, attrs(keyStage, "fusion"))
 	histPoint[float64](t, m, attrs(keyStage, "other"))
+}
+
+// TestRecordToolCall checks both tool metrics, that a call that never ran
+// records no duration, and that a denied call's made-up names and unknown
+// values become "other".
+func TestRecordToolCall(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	RecordToolCall(ctx, ToolCallMetric{Kind: "mcp", Server: "web", Tool: "search", Outcome: "ok", Duration: 300 * time.Millisecond})
+	RecordToolCall(ctx, ToolCallMetric{Kind: "mcp", Server: "web", Tool: "search", Outcome: "ok", Duration: 100 * time.Millisecond})
+	RecordToolCall(ctx, ToolCallMetric{Kind: "builtin", Server: "meru", Tool: "write_file", Outcome: "declined"})
+	RecordToolCall(ctx, ToolCallMetric{Kind: "mcp", Server: "evil", Tool: "rm_rf_12345", Outcome: "denied"})
+	RecordToolCall(ctx, ToolCallMetric{Kind: "plugin", Server: "web", Tool: "search", Outcome: "exploded", Duration: time.Second})
+	got := collect(t, reader)
+
+	m := got[metricToolCalls]
+	if m.Unit != "{call}" {
+		t.Errorf("tool calls unit = %q, want {call}", m.Unit)
+	}
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	if !ok || !sum.IsMonotonic {
+		t.Fatalf("%s is %T, want a counter", metricToolCalls, m.Data)
+	}
+	counts := map[string]int64{}
+	for _, dp := range sum.DataPoints {
+		var parts []string
+		for _, k := range []string{keyToolKind, keyToolServer, keyToolName, keyOutcome} {
+			v, _ := dp.Attributes.Value(attribute.Key(k))
+			parts = append(parts, v.AsString())
+		}
+		counts[strings.Join(parts, "/")] = dp.Value
+	}
+	want := map[string]int64{
+		"mcp/web/search/ok":                2,
+		"builtin/meru/write_file/declined": 1,
+		"mcp/other/other/denied":           1,
+		"other/web/search/other":           1,
+	}
+	if len(counts) != len(want) {
+		t.Errorf("tool calls = %v, want %v", counts, want)
+	}
+	for k, v := range want {
+		if counts[k] != v {
+			t.Errorf("tool calls[%s] = %d, want %d", k, counts[k], v)
+		}
+	}
+
+	d := got[metricToolDuration]
+	if d.Unit != "s" {
+		t.Errorf("tool duration unit = %q, want s", d.Unit)
+	}
+	h := histPoint[float64](t, d, attrs(keyToolKind, "mcp", keyToolServer, "web", keyToolName, "search"))
+	if h.Count != 2 || !near(h.Sum, 0.4) {
+		t.Errorf("web.search duration count=%d sum=%v, want 2 and 0.4", h.Count, h.Sum)
+	}
+	if n := len(d.Data.(metricdata.Histogram[float64]).DataPoints); n != 2 {
+		t.Errorf("tool duration has %d points, want 2 (calls that never ran record none)", n)
+	}
+}
+
+// sumPoints returns a counter's values, keyed by the values of the given
+// attributes joined with "/". It fails the test when m isn't a counter.
+func sumPoints(t *testing.T, m metricdata.Metrics, keys ...string) map[string]int64 {
+	t.Helper()
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	if !ok || !sum.IsMonotonic {
+		t.Fatalf("%s is %T, want a counter", m.Name, m.Data)
+	}
+	out := map[string]int64{}
+	for _, dp := range sum.DataPoints {
+		var parts []string
+		for _, k := range keys {
+			v, _ := dp.Attributes.Value(attribute.Key(k))
+			parts = append(parts, v.AsString())
+		}
+		out[strings.Join(parts, "/")] = dp.Value
+	}
+	return out
+}
+
+// TestRecordUsage checks meru.sessions, meru.turn.tokens and
+// meru.turn.docs, and that unknown values become "other".
+func TestRecordUsage(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	RecordSession(ctx, "tui")
+	RecordSession(ctx, "tui")
+	RecordSession(ctx, "session-7f3a")
+	RecordTurnUsage(ctx, TurnUsage{Route: "search", Source: "tui", TokensIn: 1200, TokensOut: 80, Docs: 3})
+	RecordTurnUsage(ctx, TurnUsage{Route: "search", Source: "tui", TokensIn: 800, TokensOut: 20, Docs: 1})
+	RecordTurnUsage(ctx, TurnUsage{Route: "direct", Source: "cli", TokensIn: 100, TokensOut: 10})
+	RecordTurnUsage(ctx, TurnUsage{Route: "notes-a.md", Source: "web", TokensIn: 1, TokensOut: 1})
+	got := collect(t, reader)
+
+	if u := got[metricSessions].Unit; u != "{session}" {
+		t.Errorf("sessions unit = %q, want {session}", u)
+	}
+	sessions := sumPoints(t, got[metricSessions], keySource)
+	if sessions["tui"] != 2 || sessions["other"] != 1 || len(sessions) != 2 {
+		t.Errorf("sessions = %v, want tui=2 and other=1", sessions)
+	}
+
+	tokens := sumPoints(t, got[metricTurnTokens], keyTokenType, keyRoute, keySource)
+	want := map[string]int64{
+		"input/search/tui":   2000,
+		"output/search/tui":  100,
+		"input/direct/cli":   100,
+		"output/direct/cli":  10,
+		"input/other/other":  1,
+		"output/other/other": 1,
+	}
+	if len(tokens) != len(want) {
+		t.Errorf("turn tokens = %v, want %v", tokens, want)
+	}
+	for k, v := range want {
+		if tokens[k] != v {
+			t.Errorf("turn tokens[%s] = %d, want %d", k, tokens[k], v)
+		}
+	}
+
+	docs := histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "search"))
+	if docs.Count != 2 || docs.Sum != 4 {
+		t.Errorf("search docs count=%d sum=%d, want 2 and 4", docs.Count, docs.Sum)
+	}
+	// A turn that used no file still counts, with 0.
+	if d := histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "direct")); d.Count != 1 || d.Sum != 0 {
+		t.Errorf("direct docs count=%d sum=%d, want 1 and 0", d.Count, d.Sum)
+	}
+	histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "other"))
 }
 
 // TestTracerUsesGlobalProvider checks that Tracer follows the installed

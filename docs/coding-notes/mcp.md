@@ -1,8 +1,8 @@
 # mcp
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
-and the tests `config_test.go`, `pool_test.go`, `call_test.go`, `stdio_test.go`,
-`stdio_unix_test.go`, `testserver_test.go`)
+and the tests `config_test.go`, `pool_test.go`, `call_test.go`, `headers_test.go`,
+`stdio_test.go`, `stdio_unix_test.go`, `testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
 [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4
@@ -15,10 +15,11 @@ arguments. Meru is the client: it asks each server what it offers, shows the mod
 the tools you allowed, and runs the ones the model asks for.
 
 This package holds the client side. A `Pool` starts or connects to every server in
-config, keeps each server's allowed tools, and renames them `<server>.<tool>`. The
-agent loop will read `Pool.Tools` to build the prompt, and `dispatch` will call
-`Pool.Call` to run a tool. `dispatch` doesn't exist yet; it arrives later in v0.3
-and will own the confirmation prompt, the `tool_calls` row and the metrics.
+config, keeps each server's allowed tools, and renames them `<server>.<tool>`.
+`dispatch` reaches the pool through `mcpBackend` in `cmd/merud/backends.go`: it
+reads `Pool.Tools` for the prompt and calls `Pool.Call` to run a tool. `dispatch`
+owns the confirmation prompt, the `tool_calls` row and the metrics; see
+[dispatch.md](dispatch.md).
 
 The package speaks both transports in the current MCP spec, through the official
 Go SDK (`github.com/modelcontextprotocol/go-sdk`):
@@ -69,8 +70,9 @@ sequenceDiagram
 
 ### config.go
 
-`ServerConfig` is one `[[mcp.servers]]` entry. The config package will fill it from
-`config.toml`; this package only defines it and checks it.
+`ServerConfig` is one `[[mcp.servers]]` entry. merud fills it from `config.toml`
+(`mcpServerConfigs` in `cmd/merud/backends.go`, which also swaps `secret:<name>`
+values for the stored secrets); this package only defines it and checks it.
 
 ```go
 type ServerConfig struct {
@@ -80,6 +82,7 @@ type ServerConfig struct {
     Env     map[string]string
     URL     string
     Network bool
+    Headers map[string]string
     Allow   []string
     Confirm []string
     Timeout time.Duration
@@ -98,6 +101,8 @@ It refuses:
 - `*` or any other wildcard in `allow` or `confirm`. Deny-by-default means you name
   each tool. A wildcard would also let in tools a server adds in a later release
   that no one has read;
+- `headers` on a stdio entry, a header name with a space, colon or line break, or
+  a header value with a line break, which could smuggle in a second header;
 - a `confirm` entry missing from `allow`. That tool never reaches the model, so
   the entry does nothing, and it is almost always a typo.
 
@@ -172,6 +177,28 @@ one server can run at once.
 `Close` ends every session, cancels every process context, and then waits on the
 `watchers` wait group until every `watch` goroutine has returned.
 
+**Headers.** A Streamable HTTP server that wants an API key gets it in `Headers`.
+`httpClient` wraps Go's default transport in a `headerTransport`, an
+`http.RoundTripper` (the interface an `http.Client` sends each request through):
+
+```go
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+    if req.URL.Host != t.host {
+        return t.base.RoundTrip(req)
+    }
+    r := req.Clone(req.Context())
+    for k, v := range t.headers {
+        r.Header.Set(k, v)
+    }
+    return t.base.RoundTrip(r)
+}
+```
+
+A `RoundTripper` must not change the request it gets, so it sets the headers on a
+copy. It adds them only for the server's own host: a server marked
+`network = true` may redirect elsewhere, and the key must not follow. More on
+clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md).
+
 ### call.go
 
 `Call` does four things in order:
@@ -187,7 +214,8 @@ if !allowed {
 
 1. **Allowlist.** It splits `files.read` at the first `.` and checks the server's
    `allow` list. A tool outside it gets `ErrNotAllowed` before any server hears
-   about the call. `dispatch` will record that call as `denied`.
+   about the call. `dispatch` only calls tools the pool listed, so it records a
+   made-up name as `denied` before the pool sees it.
 2. **Arguments.** They must be a JSON object; empty means `{}`.
 3. **Session.** `sessionFor` returns the live session, restarting the server if
    the reconnect wait has passed.

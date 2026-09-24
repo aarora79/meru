@@ -6,12 +6,14 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -62,6 +64,17 @@ func TestViewGolden(t *testing.T) {
 		{N: 2, Path: "~/notes/plants.md", StartLine: 1, EndLine: 9, Score: 0.016},
 	}}
 
+	toolCall := func(id, name, args string) rpc.Event {
+		return rpc.Event{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: id, Name: name, Kind: "mcp", Args: json.RawMessage(args)}}
+	}
+	toolResult := func(id, name, outcome string, ms int64) rpc.Event {
+		return rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: id, Name: name, Kind: "mcp", Outcome: outcome, DurationMillis: ms}}
+	}
+	tools := rpc.Event{Type: rpc.EventRoute, Route: "tools", Confidence: 0.82}
+	mailArgs := `{"to":"sam@example.com","subject":"Garden budget","body":"The Q3 budget is 4,200 dollars."}`
+	mail := &rpc.Approval{ID: "1", Name: "mail.send", Kind: "mcp", Args: json.RawMessage(mailArgs),
+		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny}}
+
 	tests := []struct {
 		name   string
 		width  int
@@ -70,7 +83,23 @@ func TestViewGolden(t *testing.T) {
 		done   bool
 		err    error
 		height int
+		// approval, when set, opens the approval box after the events.
+		approval *rpc.Approval
+		// index and usage, when set, arrive as status and usage replies
+		// before anything else; usageBox then types /usage.
+		index    *rpc.IndexStatus
+		usage    []rpc.UsageWindow
+		usageBox bool
 	}{
+		{name: "approval", width: 80, q: "Email Sam the garden budget", approval: mail,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+				toolCall("2", "mail.send", mailArgs)}},
+		{name: "tools", width: 80, q: "Email Sam the garden budget", done: true,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+				toolCall("2", "mail.send", mailArgs), toolResult("2", "mail.send", "declined", 0),
+				tok("I found the budget, 4,200 dollars, but didn't send the email."), stats}},
+		{name: "approval-narrow", width: 40, q: "Email Sam", approval: mail,
+			evs: []rpc.Event{session, tools, toolCall("2", "mail.send", mailArgs)}},
 		{name: "empty", width: 80},
 		{name: "waiting", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct}},
 		{name: "streaming", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct, tok("Meru is a personal "), tok("assistant that runs")}},
@@ -80,6 +109,13 @@ func TestViewGolden(t *testing.T) {
 		{name: "stopped", width: 80, q: "Tell me a long story", evs: []rpc.Event{session, direct, tok("Once upon a time")}},
 		{name: "sources", width: 80, q: "What is the Q3 budget for the garden project?", evs: []rpc.Event{session, search, sources, tok("The Q3 budget for the garden project is 4,200 dollars [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
+		// The header at three widths: everything; the usage dropped; then
+		// the vectors and size dropped too.
+		{name: "header-wide", width: 120, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "header", width: 80, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "header-narrow", width: 60, height: 8, index: bigIndex, usage: usageFixture},
+		{name: "usage", width: 80, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
+		{name: "usage-narrow", width: 40, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,8 +124,17 @@ func TestViewGolden(t *testing.T) {
 				height = 30
 			}
 			m := screen(t, tt.width, height, tt.q, tt.evs, tt.done, tt.err)
+			if tt.index != nil || tt.usage != nil {
+				m, _ = update(t, m, pingMsg{index: tt.index}, usageMsg{windows: tt.usage, answered: true})
+			}
+			if tt.usageBox {
+				m, _ = update(t, m, typeText("/usage"), press(tea.KeyEnter), usageMsg{windows: tt.usage, answered: true})
+			}
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))
+			}
+			if tt.approval != nil {
+				m, _ = update(t, m, approvalRequestMsg{turn: m.turn, approval: *tt.approval, reply: make(chan rpc.Choice, 1)})
 			}
 			view := m.View()
 
@@ -107,6 +152,19 @@ func TestViewGolden(t *testing.T) {
 			golden(t, tt.name, view)
 		})
 	}
+}
+
+// bigIndex is an index status with numbers of a realistic size.
+var bigIndex = &rpc.IndexStatus{Documents: 2637, Chunks: 11698, Vectors: 11698, DBBytes: 88_080_384}
+
+// usageFixture is a usage reply with every window, in merud's order.
+var usageFixture = []rpc.UsageWindow{
+	{Name: rpc.Usage1h, Sessions: 1, Turns: 4, TokensIn: 18_000, TokensOut: 2_100, ActiveMillis: 134_000, Docs: 3, ToolCalls: 1},
+	{Name: rpc.UsageToday, Sessions: 2, Turns: 9, TokensIn: 41_200, TokensOut: 5_300, ActiveMillis: 301_000, Docs: 7, ToolCalls: 2},
+	{Name: rpc.UsageWeek, Sessions: 5, Turns: 31, TokensIn: 150_000, TokensOut: 19_400, ActiveMillis: 1_210_000, Docs: 22, ToolCalls: 6},
+	{Name: rpc.UsageMonth, Sessions: 12, Turns: 88, TokensIn: 420_000, TokensOut: 61_000, ActiveMillis: 3_700_000, Docs: 51, ToolCalls: 14},
+	{Name: rpc.Usage30d, Sessions: 14, Turns: 97, TokensIn: 468_000, TokensOut: 66_500, ActiveMillis: 4_020_000, Docs: 55, ToolCalls: 15},
+	{Name: rpc.UsageLifetime, Sessions: 30, Turns: 212, TokensIn: 1_400_000, TokensOut: 180_000, ActiveMillis: 11_100_000, Docs: 140, ToolCalls: 40},
 }
 
 // golden compares got with testdata/<name>.golden, or writes the file when
@@ -167,6 +225,83 @@ func TestHeaderStatus(t *testing.T) {
 	m, _ = update(t, m, pingMsg{err: errors.New("no socket")})
 	if h := m.header(); !strings.Contains(h, "● merud not running") {
 		t.Errorf("header after failed ping = %q, want not running", h)
+	}
+}
+
+// TestHeaderDocCount checks the index's document count in the header: left
+// out until merud answers, then updated by each status check, and kept when
+// a later check fails.
+func TestHeaderDocCount(t *testing.T) {
+	m := testModel(nil, newFakeSender())
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	if h := m.header(); strings.Contains(h, "doc") {
+		t.Errorf("header before any status = %q, want no doc count", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 68}})
+	if h := m.header(); !strings.Contains(h, "68 docs") {
+		t.Errorf("header = %q, want 68 docs", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 1}})
+	if h := m.header(); !strings.Contains(h, "· 1 doc") || strings.Contains(h, "1 docs") {
+		t.Errorf("header = %q, want 1 doc", h)
+	}
+	m, _ = update(t, m, pingMsg{err: errors.New("no socket")})
+	if h := m.header(); !strings.Contains(h, "1 doc") {
+		t.Errorf("header after a failed check = %q, want the last count kept", h)
+	}
+}
+
+// TestHeaderIndexing checks the marker that says a scan is still running.
+func TestHeaderIndexing(t *testing.T) {
+	m := testModel(nil, newFakeSender())
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2637, Vectors: 11698, Scanning: true}})
+	if h := m.header(); !strings.Contains(h, "2637 docs (11698 vectors) · indexing") {
+		t.Errorf("header = %q, want the count and the indexing marker", h)
+	}
+	m, _ = update(t, m, pingMsg{index: &rpc.IndexStatus{Documents: 2700}})
+	if h := m.header(); !strings.Contains(h, "2700 docs") || strings.Contains(h, "indexing") {
+		t.Errorf("header = %q, want the new count without the marker", h)
+	}
+}
+
+// TestRefresh checks the periodic status check: a refreshMsg asks merud
+// again and books the next check, sooner while a scan runs.
+func TestRefresh(t *testing.T) {
+	tests := []struct {
+		name string
+		ix   *rpc.IndexStatus
+		want time.Duration
+	}{
+		{"before any answer", nil, refreshScanning},
+		{"while scanning", &rpc.IndexStatus{Scanning: true}, refreshScanning},
+		{"idle", &rpc.IndexStatus{Documents: 5}, refreshIdle},
+	}
+	for _, tt := range tests {
+		if got := nextRefresh(tt.ix); got != tt.want {
+			t.Errorf("%s: nextRefresh = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	m := testModel(nil, newFakeSender())
+	if _, cmd := update(t, m, refreshMsg{}); cmd == nil {
+		t.Errorf("refreshMsg gave no command; want a check and the next tick")
+	}
+}
+
+// TestPingCmdReadsIndexStatus checks that the status check asks for the
+// index status and hands its numbers to the model.
+func TestPingCmdReadsIndexStatus(t *testing.T) {
+	f := &fakeMerud{events: []rpc.Event{
+		{Type: rpc.EventStatus, Status: &rpc.IndexStatus{Documents: 68, Chunks: 900}},
+		{Type: rpc.EventDone},
+	}}
+	msg := pingCmd(f.ask)()
+	pm, ok := msg.(pingMsg)
+	if !ok || pm.err != nil || pm.index == nil || pm.index.Documents != 68 {
+		t.Fatalf("pingCmd = %+v, want 68 documents and no error", msg)
+	}
+	if len(f.reqs) != 1 || f.reqs[0].Op != rpc.OpIndexStatus {
+		t.Errorf("requests = %+v, want one index_status", f.reqs)
 	}
 }
 

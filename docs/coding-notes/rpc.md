@@ -1,6 +1,6 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `client.go`, `server.go`)
+**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
 **Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
@@ -79,9 +79,53 @@ way:
 - **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Budget",
   lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
   this way.
-- **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
-  answer with a regular expression and returns the sources they name. When
-  the answer cites none, it returns them all: the model still read them.
+- **`Cited(answer, sources, usedTools)`** finds the `[1]` and `[1, 3]` marks
+  in the answer with a regular expression and returns the sources they name.
+  When the answer cites none, it returns them all, because the model still
+  read them. A turn that called a tool is the exception: its answer may come
+  from the tool's result, so no marks means no sources.
+- **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
+  `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
+- **`Hyperlink(url, text)`** wraps text in the OSC 8 escape codes, `ESC ] 8 ; ;
+  URL ESC \` before and the same with no URL after. Terminals that know them
+  (iTerm2, Ghostty, WezTerm, kitty, VS Code's terminal, Windows Terminal) make
+  the text a link; others skip the codes. Both clients call it only when their
+  output is a styled terminal.
+
+### args.go
+
+Helpers both clients use to show a tool call's arguments, which arrive as raw
+JSON (`json.RawMessage`):
+
+- **`ArgsLines(args, maxLines)`** indents the JSON with `json.Indent`, one field
+  per line, for an approval prompt. Past `maxLines`, the last line says how
+  many it left out: `… 12 more lines`.
+- **`ArgsLine(args, width)`** squeezes the JSON onto one line with
+  `json.Compact`, for a tool line or `meru log`, and cuts it to `width`.
+- **`Cut(s, width)`** does the cutting. It counts characters (runes), not bytes,
+  so it never splits a character such as "é" that takes two bytes.
+
+Arguments that aren't valid JSON come back as they are, so a broken tool can't
+hide what it sent.
+
+### usage.go
+
+Helpers both clients use to show a `usage` event, so `meru usage` and the `/usage`
+box in `meru chat` show the same numbers:
+
+- **`UsageTable(windows)`** returns rows of cells: the window names first, then one
+  row per measure (sessions, questions, tokens in and out, active time, docs
+  touched, tool calls). Each measure pairs its label with a function that reads its
+  value from a window; Go keeps a function in a struct field like any other value.
+- **`ShortCount(n)`** writes a count in a few characters: `950`, `1.2k`, `18k`,
+  `1.4M`, with one decimal below ten, counting by 1,000.
+- **`ShortDuration(ms)`** writes a time as its two largest units: `45s`, `2m 14s`,
+  `3h 05m`.
+- **`UsageNote`** is the line under the table: today, week and month follow the
+  local calendar, while 1h and 30d roll back from now.
+
+Each client lays out the cells its own way: `meru` with a `text/tabwriter`, and
+`meru chat` by hand, so it can drop windows that don't fit the terminal.
 
 ### client.go
 
@@ -217,7 +261,8 @@ go test -race ./internal/rpc/...
 
 `TestRoundTrip` also sends the index ops and a `sources` event through a real
 socket, to show their payloads survive the trip through JSON. `TestCited`
-covers which sources count as cited.
+covers which sources count as cited. `TestArgsLines` and `TestArgsLine` cover
+indenting, cutting, and arguments that aren't JSON.
 
 `TestClientDisconnectCancelsHandler` hangs up mid-answer and checks that the
 handler's context ends with `context.Canceled`. `TestDebugLog` runs a question

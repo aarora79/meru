@@ -91,3 +91,63 @@ overlap_tokens = 50
 # Re-index a file as soon as it changes while merud runs. merud also rescans
 # every folder when it starts, so changes made while it was stopped get in.
 watch = true
+
+# MCP servers (v0.3): programs that give the model tools. None by default.
+# `meru mcp add <name>` writes an entry for you, and `meru mcp list-catalog`
+# lists the servers it knows. See ARCHITECTURE.md, "MCP".
+#
+# Each [[mcp.servers]] entry has either command (merud starts the server
+# and talks to it over stdin and stdout) or url (a Streamable HTTP server
+# that already runs). Tools are deny-by-default: the model gets only the
+# tools allow names, one by one, with no wildcards. A tool in confirm asks
+# you before each call, and must also be in allow. merud reads this list
+# when it starts, so restart it after a change; `meru tools` shows what
+# each server offers and what the model gets.
+#
+# A stdio server:
+#
+# [[mcp.servers]]
+# name    = "brave"                  # letters, digits, - and _; tools become "brave.<tool>"
+# command = "npx"                    # run as is, with no shell
+# args    = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
+# env     = { BRAVE_API_KEY = "secret:brave_api_key" }   # "secret:" values come from secrets.toml
+# allow   = ["brave_web_search", "brave_news_search"]
+# confirm = []
+# timeout = "60s"                    # longest one call may take; the default
+#
+# A Streamable HTTP server:
+#
+# [[mcp.servers]]
+# name    = "calendar"
+# url     = "http://127.0.0.1:8123/mcp"
+# headers = { Authorization = "secret:calendar_token" }  # sent on every request
+# network = false                    # true lets url point at another machine
+# allow   = ["list_events", "create_event"]
+# confirm = ["create_event"]         # asks before each call
+#
+# Secrets: API keys and tokens live in secrets.toml next to this file, one
+# name = "value" per line, never in config.toml. merud refuses the file
+# unless only you can read it (chmod 600), and hides every value from
+# transcripts, logs and traces. `meru mcp add` writes it for you:
+#
+#   brave_api_key = "..."
+
+# Other agents (v0.3) that Meru may hand a task to over A2A (Agent2Agent).
+# None by default. Each allowed skill, named by the ID on the agent's card,
+# becomes a tool called "a2a.<name>.<skill>". url must be loopback unless
+# network = true. See ARCHITECTURE.md, "Other agents (A2A)".
+#
+# [[a2a.agents]]
+# name    = "research"
+# url     = "http://127.0.0.1:9000"  # where merud reads the agent card
+# network = false
+# headers = { Authorization = "secret:research_token" }
+# allow   = ["summarize"]
+# confirm = []
+# timeout = "60s"
+
+[builtin]
+# Built-in tools that ask before each call. configure, which edits this
+# file, always asks and offers no approval for the session, whatever this
+# list says. Add "remember" or "write_file" here when they arrive (v0.4).
+confirm = []

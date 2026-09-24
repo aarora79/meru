@@ -76,7 +76,7 @@ func buildBinaries(dir string) error {
 
 	args := []string{"build", "-o", dir + string(filepath.Separator)}
 	args = append(args, raceBuildFlags...) // ... spreads the slice into separate arguments
-	args = append(args, "./cmd/merud", "./cmd/meru", "./cmd/fakeollama")
+	args = append(args, "./cmd/merud", "./cmd/meru", "./cmd/fakeollama", "./cmd/fakemcp")
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
 	var stderr bytes.Buffer
