@@ -1,0 +1,27 @@
+# Go module path prefixes of cloud-model SDKs. No Go file may import a package
+# under one of these, and go.mod may not require one (AGENTS.md, non-negotiable 1).
+#
+# A prefix matches on a path-segment boundary: "github.com/openai" matches
+# "github.com/openai/openai-go/v2" but not "github.com/openaix/foo".
+# Text after "#" is a comment.
+
+github.com/openai                              # official OpenAI SDKs
+github.com/sashabaranov/go-openai              # community OpenAI client
+github.com/anthropics                          # official Anthropic SDKs
+github.com/liushuangls/go-anthropic            # community Anthropic client
+cloud.google.com/go/vertexai                   # Google Vertex AI
+cloud.google.com/go/aiplatform                 # Google Vertex AI (lower level)
+google.golang.org/genai                        # Google Gen AI SDK (Gemini)
+github.com/google/generative-ai-go             # older Gemini SDK
+github.com/aws/aws-sdk-go-v2/service/bedrockruntime  # AWS Bedrock
+github.com/aws/aws-sdk-go-v2/service/bedrock   # AWS Bedrock control plane
+github.com/cohere-ai                           # Cohere
+github.com/mistralai                           # Mistral
+github.com/gage-technologies/mistral-go        # community Mistral client
+github.com/Azure/azure-sdk-for-go/sdk/ai       # Azure OpenAI
+github.com/tmc/langchaingo                     # wraps many hosted providers
+github.com/firebase/genkit                     # wraps many hosted providers
+github.com/cloudwego/eino-ext/components/model # wraps many hosted providers
+github.com/conneroisu/groq-go                  # Groq
+github.com/revrost/go-openrouter               # OpenRouter
+github.com/henomis/lingoose                    # wraps many hosted providers

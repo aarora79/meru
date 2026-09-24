@@ -21,6 +21,10 @@ Each milestone is useful on its own. We ship them in this order.
 **Done when:** with `merud` already running, a fresh `meru "hello"` shows its first
 token in under a second, and the dashboard shows the timing.
 
+**Measured:** on the development machine with the `lite` profile, the end-to-end
+integration test got its first token in 185 ms, and the Grafana dashboard showed
+the timing.
+
 ## v0.2 — It knows your files
 - SQLite store via `ncruces/go-sqlite3` + `sqlite-vec` + FTS5 schema, rebuilt from files
 - Transcripts replayed into `messages` + `message_fts`

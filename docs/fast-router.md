@@ -36,7 +36,9 @@ prose.
 
 1. Prompt the `fast` model with the question, the session history and one lettered
    option per route, each with a description.
-2. Ask Ollama for **one** token with log probabilities.
+2. Ask Ollama for **one** token with log probabilities, with thinking turned off
+   (`think: false`). A thinking model otherwise spends that token starting its hidden
+   reasoning.
 3. Take the alternatives at position 0, keep the ones whose text is a route letter,
    and turn each log probability back into a probability.
 4. Divide each logit by a stored temperature, then normalise so the four sum to 1.
@@ -49,7 +51,7 @@ from a fixed set of letters rather than from whatever it wrote.
 ```mermaid
 flowchart LR
     Q["question + history"] --> P["build prompt<br/>A–D with criteria"]
-    P --> O["Ollama /api/generate<br/>num_predict 1<br/>logprobs true"]
+    P --> O["Ollama /api/chat<br/>num_predict 1<br/>logprobs true, think false"]
     O --> T["top_logprobs at position 0"]
     T --> F["keep A–D<br/>exp, temperature, normalise"]
     F --> C{"confidence ≥<br/>min_confidence?"}
@@ -341,3 +343,17 @@ pages follow in the same pull request.
   number first.
 - Check MiniCPM5-2B's tokeniser emits `A` through `D` as single tokens. If it does
   not, use four distinct single-token words instead of letters.
+
+## Notes from the v0.1 build
+
+- **Endpoint.** Ollama 0.34 returns log probabilities from `/api/chat`, so the
+  router uses it rather than `/api/generate`, and shares the chat code path with
+  every other call.
+- **Thinking.** The engine sends `think: false` whenever `LogProbs` is set.
+  Models that don't think accept the flag and ignore it.
+- **Spellings.** When both `A` and ` A` appear among the alternatives, their
+  probabilities add up. A tie goes to the earlier letter.
+- **First measurement.** On the development machine, MiniCPM5-2B at temperature
+  1.0 took about 13 ms per warm decision and picked the expected route for 2 of 7
+  hand-picked questions, leaning towards `search+tools`. Calibration and prompt
+  tuning are the next steps (see open question 1 in ARCHITECTURE.md).

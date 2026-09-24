@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent that starts merud when you log in and restarts it if it exits.
+  launchd doesn't expand ~ or $HOME, so deploy/README.md shows how to replace
+  __HOME__ with your home directory while copying this file into
+  ~/Library/LaunchAgents/.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.meru.merud</string>
+
+  <!-- The merud binary. `go install ./cmd/merud` puts it in ~/go/bin. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/go/bin/merud</string>
+  </array>
+
+  <!-- Start at login, and start again whenever merud exits. -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- merud writes its own log with slog; these catch anything printed
+       before that log opens, such as a config error. -->
+  <key>StandardOutPath</key>
+  <string>__HOME__/.meru/merud.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.meru/merud.err.log</string>
+</dict>
+</plist>

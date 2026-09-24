@@ -1,0 +1,10 @@
+# Tells Grafana inside grafana/otel-lgtm to load every dashboard JSON file
+# from the folder that compose.yaml mounts at .../dashboards/meru.
+apiVersion: 1
+providers:
+  - name: Meru
+    type: file
+    disableDeletion: true
+    options:
+      path: /otel-lgtm/grafana/conf/provisioning/dashboards/meru
+      foldersFromFilesStructure: false

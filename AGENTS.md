@@ -22,13 +22,18 @@ easier to review.
   without saying so.
 - [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
   "Done when" line that serves as its acceptance test.
+- [docs/lld.md](docs/lld.md) — the low-level design: packages, the interfaces between
+  them, and one question traced function by function. Start here before reading code.
 - [docs/coding-notes/](docs/coding-notes/) — plain-English explainers of the code.
 
 ## Status
 
-Pre-alpha. **There is no Go code yet**; `go.mod` arrives with the first v0.1 PR. Work
-goes milestone by milestone. Don't build v0.2+ features (store, MCP, A2A, memory,
-skills, scheduler) ahead of the milestone that owns them.
+Pre-alpha, **v0.1**: `merud` and `meru` answer questions with local models, stream
+the answer, keep JSONL session transcripts and route each question with the
+one-token router. Work goes milestone by milestone ([ROADMAP.md](ROADMAP.md)).
+Don't build v0.2+ features (store, MCP, A2A, memory, skills, scheduler) ahead of
+the milestone that owns them. [docs/running.md](docs/running.md) shows how to build
+and run Meru.
 
 Decided (details in ARCHITECTURE.md):
 
@@ -106,20 +111,39 @@ never by editing them in place.
 
 ## Layout
 
-The intended layout. Create a package when its milestone needs it.
+The repo as it stands. Each package has a `doc.go` and a note in
+`docs/coding-notes/`. Add a package only when its milestone needs it.
 
 ```text
-cmd/meru/          client main
-cmd/merud/         daemon main
-internal/rpc/      socket protocol shared by client and daemon
-internal/config/   config.toml parsing and validation
-internal/engine/   Engine interface + OllamaEngine
-internal/agent/    the agent loop and dispatch
-internal/obs/      OTel setup and instrument names
-internal/...       store, retrieval, mcp, a2a, memory, skills, scheduler
-deploy/            service files (launchd, systemd), observability compose file, dashboards
-docs/coding-notes/ explainers for every package
+cmd/
+  merud/             the daemon: config, engine, router, socket, agent loop
+  meru/              the thin client: one question, `meru chat`, `meru ping`
+  fakeollama/        a fake Ollama server for end-to-end tests
+internal/
+  config/            config.toml: defaults, profiles, validation
+  engine/            the Engine interface and OllamaEngine (chat, stream, embed, info)
+  router/            the one-token route classifier (docs/fast-router.md)
+  agent/             one turn: route, build the prompt, stream the answer
+  transcript/        append-only JSONL session files
+  rpc/               newline-delimited JSON over the Unix socket: client and server
+  obs/               OpenTelemetry metrics and traces, loopback only
+  loopback/          the one rule for "this address is on this machine"
+  tui/               the Bubble Tea UI behind `meru chat`
+  policy/            tests that enforce the non-negotiables and the thin client
+  testutil/fakeollama/  the fake Ollama used by unit and e2e tests
+test/e2e/            end-to-end tests: real binaries against the fake Ollama
+deploy/              launchd and systemd files, the local Grafana stack, dashboards
+docs/                architecture levels, coding notes, CI, running guide, posters
+.github/             CI, security scans, Dependabot
+config.example.toml  every config key with its default
+Makefile             `make check` runs everything CI runs
 ```
+
+**Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`
+and `loopback`, never `engine`, `transcript`, `agent` or anything that talks to a
+model or stores data. `internal/policy` fails the build if that changes, directly
+or through another package. `loopback` imports only the standard library, so any
+package can use it.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
 import it.
@@ -242,15 +266,21 @@ In `.claude/skills/`:
 ## Commands
 
 ```sh
-go build ./...
-go test -race ./...
-go vet ./...
-gofmt -l .              # must print nothing
-staticcheck ./...       # if installed
-govulncheck ./...       # if installed
-go run ./cmd/merud      # daemon
-go run ./cmd/meru "..." # client
+make check            # everything CI runs, in order; run it before every PR
+make test             # go test -race over every package
+make e2e              # end-to-end tests: real binaries against the fake Ollama
+make lint             # staticcheck
+make vuln             # govulncheck
+make sec              # gosec
+make build            # binaries for five platforms in bin/
+go run ./cmd/merud    # run the daemon from source
+go run ./cmd/meru "..."
 ```
+
+Tools run through `go run` at pinned versions, so nothing needs installing. The
+integration tests that talk to a real local Ollama are opt-in:
+`go test -tags integration ./...` and `go test -tags 'e2e integration' ./test/e2e/...`.
+[docs/ci.md](docs/ci.md) explains each check.
 
 ## Attribution
 

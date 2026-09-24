@@ -208,8 +208,19 @@ and passes each one to the program with `program.Send`, so the answer grows on s
 as it arrives.
 
 `meru chat` also uses Bubbles, from the same authors, for the text input and the
-scrolling answer pane. We'll add Glamour (markdown rendering) or Lip Gloss (styling)
-only if plain text proves hard to read.
+scrolling answer pane, and two more Charm libraries for its look:
+
+- **Lip Gloss** styles the screen: a header with the profile, model, session and
+  whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
+  answer, amber when the router fell back; and a stats line with time to first
+  token, tokens per second and total time. Colors adapt to light and dark
+  terminals, and `NO_COLOR` turns them off.
+- **Glamour** renders each finished answer as Markdown: headings, lists, and code
+  blocks with syntax highlighting. While the answer streams, the screen shows the
+  raw text with a cursor, because half-written Markdown renders wrong.
+
+The stats come from the `done` event that ends each reply, which carries the
+turn's timings and token counts.
 
 Answers always stream: `meru chat` and one-shot `meru` both show text as the model
 writes it. When `dispatch` needs your approval, `meru chat` shows the tool name and
@@ -494,8 +505,10 @@ classification and reads the answer from the model's probabilities:
 1. The prompt gives the question, the session history and four lettered options
    (A = answer directly, B = search, C = tools, D = search and tools), each with a
    one-line description, and ends with `Answer: `.
-2. `merud` asks Ollama for one token with log probabilities (`num_predict = 1`,
-   `logprobs = true`, `top_logprobs = 20`).
+2. `merud` asks Ollama's `/api/chat` for one token with log probabilities
+   (`num_predict = 1`, `logprobs = true`, `top_logprobs = 20`) and with thinking
+   off (`think = false`). A thinking model such as MiniCPM5 otherwise spends its
+   one token starting its hidden reasoning, and no letter comes back.
 3. The router keeps the alternatives whose text is one of the four letters, turns
    each log probability back into a probability, divides by a fitted temperature,
    and normalizes the four so they sum to 1.
@@ -987,8 +1000,9 @@ Meru collects this data about itself, and none of it leaves your machine. It goe
 only to an endpoint you run on this machine:
 
 - The OTLP (OpenTelemetry Protocol) exporter stays **off until you set
-  `observability.otlp_endpoint`.** Without an endpoint, `merud` uses no-op providers,
-  and instrumentation costs almost nothing.
+  `observability.otlp_endpoint`.** Without an endpoint, metrics go to a no-op
+  provider and spans record nothing. Each span still gets a trace ID, so the log and
+  the transcript can name the turn. Instrumentation then costs almost nothing.
 - `merud` **refuses to start if the endpoint isn't a loopback address.** No setting
   sends metrics or traces anywhere else.
 - **Spans carry no prompt or response text** unless you set `capture_content = true`.
@@ -1005,21 +1019,36 @@ capture_content  = false                     # prompt/response text in spans
 
 ### Traces
 
-Each turn produces one trace, whether it came from the CLI or a scheduled job:
+Each turn produces one trace. A question over the socket starts at `rpc.request`;
+a scheduled job (v0.5) starts at `meru.turn`. In v0.1 a turn looks like this:
 
 ```text
-meru.turn                         route, iterations, outcome
-├── meru.route                    one-token route pick: decision, confidence, outcome
-├── meru.retrieve                 vector, fts, fusion (v0.2); memories (v0.4)
-├── gen_ai.chat  main             one span per model call in the loop
-├── mcp.tool_call  obsidian.search
-└── gen_ai.chat  main             final answer
+rpc.request                       op, source, question length
+└── meru.turn                     route, source, session, iterations, outcome
+    ├── meru.session              new or opened; history turns and messages
+    ├── meru.transcript.append    the user line
+    ├── meru.route                decision, confidence, outcome, meru.route.p.<route>
+    │   └── gen_ai.chat  fast     one token with log probabilities
+    │       └── POST /api/chat    HTTP status
+    ├── meru.prompt               messages, characters, estimated tokens
+    ├── gen_ai.chat  main         the streamed answer; first_token event
+    │   └── POST /api/chat        HTTP status, thinking chunks
+    └── meru.transcript.append    the assistant line
 ```
 
+Later milestones add spans under `meru.turn`: `meru.retrieve` (vector, fts, fusion
+in v0.2; memories in v0.4), one `gen_ai.chat` per model call in the tool loop, and
+`mcp.tool_call` for each tool (v0.3).
+
 Model spans follow the OTel GenAI semantic conventions (`gen_ai.operation.name`,
-`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`).
-Tool spans follow the MCP semantic conventions and add `meru.tool.server` and
-`meru.tool.allowed`. `merud` writes each trace ID to `messages` and `tool_calls`.
+`gen_ai.request.model`, `gen_ai.request.max_tokens`, `gen_ai.usage.input_tokens`,
+`gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`) and add `meru.tier`
+plus Ollama's own timings: `meru.ollama.load_ms`, `meru.ollama.prompt_eval_ms` and
+`meru.ollama.eval_ms`. The HTTP spans follow the OTel HTTP conventions. A failed
+span records the error and sets its status to Error; a cancelled one gets a
+`cancelled` event instead. Tool spans follow the MCP semantic conventions and add
+`meru.tool.server` and `meru.tool.allowed`. `merud` writes each trace ID to the
+session transcript, `messages` and `tool_calls`, and to every log line of the turn.
 
 ### Metrics
 
@@ -1069,8 +1098,23 @@ The compose file:
 To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), point
 `otlp_endpoint` at the Collector. `merud` needs no change.
 
-`merud` writes application logs to a local file with `log/slog` and doesn't export
-them.
+### Logs
+
+`merud` writes `key=value` lines with `log/slog` to `merud.log` in its home folder,
+and doesn't export them. `[log] level` picks how much it writes; `merud -v` forces
+`debug`.
+
+- **`info`** (the default): startup settings, each model warm-up, shutdown, and one
+  `turn` line per turn with its route, outcome, total time, time to first token and
+  token counts.
+- **`debug`**: adds a line for each stage of a turn: the request, the session, the
+  history, each transcript write, the route with its whole distribution, the
+  prompt's size, each Ollama call (status, time to headers, first token, Ollama's
+  own timings, tokens per second) and the reply.
+
+Every line of a turn carries its `trace_id`, the same ID the trace and the
+transcript lines hold. No level writes question or answer text. With
+`capture_content = true`, the debug lines add the first 200 characters of each.
 
 ---
 
@@ -1110,7 +1154,12 @@ We'll settle these with working code and measurements.
    probabilities (see [Routing](#routing)). The open question is whether a 2B model's
    probabilities separate the four routes well enough to act on.
    `meru.route.decisions` by outcome, and a temperature fitted from labelled turns,
-   will show. If they don't, `lite` gets a larger `fast` model.
+   will show. If they don't, `lite` gets a larger `fast` model. The first run, on
+   the development machine with MiniCPM5-2B and the raw temperature of 1.0, took
+   about 13 ms per warm decision and picked the expected route for 2 of 7
+   hand-picked questions. It leaned towards `search+tools`, the safe fallback, so
+   no answer lacked context, but it did more work than needed. Next: label real
+   turns, fit the temperature, and tune the option descriptions.
 2. **Context order.** Skills, memories and retrieved chunks compete for the same
    window. `meru.context.tokens` will supply the numbers to set a budget per section.
 3. **PDF extraction.** Local tools that keep a PDF's layout are weak, and Go has fewer
@@ -1145,8 +1194,9 @@ We'll settle these with working code and measurements.
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` runs on first use and offers a catalog of MCP servers, each
   added "for you" (with approval of the exact config block) or by copy-paste.
-- **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, in `meru chat`
-  only. Answers always stream.
+- **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
+  styling and Glamour for Markdown answers, in `meru chat` only. Answers always
+  stream.
 - **Tool approvals:** approve once, approve for this session, or deny. Session
   approvals never touch config; lasting trust comes only from editing the `confirm`
   list. With no one to ask (scripts, scheduled jobs), `dispatch` denies.

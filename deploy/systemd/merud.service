@@ -1,0 +1,17 @@
+# systemd user unit that keeps merud running. Install steps are in
+# deploy/README.md. %h is systemd's name for your home directory.
+
+[Unit]
+Description=Meru daemon (merud)
+Documentation=https://github.com/aarora79/meru
+
+[Service]
+Type=simple
+# `go install ./cmd/merud` puts the binary in ~/go/bin.
+ExecStart=%h/go/bin/merud
+# Restart after a crash, but not after `systemctl --user stop merud`.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

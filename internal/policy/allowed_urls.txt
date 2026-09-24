@@ -1,0 +1,14 @@
+# URLs a shipped Go string literal may contain even though their host isn't
+# loopback. TestNoNonLoopbackURLLiterals reads this file.
+#
+# Only documentation links belong here: a URL that Meru prints for a person to
+# open, such as a help link in an error message. Meru must never fetch one.
+# Links in comments don't need an entry, because the test reads string
+# literals only.
+#
+# One URL prefix per line. A literal URL passes when it starts with an entry.
+# Give every entry a reason after "#", for the reviewer who has to accept it.
+#
+# Hosts reserved for examples (example.com, example.net, example.org, and any
+# name ending in .example, .test, .invalid or .localhost) always pass, because
+# nothing answers on them.

@@ -4,11 +4,10 @@ Plain-English explainers of Meru's code, for a reader who has never written Go.
 Each note explains one package: what it does, how the pieces fit, and every Go
 feature it uses, with links to short concept notes.
 
-There's no code yet, so there are no notes yet. The first v0.1 PR adds the first ones.
-
 ## How to read these
 
-1. Start with [ARCHITECTURE.md](../../ARCHITECTURE.md) for the big picture.
+1. Start with [ARCHITECTURE.md](../../ARCHITECTURE.md) for the big picture, then
+   [docs/lld.md](../lld.md) for how the packages fit together.
 2. Read the package notes in the order the index lists them. Each one builds on the
    ones before it.
 3. When a note uses a Go idea you don't know, follow its link into `go-basics/`.
@@ -18,12 +17,36 @@ There's no code yet, so there are no notes yet. The first v0.1 PR adds the first
 
 ### Packages
 
-*None yet.* Expected order, following the roadmap: `config`, `rpc`, `engine`, `obs`,
-`agent`, then `cmd/merud` and `cmd/meru`.
+Read them in this order; each builds on the ones before it.
+
+1. [config](config.md): reading and checking `config.toml`
+2. [engine](engine.md): the four-method `Engine` interface and the Ollama client
+3. [router](router.md): picking a route from one token's probabilities
+4. [transcript](transcript.md): session files, one JSON object per line
+5. [rpc](rpc.md): the socket protocol between `meru` and `merud`
+6. [agent](agent.md): one turn, from question to streamed answer
+7. [obs](obs.md): OpenTelemetry metrics and traces, loopback only
+8. [merud and meru](merud.md): the two programs and how they start
+9. [tui](tui.md): `meru chat`, the Bubble Tea terminal UI
+10. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+11. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 
-*None yet.* We write each concept note the first time the code needs it.
+- [Packages and imports](go-basics/packages-and-imports.md)
+- [Struct tags](go-basics/struct-tags.md)
+- [Errors](go-basics/errors.md)
+- [defer](go-basics/defer.md)
+- [Interfaces](go-basics/interfaces.md)
+- [HTTP clients](go-basics/http-clients.md)
+- [Iterators](go-basics/iterators.md)
+- [context](go-basics/context.md)
+- [Goroutines](go-basics/goroutines.md)
+- [Channels](go-basics/channels.md)
+- [Type switches](go-basics/type-switches.md)
+- [sync/atomic](go-basics/atomic.md)
+- [Testing](go-basics/testing.md)
+- [Build tags](go-basics/build-tags.md)
 
 ## Rules for writing a note
 
