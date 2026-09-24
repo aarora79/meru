@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/loopback"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -150,10 +150,10 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 
 // loopbackURL parses endpoint and returns it when its host is a loopback
 // address. The rule itself (127.0.0.0/8, ::1, or "localhost" only when every
-// address it resolves to is loopback) lives in engine.CheckLoopbackURL, so
+// address it resolves to is loopback) lives in loopback.CheckURL, so
 // config, the engine and this package all apply the same check.
 func loopbackURL(ctx context.Context, endpoint string) (*url.URL, error) {
-	if err := engine.CheckLoopbackURL(endpoint); err != nil {
+	if err := loopback.CheckURL(endpoint); err != nil {
 		return nil, fmt.Errorf("observability.otlp_endpoint: %w; Meru sends telemetry only to this machine", err)
 	}
 	u, err := url.Parse(endpoint)

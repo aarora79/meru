@@ -170,8 +170,11 @@ func toChatTools(tools []ToolSpec) []chatTool {
 	out := make([]chatTool, 0, len(tools))
 	for _, t := range tools {
 		out = append(out, chatTool{
-			Type:     "function",
-			Function: chatToolSpec{Name: t.Name, Description: t.Description, Parameters: t.Parameters},
+			Type: "function",
+			// Go can convert one struct type to another when their fields
+			// match in name, type and order; struct tags don't count. So
+			// chatToolSpec(t) copies all three fields in one step.
+			Function: chatToolSpec(t),
 		})
 	}
 	return out
@@ -199,7 +202,7 @@ func fromLogProbs(lps []wireLogProb) []PositionLogProbs {
 	for _, lp := range lps {
 		pos := PositionLogProbs{Chosen: TokenLogProb{Token: lp.Token, LogProb: lp.LogProb}}
 		for _, alt := range lp.TopLogProbs {
-			pos.Top = append(pos.Top, TokenLogProb{Token: alt.Token, LogProb: alt.LogProb})
+			pos.Top = append(pos.Top, TokenLogProb(alt)) // same fields, so a plain conversion
 		}
 		out = append(out, pos)
 	}

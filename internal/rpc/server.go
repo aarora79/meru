@@ -70,7 +70,7 @@ func Listen(ctx context.Context, path string) (net.Listener, error) {
 		return nil, fmt.Errorf("listen on %s: %w", path, err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
-		ln.Close()
+		_ = ln.Close()
 		return nil, fmt.Errorf("set mode of socket %s: %w", path, err)
 	}
 	return ln, nil
@@ -98,7 +98,7 @@ func pingOK(ctx context.Context, path string) bool {
 func Serve(ctx context.Context, ln net.Listener, h Handler, log *slog.Logger) error {
 	// context.AfterFunc runs ln.Close in its own goroutine once ctx is
 	// cancelled. Closing the listener makes the blocked Accept below return.
-	stop := context.AfterFunc(ctx, func() { ln.Close() })
+	stop := context.AfterFunc(ctx, func() { _ = ln.Close() })
 	defer stop()
 
 	// A WaitGroup counts running goroutines. wg.Go starts one and counts it;
@@ -139,7 +139,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	// Once ctx is cancelled, set a deadline in the past so any blocked read or
 	// write on conn fails at once. Without it, a client that stops reading
 	// could hold a write, and so this goroutine, forever.
-	stopDeadline := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
+	stopDeadline := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stopDeadline()
 
 	var mu sync.Mutex // guards enc: emit and the closing write never overlap
@@ -154,18 +154,20 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 	req, err := readRequest(br)
 	if err != nil {
 		log.Debug("bad request", "err", err)
-		write(Event{Type: EventError, Error: err.Error()})
+		// A failed write means the client already hung up, so there is no one left
+		// to tell. The `_ =` marks each dropped error below as deliberate.
+		_ = write(Event{Type: EventError, Error: err.Error()})
 		return
 	}
 
 	switch req.Op {
 	case OpPing:
-		write(Event{Type: EventDone})
+		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk:
 		// Handled below.
 	default:
-		write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
+		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
 		return
 	}
 
@@ -194,9 +196,9 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		// The client left or merud is stopping. Nobody is reading a final
 		// event, so don't send one.
 	case herr != nil:
-		write(Event{Type: EventError, Error: herr.Error()})
+		_ = write(Event{Type: EventError, Error: herr.Error()})
 	default:
-		write(Event{Type: EventDone})
+		_ = write(Event{Type: EventDone})
 	}
 }
 
@@ -228,6 +230,6 @@ func readRequest(r *bufio.Reader) (Request, error) {
 // client closes its end or the server sets the deadline, and then calls
 // cancel. Any bytes the client sends meanwhile are thrown away.
 func watchHangup(r io.Reader, cancel context.CancelFunc) {
-	io.Copy(io.Discard, r)
+	_, _ = io.Copy(io.Discard, r) // drain only; nothing to report
 	cancel()
 }

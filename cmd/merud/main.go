@@ -136,7 +136,7 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 		return err
 	}
 	if err := warm(ctx, eng, cfg.Models, log); err != nil {
-		ln.Close()
+		_ = ln.Close()
 		if ctx.Err() != nil {
 			return nil // stopped during warm-up
 		}
@@ -145,7 +145,7 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 
 	rt, err := newRouter(cfg, eng)
 	if err != nil {
-		ln.Close()
+		_ = ln.Close()
 		return err
 	}
 	a := agent.New(cfg, eng, rt, log)
@@ -157,12 +157,12 @@ func serve(ctx context.Context, cfg config.Config, socketPath string, log *slog.
 // 0600, and returns a slog logger that writes key=value lines to it. The
 // returned func closes the file.
 func openLog(path string) (*slog.Logger, func(), error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600) // #nosec G304 -- merud.log inside the Meru home, not user input
 	if err != nil {
 		return nil, nil, fmt.Errorf("open log %s: %w", path, err)
 	}
 	log := slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	return log, func() { f.Close() }, nil
+	return log, func() { _ = f.Close() }, nil
 }
 
 // newEngine builds the engine merud answers with: an OllamaEngine on the

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/loopback"
 )
 
 // writeConfig writes body to config.toml in a fresh temporary directory and
@@ -192,12 +192,12 @@ func TestCheckLoopbackURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			err := engine.CheckLoopbackURL(tt.url)
+			err := loopback.CheckURL(tt.url)
 			if tt.ok && err != nil {
-				t.Errorf("CheckLoopbackURL(%q) = %v, want nil", tt.url, err)
+				t.Errorf("loopback.CheckURL(%q) = %v, want nil", tt.url, err)
 			}
 			if !tt.ok && err == nil {
-				t.Errorf("CheckLoopbackURL(%q) = nil, want an error", tt.url)
+				t.Errorf("loopback.CheckURL(%q) = nil, want an error", tt.url)
 			}
 		})
 	}

@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aarora79/meru/internal/loopback"
 )
 
 // maxStreamLine is the longest single NDJSON line we accept from a stream,
@@ -46,7 +48,7 @@ var _ Engine = (*OllamaEngine)(nil)
 
 // NewOllama returns an engine that talks to the Ollama at baseURL.
 //
-// It fails when baseURL isn't loopback (see CheckLoopbackURL), which is how
+// It fails when baseURL isn't loopback (see loopback.CheckURL), which is how
 // Meru keeps model traffic on this machine, or when keepAlive is neither
 // empty, a whole number of seconds ("-1" means "keep loaded forever"), nor a
 // Go duration such as "5m".
@@ -55,7 +57,7 @@ var _ Engine = (*OllamaEngine)(nil)
 // plain http.Client with no overall timeout: calls end when their context
 // ends, because a long answer can take minutes to stream.
 func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client) (*OllamaEngine, error) {
-	if err := CheckLoopbackURL(baseURL); err != nil {
+	if err := loopback.CheckURL(baseURL); err != nil {
 		return nil, fmt.Errorf("ollama base URL: %w", err)
 	}
 	ka, err := keepAliveJSON(keepAlive)

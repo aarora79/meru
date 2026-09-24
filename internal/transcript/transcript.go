@@ -135,7 +135,7 @@ func (s *Session) Append(l Line) error {
 		return fmt.Errorf("append to session %s: %w", s.id, err)
 	}
 	if _, err := f.Write(b); err != nil {
-		f.Close() // the write error is the one worth reporting
+		_ = f.Close() // the write error is the one worth reporting
 		return fmt.Errorf("append to session %s: %w", s.id, err)
 	}
 	// Close can report a failed write that the OS delayed, so check it.

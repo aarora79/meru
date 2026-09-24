@@ -25,7 +25,6 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/aarora79/meru/internal/config"
-	"github.com/aarora79/meru/internal/engine"
 )
 
 // useManualReader points the record functions at a fresh meter provider
@@ -211,7 +210,7 @@ func TestRecordModelCall(t *testing.T) {
 		Operation:        "chat",
 		Duration:         2 * time.Second,
 		TimeToFirstToken: 400 * time.Millisecond,
-		Usage: engine.Usage{
+		Usage: Usage{
 			PromptTokens: 120,
 			OutputTokens: 50,
 			EvalDuration: time.Second,
@@ -284,7 +283,7 @@ func TestRecordModelCallSkipsWhatItCannotKnow(t *testing.T) {
 		Model:     "nomic-embed-text",
 		Operation: "embed",
 		Duration:  50 * time.Millisecond,
-		Usage:     engine.Usage{PromptTokens: 8},
+		Usage:     Usage{PromptTokens: 8},
 	})
 	got := collect(t, reader)
 	for _, name := range []string{metricTimeToFirstToken, metricTimePerOutputTok} {

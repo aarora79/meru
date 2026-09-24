@@ -256,7 +256,11 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, emit func(rpc
 	)
 	obs.RecordModelCall(ctx, obs.ModelCall{
 		Tier: "main", Model: model, Operation: "chat",
-		Duration: time.Since(start), TimeToFirstToken: ttft, Usage: usage,
+		Duration: time.Since(start), TimeToFirstToken: ttft,
+		Usage: obs.Usage{
+			PromptTokens: usage.PromptTokens, OutputTokens: usage.OutputTokens,
+			LoadDuration: usage.LoadDuration, EvalDuration: usage.EvalDuration,
+		},
 	})
 	return text.String(), usage, nil
 }

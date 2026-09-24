@@ -19,9 +19,9 @@ import (
 //
 // A `const ( ... )` block declares several constants at once.
 const (
-	metricTokenUsage        = "gen_ai.client.token.usage"
+	metricTokenUsage        = "gen_ai.client.token.usage" // #nosec G101 -- a metric name, not a credential
 	metricOperationDuration = "gen_ai.client.operation.duration"
-	metricTimeToFirstToken  = "gen_ai.server.time_to_first_token"
+	metricTimeToFirstToken  = "gen_ai.server.time_to_first_token" // #nosec G101 -- a metric name, not a credential
 	metricTimePerOutputTok  = "gen_ai.server.time_per_output_token"
 	metricLoadDuration      = "meru.engine.load.duration"
 	metricRouteDecisions    = "meru.route.decisions"
@@ -36,7 +36,7 @@ const (
 const (
 	keyModel     = "gen_ai.request.model"
 	keyOperation = "gen_ai.operation.name"
-	keyTokenType = "gen_ai.token.type"
+	keyTokenType = "gen_ai.token.type" // #nosec G101 -- an attribute key, not a credential
 	keyTier      = "meru.tier"
 	keyRoute     = "meru.route"
 	keySource    = "meru.source"

@@ -1,9 +1,7 @@
-// This file holds the loopback check: the rule that Meru's model traffic, and
-// anything else that asks, may only go to an address on this machine. Other
-// packages (config validation, the OTLP exporter) call it too, so the rule
-// lives in one place.
+// This file holds the loopback check: the rule that Meru's model traffic and
+// metrics may only go to an address on this machine.
 
-package engine
+package loopback
 
 import (
 	"context"
@@ -15,12 +13,12 @@ import (
 	"time"
 )
 
-// resolveTimeout caps how long CheckLoopbackURL waits to look up "localhost".
+// resolveTimeout caps how long CheckURL waits to look up "localhost".
 // The answer comes from the hosts file, so it takes microseconds; the cap
 // only stops a broken resolver from hanging startup.
 const resolveTimeout = 2 * time.Second
 
-// CheckLoopbackURL returns nil when raw is an http or https URL whose host is
+// CheckURL returns nil when raw is an http or https URL whose host is
 // a loopback address: anything in 127.0.0.0/8, ::1, or the name "localhost"
 // when every address it resolves to is loopback. It returns an error saying
 // what is wrong otherwise.
@@ -28,7 +26,7 @@ const resolveTimeout = 2 * time.Second
 // It refuses every other host name without looking it up. A name that
 // resolves to loopback today could resolve elsewhere tomorrow, and only
 // "localhost" is reserved for this machine.
-func CheckLoopbackURL(raw string) error {
+func CheckURL(raw string) error {
 	// Go functions can return several values. url.Parse returns the parsed URL
 	// and an error, and `:=` declares both variables at once.
 	u, err := url.Parse(raw)
@@ -75,8 +73,8 @@ func CheckLoopbackURL(raw string) error {
 	return nil
 }
 
-// IsLoopbackURL reports whether raw passes CheckLoopbackURL. Use it where a
-// yes or no is enough; use CheckLoopbackURL when the user needs to read why.
-func IsLoopbackURL(raw string) bool {
-	return CheckLoopbackURL(raw) == nil
+// IsURL reports whether raw passes CheckURL. Use it where a
+// yes or no is enough; use CheckURL when the user needs to read why.
+func IsURL(raw string) bool {
+	return CheckURL(raw) == nil
 }

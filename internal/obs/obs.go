@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
-	"github.com/aarora79/meru/internal/engine"
 )
 
 // state is what Setup decides and the record functions read.
@@ -71,7 +70,18 @@ type ModelCall struct {
 	Duration  time.Duration // whole call, as merud measured it
 	// TimeToFirstToken is zero for calls that didn't stream.
 	TimeToFirstToken time.Duration
-	Usage            engine.Usage
+	Usage            Usage
+}
+
+// Usage holds the runtime counters obs reads from one model call. It mirrors
+// the fields of engine.Usage that metrics need, so this package doesn't import
+// the engine: meru imports rpc, rpc imports obs, and the thin client must not
+// depend on the engine (AGENTS.md, "Shape").
+type Usage struct {
+	PromptTokens int
+	OutputTokens int
+	LoadDuration time.Duration // time the runtime spent loading the model
+	EvalDuration time.Duration // time the runtime spent writing the answer
 }
 
 // RecordModelCall records gen_ai.client.token.usage,

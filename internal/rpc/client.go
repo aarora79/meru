@@ -43,7 +43,9 @@ func Do(ctx context.Context, socketPath string, req Request) iter.Seq2[Event, er
 
 		// Close the connection as soon as ctx is cancelled, so a blocked read
 		// returns at once. stop() undoes the hook when we finish normally.
-		stop := context.AfterFunc(ctx, func() { conn.Close() })
+		// The error from this Close is dropped on purpose: the connection is being
+		// torn down because the caller gave up, and the read loop reports that.
+		stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 		defer stop()
 
 		if err := json.NewEncoder(conn).Encode(req); err != nil {
