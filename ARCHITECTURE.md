@@ -1163,7 +1163,10 @@ own the first time you run `meru`.
    skills yet.
 4. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
-5. **A test question.** When `merud` runs, Meru asks it one question so you see it
+5. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
+   name, your work, where you live and how you like answers, and saves each as a
+   memory (see [Memory](#memory)).
+6. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new server or a new
    `config.toml` takes a restart of `merud`.
 

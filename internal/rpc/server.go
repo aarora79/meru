@@ -31,7 +31,7 @@ import (
 )
 
 // Handler answers one request whose op isn't OpPing: OpAsk, OpIndex,
-// OpIndexStatus, OpTools, OpLog or OpUsage. It calls emit once per event to send ("session", "route",
+// OpIndexStatus, OpTools, OpLog, OpUsage or one of the memory ops. It calls emit once per event to send ("session", "route",
 // "token" and so on) and returns when the reply is complete.
 //
 // The server writes the closing event itself: "done" when Handler returns
@@ -185,7 +185,8 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		log.DebugContext(ctx, "rpc ping")
 		_ = write(Event{Type: EventDone})
 		return
-	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage:
+	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage,
+		OpMemoryList, OpMemoryAdd, OpMemoryForget:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})

@@ -27,4 +27,4 @@ Meru  search+tools · 0.31 · fallback
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /new /usage
+enter send · ctrl+c stop/quit · ↑ recall · pgup/pgdn scroll · /new /usage /me
