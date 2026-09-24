@@ -295,6 +295,47 @@ func TestExampleMatchesDefaults(t *testing.T) {
 	}
 }
 
+// TestExampleCommentedBlocks uncomments the sample [[mcp.servers]] and
+// [[a2a.agents]] blocks in config.example.toml and checks that they load,
+// so the samples can't drift from the real keys. A sample starts at a
+// "# [[" line and ends at the first line that isn't "# " plus text.
+func TestExampleCommentedBlocks(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "config.example.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sample strings.Builder
+	in := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "# [[") {
+			in = true
+		}
+		if in && !strings.HasPrefix(line, "# ") {
+			in = false
+		}
+		if in {
+			sample.WriteString(strings.TrimPrefix(line, "# ") + "\n")
+		}
+	}
+	cfg, err := Load(writeConfig(t, sample.String()))
+	if err != nil {
+		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
+	}
+	if len(cfg.MCP.Servers) != 2 || len(cfg.A2A.Agents) != 1 {
+		t.Errorf("samples hold %d servers and %d agents, want 2 and 1", len(cfg.MCP.Servers), len(cfg.A2A.Agents))
+	}
+}
+
+// TestProfileModels checks the accessor meru setup uses.
+func TestProfileModels(t *testing.T) {
+	if m, ok := ProfileModels("full"); !ok || m != profiles["full"] {
+		t.Errorf("ProfileModels(full) = %+v, %v", m, ok)
+	}
+	if _, ok := ProfileModels("huge"); ok {
+		t.Error("ProfileModels found a profile that doesn't exist")
+	}
+}
+
 // TestLogLevel checks each [log] level name and the slog level it maps to.
 func TestLogLevel(t *testing.T) {
 	tests := []struct {

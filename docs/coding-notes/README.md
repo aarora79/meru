@@ -34,10 +34,13 @@ Read them in this order; each builds on the ones before it.
 13. [mcp](mcp.md): the MCP client pool, groundwork for tools in v0.3
 14. [dispatch](dispatch.md): the one path every tool call takes, with approvals and the audit log
 15. [a2a](a2a.md): the A2A client, which turns other agents' skills into tools
-16. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
-17. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
-18. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-19. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+16. [secrets](secrets.md): `secrets.toml`, where API keys live, and redacting them
+17. [catalog](catalog.md): the starter MCP servers and the safe way to add one to `config.toml`
+18. [builtin](builtin.md): merud's built-in tools, starting with `configure`
+19. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4
+20. [memory](memory.md): one Markdown file per memory, groundwork for v0.4
+21. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+22. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 

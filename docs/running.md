@@ -28,6 +28,8 @@ ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # answers and routes questio
 ollama pull nomic-embed-text                         # embeddings, for searching your files
 ```
 
+`meru setup` (step 8) can run these downloads for you once Meru is built.
+
 For the `full` profile (32 GB of RAM or more, or a GPU with about 24 GB), also pull:
 
 ```sh
@@ -84,6 +86,7 @@ running in its own terminal, or start it in the background with `merud &`.
 | `~/.meru/merud.log` | `merud`'s log |
 | `~/.meru/sessions/YYYY/MM/*.jsonl` | one transcript file per conversation |
 | `~/.meru/meru.db` | the search index over your files, readable only by you (see step 7) |
+| `~/.meru/secrets.toml` | API keys for MCP servers, readable only by you (see step 8) |
 
 Stop `merud` with Ctrl-C, or `kill` its process. It finishes cleanly and removes
 its socket.
@@ -100,8 +103,9 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools` or `log`. Without quotes, `meru` reads that word as a command: write
-`meru "index cards or a notebook?"`, not `meru index cards or a notebook?`.
+`index`, `tools`, `log`, `setup` or `mcp`. Without quotes, `meru` reads that word as
+a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
+notebook?`.
 
 In `meru chat`:
 
@@ -343,7 +347,84 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
-## 8. Keep merud running
+## 8. Set up and connect tools
+
+### meru setup
+
+`meru setup` walks through a first run in five short steps:
+
+1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
+   install command for your system and waits while you start it.
+2. **Models.** You pick `lite` or `full` (or it uses the profile already in
+   `config.toml`), and it runs `ollama pull` for each model, with Ollama's own
+   progress bar.
+3. **Your files.** With no `config.toml` yet, it asks which folders to index and
+   writes the file. With one already there, it leaves the file alone and tells you
+   where to add folders, so your comments and settings stay as you wrote them.
+4. **Tools.** It offers each server in the catalog, one at a time (see below).
+5. **A test question.** If `merud` is running, it asks one question and prints
+   the answer. If not, it tells you how to start `merud`.
+
+### meru mcp add
+
+An MCP server gives the model tools. Meru knows six:
+
+```sh
+meru mcp list-catalog
+```
+
+| Name | What the model gets | What you need |
+| --- | --- | --- |
+| `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
+| `fetch` | reading a web page | `uv`, which provides `uvx` |
+| `gmail` | search and read mail; drafting and sending ask first | a Google OAuth client and `uv`; you sign in to Google on first use |
+| `calendar` | calendars and events; changing an event asks first | as for `gmail` |
+| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `gmail` |
+| `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
+
+To add one:
+
+```sh
+meru mcp add brave
+```
+
+Meru shows what the server does and offers two paths:
+
+- **d) Do it for me.** Meru asks for each thing the server needs, one at a time.
+  It reads an API key without showing it on screen and saves it to
+  `~/.meru/secrets.toml`, never to `config.toml`. Then it shows the exact block
+  it will add to `config.toml` and writes it only after you say yes.
+- **s) Show me how.** Meru prints the install step, the block, the file to paste
+  it into, and the lines to add to `secrets.toml`. It writes nothing.
+
+A server outside the catalog works too:
+
+```sh
+meru mcp add notes -- /usr/local/bin/notes-mcp --vault ~/notes   # a stdio server
+meru mcp add calendar --url http://127.0.0.1:8123/mcp            # a running HTTP server
+```
+
+Meru doesn't know such a server's tool names, so its `allow` list starts empty
+and the model gets none of its tools. After the restart below, run `meru tools`
+to see what the server offers, and name the tools to allow in `config.toml`.
+
+`merud` reads `config.toml` only when it starts. After adding a server, restart it
+and check what the model now has:
+
+```sh
+pkill merud; merud &
+meru tools
+```
+
+In chat you can also ask Meru to "connect my Gmail". The model calls the built-in
+`configure` tool, which asks you every time, with only "approve once" and "deny".
+A server that needs an API key you haven't saved yet isn't added from chat, because
+keys never pass through the model; Meru tells you to run `meru mcp add` instead.
+
+`secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
+other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.
+
+## 9. Keep merud running
 
 To start `merud` at login and restart it if it stops, install the service file for
 your system. [deploy/README.md](../deploy/README.md) has the exact commands:
@@ -352,7 +433,7 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
 
-## 9. Watch it on a dashboard (optional)
+## 10. Watch it on a dashboard (optional)
 
 With Docker installed, one command starts a local Grafana with a ready-made Meru
 dashboard:
@@ -390,7 +471,7 @@ two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
 load, prompt and answer times; the answer's span has a `first_token` event. Spans
 carry no question or answer text unless `capture_content = true`.
 
-## 10. Update to a newer version
+## 11. Update to a newer version
 
 From your clone of the repo, pull the latest code, rebuild both programs and
 restart `merud`:
@@ -408,7 +489,7 @@ the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off fo
 the shorter log. If `merud` runs as a service, restart it with the service
 manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | What you see | What it means and what to do |
 | --- | --- |
@@ -416,6 +497,7 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 | `merud` says Ollama is too old | Update Ollama to 0.12.11 or later. |
 | `merud` can't reach Ollama | Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. |
 | `model … not found` in the answer or the log | Pull the model named in the error with `ollama pull`. |
+| `secrets … so other users can read it; run chmod 600 …` | Run the `chmod 600` command in the message. `meru mcp add` also fixes the mode when it saves a key. |
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
@@ -424,7 +506,7 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
-## 12. Uninstall
+## 13. Uninstall
 
 ```sh
 rm ~/go/bin/merud ~/go/bin/meru

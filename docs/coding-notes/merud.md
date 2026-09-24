@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `look.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools` and `meru log` in v0.3
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `look.go`, `setup.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup` and `meru mcp add` in v0.3
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -182,8 +182,8 @@ default:
 ```
 
 - `meru "question"` and `meru question words` both work; the words are joined.
-  A question whose first word is `ping`, `chat`, `index`, `tools` or `log` needs
-  quotes.
+  A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
+  `setup` or `mcp` needs quotes.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
@@ -275,6 +275,47 @@ styles, which checks whether that writer is a terminal, how many colours it has
 and whether `NO_COLOR` is set. Without colour, a style adds no escape codes, so
 a pipe, a file and the tests all get plain text.
 
+### meru: setup.go
+
+`meru setup` and `meru mcp add` talk to a person, not to `merud`, so they live
+in the client. They write `config.toml` and `secrets.toml` through
+`internal/catalog` and `internal/secrets`, the two packages the thin client may
+import besides `rpc`, `config`, `tui` and `loopback`.
+
+Every flow runs on a `console`: a reader for the answers, a writer for the
+prompts, and three functions that touch the world, so a test can swap each one:
+
+```go
+type console struct {
+    in            *bufio.Reader
+    out           io.Writer
+    readSecret    func() (string, error)
+    run           func(ctx context.Context, name string, args ...string) error
+    ollamaVersion func(ctx context.Context, baseURL string) (string, error)
+}
+```
+
+- `readSecret` reads a key with echo off (`golang.org/x/term`) when standard
+  input is a terminal. From a pipe it reads a plain line.
+- `run` starts `ollama pull` with the terminal attached, so Ollama draws its own
+  progress bar. More in [go-basics/os-exec.md](go-basics/os-exec.md).
+- `ollamaVersion` makes one `GET /api/version` with `net/http`. The client may
+  not import the engine, and one plain call is all the check needs.
+
+`offer` shows one server and asks for a path: `d` asks for each key without
+echo, shows the block, and writes it after a yes; `s` prints the block, the
+install step and the `secrets.toml` lines, and writes nothing; `k` skips.
+`setupCmd` runs the five steps from ARCHITECTURE.md "First run and setup". It
+writes `config.toml` only when none exists. Rewriting an existing one would
+drop your comments, so setup tells you what to change instead.
+
+`config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
+works on the Meru home in `/tmp/x`, the same one `merud -config
+/tmp/x/config.toml` uses.
+
+`setup_test.go` scripts whole sessions: the answers go in as a string, and the
+test reads back the files and the output.
+
 ## Go ideas used here
 
 - **`signal.NotifyContext`** — a context that ends on a signal. More in
@@ -314,10 +355,10 @@ answer, refuse a folder outside `[index]`, and explain an empty config.
 - **`run` returns instead of exiting.** `os.Exit` skips deferred calls and
   can't be tested; returning an error or a status code avoids both problems.
 - **The socket before the warm-up**, so a duplicate daemon fails fast.
-- **`meru` stays thin.** It imports only `rpc`, `tui` and `config` (for the
-  default socket path), and starts in milliseconds. `meru tools` and `meru log`
-  format what `merud` sends; `merud` decides what is allowed and reads the
-  audit log.
+- **`meru` stays thin.** It imports only `rpc`, `tui`, `config` (for the
+  default socket path), and `catalog` and `secrets` (for setup), and starts in
+  milliseconds. `meru tools` and `meru log` format what `merud` sends; `merud`
+  decides what is allowed and reads the audit log.
 - **A deny when nobody can answer.** A script can't approve a tool call, and a
   call that runs unseen is worse than an answer without the tool.
 - **The scan runs in the background.** A first scan of a big folder can take

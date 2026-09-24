@@ -288,3 +288,11 @@ func LogLevel(name string) (slog.Level, bool) {
 		return 0, false
 	}
 }
+
+// ProfileModels returns the models the named profile fills the tiers with,
+// and false for a profile it doesn't know. meru setup uses it to download a
+// profile's models before any config.toml exists.
+func ProfileModels(name string) (Models, bool) {
+	m, ok := profiles[name]
+	return m, ok
+}
