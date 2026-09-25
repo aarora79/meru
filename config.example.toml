@@ -134,6 +134,13 @@ output_dir = "~/meru-output"
 # loads with no change here. For example: disabled = ["explainer"]
 disabled = []
 
+[chat]
+# Let a click on a code block's "⧉ copy N" label copy the block. /copy N
+# and Ctrl-Y copy with the keyboard either way. With this on, the chat
+# takes the mouse, so to select text yourself hold Option while you drag
+# (iTerm2) or Shift (most other terminals).
+mouse_copy = false
+
 # MCP servers: programs that give the model tools. None by default.
 # `meru mcp add <name>` writes an entry for you and `meru mcp` shows each
 # server's state. See ARCHITECTURE.md, "MCP".

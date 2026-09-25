@@ -135,6 +135,9 @@ type keyMap struct {
 	Recall  key.Binding
 	Scroll  key.Binding
 	Newline key.Binding
+	// Copy copies the newest answer's last code block, as /copy does.
+	// Ctrl-Y is free: the input box binds no key to it.
+	Copy key.Binding
 	// Commands lists the slash commands, /new, /usage, /me and /mcp. They
 	// have no key: Ctrl-U, the obvious one for usage, already deletes to
 	// the start of the line in the input box. The binding exists only so
@@ -153,6 +156,7 @@ func newKeyMap() keyMap {
 		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
 		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/dn", "scroll")),
 		Newline: key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
+		Copy:    key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "copy code")),
 		// The help text splits "/new /usage /me /mcp" across the key and
 		// the description slots, so the line reads "/new /usage /me /mcp"
 		// and still fits in 80 columns.
@@ -162,10 +166,11 @@ func newKeyMap() keyMap {
 
 // ShortHelp returns the keys the help line shows, in order. Having this
 // method makes keyMap satisfy help.KeyMap, the interface the Bubbles help
-// component draws from. Ctrl-J and Ctrl-D are left out: the line would no
-// longer fit an 80-column terminal, and the help component cuts what doesn't
-// fit. Ctrl-C already quits when no answer streams, so Ctrl-D is the one to
-// spare.
+// component draws from. Ctrl-J, Ctrl-D, Ctrl-Y and /copy are left out: the
+// line would no longer fit an 80-column terminal, and the help component
+// cuts what doesn't fit. Ctrl-C already quits when no answer streams, so
+// Ctrl-D is the one to spare, and the "⧉ copy N" label under each code
+// block shows the way to /copy.
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Send, k.Stop, k.Recall, k.Scroll, k.Commands}
 }
@@ -173,7 +178,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 // FullHelp returns every key as one column. The help component asks for it
 // only in its expanded mode, which the chat screen never turns on.
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Commands}}
+	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Copy, k.Commands}}
 }
 
 // keyList is a list of keys for the help line while a box is open: the

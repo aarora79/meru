@@ -23,6 +23,11 @@
 // user, and /mcp the state of each MCP server, the same table `meru mcp`
 // prints (MCPTable).
 //
+// Each code block in a finished answer gets a "⧉ copy N" label. /copy N and
+// Ctrl-Y put a block on the system clipboard, and with [chat] mouse_copy on,
+// so does a click on its label (code.go, copy.go, clipboard.go).
+//
 // The package holds no model or store logic; it draws what merud sends. It
-// leaves out mouse scrolling.
+// captures the mouse only with [chat] mouse_copy on, since capture takes
+// click-and-drag selection away from the terminal.
 package tui

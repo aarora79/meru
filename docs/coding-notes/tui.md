@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `copy.go`, `clipboard.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -13,9 +13,13 @@ headings, bold text, lists, and code blocks with coloured syntax. This package d
 that screen. It sends each question to `merud` over the Unix socket with `rpc.Do` and
 draws whatever comes back. It holds no model or store logic.
 
+Each code block in a finished answer gets a dim `⧉ copy N` label under it, and
+`/copy N`, Ctrl-Y or a click on the label puts the block on the clipboard.
+
 `cmd/meru/main.go` calls `tui.Run` for `meru chat`. Before that, `chatInfo` reads the
-profile and main model from `~/.meru/config.toml` for the header. If the file doesn't
-load, the header leaves them out; `merud` reports config errors itself.
+profile and main model from `~/.meru/config.toml` for the header, and
+`[chat] mouse_copy` into `Info.MouseCopy`. If the file doesn't load, the header
+leaves them out and mouse copying stays off; `merud` reports config errors itself.
 
 ## The picture
 
@@ -34,6 +38,7 @@ Meru  direct · 0.91
   • any element type
 
     slices.Reverse(s)
+    ⧉ copy 1
   0.8s to first token · 40.0 tok/s · 2.4s
 ╭──────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                       │
@@ -454,6 +459,7 @@ Building one parses the style, so the model keeps it and builds a new one only w
 the width changes. Each finished answer keeps its rendered text and the width it was
 drawn for, so a resize redraws every answer at the new width and a token redraws
 none. `tidy` trims the blank lines and padding Glamour puts round its output.
+`renderedAnswer` also adds the copy labels; code.go, below, explains how.
 
 `statsLine` formats the numbers `merud` sends with `done`: time to first token, tokens
 per second, and total time. Tokens per second uses Ollama's own writing time
@@ -616,6 +622,10 @@ because it would push the line past 80 columns, and Ctrl-C already shows there a
 the way to quit. Any other `/word` stays in the input and the help line lists the
 commands.
 
+`/copy` runs `copyCommand` in copy.go, below. `strings.Cut(text, " ")` splits the
+line at its first space into the command's name and its argument, such as the
+`3` of `/copy 3`.
+
 `/new` exists because a conversation carries forward: each turn's prompt holds the
 turns before it. After a small model answers "I don't know" twice, it tends to say it
 again even when the next search finds the right files.
@@ -626,6 +636,102 @@ the file's URL. Linking after wrapping keeps a link from spanning a line break, 
 some terminals draw badly. `look.links` follows styling: `terminalLook` turns it off
 with `NO_COLOR` or on a terminal with no colour, and the tests' plain renderer leaves
 it off, so the golden files stay plain text.
+
+### code.go
+
+This file finds an answer's code blocks and puts a `⧉ copy N` label under each.
+
+`findCodeBlocks` parses the answer's Markdown with goldmark, the CommonMark parser
+Glamour uses, so both agree on where a block starts and ends. `ast.Walk` visits each
+node; a `FencedCodeBlock` (```` ``` ```` or `~~~`) or a `CodeBlock` (four spaces of
+indent) becomes a `codeBlock`, at any depth inside lists and quotes. Inline code is a
+different node, so it gets no label. Each block keeps three things:
+
+- `text`, what `/copy` copies: the lines without the fences, the language tag or the
+  indent that made the block, and without the newline after the last line;
+- `end`, the byte offset just past the block's last line;
+- `prefix`, what starts each of its lines in the source, such as the `"> "` of a
+  quote or the spaces of a list item.
+
+`handleDone`, and Ctrl-C on a streaming answer, call `numberBlocks` once the turn
+ends. It stores the blocks on the turn and gives the first one the number after the
+session's last block, so the numbers run on from answer to answer and `/copy 7`
+names one block on the whole screen. `/new` starts them again at 1.
+
+Placing a label is the hard part. Glamour's output is ANSI-coloured, wrapped and
+indented, so a line of it doesn't map back to a line of the source. Two easy fixes
+break:
+
+- Rendering the prose and each block on their own and stitching them together breaks
+  a block that sits inside a list item, because the list then ends before the block.
+- Counting Glamour's lines to find where a block ends breaks as soon as a long line
+  wraps.
+
+So `markBlocks` lets Glamour place the labels. It adds one marker line, such as
+`MERUCOPY3X`, as the last line of each block, with the block's prefix so the line
+stays inside the block. Glamour draws the marker like any other line of code: in the
+right place, at any width, however it wraps or indents the block. `labelBlocks` then
+finds each marker in the output, with the colour codes stripped, and swaps the line
+for the label, dim, keeping whatever Glamour drew before the marker. The marker is
+one word of letters and digits, so no syntax highlighter splits it, and it's short
+enough that Glamour never wraps it.
+
+If `labelBlocks` finds a different number of markers than blocks, `renderedAnswer`
+draws the answer again without markers or labels, so no stray `MERUCOPY3X` reaches
+the screen. That covers a screen too narrow for the marker, and an answer that
+happens to contain one.
+
+`labelAt` is the mouse's hit test: given one screen line and a column, it returns the
+number of the label under that column, or 0. It counts columns with
+`ansi.StringWidth`, because `⧉` takes three bytes in the string and one cell on
+screen.
+
+### copy.go
+
+The three ways to copy all end in `copyBlock`:
+
+- `/copy N` parses N and calls `copyBlock(N)`;
+- `/copy` alone and Ctrl-Y call `copyLast`, which finds the newest finished answer
+  and copies its last block. An answer still streaming has no numbers yet, so
+  `copyLast` skips it;
+- a left click calls `handleMouse`, which asks `labelUnder` for the label at the
+  click. The conversation pane starts `headerLines` rows down, and what it shows is
+  exactly `m.conversation.View()`, so the click's row picks one line of that.
+
+`copyBlock` looks the number up with `block`, which walks the turns. It returns a
+command, `copyCmd`, and doesn't copy on the spot: copying starts a program, and a
+`tea.Cmd` runs off the loop that draws the screen. The command reports back with a
+`copiedMsg`, and `Update` shows its `notice`, such as `copied block 3 (2 lines)`, or
+the error. A number with no block, or no blocks at all, gets a notice and no command.
+
+Ctrl-Y is free in the input box: the Bubbles text area binds nothing to it (it uses
+Ctrl-K and Ctrl-U to delete, Ctrl-V to paste). `TestCtrlYFreeInInput` checks this, so
+an upgrade that takes the key fails a test.
+
+The mouse only reaches `Update` when `Info.MouseCopy` is on, because only then does
+`Run` ask for it. `handleMouse` checks the flag again, and does nothing while a box
+is open. With the mouse captured the terminal no longer scrolls on the wheel, so
+`handleMouse` scrolls the conversation three lines per notch.
+
+### clipboard.go
+
+`clipboard.copy` puts text on the system clipboard. `clipboardCommand` picks the
+program: `pbcopy` on macOS, `clip.exe` on Windows, and elsewhere the first of
+`wl-copy` (Wayland), `xclip -selection clipboard` and `xsel -b -i` (X11) that is on
+`PATH`. `runProgram` starts it with `exec.CommandContext`, which runs the program
+directly with no shell, and passes the text on standard input, so nothing in an
+answer can run as a command. It leaves the program's output unset: `xclip` and
+`wl-copy` leave a child running to hold the clipboard, and with a pipe to write to,
+`Run` would wait for that child. A five-second timeout stops a program stuck on a
+display server.
+
+With no program found, `copy` writes OSC 52 to the terminal instead: `ESC ] 52 ; c ;`,
+the text in base64, then BEL. The terminal does the copying, which also works over
+SSH, but some terminals ignore the code and none answers. So the notice says the copy
+went through the terminal.
+
+`clipboard` holds `lookPath`, `run` and `terminal` as fields, and the model holds the
+copy function as `m.copy`, so tests swap in fakes and never touch the real clipboard.
 
 ### usage.go
 
@@ -730,7 +836,11 @@ program, and hands over the terminal:
 
 ```go
 relay := &programRelay{}
-p := tea.NewProgram(newModel(ask, relay, info, terminalLook()), tea.WithAltScreen(), tea.WithContext(ctx))
+opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
+if info.MouseCopy {
+	opts = append(opts, tea.WithMouseCellMotion())
+}
+p := tea.NewProgram(newModel(ask, relay, info, terminalLook()), opts...)
 relay.p = p
 final, err := p.Run()
 ```
@@ -743,6 +853,8 @@ The model needs a way to send into the program, but the program is built from th
 model. `programRelay` breaks the circle: the model gets the relay first, and the relay
 learns the program one line later. `tea.WithAltScreen` draws on the terminal's second
 screen, so your shell history comes back untouched when you quit.
+`tea.WithMouseCellMotion`, added only with `[chat] mouse_copy` on, asks the terminal
+to send clicks and wheel turns to the program.
 
 ## Go ideas used here
 
@@ -793,7 +905,9 @@ go run ./cmd/meru chat
 
 Ask for a list and a code sample, then a follow-up that only makes sense with the
 first answer in mind. Press Ctrl-C during a long answer to stop it, and Ctrl-D to
-leave. Run it again with `NO_COLOR=1` to see the plain version.
+leave. Run it again with `NO_COLOR=1` to see the plain version. Ask how to install
+and run `btop`, then press Ctrl-Y, or type `/copy 1`, and paste into another
+terminal.
 
 `approval_test.go` runs a turn in its own goroutine against a fake `merud` that asks
 about one tool call. It checks each key (o, s, d, capitals, ←/→ with Enter, a choice
@@ -813,6 +927,17 @@ only the profile kinds, it says so when Meru knows nothing or `merud` fails, and
 or q closes it. It also walks the profile counts through a run (no status, -1, 0,
 then some) and checks that the nudge and the header marker follow them, and that
 the marker stays once a question has replaced the nudge.
+
+`copy_test.go` checks `findCodeBlocks` on fenced blocks with and without a language,
+tildes, indented blocks, blocks in a list and in a quote, two blocks, none, and a
+block at the very end with no closing fence. It checks where `markBlocks` puts each
+marker, and two more goldens: an answer with three blocks at 80 and 40 columns. It
+checks that labels survive a resize, that numbers run on across answers and restart
+after `/new`, and that a streaming answer has none. With a fake clipboard it runs
+`/copy N`, `/copy`, Ctrl-Y, a number out of range, a word for a number and a
+conversation with no blocks. It clicks a label with `mouse_copy` on and off, and
+checks the hit test cell by cell. `clipboardCommand` gets a fake `PATH` lookup for
+each system, and the OSC 52 fallback writes to a buffer.
 
 `mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
 without its scheme, a reason with a line break, a long name that widens the first
@@ -865,6 +990,19 @@ lose.
 numbers make a table, and a table printed into the conversation would scroll away
 with it and land in the middle of your questions. The box shows the numbers on top
 and leaves the conversation as it was.
+
+**Why a marker line to place the copy labels?** See code.go above: rendering
+pieces on their own breaks lists, and mapping output lines back to source lines
+breaks on wrapping. Glamour already knows where each block's last line goes at every
+width, so the marker lets it decide.
+
+**Why a label with a number?** A terminal cell holds only text. A number works
+with the keyboard in every terminal, and a click on it is an extra for those who
+turn the mouse on.
+
+**Why is mouse copying off by default?** A program that captures the mouse gets
+every click and drag, so the terminal's own text selection needs a modifier key.
+Left off, selection works as it does in any other program.
 
 **Why a renderer passed in, not the global one?** The tests build the model with an
 ASCII renderer, so the golden files hold plain text however the tests are run. The
