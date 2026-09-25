@@ -8,7 +8,6 @@ package agent
 import (
 	"cmp"
 	"context"
-	"github.com/aarora79/meru/internal/builtin"
 	"slices"
 	"strings"
 	"time"
@@ -180,5 +179,5 @@ func asksForWeb(question string, specs []engine.ToolSpec) bool {
 	if !namesFolder(question, []string{"web", "internet", "online"}) {
 		return false
 	}
-	return slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == builtin.WebSearch })
+	return offersWebSearch(specs)
 }

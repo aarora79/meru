@@ -384,6 +384,22 @@ choice moves with every skill added. With `web-research` loaded, questions about
 the latest version also pull in `writing` as a second skill, which costs prompt
 space but no wrong answer.
 
+**Scoring the pick.** `make pick-eval` runs `TestPickEval`, which asks the pick
+each question in `testdata/picks.jsonl` three times and prints the share it got
+right, by kind and overall. The file holds 21 invented questions of four kinds:
+how to use a program, current facts, the user's own files, and plain chat.
+`pickRight` in `pickeval_test.go` decides what counts: the pick names every
+wanted skill and no research skill (`file-research` or `web-research`) the
+question doesn't want. An extra `writing` or `explainer` still counts, since it
+changes how the answer reads, not where the facts come from. On the `lite` fast
+model the old descriptions scored 50 of 63 and sent the btop question to
+`file-research` all three times; the new ones score 52 with no stray
+`file-research`. A line in the pick prompt, "pick file-research only when the
+message asks about the user's own files", scored 42: naming the skill drew the
+model to it, so the prompt stays as it was. The three asks of one question
+mostly agree, but the first can differ from the other two, because Ollama
+reuses its work on the prompt from the second ask on.
+
 **The prompt sections.** `skillsSection` builds the text that `prompt` puts
 after the tools note and before the excerpts from your files:
 
@@ -659,7 +675,12 @@ msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, p
 - **When it finds nothing.** An empty index, a search with no match, and a
   search that fails all give the model the `noResults` note ("found nothing
   relevant … don't cite any files") and no `sources` event, and the turn
-  answers anyway. A failed search is logged as a warning; only a cancelled
+  answers anyway. On a turn that offers `web_search`, `noResultsWeb` takes its
+  place: it says to call `web_search` for how to use a program or for anything
+  that may have changed, and to answer from memory otherwise. `respond` lists
+  the turn's tools before the search to know which note to use.
+  `noResults` says "answer from what you know", which would contradict the web
+  line in the tools note (below). A failed search is logged as a warning; only a cancelled
   turn stops here.
 - **Paths.** `shortPath` writes a file under your home folder as
   `~/notes/garden.md`, for the model and for the client. Other paths stay
@@ -867,6 +888,25 @@ some calls ask you first. A turn whose tools are only file tools and
 commands gets `commandsNote` when it has commands (it may run the `cmd.`
 tools). A turn with no tools gets none.
 
+When the turn offers both `web_search` and a file tool, `noteFor` adds
+`webFallbackNote` after `toolsNote`:
+
+```text
+When the user's files don't answer the question, because a search, grep or read found nothing on it, call web_search before you answer from memory. Never make up a command's flags or options, or a version number: look them up, or say you don't know.
+```
+
+A real turn asked "help me understand btop with some simple commands". The
+model grepped the user's folders, found only pages that mention btop in
+passing, never called `web_search`, and answered with flags btop doesn't have.
+The note depends only on which tools the turn offers, so it stays the same
+from one such turn to the next and keeps its place among the parts Ollama
+reuses. `web_fetch` alone doesn't bring it: with no search the model would
+have to guess a URL, and `web_fetch` asks you before it fetches a URL no
+search result gave. On the `lite` model the note alone moved little: over 12
+turns with `file-research` loaded, the model called the web once with the note
+and once without. The sharper skill descriptions did more, because they keep
+`file-research` off such questions (see "Scoring the pick").
+
 `a.fileToolsNoteFor(specs, fileTurn)` gives the note on the file tools, and
 only to a file turn that offers them. In `auto` mode that is `fileToolsNote`:
 when the excerpts aren't enough, the model may read whole files, list
@@ -881,8 +921,10 @@ after the list of skills, so a file turn and any other turn share the whole
 opening of the prompt up to it.
 
 A Go `switch` runs only the first case that matches and never falls through
-to the next, so `noteFor` has a case for the file tools with no body: it
-keeps them out of the `default` case, which returns `toolsNote`.
+to the next. `noteFor` walks the tools once and sets a flag for each kind it
+sees, then a second `switch` with no value after the keyword picks the note:
+each `case` holds a true-or-false test, and the first true one wins, so the
+web line comes before the plain `toolsNote`.
 
 `Handle` also records the schemas' size, characters divided by four, as
 `meru.context.tokens` with `section = "tools"`.
@@ -1167,7 +1209,11 @@ failed pick that still answers, a failed route, `parsePick` and the cap in
 
 ```sh
 go test -tags integration -v -run Integration ./internal/agent/
+make pick-eval   # TestPickEval: 21 labelled questions, three asks each
 ```
+
+`pickeval_test.go` holds `loadPicks`, `pickRight` and two plain tests, so a
+broken fixture or scoring rule fails `make test` without Ollama.
 
 `usage_test.go` checks what a turn keeps for `meru usage`: the assistant
 line's route (after the override rules), duration and full source paths, each

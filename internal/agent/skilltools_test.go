@@ -120,16 +120,17 @@ func TestSkillBringsTools(t *testing.T) {
 		wantSkills []string // skills on the route event, whose bodies load
 		dropped    string   // a skill whose body must stay out; "" for none
 		wantNote   bool     // toolsNote in the system prompt
+		wantWeb    bool     // webFallbackNote in the system prompt
 	}{
 		{
 			name: "direct gains the web tools", route: "direct", pick: "web-research, writing", tools: webOn,
 			wantRoute: "tools", wantOffer: []string{"datetime", "web_search", "web_fetch", "read_file"},
-			wantSkills: []string{"web-research", "writing"}, wantNote: true,
+			wantSkills: []string{"web-research", "writing"}, wantNote: true, wantWeb: true,
 		},
 		{
 			name: "search gains the web tools", route: "search", pick: "web-research", tools: webOn,
 			wantRoute: "search+tools", wantOffer: []string{"datetime", "web_search", "web_fetch", "read_file"},
-			wantSkills: []string{"web-research"}, wantNote: true,
+			wantSkills: []string{"web-research"}, wantNote: true, wantWeb: true,
 		},
 		{
 			name: "web tools off drops the skill", route: "direct", pick: "web-research, writing",
@@ -153,6 +154,16 @@ func TestSkillBringsTools(t *testing.T) {
 			tools:     []engine.ToolSpec{spec("datetime"), spec("read_file"), spec("list_folder"), spec("grep"), spec("search_files"), spec("web_search")},
 			wantRoute: "search", wantOffer: []string{"datetime", "read_file", "list_folder", "grep", "search_files"},
 			wantSkills: []string{"file-research"}, wantNote: true,
+		},
+		{
+			// The pick that sent the real btop turn into the user's
+			// folders. The widened route offers every tool, web_search
+			// among them, and the prompt says to use it when the files
+			// don't answer.
+			name: "file-research on direct gains the web tools too", route: "direct", pick: "file-research",
+			tools:     []engine.ToolSpec{spec("datetime"), spec("web_search"), spec("grep"), spec("read_file")},
+			wantRoute: "tools", wantOffer: []string{"datetime", "web_search", "grep", "read_file"},
+			wantSkills: []string{"file-research"}, wantNote: true, wantWeb: true,
 		},
 	}
 	for _, tt := range tests {
@@ -199,9 +210,12 @@ func TestSkillBringsTools(t *testing.T) {
 			if has := strings.Contains(system, toolsNote); has != tt.wantNote {
 				t.Errorf("system prompt holds the tools note = %v, want %v", has, tt.wantNote)
 			}
+			if has := strings.Contains(system, webFallbackNote); has != tt.wantWeb {
+				t.Errorf("system prompt holds the web fallback note = %v, want %v", has, tt.wantWeb)
+			}
 			// A web skill doesn't make a direct question about the user's
 			// files. A search route was about them already.
-			if tt.route == "direct" && strings.Contains(system, fileToolsNote) {
+			if tt.route == "direct" && tt.pick != "file-research" && strings.Contains(system, fileToolsNote) {
 				t.Error("a web turn got the note on the file tools")
 			}
 		})

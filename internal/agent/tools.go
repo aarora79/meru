@@ -53,28 +53,61 @@ const exploreNote = "To answer from the user's files, look in them first: call s
 const commandsNote = "You may also run the cmd. tools offered with this question. " +
 	"Each runs one program the user declared and returns what it printed."
 
+// webFallbackNote follows toolsNote on a turn that offers both web_search
+// and a file tool. A real turn showed why. Asked "help me understand btop
+// with some simple commands", a small model grepped the user's folders,
+// found only pages that name btop in passing, never called web_search,
+// and answered with flags btop doesn't have. The note tells it to go to
+// the web when the files come up empty, and not to invent flags or
+// versions.
+const webFallbackNote = "When the user's files don't answer the question, because a search, grep or read " +
+	"found nothing on it, call web_search before you answer from memory. " +
+	"Never make up a command's flags or options, or a version number: look them up, or say you don't know."
+
 // noteFor returns the tools note for a turn that offers specs: toolsNote
 // when any is an MCP tool, an A2A skill or a built-in other than the file
 // tools (datetime included); otherwise commandsNote when any is a command;
 // and "" for none. The file tools get a note of their own; see
 // fileToolsNoteFor.
+//
+// When specs hold web_search and a file tool, webFallbackNote follows
+// toolsNote. It depends only on which tools the turn offers, not on the
+// question, so it stays the same from one such turn to the next and can
+// sit with the other parts Ollama reuses (see budget.go). web_fetch alone
+// doesn't bring the note: with no search, the model would have to guess a
+// URL, and web_fetch asks the user before it fetches a URL that no search
+// result gave.
 func noteFor(specs []engine.ToolSpec) string {
-	var cmds bool
+	var cmds, other, files, web bool
 	for _, s := range specs {
 		switch {
 		case builtin.IsFileTool(s.Name):
-			// Nothing to do here: a Go switch doesn't fall through, so
-			// this case only keeps file tools out of the default below.
+			files = true
 		case toolKind(s.Name) == dispatch.KindCommand:
 			cmds = true
 		default:
-			return toolsNote
+			other = true
+			if s.Name == builtin.WebSearch {
+				web = true
+			}
 		}
 	}
-	if cmds {
+	// A switch with no value after the keyword runs the first case whose
+	// test is true, so the web line wins over the plain toolsNote.
+	switch {
+	case web && files:
+		return toolsNote + " " + webFallbackNote
+	case other:
+		return toolsNote
+	case cmds:
 		return commandsNote
 	}
 	return ""
+}
+
+// offersWebSearch reports whether specs hold the web_search tool.
+func offersWebSearch(specs []engine.ToolSpec) bool {
+	return slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == builtin.WebSearch })
 }
 
 // fileToolsNoteFor returns the note on the file tools for a turn that

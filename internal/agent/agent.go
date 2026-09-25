@@ -82,6 +82,15 @@ func filesNote(folders []string, agentic bool) string {
 const noResults = "A search of the user's files found nothing relevant to this question. " +
 	"Answer from what you know, and don't cite any files."
 
+// noResultsWeb takes noResults' place on a turn that offers web_search.
+// "Answer from what you know" would contradict webFallbackNote, which
+// tells the model to search the web when the files come up empty, and a
+// small model follows the nearer, plainer line. This one points it at
+// web_search for the facts a model most often gets wrong from memory.
+const noResultsWeb = "A search of the user's files found nothing relevant to this question, so don't cite any files. " +
+	"For how to use a program or command, or for anything that may have changed, call web_search; " +
+	"otherwise answer from what you know."
+
 // Searcher finds the excerpts from the user's files that best answer query,
 // best first. merud passes an adapter around retrieve.Search; tests pass a
 // fake. It fails when the embedding or the store fails.
@@ -442,10 +451,15 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// excerpts from the files only crowd a web or mail answer, and cost
 	// time. With agentic retrieval no turn searches first: the model looks
 	// with the file tools instead.
+	// specs is the tools the turn offers. The search below needs to know
+	// whether web_search is among them; the list may grow below, when a
+	// tool server reconnects, but web_search is built in and doesn't wait
+	// on one.
+	specs := a.toolSpecs(dec.Route)
 	var files string
 	if a.searchesFirst(fileTurn) {
 		var sources []rpc.Citation
-		files, sources, res.docs, err = a.searchFiles(ctx, searchQuery(question, history))
+		files, sources, res.docs, err = a.searchFiles(ctx, searchQuery(question, history), offersWebSearch(specs))
 		if err != nil {
 			return res, err
 		}
@@ -459,7 +473,6 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 		// Past sessions join the files' section: no numbers, no sources event.
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
 	}
-	specs := a.toolSpecs(dec.Route)
 	// A turn on a tools route first gives each tool server that isn't
 	// connected one try, then lists the tools again: a server the user
 	// started after merud, or one that crashed, is back for this turn. This
@@ -893,11 +906,12 @@ func isFiller(w string) bool {
 // and the cited files' absolute paths, each once, for the transcript.
 //
 // A search that finds nothing, or runs before anything is indexed, gives a
-// short section saying so and no citations. A search that fails for any
+// short section saying so and no citations: noResultsWeb when web is true,
+// which means the turn offers web_search, and noResults otherwise. A search that fails for any
 // reason but a cancelled turn is logged and treated the same way: the
 // answer can still come from the model alone. It returns an error only when
 // ctx ends.
-func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Citation, []string, error) {
+func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string, []rpc.Citation, []string, error) {
 	ctx, span := obs.Tracer().Start(ctx, "meru.search")
 	defer span.End()
 	start := time.Now()
@@ -929,6 +943,9 @@ func (a *Agent) searchFiles(ctx context.Context, query string) (string, []rpc.Ci
 		results[i].Path = shortPath(a.home, results[i].Path)
 	}
 	section := noResults
+	if web {
+		section = noResultsWeb
+	}
 	if len(results) > 0 {
 		section = citeRule + "\n\nFrom your files\n\n" + retrieve.Format(results)
 	}

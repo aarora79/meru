@@ -197,10 +197,15 @@ question about current facts with `web_search` and `web_fetch`: search first,
 treat a snippet as a pointer, read the one or two best pages with a prompt,
 prefer the project's own site, check dates against today, quote versions from
 the page, cite each URL and say when sources disagree. Its description decides
-when the fast model picks it, so it names the questions that need it: "the
-latest version or release of something, news, prices", and "when asked to search
-the web". The integration test in `internal/agent` checks that the `lite` model
-picks it for "search the web for the latest Go release".
+when the fast model picks it, so it names the questions that need it: "how to
+use a program or command, the latest version or release of something, news,
+prices", and "when asked to search the web". The integration test in
+`internal/agent` checks that the `lite` model picks it for "search the web for
+the latest Go release", and `make pick-eval` scores the pick on 21 labelled
+questions (see [agent](agent.md)). The program-and-command words came from a
+real miss: before them, the pick chose `file-research` for "help me understand
+btop with some simple commands", and the model grepped the user's folders
+instead of searching the web.
 
 Both name their tools in `allowed-tools`: `web-research` lists `web_search,
 web_fetch` and `file-research` its four file tools. A copy installed before the
@@ -214,7 +219,8 @@ when a search misses, to stop after two or three rounds of tool calls, to cite
 `search_files`' excerpts by number and name any other file by its path, and to
 say where it looked when nothing answers. Its description names the questions
 it fits: what your files, notes or knowledge base say, or a file to find or
-read. It matters most with `[index] retrieval = "agentic"`, where no excerpts
+read. It ends "Not for how to use a program or command", the half of the btop
+fix that keeps the pick off this skill. It matters most with `[index] retrieval = "agentic"`, where no excerpts
 sit in the prompt.
 
 `merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
