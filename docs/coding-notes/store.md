@@ -165,7 +165,9 @@ It also scales every vector to length 1 first; the next section says why.
 
 `Paths(prefix)` treats the prefix as a folder: `/notes` matches `/notes/a.md`
 and not `/notes2/b.md`. It compares with `substr` rather than `LIKE`, so a `%`
-or `_` in a folder name has no special meaning.
+or `_` in a folder name has no special meaning. An empty prefix lists every
+path; the indexer's startup scan uses that to find files whose folder left
+`[index] folders` and deletes them with `DeleteDocument`.
 
 ### search.go: the two searches
 

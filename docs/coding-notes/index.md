@@ -38,6 +38,7 @@ flowchart TD
     C --> E["Embed, 32 texts per call"]
     E --> P["Sink.ReplaceDocument"]
     W --> D["after the walk: Sink.Paths,<br/>DeleteDocument for files not seen"]
+    S --> O["Scan first: pruneOutside,<br/>DeleteDocument for files in no folder"]
 ```
 
 ## Walk through the code
@@ -72,6 +73,19 @@ one step removes deleted files and files a new ignore rule now covers. It
 spares folders the walk couldn't read, so a permission problem doesn't wipe
 their entries, and `Scan` leaves a folder that doesn't exist at all alone, in
 case it lives on an unplugged drive.
+
+`scanTree` only looks inside the folders it walks, so it never sees files from a
+folder you took out of `[index] folders`. `pruneOutside` covers them. Before the
+walks, `scan` calls it with the resolved folders. It asks the store for every
+path (`Paths("")`) and deletes each one that sits under no folder, checked with
+`within`, the same test `IndexPaths` uses before it returns `ErrOutsideFolders`.
+`within` compares whole folder names through `filepath.Rel`, so `/notes` doesn't
+claim `/notes-old/a.md`. The list of folders to keep holds each folder twice:
+resolved, where the walk stores its files, and as written in config, so a folder
+on an unplugged drive still keeps its entries. `slices.Concat` joins the two
+lists into a new slice, which leaves both originals untouched. The removals count
+in `Removed`, and one info line gives how many files went; the paths go to the
+debug log only.
 
 `indexFile` does the per-file work under a mutex, so `Scan` and the watcher
 never store two versions of one file in the wrong order:
@@ -317,7 +331,11 @@ go test -race -run 'TestMemory' -v ./internal/index/
 contract between the two packages: a deleted file in `notes` leaves
 `notes2/c.md` alone (the store treats a prefix as a folder), an empty file
 stores with zero chunks, and after a change of embedding model `Scan` leaves
-the vectors missing while `Reembed` restores them.
+the vectors missing while `Reembed` restores them. `TestScanDropsFoldersLeftConfig`
+indexes `notes` and `notes-old`, then scans with a new folder list: dropping
+either one, dropping both, keeping both, and keeping a folder that no longer
+exists on disk. Each case checks `Removed`, the counts of documents, chunks and
+vectors, and a keyword search for a word from each file.
 
 `TestSkipRules` builds a folder with one file for every skip rule and checks
 what got indexed and the count for each reason. `TestWatch` starts `Watch` on a

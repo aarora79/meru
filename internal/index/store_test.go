@@ -1,7 +1,8 @@
 // This file runs the Indexer against the real SQLite store instead of the
 // fake sink, to check the contract between the two packages, which were
-// written side by side: folder prefixes, deleted files, empty files and
-// re-embedding after a change of embedding model.
+// written side by side: folder prefixes, deleted files, empty files,
+// folders taken out of config and re-embedding after a change of embedding
+// model.
 
 package index
 
@@ -9,6 +10,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/aarora79/meru/internal/store"
@@ -151,5 +153,101 @@ func TestReembedAfterModelChange(t *testing.T) {
 	}
 	if need, err := st.NeedsReembed(ctx); err != nil || need {
 		t.Errorf("NeedsReembed after Reembed = %v, %v; want false", need, err)
+	}
+}
+
+// TestScanDropsFoldersLeftConfig indexes two folders, then scans again with
+// a different folder list, the way merud does after you edit config.toml
+// and restart it. notes-old shares the prefix "notes", so a plain string
+// prefix test would get it wrong in both directions.
+func TestScanDropsFoldersLeftConfig(t *testing.T) {
+	// Each file holds one word no other file has, so a keyword search
+	// shows whether the file's keyword rows survived.
+	words := map[string][]string{
+		"notes":     {"alpha", "bravo"},
+		"notes-old": {"charlie"},
+	}
+	tests := []struct {
+		name        string
+		keep        []string // folders in the second config
+		gone        string   // a kept folder deleted from disk before the second scan
+		wantRemoved int
+		wantDocs    int      // documents left
+		wantWords   []string // words a keyword search still finds
+	}{
+		{name: "drop notes-old", keep: []string{"notes"}, wantRemoved: 1, wantDocs: 2, wantWords: []string{"alpha", "bravo"}},
+		{name: "drop notes", keep: []string{"notes-old"}, wantRemoved: 2, wantDocs: 1, wantWords: []string{"charlie"}},
+		{name: "empty list", keep: nil, wantRemoved: 3, wantDocs: 0},
+		{name: "keep both", keep: []string{"notes", "notes-old"}, wantRemoved: 0, wantDocs: 3, wantWords: []string{"alpha", "bravo", "charlie"}},
+		// A folder still in config that doesn't exist now, as on an
+		// unplugged drive, keeps its entries.
+		{name: "missing folder kept", keep: []string{"notes", "notes-old"}, gone: "notes-old", wantRemoved: 0, wantDocs: 3, wantWords: []string{"alpha", "bravo", "charlie"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+			base := tempRoot(t)
+			dir := func(name string) string { return filepath.Join(base, name) }
+			writeFiles(t, dir("notes"), map[string]string{
+				"a.md":     "# A\n\nalpha",
+				"sub/b.md": "# B\n\nbravo",
+			})
+			writeFiles(t, dir("notes-old"), map[string]string{"c.md": "# C\n\ncharlie"})
+
+			st := openStore(t, t.TempDir(), "m1")
+			defer st.Close()
+			cfg := testConfig(dir("notes"))
+			cfg.Folders = []string{dir("notes"), dir("notes-old")}
+			ix, err := New(cfg, st, &fakeEngine{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ix.Scan(ctx); err != nil {
+				t.Fatalf("first Scan: %v", err)
+			}
+
+			if tt.gone != "" {
+				if err := os.RemoveAll(dir(tt.gone)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg.Folders = nil
+			for _, name := range tt.keep {
+				cfg.Folders = append(cfg.Folders, dir(name))
+			}
+			ix, err = New(cfg, st, &fakeEngine{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rep, err := ix.Scan(ctx)
+			if err != nil {
+				t.Fatalf("second Scan: %v", err)
+			}
+			if rep.Removed != tt.wantRemoved {
+				t.Errorf("Removed = %d, want %d (report %+v)", rep.Removed, tt.wantRemoved, rep)
+			}
+
+			// Each file here makes one chunk with one vector, so the three
+			// counts match.
+			stats, err := st.Stats(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stats.Documents != tt.wantDocs || stats.Chunks != tt.wantDocs || stats.Vectors != tt.wantDocs {
+				t.Errorf("stats = %+v, want %d of each", stats, tt.wantDocs)
+			}
+			for folder, ws := range words {
+				for _, w := range ws {
+					hits, err := st.SearchKeyword(ctx, w, 5)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := slices.Contains(tt.wantWords, w)
+					if got := len(hits) > 0; got != want {
+						t.Errorf("keyword %q from %s found = %v, want %v", w, folder, got, want)
+					}
+				}
+			}
+		})
 	}
 }
