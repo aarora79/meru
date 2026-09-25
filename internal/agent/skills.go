@@ -60,6 +60,13 @@ func (a *Agent) UseSkills(s Skills) {
 	a.skills = s
 }
 
+// UseMachine sets the line that describes the user's computer, which the
+// system prompt carries after today's date. merud builds it once at
+// startup (cmd/merud/machine.go); "" leaves it out.
+func (a *Agent) UseMachine(line string) {
+	a.machine = line
+}
+
 // pickedSkills is what a turn knows about skills: the registry it read,
 // and the names the pick call chose from it, in the model's order.
 type pickedSkills struct {

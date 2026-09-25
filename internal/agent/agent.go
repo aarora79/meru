@@ -62,7 +62,7 @@ func filesNote(folders []string) string {
 	}
 	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
 		"When a question needs them, Meru searches first and puts the best excerpts below. " +
-		"You can't open or list files yourself."
+		"On turns that offer the file tools, you can also read, list and grep these folders yourself."
 }
 
 // noResults stands in for the excerpts when a search finds nothing, or when
@@ -116,6 +116,7 @@ type Agent struct {
 	turns       TurnRecorder // nil keeps no turn rows
 	profile     Profile      // nil leaves the profile out of the prompt
 	skills      Skills       // nil turns skills off; set by UseSkills
+	machine     string       // describes the user's computer; set by UseMachine
 	maxRounds   int          // model calls per turn, at most; see converse
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
@@ -808,6 +809,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 		}
 	}
 	add(today(time.Now()))
+	add(a.machine)
 	profile := a.profileSection(ctx)
 	add(profile)
 	add(a.filesNote)

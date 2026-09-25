@@ -582,7 +582,10 @@ order.
    user, today's date with a pointer to the `datetime` tool (a model knows only its
    training data, so without the date a trip that ended last week reads as one
    still to come; the time of day goes through the tool, since it changes every
-   minute and would cost Ollama's reuse), your profile, the note on your folders, the tools note, and the list of
+   minute and would cost Ollama's reuse), one line on your computer that `merud`
+   reads at startup (the OS and version, the processor, memory, the shell and the
+   time zone, and no host or user name; without it the model answered a GPU
+   question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, the tools note, and the list of
    skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that

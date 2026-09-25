@@ -79,7 +79,7 @@ watch = true
 
 [log]
 # How much merud writes to merud.log: "debug", "info", "warn" or "error".
-# "info" writes a line per turn; "debug" adds one per stage. `merud -v`
+# "info" writes the route and a line per turn; "debug" adds one per stage. `merud -v`
 # forces "debug". Question and answer text stays out at every level.
 level = "info"
 
