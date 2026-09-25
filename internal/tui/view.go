@@ -334,14 +334,28 @@ func seconds(ms int64) string {
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }
 
-// renderedAnswer returns a finished answer drawn as Markdown, rendering it
-// only when the width has changed since last time. It falls back to wrapped
+// renderedAnswer returns a finished answer drawn as Markdown, with a
+// "⧉ copy N" label under each code block (code.go), rendering it only when
+// the width has changed since last time. It falls back to the answer
+// without labels when the labels don't come out right, and to wrapped
 // plain text if Glamour isn't available or fails.
 func (m *Model) renderedAnswer(t *exchange) string {
 	if t.rendered != "" && t.renderedWidth == m.width {
 		return t.rendered
 	}
-	out, err := m.renderMarkdown(t.answer)
+	var out string
+	var err error
+	if len(t.code) > 0 {
+		out, err = m.renderMarkdown(markBlocks(t.answer, t.code, t.firstBlock))
+		labelled, ok := m.labelBlocks(out, len(t.code))
+		if err == nil && ok {
+			out = labelled
+		} else {
+			out, err = m.renderMarkdown(t.answer)
+		}
+	} else {
+		out, err = m.renderMarkdown(t.answer)
+	}
 	if err != nil {
 		out = m.style.raw.Render(ansi.Wrap(t.answer, max(m.width-answerIndent, 1), ""))
 	}

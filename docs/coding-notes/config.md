@@ -93,6 +93,21 @@ a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
 explains what to do when nothing answers there. `MaxWebResults` is exported
 because `web_search` checks a call's own `max_results` against the same cap.
 
+`Chat` is the `[chat]` section, which only `meru chat` reads; `merud` loads it
+with the rest and ignores it:
+
+```go
+type Chat struct {
+    MouseCopy bool `toml:"mouse_copy"` // default false
+}
+```
+
+`MouseCopy` lets a click on a code block's `⧉ copy N` label copy the block (see
+[tui](tui.md)). It stays off by default: to see clicks, the chat has to capture
+the mouse, and the terminal's own click-and-drag selection then needs Option
+(iTerm2) or Shift (most others). `meru` may import `config`, so reading the key
+keeps the client thin.
+
 `Builtin` is the `[builtin]` section, for the tools built into `merud`:
 
 ```go

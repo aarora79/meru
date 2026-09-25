@@ -178,9 +178,9 @@ flags:`)
 }
 
 // chatInfo reads the profile and main model from the default config file for
-// the chat screen's header. They only label the screen, so a config that
-// doesn't load leaves the header without them instead of stopping the chat;
-// merud reports config errors when it starts.
+// the chat screen's header, and the [chat] settings. A config that doesn't
+// load leaves the header without them and the settings at their defaults,
+// instead of stopping the chat; merud reports config errors when it starts.
 func chatInfo() tui.Info {
 	path, err := config.DefaultPath()
 	if err != nil {
@@ -190,7 +190,7 @@ func chatInfo() tui.Info {
 	if err != nil {
 		return tui.Info{}
 	}
-	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main}
+	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy}
 }
 
 // ping asks merud whether it is up and prints the answer.

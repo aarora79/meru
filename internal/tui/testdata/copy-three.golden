@@ -1,22 +1,26 @@
-Meru मेरु lite · minicpm5:2b · session 101500-ab12                     ● connected
+Meru मेरु lite · minicpm5:2b                                           ● connected
 ────────────────────────────────────────────────────────────────────────────────
 
 You
-  │ How do I reverse a slice in Go?
+  │ Question 1
 
-Meru  direct · 0.91
-  ## Reverse a list
+Meru
+  Watch the machine with btop.
 
-  Use **slices.Reverse**. It works in place:
-
-  • no copy
-  • any element type
-
-    s := []int{1, 2, 3}
-    slices.Reverse(s)
+  1. Start it:
+    btop
     ⧉ copy 1
-  0.8s to first token · 40.0 tok/s · 2.4s
 
+  2. Or pick a preset:
+    btop --preset 1
+    ⧉ copy 2
+
+
+  For a slow link, turn the colours down:
+
+    btop --utf-force --low-color --update 2000
+    ⧉ copy 3
+  0.8s to first token · 40.0 tok/s · 2.4s
 
 
 
