@@ -372,32 +372,68 @@ func seconds(ms int64) string {
 }
 
 // renderedAnswer returns a finished answer drawn as Markdown, with a
-// "⧉ copy N" label under each code block (code.go), rendering it only when
-// the width has changed since last time. It falls back to the answer
-// without labels when the labels don't come out right, and to wrapped
+// "⧉ copy N" label under each code block (code.go) and each web or file
+// link drawn as a URL that fits its line (links.go). It renders only when
+// the width has changed since last time.
+//
+// Links and labels both hang on markers that Glamour has to draw as
+// planned. When they don't come out right, it tries again without the
+// links, then without the labels too, and last falls back to wrapped
 // plain text if Glamour isn't available or fails.
 func (m *Model) renderedAnswer(t *exchange) string {
 	if t.rendered != "" && t.renderedWidth == m.width {
 		return t.rendered
 	}
-	var out string
-	var err error
-	if len(t.code) > 0 {
-		out, err = m.renderMarkdown(markBlocks(t.answer, t.code, t.firstBlock))
-		labelled, ok := m.labelBlocks(out, len(t.code))
-		if err == nil && ok {
-			out = labelled
-		} else {
-			out, err = m.renderMarkdown(t.answer)
+	out := ""
+	ok := false
+	// A struct literal with no type name before it, in a slice of an
+	// unnamed struct type, lists the tries in order.
+	for _, try := range []struct{ links, labels bool }{{true, true}, {false, true}, {false, false}} {
+		if out, ok = m.drawAnswer(t, try.links, try.labels); ok {
+			break
 		}
-	} else {
-		out, err = m.renderMarkdown(t.answer)
 	}
-	if err != nil {
+	if !ok {
 		out = m.style.raw.Render(ansi.Wrap(t.answer, max(m.width-answerIndent, 1), ""))
 	}
 	t.rendered, t.renderedWidth = out, m.width
 	return out
+}
+
+// drawAnswer draws the answer of t with Glamour, with the links swapped in
+// when links is true and the copy labels when labels is true. It returns
+// false when Glamour fails or a marker doesn't come out as planned.
+//
+// The labels' markers go in first, at offsets into the answer that
+// findCodeBlocks worked out. findLinks then parses the marked answer, so
+// its offsets match the text markLinks changes. Code blocks hold no links,
+// so the two sets of markers never meet.
+func (m *Model) drawAnswer(t *exchange, links, labels bool) (string, bool) {
+	src := t.answer
+	labels = labels && len(t.code) > 0
+	if labels {
+		src = markBlocks(src, t.code, t.firstBlock)
+	}
+	var swaps []linkSwap
+	if links {
+		src, swaps = markLinks(src, findLinks(src), m.width, m.look.links)
+	}
+	out, err := m.renderMarkdown(src)
+	if err != nil {
+		return "", false
+	}
+	ok := true
+	if len(swaps) > 0 {
+		if out, ok = swapLinks(out, swaps, m.width); !ok {
+			return "", false
+		}
+	}
+	if labels {
+		if out, ok = m.labelBlocks(out, len(t.code)); !ok {
+			return "", false
+		}
+	}
+	return out, true
 }
 
 // renderMarkdown draws text as Markdown with Glamour, wrapped to the screen

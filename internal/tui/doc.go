@@ -32,6 +32,10 @@
 // label while [chat] mouse_copy is on, its default (code.go, copy.go,
 // clipboard.go).
 //
+// Each web or file link in a finished answer shows its URL cut to fit its
+// line, and a click opens the full URL in terminals that support OSC 8
+// links. With NO_COLOR the full URL shows as plain text (links.go).
+//
 // The package holds no model or store logic; it draws what merud sends. It
 // captures the mouse only with [chat] mouse_copy on; capture takes
 // click-and-drag selection away from the terminal, and false gives it back.

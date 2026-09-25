@@ -314,6 +314,22 @@ func TestGoogleAttachments(t *testing.T) {
 	}
 }
 
+// TestGoogleToolTier checks that the start command loads workspace-mcp's
+// extended tier. get_gmail_attachment_content and get_gmail_thread_content,
+// both in Allow, sit in that tier (core/tool_tiers.yaml), so a server on
+// the core tier would offer neither.
+func TestGoogleToolTier(t *testing.T) {
+	google, _ := Find("google")
+	if !strings.HasSuffix(google.Start, " --tool-tier extended") {
+		t.Errorf("google start = %q, want it to end with --tool-tier extended", google.Start)
+	}
+	for _, tool := range []string{"get_gmail_attachment_content", "get_gmail_thread_content"} {
+		if !slices.Contains(google.Allow, tool) {
+			t.Errorf("google allow lacks %s; drop the tier to core if no allowed tool needs extended", tool)
+		}
+	}
+}
+
 // TestTemplateHoldsCatalog checks that the config template holds each
 // catalog entry exactly as Block renders it, commented out line by line.
 // The config package can't call Block itself, because this package

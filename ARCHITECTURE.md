@@ -248,6 +248,15 @@ mouse, which takes plain click-and-drag selection away from the terminal, so
 selecting text needs Option (iTerm2) or Shift (most others);
 `[chat] mouse_copy = false` gives plain selection back.
 
+A web or file link in a finished answer shows as its URL without the scheme, cut
+with `…` to fit its line, and a click opens the full URL in terminals that support
+OSC 8 links. A Markdown link keeps its text, with the URL after it, so you see
+where a click goes before you click. Glamour alone breaks a long URL at its dots
+and dashes, and the terminal's own URL detection then finds only half of it. With
+`NO_COLOR` nothing on screen can open a link, so the chat shows the full URL as
+plain text: whole where it fits, and in line-wide pieces where it doesn't. Only
+`http`, `https` and `file` links change; a URL in code stays as the model wrote it.
+
 While a turn runs, Enter puts the next question in a queue, drawn under the
 running turn with a dim `queued` mark. When the turn ends, the chat sends the
 oldest queued question in the same session, so `merud` still gets one turn at a
@@ -1640,12 +1649,15 @@ OAuth 2.1 mode needs HTTP, so you start it yourself and `merud` connects to it
 ```sh
 USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
   GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
-  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
 ```
 
 The server offers 120-odd tools across twelve Google services. `--tools` limits the
-process to Gmail, Calendar, Drive and Docs, and the catalog's `allow` limits the
-model to nine of those: search and read mail and threads, save a mail's
+process to Gmail, Calendar, Drive and Docs. `--tool-tier extended` limits it
+further, to the 45 core and extended tools of those four: the smallest tier that
+holds `get_gmail_thread_content` and `get_gmail_attachment_content`. The flag also
+wins over a `WORKSPACE_MCP_TOOL_TIER` in your environment. The catalog's `allow`
+limits the model to nine of those tools: search and read mail and threads, save a mail's
 attachment, send mail, list and change calendar events, search Drive, and read a
 doc. Sending mail and changing an event sit in `confirm`. So two layers apply:
 the server decides what exists, and Meru decides what the model sees. The OAuth
@@ -2558,8 +2570,9 @@ We'll settle these with working code and measurements.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream. Each code block gets a `⧉ copy N` label; `/copy N` or Ctrl-Y copies
-  it, and so does a click, unless `[chat] mouse_copy` is off. Questions typed
-  while a turn runs wait in a queue of up to five in the client.
+  it, and so does a click, unless `[chat] mouse_copy` is off. Links in an
+  answer show short and open on a click. Questions typed while a turn runs
+  wait in a queue of up to five in the client.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
   trust comes only from editing the `confirm` list. With no one to ask (scripts,

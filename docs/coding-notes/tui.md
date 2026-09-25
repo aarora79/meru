@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `copy.go`, `clipboard.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -14,7 +14,9 @@ that screen. It sends each question to `merud` over the Unix socket with `rpc.Do
 draws whatever comes back. It holds no model or store logic.
 
 Each code block in a finished answer gets a dim `⧉ copy N` label under it, and
-`/copy N`, Ctrl-Y or a click on the label puts the block on the clipboard.
+`/copy N`, Ctrl-Y or a click on the label puts the block on the clipboard. Each web
+or file link shows its URL cut to fit its line, and a click opens the full URL in a
+terminal that supports links.
 
 `cmd/meru/main.go` calls `tui.Run` for `meru chat`. Before that, `chatInfo` reads the
 profile and main model from `~/.meru/config.toml` for the header, and
@@ -505,7 +507,11 @@ Building one parses the style, so the model keeps it and builds a new one only w
 the width changes. Each finished answer keeps its rendered text and the width it was
 drawn for, so a resize redraws every answer at the new width and a token redraws
 none. `tidy` trims the blank lines and padding Glamour puts round its output.
-`renderedAnswer` also adds the copy labels; code.go, below, explains how.
+`renderedAnswer` also adds the copy labels and the links; code.go and links.go,
+below, explain how. It hands the work to `drawAnswer`, which takes two switches,
+links and labels, and tries three times: both on, then links off, then both off. Each
+try that finds a marker out of place gives up, and the next draws less. If Glamour
+itself fails, the answer shows as wrapped plain text.
 
 `statsLine` formats the numbers `merud` sends with `done`: time to first token, tokens
 per second, and total time. Tokens per second uses Ollama's own writing time
@@ -736,6 +742,62 @@ number of the label under that column, or 0. It counts columns with
 `ansi.StringWidth`, because `⧉` takes three bytes in the string and one cell on
 screen.
 
+### links.go
+
+This file makes the links in a finished answer clickable. Glamour draws a Markdown
+link, `[Gmail link](https://mail.google.com/...)`, as its text and then the URL, and
+wraps the URL like any word, at its dots and dashes. A long URL then sits on two
+lines, and the terminal's own URL detection finds only the first half. So the chat
+swaps each URL for a marker before Glamour draws, and swaps the marker back after,
+the same trick code.go uses for the labels.
+
+`findLinks` parses the answer with `markdownParser`, goldmark set up as Glamour sets
+it up: with the GitHub extensions, whose Linkify turns a bare `https://...` in the
+text into a link. Without them, the two parsers would disagree about the bare URLs.
+It keeps three kinds of link: a Markdown link, an autolink in angle brackets
+(`<https://...>`) and a bare URL. It keeps only `http`, `https` and `file`, so a
+`javascript:` or `mailto:` link stays as Glamour draws it. goldmark never makes a link
+inside code, and the walk skips images, raw HTML and tables, whose links Glamour
+lists under the table on its own. The parser has already undone any escapes in a
+URL, so `inlineLink` looks for the URL as written, right after `](` and right before
+`)`. A reference link, `[text][ref]`, and a link with a title don't match, and stay
+as Glamour draws them.
+
+`markLinks` swaps each URL for a marker such as `MERULINK:3Xxxxxx`. The marker reads
+as a URL, so Glamour keeps it as the link's destination, and it has no `.` or `-`,
+so Glamour never breaks it. The x's pad it to the width of what replaces it, so
+Glamour wraps the line round the marker as it would round the URL. How wide may that
+be? `linkRoom` takes the screen width, less Glamour's two-column margin on each side
+and four columns for each list, quote or heading the link sits in. That guess errs
+short on purpose: a URL cut a few columns early costs less than one that runs off
+the screen.
+
+What replaces the marker depends on `look.links`:
+
+- **On:** `shortURL` drops the scheme and a closing `/`, and cuts what is left with
+  `…` when it is still too wide. Cutting from the end keeps the host, which says
+  where the link goes. `rpc.Hyperlink` wraps it in the OSC 8 codes that point at the
+  full URL.
+- **Off** (`NO_COLOR`, or a terminal with no colour): nothing on screen can open a
+  link, so the screen shows the full URL. `splitWidth` cuts one too long for its
+  line into pieces as wide as the room, each with its own marker. Each piece fills
+  its line, so they stack one to a line and read back as the URL.
+
+A Markdown link keeps its text, so the screen shows `Gmail link
+mail.google.com/mail/u/0/#inbox/18f2…`. The link text isn't the clickable part: a
+model can write any text over any URL, and showing the host next to it lets you see
+where a click goes before you click.
+
+`swapLinks` puts the URLs back. It checks first that each marker shows exactly once
+and that no line holding one is wider than the screen. If either check fails,
+`drawAnswer` gives up and the next try draws the answer without links, so no stray
+`MERULINK` reaches the screen. The copy labels' markers go in first, and `findLinks`
+parses the marked answer, so the offsets `markLinks` uses match the text it
+changes. Code blocks hold no links, so the two kinds of marker never meet.
+
+The one-shot `meru "..."` prints the answer as the model wrote it, with each URL
+whole on one line, and the terminal finds it there, so it needs none of this.
+
 ### copy.go
 
 The three ways to copy all end in `copyBlock`:
@@ -941,7 +1003,8 @@ finished Markdown answer, a fallback route, a route badge with a
 skill, an answer with sources, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
-usage box and the `/me` box at 80 and 40 columns, the `/mcp` box at 100 and 40
+usage box and the `/me` box at 80 and 40 columns, an answer with links at 80
+and 40 columns with links on and off, the `/mcp` box at 100 and 40
 columns, and the empty screen with the
 profile nudge. After a deliberate change to the look, rewrite them and read the
 diff:
@@ -999,6 +1062,17 @@ conversation with no blocks. It clicks a label with `mouse_copy` on and off, and
 checks the hit test cell by cell. `clipboardCommand` gets a fake `PATH` lookup for
 each system, and the OSC 52 fallback writes to a buffer.
 
+`links_test.go` checks where `markLinks` puts its markers for a Markdown link, one
+in angle brackets, an autolink, a bare URL, one in a list and one in a quote, and
+that it leaves alone a URL in code, a `javascript:` link, a `mailto:` link, an email
+address, a link with a title, a reference link, an image and a table. It checks
+`shortURL` and `splitWidth` case by case, and that `swapLinks` refuses a missing,
+doubled or too-wide marker. Its goldens draw an answer with a long link in a list,
+a bare URL and a code block with its label, at 80 and 40 columns, with links on and
+off. `TestLinksOnAndOff` checks that the screen holds an OSC 8 link to each full URL
+with links on, that links off writes none and shows the URL, and that both hold
+after a resize.
+
 `mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
 without its scheme, a reason with a line break, a long name that widens the first
 column, no servers), that `/mcp` sends `OpMCPStatus`, fills the box, ignores a late
@@ -1054,6 +1128,11 @@ lose.
 numbers make a table, and a table printed into the conversation would scroll away
 with it and land in the middle of your questions. The box shows the numbers on top
 and leaves the conversation as it was.
+
+**Why show the URL after a link's text instead of making the text clickable?** A
+model can put any text over any URL. With the host on screen you see where a click
+goes before you click, and the text, which may wrap over lines, needs no escape
+codes of its own.
 
 **Why a marker line to place the copy labels?** See code.go above: rendering
 pieces on their own breaks lists, and mapping output lines back to source lines

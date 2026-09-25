@@ -29,8 +29,8 @@
 // OAuth 2.1 mode needs HTTP, so the user runs it as a Streamable HTTP
 // server. merud never starts, restarts or watches it; it connects to the
 // URL, like any client (ARCHITECTURE.md, "MCP"). The server offers 120-odd
-// tools; --tools limits the process to four services, and allow limits the
-// model to a handful of those.
+// tools; --tools limits the process to four services, --tool-tier to 45
+// tools of those, and allow limits the model to a handful.
 //
 // Google also runs its own MCP servers for Gmail, Drive, Docs and Calendar
 // (developer preview since 2026-05-01; see
@@ -133,9 +133,21 @@ type Entry struct {
 // googleStart is the command that starts the google server. The user runs
 // it, in a terminal or from launchd or systemd, with their own OAuth
 // client; merud never does. --tools limits the process to the four
-// services the allow list draws from. USER_GOOGLE_EMAIL makes each tool's
-// user_google_email argument optional, with that address as the default
-// (core/server.py in workspace-mcp 4.0.9), so the model needn't know it.
+// services the allow list draws from.
+//
+// --tool-tier extended loads the core and extended tools of those four
+// services, 45 of them (core/tool_tiers.yaml in workspace-mcp 1.29). It is
+// the smallest tier that holds every tool in Allow: get_gmail_thread_content
+// and get_gmail_attachment_content sit in the extended tier, so a server
+// started with --tool-tier core offers neither, and meru tools warns that
+// allow names a tool google doesn't offer. Without the flag the server
+// loads every tool of the four services, or the tier that
+// WORKSPACE_MCP_TOOL_TIER names. The flag wins over that variable, so the
+// user's shell can't change the tier.
+//
+// USER_GOOGLE_EMAIL makes each tool's user_google_email argument
+// optional, with that address as the default (core/server.py in
+// workspace-mcp 4.0.9), so the model needn't know it.
 //
 // WORKSPACE_ATTACHMENT_DIR tells the server where get_gmail_attachment_content
 // saves an attachment (core/attachment_storage.py in workspace-mcp 1.29).
@@ -148,7 +160,7 @@ type Entry struct {
 const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
 	"WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
 	"GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
-	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
+	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
 
 // installUV is the Install text for the servers that run with uvx.
 const installUV = "uvx downloads the server the first time it starts. " +

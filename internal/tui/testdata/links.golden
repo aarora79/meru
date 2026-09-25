@@ -1,0 +1,30 @@
+Meru मेरु lite · minicpm5:2b                                           ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+You
+  │ Where is the plan?
+
+Meru
+  Two places to look:
+
+  1. The mail, Gmail link mail.google.com/mail/u/0/#inbox/18f2c0a4b7e9d311,
+  from Monday.
+  2. The plan,
+  example.com/notes/garden-plan/2026/spring-planting-schedule-for-the-rai…
+
+  Save the plan with:
+
+    curl -O https://example.com/notes/garden-plan.pdf
+    ⧉ copy 1
+  0.8s to first token · 40.0 tok/s · 2.4s
+
+
+
+
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp
