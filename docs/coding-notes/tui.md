@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -15,8 +15,8 @@ draws whatever comes back. It holds no model or store logic.
 
 Each code block in a finished answer gets a dim `⧉ copy N` label under it, and
 `/copy N`, Ctrl-Y or a click on the label puts the block on the clipboard. Each web
-or file link shows its URL cut to fit its line, and a click opens the full URL in a
-terminal that supports links.
+or file link shows its URL cut to fit its line, and a click opens the full URL in
+the browser.
 
 `cmd/meru/main.go` calls `tui.Run` for `meru chat`. Before that, `chatInfo` reads the
 profile and main model from `~/.meru/config.toml` for the header, and
@@ -810,6 +810,9 @@ The three ways to copy all end in `copyBlock`:
   click. The conversation pane starts `headerLines` rows down, and what it shows is
   exactly `m.conversation.View()`, so the click's row picks one line of that.
 
+A left click that lands on no label goes on to `linkUnder` in open.go, which opens
+the link under the pointer, if there is one.
+
 `copyBlock` looks the number up with `block`, which walks the turns. It returns a
 command, `copyCmd`, and doesn't copy on the spot: copying starts a program, and a
 `tea.Cmd` runs off the loop that draws the screen. The command reports back with a
@@ -844,6 +847,44 @@ went through the terminal.
 
 `clipboard` holds `lookPath`, `run` and `terminal` as fields, and the model holds the
 copy function as `m.copy`, so tests swap in fakes and never touch the real clipboard.
+
+### open.go
+
+With `[chat] mouse_copy` on, the chat captures the mouse, and the terminal never
+sees a click. A terminal opens an OSC 8 link on a click, so without this file a
+click on a link would do nothing. open.go finds the link under the pointer and
+opens it.
+
+`linkUnder` picks the screen line the way `labelUnder` does, and `linkAt` walks that
+line. A link on screen is `ESC ] 8 ; params ; URL ST`, then the text, then
+`ESC ] 8 ; ; ST`, where ST, the string terminator, is `ESC \` or BEL. `linkAt` finds
+each `ESC ] 8 ;` in turn, and `parseOSC8` reads the URL and the code's length. The
+text between two codes adds its width to a running column count. `ansi.StringWidth`
+measures it, which skips colour codes and counts a wide rune, such as `園`, as two
+columns, as the terminal draws it. When a code closes a link, or opens the next, the
+columns since the link opened form its span. A click inside the span returns the URL.
+That works for answer links (links.go) and for Sources lines (view.go) alike, since
+both use `rpc.Hyperlink`.
+
+`openLink` checks the URL with `checkOpenable`: `http`, `https` or `file`, by the
+same `linkable` rule links.go uses, and nothing that starts with `-`. The opener
+gets the URL as an argument, and a program reads an argument that starts with `-` as
+an option. A refused URL gets a notice and no command. Otherwise `openLink` returns
+a command, as `copyBlock` does, so the program starts off the loop that draws the
+screen. The command reports back with an `openedMsg`, whose `notice` reads
+`opened mail.google.com/…`, shortened by `shortURL`, or the error.
+
+`systemOpen` runs what `openCommand` picks for `runtime.GOOS`: `open URL` on macOS,
+`xdg-open URL` on Linux and the rest, and `rundll32 url.dll,FileProtocolHandler URL`
+on Windows. `openCommand` takes the system's name as a parameter, so one test checks
+all three on any machine. `exec.CommandContext` starts the program with no shell and
+the URL as one argument, so nothing in the URL can run as a command. Its output
+stays unset, so `Run` doesn't wait on a browser the opener leaves running, and a
+ten-second timeout stops an opener stuck without a display.
+
+The model holds the opener as `m.open`. `testModel` sets one that fails, and
+open_test.go swaps in `fakeOpener`, which records the URL, so no test starts a
+browser.
 
 ### usage.go
 
@@ -966,7 +1007,8 @@ model. `programRelay` breaks the circle: the model gets the relay first, and the
 learns the program one line later. `tea.WithAltScreen` draws on the terminal's second
 screen, so your shell history comes back untouched when you quit.
 `tea.WithMouseCellMotion`, added only with `[chat] mouse_copy` on, asks the terminal
-to send clicks and wheel turns to the program.
+to send clicks and wheel turns to the program. That is why the chat opens links
+itself (open.go).
 
 ## Go ideas used here
 
@@ -1073,6 +1115,13 @@ off. `TestLinksOnAndOff` checks that the screen holds an OSC 8 link to each full
 with links on, that links off writes none and shows the URL, and that both hold
 after a resize.
 
+`open_test.go` checks `linkAt` column by column on a line with two links, colour
+codes and a wide rune, and on broken lines. It checks which URLs `checkOpenable`
+lets through, the command `openCommand` builds for macOS, Linux, FreeBSD and
+Windows, and both notices. Through the whole model, with `fakeOpener`, it clicks
+the mail link in an answer with `mouse_copy` on and off, clicks plain text, and
+clicks a Sources line, which opens its `file://` URL.
+
 `mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
 without its scheme, a reason with a line break, a long name that widens the first
 column, no servers), that `/mcp` sends `OpMCPStatus`, fills the box, ignores a late
@@ -1145,8 +1194,13 @@ reports the mouse.
 
 **Why is mouse copying on by default?** A click on the label is what most people
 try first. The cost: a program that captures the mouse gets every click and drag,
-so the terminal's own text selection needs a modifier key. `mouse_copy = false`
-gives plain selection back.
+so the terminal's own text selection needs a modifier key, and the terminal can't
+open a link on a click. The chat opens links itself to make up for that.
+`mouse_copy = false` gives plain selection and the terminal's link click back.
+
+**Why open a link with `open` or `xdg-open` over an HTTP client?** The chat
+doesn't fetch the page: the user's browser does, as it would from any other
+program. The platform's opener also knows which program handles `file://` URLs.
 
 **Why a renderer passed in, not the global one?** The tests build the model with an
 ASCII renderer, so the golden files hold plain text however the tests are run. The

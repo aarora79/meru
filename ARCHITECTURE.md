@@ -257,6 +257,15 @@ and dashes, and the terminal's own URL detection then finds only half of it. Wit
 plain text: whole where it fits, and in line-wide pieces where it doesn't. Only
 `http`, `https` and `file` links change; a URL in code stays as the model wrote it.
 
+With `[chat] mouse_copy` on, the default, the terminal never sees a click, so the
+chat opens links itself. It finds the OSC 8 link under the pointer, in an answer or
+in the Sources list, and hands the URL to `open` on macOS, `xdg-open` on Linux or
+`rundll32` on Windows. It starts that program with no shell and the URL as one
+argument. It opens only `http`, `https` and `file` URLs, refuses one that starts
+with `-`, which the program would read as an option, and says on the bottom line
+what it opened. With `mouse_copy = false` the terminal gets the click, and its own
+link click, often Cmd-click, opens the link.
+
 While a turn runs, Enter puts the next question in a queue, drawn under the
 running turn with a dim `queued` mark. When the turn ends, the chat sends the
 oldest queued question in the same session, so `merud` still gets one turn at a

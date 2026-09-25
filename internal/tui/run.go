@@ -29,10 +29,10 @@ func Run(ctx context.Context, socket string, info Info) error {
 	// and relay gets the program one line later.
 	relay := &programRelay{}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
-	// With [chat] mouse_copy on, Bubble Tea asks the terminal for mouse
-	// clicks, so a click on a code block's label can copy it. The terminal
-	// then leaves plain click-and-drag to the program, which is why the
-	// setting is off by default.
+	// With [chat] mouse_copy on, the default, Bubble Tea asks the terminal
+	// for mouse clicks, so a click on a code block's label can copy it and
+	// a click on a link can open it. The terminal then leaves plain
+	// click-and-drag to the program, so selecting text needs a modifier key.
 	if info.MouseCopy {
 		opts = append(opts, tea.WithMouseCellMotion())
 	}

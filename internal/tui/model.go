@@ -50,8 +50,9 @@ const (
 type Info struct {
 	Profile string // "lite" or "full"
 	Model   string // the main model, such as "minicpm5:2b"
-	// MouseCopy is [chat] mouse_copy: the chat captures the mouse, and a
-	// click on a "⧉ copy N" label copies that code block.
+	// MouseCopy is [chat] mouse_copy: the chat captures the mouse, a
+	// click on a "⧉ copy N" label copies that code block, and a click on
+	// a link opens it.
 	MouseCopy bool
 }
 
@@ -209,6 +210,9 @@ type Model struct {
 	// copy puts a code block on the clipboard (clipboard.go). Tests swap
 	// in a fake, so they never touch the real clipboard.
 	copy copyFunc
+	// open opens a clicked link in the browser (open.go). Tests swap in a
+	// fake, so they never start a browser.
+	open openFunc
 	// blockCount is how many code blocks the session's finished answers
 	// hold. The next block found gets number blockCount+1.
 	blockCount int
@@ -259,6 +263,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		spin:         spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(st.spinner)),
 		help:         h,
 		copy:         systemClipboard().copy,
+		open:         systemOpen,
 	}
 	// The viewport's own keys would scroll on j, k, space and the arrows,
 	// which the user types into the input. Update scrolls it on PgUp and
@@ -298,6 +303,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Mouse messages come only with [chat] mouse_copy on (run.go).
 		return m.handleMouse(msg)
 	case copiedMsg:
+		m.notice = msg.notice()
+		return m, nil
+	case openedMsg:
 		m.notice = msg.notice()
 		return m, nil
 	case pingMsg:
