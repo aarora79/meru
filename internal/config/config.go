@@ -37,6 +37,8 @@ type Config struct {
 	Skills Skills `toml:"skills"`
 	// Web configures the built-in web_search and web_fetch tools (v0.3).
 	Web Web `toml:"web"`
+	// Chat tunes the `meru chat` screen. meru reads it, not merud.
+	Chat Chat `toml:"chat"`
 	// Commands lists the local programs the model may run, one tool each
 	// (v0.3). The commands package checks them when merud starts.
 	Commands []Command `toml:"commands"`
@@ -253,6 +255,16 @@ type Web struct {
 	// MaxResults is how many results web_search returns when the model
 	// doesn't say. Default 8, at most 20.
 	MaxResults int `toml:"max_results"`
+}
+
+// Chat tunes the `meru chat` screen. Only the client reads it; merud
+// ignores it.
+type Chat struct {
+	// MouseCopy makes a click on a code block's "⧉ copy N" label copy the
+	// block. It is off by default: to see clicks, the chat has to capture
+	// the mouse, and then the terminal's own click-and-drag selection
+	// needs a modifier key (Option in iTerm2, Shift in most others).
+	MouseCopy bool `toml:"mouse_copy"`
 }
 
 // Command is one [[commands]] entry: a program the user declared, which the

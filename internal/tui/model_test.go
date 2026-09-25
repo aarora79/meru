@@ -93,15 +93,20 @@ func plainLook() look {
 }
 
 // testModel returns a chat screen wired to ask and send, with a fixed header
-// and no colour.
+// and no colour. Its clipboard fails, so no test touches the real one;
+// copy_test.go swaps in fakes that record what they get.
 func testModel(ask askFunc, send sender) Model {
-	return newModel(ask, send, Info{Profile: "lite", Model: "minicpm5:2b"}, plainLook())
+	m := newModel(ask, send, Info{Profile: "lite", Model: "minicpm5:2b"}, plainLook())
+	m.copy = func(string) (string, error) { return "", errors.New("no clipboard in tests") }
+	return m
 }
 
-// bare returns e without its Glamour cache, so tests can compare turns with
-// == and ignore how the answer was drawn.
+// bare returns e without its Glamour cache and its code blocks, so tests
+// can compare turns and ignore how the answer was drawn. copy_test.go
+// checks the code blocks.
 func bare(e exchange) exchange {
 	e.rendered, e.renderedWidth = "", 0
+	e.code, e.firstBlock = nil, 0
 	return e
 }
 

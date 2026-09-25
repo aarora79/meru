@@ -17,7 +17,7 @@ import (
 )
 
 // Run opens the chat screen and talks to the merud listening on socket. info
-// fills the header. It returns when the user quits (nil) or when ctx is
+// fills the header and turns on mouse copying. It returns when the user quits (nil) or when ctx is
 // cancelled or the terminal fails (an error).
 func Run(ctx context.Context, socket string, info Info) error {
 	ask := func(ctx context.Context, req rpc.Request, approve rpc.ApproveFunc) iter.Seq2[rpc.Event, error] {
@@ -28,7 +28,15 @@ func Run(ctx context.Context, socket string, info Info) error {
 	// built from the model. relay breaks the loop: the model gets relay now,
 	// and relay gets the program one line later.
 	relay := &programRelay{}
-	p := tea.NewProgram(newModel(ask, relay, info, terminalLook()), tea.WithAltScreen(), tea.WithContext(ctx))
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
+	// With [chat] mouse_copy on, Bubble Tea asks the terminal for mouse
+	// clicks, so a click on a code block's label can copy it. The terminal
+	// then leaves plain click-and-drag to the program, which is why the
+	// setting is off by default.
+	if info.MouseCopy {
+		opts = append(opts, tea.WithMouseCellMotion())
+	}
+	p := tea.NewProgram(newModel(ask, relay, info, terminalLook()), opts...)
 	relay.p = p
 
 	final, err := p.Run()

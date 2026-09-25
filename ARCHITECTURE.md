@@ -237,6 +237,16 @@ scrolling answer pane, and two more Charm libraries for its look:
   blocks with syntax highlighting. While the answer streams, the screen shows the
   raw text with a cursor, because half-written Markdown renders wrong.
 
+A finished answer puts a dim `⧉ copy N` label under each code block. The numbers
+run on through the session, so `/copy N` names one block on the whole screen, and
+`/copy` or Ctrl-Y copies the newest answer's last block. The chat finds the blocks
+in the answer's Markdown, not in what Glamour drew, and hands the text to the
+system's clipboard program (`pbcopy`, `wl-copy`, `xclip`, `xsel` or `clip.exe`).
+With none installed, it sends OSC 52, an escape code that asks the terminal to set
+its clipboard. With `[chat] mouse_copy = true` a click on a label copies too. The
+setting is off by default, because a program that captures the mouse takes plain
+click-and-drag selection away from the terminal.
+
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
 
@@ -2437,7 +2447,8 @@ We'll settle these with working code and measurements.
   work without a restart.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
-  stream.
+  stream. Each code block gets a `⧉ copy N` label; `/copy N` or Ctrl-Y copies
+  it, and a click does too with `[chat] mouse_copy` on.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
   trust comes only from editing the `confirm` list. With no one to ask (scripts,

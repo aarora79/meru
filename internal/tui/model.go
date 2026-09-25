@@ -38,11 +38,15 @@ const (
 	maxInputLines = 5
 )
 
-// Info is what the header shows about merud's setup. meru reads it from
-// config.toml, so it can be empty when the file doesn't load.
+// Info is what meru read from config.toml for the chat screen: what the
+// header shows about merud's setup, and the [chat] settings. It can be
+// empty when the file doesn't load.
 type Info struct {
 	Profile string // "lite" or "full"
 	Model   string // the main model, such as "minicpm5:2b"
+	// MouseCopy is [chat] mouse_copy: the chat captures the mouse, and a
+	// click on a "⧉ copy N" label copies that code block.
+	MouseCopy bool
 }
 
 // look is how the screen draws itself: a Lip Gloss renderer that knows the
@@ -89,6 +93,13 @@ type exchange struct {
 	answer string    // the answer's raw text, grown token by token
 	err    string    // why the turn failed, for stateFailed
 	stats  rpc.Event // the closing "done" event and its stats; zero if none came
+
+	// code lists the answer's code blocks, found when the turn ends, and
+	// firstBlock is the number of the first one; the rest follow on. The
+	// numbers count up through the session, so /copy N names one block on
+	// the whole screen. firstBlock is 0 until the turn ends.
+	code       []codeBlock
+	firstBlock int
 
 	// rendered caches the finished answer as Glamour drew it, and
 	// renderedWidth the width it was drawn for. A resize redraws it.
@@ -184,6 +195,13 @@ type Model struct {
 	// notice is a dim line that takes the help line's place until the next
 	// key press, such as the answer to an unknown /command.
 	notice string
+
+	// copy puts a code block on the clipboard (clipboard.go). Tests swap
+	// in a fake, so they never touch the real clipboard.
+	copy copyFunc
+	// blockCount is how many code blocks the session's finished answers
+	// hold. The next block found gets number blockCount+1.
+	blockCount int
 }
 
 // newModel builds the starting screen: an empty conversation and a focused
@@ -230,6 +248,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		conversation: viewport.New(80, 10),
 		spin:         spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(st.spinner)),
 		help:         h,
+		copy:         systemClipboard().copy,
 	}
 	// The viewport's own keys would scroll on j, k, space and the arrows,
 	// which the user types into the input. Update scrolls it on PgUp and
@@ -265,6 +284,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		// Mouse messages come only with [chat] mouse_copy on (run.go).
+		return m.handleMouse(msg)
+	case copiedMsg:
+		m.notice = msg.notice()
+		return m, nil
 	case pingMsg:
 		m.link = linkUp
 		if msg.err != nil {
@@ -338,6 +363,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// chat open, the way Ctrl-C stops a command in a shell.
 		m.stopTurn()
 		m.current().state = stateStopped
+		m.numberBlocks(m.current())
 		m.refresh()
 		return m, nil
 	case m.approval != nil:
@@ -350,6 +376,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
+	case key.Matches(msg, m.keys.Copy):
+		return m.copyLast()
 	case key.Matches(msg, m.keys.Recall) && m.input.Line() == 0:
 		// Up on the input's first line recalls the last question. On a
 		// later line it moves the cursor up, as in any editor.
@@ -468,6 +496,7 @@ func (m *Model) handleDone(msg turnDoneMsg) {
 	case cur.state == stateActive:
 		cur.state = stateDone
 	}
+	m.numberBlocks(cur)
 	m.refresh()
 }
 

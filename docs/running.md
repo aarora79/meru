@@ -123,6 +123,8 @@ In `meru chat`:
 | Ctrl-D | quit |
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
+| Ctrl-Y | copy the last code block of the newest answer |
+| `/copy N`, then Enter | copy code block N; `/copy` alone works like Ctrl-Y |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
@@ -158,6 +160,43 @@ without the link. A pipe or a file gets plain text.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
+
+### Copying code
+
+When an answer holds code, such as the commands to install and run `btop`, each
+block gets a dim label on the line under it:
+
+```text
+    brew install btop
+    ⧉ copy 1
+```
+
+Type `/copy 1` and Enter to put that block on the clipboard, or press Ctrl-Y for
+the last block of the newest answer. The numbers run on through the conversation
+and start again after `/new`. The clipboard gets the block's text as the model
+wrote it, with no colours and no newline at the end, so a pasted command waits
+for you to press Enter. The bottom line says what happened, such as
+`copied block 1 (1 line)`.
+
+`meru chat` copies with `pbcopy` on macOS, `clip.exe` on Windows, and on Linux
+with the first of `wl-copy`, `xclip` and `xsel` it finds. With none installed it
+asks the terminal to copy through OSC 52, an escape code that many terminals
+accept, and says so. In tmux, OSC 52 needs `set -g set-clipboard on`.
+
+To copy with a click on the label, set this in `~/.meru/config.toml` and restart
+`meru chat`:
+
+```toml
+[chat]
+mouse_copy = true
+```
+
+The chat then takes the mouse, so the wheel scrolls the conversation and a plain
+drag no longer selects text. To select text yourself, hold Option while you drag
+in iTerm2, or Shift in most other terminals.
+
+One-shot `meru "..."` prints no labels: its output stays plain for pipes and
+scripts.
 
 ### Tell Meru about you
 
