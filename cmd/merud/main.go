@@ -194,10 +194,6 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return fmt.Errorf("index: %w", err)
 	}
 
-	rt, err := newRouter(cfg, eng, log)
-	if err != nil {
-		return err
-	}
 	// merud owns the memory folder: the agent reads the profile from it,
 	// remember writes to it, and the memory ops answer `meru memory`. Its
 	// syncer copies the files into the store, where recall searches them.
@@ -225,6 +221,12 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	}
 	defer tools.Close()
 	logWebSearch(ctx, cfg, log)
+	// The router comes after the tools, because its prompt names what the
+	// tool service connects.
+	rt, err := newRouter(cfg, eng, tools.connectedTools, log)
+	if err != nil {
+		return err
+	}
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
@@ -377,14 +379,15 @@ func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
 
 // newRouter builds the router the agent asks for each turn's route: the
 // one-token classifier in internal/router, running on the fast model and
-// writing its debug lines to log.
-func newRouter(cfg config.Config, eng engine.Engine, log *slog.Logger) (agent.Router, error) {
+// writing its debug lines to log. Each turn, the router's prompt names what
+// tools returns as connected.
+func newRouter(cfg config.Config, eng engine.Engine, tools func() []string, log *slog.Logger) (agent.Router, error) {
 	rc, err := router.ConfigFrom(cfg.Router, cfg.Models.Fast)
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
 	rc.Log = log
-	return routerAdapter{eng: eng, cfg: rc, folders: cfg.Index.Folders}, nil
+	return routerAdapter{eng: eng, cfg: rc, folders: cfg.Index.Folders, tools: tools}, nil
 }
 
 // routerAdapter lets router.Decide serve as an agent.Router. The two packages
@@ -393,13 +396,16 @@ type routerAdapter struct {
 	eng     engine.Engine
 	cfg     router.Config
 	folders []string // [index] folders; the router's prompt names them
+	// tools returns what is connected, for the prompt to name. It is a
+	// function because an MCP reload changes the list while merud runs.
+	tools func() []string
 }
 
 // Decide asks the router for this turn's route and copies the result into the
 // agent's own Decision type. router.Decide records the meru.route span and
 // metric itself.
 func (r routerAdapter) Decide(ctx context.Context, question string, history []engine.Message) (agent.Decision, error) {
-	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question, Folders: r.folders})
+	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question, Folders: r.folders, Tools: r.tools()})
 	if err != nil {
 		return agent.Decision{}, err
 	}

@@ -7,6 +7,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/aarora79/meru/internal/catalog"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
 
@@ -64,6 +66,73 @@ func TestAsksAboutToolNoun(t *testing.T) {
 	}
 	if asksAboutToolNoun("what was the last email I sent?", []engine.ToolSpec{spec("read_file")}) {
 		t.Error("with no MCP servers, no question should match")
+	}
+}
+
+// catalogServers returns the catalog's servers as `meru mcp add` writes
+// them: each name with its allow list.
+func catalogServers() []config.MCPServer {
+	var out []config.MCPServer
+	for _, e := range catalog.Entries() {
+		out = append(out, config.MCPServer{Name: e.Name, Allow: e.Allow})
+	}
+	return out
+}
+
+func TestConnectedTools(t *testing.T) {
+	web := config.Web{SearXNGURL: "http://127.0.0.1:8888"}
+	tests := []struct {
+		name string
+		cfg  config.Config
+		want []string
+	}{
+		{"nothing connected", config.Config{}, nil},
+		{
+			// The eval's connected set: internal/router's evalTools holds
+			// the same text.
+			"catalog servers, a command and web search",
+			config.Config{
+				MCP:      config.MCP{Servers: catalogServers()},
+				Commands: []config.Command{{Name: "git-log"}},
+				Builtin:  config.Builtin{Tools: config.BuiltinTools()},
+				Web:      web,
+			},
+			[]string{"google (gmail, message, thread, event, drive)", "obsidian (vault)", "git-log", "web search"},
+		},
+		{
+			"a server that allows nothing is left out",
+			config.Config{MCP: config.MCP{Servers: []config.MCPServer{{Name: "idle"}, {Name: "notes", Allow: []string{"search_notes"}}}}},
+			[]string{"notes"},
+		},
+		{
+			"at most five nouns, none of them the server's own name",
+			config.Config{MCP: config.MCP{Servers: []config.MCPServer{{Name: "home", Allow: []string{
+				"get_home_lights", "set_thermostat", "list_cameras", "lock_doors", "open_garage", "water_plants",
+			}}}}},
+			[]string{"home (light, thermostat, camera, lock, door)"},
+		},
+		{
+			"an A2A agent names its skills",
+			config.Config{A2A: config.A2A{Agents: []config.A2AAgent{{Name: "research", Allow: []string{"summarize_paper"}}}}},
+			[]string{"research (summarize, paper)"},
+		},
+		{
+			"web_fetch alone reads pages",
+			config.Config{Builtin: config.Builtin{Tools: []string{"web_search", "web_fetch", "datetime", "remember"}}},
+			[]string{"web pages"},
+		},
+		{
+			"web search needs SearXNG",
+			config.Config{Builtin: config.Builtin{Tools: []string{"web_search", "datetime"}}},
+			nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ConnectedTools(tt.cfg); !slices.Equal(got, tt.want) {
+				t.Errorf("ConnectedTools = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -243,6 +243,39 @@ func TestBuildMessages(t *testing.T) {
 	}
 }
 
+func TestBuildMessagesTools(t *testing.T) {
+	// cLine is option C's line with no tools connected.
+	const cLine = "C = Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) " +
+		"or an action (send, book, create, schedule). Nothing from the user's notes."
+	tests := []struct {
+		name  string
+		tools []string
+		want  string // option C's whole line, newline included
+	}{
+		{"none", nil, cLine + "\n"},
+		{"one command", []string{"git-log"}, cLine +
+			" Connected: git-log; questions about these, by name, are C, or D when they also need the user's notes.\n"},
+		{"servers, a command and the web", []string{"google (gmail, event, drive)", "obsidian (vault)", "git-log", "web search"}, cLine +
+			" Connected: google (gmail, event, drive), obsidian (vault), git-log, web search;" +
+			" questions about these, by name, are C, or D when they also need the user's notes.\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := buildMessages(Turn{Question: "list my obsidian vaults", Tools: tt.tools})[0].Content
+			if !strings.Contains(user, "\n"+tt.want) {
+				t.Errorf("prompt lacks option C's line %q:\n%s", tt.want, user)
+			}
+			// The list sits in the fixed part, and two turns with the same
+			// tools share it, so Ollama can reuse its work on the prefix.
+			other := buildMessages(Turn{Question: "something else", Tools: tt.tools})[0].Content
+			prefix := user[:strings.Index(user, "Conversation so far:")]
+			if !strings.HasPrefix(other, prefix) {
+				t.Errorf("the fixed prefix changed between turns")
+			}
+		})
+	}
+}
+
 func TestExamplesCoverEveryRoute(t *testing.T) {
 	count := map[Route]int{}
 	for _, e := range examples {

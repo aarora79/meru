@@ -173,7 +173,8 @@ func TestMCPProbeOp(t *testing.T) {
 func TestMCPReloadOp(t *testing.T) {
 	dir := shortDir(t)
 	url := startMCPServer(t)
-	d := startDaemon(t, dir, "", &fakeEngine{version: "0.13.0"})
+	eng := &fakeEngine{version: "0.13.0"}
+	d := startDaemon(t, dir, "", eng)
 	cfgPath := filepath.Join(dir, "config.toml")
 
 	steps := []struct {
@@ -181,16 +182,19 @@ func TestMCPReloadOp(t *testing.T) {
 		config string
 		want   []string // the MCP tools after the reload
 		err    string   // a piece of the error; empty means success
+		// routed is what the router's prompt names as connected after the
+		// reload; "" means it names no server.
+		routed string
 	}{
 		{"add", fmt.Sprintf("[[mcp.servers]]\nname = \"files\"\nurl = %q\nallow = [\"echo\"]\n", url),
-			[]string{"files.echo"}, ""},
+			[]string{"files.echo"}, "", "Connected: files (echo),"},
 		{"change", fmt.Sprintf("[[mcp.servers]]\nname = \"files\"\nurl = %q\nallow = [\"echo\", \"fail\"]\n", url),
-			[]string{"files.echo", "files.fail"}, ""},
+			[]string{"files.echo", "files.fail"}, "", "Connected: files (echo, fail),"},
 		// A bad entry fails the reload, and the old pool stays.
 		{"bad entry", fmt.Sprintf("[[mcp.servers]]\nname = \"files\"\nurl = %q\nallow = [\"*\"]\n", url),
-			[]string{"files.echo", "files.fail"}, "wildcards"},
-		{"bad toml", "[[mcp.servers]\n", []string{"files.echo", "files.fail"}, "config.toml"},
-		{"remove", "", nil, ""},
+			[]string{"files.echo", "files.fail"}, "wildcards", "Connected: files (echo, fail),"},
+		{"bad toml", "[[mcp.servers]\n", []string{"files.echo", "files.fail"}, "config.toml", "Connected: files (echo, fail),"},
+		{"remove", "", nil, "", ""},
 	}
 	for _, s := range steps {
 		if err := os.WriteFile(cfgPath, []byte(s.config), 0o600); err != nil {
@@ -222,6 +226,18 @@ func TestMCPReloadOp(t *testing.T) {
 		}
 		if want := min(len(s.want), 1); len(rows) != want || (want == 1 && (rows[0].Name != "files" || rows[0].State != rpc.MCPConnected)) {
 			t.Errorf("%s: mcp_status rows = %+v, want %d connected", s.name, rows, want)
+		}
+		// The next question's router prompt names the servers the reload
+		// left, so the router sees a new server without a restart.
+		call(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "hello"})
+		eng.mu.Lock()
+		prompt := eng.route
+		eng.mu.Unlock()
+		if s.routed != "" && !strings.Contains(prompt, s.routed) {
+			t.Errorf("%s: router prompt lacks %q:\n%s", s.name, s.routed, prompt)
+		}
+		if s.routed == "" && strings.Contains(prompt, "files (") {
+			t.Errorf("%s: router prompt still names the removed server:\n%s", s.name, prompt)
 		}
 	}
 }

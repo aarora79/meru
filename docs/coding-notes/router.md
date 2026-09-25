@@ -20,7 +20,7 @@ reads how likely the model thought each of the letters A, B, C and D was.
 
 ```mermaid
 flowchart LR
-    T["Turn<br/>question, history, folders"] --> P["buildMessages<br/>options A–D, folders, examples,<br/>then the turn, ends 'Answer: '"]
+    T["Turn<br/>question, history, folders, tools"] --> P["buildMessages<br/>options A–D, folders, tools, examples,<br/>then the turn, ends 'Answer: '"]
     P --> G["engine.Generate<br/>MaxTokens 1, LogProbs, TopLogProbs 20"]
     G --> L["log probabilities<br/>at position 0"]
     L --> F["probs<br/>keep A–D, exp(lp / T), normalise"]
@@ -72,6 +72,22 @@ names the user's own project, and it answered `direct`. `merud` fills
 `Turn.Folders` from config, in `routerAdapter` in `cmd/merud/main.go`. Config
 changes only when `merud` restarts, so the line stays the same from turn to turn
 and counts as part of the fixed part.
+
+When `Turn.Tools` holds what the user has connected, C's line gains a sentence
+of its own:
+
+```text
+Connected: google (gmail, message, thread, event, drive), obsidian (vault), git-log, web search; questions about these, by name, are C, or D when they also need the user's notes.
+```
+
+The router package doesn't build that list. `agent.ConnectedTools` in
+`internal/agent/toolnouns.go` builds it from config, with the same noun rules
+the agent's fifth route rule uses (see [agent.md](agent.md)). `merud`'s tool
+service keeps the list, builds it again when an MCP reload changes the servers,
+and `routerAdapter` hands it to each turn. The list changes only then, so it
+belongs to the fixed part too. The clause about D matters: a list on C's line
+with no word about D pulled "email the team the release checklist from my meru
+repo" and other D questions to C.
 
 `routeForLetter` trims spaces and ignores case. A tokenizer may emit `A`, ` A` or
 `a` for the same answer; all three map to `direct`. `AB`, `Alpha` and `1` map to
@@ -235,10 +251,12 @@ seven questions and prints each distribution. `make router-eval` scores all 153
 labelled questions and prints the report, a temperature sweep, a
 `min_confidence` sweep, and both decision rules side by side with a sweep of the
 `marginal` thresholds. It gives every row the folders in `evalFolders`
-(`~/notes`, `~/repos/meru`, `~/repos/blog`). On the development machine
-(Ollama 0.34, MiniCPM5-2B at Q4_K_M) the router picked the labelled route for 32
-of 40 held-out questions, at about 28 ms per warm decision. Without the folder
-line it picked 30 of 40. See
+(`~/notes`, `~/repos/meru`, `~/repos/blog`) and the connected list in
+`evalTools`: the catalog's `google` and `obsidian` servers, a `git-log`
+command and web search. On the development machine (Ollama 0.34, MiniCPM5-2B
+at Q4_K_M) the router's top pick matched the label for 36 of 46 held-out
+questions, at about 30 ms per warm decision; without the connected list it
+matched 34. See
 [Calibration](../fast-router.md#calibration) and the notes at the end of that
 page.
 
