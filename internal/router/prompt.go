@@ -82,18 +82,25 @@ func routeForLetter(token string) (r Route, ok bool) {
 
 // buildMessages turns a turn into the messages sent to the fast model: the
 // system prompt, if there is one, then a user message that holds the lettered
-// options, the user's indexed folders, the examples, the history and the
-// question, and ends with "Answer: " so the next token is the letter.
+// options, the user's indexed folders, what the user has connected, the
+// examples, the history and the question, and ends with "Answer: " so the
+// next token is the letter.
 //
 // The folders matter because the model can't otherwise tell that "meru" in
-// "what database does meru use" names one of the user's own projects.
+// "what database does meru use" names one of the user's own projects. The
+// connected list does the same for tools: without it, "what does the
+// onboarding doc in drive say" went to A and "when's my next meeting with
+// Priya" to B.
+// It goes on C's line and sends a question that also needs the user's
+// notes to D; a list on C's line with no word about D pulled such
+// questions to C (docs/fast-router.md, "Notes from the connected line").
 //
-// The fixed part (options, folders and examples) comes first and the parts that
-// change each turn come last. Ollama reuses the work it did on a prompt's
-// opening tokens when the next prompt starts the same way, so the fixed part
-// costs almost nothing after the first turn. The order also helped
-// accuracy: with the options first, the question sits right before the
-// answer cue.
+// The fixed part (options, folders, tools and examples) comes first and the
+// parts that change each turn come last. Ollama reuses the work it did on a
+// prompt's opening tokens when the next prompt starts the same way, so the
+// fixed part costs almost nothing after the first turn. The order also
+// helped accuracy: with the options first, the question sits right before
+// the answer cue.
 //
 // History goes newest first, so the turns most likely to matter sit closest
 // to the question. Only user and assistant messages go in; tool results are
@@ -109,6 +116,10 @@ func buildMessages(turn Turn) []engine.Message {
 		if o.route == RouteSearch && len(turn.Folders) > 0 {
 			b.WriteString(" The user's files are in " + strings.Join(turn.Folders, ", ") +
 				"; questions about projects kept there, by name, are B.")
+		}
+		if o.route == RouteTools && len(turn.Tools) > 0 {
+			b.WriteString(" Connected: " + strings.Join(turn.Tools, ", ") +
+				"; questions about these, by name, are C, or D when they also need the user's notes.")
 		}
 		b.WriteString("\n")
 	}

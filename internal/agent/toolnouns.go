@@ -1,6 +1,7 @@
 // This file holds the route rule for what connected tools act on: a
 // question about "my last email" needs the gmail tools even when it names
-// no server and the router picks search.
+// no server and the router picks search. It also holds ConnectedTools,
+// which uses the same nouns to tell the router what is connected.
 
 package agent
 
@@ -8,9 +9,84 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 )
+
+// maxSourceNouns caps the nouns ConnectedTools lists for one server or
+// agent. The router's prompt goes to a 2B model on every turn, so each
+// word costs; the first few nouns say what a server is for.
+const maxSourceNouns = 5
+
+// ConnectedTools returns one short phrase for each tool source cfg
+// connects, for the router's prompt (docs/fast-router.md, "The prompt
+// contract"): each MCP server and A2A agent with the nouns from its allowed
+// tool names, such as "google (gmail, message, event, drive)", each local
+// command by name, such as "git-log", and the web, as "web search" or,
+// with web_fetch alone, "web pages".
+//
+// It reads config, not the live tool list, so a server that hasn't
+// connected yet still shows, and the text stays the same from turn to
+// turn until config changes. A server or agent that allows no tools gives
+// the model nothing, so it is left out. So are the other built-ins:
+// datetime is on every route, the file tools belong to search, and
+// configure, remember and write_file have no question shape the router
+// needs to learn.
+func ConnectedTools(cfg config.Config) []string {
+	var out []string
+	for _, s := range cfg.MCP.Servers {
+		if len(s.Allow) > 0 {
+			out = append(out, describeSource(s.Name, s.Name+".", s.Allow))
+		}
+	}
+	for _, a := range cfg.A2A.Agents {
+		if len(a.Allow) > 0 {
+			out = append(out, describeSource(a.Name, "a2a."+a.Name+".", a.Allow))
+		}
+	}
+	for _, c := range cfg.Commands {
+		out = append(out, c.Name)
+	}
+	// Of the built-ins, only the web goes in. Adding "web pages" beside
+	// "web search", and "remember", cut the router's accuracy on the
+	// labelled fit set from 0.907 to 0.850; remember has its own rule after
+	// the router. web_search needs a SearXNG address as well; without one it
+	// stays off, and web_fetch alone still reads pages.
+	bt := cfg.Builtin.Tools
+	switch {
+	case slices.Contains(bt, builtin.WebSearch) && cfg.Web.SearXNGURL != "":
+		out = append(out, "web search")
+	case slices.Contains(bt, builtin.WebFetch):
+		out = append(out, "web pages")
+	}
+	return out
+}
+
+// describeSource returns name, followed in brackets by up to
+// maxSourceNouns nouns from the tools in allow. Each tool gets the full
+// name dispatch gives it, prefix+tool, so toolNouns reads it the way it
+// reads a live tool. The source's own name is left out, because a
+// server's tools often repeat it ("obsidian_simple_search").
+func describeSource(name, prefix string, allow []string) string {
+	// make builds a slice with length 0 and room for len(allow) items.
+	specs := make([]engine.ToolSpec, 0, len(allow))
+	for _, t := range allow {
+		specs = append(specs, engine.ToolSpec{Name: prefix + t})
+	}
+	self := singular(strings.ToLower(name))
+	var nouns []string
+	for _, n := range toolNouns(specs) {
+		if n != self && len(nouns) < maxSourceNouns {
+			nouns = append(nouns, n)
+		}
+	}
+	if len(nouns) == 0 {
+		return name
+	}
+	return name + " (" + strings.Join(nouns, ", ") + ")"
+}
 
 // toolNouns returns the nouns in the names of the MCP and A2A tools in
 // specs, singular and lower case: "gmail" and "message" from

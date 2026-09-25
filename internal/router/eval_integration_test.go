@@ -84,6 +84,15 @@ func TestRouterEval(t *testing.T) {
 		t.Fatalf("warm-up Decide: %v", err)
 	}
 	promptTokens := eng.last.Usage.PromptTokens
+	// The prompt's size with the eval's folders, then with its tools too, so
+	// the report shows what each line costs on every turn.
+	var sized [2]int
+	for i, tools := range [][]string{nil, evalTools} {
+		if _, err := Decide(ctx, eng, cfg, Turn{Question: "hello", Folders: evalFolders, Tools: tools}); err != nil {
+			t.Fatalf("sizing Decide: %v", err)
+		}
+		sized[i] = eng.last.Usage.PromptTokens
+	}
 
 	run := func(rows []labelled) []sample {
 		var out []sample
@@ -100,7 +109,8 @@ func TestRouterEval(t *testing.T) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Ollama %s, model %s, %d fit rows, %d held-out rows\n", info.RuntimeVersion, model, len(fit), len(held))
-	fmt.Fprintf(&b, "prompt tokens for a question with no history: %d\n", promptTokens)
+	fmt.Fprintf(&b, "prompt tokens for a question with no history: %d; with the folders %d; with folders and tools %d\n",
+		promptTokens, sized[0], sized[1])
 	fmt.Fprintf(&b, "config: temperature %.2f, min_confidence %.2f, fallback %s\n\n", cfg.Temperature, cfg.MinConfidence, cfg.Fallback)
 	score(fit, cfg).write(&b, "fit set, config defaults")
 	fmt.Fprintln(&b)

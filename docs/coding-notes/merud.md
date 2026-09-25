@@ -386,13 +386,25 @@ goes through `Redact` before it leaves, in case a server echoes a key back.
 now, swaps it into the dispatcher with `Replace`, and closes the old pool:
 
 ```go
+names := s.started
+names.MCP = cfg.MCP
+
 s.mu.Lock()
 old := s.pool
 s.pool, s.secrets = pool, sec
+s.connected = agent.ConnectedTools(names)
 s.mu.Unlock()
 s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
 old.Close()
 ```
+
+`connected` is the list of servers, commands and web search that the router's
+prompt names (see [router.md](router.md)). `newToolService` builds it from
+config at startup, and a reload builds it again with the new `[mcp]` servers
+and the rest as `merud` started, since only the pool reloads. `newRouter` takes
+`connectedTools`, the method that reads it under the lock, so `merud` builds
+the router after the tool service. The list changes only at startup and on a
+reload, so the router's prompt opens the same way from turn to turn.
 
 The new pool has no memory of the old one, so a server you added appears, one you
 changed restarts with its new settings, and one you removed is gone. `old.Close()`

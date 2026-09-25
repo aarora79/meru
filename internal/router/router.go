@@ -161,6 +161,11 @@ type Turn struct {
 	// such as "~/repos/meru". The prompt names them, so a question about a
 	// project kept there goes to search. Empty leaves the line out.
 	Folders []string
+	// Tools lists what the user has connected, one short phrase each, such
+	// as "google (gmail, event, drive)", "git-log" or "web search". The
+	// prompt names them on C's line, so a question about one goes to
+	// tools. Empty leaves the list out.
+	Tools []string
 }
 
 // Decision is what the router concluded.

@@ -479,6 +479,31 @@ configure tool can add a server while `merud` runs. In testing, the router
 sent "Search my Obsidian vault for notes mentioning 'AI'" to `search`, and
 the model, offered no tools, said it couldn't search the vault.
 
+Three more rules follow, for "remember", for the web, and for what a
+connected server's tools act on (`asksAboutToolNoun` in `toolnouns.go`). The
+last one splits each MCP and A2A tool name into words, keeps the nouns, and
+adds tools when a word in the question matches one, so "email" matches
+`gmail`.
+
+`toolnouns.go` also holds `ConnectedTools`, which tells the router what is
+connected before it picks, so it needs these rules less. It reads config, not
+the live tool list, so a server that hasn't connected yet still counts. For
+each MCP server and A2A agent that allows a tool it writes the name and up to
+five nouns, through `describeSource`, which hands the allowed names to
+`toolNouns` as `server.tool`, the way dispatch names them:
+
+```go
+ConnectedTools(cfg) // ["google (gmail, message, thread, event, drive)", "obsidian (vault)", "git-log", "web search"]
+```
+
+Each `[[commands]]` entry adds its name. Of the built-ins only the web goes
+in, as "web search", or "web pages" when `web_fetch` is on without SearXNG:
+adding "remember" and a second web entry cut the router's accuracy on the
+labelled fit set from 0.907 to 0.850. `merud` passes the list to the router;
+see [router.md](router.md). The rules above stay: on the labelled set the
+second rule still catches the two Obsidian questions the router sends to
+`search`, and the noun rule still rescues one email question.
+
 Then the search:
 
 ```go

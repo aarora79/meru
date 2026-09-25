@@ -35,7 +35,8 @@ A route decision is a classification, so read it from the logits instead of pars
 prose.
 
 1. Prompt the `fast` model with one lettered option per route, each with a
-   description, the folders Meru indexes, two worked examples per route, then the
+   description, the folders Meru indexes, the tools the user connected, two
+   worked examples per route, then the
    session history and the question.
 2. Ask Ollama for **one** token with log probabilities, with thinking turned off
    (`think: false`). A thinking model otherwise spends that token starting its hidden
@@ -51,7 +52,7 @@ from a fixed set of letters rather than from whatever it wrote.
 
 ```mermaid
 flowchart LR
-    Q["question + history"] --> P["build prompt<br/>A–D, folders, examples, then the turn"]
+    Q["question + history"] --> P["build prompt<br/>A–D, folders, tools, examples, then the turn"]
     P --> O["Ollama /api/chat<br/>num_predict 1<br/>logprobs true, think false"]
     O --> T["top_logprobs at position 0"]
     T --> F["keep A–D<br/>exp, temperature, normalise"]
@@ -99,7 +100,7 @@ Decide how to answer the user's next question.
 
 A = General knowledge, chit-chat, maths, coding or writing help. Needs nothing about the user and nothing recent or live.
 B = Look in the user's own saved notes, documents, code repos or past chats. Nothing live, no action. The user's files are in ~/notes, ~/repos/meru; questions about projects kept there, by name, are B.
-C = Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) or an action (send, book, create, schedule). Nothing from the user's notes.
+C = Live, recent or outside data (web, news, scores, weather, prices, email inbox, calendar) or an action (send, book, create, schedule). Nothing from the user's notes. Connected: google (gmail, message, thread, event, drive), obsidian (vault), git-log, web search; questions about these, by name, are C, or D when they also need the user's notes.
 D = Needs the user's notes or files AND a live lookup or an action.
 
 Examples:
@@ -142,13 +143,25 @@ Each part earned its place on the labelled set (see [Calibration](#calibration))
   nothing told it that "meru" is one of the user's own projects. The folders change
   only when config does, so the line sits in the fixed part and Ollama's reuse
   still works. With no folders the line is left out.
+- **Connected tools on C's line.** When the user has connected anything, C's
+  line names it and says that questions about these, by name, are C, or D when
+  they also need the user's notes. `agent.ConnectedTools` builds the list from
+  config: each MCP server and A2A agent that allows a tool, with up to five
+  nouns from its allowed tool names; each `[[commands]]` entry by name; and
+  "web search" when `web_search` is on with a SearXNG address, or "web pages"
+  when only `web_fetch` is. `merud` builds it at startup and on each MCP reload
+  and passes it in `Turn.Tools`, so it stays in the fixed part. Without it the
+  router sent "what does the onboarding doc in drive say about laptops" to
+  `direct` and "when's my next meeting with Priya" to `search`. See
+  [Notes from the connected line](#notes-from-the-connected-line).
 - **Two examples per route.** None repeats a question in the labelled set, and a
   unit test checks that.
 - **Letters A to D in route order.** Every other order tried did worse, and so did
   the words `direct`, `search`, `tools` and `both`, which the tokenizer splits.
 
 The prompt costs about 256 tokens for a question with no history and no folders,
-against about 120 before these changes.
+against about 120 before these changes. The eval's three folders add 33 tokens,
+and its connected list adds 48 more, for 337.
 
 ### Tokeniser detail
 
@@ -428,9 +441,11 @@ notes about sourdough" and "add a line to today's daily note in obsidian" to
 now?" to `search` at 0.92. No threshold on the grid reaches those. In the eval,
 without the system prompt and history of the real turn, the email question gave
 search 0.646, tools 0.111, search+tools 0.165: `top` chose search, and `marginal`
-chose search+tools with P(tools) at 0.276, just over the 0.25 bar. The router's
-prompt takes no list of connected servers, so the eval gives it none; the agent
-loop's rules after the router handle server names and tool nouns.
+chose search+tools with P(tools) at 0.276, just over the 0.25 bar. At the time
+the router's prompt took no list of connected servers, so the eval gave it none;
+the agent loop's rules after the router handled server names and tool nouns.
+[Notes from the connected line](#notes-from-the-connected-line) has the numbers
+with the list.
 
 **Decision.** `marginal` lowers the missed rate on both sets and keeps tool
 over-offer within 3 points, so it ships behind `decision = "marginal"`. The
@@ -635,3 +650,106 @@ use", "what is sqlite good for", "what language is kubernetes written in".
   the assistant's own name. With the rule, the same question listed the vaults,
   searched one and answered. The router's span and metric keep what it chose,
   as with the folder rule.
+
+## Notes from the connected line
+
+C's line now names what the user has connected (see
+[The prompt contract](#the-prompt-contract)). Measured with `make router-eval` on
+the development machine: Ollama 0.34.0, MiniCPM5-2B at Q4_K_M, temperature 1.25,
+`min_confidence = 0.45`, the same 153 rows split 107 fit and 46 held out. Every
+row gets the eval's folders and the connected list in `evalTools`, which is what
+`agent.ConnectedTools` gives for the catalog's `google` and `obsidian` servers
+with their allow lists, a `git-log` command and web search:
+
+```text
+google (gmail, message, thread, event, drive), obsidian (vault), git-log, web search
+```
+
+Three runs of each prompt gave the same route on every row; only latency moved.
+"Before" is the same harness with `Turn.Tools` left empty. Rates are shares of
+the rows in the set. "Missed" means the route lacks a search or tools the label
+needs; "extra tools" means the route offers tools the label doesn't need.
+
+Held-out set, 46 rows:
+
+| rule | prompt | exact match | missed | extra search | extra tools |
+| --- | --- | --- | --- | --- | --- |
+| `top`, floor 0.45 | before | 0.761 (35) | 0.196 (9) | 0.130 | 0.000 |
+| `top`, floor 0.45 | after | 0.739 (34) | 0.152 (7) | 0.109 | 0.065 |
+| `marginal` 0.30 / 0.25 | before | 0.739 (34) | 0.152 (7) | 0.174 | 0.022 |
+| `marginal` 0.30 / 0.25 | after | 0.783 (36) | 0.065 (3) | 0.130 | 0.065 |
+| `marginal` 0.50 / 0.30, fit-set pick | after | 0.739 (34) | 0.152 (7) | 0.087 | 0.065 |
+
+Every row, and the 18 connected-server rows, `top` rule:
+
+| set | prompt | exact match | missed | extra search | extra tools |
+| --- | --- | --- | --- | --- | --- |
+| all 153 | before | 0.824 (126) | 0.131 (20) | 0.098 | 0.013 |
+| all 153 | after | 0.856 (131) | 0.098 (15) | 0.052 | 0.033 |
+| connected 18 | before | 0.500 | 0.333 | 0.444 | 0.000 |
+| connected 18 | after | 0.722 | 0.278 | 0.167 | 0.000 |
+
+The model's top pick, before the confidence floor, matched 36 of 46 held-out
+rows against 34, and `tools` recall on the held-out set rose from 5 of 13 to 9
+of 13. The floor now sends 5 held-out rows to the fallback against 3, which is
+why exact match under `top` fell by one row while the top pick gained two.
+
+- **What got better.** Fifteen rows now match their label under `top`, among
+  them "what was the last email I sent?", "how many unread emails do I have",
+  "when's my next meeting with Priya" and "find the offsite agenda doc in my
+  google drive" (search or search+tools to tools), "what does the onboarding doc
+  in drive say about laptops" and "how much is a tesla model 3 these days"
+  (direct to tools), and "what is the default chunk size in meru's indexer"
+  (direct to search). "Text alex that I'm on my way" and "looks good, send it"
+  moved from search to search+tools: not exact, but no longer missing tools.
+- **What got worse.** Ten rows that matched no longer do. Seven are
+  search+tools questions that name mail, a calendar or a message and now go to
+  tools: "email the team the release checklist from my meru repo", "is the
+  meeting from my trip notes on my calendar yet?", "forward the summary we made
+  yesterday to my manager", "post the release notes from my blog changelog to
+  slack", "did anyone email me about the bug I described in my notes", "search
+  the web for fixes to the error in my debugging log" and "what's changed in
+  upstream ollama since the version my project pins". The agent loop searches
+  on every route but `direct`, so a `tools` turn still gets the user's files;
+  these cost less than the "missed" column says. The other three gained a
+  fallback or tools they don't need: "what did we talk about yesterday about
+  the router?", "what documents do you have indexed" and "train leaves at 3:40
+  and the trip is 2h35m, when do I get in?".
+- **What the list doesn't fix.** "Search my obsidian vault for notes about
+  sourdough" and "add a line to today's daily note in obsidian" still go to
+  `search` at P(search) 0.81 and 0.61: the word "note" pulls them to B. "What's
+  uncommitted in my blog repo right now?" goes to `search` at 0.95, because
+  nothing in "git-log" says "uncommitted".
+- **Wordings tried.** Each wording was scored on the fit set with `top`, and
+  the one with the highest fit-set exact match ships. Some of them, with
+  fit-set exact match and missed rate: before, 0.850 and 0.103.
+  "Connected: …; questions about these, by name, are C" with no word about D:
+  0.813, missed 0.140; it pulled search+tools questions to C. The list alone,
+  with no instruction: 0.813, missed 0.178. The shipped sentence with "web
+  pages" and "remember" in the list too: 0.850, missed 0.093. A C line that
+  opens "Use a connected tool (…)" and a D line that says "AND a connected
+  tool": 0.710. The list on a line of its own after the options: 0.841. The
+  shipped sentence with the list of servers, commands and web search: 0.907,
+  missed 0.075.
+- **Refitting.** The temperature sweep's lowest ECE on the fit set sits at
+  T = 1.25, the shipped value, so it stays. The confidence floor gives the same
+  fit-set routes at every value from 0 to 0.45, so it stays at 0.45. The grid
+  for `marginal` picks 0.50 / 0.30 on the fit set, where it ties 0.30 / 0.25 on
+  missed (0.065) and wins on exact match (0.888 against 0.850). On the held-out
+  set 0.50 / 0.30 misses 7 against 3. `marginal` is off by default, the fit set
+  can't separate the two pairs on the number the rule ranks first, and the
+  held-out set favours the shipped pair, so the thresholds stay at 0.30 / 0.25.
+- **The rules after the router.** Replayed over the 153 top-rule routes with
+  the eval's tools: the folder rule fires once, on "suggest a title for a blog
+  post about running LLMs locally", where it adds a needless search; before the
+  list it also rescued "what is the default chunk size in meru's indexer",
+  which the router now gets. The server rule fires on the two Obsidian rows
+  above and gives them their tools, as before. The noun rule fires on 5 rows
+  against 8; before, it rescued four email and Drive questions, and now three
+  of them route to tools on their own, leaving "reply to the last email from my
+  landlord saying thanks". The remember and web rules fire on no labelled row,
+  with or without the list, because the set has no question they match. All
+  five stay.
+- **Cost.** The list adds 48 prompt tokens, from 289 to 337 with the eval's
+  folders. It changes only when config does, so Ollama reuses its work on it,
+  and warm decisions stayed at about 30 ms.

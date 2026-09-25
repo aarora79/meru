@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/aarora79/meru/internal/a2a"
+	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/commands"
@@ -47,10 +48,16 @@ type toolService struct {
 	a2a        *a2a.Client
 	dispatcher *dispatch.Dispatcher
 
-	mu      sync.Mutex       // guards secrets and pool
-	secrets *secrets.Secrets // swapped on reload
-	pool    *mcp.Pool        // swapped on reload
-	reload  sync.Mutex       // lets one reload run at a time
+	// started is config as merud read it at startup. A reload takes only
+	// [mcp] from config.toml; the commands, agents and built-ins keep what
+	// merud started with, and so does the router's list of them.
+	started config.Config
+
+	mu        sync.Mutex       // guards secrets, pool and connected
+	secrets   *secrets.Secrets // swapped on reload
+	pool      *mcp.Pool        // swapped on reload
+	connected []string         // what the router's prompt names; rebuilt on reload
+	reload    sync.Mutex       // lets one reload run at a time
 }
 
 // newToolService loads secrets.toml, checks the [[commands]] entries,
@@ -91,7 +98,8 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		return nil, fmt.Errorf("a2a: %w", err)
 	}
 
-	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, a2a: ac, secrets: sec, pool: pool}
+	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, a2a: ac, secrets: sec, pool: pool,
+		started: cfg, connected: agent.ConnectedTools(cfg)}
 	outputDir, err := expandHome(cfg.Skills.OutputDir)
 	if err != nil {
 		return nil, fmt.Errorf("skills.output_dir: %w", err)
@@ -241,14 +249,30 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 		return err
 	}
 
+	// The router's list takes the new [mcp] servers and keeps the rest as
+	// merud started, because only the MCP pool reloads.
+	names := s.started
+	names.MCP = cfg.MCP
+
 	s.mu.Lock()
 	old := s.pool
 	s.pool, s.secrets = pool, sec
+	s.connected = agent.ConnectedTools(names)
 	s.mu.Unlock()
 	s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
 	old.Close()
 	s.log.Info("mcp servers reloaded", "servers", len(cfg.MCP.Servers), "tools", len(s.dispatcher.Tools()))
 	return nil
+}
+
+// connectedTools returns what the router's prompt names as connected, as
+// agent.ConnectedTools built it at startup or on the last reload. The text
+// changes only then, so Ollama can reuse its work on the prompt's opening
+// from one turn to the next.
+func (s *toolService) connectedTools() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.connected
 }
 
 // Close stops the MCP servers merud started and the A2A client.

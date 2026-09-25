@@ -49,13 +49,21 @@ func (l labelled) turn() Turn {
 			engine.Message{Role: engine.RoleUser, Content: h.Q},
 			engine.Message{Role: engine.RoleAssistant, Content: h.A})
 	}
-	return Turn{History: hist, Question: l.Q, Folders: evalFolders}
+	return Turn{History: hist, Question: l.Q, Folders: evalFolders, Tools: evalTools}
 }
 
 // evalFolders stands in for the user's [index] folders on every labelled
 // row, so rows can ask about "meru" or "blog" by name the way a user
 // asks about their own projects.
 var evalFolders = []string{"~/notes", "~/repos/meru", "~/repos/blog"}
+
+// evalTools stands in for what the user has connected on every labelled
+// row: the catalog's google and obsidian servers with their allow lists,
+// a git-log command, and the built-ins with web search on. It is what
+// agent.ConnectedTools gives for that config; TestConnectedTools in
+// internal/agent checks the same text.
+var evalTools = []string{"google (gmail, message, thread, event, drive)", "obsidian (vault)",
+	"git-log", "web search"}
 
 // loadLabelled reads a JSONL file of labelled questions, one JSON object per
 // line. It fails on a bad line or on a route that isn't one of the four.

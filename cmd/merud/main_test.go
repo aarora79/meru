@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"iter"
@@ -17,9 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/testutil/fakeollama"
 )
 
 // fakeEngine answers every call with canned results and records which models
@@ -35,16 +38,21 @@ type fakeEngine struct {
 	// it to keep the startup scan busy.
 	hold chan struct{}
 
-	mu     sync.Mutex // guards models, embeds and system
+	mu     sync.Mutex // guards models, embeds, system and route
 	models []string
 	embeds int
 	system string // the system prompt of the last Stream call
+	route  string // the last message of the last router call
 }
 
 func (f *fakeEngine) Generate(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (engine.Completion, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.models = append(f.models, opts.Model)
+	// The router asks for one token with log probabilities; nothing else does.
+	if opts.MaxTokens == 1 && opts.LogProbs && len(msgs) > 0 {
+		f.route = msgs[len(msgs)-1].Content
+	}
 	if opts.Model == f.failWarm {
 		return engine.Completion{}, errors.New("model not found")
 	}
@@ -394,4 +402,75 @@ func TestRunStartupErrors(t *testing.T) {
 // the failure instead of starting.
 func failEngine(config.Config, *slog.Logger) (engine.Engine, error) {
 	return nil, errors.New("boom")
+}
+
+// TestRouterNamesConnectedTools builds the router the way run does, over a
+// fake Ollama, and checks that the prompt it sends names what config
+// connects, on option C's line.
+func TestRouterNamesConnectedTools(t *testing.T) {
+	tests := []struct {
+		name    string
+		servers []config.MCPServer
+		cmds    []config.Command
+		searxng string // [web] searxng_url; "" turns web search off
+		want    string // "" means the prompt has no connected list
+	}{
+		{"nothing connected", nil, nil, "", ""},
+		{"the defaults: web search", nil, nil, "http://127.0.0.1:8888", "Connected: web search;"},
+		{
+			"a server and a command",
+			[]config.MCPServer{{Name: "obsidian", Allow: []string{"obsidian_list_files_in_vault", "obsidian_simple_search"}}},
+			[]config.Command{{Name: "git-log"}},
+			"http://127.0.0.1:8888",
+			"Connected: obsidian (vault), git-log, web search; questions about these, by name, are C",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(filepath.Join(t.TempDir(), "config.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.MCP.Servers, cfg.Commands, cfg.Web.SearXNGURL = tt.servers, tt.cmds, tt.searxng
+			// With web search off, web_fetch would still name "web pages".
+			if tt.searxng == "" {
+				cfg.Builtin.Tools = []string{"datetime"}
+			}
+			srv := fakeollama.Start(t, fakeollama.Config{})
+			eng, err := engine.NewOllama(srv.URL, "", cfg.Models.Embed, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			connected := agent.ConnectedTools(cfg)
+			rt, err := newRouter(cfg, eng, func() []string { return connected }, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The fake answers with no log probabilities, so the route is the
+			// fallback; this test reads only the prompt.
+			if _, err := rt.Decide(context.Background(), "list my obsidian vaults", nil); err != nil {
+				t.Fatal(err)
+			}
+			reqs := srv.Requests("/api/chat")
+			if len(reqs) != 1 {
+				t.Fatalf("got %d chat requests, want 1", len(reqs))
+			}
+			// The struct names only the fields the test reads; json skips the rest.
+			var body struct {
+				Messages []struct {
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.Unmarshal(reqs[0].Body, &body); err != nil {
+				t.Fatal(err)
+			}
+			prompt := body.Messages[len(body.Messages)-1].Content
+			if tt.want == "" && strings.Contains(prompt, "Connected:") {
+				t.Errorf("prompt names connected tools when none are:\n%s", prompt)
+			}
+			if !strings.Contains(prompt, tt.want) {
+				t.Errorf("prompt lacks %q:\n%s", tt.want, prompt)
+			}
+		})
+	}
 }

@@ -267,7 +267,9 @@ The agent doesn't import `internal/router`; it only knows this small interface.
 `cmd/merud` joins the two with a tiny adapter, `routerAdapter`, that calls
 `router.Decide`. That keeps the agent testable with a fake router. The adapter
 also holds `[index] folders` and passes them in `router.Turn.Folders`, so the
-router's prompt can name them.
+router's prompt can name them. On each turn it also passes, in
+`router.Turn.Tools`, what the tool service reports as connected:
+`agent.ConnectedTools` built from config at startup and on each MCP reload.
 
 ### `agent.Searcher` and `index.Sink`: how v0.2 reaches the store
 

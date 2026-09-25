@@ -661,10 +661,17 @@ classification and reads the answer from the model's probabilities:
    description names the questions that belong to it and the ones that don't.
    Option B also names the folders in `[index] folders` and says that questions
    about projects kept there, by name, are B. Without that line the model can't
-   tell that "meru" in "what database does meru use" is your own project. The
+   tell that "meru" in "what database does meru use" is your own project.
+   Option C names what you have connected, and says that questions about these,
+   by name, are C, or D when they also need your notes. Each MCP server and A2A
+   agent that allows a tool shows as its name with up to five nouns from its
+   allowed tool names, such as `google (gmail, message, thread, event, drive)`;
+   each `[[commands]]` entry shows by name, such as `git-log`; and web search
+   shows as `web search`. `merud` builds the list from config at startup and
+   again on each MCP reload, not per turn. The
    session history and the question come last, and the prompt ends with
-   `Answer: `. The fixed part, folders included, stays the same from turn to turn,
-   so Ollama reuses its work on it from the previous turn.
+   `Answer: `. The fixed part, folders and connected tools included, stays the
+   same from turn to turn, so Ollama reuses its work on it from the previous turn.
 2. `merud` asks Ollama's `/api/chat` for one token with log probabilities
    (`num_predict = 1`, `logprobs = true`, `top_logprobs = 20`) and with thinking
    off (`think = false`). A thinking model such as MiniCPM5 otherwise spends its
@@ -700,12 +707,12 @@ yeses gets `search+tools`. `marginal` needs no confidence floor, so it takes the
 fallback only when fewer than two letters appear. Take "what was the last email I
 sent?" at search 0.473, tools 0.260, search+tools 0.218: `top` picked search and
 offered no mail tools, though the two tool letters held 0.478. `marginal`
-picks `search+tools`. On the held-out set, `marginal` missed a needed search or
-tool on 7 of 46 turns against 9 for `top`, but added an unneeded search on 8 turns
-against 6 and unneeded tools on 1 against 0. Two turns in 46 isn't enough to
-change the default, and the fifth rule below already adds mail tools to that
-email question. [docs/fast-router.md](docs/fast-router.md#decision-rules) has
-the numbers.
+picks `search+tools`. With the prompt naming the connected tools, `marginal` at
+0.30 and 0.25 missed a needed search or tool on 3 of 46 held-out turns against 7
+for `top`, and matched the label on 36 against 34. Both offered unneeded tools on 3
+turns; `marginal` added an unneeded search on 6 against 5. The default stays
+`top` until labelled turns from real transcripts confirm the gain.
+[docs/fast-router.md](docs/fast-router.md#decision-rules) has the numbers.
 
 The router lives in `internal/router` as one function, `Decide`, which returns the
 route, its confidence, the full distribution and an outcome (`ok`,
@@ -753,9 +760,21 @@ in the same four or more letters, so "email" matches `gmail`. The router sent
 "what was the last email I sent?" to `search`, which offers no server's tools, and
 the model grepped the user's files.
 
+Naming the connected tools in the prompt took over much of the fifth rule's
+work. On the labelled set, with the catalog's `google` and `obsidian` servers, a
+`git-log` command and web search connected, the router now sends "what was the
+last email I sent?", "how many unread emails do I have" and "what does the
+onboarding doc in drive say about laptops" to `tools` by itself. The fifth rule
+still rescues one question there, "reply to the last email from my landlord
+saying thanks", and the second rule still catches "search my obsidian vault for
+notes about sourdough", which the router sends to `search`. All five rules stay.
+
 `make router-eval` scores the router against the local Ollama on a labelled set of
 153 questions, 46 of them held out, and fits the temperature. It also compares
-the two `decision` rules on the same answers. At 1.25 the
+the two `decision` rules on the same answers. With the connected list, `top`
+got 131 of the 153 right against 126 without it, and missed a needed search or
+tool on 15 against 20; it offered unneeded tools on 5 against 2. The list adds
+about 48 tokens to the prompt. At 1.25 the
 probabilities sit close to calibrated, so `min_confidence = 0.45` means what it
 says. Refit after any change to the prompt, the examples or the `fast` model.
 
