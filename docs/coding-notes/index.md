@@ -239,12 +239,17 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
   turns out to be skipped; `err` when it can't be read or a PDF has no text.
 
 **`ReadAlso(dir)`** adds a folder the four methods reach but `Scan` and the
-watcher never see. `merud` adds `web_fetch`'s downloads folder this way, so the
-model can `read_file` and `grep` what it downloaded under the same rules: no
-symlinks, no hidden or secret files, the size cap. Nothing in the folder reaches
-the store or search, so a web page can't reach a later turn through search.
-`merud` calls it once at startup, before any tool call, because the methods read
-the list without a lock. `locate` loops over `slices.Concat(ix.folders,
+watcher never see. `builtin.New` adds the `[skills] output_dir` this way, so the
+model can `read_file` and `grep` what `write_file` wrote, what `web_fetch`
+downloaded and the mail attachments the `google` server saved, under the same
+rules: no symlinks, no hidden or secret files, the size cap. Nothing in the
+folder reaches the store or search, so a web page or an attachment can't reach
+a later turn through search. `New` runs once at startup, before any tool call,
+because the methods read the list without a lock.
+
+**`Folders()`** returns the `[index] folders` alone, without what `ReadAlso`
+added. `search_files` names these in its description, since search reaches
+only them. `locate` loops over `slices.Concat(ix.folders,
 ix.readOnly)`, a new slice that holds both lists.
 
 `Check` and `Walk` clear the cached ignore rules for the folder first, so a

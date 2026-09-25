@@ -32,12 +32,21 @@ func (ix *Indexer) Roots() []string {
 	return resolved
 }
 
+// Folders returns the [index] folders alone, with symlinks resolved,
+// leaving out the ones that don't exist now and any folder ReadAlso added.
+// These are the folders search reaches.
+func (ix *Indexer) Folders() []string {
+	resolved, _ := ix.roots()
+	return resolved
+}
+
 // ReadAlso adds dir, an absolute path, to the folders Check, Walk and
 // ReadText reach, under the same skip rules as an [index] folder. Scan and
 // the watcher never see it, so nothing in it reaches the store or search.
-// merud adds the web_fetch downloads folder this way, so read_file and
-// grep can read what the model downloaded. dir may not exist yet; Roots
-// leaves it out until it does.
+// The built-in tools add the [skills] output_dir this way, so read_file
+// and grep can read what write_file wrote, what web_fetch downloaded and
+// the mail attachments the google server saved. dir may not exist yet;
+// Roots leaves it out until it does.
 //
 // Call it before the indexer serves any file tool call: it changes a field
 // that the file tool methods read without a lock.

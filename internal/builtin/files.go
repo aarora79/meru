@@ -1,9 +1,10 @@
 // This file holds the three read-only file tools: read_file, list_folder
 // and grep. They let the model open a whole file, see what a folder holds
 // and find every line that matches, where search alone gives it ten
-// excerpts. They reach only the [index] folders, and apply the indexer's
-// skip rules through the index package, so they read exactly what search
-// can read. See ARCHITECTURE.md, "Approving a tool call".
+// excerpts. They reach the [index] folders and the [skills] output_dir,
+// and apply the indexer's skip rules through the index package, so in the
+// [index] folders they read exactly what search can read. See
+// ARCHITECTURE.md, "Approving a tool call".
 
 package builtin
 
@@ -33,6 +34,14 @@ const (
 	ListFolder = "list_folder"
 	Grep       = "grep"
 )
+
+// attachmentsFolder is the folder under [skills] output_dir where the
+// google server saves the mail attachments the model asks for. The
+// catalog's start command points WORKSPACE_ATTACHMENT_DIR there. A path
+// that names no file in any folder the tools read gets one more try in
+// this folder, so the model can pass the saved filename that the
+// attachment tool reports, as it stands.
+const attachmentsFolder = "attachments"
 
 // IsFileTool reports whether name is one of the four file tools: the three
 // here and search_files. The agent offers these alone on the "search"
@@ -265,14 +274,15 @@ func (t *Tools) listFolder(ctx context.Context, raw json.RawMessage) (string, er
 	return b.String(), nil
 }
 
-// listRoots lists the [index] folders, for list_folder with no path.
+// listRoots lists the folders the file tools read, the [index] folders
+// then the output folder, for list_folder with no path.
 func (t *Tools) listRoots() string {
 	roots := t.files.Roots()
 	if len(roots) == 0 {
 		return "No indexed folders exist. The user adds folders to [index] folders in ~/.meru/config.toml."
 	}
 	var b strings.Builder
-	b.WriteString("The indexed folders. Pass one as path to see what it holds.\n")
+	b.WriteString("The folders the file tools read. Pass one as path to see what it holds.\n")
 	for _, r := range roots {
 		b.WriteString(t.show(r) + "/\n")
 	}
@@ -486,10 +496,11 @@ func (s *grepRun) report(pattern string, starts []index.Checked) string {
 }
 
 // resolve turns the path the model gave into a path the indexer reads. The
-// path may be absolute, start with "~/", or be relative to an [index]
-// folder when exactly one folder holds it. It fails, naming tool, when the
-// path doesn't exist, sits outside every [index] folder, matches in more
-// than one, or is one the indexer skips.
+// path may be absolute, start with "~/", be relative to a folder the tools
+// read when exactly one of them holds it, or be the name of a file in the
+// attachments folder. It fails, naming tool, when the path doesn't exist,
+// sits outside those folders, matches in more than one, or is one the
+// indexer skips.
 func (t *Tools) resolve(tool, p string) (index.Checked, error) {
 	p = strings.TrimSpace(p)
 	abs, err := t.absPath(tool, p)
@@ -499,7 +510,7 @@ func (t *Tools) resolve(tool, p string) (index.Checked, error) {
 	c, err := t.files.Check(abs)
 	switch {
 	case errors.Is(err, index.ErrOutsideFolders):
-		return index.Checked{}, fmt.Errorf("%s: %s is outside the indexed folders. The file tools read only inside: %s",
+		return index.Checked{}, fmt.Errorf("%s: %s is outside the folders the file tools read. They read only inside: %s",
 			tool, p, t.rootList())
 	case errors.Is(err, fs.ErrNotExist):
 		return index.Checked{}, fmt.Errorf("%s: %s doesn't exist. List its folder with list_folder to see what is there", tool, p)
@@ -512,8 +523,8 @@ func (t *Tools) resolve(tool, p string) (index.Checked, error) {
 }
 
 // absPath expands "~" and turns a relative path into an absolute one inside
-// the one [index] folder that holds it. It fails when no folder holds the
-// relative path, or more than one does.
+// the one folder that holds it, trying the attachments folder last. It
+// fails when no folder holds the relative path, or more than one does.
 func (t *Tools) absPath(tool, p string) (string, error) {
 	switch {
 	case p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`):
@@ -535,9 +546,18 @@ func (t *Tools) absPath(tool, p string) (string, error) {
 			found = append(found, cand)
 		}
 	}
+	// The attachments folder comes last, and only when nothing else
+	// matched, so a saved filename never makes a path in an [index] folder
+	// ambiguous. Check still applies every rule to what this finds.
+	if len(found) == 0 && t.outputDir != "" {
+		cand := filepath.Join(t.outputDir, attachmentsFolder, p)
+		if _, err := os.Lstat(cand); err == nil {
+			found = append(found, cand)
+		}
+	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("%s: no indexed folder holds %q. Pass a full path, or one relative to one of: %s",
+		return "", fmt.Errorf("%s: no folder the file tools read holds %q. Pass a full path, or one relative to one of: %s",
 			tool, p, t.rootList())
 	case 1:
 		return found[0], nil
@@ -546,15 +566,21 @@ func (t *Tools) absPath(tool, p string) (string, error) {
 	for i, f := range found {
 		shown[i] = t.show(f)
 	}
-	return "", fmt.Errorf("%s: %q exists in more than one indexed folder: %s. Pass the full path",
+	return "", fmt.Errorf("%s: %q exists in more than one folder: %s. Pass the full path",
 		tool, p, strings.Join(shown, ", "))
 }
 
-// rootList names the [index] folders for an error message.
+// rootList names the folders the file tools read, for an error message
+// and the tool descriptions: the [index] folders, then the output folder.
 func (t *Tools) rootList() string {
-	roots := t.files.Roots()
+	return t.nameFolders(t.files.Roots())
+}
+
+// nameFolders joins roots, each written with "~" for the home folder, or
+// says there are none.
+func (t *Tools) nameFolders(roots []string) string {
 	if len(roots) == 0 {
-		return "none (no indexed folder exists)"
+		return "none (no such folder exists)"
 	}
 	shown := make([]string, len(roots))
 	for i, r := range roots {
@@ -607,18 +633,24 @@ func cut(s string, n int) string {
 }
 
 // fileToolSpecs returns the specs of the three file tools. The
-// descriptions name the indexed folders, so the model knows where it may
-// look.
+// descriptions name the folders the tools read, so the model knows where
+// it may look. read_file's also says it takes a saved attachment's
+// filename, since that is the one path the model gets from a tool result
+// and not from the user.
 func (t *Tools) fileToolSpecs() []engine.ToolSpec {
-	where := "Paths may be absolute, start with \"~/\", or be relative to an indexed folder when only one folder holds them. " +
-		"The indexed folders are: " + t.rootList() + ". " +
+	where := "Paths may be absolute, start with \"~/\", or be relative to one of the folders below when only one holds them. " +
+		"The folders are: " + t.rootList() + ". " +
 		"Meru refuses paths outside them, and skips hidden, secret, ignored and binary files, as search does."
+	attachments := ""
+	if t.outputDir != "" {
+		attachments = "To read a mail attachment that a tool saved, pass the saved filename it reported as path. "
+	}
 	return []engine.ToolSpec{
 		{
 			Name: ReadFile,
 			Description: "Reads one of the user's files in full: Markdown, text, code, HTML (as text) and PDF (page by page). " +
 				"Use it when the search excerpts aren't enough. It returns up to 12,000 characters per call; " +
-				"when the file is longer, the result ends with the offset to pass next. " + where,
+				"when the file is longer, the result ends with the offset to pass next. " + attachments + where,
 			Parameters: mustSchema(map[string]any{
 				"path":   prop("string", "The file to read."),
 				"offset": prop("integer", "Where to start, in characters from the start of the file. Default 0."),
@@ -627,9 +659,9 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 		{
 			Name: ListFolder,
 			Description: "Lists the files and folders in one of the user's folders: folders first, then files with size and modified date. " +
-				"With no path it lists the indexed folders. " + where,
+				"With no path it lists the folders it may read. " + where,
 			Parameters: mustSchema(map[string]any{
-				"path":  prop("string", "The folder to list. Leave it out to list the indexed folders."),
+				"path":  prop("string", "The folder to list. Leave it out to list the folders it may read."),
 				"depth": prop("integer", "How many levels to list, 1 to 3. Default 1."),
 			}),
 		},
@@ -637,10 +669,10 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 			Name: Grep,
 			Description: "Finds every line that holds a word or pattern in the user's files, and returns \"path:line: text\" lines " +
 				"(\"path (page N): text\" for PDFs). Use it to find which files mention something. " +
-				"By default it matches plain text, ignoring case, in every indexed folder. " + where,
+				"By default it matches plain text, ignoring case, in every folder it may read. " + where,
 			Parameters: mustSchema(map[string]any{
 				"pattern":        prop("string", "The text to find, or a regular expression when regex is true."),
-				"path":           prop("string", "A folder or file to search. Leave it out to search every indexed folder."),
+				"path":           prop("string", "A folder or file to search. Leave it out to search every folder it may read."),
 				"regex":          prop("boolean", "Treat pattern as a regular expression (Go RE2 syntax). Default false."),
 				"case_sensitive": prop("boolean", "Match upper and lower case exactly. Default false."),
 				"max_results":    prop("integer", "Most lines to return, 1 to 200. Default 50."),

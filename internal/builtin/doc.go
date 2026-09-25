@@ -3,7 +3,8 @@
 // you ask in chat ("connect my Gmail"); datetime, which reads the clock;
 // remember, which saves one fact about you as a memory file; write_file,
 // which saves a file the model made inside [skills] output_dir; read_file,
-// list_folder and grep, which read the [index] folders; search_files, which
+// list_folder and grep, which read the [index] folders and the output
+// folder; search_files, which
 // runs Meru's hybrid search over them; and web_search and web_fetch, which
 // search the web through the user's SearXNG and read, answer from or
 // download one public page.
@@ -34,10 +35,14 @@
 // absolute path, so the model can tell you where the file is.
 //
 // read_file, list_folder and grep only read, and run without asking unless
-// [builtin] confirm lists them. They reach only the [index] folders, through
-// the indexer's own Check, Walk and ReadText, so they skip what the indexer
-// skips: symlinks, secrets, hidden, ignored, binary and oversized files. The
-// model can read no file that search couldn't already put in its prompt.
+// [builtin] confirm lists them. They reach only the [index] folders and
+// [skills] output_dir, through the indexer's own Check, Walk and ReadText,
+// so they skip what the indexer skips: symlinks, secrets, hidden, ignored,
+// binary and oversized files. Outside the output folder, the model can read
+// no file that search couldn't already put in its prompt. The output folder
+// holds what write_file wrote, what web_fetch downloaded, and the mail
+// attachments the google server saves in its attachments folder; read_file
+// takes an attachment's bare saved filename.
 //
 // search_files runs retrieve.Search, the search a turn runs before the
 // answer, through the FileSearcher merud hands UseSearch, and returns

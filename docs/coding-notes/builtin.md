@@ -264,17 +264,35 @@ of the list to let it write without asking.
 
 ### files.go
 
-`read_file`, `list_folder` and `grep` share one path check, `resolve`. It
-accepts three shapes of path:
+`read_file`, `list_folder` and `grep` read the `[index] folders` and the
+output folder, `[skills] output_dir`. `New` adds the output folder through
+`index.Indexer.ReadAlso`, so the tools read there under the indexer's rules,
+and search never indexes it. It holds what `write_file` wrote, what `web_fetch`
+downloaded and, in `attachments/`, the mail attachments the `google` server
+saves (see [catalog](catalog.md)).
+
+The three tools share one path check, `resolve`. It accepts four shapes of
+path:
 
 - absolute, such as `/Users/you/notes/a.md`;
 - starting with `~/`, which it expands with `os.UserHomeDir`;
-- relative, such as `reviews/plan.md`, when exactly one indexed folder holds
-  it. When none does, or two do, it refuses and names the folders.
+- relative, such as `reviews/plan.md`, when exactly one of those folders holds
+  it. When two do, it refuses and names them;
+- a name that no folder holds but `<output_dir>/attachments/` does, such as
+  `folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf`.
 
-Then it asks the indexer, through `index.Indexer.Check`, whether the indexer
-would read that path (see [index](index.md)). A path outside every indexed
-folder fails with a message that lists them. A skipped path fails with the
+The last shape exists for mail attachments. `get_gmail_attachment_content`
+reports only the saved filename, and the model passes it to `read_file` as it
+stands. `absPath` tries the attachments folder only when no other folder holds
+the name, so a file in an `[index]` folder never turns ambiguous. The other
+choice was a line in the prompt telling the model to prefix the name with the
+folder; the fallback needs no prompt text and works whatever the model passes.
+`read_file`'s description adds one sentence: pass the saved filename as path.
+
+Then `resolve` asks the indexer, through `index.Indexer.Check`, whether the
+indexer would read that path (see [index](index.md)). A path found in the
+attachments folder goes through the same check, so a symbolic link there is
+refused. A path outside every folder fails with a message that lists them. A skipped path fails with the
 indexer's reason in words, such as "secret file" or "ignored by .gitignore,
 .meruignore or [index] ignore". The package copies none of the skip rules; it
 maps each `index.Reason…` constant to a phrase in `reasonText`, and that's all.
@@ -297,7 +315,9 @@ such as "Left out 12 that Meru doesn't read: binary file (2), …". The walk
 stops at 300 entries, or at 14,000 characters of lines, by returning
 `fs.SkipAll`, and the result says so. Folders show no file count: counting a
 folder the listing didn't enter would mean walking it too. With no path, the
-tool lists the indexed folders themselves.
+tool lists the folders it reads: the indexed ones, then the output folder.
+`search_files` names only the indexed folders, which it gets from
+`index.Indexer.Folders`, since search never reaches the output folder.
 
 **`grep`** compiles the pattern with Go's `regexp` package, which uses RE2
 syntax. A plain-text pattern goes through `regexp.QuoteMeta` first, so a `.` or
@@ -550,9 +570,10 @@ of 5 MiB and 20 seconds:
 4. `previewText` reads back an HTML, PDF or text file of 5 MiB or less and returns
    its first 2,000 characters for the result.
 
-`merud` calls `index.ReadAlso` on the downloads folder, so `read_file` and `grep`
-reach it under the indexer's own rules (see [index](index.md)). The indexer never
-scans it, so a downloaded page can't reach a later turn through search.
+`New` calls `index.ReadAlso` on the output folder, which holds the downloads
+folder, so `read_file` and `grep` reach downloads under the indexer's own rules
+(see [index](index.md)). The indexer never scans it, so a downloaded page can't
+reach a later turn through search.
 
 ## Go ideas used here
 
@@ -633,7 +654,16 @@ asks in another. `TestNormalizeURL`, `TestQuestionURLs` and
 downloads: the choices, the job, the names, `-2` and `-3`, the 50 MiB cap with
 nothing left behind, and both kinds of planted link. `TestReadDownloads` reads
 and greps a downloaded file through `index.ReadAlso`, and refuses a link in the
-folder.
+folder. `TestOutputFolder` builds tools with an output folder and one `[index]`
+folder, and runs a table of calls: `read_file` of a PDF in `attachments/` by
+full path, by bare saved filename and by `attachments/<name>`, page by page;
+`read_file` of a file `write_file` wrote; `list_folder` and `grep` in the
+attachments folder and with no path; and refusals for a path outside both
+folders, a symbolic link in the attachments folder by path and by name, a
+missing name, and `..` out of the folder. It also checks that `write_file`
+still refuses an absolute path and `..` and still asks first, that
+`search_files` doesn't name the output folder, and that `read_file`'s
+description mentions the saved filename.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
 the ten names from `config.BuiltinTools()` are exactly what `Tools` offers and

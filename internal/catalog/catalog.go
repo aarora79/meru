@@ -136,7 +136,17 @@ type Entry struct {
 // services the allow list draws from. USER_GOOGLE_EMAIL makes each tool's
 // user_google_email argument optional, with that address as the default
 // (core/server.py in workspace-mcp 4.0.9), so the model needn't know it.
+//
+// WORKSPACE_ATTACHMENT_DIR tells the server where get_gmail_attachment_content
+// saves an attachment (core/attachment_storage.py in workspace-mcp 1.29).
+// It points at the attachments folder under the default [skills]
+// output_dir, which Meru's read_file may read, so the model can read a
+// PDF it fetched from a mail. A shell expands the "~" in the assignment,
+// and the server expands it again with Python's expanduser, so the line
+// also works from launchd or systemd, where no shell runs. The server
+// deletes each saved file after an hour.
 const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
+	"WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
 	"GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
 	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
 
@@ -166,12 +176,21 @@ func Entries() []Entry {
 						"of type \"Desktop app\" under APIs & Services > Credentials. Steps: https://workspacemcp.com/quick-start",
 				},
 				{Kind: NeedNote, Prompt: "The first time the model uses a Google tool, the server gives you a link. Sign in to Google there."},
+				{
+					Kind: NeedNote,
+					Prompt: "The server saves a mail attachment the model asks for in ~/meru-output/attachments, where read_file can read it, " +
+						"and deletes it after an hour. If you changed [skills] output_dir, point WORKSPACE_ATTACHMENT_DIR at its attachments folder.",
+				},
 			},
 			Requires: "a Google OAuth client, uv, and the server running (you start it)",
+			// get_gmail_attachment_content comes last: the router names a
+			// server by the nouns in its first allowed tools, and "drive"
+			// matters more there than "attachment".
 			Allow: []string{
 				"search_gmail_messages", "get_gmail_message_content", "get_gmail_thread_content", "send_gmail_message",
 				"get_events", "manage_event",
 				"search_drive_files", "get_doc_content",
+				"get_gmail_attachment_content",
 			},
 			Confirm: []string{"send_gmail_message", "manage_event"},
 			Install: installUV + " Then start the server yourself: " + googleStart,

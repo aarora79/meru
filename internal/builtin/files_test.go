@@ -177,12 +177,12 @@ func TestFileToolsRefuse(t *testing.T) {
 		{"nul byte", ReadFile, `{"path":` + in("nul.txt") + `}`, "binary file"},
 		{"binary extension", ReadFile, `{"path":` + in("tool.exe") + `}`, "binary file"},
 		{"media", ReadFile, `{"path":` + in("photo.png") + `}`, "media file"},
-		{"outside", ReadFile, `{"path":` + jsonPath(filepath.Join(tr.outside, "stolen.md")) + `}`, "outside the indexed folders"},
-		{"dot-dot", ReadFile, `{"path":` + jsonPath(tr.root+"/../outside/stolen.md") + `}`, "outside the indexed folders"},
-		{"relative dot-dot", ReadFile, `{"path":"../outside/stolen.md"}`, "outside the indexed folders"},
+		{"outside", ReadFile, `{"path":` + jsonPath(filepath.Join(tr.outside, "stolen.md")) + `}`, "outside the folders the file tools read"},
+		{"dot-dot", ReadFile, `{"path":` + jsonPath(tr.root+"/../outside/stolen.md") + `}`, "outside the folders the file tools read"},
+		{"relative dot-dot", ReadFile, `{"path":"../outside/stolen.md"}`, "outside the folders the file tools read"},
 		{"missing", ReadFile, `{"path":` + in("nope.md") + `}`, "doesn't exist"},
-		{"relative nowhere", ReadFile, `{"path":"nope.md"}`, "no indexed folder holds"},
-		{"relative in two folders", ReadFile, `{"path":"garden.md"}`, "more than one indexed folder"},
+		{"relative nowhere", ReadFile, `{"path":"nope.md"}`, "no folder the file tools read holds"},
+		{"relative in two folders", ReadFile, `{"path":"garden.md"}`, "more than one folder"},
 		{"read a folder", ReadFile, `{"path":` + in("trips") + `}`, "is a folder"},
 		{"list a file", ListFolder, `{"path":` + in("garden.md") + `}`, "is a file"},
 		{"empty path", ReadFile, `{"path":""}`, "pass path"},
@@ -299,7 +299,7 @@ func TestListFolder(t *testing.T) {
 		notWant []string
 	}{
 		{"no path lists the indexed folders", `{}`,
-			[]string{"The indexed folders", "notes/\n", "work/\n"}, nil},
+			[]string{"The folders the file tools read", "notes/\n", "work/\n"}, nil},
 		{"depth 1", `{"path":` + jsonPath(tr.root) + `}`,
 			[]string{"(depth 1): 1 folder, 4 files.", "trips/\n", "garden.md  60 bytes  ", "harvest.pdf", "long.md", "page.html",
 				"Left out 12 that Meru doesn't read: ",
@@ -483,4 +483,121 @@ func mustCompile(t *testing.T, expr string) *regexp.Regexp {
 		t.Fatal(err)
 	}
 	return re
+}
+
+// TestOutputFolder checks that the file tools read the [skills]
+// output_dir, which New adds through index.ReadAlso: an attachment the
+// google server saved there, by full path, by its bare saved filename and
+// relative to the output folder, and a file write_file wrote. It also
+// checks that the indexer's rules still hold there and that write_file
+// keeps its own rules.
+func TestOutputFolder(t *testing.T) {
+	base := t.TempDir()
+	notes := filepath.Join(base, "notes")
+	out := filepath.Join(base, "meru-output")
+	att := filepath.Join(out, attachmentsFolder)
+	outside := filepath.Join(base, "outside")
+	for _, d := range []string{notes, att, outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pdf, err := os.ReadFile(filepath.Join("testdata", "two-pages.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The google server names a saved attachment <stem>_<uuid><ext>.
+	const saved = "Dana_Reyes_folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf"
+	files := map[string]string{
+		filepath.Join(att, saved):          string(pdf),
+		filepath.Join(out, "letter.md"):    "Dear Dana, the folio came through.\n",
+		filepath.Join(notes, "garden.md"):  "Plant tomatoes in May.\n",
+		filepath.Join(outside, "other.md"): "pear outside\n",
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(outside, "other.md"), filepath.Join(att, "link.md")); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+	ix, err := index.New(config.Index{Folders: []string{notes}, MaxFileMB: 1}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Builtin{Tools: config.BuiltinTools(), Confirm: []string{WriteFile}}
+	tools := New(filepath.Join(base, "config.toml"), cfg, config.Web{}, nil, out, ix, nil, nil)
+	ctx := context.Background()
+
+	pages := []string{"--- page 1 ---\nHarvest report for the orchard", "--- page 2 ---\nThe pear crop doubled"}
+	tests := []struct {
+		name    string
+		tool    string
+		args    string
+		want    []string // pieces of a successful result
+		refusal string   // a piece of the refusal; "" when the call must succeed
+	}{
+		{"pdf attachment by full path", ReadFile, `{"path":` + jsonPath(filepath.Join(att, saved)) + `}`, pages, ""},
+		{"pdf attachment by saved filename", ReadFile, `{"path":"` + saved + `"}`, pages, ""},
+		{"pdf attachment relative to the output folder", ReadFile, `{"path":"attachments/` + saved + `"}`, pages, ""},
+		{"a file write_file wrote", ReadFile, `{"path":` + jsonPath(filepath.Join(out, "letter.md")) + `}`,
+			[]string{"Dear Dana"}, ""},
+		{"list the attachments", ListFolder, `{"path":` + jsonPath(att) + `}`,
+			[]string{saved, "symbolic link (1)"}, ""},
+		{"no path lists the output folder too", ListFolder, `{}`, []string{"notes/\n", "meru-output/\n"}, ""},
+		{"grep in the attachments", Grep, `{"pattern":"pear","path":` + jsonPath(att) + `}`,
+			[]string{saved + " (page 2): The pear crop doubled", "1 matching line in 1 file"}, ""},
+		{"grep with no path searches the output folder", Grep, `{"pattern":"folio came"}`,
+			[]string{"letter.md:1: Dear Dana"}, ""},
+		{"outside every folder", ReadFile, `{"path":` + jsonPath(filepath.Join(outside, "other.md")) + `}`,
+			nil, "outside the folders the file tools read"},
+		{"a link in the attachments", ReadFile, `{"path":` + jsonPath(filepath.Join(att, "link.md")) + `}`,
+			nil, "symbolic link"},
+		{"a link by its bare name", ReadFile, `{"path":"link.md"}`, nil, "symbolic link"},
+		{"a saved filename that doesn't exist", ReadFile, `{"path":"Dana_Reyes_folio_missing.pdf"}`,
+			nil, "no folder the file tools read holds"},
+		{"dot-dot out of the attachments", ReadFile, `{"path":"../../outside/other.md"}`,
+			nil, "outside the folders the file tools read"},
+		{"write_file still refuses an absolute path", WriteFile,
+			`{"path":` + jsonPath(filepath.Join(att, "new.md")) + `,"content":"x"}`, nil, "absolute"},
+		{"write_file still refuses dot-dot", WriteFile, `{"path":"../notes/new.md","content":"x"}`, nil, `".."`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := callTool(t, tools, ctx, tt.tool, tt.args)
+			if tt.refusal != "" {
+				if !res.IsError || !strings.Contains(res.Text, tt.refusal) {
+					t.Errorf("%s %s = %+v, want an error holding %q", tt.tool, tt.args, res, tt.refusal)
+				}
+				return
+			}
+			if res.IsError {
+				t.Fatalf("%s %s: %s", tt.tool, tt.args, res.Text)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(res.Text, w) {
+					t.Errorf("%s %s = %q, want it to hold %q", tt.tool, tt.args, res.Text, w)
+				}
+			}
+			if strings.Contains(res.Text, "pear outside") {
+				t.Errorf("%s %s read through the link: %q", tt.tool, tt.args, res.Text)
+			}
+		})
+	}
+
+	// write_file still asks first, and search_files still names only the
+	// [index] folders.
+	if got := tools.Confirm(WriteFile); got != dispatch.ConfirmAsk {
+		t.Errorf("Confirm(write_file) = %v, want ConfirmAsk", got)
+	}
+	if got := tools.nameFolders(ix.Folders()); strings.Contains(got, "meru-output") {
+		t.Errorf("the indexed folders = %q, want them without the output folder", got)
+	}
+	// read_file's description tells the model it takes a saved filename.
+	for _, s := range tools.Tools() {
+		if s.Name == ReadFile && !strings.Contains(s.Description, "pass the saved filename") {
+			t.Errorf("read_file description = %q, want it to mention the saved filename", s.Description)
+		}
+	}
 }

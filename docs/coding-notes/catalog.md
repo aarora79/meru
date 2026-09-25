@@ -20,7 +20,7 @@ It holds two servers, one for each kind of example the docs use, in this order:
 
 | Name | Server | Transport | Needs | Allowed | Asks first |
 | --- | --- | --- | --- | --- | --- |
-| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, send mail, list and change events, search Drive, read a doc | send mail, change an event |
+| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, save a mail's attachment, send mail, list and change events, search Drive, read a doc | send mail, change an event |
 | `obsidian` | `uvx mcp-obsidian` | stdio | Local REST API plugin key | list, read and search notes, append to a note | append |
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
@@ -91,15 +91,33 @@ lives in one constant, so the entry's `Start`, its first note and its `Install`
 text all print the same line:
 
 ```go
-const googleStart = "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
+const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
+    "WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
+    "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
     "uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
 ```
 
 The OAuth client ID and secret go in the server's environment when you start it,
 so the entry has no `api_key` need and nothing of Google's passes through
 `secrets.toml`. The server offers 120-odd tools. `--tools` limits the process to
-four services, and `Allow` names eight tools from them; `send_gmail_message` and
+four services, and `Allow` names nine tools from them; `send_gmail_message` and
 `manage_event` sit in `Confirm`.
+
+`get_gmail_attachment_content` saves a mail's attachment to disk and returns the
+saved filename, not the text. `WORKSPACE_ATTACHMENT_DIR` tells the server where
+to save: `~/meru-output/attachments`, inside the default `[skills] output_dir`,
+which `read_file` reads. The model then passes the filename to `read_file`. A
+shell expands the `~` in `NAME=~/path` before the server starts, and the server
+runs Python's `expanduser` on the value too, so the line also works from
+`launchd` or `systemd`, where no shell runs. `"$HOME/..."` would fail there,
+since neither expands it. The server deletes each saved file after an hour; the
+entry's third note says so.
+
+The tool sits last in `Allow`. The router names each server by the nouns in its
+first allowed tools, five at most (`internal/agent/toolnouns.go`), and at the end
+the new tool leaves "drive" in that list. `TestGoogleAttachments` checks that
+`Allow` holds the tool, `Confirm` doesn't, and the start command sets the
+variable before `uvx`.
 
 The catalog once held six more entries: a web page reader, a server for files in
 chosen folders, a Windows desktop server, and three that each ran the Google

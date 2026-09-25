@@ -133,7 +133,7 @@ func (t *Tools) searchSpec() engine.ToolSpec {
 			"each with its file path, heading and lines or page. It finds passages by meaning as well as by words, " +
 			"so a paraphrase or a question works as the query; use grep instead for an exact name or phrase. " +
 			"To read a result's whole file, call read_file with its path. " +
-			"The indexed folders are: " + t.rootList() + ".",
+			"The indexed folders are: " + t.nameFolders(t.files.Folders()) + ".",
 		Parameters: mustSchema(map[string]any{
 			"query": prop("string", "What to look for: a few words, a phrase or a question."),
 			"limit": prop("integer", fmt.Sprintf("How many excerpts to return, 1 to %d. Default %d.", maxSearchLimit, defaultSearchLimit)),
