@@ -131,6 +131,13 @@ type turn struct {
 	// question is what the user typed, for dispatch.Call.Question: see
 	// userWords.
 	question string
+	// seen maps each call the turn ran, by callKey, to the result the
+	// model read, so a repeat gets the same result without running again.
+	// Only converse's goroutine touches it, so it needs no lock.
+	seen map[string]string
+	// repeats counts the calls the model repeated this turn. At maxRepeats
+	// the turn stops offering tools.
+	repeats int
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.
@@ -239,45 +246,62 @@ func toolKind(name string) string {
 	}
 }
 
+// maxRepeats is how many repeated calls a turn allows before it stops
+// offering tools. A model that asks for the same thing a second time has
+// ignored the note that the first repeat carried, so a third ask is
+// unlikely to go better.
+const maxRepeats = 2
+
+// The notes a repeated call's result carries, after the earlier result.
+const (
+	repeatNote = "[Meru didn't run this call again: you made the same call earlier in this answer, " +
+		"and the result above is the one it gave. Use it, or call a different tool.]"
+	lastRepeatNote = "[Meru didn't run this call again: you made the same call earlier in this answer, " +
+		"and the result above is the one it gave. Tools are off for the rest of this answer: answer now with what you have.]"
+)
+
 // converse runs the turn's rounds (ARCHITECTURE.md, "Agent loop", steps 3
 // to 5). Each round streams one answer from the main model with specs on
-// offer. When the model calls tools, converse runs them, adds the calls and
-// their results to msgs, and starts the next round. The turn ends when the
-// model answers without calling a tool.
+// offer. When the model calls tools, converse runs them through runRound,
+// adds the calls and their results to msgs, and starts the next round. The
+// turn ends when the model answers without calling a tool.
 //
 // The last round a.maxRounds allows offers no tools, so the model has to
-// answer with what it has. With no specs, a turn has one round.
+// answer with what it has. So does every round after the model has
+// repeated a call maxRepeats times. With no specs, a turn has one round.
 //
-// It returns the final round's text, with the usage counters summed over
-// every round and the time of the turn's first text token. It fails when a
-// model call fails, when emit fails, or when ctx ends.
+// It returns the final round's text and stop reason, with the usage
+// counters summed over every round and the time of the turn's first text
+// token. It fails when a model call fails, when emit fails, or when ctx
+// ends; the reply then holds the text the failed round streamed.
 func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, specs []engine.ToolSpec) (reply, error) {
 	var total reply
 	for {
 		t.rounds++
 		start := time.Now()
 		offer := specs
-		if t.rounds >= a.maxRounds {
+		if t.rounds >= a.maxRounds || t.repeats >= maxRepeats {
 			offer = nil
 		}
 		rep, err := a.answer(ctx, msgs, offer, t.emit)
+		total.add(rep)
 		if err != nil {
+			total.text = rep.text
 			return total, err
 		}
-		total.add(rep)
 		// A model that calls a tool it wasn't offered gets no call run: the
 		// round is its answer.
 		if len(rep.calls) == 0 || len(offer) == 0 {
 			a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 				"ms", time.Since(start).Milliseconds())
-			total.text = rep.text
+			total.text, total.doneReason = rep.text, rep.doneReason
 			return total, nil
 		}
 
 		// The model reads its own calls back before their results, as
 		// Ollama's chat format expects.
 		msgs = append(msgs, engine.Message{Role: engine.RoleAssistant, Content: rep.text, ToolCalls: rep.calls})
-		results, err := a.runTools(ctx, t, rep.calls)
+		results, err := a.runRound(ctx, t, rep.calls)
 		if err != nil {
 			return total, err
 		}
@@ -303,6 +327,88 @@ func (r *reply) add(next reply) {
 	if r.firstToken.IsZero() {
 		r.firstToken = next.firstToken
 	}
+}
+
+// runRound answers one round's tool calls and returns one RoleTool message
+// per call, in call order. A call the model already made this turn, with
+// the same name and arguments (see callKey), doesn't run again: its message
+// holds the earlier result and repeatNote, or lastRepeatNote once the turn
+// reaches maxRepeats. The rest run through runTools. A call that appears
+// twice in one round runs once, and the second copy counts as a repeat.
+//
+// A repeat is not a tool call. It never reaches dispatch, runs nothing, and
+// gets no "tool_call" event, transcript line or tool_calls row, so the
+// audit log holds what ran and nothing else. Only a debug log line and the
+// turn span's meru.turn.repeated_calls count record it. Running a repeat
+// through dispatch would log a second call that did no new work, and would
+// ask the user a second time for a call that asks first.
+//
+// It fails when runTools does.
+func (a *Agent) runRound(ctx context.Context, t *turn, calls []engine.ToolCall) ([]engine.Message, error) {
+	if t.seen == nil {
+		t.seen = make(map[string]string)
+	}
+	keys := make([]string, len(calls))
+	fresh := make([]bool, len(calls)) // true for a call to run now
+	var run []engine.ToolCall
+	for i, c := range calls {
+		keys[i] = callKey(c)
+		_, before := t.seen[keys[i]]
+		if before || slices.Contains(keys[:i], keys[i]) {
+			continue
+		}
+		fresh[i] = true
+		run = append(run, c)
+	}
+
+	out := make([]engine.Message, len(calls))
+	if len(run) > 0 {
+		results, err := a.runTools(ctx, t, run)
+		if err != nil {
+			return nil, err
+		}
+		// results come back in the order of run, which keeps call order.
+		j := 0
+		for i := range calls {
+			if fresh[i] {
+				out[i] = results[j]
+				t.seen[keys[i]] = results[j].Content
+				j++
+			}
+		}
+	}
+	for i, c := range calls {
+		if fresh[i] {
+			continue
+		}
+		t.repeats++
+		note := repeatNote
+		if t.repeats >= maxRepeats {
+			note = lastRepeatNote
+		}
+		a.log.DebugContext(ctx, "tool call repeated; handed back the earlier result",
+			"tool", c.Name, "repeats", t.repeats, "tools_off", t.repeats >= maxRepeats)
+		out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: t.seen[keys[i]] + "\n\n" + note}
+	}
+	return out, nil
+}
+
+// callKey returns the text that tells one call from another: the tool's
+// name and its arguments in canonical JSON. Decoding the arguments and
+// encoding them again puts object keys in sorted order and drops spaces, so
+// {"a":1, "b":2} and {"b":2,"a":1} match. Missing arguments count as {}.
+// Arguments that aren't valid JSON are compared as they came.
+func callKey(c engine.ToolCall) string {
+	args := argsOf(c.Arguments)
+	// any holds whatever the JSON decodes to; json.Marshal writes the keys
+	// of a map in sorted order.
+	var v any
+	if err := json.Unmarshal(args, &v); err == nil {
+		if b, err := json.Marshal(v); err == nil {
+			args = b
+		}
+	}
+	return c.Name + "\x00" + string(args)
 }
 
 // runTools runs one round's tool calls through dispatch, all at the same

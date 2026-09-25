@@ -37,6 +37,14 @@ keep_alive = "-1"
 [agent]
 # Most model calls in one turn. Each tool call the model makes costs one.
 max_rounds    = 8
+# Most tokens the main model may write in one call, its hidden thinking
+# included. A thinking model with no cap can reason for minutes and never
+# answer.
+max_output_tokens = 8192
+# Longest one turn may run, from question to answer. When it runs out,
+# merud stops the model and any tool calls and says it couldn't answer.
+# Time spent waiting for you to approve a tool call counts too.
+turn_timeout  = "5m"
 # How many earlier questions and answers of the session go into the
 # prompt. 0 sends none.
 history_turns = 10

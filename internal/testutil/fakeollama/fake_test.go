@@ -26,6 +26,7 @@ import (
 type chunk struct {
 	Message struct {
 		Content   string `json:"content"`
+		Thinking  string `json:"thinking"`
 		ToolCalls []struct {
 			Function struct {
 				Name      string         `json:"name"`
@@ -71,6 +72,56 @@ func post(t *testing.T, ctx context.Context, url string, body any) *http.Respons
 		t.Fatalf("POST %s: %v", url, err)
 	}
 	return resp
+}
+
+// TestThinkingAndNumPredict checks that thinking pieces stream before the
+// text, and that num_predict counts them, as Ollama does: a cap the
+// thinking uses up leaves no text and no tool calls, and ends with
+// done_reason "length".
+func TestThinkingAndNumPredict(t *testing.T) {
+	tests := []struct {
+		name       string
+		numPredict int
+		wantThink  string
+		wantText   string
+		wantCalls  int
+		wantReason string
+	}{
+		{name: "no cap", numPredict: 0, wantThink: "abc", wantText: "one two", wantCalls: 1, wantReason: "stop"},
+		{name: "cap past the reply", numPredict: 10, wantThink: "abc", wantText: "one two", wantCalls: 1, wantReason: "stop"},
+		{name: "cap inside the text", numPredict: 4, wantThink: "abc", wantText: "one ", wantReason: "length"},
+		{name: "cap inside the thinking", numPredict: 2, wantThink: "ab", wantReason: "length"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := fakeollama.Start(t, fakeollama.Config{})
+			srv.Enqueue("m", fakeollama.Reply{
+				Thinking:  []string{"a", "b", "c"},
+				Text:      "one two",
+				ToolCalls: []fakeollama.ToolCall{{Name: "datetime"}},
+			})
+			body := map[string]any{"model": "m", "messages": []any{}}
+			if tt.numPredict > 0 {
+				body["options"] = map[string]any{"num_predict": tt.numPredict}
+			}
+			resp := post(t, context.Background(), srv.URL+"/api/chat", body)
+			defer resp.Body.Close()
+			var think, text, reason string
+			calls := 0
+			for _, c := range readChunks(t, resp.Body) {
+				think += c.Message.Thinking
+				text += c.text()
+				calls += len(c.Message.ToolCalls)
+				if c.Done {
+					reason = c.DoneReason
+				}
+			}
+			if think != tt.wantThink || text != tt.wantText || calls != tt.wantCalls || reason != tt.wantReason {
+				t.Errorf("thinking %q, text %q, calls %d, reason %q; want %q, %q, %d, %q",
+					think, text, calls, reason, tt.wantThink, tt.wantText, tt.wantCalls, tt.wantReason)
+			}
+		})
+	}
 }
 
 // readChunks reads an NDJSON body into chunks, one per line.

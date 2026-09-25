@@ -52,6 +52,12 @@ type Reply struct {
 	Chunks []string `json:"chunks,omitempty"`
 	// ToolCalls are tool calls the model makes. /api/generate ignores them.
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	// Thinking holds pieces of a thinking model's hidden reasoning. On
+	// /api/chat the fake streams them before the text, each in a chunk
+	// whose message has an empty content and a "thinking" field, as
+	// Ollama does. They count against the request's num_predict like any
+	// other output token: see Reply.cut.
+	Thinking []string `json:"thinking,omitempty"`
 	// DoneReason is why the model stopped. Empty means "stop".
 	DoneReason string `json:"done_reason,omitempty"`
 	// LogProbs, when set, are the log probabilities to report, one per chunk,

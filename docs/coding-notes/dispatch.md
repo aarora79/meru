@@ -350,6 +350,15 @@ MCP server on 127.0.0.1.
 - **Optional interfaces for the audit, the connect and the per-call confirm.**
   One backend needs each, so a type assertion beats a new method on `Backend`
   that three backends would stub out.
+- **A repeated call never gets here.** When the model asks for a call it
+  already made this turn, same name and same arguments, the agent hands back
+  the earlier result and doesn't call `Dispatch` (see [agent](agent.md)). A
+  repeat runs nothing, so it isn't a tool call and leaves no `tool_call` line or
+  `tool_calls` row. Sending it through would log work that never happened and
+  ask you a second time about a call that asks first.
+- **A skill can't widen the allowlist.** A picked skill's `allowed-tools` only
+  adds tools that `Tools()` already lists, so config stays the one place that
+  turns a tool on.
 - **Session approvals in memory.** Writing them to disk would make them outlive the
   session, which ARCHITECTURE.md rules out. Config stays the one place that grants
   lasting trust.

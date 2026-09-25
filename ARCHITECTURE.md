@@ -343,7 +343,7 @@ sequenceDiagram
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. Each `[[commands]]` entry is one tool. The built-in tools need no entry |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or `[[commands]]` entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, or its `[[commands]]` entry says `confirm = true`, unless you already approved that tool for this session. `configure` asks every time. `web_fetch` asks for a URL that no search result or question of yours gave, and before a download |
-| When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
+| When the turn ends | the `main` model, with caps | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer. A model that repeats a call twice loses its tools early. Each model call writes at most `[agent] max_output_tokens` (default 8,192, thinking included), and the whole turn has `[agent] turn_timeout` (default 5 minutes). A turn that hits a limit with no answer says sorry instead of going quiet |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
 `datetime`, the four read-only file tools, `read_file`, `list_folder`, `grep` and
@@ -591,7 +591,14 @@ order.
    skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
-   short call picks the skills to load.
+   short call picks the skills to load, beside the router. A picked skill
+   brings the tools its `allowed-tools` key names (see [Skills](#skills)):
+   when the route lacks one that config allows, `direct` becomes `tools` and
+   `search` becomes `search+tools`. The router alone can't catch this: "help
+   me understand btop with some simple commands" gave `direct` 0.761 and
+   `tools` 0.022, while the skill pick chose `web-research`, whose first step
+   is `web_search`. A skill that adds only web tools leaves a `direct` turn
+   unsearched; one that adds the file tools makes it a file turn.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, today's date with a pointer to the `datetime` tool (a model knows only its
@@ -632,7 +639,11 @@ order.
    connected one try, then lists the tools (see [MCP](#mcp)).
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
-   client about each call with a `tool_call` event.
+   client about each call with a `tool_call` event. Each call carries
+   `num_predict = [agent] max_output_tokens` (default 8,192). Ollama counts a
+   thinking model's hidden reasoning against it, so a model that would think
+   for minutes stops with `done_reason = "length"`. Ollama offers no separate
+   budget for thinking: `think` only turns it on or off.
 4. **Dispatch tools.** Every call goes through one function, `dispatch`, in this
    order:
    1. **Allowlist.** A tool that no backend offers is `denied`. It doesn't run,
@@ -660,7 +671,29 @@ order.
 5. **Repeat** from step 3 with the tool results, until the model answers without
    calling a tool or the turn reaches `[agent] max_rounds` model calls (default 8).
    The last allowed round offers no tools, so the model has to answer with what it
-   has.
+   has. A call with the same name and arguments (compared as canonical JSON) as
+   one the turn already ran doesn't run again: the model gets the earlier result
+   with a note that it repeated itself. A repeat never reaches `dispatch`, so it
+   is no tool call: no `tool_call` event, transcript line or `tool_calls` row,
+   only a debug log line and the turn span's `meru.turn.repeated_calls`. After
+   the second repeat, later rounds offer no tools. A 2B model offered only
+   `datetime` once called it with no arguments in all eight rounds.
+
+A turn has `[agent] turn_timeout` (default `"5m"`) from question to answer,
+waits for your approvals included. When the time runs out, `merud` cancels the
+turn's context, which stops the Ollama request and any tool calls. A turn that
+ends without a full answer still answers, with an outcome of its own:
+
+| Outcome | When | What you read |
+| --- | --- | --- |
+| `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
+| `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
+| `gave_up` | the rounds ended with no text, such as only tool calls | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+
+The words go out as ordinary `token` events, so both clients show them as the
+answer. The outcome goes on the `meru.turn` span, the `turn` log line and
+`meru.turn.duration`, and in the assistant line's `outcome` field in the
+transcript.
 
 `dispatch` sees the tools through one interface, `Backend`, with four
 implementations in a fixed order: the built-in tools, the local commands, the MCP
@@ -668,7 +701,7 @@ client pool, then the A2A client. When two backends offer the same name, the
 first keeps it, so no MCP server can shadow `configure` or a `cmd.` tool.
 
 A `context.Context` runs through the whole turn. If the client disconnects or you
-press Ctrl-C, `merud` cancels the turn: generation stops, in-flight tool calls are
+press Ctrl-C, `merud` cancels the turn, with no sorry: generation stops, in-flight tool calls are
 dropped, and their `tool_calls` rows record the cancellation.
 
 ### Routing
@@ -850,6 +883,9 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 {"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Sam and Priya agreed on 14 October…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Found the launch date agreed in email: 14 October, in the thread with Sam."}
 ```
+
+An assistant line gets an `outcome` field only when the turn ended without a
+full answer: `timeout`, `cut_off` or `gave_up` (see [Agent loop](#agent-loop)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
 same time and their lines can interleave. An `approval` line sits between the two
@@ -1430,6 +1466,27 @@ The system prompt carries only each skill's `name` and `description`. From v0.4,
 short call to the `fast` model picks the skills a turn needs, and `merud` loads only
 their bodies, so adding skills barely grows the prompt.
 
+A skill may also list the tools its steps use, under `allowed-tools`, the key
+Claude's skills use:
+
+```markdown
+---
+name: web-research
+description: Look up current facts on the web...
+allowed-tools: web_search, web_fetch
+---
+```
+
+When the pick chooses a skill, the turn gains the tools it names that config
+allows: a built-in tool in `[builtin] tools` (`web_search` also needs a SearXNG
+address), or an MCP or A2A tool on its allowlist. A skill never turns on a tool
+config keeps off, and every call still goes through `dispatch`. When config
+allows none of a skill's tools, the turn leaves that skill's instructions out:
+telling a model to search the web with no search tool made it call the one tool
+it had over and over. A name Meru doesn't know as a tool, such as Claude's
+`Read`, counts for nothing, so a skill copied from Claude doesn't lose its body.
+The key takes a comma list, a `[...]` list or a YAML list of `- name` lines.
+
 A skill's `name` is lowercase letters and digits in words joined by `-`, such as
 `meeting-notes`, and must match its folder's name. A `SKILL.md` may be up to
 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and
@@ -1460,15 +1517,17 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
-| `web-research` | For questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree |
-| `file-research` | For questions about the user's own files: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts |
+| `web-research` | For questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
+| `file-research` | For questions about the user's own files: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those four tools |
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
   `~/.meru/skills/<name>/` unless that folder already exists or `[skills]
   disabled` names it.
-- **Your copy wins.** `merud` never overwrites a skill you've edited. To get the
-  shipped version back, run `meru skills reset <name>`.
+- **Your copy wins.** `merud` never overwrites a skill you've edited, or one a
+  newer Meru changed. To get the shipped version back, run
+  `meru skills reset <name>`; a copy of `web-research` from before
+  `allowed-tools` needs it to bring its tools.
 - **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
   counts, whether you wrote it or copied it from elsewhere.
 - **You turn one off in config.** `[skills] disabled` names the skills `merud`
@@ -2245,7 +2304,7 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome (ok/error/cancelled/timeout/cut_off/gave_up) | end-to-end latency; its sum over `outcome="ok"` is active time |
 | `meru.sessions` | counter | source | sessions started |
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |

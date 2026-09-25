@@ -1,6 +1,7 @@
 ---
 name: web-research
 description: Look up current facts on the web - the latest version or release of something, news, prices, or anything that may have changed. Use when asked to search the web or look something up online.
+allowed-tools: web_search, web_fetch
 ---
 
 # Web research

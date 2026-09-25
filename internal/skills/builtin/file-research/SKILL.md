@@ -1,6 +1,7 @@
 ---
 name: file-research
 description: Find and read things in the user's own files - notes, documents, papers, code and PDFs in the indexed folders. Use when a question asks what the user's files, notes or knowledge base say, or needs a file found or read.
+allowed-tools: search_files, grep, list_folder, read_file
 ---
 
 # File research

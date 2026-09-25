@@ -3,7 +3,8 @@
 // run side by side with the router, and the two prompt sections that
 // follow from it. Every turn lists each skill's name and description; only
 // the picked skills' instructions join the prompt. That split is called
-// progressive disclosure.
+// progressive disclosure. It also holds skillTools, which lets a picked
+// skill bring the tools its steps use.
 
 package agent
 
@@ -19,6 +20,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/rpc"
@@ -296,6 +299,107 @@ func cutText(s string, n int) string {
 		head = head[:i]
 	}
 	return strings.TrimRight(head, " \n")
+}
+
+// skillTools settles what the picked skills in p need from the tools. A
+// skill's allowed-tools key (see skills.Skill) names the tools its steps
+// use; web-research names web_search and web_fetch. It returns the picked
+// names that stay, in order, and the tools they name that the ToolRunner
+// offers, each once.
+//
+// A skill brings only tools that config already allows: "offers" means the
+// ToolRunner lists the tool, and dispatch lists only the built-in tools in
+// [builtin] tools (web_search only with a SearXNG address) and the MCP and
+// A2A tools on an allowlist. So a skill can't turn on a tool config keeps
+// off (AGENTS.md, non-negotiable 3), and every call still goes through
+// dispatch. When a named tool is missing and would come from an MCP server
+// or A2A agent, it gives each server that isn't connected one try first,
+// as a tools route does.
+//
+// A skill whose named tools are all missing leaves the turn: its steps say
+// to use a tool the model won't have. A small model told "search first
+// with web_search" and offered only datetime called datetime eight times
+// in a row. Names Meru can't recognise as a tool (no dot, and no built-in
+// by that name), such as a Claude skill's "Read", count for nothing: a
+// skill that names only those stays, as if it named none.
+func (a *Agent) skillTools(ctx context.Context, p pickedSkills) (keep, tools []string) {
+	if p.reg == nil || len(p.names) == 0 {
+		return p.names, nil
+	}
+	offered := a.offeredNames()
+	connected := false
+	for _, name := range p.names {
+		s, ok := p.reg.Get(name)
+		if !ok {
+			keep = append(keep, name)
+			continue
+		}
+		named := slices.DeleteFunc(s.AllowedTools, func(n string) bool { return !toolShaped(n) })
+		if len(named) == 0 {
+			keep = append(keep, name)
+			continue
+		}
+		// A server or agent that isn't connected lists no tools; give it
+		// one try before counting its tools as off.
+		missingRemote := slices.ContainsFunc(named, func(n string) bool {
+			return !slices.Contains(offered, n) && toolKind(n) != dispatch.KindBuiltin
+		})
+		if missingRemote && !connected && a.tools != nil {
+			a.tools.ConnectMissing(ctx)
+			offered = a.offeredNames()
+			connected = true
+		}
+		var have []string
+		for _, n := range named {
+			if slices.Contains(offered, n) {
+				have = append(have, n)
+			}
+		}
+		if len(have) == 0 {
+			a.log.DebugContext(ctx, "skill left out: config allows none of the tools it uses",
+				"skill", name, "tools", strings.Join(named, ","))
+			continue
+		}
+		keep = append(keep, name)
+		for _, n := range have {
+			if !slices.Contains(tools, n) {
+				tools = append(tools, n)
+			}
+		}
+	}
+	return keep, tools
+}
+
+// offeredNames returns the names of the tools the ToolRunner offers, or nil
+// when tools are off.
+func (a *Agent) offeredNames() []string {
+	if a.tools == nil {
+		return nil
+	}
+	var names []string
+	for _, s := range a.tools.Tools() {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
+// toolShaped reports whether name can name a Meru tool: a built-in tool
+// such as "web_search", or a name with a dot, such as
+// "obsidian.obsidian_simple_search", "a2a.research.summarize" or
+// "cmd.git-log".
+func toolShaped(name string) bool {
+	return strings.Contains(name, ".") || slices.Contains(config.BuiltinTools(), name)
+}
+
+// notOffered returns the names in want that specs don't hold, in order.
+func notOffered(want []string, specs []engine.ToolSpec) []string {
+	var out []string
+	for _, n := range want {
+		if !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == n }) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // skillInfos turns the picked names into the list the "route" event

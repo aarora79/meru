@@ -575,6 +575,10 @@ The same path as a reading list, in order:
    Back in `Handle`, a `direct` route becomes `search` when the question names an
    indexed folder as a whole word (`namesFolder`), and a route without tools gains
    them when the question points at a connected tool (`toolTarget`, `withTools`).
+   Last, `skillTools` (`skills.go`) adds the tools a picked skill's
+   `allowed-tools` names, when config allows them, and widens the route to match;
+   a skill whose tools are all off leaves the prompt. These rules run in
+   `respond`, the part of `Handle` between the question and the answer.
 6. **`internal/agent/agent.go` → `searchFiles`**, on a file turn (`aboutFiles`:
    `search` and `search+tools`, and `tools` when the question points at no
    connected tool), calls
@@ -592,11 +596,17 @@ The same path as a reading list, in order:
    answers now joins this turn's tools. A server that still fails is left out.
 8. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
    `answer` with the schemas from `toolSpecs(route)`, or none on the last allowed
-   round (`[agent] max_rounds`, default 8). When the model calls tools,
-   `runTools` gives each an ID, emits `tool_call`, and runs the calls at the same
-   time in an `errgroup`, each through `ToolRunner.Dispatch`. Each result goes
-   back to the model as a `RoleTool` message, in call order, and each call emits
-   `tool_result` as it ends. The loop stops when a round has no tool calls.
+   round (`[agent] max_rounds`, default 8) and after the model has repeated a
+   call twice. Each call caps the model at `[agent] max_output_tokens`. When the
+   model calls tools, `runRound` hands back the earlier result for a call it
+   already made (same name, same arguments), and `runTools` gives each new call
+   an ID, emits `tool_call`, and runs the calls at the same time in an
+   `errgroup`, each through `ToolRunner.Dispatch`. Each result goes back to the
+   model as a `RoleTool` message, in call order, and each call emits
+   `tool_result` as it ends. The loop stops when a round has no tool calls. The
+   whole turn runs under `[agent] turn_timeout`; a turn that runs out of time,
+   hits the token cap or ends with no text answers with an apology
+   (`endTurn`).
 9. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
    offers the tool, or ends the call as `denied`. It writes the `tool_call` line,
    asks through `approve` when the tool needs a yes, runs `Backend.Call`, redacts
