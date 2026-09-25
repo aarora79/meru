@@ -272,11 +272,23 @@ meru skills reset writing     # put the shipped copy back
 ```
 
 `reset` replaces your edits, so on a terminal it asks first; in a script, add
-`--yes`. It works only on the three built-ins.
+`--yes`. It works only on the four built-ins.
 
 **Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
 change on the next question; no restart. `merud` never overwrites your copy, even
 after an upgrade, so run `meru skills reset` to take a newer shipped version.
+
+**A skill brings its tools.** A skill can list the tools its steps use in an
+`allowed-tools` line, as Claude's skills do. `web-research` lists `web_search,
+web_fetch`, and `file-research` its four file tools. When the pick chooses a
+skill and the question's route lacks those tools, the turn gets them and the
+route widens: `direct` becomes `tools`, `search` becomes `search+tools`. The
+route badge shows the wider route. A skill only brings tools your config
+allows. With `web_search` off (no SearXNG) and `web_fetch` taken out of
+`[builtin] tools`, `web-research` has nothing to use, so the turn leaves its
+instructions out. If your `~/.meru/skills/web-research/SKILL.md` came from an
+older Meru, it lacks the line: run `meru skills reset web-research` and
+`meru skills reset file-research` to take the new copies.
 
 **Add your own** by making a folder under `~/.meru/skills/` whose name matches the
 skill's `name`, holding a `SKILL.md`:
@@ -472,6 +484,30 @@ That list leaves out `configure` and `web_fetch`. A tool you list still needs
 what it works on: the file tools need `[index] folders`, and `web_search` needs
 `[web] searxng_url`. Without it the tool stays off, and `merud.log` has a
 `built-in tool off` line that says why.
+
+**Limits on a question.** Two keys in `[agent]` keep a question from running
+forever:
+
+```toml
+[agent]
+max_output_tokens = 8192   # most tokens one model call may write, thinking included
+turn_timeout      = "5m"   # longest one question may take, approvals included
+```
+
+A thinking model such as MiniCPM5 reasons out of sight before it writes, and
+Ollama counts those tokens against `max_output_tokens`. Without a cap, a model
+once sat on "thinking…" for many minutes. When a question hits either limit, or
+the model uses up `max_rounds` calling tools and never writes an answer, Meru
+says so instead of going quiet:
+
+```text
+Sorry, I couldn't answer that. Try asking again, or rephrase the question.
+```
+
+If part of the answer had already appeared, it stays, followed by a note that
+Meru stopped it. The `turn` line in `merud.log` then shows `outcome=timeout`,
+`outcome=cut_off` or `outcome=gave_up`. On the `full` profile a long answer
+can need more time; raise `turn_timeout` if answers stop short.
 
 Restart `merud` after editing the file. It checks every value at startup and
 refuses to start on a typo, an unknown key or a bad value, naming the key. It also
@@ -1317,6 +1353,7 @@ later.
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
+| "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools; ask again in other words). |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
 ## 13. Uninstall

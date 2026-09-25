@@ -79,6 +79,8 @@ keep_alive = "30m"
 
 [agent]
 max_rounds = 3
+max_output_tokens = 2048
+turn_timeout = "90s"
 history_turns = 0
 system_prompt = "Be brief."
 
@@ -150,7 +152,7 @@ remote  = false
 		Profile: "lite",
 		Models:  profiles["lite"],
 		Ollama:  Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
-		Agent:   Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
+		Agent:   Agent{MaxRounds: 3, MaxOutputTokens: 2048, TurnTimeout: "90s", HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
 		Router: Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct",
 			Decision: "marginal", SearchThreshold: 0.4, ToolsThreshold: 0},
@@ -205,6 +207,9 @@ func TestLoadErrors(t *testing.T) {
 		{"ollama empty", "[ollama]\nbase_url = \"\"", "ollama.base_url"},
 		{"keep_alive", "[ollama]\nkeep_alive = \"forever\"", "ollama.keep_alive"},
 		{"max_rounds", "[agent]\nmax_rounds = 0", "agent.max_rounds"},
+		{"max_output_tokens", "[agent]\nmax_output_tokens = 0", "agent.max_output_tokens"},
+		{"turn_timeout", "[agent]\nturn_timeout = \"soon\"", "agent.turn_timeout"},
+		{"turn_timeout zero", "[agent]\nturn_timeout = \"0s\"", "agent.turn_timeout"},
 		{"history_turns", "[agent]\nhistory_turns = -1", "agent.history_turns"},
 		{"top_logprobs low", "[router]\ntop_logprobs = 0", "router.top_logprobs"},
 		{"top_logprobs high", "[router]\ntop_logprobs = 21", "router.top_logprobs"},

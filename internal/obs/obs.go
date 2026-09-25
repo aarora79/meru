@@ -140,7 +140,7 @@ func RecordModelCall(ctx context.Context, c ModelCall) {
 type Turn struct {
 	Route      string // one of the four routes
 	Source     string // "cli", "tui" or "job"
-	Outcome    string // "ok", "error" or "cancelled"
+	Outcome    string // "ok", "error", "cancelled", "timeout", "cut_off" or "gave_up"
 	Duration   time.Duration
 	Iterations int
 }

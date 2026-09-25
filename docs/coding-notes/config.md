@@ -48,6 +48,12 @@ type Ollama struct {
 A **struct** is a named group of fields, like a Python dataclass. The text in
 backticks is the tag. More in [go-basics/struct-tags.md](go-basics/struct-tags.md).
 
+`Agent` holds the loop's limits. `MaxRounds` caps model calls per turn,
+`MaxOutputTokens` caps the tokens one call may write, hidden thinking
+included, and `TurnTimeout` is how long a turn may run, a Go duration string
+such as `"5m"`. `validate` wants `max_output_tokens` at 1 or more and
+`turn_timeout` a positive duration, as it wants `summary_idle`.
+
 `Commands` holds the `[[commands]]` entries (v0.3): each is a `Command` with a
 name, a description, an `argv`, a `cwd`, a `timeout`, `confirm`, an
 `env_allowlist`, and a `params` table of `CommandParam` values keyed by

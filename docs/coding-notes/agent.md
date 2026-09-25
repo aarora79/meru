@@ -415,6 +415,42 @@ names joined with commas; they come from the registry, so the attribute stays
 a small set. The pick has its own `meru.skills.pick` span with a `gen_ai.chat`
 span under it, and a `skills picked` debug line.
 
+**A picked skill brings its tools.** A skill's `allowed-tools` key names the
+tools its steps use (see [skills](skills.md)). The bug that led here: "help me
+understand btop with some simple commands" routed `direct` at 0.761 (`tools`
+0.022), and the pick chose `web-research`, whose first step is "search first
+with web_search". A `direct` turn offers only `datetime`, so the 2B model
+called `datetime` with no arguments in all eight rounds. The router can't fix
+this: it never sees the skill.
+
+`skillTools` runs in `respond` after the other route rules and before the
+route event. For each picked skill it keeps the names that look like Meru
+tools (`toolShaped`: a built-in name, or a name with a dot) and checks which of
+them the `ToolRunner` lists:
+
+```go
+picked.names, skillTools = a.skillTools(ctx, picked)
+if missing := notOffered(skillTools, a.toolSpecs(dec.Route)); len(missing) > 0 {
+    if r, ok := withTools(dec.Route); ok {
+        a.log.DebugContext(ctx, "route changed: a picked skill uses tools the route lacks", ...)
+        dec.Route = r
+    }
+}
+```
+
+The `ToolRunner` is dispatch, and dispatch lists only what config allows, so a
+skill can't turn on a tool you left off. When a missing tool would come from
+an MCP server or A2A agent, `skillTools` first calls `ConnectMissing`, as a
+tools route does. A skill whose tools are all off, such as `web-research` with
+no SearXNG and no `web_fetch`, drops out of `picked.names`, so its body stays
+out of the prompt and its name off the route event. A debug line says why.
+
+Widening from `direct` to `tools` would normally make the turn a file turn
+(see `aboutFiles`) and search your files first. A skill that adds only web
+tools shouldn't do that, so `fileTurn` changes only when the added tools
+include a file tool. `slices.ContainsFunc` reports whether any item passes the
+function.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`
@@ -448,6 +484,46 @@ writes the turn's one info line, `logTurn`.
 
 `approve` is the rpc server's way to ask you about a tool call. The agent
 never calls it; it hands it to dispatch in each `dispatch.Call`.
+
+**`respond` does the middle of the turn.** Routing, the route rules, the
+search, the prompt and the rounds live in `respond`, which returns a
+`response`: the route, the reply and the files it read. `Handle` keeps the
+start (session, user line) and the end (assistant line, `turns` row, `done`).
+The split lets `Handle` decide in one place what to do when the middle stops
+early.
+
+**A turn has a deadline.** `Handle` wraps the context:
+
+```go
+tctx, cancel := context.WithTimeout(ctx, a.turnTimeout)
+defer cancel()
+...
+res, err := a.respond(tctx, t, question, history)
+if err != nil && (tctx.Err() == nil || ctx.Err() != nil) {
+    return err // a model error, or the user hung up
+}
+```
+
+`context.WithTimeout` returns a child context that ends when the parent ends
+or when the time runs out, whichever comes first. `cancel` frees its timer;
+`defer` runs it when `Handle` returns. Every model and tool call under `tctx`
+stops when it ends: the engine's HTTP request to Ollama is cancelled, so
+Ollama stops too. When `tctx` ended but `ctx` didn't, the turn ran out of time
+and still answers; when `ctx` ended, you hung up and the turn fails as before.
+
+**A turn that ends without a full answer still answers.** `endOf` names how it
+ended: `timeout`, `cut_off` (the last model call stopped with
+`done_reason = "length"`) or `gave_up` (the answer holds no text, as when the
+last round only called tools). `endTurn` then sends the words as ordinary
+`token` events, so `meru` and `meru chat` show them with no change:
+
+- no text yet: `Sorry, I couldn't answer that. Try asking again, or rephrase the question.`
+- some text already streamed: that text stays, and a note follows it, one for
+  the deadline and one for the length limit.
+
+The outcome replaces `ok` in the turn span, the `turn` log line and
+`meru.turn.duration`, and goes in the assistant line's `Outcome` field. All
+three values come from a fixed list, so the metric stays bounded.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
@@ -660,7 +736,7 @@ prompt.
 `answer` streams one round of the main model's reply:
 
 ```go
-stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model})
+stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model, MaxTokens: a.maxTokens})
 ...
 for delta, err := range stream {
     if err != nil {
@@ -836,6 +912,21 @@ for {
 - **The cap.** `[agent] max_rounds` (default 8) caps model calls per turn.
   The last round offers no tools, so the model has to answer. A model that
   calls a tool it wasn't offered gets no call run; that round is its answer.
+- **Repeats.** `runRound` sits between `converse` and `runTools`. It gives
+  each call a key, `callKey`: the tool's name and its arguments decoded and
+  encoded again, which sorts the JSON keys, so `{"a":1, "b":2}` and
+  `{"b":2,"a":1}` match. A call whose key the turn has seen doesn't run: its
+  message holds the earlier result from `t.seen` and a note saying so. After
+  `maxRepeats` (2) repeats, `converse` stops offering tools, so the next round
+  must answer. The btop turn now runs `datetime` once, hands back the same time
+  twice with the notes, and answers in the fourth round instead of the ninth.
+- **Why a repeat skips dispatch.** AGENTS.md says every tool call goes through
+  `dispatch`. A repeat runs nothing, so it isn't a call: it gets no
+  `tool_call` event, no transcript line and no `tool_calls` row. Sending it
+  through `dispatch` would log a second call that did no new work, and ask
+  you again for a call that asks first. The transcript has no line type for a
+  note, so a repeat shows up only in a debug log line (`tool call repeated`)
+  and in the turn span's `meru.turn.repeated_calls` count.
 - **What the model reads next round.** Its own message with the calls, then
   one `RoleTool` message per call, in call order, with `ToolName` set to the
   tool's full name and `Content` set to `Result.Text`. A denied or declined
@@ -847,8 +938,8 @@ for {
   counts. `reply.add` has a pointer receiver (`r *reply`), so it changes the
   caller's `reply` in place.
 - **`turn`** is a small struct that carries what the rounds need: the
-  session, source, trace ID, `emit`, `approve`, two counters, `rounds`
-  and `calls`, and the turn's sources with `cites`, the count of citation
+  session, source, trace ID, `emit`, `approve`, three counters, `rounds`,
+  `calls` and `repeats`, the `seen` map of results by call key, and the turn's sources with `cites`, the count of citation
   numbers handed out. `Handle` reads `t.rounds` in its deferred function, so a
   failed turn still reports how many rounds it ran.
 
@@ -925,7 +1016,8 @@ tests' collector takes a lock too.
 
 ### Cancellation
 
-When the client hangs up, the rpc server cancels `ctx`. The engine's stream
+The turn's own deadline ends `tctx` and gets an answer (see Handle). When the
+client hangs up, the rpc server cancels `ctx`. The engine's stream
 ends, `answer` returns `ctx.Err()`, and `Handle` returns without writing an
 assistant line or a `turns` row. The user line stays in the file, and `History` leaves an
 unanswered question out of later prompts.
@@ -936,7 +1028,8 @@ once every call has returned. The model isn't called again.
 
 ### The transcript
 
-The agent writes two lines per turn: the question and the final answer.
+The agent writes two lines per turn: the question and the final answer. The
+answer line carries `outcome` only on a turn that ended without a full answer.
 Dispatch writes the tool lines (`tool_call`, `approval`, `tool_result`)
 between them. `transcript.History` reads only user and assistant lines, so
 earlier tool results stay out of later prompts: the answer already holds

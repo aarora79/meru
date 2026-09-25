@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
@@ -29,6 +30,10 @@ import (
 	"github.com/aarora79/meru/internal/store"
 	"github.com/aarora79/meru/internal/transcript"
 )
+
+// defaultTurnTimeout is how long a turn may run when config sets no
+// turn_timeout. It matches the default in internal/config.
+const defaultTurnTimeout = 5 * time.Minute
 
 // DefaultSystemPrompt is the system prompt when config sets none.
 const DefaultSystemPrompt = "You are Meru, a personal assistant that runs entirely on the user's own computer. " +
@@ -118,14 +123,16 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
-	search      Searcher     // nil turns search off
-	tools       ToolRunner   // nil turns tools off
-	turns       TurnRecorder // nil keeps no turn rows
-	profile     Profile      // nil leaves the profile out of the prompt
-	skills      Skills       // nil turns skills off; set by UseSkills
-	machine     string       // describes the user's computer; set by UseMachine
-	maxRounds   int          // model calls per turn, at most; see converse
-	agentic     bool         // [index] retrieval = "agentic": no search before the answer
+	search      Searcher      // nil turns search off
+	tools       ToolRunner    // nil turns tools off
+	turns       TurnRecorder  // nil keeps no turn rows
+	profile     Profile       // nil leaves the profile out of the prompt
+	skills      Skills        // nil turns skills off; set by UseSkills
+	machine     string        // describes the user's computer; set by UseMachine
+	maxRounds   int           // model calls per turn, at most; see converse
+	maxTokens   int           // tokens one main-model call may write, thinking included
+	turnTimeout time.Duration // how long one turn may run; see Handle
+	agentic     bool          // [index] retrieval = "agentic": no search before the answer
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
@@ -164,6 +171,12 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 	}
 	system += "\n\n" + whoIsWho
 	agentic := cfg.Index.Retrieval == config.RetrievalAgentic
+	// config.Load has checked turn_timeout already. A zero Config, as some
+	// tests build, has none, so it falls back to the default.
+	timeout, err := time.ParseDuration(cfg.Agent.TurnTimeout)
+	if err != nil || timeout <= 0 {
+		timeout = defaultTurnTimeout
+	}
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
@@ -174,6 +187,8 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		turns:       turns,
 		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
+		maxTokens:   cfg.Agent.MaxOutputTokens,
+		turnTimeout: timeout,
 		agentic:     agentic,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
@@ -199,6 +214,12 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 // While tool calls run, Handle calls emit from several goroutines at once,
 // and dispatch calls approve from them too. The rpc server's emit takes a
 // lock for each write, so that is safe.
+//
+// A turn never runs forever. It has [agent] turn_timeout to answer, and
+// each model call may write at most [agent] max_output_tokens. A turn that
+// runs out of time, hits the token cap, or ends its rounds with no text
+// still answers: see endTurn. The user reads a short apology, or the text
+// so far with a note that it was cut off, instead of silence.
 //
 // A turn that answers also writes a row to the turns table and records
 // the usage metrics; see recordUsage.
@@ -228,15 +249,22 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	ctx, span := obs.Tracer().Start(ctx, "meru.turn")
 	var route, sessionID string
 	var rep reply // the answer's stats, summed over the rounds
+	// ended is how a turn without a full answer ended: endTimeout,
+	// endCutOff or endGaveUp; "" for a full answer.
+	var ended string
 	// t carries what the rounds need; its rounds field counts model calls.
 	t := &turn{emit: emit, approve: approve}
 	defer func() {
 		outcome := outcomeOf(ctx, err)
+		if err == nil && ended != "" {
+			outcome = ended
+		}
 		span.SetAttributes(
 			attribute.String("meru.route", route),
 			attribute.String("meru.source", source),
 			attribute.String("meru.session.id", sessionID),
 			attribute.Int("meru.turn.iterations", t.rounds),
+			attribute.Int("meru.turn.repeated_calls", t.repeats),
 			attribute.String("meru.turn.outcome", outcome),
 		)
 		obs.EndSpanErr(ctx, span, err)
@@ -254,7 +282,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	}
 	a.logStart(ctx, req.Session, source, question)
 
-	sess, history, err := a.openSession(ctx, req.Session)
+	// The turn's deadline. tctx ends when turn_timeout runs out, and with it
+	// every model call and tool call the turn makes: Ollama sees its request
+	// cancelled and stops. ctx itself only ends when the client hangs up, so
+	// comparing the two tells a turn that ran out of time from one the user
+	// cancelled. cancel frees the timer when Handle returns.
+	tctx, cancel := context.WithTimeout(ctx, a.turnTimeout)
+	defer cancel()
+
+	sess, history, err := a.openSession(tctx, req.Session)
 	if err != nil {
 		return err
 	}
@@ -275,9 +311,72 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
+	res, err := a.respond(tctx, t, question, history)
+	route, rep = res.route, res.rep
+	if err != nil && (tctx.Err() == nil || ctx.Err() != nil) {
+		// A failure that isn't the turn's own deadline: a model error, or
+		// the user hung up.
+		return err
+	}
+	ended = endOf(err, rep)
+	if ended != "" {
+		// err is only ever the deadline here, which endTurn answers for.
+		var text string
+		text, err = a.endTurn(ctx, ended, rep.text, emit)
+		if err != nil {
+			return err
+		}
+		rep.text = text
+	}
+	if obs.CaptureContent() {
+		span.SetAttributes(attribute.String("meru.answer", rep.text))
+	}
+
+	// The assistant line holds the turn's facts, so `meru usage` can
+	// rebuild from the files: the route after the override rules, how long
+	// the turn took, and which files it read. Outcome is set only on a turn
+	// that ended without a full answer.
+	answer := transcript.Line{
+		Type:      transcript.TypeAssistant,
+		Text:      rep.text,
+		TokensIn:  rep.usage.PromptTokens,
+		TokensOut: rep.usage.OutputTokens,
+		Route:     route,
+		Ms:        time.Since(start).Milliseconds(),
+		Sources:   res.docs,
+		Outcome:   ended,
+		TraceID:   traceID,
+	}
+	if err := a.appendLine(ctx, sess, answer); err != nil {
+		return err
+	}
+	a.recordUsage(ctx, sessionID, source, start, answer, t.calls)
+	return emit(doneEvent(start, rep))
+}
+
+// response is what respond hands back to Handle: the route after the
+// override rules, the answer with its stats, and the full paths of the
+// files whose excerpts went into the prompt, for the transcript.
+type response struct {
+	route string
+	rep   reply
+	docs  []string
+}
+
+// respond does the part of a turn between the question and the answer:
+// route and pick skills, apply the route rules, search, build the prompt,
+// and run the rounds. It sends the "route" event and any "sources" event
+// itself.
+//
+// It fails when a model call fails, emit fails, or ctx ends. Even then it
+// returns the route so far and the text the last round streamed before it
+// stopped, so Handle can close a turn that ran out of time with what the
+// user already read.
+func (a *Agent) respond(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
+	var res response
 	dec, picked, err := a.routeAndPick(ctx, question, history)
 	if err != nil {
-		return err
+		return res, err
 	}
 	// The router can't always tell that a question names one of the user's
 	// own projects: "what database does meru use" can look like general
@@ -302,18 +401,38 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
-	route = dec.Route
 	// fileTurn says whether the turn is about the user's files; see
 	// aboutFiles.
 	fileTurn := aboutFiles(dec.Route, target)
+	// The last rule: a picked skill brings the tools it names, when config
+	// allows them, and a skill whose tools are all off stays out of the
+	// prompt. See skillTools.
+	var skillTools []string
+	picked.names, skillTools = a.skillTools(ctx, picked)
+	if missing := notOffered(skillTools, a.toolSpecs(dec.Route)); len(missing) > 0 {
+		if r, ok := withTools(dec.Route); ok {
+			a.log.DebugContext(ctx, "route changed: a picked skill uses tools the route lacks",
+				"skills", strings.Join(picked.names, ","), "tools", strings.Join(missing, ","),
+				"from", dec.Route, "to", r, "confidence", dec.Confidence)
+			// A skill that adds file tools makes the turn about the user's
+			// files, as the route it widens to would. One that adds only
+			// other tools, such as web-research, leaves the turn as it was:
+			// a direct question about btop needs no excerpts from the files.
+			if slices.ContainsFunc(missing, builtin.IsFileTool) {
+				fileTurn = aboutFiles(r, target)
+			}
+			dec.Route = r
+		}
+	}
+	res.route = dec.Route
 	if dec.Route == "tools" && !fileTurn {
-		a.log.DebugContext(ctx, "no search first: the question "+target)
+		a.log.DebugContext(ctx, "no search first: the question points at a connected tool", "target", target)
 	}
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
 	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
-	if err := emit(routeEv); err != nil {
-		return err
+	if err := t.emit(routeEv); err != nil {
+		return res, err
 	}
 
 	// A file turn looks in the user's files first. "tools" searches too,
@@ -324,22 +443,21 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// time. With agentic retrieval no turn searches first: the model looks
 	// with the file tools instead.
 	var files string
-	var docs []string // the full paths of the files in the prompt, for the transcript
 	if a.searchesFirst(fileTurn) {
 		var sources []rpc.Citation
-		files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
+		files, sources, res.docs, err = a.searchFiles(ctx, searchQuery(question, history))
 		if err != nil {
-			return err
+			return res, err
 		}
 		if len(sources) > 0 {
-			if err := emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
-				return err
+			if err := t.emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
+				return res, err
 			}
 		}
 		// Excerpts a tool finds later in the turn number on from these.
 		t.sources, t.cites = sources, len(sources)
 		// Past sessions join the files' section: no numbers, no sources event.
-		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
+		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
 	}
 	specs := a.toolSpecs(dec.Route)
 	// A turn on a tools route first gives each tool server that isn't
@@ -363,32 +481,67 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
-	rep, err = a.converse(ctx, t, msgs, specs)
-	if err != nil {
-		return err
-	}
-	if obs.CaptureContent() {
-		span.SetAttributes(attribute.String("meru.answer", rep.text))
-	}
+	res.rep, err = a.converse(ctx, t, msgs, specs)
+	return res, err
+}
 
-	// The assistant line holds the turn's facts, so `meru usage` can
-	// rebuild from the files: the route after the override rules above,
-	// how long the turn took, and which files it read.
-	answer := transcript.Line{
-		Type:      transcript.TypeAssistant,
-		Text:      rep.text,
-		TokensIn:  rep.usage.PromptTokens,
-		TokensOut: rep.usage.OutputTokens,
-		Route:     route,
-		Ms:        time.Since(start).Milliseconds(),
-		Sources:   docs,
-		TraceID:   traceID,
+// How a turn can end without a full answer. Each is a value of the turn's
+// outcome, beside "ok", "error" and "cancelled", in the span, the "turn"
+// log line and the meru.turn.duration metric, and sits in the assistant
+// line's outcome field in the transcript.
+const (
+	endTimeout = "timeout" // [agent] turn_timeout ran out
+	endCutOff  = "cut_off" // the last model call hit [agent] max_output_tokens
+	endGaveUp  = "gave_up" // the rounds ended with no text, such as only tool calls
+)
+
+// sorry is the answer to a turn that ended with no text at all.
+const sorry = "Sorry, I couldn't answer that. Try asking again, or rephrase the question."
+
+// The notes that follow an answer cut off part way, by how it ended.
+const (
+	timeoutNote = "[Meru stopped the answer here: the question took longer than its time limit.]"
+	cutOffNote  = "[Meru stopped the answer here: it reached the length limit.]"
+)
+
+// endOf says how a turn ended: endTimeout when err is set (Handle passes
+// only the turn's own deadline here), endCutOff when the last model call
+// stopped at the token cap, endGaveUp when the answer holds no text, and ""
+// for a full answer.
+func endOf(err error, rep reply) string {
+	switch {
+	case err != nil:
+		return endTimeout
+	case rep.doneReason == "length":
+		return endCutOff
+	case strings.TrimSpace(rep.text) == "":
+		return endGaveUp
 	}
-	if err := a.appendLine(ctx, sess, answer); err != nil {
-		return err
+	return ""
+}
+
+// endTurn closes a turn that ended without a full answer and returns the
+// answer text for the transcript. When the user has read no text yet, it
+// sends sorry as the answer. When some text streamed first, that text stays,
+// and a note follows it saying the answer was cut off: timeoutNote after a
+// deadline, cutOffNote otherwise. Either way the text goes out as "token"
+// events, so both clients show it as the answer with no change. It logs why
+// the turn ended at debug level, and fails only when emit does.
+func (a *Agent) endTurn(ctx context.Context, ended, text string, emit func(rpc.Event) error) (string, error) {
+	a.log.DebugContext(ctx, "turn ended without a full answer", "outcome", ended,
+		"answer_chars", utf8.RuneCountInString(text))
+	add := sorry
+	if strings.TrimSpace(text) != "" {
+		note := cutOffNote
+		if ended == endTimeout {
+			note = timeoutNote
+		}
+		add = "\n\n" + note
 	}
-	a.recordUsage(ctx, sessionID, source, start, answer, t.calls)
-	return emit(doneEvent(start, rep))
+	if err := emit(rpc.Event{Type: rpc.EventToken, Text: add}); err != nil {
+		return "", err
+	}
+	return text + add, nil
 }
 
 // recordUsage writes the turns row for an answered turn and records
@@ -466,13 +619,15 @@ func doneEvent(start time.Time, rep reply) rpc.Event {
 }
 
 // reply is what answer hands back: the whole answer text, the tool calls
-// the model made, the runtime's usage counters, and when the first piece of
-// text arrived (the zero time.Time when none did).
+// the model made, the runtime's usage counters, when the first piece of
+// text arrived (the zero time.Time when none did), and why the model
+// stopped: "stop", or "length" when it hit the token cap.
 type reply struct {
 	text       string
 	calls      []engine.ToolCall
 	usage      engine.Usage
 	firstToken time.Time
+	doneReason string
 }
 
 // openSession opens the session named id, or starts a new one when id is
@@ -894,13 +1049,17 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 	var calls []engine.ToolCall
 
 	// fail marks the span as failed or cancelled and returns err with
-	// context added.
+	// context added, and the text streamed so far: the user has read it,
+	// so a turn that ran out of time can keep it.
 	fail := func(err error) (reply, error) {
 		obs.EndSpanErr(ctx, span, err)
-		return reply{}, fmt.Errorf("main model %s: %w", model, err)
+		return reply{text: text.String(), firstToken: firstToken}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
-	stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model})
+	// MaxTokens becomes Ollama's num_predict, which counts every token the
+	// model writes, its hidden thinking included. It stops a thinking model
+	// that would reason for minutes and never answer.
+	stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model, MaxTokens: a.maxTokens})
 	if err != nil {
 		return fail(err)
 	}
@@ -951,7 +1110,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 		args = append(args, "answer", obs.Preview(text.String()))
 	}
 	a.log.DebugContext(ctx, "answer finished", args...)
-	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken}, nil
+	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken, doneReason: doneReason}, nil
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's

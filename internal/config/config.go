@@ -69,6 +69,15 @@ type Ollama struct {
 type Agent struct {
 	// MaxRounds caps model calls per turn. Default 8.
 	MaxRounds int `toml:"max_rounds"`
+	// MaxOutputTokens caps the tokens the main model may write in one call,
+	// its hidden thinking included; Ollama calls it num_predict. Default
+	// 8192. Without a cap, a thinking model can reason for many minutes and
+	// never answer.
+	MaxOutputTokens int `toml:"max_output_tokens"`
+	// TurnTimeout is how long one turn may run, from question to answer, as
+	// a Go duration. When it runs out, merud stops the model and the tools
+	// and tells the user it couldn't answer. Default "5m".
+	TurnTimeout string `toml:"turn_timeout"`
 	// HistoryTurns caps how many earlier turns of the session go into the
 	// prompt. v0.1 counts turns; a token budget replaces it later.
 	HistoryTurns int `toml:"history_turns"`

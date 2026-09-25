@@ -165,6 +165,68 @@ func TestGetAndBody(t *testing.T) {
 	}
 }
 
+// TestAllowedTools checks that the allowed-tools key becomes AllowedTools
+// in each shape skill files write it, and leaves Extra.
+func TestAllowedTools(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string // the frontmatter lines for allowed-tools; "" for none
+		want  []string
+	}{
+		{name: "missing", field: "", want: nil},
+		{name: "commas", field: "allowed-tools: web_search, web_fetch\n", want: []string{"web_search", "web_fetch"}},
+		{name: "spaces", field: "allowed-tools: Read Grep\n", want: []string{"Read", "Grep"}},
+		{name: "flow list", field: "allowed-tools: [\"web_search\", 'web_fetch']\n", want: []string{"web_search", "web_fetch"}},
+		{name: "block list", field: "allowed-tools:\n  - obsidian.obsidian_simple_search\n  - read_file\n", want: []string{"obsidian.obsidian_simple_search", "read_file"}},
+		{name: "repeats dropped", field: "allowed-tools: grep, grep\n", want: []string{"grep"}},
+		{name: "empty", field: "allowed-tools:\n", want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSkill(t, dir, "notes", "---\nname: notes\ndescription: Take notes.\n"+tt.field+"---\nbody\n")
+			r, err := Load(dir, nil)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			s, ok := r.Get("notes")
+			if !ok {
+				t.Fatalf("skill didn't load: %v", r.Warnings())
+			}
+			if !slices.Equal(s.AllowedTools, tt.want) {
+				t.Errorf("AllowedTools = %q, want %q", s.AllowedTools, tt.want)
+			}
+			if _, ok := s.Extra["allowed-tools"]; ok {
+				t.Error("allowed-tools stayed in Extra")
+			}
+		})
+	}
+}
+
+// TestBuiltinAllowedTools checks the tools Meru's own built-in skills name.
+func TestBuiltinAllowedTools(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := InstallBuiltins(dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Load(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"web-research":  {"web_search", "web_fetch"},
+		"file-research": {"search_files", "grep", "list_folder", "read_file"},
+		"writing":       nil,
+		"explainer":     nil,
+	}
+	for name, tools := range want {
+		s, _ := r.Get(name)
+		if !slices.Equal(s.AllowedTools, tools) {
+			t.Errorf("%s AllowedTools = %q, want %q", name, s.AllowedTools, tools)
+		}
+	}
+}
+
 // repoSkill reads a skill from the repo's .claude/skills folder, two levels
 // above this package.
 func repoSkill(t *testing.T, name string) []byte {

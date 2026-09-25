@@ -95,9 +95,11 @@ func defaults() Config {
 			KeepAlive: "-1",
 		},
 		Agent: Agent{
-			MaxRounds:    8,
-			HistoryTurns: 10,
-			SummaryIdle:  "30m",
+			MaxRounds:       8,
+			MaxOutputTokens: 8192,
+			TurnTimeout:     "5m",
+			HistoryTurns:    10,
+			SummaryIdle:     "30m",
 		},
 		Router: Router{
 			TopLogProbs:     20,
@@ -224,6 +226,12 @@ func validate(cfg Config) error {
 
 	if cfg.Agent.MaxRounds < 1 {
 		add("agent.max_rounds is %d; it must be 1 or more", cfg.Agent.MaxRounds)
+	}
+	if cfg.Agent.MaxOutputTokens < 1 {
+		add("agent.max_output_tokens is %d; it must be 1 or more", cfg.Agent.MaxOutputTokens)
+	}
+	if d, err := time.ParseDuration(cfg.Agent.TurnTimeout); err != nil || d <= 0 {
+		add("agent.turn_timeout %q must be a positive duration such as \"5m\"", cfg.Agent.TurnTimeout)
 	}
 	if d, err := time.ParseDuration(cfg.Agent.SummaryIdle); err != nil || d <= 0 {
 		add("agent.summary_idle %q must be a positive duration such as \"30m\"", cfg.Agent.SummaryIdle)

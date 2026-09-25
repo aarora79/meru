@@ -46,6 +46,7 @@ type embedRequest struct {
 type chatMessage struct {
 	Role      string         `json:"role"`
 	Content   string         `json:"content"`
+	Thinking  string         `json:"thinking,omitempty"`
 	ToolCalls []wireToolCall `json:"tool_calls,omitempty"`
 	ToolName  string         `json:"tool_name,omitempty"`
 }

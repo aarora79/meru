@@ -90,6 +90,25 @@ use lowercase letters and digits joined by hyphens. That pattern can't hold `/`,
 `..` or a space, so a skill name is always a safe folder name. The description must
 be present and at most 1,024 bytes, and the body must not be empty.
 
+An optional `allowed-tools` key names the tools the skill's steps use, the same
+key Claude's skills use. `toolList` reads it into `Skill.AllowedTools` and takes
+it out of `Extra`. Skill files write it three ways, and `toolList` reads all of
+them by splitting at commas, brackets and white space and dropping quotes and
+`-` marks:
+
+```yaml
+allowed-tools: web_search, web_fetch
+allowed-tools: [web_search, web_fetch]
+allowed-tools:
+  - web_search
+  - web_fetch
+```
+
+The last shape reaches `toolList` as `"- web_search\n- web_fetch"`, since the
+frontmatter parser keeps a list as its lines. The package only reads the key;
+the agent decides what it grants (see [agent](agent.md)), and it grants
+nothing config doesn't allow.
+
 A bad skill doesn't fail the load. `Load` records the reason and moves on, and
 `Warnings()` hands the list back so `merud` can log it and `meru skills list` can
 show it. One broken folder shouldn't take away every other skill.
@@ -99,8 +118,9 @@ lock. To pick up a new skill, call `Load` again and swap in the new registry.
 
 - `List()` returns `[]Summary` (name and description), sorted by name so the system
   prompt reads the same on every run.
-- `Get(name)` and `Has(name)` look a skill up. `Get` copies the `Extra` map, so a
-  caller that changes it can't change the registry.
+- `Get(name)` and `Has(name)` look a skill up. `Get` copies the `Extra` map and
+  the `AllowedTools` slice, so a caller that changes them can't change the
+  registry.
 - `Body(name)` reads the file again and returns the instructions. Reading at use
   time means an edit shows up without a reload. If the edit renamed the skill,
   `Body` refuses and asks for a reload.
@@ -181,6 +201,10 @@ when the fast model picks it, so it names the questions that need it: "the
 latest version or release of something, news, prices", and "when asked to search
 the web". The integration test in `internal/agent` checks that the `lite` model
 picks it for "search the web for the latest Go release".
+
+Both name their tools in `allowed-tools`: `web-research` lists `web_search,
+web_fetch` and `file-research` its four file tools. A copy installed before the
+key existed doesn't have it; `meru skills reset <name>` brings the new one.
 
 `file-research` does the same job for your own files. It names the four file
 tools and when each fits: `search_files` for a topic in any words, `grep` for

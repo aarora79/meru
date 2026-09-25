@@ -75,8 +75,13 @@ reqs := srv.Requests("/api/chat") // what Meru sent
 `Start` uses `httptest.NewServer` from the standard library, which listens on
 127.0.0.1, and registers `t.Cleanup` to close the server when the test ends.
 `Enqueue` scripts the next reply, for one model or for any model (`""`). A
-`Reply` can carry text, exact chunks, tool calls, log probabilities, usage
-counters, an HTTP error, an error part way through a stream, and delays.
+`Reply` can carry text, exact chunks, tool calls, hidden thinking, log
+probabilities, usage counters, an HTTP error, an error part way through a
+stream, and delays. Thinking pieces stream before the text, each in a chunk
+with an empty `content` and a `thinking` field. The fake honours a request's
+`num_predict` the way Ollama does: each thinking piece and each text chunk
+counts as one token, and a reply cut short loses its tool calls and ends with
+`done_reason` `"length"`.
 `FailNext` makes the next request to a path fail, and `SetLatency` slows every
 response. Unscripted calls get "Hello from fake Ollama."
 

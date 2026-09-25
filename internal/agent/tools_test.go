@@ -302,12 +302,12 @@ func TestParallelCallsKeepCallOrder(t *testing.T) {
 func TestRoundCapForcesAnswer(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.Agent.MaxRounds = 3
-	// The model asks for a tool every round, and writes text only when it
-	// has no tools left.
+	// The model asks for a tool every round, each time with new arguments,
+	// and writes text only when it has no tools left.
 	eng := &fakeEngine{rounds: []fakeRound{
-		{calls: []engine.ToolCall{call("loop", `{}`)}},
-		{calls: []engine.ToolCall{call("loop", `{}`)}},
-		{pieces: []string{"Here is what I have."}, calls: []engine.ToolCall{call("loop", `{}`)}},
+		{calls: []engine.ToolCall{call("loop", `{"n":1}`)}},
+		{calls: []engine.ToolCall{call("loop", `{"n":2}`)}},
+		{pieces: []string{"Here is what I have."}, calls: []engine.ToolCall{call("loop", `{"n":3}`)}},
 	}}
 	tools := &fakeTools{specs: []engine.ToolSpec{spec("loop")}, results: map[string]fakeResult{"loop": {text: "again"}}}
 	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, nil, quietLog())

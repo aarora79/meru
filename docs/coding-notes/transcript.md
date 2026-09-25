@@ -25,6 +25,11 @@ them for search and can always be rebuilt from them.
 {"ts":"2026-09-23T10:15:03Z","type":"assistant","text":"Hi!","tokens_in":31,"tokens_out":2,"route":"search","ms":1480,"sources":["/Users/me/notes/hello.md"],"trace_id":"4bf9…"}
 ```
 
+An assistant line also carries `outcome` when the turn ended without a full
+answer: `timeout`, `cut_off` or `gave_up`. The text then holds the apology,
+or the text so far and a note that Meru stopped it. A full answer leaves the
+field out (`omitempty`).
+
 From v0.3 the assistant line also records the turn's facts: `route` is the
 route the turn took, `ms` how long it took from question to answer, and
 `sources` the full paths of the files whose excerpts went into the prompt, each

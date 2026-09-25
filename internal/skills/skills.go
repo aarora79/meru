@@ -46,6 +46,12 @@ type Skill struct {
 	Description string
 	// Path is the SKILL.md file.
 	Path string
+	// AllowedTools lists the tools the skill's instructions use, from the
+	// optional "allowed-tools" key, such as ["web_search", "web_fetch"].
+	// Claude's skills use the same key. It grants nothing: the agent offers
+	// a named tool only when config already allows it (ARCHITECTURE.md,
+	// "Skills"). nil when the key is missing.
+	AllowedTools []string
 	// Extra holds every other frontmatter key, such as "license" or
 	// "metadata.author". Meru doesn't act on them; they are kept so
 	// `meru skills show` can print them.
@@ -147,9 +153,34 @@ func loadSkill(folder, folderName string) (Skill, error) {
 		return Skill{}, errors.New("the body after the frontmatter is empty")
 	}
 
+	tools := toolList(fields["allowed-tools"])
 	delete(fields, "name")
 	delete(fields, "description")
-	return Skill{Name: name, Description: description, Path: path, Extra: fields}, nil
+	delete(fields, "allowed-tools")
+	return Skill{Name: name, Description: description, Path: path, AllowedTools: tools, Extra: fields}, nil
+}
+
+// toolList reads the value of an "allowed-tools" key into tool names. It
+// takes the three shapes skill files use: a line of names split by commas
+// or spaces ("web_search, web_fetch"), a flow list ("[web_search,
+// web_fetch]"), and a block list, which parseFields keeps as "- web_search"
+// lines. Quotes around a name are dropped, and so are repeats. It returns
+// nil for an empty value.
+func toolList(value string) []string {
+	// FieldsFunc splits value at every rune for which the function returns
+	// true: commas, brackets and white space, line breaks included.
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == '[' || r == ']' || r == ' ' || r == '\t' || r == '\n'
+	})
+	var names []string
+	for _, p := range parts {
+		p = strings.Trim(p, `"'`)
+		if p == "" || p == "-" || slices.Contains(names, p) {
+			continue
+		}
+		names = append(names, p)
+	}
+	return names
 }
 
 // readSkillFile reads one SKILL.md, refusing files over maxFileBytes, and
@@ -215,13 +246,15 @@ func (r *Registry) Has(name string) bool {
 }
 
 // Get returns the skill called name and true, or a zero Skill and false when
-// there is none. The Extra map is a copy, so the caller may change it.
+// there is none. The Extra map and the AllowedTools slice are copies, so the
+// caller may change them.
 func (r *Registry) Get(name string) (Skill, bool) {
 	s, ok := r.skills[name]
 	if !ok {
 		return Skill{}, false
 	}
 	s.Extra = maps.Clone(s.Extra)
+	s.AllowedTools = slices.Clone(s.AllowedTools)
 	return s, true
 }
 

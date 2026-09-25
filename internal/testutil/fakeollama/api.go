@@ -69,6 +69,7 @@ func (f *Fake) serveChat(w http.ResponseWriter, r *http.Request, body []byte, id
 		promptWords: words,
 		keepAlive:   req.KeepAlive,
 		chat:        true,
+		numPredict:  numPredict(req.Options),
 	}
 	f.reply(w, r, id, c)
 }
@@ -87,6 +88,7 @@ func (f *Fake) serveGenerate(w http.ResponseWriter, r *http.Request, body []byte
 		topLogProbs: req.TopLogProbs,
 		promptWords: len(strings.Fields(req.System)) + len(strings.Fields(req.Prompt)),
 		keepAlive:   req.KeepAlive,
+		numPredict:  numPredict(req.Options),
 	}
 	f.reply(w, r, id, c)
 }
@@ -100,6 +102,14 @@ type call struct {
 	promptWords int
 	keepAlive   json.RawMessage
 	chat        bool // true for /api/chat, false for /api/generate
+	numPredict  int  // the request's num_predict; 0 for no cap
+}
+
+// numPredict reads the num_predict cap from a request's options, or 0 when
+// there is none. JSON numbers decode into an any as float64.
+func numPredict(opts map[string]any) int {
+	n, _ := opts["num_predict"].(float64)
+	return int(n)
 }
 
 // reply writes the answer to one chat or generate call: the next scripted
@@ -125,12 +135,15 @@ func (f *Fake) reply(w http.ResponseWriter, r *http.Request, id int, c call) {
 	}
 	f.touch(c.model, c.keepAlive)
 
-	chunks := rep.pieces()
+	thinking, chunks, calls, cut := rep.cut(c)
 	logProbs := rep.logProbsFor(chunks, c)
-	final := rep.counters(c.promptWords, len(chunks))
+	final := rep.counters(c.promptWords, len(thinking)+len(chunks))
 	doneReason := rep.DoneReason
 	if doneReason == "" {
 		doneReason = "stop"
+	}
+	if cut {
+		doneReason = "length"
 	}
 	if !sleep(r.Context(), rep.Delay) {
 		f.markCancelled(id)
@@ -138,7 +151,7 @@ func (f *Fake) reply(w http.ResponseWriter, r *http.Request, id int, c call) {
 	}
 
 	if !c.stream {
-		obj := f.object(c, strings.Join(chunks, ""), rep.ToolCalls, logProbs)
+		obj := f.object(c, strings.Join(chunks, ""), calls, logProbs)
 		setDone(obj, doneReason, final)
 		writeJSON(w, http.StatusOK, obj)
 		return
@@ -160,12 +173,24 @@ func (f *Fake) reply(w http.ResponseWriter, r *http.Request, id int, c call) {
 		return rc.Flush() == nil
 	}
 
+	for i, piece := range thinking {
+		if i > 0 && !sleep(r.Context(), rep.ChunkDelay) {
+			f.markCancelled(id)
+			return
+		}
+		obj := f.object(c, "", nil, nil).(*chatResponse)
+		obj.Message.Thinking = piece
+		if !send(obj) {
+			f.markCancelled(id)
+			return
+		}
+	}
 	for i, chunk := range chunks {
 		if rep.StreamError != "" && i == rep.FailAfter {
 			send(errorBody{Error: rep.StreamError})
 			return
 		}
-		if i > 0 && !sleep(r.Context(), rep.ChunkDelay) {
+		if (i > 0 || len(thinking) > 0) && !sleep(r.Context(), rep.ChunkDelay) {
 			f.markCancelled(id)
 			return
 		}
@@ -182,9 +207,9 @@ func (f *Fake) reply(w http.ResponseWriter, r *http.Request, id int, c call) {
 		send(errorBody{Error: rep.StreamError})
 		return
 	}
-	if len(rep.ToolCalls) > 0 && c.chat {
+	if len(calls) > 0 && c.chat {
 		// Ollama sends tool calls in their own chunk before the last one.
-		if !send(f.object(c, "", rep.ToolCalls, nil)) {
+		if !send(f.object(c, "", calls, nil)) {
 			f.markCancelled(id)
 			return
 		}
@@ -224,6 +249,27 @@ func setDone(obj any, reason string, cs counters) {
 	case *generateResponse:
 		o.Done, o.DoneReason, o.counters = true, reason, cs
 	}
+}
+
+// cut applies the request's num_predict to the reply, the way Ollama
+// counts output: each thinking piece and each text chunk is one token, the
+// thinking first. It returns the thinking pieces and text chunks that fit,
+// the tool calls, and whether the cap cut the reply short. A cut reply
+// loses its tool calls, since the model never got to write them, and ends
+// with done_reason "length". /api/generate streams no thinking.
+func (rep Reply) cut(c call) (thinking, chunks []string, calls []ToolCall, cut bool) {
+	if c.chat {
+		thinking = rep.Thinking
+	}
+	chunks, calls = rep.pieces(), rep.ToolCalls
+	n := c.numPredict
+	if n <= 0 || len(thinking)+len(chunks) <= n {
+		return thinking, chunks, calls, false
+	}
+	if len(thinking) >= n {
+		return thinking[:n], nil, nil, true
+	}
+	return thinking, chunks[:n-len(thinking)], nil, true
 }
 
 // pieces returns the chunks the reply streams: Chunks when set, otherwise

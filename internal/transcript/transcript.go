@@ -65,7 +65,9 @@ type Line struct {
 	Choice string `json:"choice,omitempty"`
 	// Outcome is how a call ended, on a tool_result line: "ok", "error",
 	// "denied", "declined", "cancelled" or "timeout". OK repeats
-	// Outcome == "ok" so the line reads plainly with grep.
+	// Outcome == "ok" so the line reads plainly with grep. On an
+	// assistant line, Outcome says how a turn ended without a full
+	// answer: "timeout", "cut_off" or "gave_up"; it is empty otherwise.
 	Outcome string `json:"outcome,omitempty"`
 	OK      bool   `json:"ok,omitempty"`
 	// Ms is how long the call took, in milliseconds.
