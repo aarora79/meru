@@ -303,6 +303,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
+	// And for what connected tools act on: the router sent "what was the last
+	// email I sent?" to search, which offers no server's tools, and the model
+	// grepped the user's files. When a question names something a connected
+	// server's tools handle ("email" and gmail, "calendar" and calendars),
+	// a route without tools gets them (toolnouns.go).
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksAboutToolNoun(question, a.tools.Tools()) {
+		a.log.DebugContext(ctx, "route changed: the question names what a tool handles",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
