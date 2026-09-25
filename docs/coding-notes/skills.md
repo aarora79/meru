@@ -70,7 +70,10 @@ warning at load time, not as a skill that quietly loses its description.
 
 ### skills.go
 
-`Load(dir)` lists the folders in `dir` and calls `loadSkill` on each. `loadSkill`
+`Load(dir, disabled)` lists the folders in `dir` and calls `loadSkill` on each,
+except the folders `disabled` names. `disabled` is `[skills] disabled` from
+`config.toml`; `Load` skips those folders without a warning, since the user
+asked for it. `loadSkill`
 reads `SKILL.md` through `readSkillFile`, which stops reading one byte past the
 256 KiB limit:
 
@@ -116,8 +119,10 @@ var builtinFS embed.FS
 The `//go:embed` line tells the compiler to copy the `builtin` folder into the
 program. [go-basics/embed.md](go-basics/embed.md) explains it.
 
-`InstallBuiltins(dir)` runs at first start. For each built-in it checks whether
-`<dir>/<name>` exists (as a folder, a file or a link), and skips it if so. That rule
+`InstallBuiltins(dir, disabled)` runs at every start. It skips a built-in that
+`disabled` names, so a user who deletes one and disables it doesn't get it back
+on the next start. For each other built-in it checks whether `<dir>/<name>`
+exists (as a folder, a file or a link), and skips it if so. That rule
 is "your copy wins" from ARCHITECTURE.md: Meru never overwrites a skill you edited.
 When the folder is missing, `installOne` writes the files into a hidden temporary
 folder and renames it into place. A crash halfway through leaves a hidden folder that
@@ -205,6 +210,9 @@ go test -run TestBuiltinsMatchRepo -v ./internal/skills/
 ```
 
 The second command proves the shipped skills match the repo copies.
+`TestDisabled` checks `[skills] disabled`: a disabled built-in isn't installed,
+a disabled folder doesn't load, a name that matches nothing does no harm, and a
+folder you add loads with no change to the list.
 
 ## Why it's built this way
 
@@ -218,5 +226,8 @@ The second command proves the shipped skills match the repo copies.
   goroutine to own it. A stamp per turn needs none of that and costs microseconds.
 - **Warnings, not failure.** Skills are files you edit by hand. A typo in one should
   cost you that one skill, with a message saying why.
+- **Disable by name, in config.** Deleting a built-in's folder alone doesn't
+  stick, because `merud` installs it again on the next start. One list in
+  `[skills] disabled` covers built-ins and your own skills the same way.
 - **Copy on first run, never overwrite.** The simpler option, reading the built-ins
   straight from the binary, would leave you no way to edit them.

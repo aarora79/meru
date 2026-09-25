@@ -170,9 +170,13 @@ works on lines:
    with `mcp.servers.`, such as `[mcp.servers.env]`, belongs to the server above
    it. For each `[[mcp.servers]]`, parse its lines alone with the TOML library
    and read the name, so any way of writing the name matches.
-2. The block runs to the next header. The comment lines touching that header
-   belong to the next table and stay; so do the blank lines before them.
+2. The block runs to its last key before the next header. Comment and blank
+   lines after that key stay: they belong to the next table, or, in a file
+   written from the config template, they are the commented examples below a
+   server.
 3. The comment lines right above the block go with it: `Block` writes two there.
+   A blank line or a bare `#` stops the walk up; the template parts a server's
+   comments from the text above with a bare `#`, and `Block` never writes one.
 4. Drop one blank line where two now meet, and blank lines at the end.
 
 Line-based editing can misread a file, so `writeChecked` checks the result:
@@ -230,7 +234,11 @@ through byte for byte. `TestAppendServerRefuses` feeds duplicates, wildcards and
 broken blocks, and checks that the file stays as it was. `TestRemoveServer`
 removes the first, middle and last of three servers (one with a sub-table and a
 multi-line array) and checks every other line stays; `TestAppendThenRemove`
-gets back the file it started with. `TestCatalogIsTwoServers` checks the
+gets back the file it started with. `TestRemoveServerFromTemplate` uncomments
+the `google` block in the config template, appends a server, removes both, and
+checks the commented examples stay. `TestTemplateHoldsCatalog` checks that the
+config template holds each catalog entry exactly as `Block` renders it,
+commented out. `TestCatalogIsTwoServers` checks the
 names and their order, `google`'s URL and start command, and that its sending
 and changing tools ask first. `TestCheckSearXNG` runs the check against
 `httptest` servers that answer JSON, the `403` page, HTML with a `200` and a

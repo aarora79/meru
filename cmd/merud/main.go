@@ -208,7 +208,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
 	// merud owns the skills folder too: the agent lists and loads skills
 	// from it each turn, and the skill ops answer `meru skills`.
-	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), log)
+	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), cfg.Skills.Disabled, log)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	defer tools.Close()
-	logWebSearch(ctx, cfg.Web, log)
+	logWebSearch(ctx, cfg, log)
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)

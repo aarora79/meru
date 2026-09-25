@@ -62,7 +62,7 @@ prompt picked 17 of 36.
   for Gmail, Calendar, Drive and Docs, `obsidian` for notes), added for you or by
   copy-paste
 - [x] Web search: built-in `web_search` through a SearXNG the user runs on loopback,
-  and `web_fetch` for public pages, on by default behind `[web] fetch`: raw text, an
+  and `web_fetch` for public pages, on by default behind `[builtin] tools`: raw text, an
   answer from the fast model to a prompt, or a download to `~/meru-output/downloads/`.
   A URL that no search result or question gave asks first. `meru setup` checks
   SearXNG

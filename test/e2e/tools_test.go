@@ -199,8 +199,34 @@ func TestWebSearchMissingSearXNG(t *testing.T) {
 	}
 
 	tools := runMeru(t, s.home, "tools")
-	// [web] fetch is on by default, so meru tools lists both web tools.
+	// [builtin] tools lists both web tools by default, so meru tools does too.
 	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || !strings.Contains(tools.stdout, "web_fetch") {
 		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	}
+}
+
+// TestBuiltinToolsSwitch runs merud with [builtin] tools cut down to
+// datetime and grep, and no [index] folders. `meru tools` lists datetime
+// alone: configure and web_fetch are left out, and grep stays off for
+// want of a folder, with a line in merud.log that says why.
+func TestBuiltinToolsSwitch(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fakeConfig(f.url, "[builtin]\ntools = [\"datetime\", \"grep\"]\nconfirm = []\n"))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	tools := runMeru(t, h, "tools")
+	if tools.code != 0 || !strings.Contains(tools.stdout, "datetime") {
+		t.Fatalf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	}
+	for _, off := range []string{"configure", "web_fetch", "grep", "remember"} {
+		if strings.Contains(tools.stdout, off) {
+			t.Errorf("meru tools lists %s, which is off:\n%s", off, tools.stdout)
+		}
+	}
+	if log := h.log(); !strings.Contains(log, "built-in tool off") || !strings.Contains(log, "[index] folders is empty") {
+		t.Errorf("merud.log doesn't say why grep is off:\n%s", log)
 	}
 }

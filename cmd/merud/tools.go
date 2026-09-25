@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -100,10 +101,15 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// [index] needs a restart anyway.
 	// The file tools may also read what web_fetch downloads. The indexer
 	// never indexes that folder; see index.ReadAlso.
-	if ix != nil && cfg.Web.Fetch {
+	if ix != nil && slices.Contains(cfg.Builtin.Tools, builtin.WebFetch) {
 		ix.ReadAlso(filepath.Join(outputDir, "downloads"))
 	}
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
+	// A tool [builtin] tools lists but whose setting is missing stays off;
+	// say why, so the user isn't left guessing.
+	for _, off := range bt.Off() {
+		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
+	}
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)
 	// Backend order decides which one keeps a tool name two of them offer:
@@ -132,17 +138,24 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 // SearXNG answering JSON at [web] searxng_url, or why not. It never stops
 // merud, because web search is optional and SearXNG may start later;
 // web_search reports the same problem to the model when it calls the tool.
-// The check takes at most 3 seconds.
-func logWebSearch(ctx context.Context, web config.Web, log *slog.Logger) {
-	if web.SearXNGURL == "" {
-		log.Info("web search off", "reason", "[web] searxng_url is empty")
+// The check takes at most 3 seconds, and doesn't run when [builtin] tools
+// leaves web_search out.
+func logWebSearch(ctx context.Context, cfg config.Config, log *slog.Logger) {
+	web := cfg.Web
+	fetch := slices.Contains(cfg.Builtin.Tools, builtin.WebFetch)
+	switch {
+	case !slices.Contains(cfg.Builtin.Tools, builtin.WebSearch):
+		log.Info("web search off", "reason", "[builtin] tools leaves out web_search", "fetch", fetch)
+		return
+	case web.SearXNGURL == "":
+		log.Info("web search off", "reason", "[web] searxng_url is empty", "fetch", fetch)
 		return
 	}
 	if err := catalog.CheckSearXNG(ctx, web.SearXNGURL); err != nil {
 		log.Info("web search not ready", "searxng", web.SearXNGURL, "err", err)
 		return
 	}
-	log.Info("web search ready", "searxng", web.SearXNGURL, "fetch", web.Fetch)
+	log.Info("web search ready", "searxng", web.SearXNGURL, "fetch", fetch)
 }
 
 // newPool resolves the secrets in each server entry and starts the MCP

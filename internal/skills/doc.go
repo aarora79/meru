@@ -13,7 +13,8 @@
 // owner's my-ai-assets skills (see AGENTS.md), so nobody edits them here;
 // web-research is Meru's own, and this repo is its home. InstallBuiltins copies
 // them to disk only where no folder of that name exists, so your edits win;
-// Reset puts the shipped version back.
+// Reset puts the shipped version back. Both InstallBuiltins and Load take
+// [skills] disabled from config and skip the skills it names.
 //
 // Stamp tells merud when the folder changed, so it can call Load again;
 // Edited and File answer `meru skills list` and `meru skills show`.

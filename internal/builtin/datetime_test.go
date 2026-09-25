@@ -60,7 +60,7 @@ func TestDateTime(t *testing.T) {
 // TestDateTimeTool runs datetime through the backend: it never asks, and
 // Call reads the Tools clock.
 func TestDateTimeTool(t *testing.T) {
-	tools := New("", config.Builtin{}, config.Web{}, nil, "", nil, nil, nil)
+	tools := New("", config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, nil, nil)
 	tools.now = func() time.Time { return time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC) }
 	if c := tools.Confirm(DateTime); c != dispatch.ConfirmNever {
 		t.Errorf("Confirm(datetime) = %v, want never", c)

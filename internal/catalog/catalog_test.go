@@ -289,3 +289,22 @@ func TestCatalogIsTwoServers(t *testing.T) {
 		}
 	}
 }
+
+// TestTemplateHoldsCatalog checks that the config template holds each
+// catalog entry exactly as Block renders it, commented out line by line.
+// The config package can't call Block itself, because this package
+// imports config, so the template holds a hand-written copy and this test
+// keeps the two from drifting. When it fails, paste Block's output,
+// commented, over the old block in internal/config/template.toml, then
+// copy the template over config.example.toml.
+func TestTemplateHoldsCatalog(t *testing.T) {
+	for _, e := range Entries() {
+		var want strings.Builder
+		for _, line := range strings.Split(strings.TrimSuffix(Block(e), "\n"), "\n") {
+			want.WriteString("# " + line + "\n")
+		}
+		if !strings.Contains(config.Template(), want.String()) {
+			t.Errorf("the config template doesn't hold the %s entry as Block renders it; want:\n%s", e.Name, want.String())
+		}
+	}
+}

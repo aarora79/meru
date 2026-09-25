@@ -41,7 +41,7 @@ func writeSkillFile(t *testing.T, dir, name, description, body string) {
 func TestSkillService(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "skills")
-	s, err := newSkillService(dir, obs.Discard())
+	s, err := newSkillService(dir, nil, obs.Discard())
 	if err != nil {
 		t.Fatalf("newSkillService: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestSkillService(t *testing.T) {
 func TestSkillServiceKeepsEdits(t *testing.T) {
 	dir := t.TempDir()
 	writeSkillFile(t, dir, "writing", "Mine.", "Mine.")
-	s, err := newSkillService(dir, obs.Discard())
+	s, err := newSkillService(dir, nil, obs.Discard())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +140,30 @@ func TestExpandHome(t *testing.T) {
 		if err != nil || got != tt.want {
 			t.Errorf("expandHome(%q) = %q, %v; want %q", tt.in, got, err, tt.want)
 		}
+	}
+}
+
+// TestSkillServiceDisabled checks that a skill [skills] disabled names is
+// neither installed nor listed, and that a name matching no skill is fine.
+func TestSkillServiceDisabled(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "skills")
+	s, err := newSkillService(dir, []string{"explainer", "not-yet"}, obs.Discard())
+	if err != nil {
+		t.Fatalf("newSkillService: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "explainer")); !os.IsNotExist(err) {
+		t.Errorf("the disabled explainer was installed: %v", err)
+	}
+	evs, err := collect(t, func(emit func(rpc.Event) error) error { return s.handleList(ctx, emit) })
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("list = %v, %v", evs, err)
+	}
+	var names []string
+	for _, sk := range evs[0].Skills {
+		names = append(names, sk.Name)
+	}
+	if strings.Join(names, ",") != "web-research,writing" {
+		t.Errorf("skills = %v, want web-research and writing", names)
 	}
 }

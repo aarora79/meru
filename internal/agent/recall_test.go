@@ -290,7 +290,7 @@ func TestRecallAcrossSessions(t *testing.T) {
 		}
 	}
 	syncNow(ctx)
-	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{}, config.Web{}, mem, "", nil, nil, syncNow)
+	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, mem, "", nil, nil, syncNow)
 	disp := dispatch.New([]dispatch.Backend{tools}, st, dispatch.Options{})
 
 	eng := &fakeEngine{rounds: []fakeRound{

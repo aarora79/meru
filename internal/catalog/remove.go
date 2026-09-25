@@ -18,10 +18,12 @@ import (
 
 // RemoveServer deletes the [[mcp.servers]] block named name from the config
 // file at configPath and returns the text it took out. The block runs from
-// its [[mcp.servers]] line to the next table header, and takes with it the
-// comment lines right above it, such as the two Block writes. The comment
-// lines right above the next header stay, because they belong to that
-// table. Every other line stays as it is.
+// its [[mcp.servers]] line to its last key before the next table header,
+// and takes with it the comment lines right above it, such as the two Block
+// writes, up to a blank line or a bare "#". Comment lines after its last
+// key stay: they belong to the next table, or, in a file written from the
+// config template, they are the commented examples that follow a server.
+// Every other line stays as it is.
 //
 // The TOML library can't write a file back with its comments, so this
 // works on lines of text. To guard against a line it misreads, it writes
@@ -101,16 +103,15 @@ func cutServer(text, name string) (rest, removed string, err error) {
 		return "", "", fmt.Errorf("no [[mcp.servers]] block named %q", name)
 	}
 
-	// Leave the next table's own comments in place: walk back over the
-	// comment lines touching its header, then over blank lines.
-	for end > start+1 && end < len(lines) && isComment(lines[end-1]) {
+	// Leave every comment after the block's last key in place: walk back
+	// over comment and blank lines, in any mix.
+	for end > start+1 && (isComment(lines[end-1]) || isBlank(lines[end-1])) {
 		end--
 	}
-	for end > start+1 && isBlank(lines[end-1]) {
-		end--
-	}
-	// Take the block's own comments with it.
-	for start > 0 && isComment(lines[start-1]) {
+	// Take the block's own comments with it. A bare "#" ends them: the
+	// config template uses one to part a server's comments from the text
+	// above, and Block never writes one.
+	for start > 0 && isComment(lines[start-1]) && strings.TrimSpace(lines[start-1]) != "#" {
 		start--
 	}
 

@@ -26,6 +26,24 @@ import (
 // call may ask for.
 const MaxWebResults = 20
 
+// builtinTools names every built-in tool, in the order the template lists
+// them: the default for [builtin] tools. The names match the constants in
+// internal/builtin, which imports this package; a test there checks that
+// each name here is a tool it serves.
+var builtinTools = []string{
+	"configure", "datetime", "remember", "write_file",
+	"read_file", "list_folder", "grep", "web_search", "web_fetch",
+}
+
+// BuiltinTools returns the names of all nine built-in tools, the default
+// for [builtin] tools. It returns a copy, so a caller can't change the
+// list the defaults use.
+func BuiltinTools() []string { return slices.Clone(builtinTools) }
+
+// movedFetch is the message for the old [web] fetch key and for
+// read_pages, the name before it.
+const movedFetch = "web.fetch moved: list web_fetch in [builtin] tools, or remove it to turn page fetching off"
+
 // routes lists the four routes the router can pick, in the router's letter
 // order (A to D). The fallback must be one of them. See docs/fast-router.md.
 var routes = []string{"direct", "search", "tools", "search+tools"}
@@ -102,16 +120,17 @@ func defaults() Config {
 			OverlapTokens: 50,
 			Watch:         true,
 		},
-		// write_file asks before each call: a file it writes stays on your
-		// disk after the chat ends (ARCHITECTURE.md, "Approving a tool call").
-		Builtin: Builtin{Confirm: []string{"write_file"}},
-		Skills:  Skills{OutputDir: "~/meru-output"},
+		// Every built-in tool is on. web_fetch, which fetches public pages
+		// off this machine, is on too: a small model needs the page itself
+		// to answer "what's the latest release?" right, and the URL guard
+		// in internal/builtin asks before any fetch the model could use to
+		// leak data. write_file asks before each call: a file it writes
+		// stays on your disk after the chat ends (ARCHITECTURE.md,
+		// "Approving a tool call").
+		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
+		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
-		// web_fetch, which fetches public pages off this machine, is on:
-		// a small model needs the page itself to answer "what's the latest
-		// release?" right, and the URL guard in internal/builtin asks
-		// before any fetch the model could use to leak data.
-		Web: Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true, MaxResults: 8},
+		Web: Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
 	}
 }
 
@@ -143,9 +162,8 @@ func Load(path string) (Config, error) {
 					return Config{}, fmt.Errorf("config %s: network was renamed remote: write remote = true in %s "+
 						"to let merud connect to a URL on another machine", path, k[0]+"."+k[1])
 				}
-				if k.String() == "web.read_pages" {
-					return Config{}, fmt.Errorf("config %s: web.read_pages was renamed fetch, and fetch is on by default: "+
-						"delete read_pages, or write fetch = false to turn page fetching off", path)
+				if s := k.String(); s == "web.fetch" || s == "web.read_pages" {
+					return Config{}, fmt.Errorf("config %s: %s", path, movedFetch)
 				}
 				keys[i] = k.String()
 			}
@@ -258,6 +276,9 @@ func validate(cfg Config) error {
 	for _, err := range checkIndex(cfg.Index) {
 		add("%w", err)
 	}
+	for _, err := range checkBuiltin(cfg.Builtin) {
+		add("%w", err)
+	}
 
 	// errors.Join returns nil when errs is empty.
 	return errors.Join(errs...)
@@ -310,6 +331,27 @@ func checkIndex(ix Index) []error {
 	if ix.OverlapTokens < 0 || ix.OverlapTokens > ix.ChunkTokens/2 {
 		errs = append(errs, fmt.Errorf("index.overlap_tokens is %d; it must be between 0 and half of chunk_tokens (%d)",
 			ix.OverlapTokens, ix.ChunkTokens/2))
+	}
+	return errs
+}
+
+// checkBuiltin checks the [builtin] section and returns one error per
+// problem: a tool name Meru doesn't have, or a confirm entry that tools
+// doesn't list. The second is almost always a typo or a tool taken out of
+// tools and forgotten in confirm; either way the confirm line would do
+// nothing, so Load says so.
+func checkBuiltin(b Builtin) []error {
+	var errs []error
+	for _, name := range b.Tools {
+		if !slices.Contains(builtinTools, name) {
+			errs = append(errs, fmt.Errorf("builtin.tools: %q is not a built-in tool; the built-in tools are %s",
+				name, strings.Join(builtinTools, ", ")))
+		}
+	}
+	for _, name := range b.Confirm {
+		if !slices.Contains(b.Tools, name) {
+			errs = append(errs, fmt.Errorf("builtin.confirm: %q isn't in builtin.tools; add it there, or take it out of confirm", name))
+		}
 	}
 	return errs
 }

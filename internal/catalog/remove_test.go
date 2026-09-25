@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aarora79/meru/internal/config"
 )
 
 // before is a config.toml with a comment on top, a setting, three servers
@@ -159,5 +161,48 @@ func TestAppendThenRemove(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != orig {
 		t.Errorf("file =\n%q\nwant\n%q", got, orig)
+	}
+}
+
+// TestRemoveServerFromTemplate removes a server the user uncommented inside
+// the config template, and one appended at its end, and checks that the
+// commented examples around them stay.
+func TestRemoveServerFromTemplate(t *testing.T) {
+	block := Block(Entries()[0])
+	commented := ""
+	for _, line := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {
+		commented += "# " + line + "\n"
+	}
+	// The user deletes the "# " in front of the google block's lines.
+	text := strings.Replace(config.Template(), commented, block, 1)
+	if text == config.Template() {
+		t.Fatal("the template doesn't hold the google block")
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendServer(path, Block(Custom("mine", "mine-mcp", nil))); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"google", "mine"} {
+		if _, err := RemoveServer(path, name); err != nil {
+			t.Fatalf("RemoveServer(%s): %v", name, err)
+		}
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, keep := range []string{"# MCP servers: programs that give the model tools.",
+		"# The two servers in Meru's catalog", "# [[commands]]", "# [[a2a.agents]]", `# name    = "obsidian"`} {
+		if !strings.Contains(string(got), keep) {
+			t.Errorf("removing lost %q:\n%s", keep, got)
+		}
+	}
+	for _, gone := range []string{`name    = "google"`, `name    = "mine"`} {
+		if strings.Contains(string(got), "\n"+gone) {
+			t.Errorf("file still holds %q", gone)
+		}
 	}
 }

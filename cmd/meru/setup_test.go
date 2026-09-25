@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -199,6 +200,15 @@ func TestSetupFirstRun(t *testing.T) {
 	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", "/srv/papers"}) {
 		t.Errorf("config = profile %q, folders %q", cfg.Profile, cfg.Index.Folders)
 	}
+	// The empty [models] lines in the template leave the tiers to the
+	// profile, so picking full gives full's models.
+	if cfg.Models != full {
+		t.Errorf("models = %+v, want the full profile's %+v", cfg.Models, full)
+	}
+	written, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if !strings.Contains(string(written), "[[mcp.servers]]") || !strings.Contains(string(written), "\nfolders = [\"~/notes\", \"/srv/papers\"]\n") {
+		t.Errorf("setup didn't write the filled-in template:\n%s", written)
+	}
 	for _, want := range []string{"Ollama isn't answering", "must be an absolute path", "meru setup user", "merud isn't running"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -362,5 +372,50 @@ func TestOllamaInstallHint(t *testing.T) {
 		if !strings.Contains(ollamaInstallHint(goos), "ollama") {
 			t.Errorf("%s: hint = %q", goos, ollamaInstallHint(goos))
 		}
+	}
+}
+
+// TestFirstConfig checks the template setup fills in: with the defaults
+// it is the template itself, and otherwise exactly two lines change.
+func TestFirstConfig(t *testing.T) {
+	same, err := firstConfig("lite", nil)
+	if err != nil || same != config.Template() {
+		t.Fatalf("firstConfig(lite, none) changed the template: %v", err)
+	}
+	got, err := firstConfig("full", []string{"~/notes", `C:\Users\me "quoted"`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		`profile = "full"`: true,
+		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`: true,
+	}
+	tmpl, lines := strings.Split(config.Template(), "\n"), strings.Split(got, "\n")
+	if len(tmpl) != len(lines) {
+		t.Fatalf("firstConfig has %d lines, the template %d", len(lines), len(tmpl))
+	}
+	for i := range lines {
+		if lines[i] == tmpl[i] {
+			continue
+		}
+		if !want[lines[i]] {
+			t.Errorf("line %d changed to %q", i+1, lines[i])
+		}
+		delete(want, lines[i])
+	}
+	if len(want) != 0 {
+		t.Errorf("lines not written: %v", want)
+	}
+}
+
+// TestConfigTemplateCmd checks that `meru config template` prints the
+// template as it is.
+func TestConfigTemplateCmd(t *testing.T) {
+	var out strings.Builder
+	if code := run(context.Background(), []string{"config", "template"}, &out, io.Discard); code != exitOK {
+		t.Fatalf("exit %d", code)
+	}
+	if out.String() != config.Template() {
+		t.Error("meru config template didn't print the template")
 	}
 }

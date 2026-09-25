@@ -202,7 +202,7 @@ func questionURLs(text string) []string {
 // don't hold a URL: that call fails on its arguments, and a prompt about
 // it would help nobody.
 func (t *Tools) ConfirmCall(c dispatch.Call) (dispatch.Confirm, bool) {
-	if c.Name != WebFetch || !t.web.fetch {
+	if c.Name != WebFetch || !t.enabled(WebFetch) {
 		return dispatch.ConfirmNever, false
 	}
 	t.web.known.add(c.Session, questionURLs(c.Question)...)

@@ -1,9 +1,9 @@
 // This file holds the two web tools: web_search, which searches the web
 // through the SearXNG instance the user runs on this machine, and
 // web_fetch, which fetches one public web page and returns its text, or
-// asks the fast model a question about it. web_search comes with any
-// [web] searxng_url, and web_fetch with [web] fetch, which is on by
-// default. web_fetch's download mode lives in webdownload.go, and the
+// asks the fast model a question about it. [builtin] tools turns each on;
+// both are on by default, and web_search also needs [web] searxng_url.
+// web_fetch's download mode lives in webdownload.go, and the
 // guard that decides when it asks first in webguard.go. See
 // ARCHITECTURE.md, "Web search" and "Privacy boundary".
 
@@ -114,7 +114,6 @@ type Generator interface {
 type webClients struct {
 	searxngURL string // "" leaves web_search out
 	maxResults int
-	fetch      bool // false leaves web_fetch out
 
 	search *http.Client // to SearXNG only
 	// page reaches public addresses only. It has no Timeout of its own:
@@ -141,7 +140,6 @@ func newWebClients(cfg config.Web) *webClients {
 	w := &webClients{
 		searxngURL: strings.TrimSuffix(cfg.SearXNGURL, "/"),
 		maxResults: cfg.MaxResults,
-		fetch:      cfg.Fetch,
 		// A function literal: allowAddr holds a small function, which
 		// tests replace.
 		allowAddr: func(ap netip.AddrPort) error { return checkPublic(ap.Addr()) },
@@ -657,8 +655,10 @@ func webFetchDescription(saveDir string) string {
 	return d + "Cite the page by its URL in your answer."
 }
 
-// toolSpecs returns the specs of the web tools that [web] turns on.
-// saveDir is where web_fetch saves downloads; "" leaves save out.
+// toolSpecs returns the specs of the web tools: web_search when [web]
+// names a SearXNG URL, and web_fetch always. Tools then drops any that
+// [builtin] tools leaves out. saveDir is where web_fetch saves downloads;
+// "" leaves save out.
 func (w *webClients) toolSpecs(saveDir string) []engine.ToolSpec {
 	var specs []engine.ToolSpec
 	if w.searxngURL != "" {
@@ -679,21 +679,19 @@ func (w *webClients) toolSpecs(saveDir string) []engine.ToolSpec {
 			}, "query"),
 		})
 	}
-	if w.fetch {
-		props := map[string]any{
-			"url": prop("string", "The page's full http:// or https:// address, such as a URL from web_search."),
-			"prompt": prop("string", "What to find on the page, such as \"What is the latest stable version, and when was it released?\". "+
-				"Leave it out to get the page's text."),
-			"offset": prop("integer", "Where to start, in characters from the start of the page's text. Default 0."),
-		}
-		if saveDir != "" {
-			props["save"] = prop("boolean", "Download the file to the user's disk instead of reading it. Only when the user asks for a download.")
-		}
-		specs = append(specs, engine.ToolSpec{
-			Name:        WebFetch,
-			Description: webFetchDescription(saveDir),
-			Parameters:  mustSchema(props, "url"),
-		})
+	props := map[string]any{
+		"url": prop("string", "The page's full http:// or https:// address, such as a URL from web_search."),
+		"prompt": prop("string", "What to find on the page, such as \"What is the latest stable version, and when was it released?\". "+
+			"Leave it out to get the page's text."),
+		"offset": prop("integer", "Where to start, in characters from the start of the page's text. Default 0."),
 	}
+	if saveDir != "" {
+		props["save"] = prop("boolean", "Download the file to the user's disk instead of reading it. Only when the user asks for a download.")
+	}
+	specs = append(specs, engine.ToolSpec{
+		Name:        WebFetch,
+		Description: webFetchDescription(saveDir),
+		Parameters:  mustSchema(props, "url"),
+	})
 	return specs
 }

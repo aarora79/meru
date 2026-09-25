@@ -60,10 +60,14 @@ $ meru mcp remove notes                    # take a server out of config.toml
 $ meru tools                               # each server, its allowed tools, which ask first
 $ meru log -n 20 -v                        # the latest tool calls, with results
 $ meru check --save                        # rerun your own questions from ~/.meru/checks.jsonl, grade them
+$ meru config template                     # every config key with its default, as setup writes it
 ```
 
-`merud` reads `[index] folders` and the servers in `~/.meru/config.toml` when it
-starts, so restart it after changing either. API keys go in
+`meru setup` writes `~/.meru/config.toml` from the config template: every key,
+with the defaults uncommented and what is off, such as the catalog's MCP
+servers, in comments ready to uncomment. `[builtin] tools` lists the built-in
+tools the model may use and `[skills] disabled` the skills it skips. `merud`
+reads the file when it starts, so restart it after a change. API keys go in
 `~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
 `[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
 a pipe. Quote a question that starts with the word `ping`, `chat`, `index`,
@@ -126,11 +130,11 @@ rules for changing the code.
 | --- | --- |
 | **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
 | **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
-| **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. The built-in `web_fetch` tool reads a whole public page, answers a question from it with the fast model, or downloads a file; it asks you before it opens an address no search or question of yours gave. `[web] fetch = false` turns it off. [docs/running.md](docs/running.md#web-search) shows the setup. |
+| **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. The built-in `web_fetch` tool reads a whole public page, answers a question from it with the fast model, or downloads a file; it asks you before it opens an address no search or question of yours gave. Taking it out of `[builtin] tools` turns it off. [docs/running.md](docs/running.md#web-search) shows the setup. |
 | **MCP tools** | `meru setup` offers two servers: `google` for Gmail, Calendar and Drive, and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
-| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer` and `web-research`. |
+| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer` and `web-research`; `[skills] disabled` turns one off. |
 | **Scheduled jobs** | Meru runs briefs and other jobs on a schedule, so it can tell you things before you ask. |
 | **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces, and shows them in Grafana on your machine. |
 

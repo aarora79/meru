@@ -21,7 +21,7 @@ import (
 func writeTools(t *testing.T) (*Tools, string) {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "meru-output")
-	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Confirm: []string{WriteFile}}, config.Web{}, nil, out, nil, nil, nil), out
+	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Tools: config.BuiltinTools(), Confirm: []string{WriteFile}}, config.Web{}, nil, out, nil, nil, nil), out
 }
 
 // callWrite calls write_file with args and returns the result.
@@ -163,11 +163,11 @@ func TestWriteFileBackend(t *testing.T) {
 		t.Error("Tools doesn't offer write_file")
 	}
 	st := tools.Status()[0].Tools
-	if len(st) != 3 || st[2].Name != WriteFile || !st[2].Confirm {
-		t.Errorf("Status tools = %+v, want configure, datetime and write_file, which asks", st)
+	if len(st) != 4 || st[2].Name != WriteFile || !st[2].Confirm {
+		t.Errorf("Status tools = %+v, want configure, datetime, write_file, which asks, and web_fetch", st)
 	}
 
-	none := New("config.toml", config.Builtin{}, config.Web{}, nil, "", nil, nil, nil)
+	none := New("config.toml", config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, nil, nil)
 	for _, s := range none.Tools() {
 		if s.Name == WriteFile {
 			t.Error("write_file offered with no output folder")

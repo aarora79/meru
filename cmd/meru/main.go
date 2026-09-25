@@ -15,6 +15,7 @@
 //	meru [-socket path] usage            show how much you use Meru
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] setup user       tell Meru who you are
+//	meru config template                 print every config key with its default
 //	meru [-socket path] memory list      show what Meru remembers; also add, forget
 //	meru [-socket path] skills list      show the skills; also show, reset
 //	meru [-socket path] mcp              the state of each MCP server; also mcp status [--json]
@@ -24,7 +25,7 @@
 //
 // A question whose first word is ping, chat, index, tools, log, usage, setup,
 // memory, skills, mcp or check needs quotes, so meru reads it as a question and not
-// as a command.
+// as a command. So does the question "config template".
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -82,6 +83,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru usage            show how much you use Meru
   meru setup            set up Ollama, the models, config and tools
   meru setup user       tell Meru who you are
+  meru config template  print every config key with its default
   meru memory list [kind] | add <kind> <text...> | forget <id>
                         show, save or delete what Meru remembers
   meru skills list | show <name> | reset [--yes] <name>
@@ -143,6 +145,8 @@ flags:`)
 		err = setupCmd(ctx, *socket, terminal(stdout))
 	case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
 		err = setupUserCmd(ctx, *socket, terminal(stdout))
+	case flags.NArg() == 2 && flags.Arg(0) == "config" && flags.Arg(1) == "template":
+		err = configTemplateCmd(stdout)
 	case flags.Arg(0) == "memory":
 		err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.Arg(0) == "skills":

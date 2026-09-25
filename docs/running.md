@@ -127,6 +127,7 @@ In `meru chat`:
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 | `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
+| `/exit`, then Enter | quit, like Ctrl-D |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
 index, the memories and the session on the left:
@@ -250,6 +251,18 @@ List the decisions first, then each action item with its owner and date.
 The name takes lowercase letters and digits joined by `-`. The description is what
 the fast model reads when it picks, so say when to use the skill. `merud` skips a
 folder that breaks a rule, and `meru skills list` shows why under `Skipped:`.
+
+**Turn a skill off** by naming it in `[skills] disabled`, then restart `merud`:
+
+```toml
+[skills]
+disabled = ["explainer"]
+```
+
+`merud` doesn't load a disabled skill, and doesn't copy a disabled built-in back,
+so you can delete `~/.meru/skills/explainer/` and it stays gone. A name that
+matches no skill is fine; `merud.log` notes it. A folder you add loads with no
+change here.
 
 **Files skills make.** The built-in `write_file` tool saves a file, such as an
 explainer page, in `~/meru-output/`. It creates the folder the first time, writes
@@ -382,14 +395,40 @@ to see the same table.
 
 ## 6. Change settings
 
-Without a config file, `merud` uses the `lite` profile and the defaults. To change
-anything, create `~/.meru/config.toml` with only the keys you want to change.
-[config.example.toml](../config.example.toml) lists every key with its default and
-an explanation. For example, to switch to the `full` profile:
+Without a config file, `merud` uses the `lite` profile and the defaults.
+`meru setup` writes `~/.meru/config.toml` from the config template, which holds
+every key. What is on by default is uncommented, with its default value, so you
+see it and can change it. What is off, such as the MCP servers in the catalog,
+the example local commands and an A2A agent, sits in comments; delete the `# `
+in front of a block's lines to turn it on. To see the template at any time, or
+to start over from it:
+
+```sh
+meru config template                      # print it
+meru config template > ~/.meru/config.toml   # start over; this replaces your file
+```
+
+[config.example.toml](../config.example.toml) in the repo is the same file. A
+config with only the keys you change works too; any key you leave out keeps its
+default. For example, to switch to the `full` profile:
 
 ```toml
 profile = "full"
 ```
+
+**Turn a built-in tool off** by taking its name out of `[builtin] tools`. The
+model then never sees it, and `meru tools` doesn't list it:
+
+```toml
+[builtin]
+tools   = ["datetime", "remember", "write_file", "read_file", "list_folder", "grep", "web_search"]
+confirm = ["write_file"]   # each name here must also be in tools
+```
+
+That list leaves out `configure` and `web_fetch`. A tool you list still needs
+what it works on: the file tools need `[index] folders`, and `web_search` needs
+`[web] searxng_url`. Without it the tool stays off, and `merud.log` has a
+`built-in tool off` line that says why.
 
 Restart `merud` after editing the file. It checks every value at startup and
 refuses to start on a typo, an unknown key or a bad value, naming the key. It also
@@ -564,7 +603,8 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
    `config.toml`), and it runs `ollama pull` for each model, with Ollama's own
    progress bar.
 3. **Your files.** With no `config.toml` yet, it asks which folders to index and
-   writes the file. With one already there, it leaves the file alone and tells you
+   writes the config template with your profile and folders filled in. With one
+   already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
 4. **Web search.** It checks that SearXNG answers JSON at `[web] searxng_url`. If
    nothing answers, it prints the container commands from
@@ -697,15 +737,12 @@ metadata at 169.254.169.254 and the like), checked after DNS as it connects, and
 it follows at most 5 redirects, each checked the same way. So a page can't steer
 it at your router or another service on your network.
 
-**To turn it off**, set `fetch = false` and restart `merud`:
-
-```toml
-[web]
-fetch = false
-```
-
-A config from before this change that says `read_pages` stops `merud` with
-"read_pages was renamed fetch"; delete the line. To approve every fetch, even of
+**To turn it off**, take `web_fetch` out of `[builtin] tools` and restart
+`merud` (see [Change settings](#6-change-settings)). `[builtin] tools` is its
+only switch. A config that still says `fetch` or `read_pages` under `[web]`
+stops `merud` with "web.fetch moved: list web_fetch in [builtin] tools, or
+remove it to turn page fetching off"; delete the line and keep or drop
+`web_fetch` in `[builtin] tools`. To approve every fetch, even of
 a search result, add it to `[builtin] confirm`:
 
 ```toml
@@ -1013,8 +1050,8 @@ The rules:
 it: a duplicate name, a placeholder with no parameter, a parameter no placeholder
 uses, a `path` with no `under`, an `under` folder that doesn't exist, a timeout
 over `"300s"`, and so on. A program missing from `PATH` only gets a warning in
-`merud.log`. `config.example.toml` has four starters to copy: `git-log`,
-`git-status`, `search-notes` and `disk-free`.
+`merud.log`. The config template (`meru config template`) has four starters,
+commented out: `git-log`, `git-status`, `search-notes` and `disk-free`.
 
 ## 9. Keep merud running
 
@@ -1193,7 +1230,7 @@ later.
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
 | `web_search` answers that JSON is off, or `curl` on SearXNG prints HTML | SearXNG answers web pages only. Add `json` under `search: formats:` in `~/srv/searxng/core-config/settings.yml`, then `docker compose restart` (see [Web search](#web-search)). |
 | `web_search` says `SearXNG isn't answering on http://127.0.0.1:8888` | The container isn't running. Run `cd ~/srv/searxng && docker compose up -d`, and check that Docker itself runs. `docker compose ps` should show `127.0.0.1:8888->8888/tcp`. |
-| `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `config.example.toml` shows the allowed values. |
+| `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |

@@ -1,8 +1,8 @@
 # config
 
-**Code:** `internal/config/` (`config.go`, `load.go`, `loopback.go`)
+**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `loopback.go`)
 **Milestone:** v0.1
-**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search)
+**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
 
 ## What it does
 
@@ -12,8 +12,11 @@ profile, and checks every value. If anything is wrong, `merud` stops with a
 message that names the key. After `Load` returns, the rest of Meru trusts the
 values it gets.
 
-Meru never writes this file. `config.example.toml` at the repo root lists every
-key with its default.
+This package never writes the file. It holds the config template,
+`template.toml`: every key, with what is on by default uncommented at its
+default value and what is off in comments. `meru setup` writes the template as
+a new `config.toml`, and `meru config template` prints it. `config.example.toml`
+at the repo root is a byte-for-byte copy.
 
 ## The picture
 
@@ -79,7 +82,6 @@ entry, because `merud` starts no process whose environment it could set (see
 ```go
 type Web struct {
     SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
-    Fetch      bool   `toml:"fetch"`       // default true; false leaves web_fetch out
     MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
 }
 ```
@@ -91,11 +93,26 @@ a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
 explains what to do when nothing answers there. `MaxWebResults` is exported
 because `web_search` checks a call's own `max_results` against the same cap.
 
-`Fetch` defaults to true in `defaults()`. A file that leaves it out gets
-`web_fetch`, and `fetch = false` turns it off; the TOML parser writes over the
-default only when the key is there, so `false` sticks. `web_fetch` connects off
-this machine, which is why its own guard, and not config, decides when it asks
-(see [builtin](builtin.md)).
+`Builtin` is the `[builtin]` section, for the tools built into `merud`:
+
+```go
+type Builtin struct {
+    Tools   []string `toml:"tools"`   // default: all nine, from BuiltinTools()
+    Confirm []string `toml:"confirm"` // default ["write_file"]
+}
+```
+
+`Tools` is the one switch for each built-in, `web_fetch` included; `[web]` has
+no `fetch` key any more. A name left out means [builtin](builtin.md) doesn't
+register that tool. The TOML parser writes over the default only when the key
+is there, so `tools = []` sticks and turns every built-in off. `web_fetch`
+connects off this machine, which is why its own guard, and not config, decides
+when it asks.
+
+`Skills` holds `OutputDir`, the folder `write_file` writes in, and `Disabled`,
+the skill names `merud` neither installs nor loads (see [skills](skills.md)).
+`Disabled` defaults to an empty list and isn't checked: a name may match a
+skill the user adds later.
 
 ### load.go
 
@@ -143,12 +160,12 @@ When it matches, `Load` fails with "network was renamed remote: write remote =
 true in mcp.servers to let merud connect to a URL on another machine".
 `TestLoadErrors` covers the old key in both tables.
 
-`[web] read_pages`, the old name of `fetch`, gets the same treatment. `Load`
-compares the key's dotted form, `k.String() == "web.read_pages"`, and fails with
-"web.read_pages was renamed fetch, and fetch is on by default: delete
-read_pages, or write fetch = false to turn page fetching off". The meaning
-changed with the name: `read_pages = true` turned a tool on, while fetching is
-now on unless you say otherwise, so `Load` doesn't read the old value across.
+`[web] fetch`, which `[builtin] tools` replaced, gets the same treatment, and
+so does `read_pages`, its name before that. `Load` compares the key's dotted
+form, `k.String()`, with `"web.fetch"` and `"web.read_pages"`, and fails with
+the constant `movedFetch`: "web.fetch moved: list web_fetch in [builtin] tools,
+or remove it to turn page fetching off". `Load` doesn't read the old value
+across; the user decides once, in one place.
 
 Next, `Load` sets `Dir` to the folder that holds the config file. Pointing
 `merud -config` at another folder moves the whole Meru home there, which is
@@ -185,10 +202,55 @@ return errors.Join(errs...)
 read and change the outer function's variables (`errs` here). `errors.Join`
 glues the errors together and returns `nil` when the list is empty.
 
+`checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
+the nine in `builtinTools`, and the message lists them. A name in `confirm` must
+also be in `tools`; otherwise the confirm line would do nothing, which is
+almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
+because `builtin` imports `config` and Go refuses an import cycle. A test in
+`builtin` checks that the two lists agree. `BuiltinTools()` hands out a copy,
+made with `slices.Clone`, so no caller can change the defaults.
+
 `[log] level` must be `debug`, `info`, `warn` or `error`. `LogLevel` turns the
 name into the `slog.Level` `merud` logs at, and returns `false` for any other
 name, so `validate` and `merud`'s `openLog` share one list. `merud -v` sets
 `cfg.Log.Level` to `debug` after `Load` returns, so the flag beats the file.
+
+### template.go and template.toml
+
+`template.toml` is the config template. Every section and key sits in it.
+The uncommented lines hold the defaults, so `Load` of the template gives the
+same `Config` as no file at all; `TestTemplateMatchesDefaults` checks that.
+The `[models]` lines stay empty, with the `lite` names in comments, because a
+name there would override the profile: a user who then picked `full` would
+still run the `lite` model. The MCP servers, local commands and A2A agent
+sit in comments, ready to uncomment.
+
+`template.go` compiles the file into the binary:
+
+```go
+//go:embed template.toml
+var templateText string
+
+func Template() string { return templateText }
+```
+
+The `//go:embed` line is a directive to the compiler: at build time it copies
+the file's bytes into the string, so `meru` needs no data file next to it.
+The package imports `embed` with a blank name (`_`), which turns the
+directive on without using anything from the package. More in
+[go-basics/embed.md](go-basics/embed.md).
+
+`config.example.toml` at the repo root is a copy, for readers of the repo.
+Two files could drift, so `TestExampleIsTemplate` fails when they differ and
+says which command copies one over the other. A generate step that writes the
+example from the template would need a `go generate` line and a check that
+someone ran it; the test is the simpler guard.
+
+Two more tests keep the comments honest. `TestTemplateCommentedBlocks`
+uncomments every `# [[` block and loads the result. The catalog's two server
+blocks can't come from `catalog.Block` here, because `catalog` imports
+`config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
+the catalog package checks it against `Block`'s output.
 
 ### loopback.go
 
@@ -230,8 +292,10 @@ if !addr.Unmap().IsLoopback() { ... }
 go test ./internal/config/...
 ```
 
-`TestExampleMatchesDefaults` loads `config.example.toml` and checks that it
-shows the same values as `defaults()`, so the example can't drift from the code.
+`TestTemplateMatchesDefaults` loads the template and checks that it shows the
+same values as `defaults()`, so the template can't drift from the code.
+`TestExampleIsTemplate` checks that `config.example.toml` is still a copy.
+`go run ./cmd/meru config template` prints the template.
 
 ## Why it's built this way
 
@@ -241,5 +305,8 @@ shows the same values as `defaults()`, so the example can't drift from the code.
   `otlp_endpont` is worse than a refusal to start.
 - **Report every problem at once.** Stopping at the first error makes the
   user restart `merud` once per mistake.
+- **One template, embedded.** The file setup writes, the file `meru config
+  template` prints and the example in the repo come from one source, and tests
+  tie it to the defaults and the catalog.
 - **Our own loopback check.** The engine package has one too; the two will
   merge into one later. Both use only the standard library.

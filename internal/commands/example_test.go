@@ -1,4 +1,4 @@
-// This file checks the [[commands]] samples in config.example.toml: once
+// This file checks the [[commands]] samples in the config template: once
 // uncommented, they must load and pass New's checks, so the examples a
 // user copies always work.
 
@@ -19,15 +19,11 @@ func TestExampleCommands(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(home, "notes"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join("..", "..", "config.example.toml"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	// A sample starts at a "# [[commands]]" line and ends at the first line
 	// that isn't "# " plus text, as in config's own sample test.
 	var sample strings.Builder
 	in := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(config.Template(), "\n") {
 		if strings.HasPrefix(line, "# [[") {
 			in = line == "# [[commands]]"
 		}

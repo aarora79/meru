@@ -18,7 +18,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are eight built-ins. When you say "connect my Gmail" in chat, the model calls
+There are nine built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all nine by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -97,11 +98,33 @@ hook does nothing. A `nil` memory store leaves `remember` out, and an empty
 tools out; the tests of `configure` use all three. `merud` expands the `~` in
 `[skills] output_dir` before it calls `New`, so this package gets an absolute
 path, and it passes a `nil` indexer when `[index] folders` is empty. An empty
-`searxng_url` leaves `web_search` out, and `fetch = false` leaves `web_fetch`
-out; `fetch` is on by default. After `New`, `merud` calls `UseModel(eng,
+`searxng_url` leaves `web_search` out. After `New`, `merud` calls `UseModel(eng,
 cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model. It is
 a method, not one more parameter of `New`, so the many tests that build `Tools`
 without a model stay as they are.
+
+`[builtin] tools` decides which built-ins exist at all. `New` keeps the list in
+`t.on`, and `enabled(name)` asks `slices.Contains(t.on, name)`. Three places use
+it. `Tools` builds its specs as before, then drops the ones the list leaves out:
+
+```go
+// DeleteFunc drops, in place, each spec the function returns true for.
+return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool { return !t.enabled(s.Name) })
+```
+
+`Status` does the same to what `meru tools` shows, and `Call` refuses a name
+the list leaves out before it looks at the arguments. `dispatch` never offers a
+tool `Tools` didn't return, so the model can't reach one that is off; the check
+in `Call` is a second lock on the same door. `ConfirmCall` asks `enabled` too, so
+the URL guard stays quiet when `web_fetch` is off.
+
+A listed tool can still lack what it works on: `remember` needs the memory store,
+`write_file` the output folder, the file tools the indexer, and `web_search` a
+SearXNG URL. `missing(name)` returns the reason, or `""`, and `Off()` returns one
+`Off{Tool, Reason}` per listed tool with a reason, in list order. `merud` logs
+each as "built-in tool off" at startup, so a user who listed `grep` with no
+`[index] folders` can read why the model doesn't get it. `web_fetch`,
+`configure` and `datetime` need nothing, so they never show up in `Off`.
 
 `Confirm` decides whether a call asks first:
 
@@ -555,6 +578,15 @@ nothing left behind, and both kinds of planted link. `TestReadDownloads` reads
 and greps a downloaded file through `index.ReadAlso`, and refuses a link in the
 folder.
 
+`TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
+the nine names from `config.BuiltinTools()` are exactly what `Tools` offers and
+`Status` lists, which also proves the config list and this package agree. With
+`[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
+call to any other built-in fails. With no settings, `Off` names `remember`,
+`write_file`, the file tools and `web_search`, each with a reason.
+`TestWebToolsOffered` crosses `[web] searxng_url` with `[builtin] tools` for the
+two web tools.
+
 `TestConfigure` runs the tool against a temporary config: catalog entries with and
 without their keys, custom commands and URLs, and each kind of bad argument. It
 checks what landed in `config.toml`, that a refusal wrote nothing, and that no key
@@ -584,6 +616,10 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 `grepRun`, and `TestGrepCancelled` passes a cancelled `ctx`.
 
 ## Why it's built this way
+
+- **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
+  same way for all nine. `web_fetch` had its own key under `[web]` before; two
+  places to look for one question made the config harder to read.
 
 - **One writer for config.** `configure` and `meru mcp add` both call
   `catalog.AppendServer`, so chat and terminal can't write different blocks.

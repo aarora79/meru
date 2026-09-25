@@ -31,7 +31,7 @@ func webTools(t *testing.T, web config.Web, confirm ...string) *Tools {
 	if web.MaxResults == 0 {
 		web.MaxResults = 8
 	}
-	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Confirm: confirm}, web, nil, "", nil, nil, nil)
+	return New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Tools: config.BuiltinTools(), Confirm: confirm}, web, nil, "", nil, nil, nil)
 }
 
 // call runs one built-in call and returns its text and whether it was an
@@ -194,7 +194,7 @@ func pageServer(t *testing.T, mux *http.ServeMux) (*httptest.Server, *Tools) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	public := netip.MustParseAddrPort(srv.Listener.Addr().String())
-	tools := webTools(t, config.Web{Fetch: true})
+	tools := webTools(t, config.Web{})
 	tools.web.allowAddr = func(ap netip.AddrPort) error {
 		if ap == public {
 			return nil
@@ -355,7 +355,7 @@ func TestWebFetchNameToLoopback(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
-	tools := webTools(t, config.Web{Fetch: true})
+	tools := webTools(t, config.Web{})
 
 	text, isErr := call(t, tools, WebFetch, `{"url":"http://localhost:`+port+`/"}`)
 	if !isErr || !strings.Contains(text, "is this machine") || reached.Load() {
@@ -401,23 +401,26 @@ func TestCheckPublic(t *testing.T) {
 	}
 }
 
-// TestWebToolsOffered checks which web tools [web] turns on, what `meru
-// tools` shows, and that they run without asking unless [builtin] confirm
-// lists them.
+// TestWebToolsOffered checks which web tools [web] and [builtin] tools
+// turn on, what `meru tools` shows, and that they run without asking
+// unless [builtin] confirm lists them.
 func TestWebToolsOffered(t *testing.T) {
+	searxng := config.Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
 	tests := []struct {
-		name string
-		web  config.Web
-		want []string
+		name  string
+		web   config.Web
+		tools []string // [builtin] tools
+		want  []string
 	}{
-		{"search only", config.Web{SearXNGURL: "http://127.0.0.1:8888"}, []string{WebSearch}},
-		{"search and fetch", config.Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true}, []string{WebSearch, WebFetch}},
-		{"fetch only", config.Web{Fetch: true}, []string{WebFetch}},
-		{"search off", config.Web{}, nil},
+		{"search and fetch", searxng, config.BuiltinTools(), []string{WebSearch, WebFetch}},
+		{"no searxng url", config.Web{MaxResults: 8}, config.BuiltinTools(), []string{WebFetch}},
+		{"fetch left out", searxng, []string{"datetime", WebSearch}, []string{WebSearch}},
+		{"search left out", searxng, []string{WebFetch}, []string{WebFetch}},
+		{"both left out", searxng, []string{"datetime"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tools := webTools(t, tt.web)
+			tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Tools: tt.tools}, tt.web, nil, "", nil, nil, nil)
 			var specs, listed []string
 			for _, s := range tools.Tools() {
 				if s.Name == WebSearch || s.Name == WebFetch {
@@ -436,15 +439,19 @@ func TestWebToolsOffered(t *testing.T) {
 				t.Errorf("specs %v, listed %v; want %v", specs, listed, tt.want)
 			}
 			if !slices.Contains(tt.want, WebFetch) {
-				// A tool that is off isn't a built-in at all.
+				// A tool that is off isn't a built-in at all, and its
+				// guard has nothing to say.
 				if _, err := tools.Call(context.Background(), WebFetch, []byte(`{"url":"https://go.dev"}`)); err == nil {
-					t.Error("web_fetch ran while fetch is off")
+					t.Error("web_fetch ran while [builtin] tools leaves it out")
+				}
+				if _, ok := tools.ConfirmCall(dispatch.Call{Name: WebFetch, Args: []byte(`{"url":"https://go.dev"}`)}); ok {
+					t.Error("ConfirmCall decided for a web_fetch that is off")
 				}
 			}
 		})
 	}
 
-	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888", Fetch: true}, WebFetch)
+	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888"}, WebFetch)
 	if tools.Confirm(WebSearch) != dispatch.ConfirmNever || tools.Confirm(WebFetch) != dispatch.ConfirmAsk {
 		t.Errorf("Confirm = %v, %v; want web_search never, web_fetch ask", tools.Confirm(WebSearch), tools.Confirm(WebFetch))
 	}

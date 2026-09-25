@@ -40,6 +40,7 @@ const actionAddServer = "add_mcp_server"
 // Tools is merud's set of built-in tools. Build it with New.
 type Tools struct {
 	configPath string
+	on         []string       // [builtin] tools: the built-ins the model may use
 	confirm    []string       // [builtin] confirm from config.toml
 	memory     *memory.Store  // where remember saves; nil leaves remember out
 	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
@@ -55,7 +56,8 @@ type Tools struct {
 }
 
 // New returns the built-in tools. configPath is config.toml; secrets.toml
-// sits next to it. cfg is the [builtin] section. mem is the memory folder
+// sits next to it. cfg is the [builtin] section: a tool its tools list
+// leaves out is never offered, listed or run. mem is the memory folder
 // that remember saves to; a nil mem leaves remember out, for tests of
 // configure alone. outputDir is the absolute folder write_file writes in,
 // [skills] output_dir with "~" expanded; "" leaves write_file out. onChange
@@ -66,13 +68,13 @@ type Tools struct {
 // nothing. files is merud's indexer, which read_file, list_folder and grep
 // read through, so they see the [index] folders with the indexer's skip
 // rules; a nil files leaves the three out. web is the [web] section:
-// web_search comes when it names a SearXNG URL, and web_fetch when it
-// sets fetch. web_fetch saves downloads in outputDir's downloads folder,
+// web_search needs its SearXNG URL. web_fetch saves downloads in outputDir's downloads folder,
 // and answers a prompt only after UseModel.
 func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
 		now:        time.Now,
 		configPath: configPath,
+		on:         slices.Clone(cfg.Tools),
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
 		outputDir:  outputDir,
@@ -86,10 +88,57 @@ func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Stor
 // Kind returns dispatch.KindBuiltin.
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
-// Tools returns the specs of configure, datetime, remember, write_file, the
-// three file tools and the web tools for the model. It reads the memory folders on each call, so a
-// kind folder the user adds shows up in remember's choices on the next
-// turn.
+// enabled reports whether [builtin] tools lists name.
+func (t *Tools) enabled(name string) bool { return slices.Contains(t.on, name) }
+
+// Off is one tool that [builtin] tools lists but merud can't offer,
+// because the setting it works on is missing, and the reason, for the log.
+type Off struct {
+	Tool   string
+	Reason string
+}
+
+// Off returns the listed tools that stay off for want of their setting,
+// in [builtin] tools order. merud logs one info line for each at startup,
+// so a user who listed a tool can see why the model doesn't get it.
+func (t *Tools) Off() []Off {
+	var off []Off
+	for _, name := range t.on {
+		if reason := t.missing(name); reason != "" {
+			off = append(off, Off{Tool: name, Reason: reason})
+		}
+	}
+	return off
+}
+
+// missing returns why the tool name can't run, or "" when it can. Only
+// remember, write_file, the file tools and web_search need a setting.
+func (t *Tools) missing(name string) string {
+	switch name {
+	case Remember:
+		if t.memory == nil {
+			return "merud has no memory folder"
+		}
+	case WriteFile:
+		if t.outputDir == "" {
+			return "[skills] output_dir is empty"
+		}
+	case ReadFile, ListFolder, Grep:
+		if t.files == nil {
+			return "[index] folders is empty"
+		}
+	case WebSearch:
+		if t.web.searxngURL == "" {
+			return "[web] searxng_url is empty"
+		}
+	}
+	return ""
+}
+
+// Tools returns the specs of the built-ins the model may use: those
+// [builtin] tools lists whose setting is there. It reads the memory
+// folders on each call, so a kind folder the user adds shows up in
+// remember's choices on the next turn.
 func (t *Tools) Tools() []engine.ToolSpec {
 	specs := []engine.ToolSpec{{
 		Name:        Configure,
@@ -113,7 +162,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 	if t.files != nil {
 		specs = append(specs, t.fileToolSpecs()...)
 	}
-	return append(specs, t.web.toolSpecs(t.saveDir())...)
+	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
+	// DeleteFunc drops, in place, each spec the function returns true for.
+	return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool { return !t.enabled(s.Name) })
 }
 
 // Confirm says configure always asks, with no session approval. Any other
@@ -147,9 +198,10 @@ func (t *Tools) saveDir() string {
 // and metrics name merud itself.
 func (t *Tools) Locate(name string) (string, string) { return server, name }
 
-// Status describes the built-ins for `meru tools`: always connected,
-// configure, which always asks, and the others, which ask only when
-// [builtin] confirm lists them.
+// Status describes the built-ins the model may use for `meru tools`:
+// always connected, configure, which always asks, and the others, which
+// ask only when [builtin] confirm lists them. A tool [builtin] tools
+// leaves out isn't listed.
 func (t *Tools) Status() []rpc.ServerInfo {
 	tools := []rpc.ToolInfo{{
 		Name:        Configure,
@@ -195,14 +247,13 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Confirm:     t.Confirm(WebSearch) != dispatch.ConfirmNever,
 		})
 	}
-	if t.web.fetch {
-		tools = append(tools, rpc.ToolInfo{
-			Name: WebFetch,
-			Description: "Reads a public web page, or answers a question from it. " +
-				"Asks first for a URL no search or question of yours gave, and before any download.",
-			Confirm: t.Confirm(WebFetch) != dispatch.ConfirmNever,
-		})
-	}
+	tools = append(tools, rpc.ToolInfo{
+		Name: WebFetch,
+		Description: "Reads a public web page, or answers a question from it. " +
+			"Asks first for a URL no search or question of yours gave, and before any download.",
+		Confirm: t.Confirm(WebFetch) != dispatch.ConfirmNever,
+	})
+	tools = slices.DeleteFunc(tools, func(ti rpc.ToolInfo) bool { return !t.enabled(ti.Name) })
 	return []rpc.ServerInfo{{
 		Name:      server,
 		Kind:      dispatch.KindBuiltin,
@@ -215,8 +266,12 @@ func (t *Tools) Status() []rpc.ServerInfo {
 // Call runs the named built-in with args, a JSON object. A request the tool
 // refuses, such as bad arguments or a missing API key, comes back as a
 // Result with IsError set, so the model can read why and tell the user. The
-// error return is for a name that isn't a built-in.
+// error return is for a name that isn't a built-in, or one [builtin] tools
+// leaves out.
 func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (dispatch.Result, error) {
+	if !t.enabled(name) {
+		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool that [builtin] tools turns on", name)
+	}
 	var text string
 	var err error
 	switch {
@@ -236,7 +291,7 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.grep(ctx, args)
 	case name == WebSearch && t.web.searxngURL != "":
 		text, err = t.webSearch(ctx, args)
-	case name == WebFetch && t.web.fetch:
+	case name == WebFetch:
 		text, err = t.webFetch(ctx, args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)

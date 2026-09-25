@@ -34,7 +34,7 @@ func TestSearchTurnReadsAWholeFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{}, config.Web{}, nil, "", ix, nil, nil)
+	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", ix, nil, nil)
 	disp := dispatch.New([]dispatch.Backend{tools}, nil, dispatch.Options{})
 
 	args, _ := json.Marshal(map[string]string{"path": "accounts.md"})

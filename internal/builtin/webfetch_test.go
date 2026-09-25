@@ -578,7 +578,7 @@ func TestReadDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	ix.ReadAlso(dl)
-	tools := New(filepath.Join(base, "config.toml"), config.Builtin{}, config.Web{}, nil, "", ix, nil, nil)
+	tools := New(filepath.Join(base, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", ix, nil, nil)
 	ctx := context.Background()
 
 	res := callTool(t, tools, ctx, ReadFile, `{"path":`+jsonPath(filepath.Join(dl, "release.txt"))+`}`)

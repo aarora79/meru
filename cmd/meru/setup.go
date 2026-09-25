@@ -384,7 +384,8 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		// Setup doesn't edit an existing config.toml. Rewriting it would
 		// drop the user's comments, and keeping them needs a TOML editor
 		// that Meru doesn't have. Saying what to change is simpler.
-		fmt.Fprintf(c.out, "Setup leaves %s as it is. To index folders, list them under [index] folders there and restart merud.\n", configPath)
+		fmt.Fprintf(c.out, "Setup leaves %s as it is. To index folders, list them under [index] folders there and restart merud.\n"+
+			"meru config template prints every key with its default, to compare with your file.\n", configPath)
 	} else if err := c.writeFirstConfig(configPath, profile); err != nil {
 		return err
 	}
@@ -588,8 +589,9 @@ func (c *console) pullModels(ctx context.Context, m config.Models) error {
 }
 
 // writeFirstConfig asks which folders to index and writes a new
-// config.toml with the profile and the folders. It asks again when a folder
-// isn't an absolute path or a path under ~/.
+// config.toml: the config template, with the profile and the folders filled
+// in. It asks again when a folder isn't an absolute path or a path under
+// ~/.
 func (c *console) writeFirstConfig(configPath, profile string) error {
 	for {
 		a, err := c.ask("Folders to index, separated by commas (for example ~/notes), or Enter for none:")
@@ -602,15 +604,49 @@ func (c *console) writeFirstConfig(configPath, profile string) error {
 				folders = append(folders, f)
 			}
 		}
-		text := "# Written by meru setup. config.example.toml in the Meru repo lists every key.\n" +
-			"profile = " + tomlString(profile) + "\n\n[index]\nfolders = " + tomlList(folders) + "\n"
+		text, err := firstConfig(profile, folders)
+		if err != nil {
+			return err
+		}
 		err = writeNewConfig(configPath, text)
 		if err == nil {
-			fmt.Fprintf(c.out, "Wrote %s.\n", configPath)
+			fmt.Fprintf(c.out, "Wrote %s. It lists every setting with its default; change any of them there.\n", configPath)
 			return nil
 		}
 		fmt.Fprintln(c.out, err)
 	}
+}
+
+// firstConfig returns the config template with two lines changed: the
+// profile line and the [index] folders line. Replacing whole lines keeps
+// every comment, and needs no TOML editor. It fails when the template no
+// longer holds each line exactly once; TestFirstConfig catches that before
+// a user can.
+func firstConfig(profile string, folders []string) (string, error) {
+	text := config.Template()
+	// A slice of anonymous structs: each pairs a template line with the
+	// line that replaces it.
+	for _, r := range []struct{ old, new string }{
+		{`profile = "lite"`, "profile = " + tomlString(profile)},
+		{"folders = []", "folders = " + tomlList(folders)},
+	} {
+		// The newlines on both sides match a whole line, never the same
+		// words inside a comment.
+		old := "\n" + r.old + "\n"
+		if strings.Count(text, old) != 1 {
+			return "", fmt.Errorf("the config template doesn't hold the line %s exactly once", r.old)
+		}
+		text = strings.Replace(text, old, "\n"+r.new+"\n", 1)
+	}
+	return text, nil
+}
+
+// configTemplateCmd runs `meru config template`: it prints the template
+// that setup writes, every key with its default, so a user with a
+// config.toml can compare or start over.
+func configTemplateCmd(stdout io.Writer) error {
+	_, err := io.WriteString(stdout, config.Template())
+	return err
 }
 
 // writeNewConfig writes text as config.toml through a temporary file that

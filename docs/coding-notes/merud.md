@@ -276,7 +276,14 @@ microseconds, so a skill you add or edit by hand counts from the next turn with
 no restart. A file watcher would do the same with more moving parts: a watch on
 the folder and on each skill folder, kept in step as folders come and go, and a
 goroutine to own it. Each load logs one `skill skipped` warning per bad folder
-and one `skills loaded` line with the names.
+and one `skills loaded` line with the names and the disabled ones.
+
+`newSkillService` takes `[skills] disabled` and hands it to both
+`skills.InstallBuiltins` and `skills.Load`, so a disabled skill is neither
+installed nor loaded. A disabled name that is neither a built-in nor a folder
+under `~/.meru/skills` gets one info line, `disabled skill not found`; it isn't
+an error, because you may add that skill later. `TestSkillServiceDisabled`
+checks that a disabled built-in stays off disk and out of the list.
 
 The service answers three ops:
 
@@ -400,15 +407,25 @@ leave `merud` with a pool whose servers all failed to start.
 `TestMCPReloadStopsOldChildren` runs the test binary as a stdio server, changes
 and then removes it, and checks each old process is gone.
 
-**Web search.** `newToolService` hands `cfg.Web` to `builtin.New`, which offers
-`web_search` when `searxng_url` is set and `web_fetch` when `fetch` is true, the
-default. Before that it calls `ix.ReadAlso` on `<output_dir>/downloads`, so the
-file tools can read what `web_fetch` downloads; after, it calls
+**Built-in tools.** `newToolService` hands `cfg.Builtin` to `builtin.New`, whose
+`tools` list says which built-ins the model may use. Right after, it logs one
+`built-in tool off` info line for each entry of `bt.Off()`: a tool the list
+names whose setting is missing, such as `grep` with no `[index] folders`. The
+e2e test `TestBuiltinToolsSwitch` cuts the list to `datetime` and `grep`, and
+checks what `meru tools` shows and that the log says why `grep` is off.
+
+**Web search.** `newToolService` also hands `cfg.Web` to `builtin.New`, which
+offers `web_search` when `searxng_url` is set. `web_fetch` needs no `[web]`
+key. When `[builtin] tools` lists `web_fetch`, `newToolService` first calls
+`ix.ReadAlso` on `<output_dir>/downloads`, so the file tools can read what
+`web_fetch` downloads; after, it calls
 `bt.UseModel(eng, cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the
 fast model. `newToolService` takes the engine as a `builtin.Generator`, the one
 method that needs. Right after, `run` calls `logWebSearch`, which runs
 `catalog.CheckSearXNG` and writes one info line: `web search ready`,
-`web search not ready` with the reason, or `web search off`. The check never
+`web search not ready` with the reason, or `web search off`, which also covers
+`[builtin] tools` leaving `web_search` out. Each line says whether `web_fetch`
+is on. The check never
 stops `merud`: SearXNG may start later, and `web_search` tells the model what's
 wrong when it runs. It sends SearXNG an empty query, which SearXNG refuses before
 it asks any search engine, so starting `merud` sends nothing off the machine.
@@ -434,6 +451,8 @@ case flags.NArg() == 1 && flags.Arg(0) == "usage":
     err = usageCmd(ctx, *socket, stdout)
 case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
     err = setupUserCmd(ctx, *socket, terminal(stdout))
+case flags.NArg() == 2 && flags.Arg(0) == "config" && flags.Arg(1) == "template":
+    err = configTemplateCmd(stdout)
 case flags.Arg(0) == "memory":
     err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
 case flags.Arg(0) == "check":
@@ -448,6 +467,8 @@ default:
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
   `usage`, `setup`, `memory`, `mcp` or `check` needs quotes. `usage`, like `ping` and `chat`, is a
   command only as the one word, so `meru usage of semicolons` asks a question.
+  `config template` is a command only as those two words; it needs no `merud`
+  and prints the config template from `internal/config`.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
@@ -627,7 +648,17 @@ skips. `doIt` goes in this order:
 
 `setupCmd` runs the seven steps from ARCHITECTURE.md "First run and setup". It
 writes `config.toml` only when none exists. Rewriting an existing one would
-drop your comments, so setup tells you what to change instead.
+drop your comments, so setup tells you what to change instead, and points at
+`meru config template`.
+
+Step 3 writes the config template with your answers in it. `firstConfig`
+replaces two whole lines of `config.Template()`: `profile = "lite"` and
+`folders = []`. Matching `"\n" + line + "\n"` hits the line itself, never the
+same words inside a comment, and every comment stays. When either line isn't
+there exactly once, `firstConfig` fails; `TestFirstConfig` catches that in CI,
+and checks that exactly those two lines change. `writeNewConfig` then loads the
+text through `config.Load` before it renames it into place, as before.
+`configTemplateCmd` prints the same template for `meru config template`.
 
 Step 4, Web search, is `checkWebSearch`. It calls `c.searxng`, which is
 `catalog.CheckSearXNG` outside tests, on `[web] searxng_url`. When SearXNG answers

@@ -30,7 +30,8 @@ type Config struct {
 	MCP MCP `toml:"mcp"`
 	// A2A lists the other agents Meru may hand tasks to (v0.3).
 	A2A A2A `toml:"a2a"`
-	// Builtin sets which built-in tools ask before they run (v0.3).
+	// Builtin sets which built-in tools the model may use, and which of
+	// them ask before they run (v0.3).
 	Builtin Builtin `toml:"builtin"`
 	// Skills configures the skill registry and the files skills write (v0.4).
 	Skills Skills `toml:"skills"`
@@ -203,26 +204,33 @@ type Skills struct {
 	// OutputDir is the one folder the write_file tool may write in. A
 	// leading "~" means the home directory. Default "~/meru-output".
 	OutputDir string `toml:"output_dir"`
+	// Disabled names skills merud neither loads nor, for a built-in,
+	// installs. A name that matches no skill is fine: the user may add
+	// that skill later. Default [].
+	Disabled []string `toml:"disabled"`
 }
 
 // Builtin configures the tools built into merud. configure always asks,
 // whatever Confirm says.
 type Builtin struct {
-	// Confirm lists built-in tools that ask before each call. Default
-	// ["write_file"].
+	// Tools lists the built-in tools the model may use. A tool left out
+	// isn't registered at all. Default: all nine, as BuiltinTools returns
+	// them. A listed tool whose setting is missing, such as the file tools
+	// with no [index] folders, still stays off.
+	Tools []string `toml:"tools"`
+	// Confirm lists built-in tools that ask before each call. Each must
+	// also be in Tools. Default ["write_file"].
 	Confirm []string `toml:"confirm"`
 }
 
 // Web configures web search. merud searches through a SearXNG instance the
-// user runs on this machine. See ARCHITECTURE.md, "Web search".
+// user runs on this machine. See ARCHITECTURE.md, "Web search". web_fetch
+// has no key here: [builtin] tools turns it on or off.
 type Web struct {
 	// SearXNGURL is where SearXNG answers, such as http://127.0.0.1:8888.
 	// It must be loopback, because merud connects to it. Empty turns
 	// web_search off.
 	SearXNGURL string `toml:"searxng_url"`
-	// Fetch offers web_fetch, which lets merud fetch a public web page
-	// itself when the model asks. Default true; false leaves the tool out.
-	Fetch bool `toml:"fetch"`
 	// MaxResults is how many results web_search returns when the model
 	// doesn't say. Default 8, at most 20.
 	MaxResults int `toml:"max_results"`

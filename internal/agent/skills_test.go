@@ -59,10 +59,10 @@ func (f fixedSkills) Registry(context.Context) *skills.Registry { return f.reg }
 func builtinRegistry(t *testing.T) *skills.Registry {
 	t.Helper()
 	dir := t.TempDir()
-	if _, err := skills.InstallBuiltins(dir); err != nil {
+	if _, err := skills.InstallBuiltins(dir, nil); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := skills.Load(dir)
+	reg, err := skills.Load(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestPickNone(t *testing.T) {
 // no pick call and leaves the prompt as it was, and that a failed pick
 // call still answers.
 func TestPickSkipped(t *testing.T) {
-	empty, err := skills.Load(filepath.Join(t.TempDir(), "none"))
+	empty, err := skills.Load(filepath.Join(t.TempDir(), "none"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestParsePick(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reg, err := skills.Load(dir)
+	reg, err := skills.Load(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
