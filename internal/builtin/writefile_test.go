@@ -163,8 +163,8 @@ func TestWriteFileBackend(t *testing.T) {
 		t.Error("Tools doesn't offer write_file")
 	}
 	st := tools.Status()[0].Tools
-	if len(st) != 2 || st[1].Name != WriteFile || !st[1].Confirm {
-		t.Errorf("Status tools = %+v, want configure and write_file, which asks", st)
+	if len(st) != 3 || st[2].Name != WriteFile || !st[2].Confirm {
+		t.Errorf("Status tools = %+v, want configure, datetime and write_file, which asks", st)
 	}
 
 	none := New("config.toml", config.Builtin{}, config.Web{}, nil, "", nil, nil, nil)

@@ -198,7 +198,7 @@ func TestBackend(t *testing.T) {
 
 	st := tools.Status()
 	if len(st) != 1 || st[0].Name != "meru" || !st[0].Connected || st[0].Kind != "builtin" ||
-		len(st[0].Tools) != 1 || !st[0].Tools[0].AlwaysAsks {
+		len(st[0].Tools) != 2 || !st[0].Tools[0].AlwaysAsks || st[0].Tools[1].Name != DateTime {
 		t.Errorf("Status = %+v", st)
 	}
 
@@ -324,14 +324,14 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 	if got := tools.Confirm(Remember); got != dispatch.ConfirmNever {
 		t.Errorf("Confirm(remember) = %v, want ConfirmNever by default", got)
 	}
-	if st := tools.Status(); st[0].Offered != 2 || st[0].Tools[1].Confirm {
+	if st := tools.Status(); st[0].Offered != 3 || st[0].Tools[2].Confirm {
 		t.Errorf("Status = %+v, want remember listed without confirm", st)
 	}
 	asking, _, _ := rememberTools(t, config.Builtin{Confirm: []string{Remember}})
 	if got := asking.Confirm(Remember); got != dispatch.ConfirmAsk {
 		t.Errorf("Confirm(remember) = %v, want ConfirmAsk when listed", got)
 	}
-	if st := asking.Status(); !st[0].Tools[1].Confirm {
+	if st := asking.Status(); !st[0].Tools[2].Confirm {
 		t.Errorf("Status = %+v, want remember to show confirm", st)
 	}
 }

@@ -156,6 +156,10 @@ func (t *Tools) Status() []rpc.ServerInfo {
 		Description: "Adds an MCP server to config.toml.",
 		Confirm:     true,
 		AlwaysAsks:  true,
+	}, {
+		Name:        DateTime,
+		Description: "Reads the clock: the date, the time, a date's weekday, another time zone.",
+		Confirm:     t.Confirm(DateTime) != dispatch.ConfirmNever,
 	}}
 	if t.memory != nil {
 		tools = append(tools, rpc.ToolInfo{
