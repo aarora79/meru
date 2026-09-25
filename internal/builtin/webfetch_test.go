@@ -286,7 +286,7 @@ func TestWebFetchGuard(t *testing.T) {
 			args: fetch(base + "/release"), outcome: dispatch.OutcomeOK},
 		{name: "earlier question URL", session: "b2", question: "summarize it\n" + base + "/release is the page",
 			args: fetch(base + "/release"), outcome: dispatch.OutcomeOK},
-		{name: "made-up URL", search: true, session: "c", args: fetch(base + "/long.txt"), asks: true, outcome: dispatch.OutcomeOK},
+		{name: "another page on a search result's host", search: true, session: "c", args: fetch(base + "/long.txt"), outcome: dispatch.OutcomeOK},
 		{name: "notes in the query string", search: true, session: "d",
 			args: fetch(base + "/release?notes=" + url.QueryEscape("my tax is due")), asks: true, outcome: dispatch.OutcomeOK},
 		{name: "job source", session: "e", source: rpc.SourceJob, args: fetch(base + "/release"), outcome: dispatch.OutcomeDeclined},
@@ -323,6 +323,33 @@ func TestWebFetchGuard(t *testing.T) {
 	}
 }
 
+// TestWebFetchGuardHosts checks the host rule at ConfirmCall: a page with
+// no query string on a host the session knows runs unasked, while an
+// unknown host, or a query string on a known host, asks with no session
+// choice.
+func TestWebFetchGuardHosts(t *testing.T) {
+	d, tools, base := guardSetup(t, t.TempDir())
+	a := &asker{}
+	if _, o := d.Dispatch(context.Background(), guardCall(WebSearch, `{"query":"go"}`, "h", "", rpc.SourceTUI, a)); o.Outcome != dispatch.OutcomeOK {
+		t.Fatalf("search outcome %q", o.Outcome)
+	}
+	tests := []struct {
+		url  string
+		want dispatch.Confirm
+		ok   bool
+	}{
+		{base + "/some/other/page", dispatch.ConfirmNever, false},
+		{base + "/page?user=notes", dispatch.ConfirmAlways, true},
+		{"https://attacker.example/page", dispatch.ConfirmAlways, true},
+	}
+	for _, tt := range tests {
+		c, ok := tools.ConfirmCall(guardCall(WebFetch, fmt.Sprintf(`{"url":%q}`, tt.url), "h", "", rpc.SourceTUI, a))
+		if c != tt.want || ok != tt.ok {
+			t.Errorf("ConfirmCall(%s) = %v, %v; want %v, %v", tt.url, c, ok, tt.want, tt.ok)
+		}
+	}
+}
+
 // TestWebFetchSaveAsks checks that save asks even for a search-result URL,
 // offering all three choices; that save on a made-up URL offers no session
 // choice; and that a job's save is declined without a prompt.
@@ -343,7 +370,7 @@ func TestWebFetchSaveAsks(t *testing.T) {
 		t.Errorf("known URL save choices = %v, want once, session and deny", got)
 	}
 
-	madeUp := fmt.Sprintf(`{"url":%q,"save":true}`, base+"/file.pdf")
+	madeUp := `{"url":"https://attacker.example/file.pdf","save":true}`
 	if c, ok := tools.ConfirmCall(guardCall(WebFetch, madeUp, "s", "", rpc.SourceTUI, a)); !ok || c != dispatch.ConfirmAlways {
 		t.Errorf("made-up URL save: ConfirmCall = %v, %v; want ConfirmAlways", c, ok)
 	}

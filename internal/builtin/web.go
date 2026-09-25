@@ -649,7 +649,7 @@ func webFetchDescription(saveDir string) string {
 		"Pass prompt when you want one fact or a summary: Meru reads the page and answers your prompt from the page alone, " +
 		"quoting its numbers, versions and dates. Leave prompt out when you need the text itself: " +
 		"you get up to 12,000 characters per call, and a longer page ends with the offset to pass next. " +
-		"A URL that came from a web_search result or from the user runs at once; any other URL asks the user first. "
+		"A URL that came from a web_search result or from the user, or another page with no query string on the same site, runs at once; any other URL asks the user first. "
 	if saveDir != "" {
 		d += "Set save to true only when the user asks to download a file: it saves the file in " + saveDir +
 			" and always asks the user first. "

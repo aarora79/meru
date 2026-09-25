@@ -1721,7 +1721,11 @@ one. So `web_fetch` runs without asking only when the URL appeared, in the same
 session, in a `web_search` result or in something the user typed: this turn's
 question or an earlier one. The guard compares URLs with the scheme and host in
 lower case and the fragment dropped; the query counts, because that is where data
-would go. Any other URL asks, offering once and deny with no session choice, as
+would go. A URL with no query string also runs unasked when its host is one a known
+URL came from: the model often knows a site's canonical page, such as
+`go.dev/doc/devel/release`, when the results showed only `go.dev/dl/`, and an
+attacker's site still has to turn up in real search results first. Any other URL
+asks, offering once and deny with no session choice, as
 `configure` does; a session choice would let every later made-up URL through.
 `save` asks every time, even for a known URL, because a download stays on disk;
 there it offers once, session and deny, as `write_file` does. A scheduled job has
@@ -2071,8 +2075,9 @@ transcript lines hold. No level writes question or answer text. With
 - `web_fetch` makes `merud` fetch public pages off this machine, by default,
   when the model asks; `[web] fetch = false` turns it off. It refuses any address
   on this machine or your network. It runs without asking only for a URL that a
-  search result or your own question gave in the same session, so the model
-  can't carry your data out in a URL it made up; any other URL, and every
+  search result or your own question gave in the same session, or for a page
+  with no query string on the same site, so the model can't carry your data out
+  in a URL it made up; any other URL, and every
   download, asks you first, and a scheduled job declines them (see
   [Web search](#web-search)).
 - A local command runs with your permissions too, and reaches the network if you

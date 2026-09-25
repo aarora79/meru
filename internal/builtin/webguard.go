@@ -76,6 +76,7 @@ func (k *knownURLs) add(session string, urls ...string) {
 		}
 		if n, ok := normalizeURL(raw); ok {
 			s.urls[n] = true
+			s.urls[hostKey(n)] = true
 		}
 	}
 }
@@ -94,7 +95,16 @@ func (k *knownURLs) dropOldest() {
 	delete(k.sessions, oldest)
 }
 
-// has reports whether raw, normalized, is known in session.
+// has reports whether raw may be fetched without asking in session: the
+// URL itself is known, or it has no query string and its host is one a
+// known URL came from.
+//
+// The host rule exists because the model often knows a site's canonical
+// page, such as go.dev/doc/devel/release, when the search results showed
+// only go.dev/dl/. The query rule keeps the guard's point: a query string
+// is where a made-up URL carries data out, so a URL with one must match
+// exactly. An attacker's own site still has to appear in real search
+// results, or in the user's own words, before it can be fetched unasked.
 func (k *knownURLs) has(session, raw string) bool {
 	n, ok := normalizeURL(raw)
 	if session == "" || !ok {
@@ -103,11 +113,25 @@ func (k *knownURLs) has(session, raw string) bool {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	s := k.sessions[session]
-	if s == nil || !s.urls[n] {
+	if s == nil {
+		return false
+	}
+	u, _ := url.Parse(n)
+	if !s.urls[n] && (u.RawQuery != "" || !s.urls[hostKey(n)]) {
 		return false
 	}
 	s.used = time.Now()
 	return true
+}
+
+// hostKey returns the key a normalized URL's host is known by, such as
+// "host:go.dev". The prefix keeps hosts and whole URLs apart in one set.
+func hostKey(normalized string) string {
+	u, err := url.Parse(normalized)
+	if err != nil {
+		return ""
+	}
+	return "host:" + u.Host
 }
 
 // normalizeURL returns raw in the form the guard compares: scheme and host

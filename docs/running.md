@@ -672,8 +672,9 @@ own site, check dates against today, and cite each URL.
 **When it asks you.** A web address can carry your data out, as in
 `https://example.com/?notes=my+tax+return`. A page the model reads could ask it
 to build one. So `web_fetch` runs without asking only for an address that a
-search result or your own question showed earlier in the same chat. For any
-other address it asks, offering once or deny, every time. Every download asks
+search result or your own question showed earlier in the same chat, or for another
+page on the same site when the address has no `?` part. For any other address it
+asks, offering once or deny, every time. Every download asks
 too, even from a search result, because the file stays on your disk; there you
 may approve it for the rest of the chat. A scheduled job has nobody to ask, so it
 skips those calls.
