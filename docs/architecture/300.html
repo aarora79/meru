@@ -1375,10 +1375,15 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
 <p>The model decodes one token, so routing costs a prompt evaluation and nothing more, and it can't name a route that doesn't exist. When the confidence falls below <code>min_confidence</code>, or fewer than two letters appear at all, the router takes the fallback route, <code>search+tools</code>. That's the one route that can't fail a turn for lack of context: an unsure router spends tokens rather than guesses.</p>
 
 <pre><code>[router]
-top_logprobs   = 20             # Ollama's cap
-temperature    = 1.25           # fitted by `make router-eval`
-min_confidence = 0.45           # below this, take the fallback
-fallback       = "search+tools"</code></pre>
+top_logprobs     = 20             # Ollama's cap
+temperature      = 1.25           # fitted by `make router-eval`
+min_confidence   = 0.45           # below this, take the fallback
+fallback         = "search+tools"
+decision         = "top"          # or "marginal"
+search_threshold = 0.30           # "marginal" only
+tools_threshold  = 0.25           # "marginal" only</code></pre>
+
+<p><code>decision</code> picks how the four probabilities become a route. The default, <code>top</code>, takes the most likely letter as described above. <code>marginal</code> asks two yes/no questions instead. B and D both search, so P(B) + P(D) is the chance the turn needs a search; C and D both call tools, so P(C) + P(D) is the chance it needs tools. Each sum that reaches its threshold adds its half, and a turn with two yeses gets <code>search+tools</code>. <code>marginal</code> needs no confidence floor, so it takes the fallback only when fewer than two letters appear. Take "what was the last email I sent?" at search 0.473, tools 0.260, search+tools 0.218: <code>top</code> picked search and offered no mail tools, though the two tool letters held 0.478. <code>marginal</code> picks <code>search+tools</code>. On the held-out set, <code>marginal</code> missed a needed search or tool on 7 of 46 turns against 9 for <code>top</code>, but added an unneeded search on 8 turns against 6 and unneeded tools on 1 against 0. Two turns in 46 isn't enough to change the default, and the fifth rule below already adds mail tools to that email question. <a href="../fast-router.md#decision-rules">docs/fast-router.md</a> has the numbers.</p>
 
 <p>The router lives in <code>internal/router</code> as one function, <code>Decide</code>, which returns the route, its confidence, the full distribution and an outcome (<code>ok</code>, <code>low_confidence</code> or <code>degraded</code>). A model that answers unclearly isn't an error; <code>Decide</code> returns the fallback and says why.</p>
 
@@ -1389,7 +1394,7 @@ fallback       = "search+tools"</code></pre>
 <p>The fourth: when the question says "web", "internet" or "online" as a whole word, <code>web_search</code> exists and the route is <code>direct</code> or <code>search</code>, the loop adds the rest. The router sent "Search the web: what is SearXNG?" to <code>direct</code>, and the model, with no tools, wrote a tool call as plain text.</p>
 <p>The fifth: when a word in the question matches something a connected server's tools act on, the loop adds tools. The nouns come from the tool names, singular and lower case, minus common verbs and words such as "file": <code>gmail</code>, <code>message</code>, <code>calendar</code>, <code>event</code>, <code>drive</code>, <code>note</code>. A word matches when it equals a noun or ends in the same four or more letters, so "email" matches <code>gmail</code>. The router sent "what was the last email I sent?" to <code>search</code>, which offers no server's tools, and the model grepped the user's files.</p>
 
-<p><code>make router-eval</code> scores the router against the local Ollama on a labelled set of 135 questions, 40 of them held out, and fits the temperature. At 1.25 the probabilities sit close to calibrated, so <code>min_confidence = 0.45</code> means what it says. Refit after any change to the prompt, the examples or the <code>fast</code> model.</p>
+<p><code>make router-eval</code> scores the router against the local Ollama on a labelled set of 153 questions, 46 of them held out, and fits the temperature. It also compares the two <code>decision</code> rules on the same answers. At 1.25 the probabilities sit close to calibrated, so <code>min_confidence = 0.45</code> means what it says. Refit after any change to the prompt, the examples or the <code>fast</code> model.</p>
 
 <p>The full design, with the prompt contract, tests and calibration results, is in <a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>.</p>
 

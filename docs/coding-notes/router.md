@@ -30,6 +30,11 @@ flowchart LR
     C -- "winner too weak" --> W["fallback, low_confidence"]
 ```
 
+The picture shows the default rule, `top`. With `decision = "marginal"` the
+diamond changes: after the two-letter check, `marginal` adds P(B) + P(D) and
+P(C) + P(D), compares each sum with its threshold, and returns the route with
+outcome `ok`. It never gives `low_confidence`.
+
 ## Walk through the code
 
 ### prompt.go
@@ -119,6 +124,23 @@ mean nothing. A winner below `min_confidence` means the model couldn't decide.
 Both take the fallback, `search+tools`, which is the one route that can't fail a
 turn for lack of context.
 
+Between those two checks sits the second rule. `Config.Rule` is a `Rule`, a named
+string type like `Route`, and its zero value `""` means `RuleTop`, so a `Config`
+built by hand in a test keeps the old behaviour:
+
+```go
+if cfg.Rule == RuleMarginal {
+    r, conf := marginal(p, cfg.SearchThreshold, cfg.ToolsThreshold)
+    return Decision{Route: r, Confidence: conf, Outcome: OutcomeOK, Probs: p}
+}
+```
+
+`marginal`, in `probs.go`, adds P(B) + P(D) as the chance the turn needs a search
+and P(C) + P(D) as the chance it needs tools, then asks `routeFor` for the route
+that offers each half whose sum reached its threshold. Its confidence is the
+weaker of the two answers: the sum for a yes, one minus the sum for a no. `min`
+is a Go built-in since 1.21, like `max`.
+
 `Decide` returns an error only when the model call fails or the config is
 invalid. An unsure model isn't an error. `Decide` then records
 `meru.route.decisions` through `obs.RecordRoute` and sets `meru.route.decision`,
@@ -140,7 +162,8 @@ a logger that writes nothing, so tests need no logger. `merud` sets it to its ow
 
 `ConfigFrom` builds a `Config` from the `[router]` table in `config.toml` and the
 fast model's name, and checks every value: `top_logprobs` 1 to 20, `temperature`
-above 0, `min_confidence` 0 to 1, `fallback` one of the four routes.
+above 0, `min_confidence` 0 to 1, `fallback` one of the four routes, `decision`
+`top` or `marginal`, and `search_threshold` and `tools_threshold` 0 to 1.
 
 ### eval_test.go and eval_integration_test.go
 
@@ -163,6 +186,20 @@ confusion matrix, `ece` (expected calibration error over ten bins), the fallback
 rate, the missed rate and latency percentiles. `fitTemperature` runs `score`
 over a grid of temperatures and keeps the one with the lowest ECE.
 
+A row may carry `"tag": "connected"`, which marks the questions about mail, the
+calendar, Drive, the Obsidian vault, a local command or the clock. The report
+scores those rows as a set of their own.
+
+To compare the two decision rules, the file defines `rule`, a function type:
+`type rule func(comp engine.Completion) Route`. In Go a function is a value, so
+`topRule(cfg)` and `marginalRule(cfg, 0.3, 0.25)` each return a closure, a
+function that keeps the `cfg` it was built with. `scoreRule` runs one rule and a
+base rule over the same samples and fills a `ruleReport`: exact accuracy, the
+missed rate, extra searches and extra tools the label doesn't need, and how many
+rows differ from the base. `rankGrid` sorts the threshold pairs by the fit set
+alone, with `slices.SortFunc` and a comparison that returns a negative number
+when the first pair should come first.
+
 `eval_integration_test.go` has the `integration` tag. It wraps the real engine
 in a `recorder`, a struct that embeds `engine.Engine` and overrides `Generate`
 to keep the last completion. Each labelled question goes through `Decide`, the
@@ -172,8 +209,10 @@ One pass over the model then covers every temperature and threshold.
 ## Go ideas used here
 
 - **Maps** — `map[Route]float64`; a missing key reads as 0.
-- **Named string types** — `Route` and `Outcome` are strings the compiler keeps
-  apart from plain strings.
+- **Named string types** — `Route`, `Outcome` and `Rule` are strings the
+  compiler keeps apart from plain strings.
+- **Function values and closures** — the harness's `rule` type is a function;
+  `topRule` returns one that remembers its `cfg`.
 - **Interfaces** — `Decide` takes an `engine.Engine`, so tests pass a fake. More
   in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Embedding an interface in a struct** — the test's `fakeEngine` embeds
@@ -192,9 +231,10 @@ make router-eval
 ```
 
 The last two need Ollama running with the fast model pulled. The second routes
-seven questions and prints each distribution. `make router-eval` scores all 135
-labelled questions and prints the report, a temperature sweep and a
-`min_confidence` sweep. It gives every row the folders in `evalFolders`
+seven questions and prints each distribution. `make router-eval` scores all 153
+labelled questions and prints the report, a temperature sweep, a
+`min_confidence` sweep, and both decision rules side by side with a sweep of the
+`marginal` thresholds. It gives every row the folders in `evalFolders`
 (`~/notes`, `~/repos/meru`, `~/repos/blog`). On the development machine
 (Ollama 0.34, MiniCPM5-2B at Q4_K_M) the router picked the labelled route for 32
 of 40 held-out questions, at about 28 ms per warm decision. Without the folder

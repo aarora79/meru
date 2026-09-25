@@ -87,6 +87,9 @@ top_logprobs = 5
 temperature = 0.7
 min_confidence = 0
 fallback = "direct"
+decision = "marginal"
+search_threshold = 0.4
+tools_threshold = 0
 
 [observability]
 otlp_endpoint = "http://[::1]:4318"
@@ -143,12 +146,13 @@ remote  = false
 		t.Fatalf("Load: %v", err)
 	}
 	want := Config{
-		Profile:       "lite",
-		Models:        profiles["lite"],
-		Ollama:        Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
-		Agent:         Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
-		Skills:        Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
-		Router:        Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct"},
+		Profile: "lite",
+		Models:  profiles["lite"],
+		Ollama:  Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
+		Agent:   Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
+		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
+		Router: Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct",
+			Decision: "marginal", SearchThreshold: 0.4, ToolsThreshold: 0},
 		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
 		Log:           Log{Level: "debug"},
 		Index: Index{
@@ -208,6 +212,9 @@ func TestLoadErrors(t *testing.T) {
 		{"min_confidence high", "[router]\nmin_confidence = 1.5", "router.min_confidence"},
 		{"min_confidence nan", "[router]\nmin_confidence = nan", "router.min_confidence"},
 		{"fallback", "[router]\nfallback = \"guess\"", `router.fallback "guess"`},
+		{"decision", "[router]\ndecision = \"both\"", `router.decision "both"`},
+		{"search_threshold high", "[router]\nsearch_threshold = 1.5", "router.search_threshold"},
+		{"tools_threshold nan", "[router]\ntools_threshold = nan", "router.tools_threshold"},
 		{"otlp not loopback", "[observability]\notlp_endpoint = \"http://collector.example.com:4318\"", "observability.otlp_endpoint"},
 		{"otlp all interfaces", "[observability]\notlp_endpoint = \"http://0.0.0.0:4318\"", "observability.otlp_endpoint"},
 		{"interval bad", "[observability]\nmetrics_interval = \"often\"", "observability.metrics_interval"},

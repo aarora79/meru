@@ -84,6 +84,12 @@ type Router struct {
 	Temperature   float64 `toml:"temperature"`    // above 0; 1.0 means raw probabilities
 	MinConfidence float64 `toml:"min_confidence"` // 0 to 1; below it, take the fallback
 	Fallback      string  `toml:"fallback"`       // one of the four routes
+	// Decision picks how the letters become a route: "top" takes the most
+	// likely letter, "marginal" asks whether the turn needs a search and
+	// whether it needs tools, each against its own threshold.
+	Decision        string  `toml:"decision"`
+	SearchThreshold float64 `toml:"search_threshold"` // 0 to 1; "marginal" only
+	ToolsThreshold  float64 `toml:"tools_threshold"`  // 0 to 1; "marginal" only
 }
 
 // Observability controls where metrics and traces go.

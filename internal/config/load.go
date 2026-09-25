@@ -100,10 +100,13 @@ func defaults() Config {
 			SummaryIdle:  "30m",
 		},
 		Router: Router{
-			TopLogProbs:   20,
-			Temperature:   1.25,
-			MinConfidence: 0.45,
-			Fallback:      "search+tools",
+			TopLogProbs:     20,
+			Temperature:     1.25,
+			MinConfidence:   0.45,
+			Fallback:        "search+tools",
+			Decision:        "top",
+			SearchThreshold: 0.30,
+			ToolsThreshold:  0.25,
 		},
 		Observability: Observability{
 			MetricsInterval: "10s",
@@ -247,6 +250,15 @@ func validate(cfg Config) error {
 	}
 	if !slices.Contains(routes, r.Fallback) {
 		add("router.fallback %q is unknown; use one of %s", r.Fallback, strings.Join(routes, ", "))
+	}
+	if r.Decision != "top" && r.Decision != "marginal" {
+		add("router.decision %q is unknown; use \"top\" or \"marginal\"", r.Decision)
+	}
+	if !(r.SearchThreshold >= 0 && r.SearchThreshold <= 1) {
+		add("router.search_threshold is %v; it must be between 0 and 1", r.SearchThreshold)
+	}
+	if !(r.ToolsThreshold >= 0 && r.ToolsThreshold <= 1) {
+		add("router.tools_threshold is %v; it must be between 0 and 1", r.ToolsThreshold)
 	}
 
 	o := cfg.Observability

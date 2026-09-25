@@ -3,7 +3,9 @@
 //
 // It asks the fast model for a single token and reads the route from the
 // probabilities the model gave the four option letters, instead of parsing
-// text the model wrote. See ARCHITECTURE.md, "Agent loop" → "Routing", and
+// text the model wrote. Config picks how the probabilities become a route:
+// the most likely letter, or two yes/no questions (does the turn need a
+// search, does it need tools). See ARCHITECTURE.md, "Agent loop" → "Routing", and
 // the full design in docs/fast-router.md.
 //
 // What it doesn't do: rewrite the query or pick skills (those need generated

@@ -282,14 +282,18 @@ records.
 
 ```toml
 [router]
-top_logprobs   = 20             # Ollama's cap
-temperature    = 1.25           # fitted by `make router-eval`; see Calibration
-min_confidence = 0.45           # below this, take the fallback route
-fallback       = "search+tools" # the safe superset: retrieval and tools both allowed
+top_logprobs     = 20             # Ollama's cap
+temperature      = 1.25           # fitted by `make router-eval`; see Calibration
+min_confidence   = 0.45           # below this, take the fallback route
+fallback         = "search+tools" # the safe superset: retrieval and tools both allowed
+decision         = "top"          # or "marginal"; see Decision rules
+search_threshold = 0.30           # "marginal" only
+tools_threshold  = 0.25           # "marginal" only
 ```
 
-`merud` validates all four at startup: `top_logprobs` between 1 and 20, `temperature`
-above 0, `min_confidence` between 0 and 1, `fallback` one of the four routes.
+`merud` validates all seven at startup: `top_logprobs` between 1 and 20,
+`temperature` above 0, `min_confidence` between 0 and 1, `fallback` one of the four
+routes, `decision` either `top` or `marginal`, and both thresholds between 0 and 1.
 
 `search+tools` is the fallback because it is the only route that cannot make the turn
 fail for want of context. It costs more, which is the point — an unsure router should
@@ -300,14 +304,16 @@ spend tokens rather than guess.
 `make router-eval` scores the router against the local Ollama. It needs the fast
 model pulled, and skips otherwise.
 
-**The labelled set.** `internal/router/testdata/routes.jsonl` holds 135 questions
-written the way a user types them, about 30 per route, each with its route and a
-reason. Some are follow-ups that carry a `history` of earlier turns. The harness
+**The labelled set.** `internal/router/testdata/routes.jsonl` holds 153 questions
+written the way a user types them, 33 to 43 per route, each with its route and a
+reason. The last 18 carry `"tag": "connected"`: they ask for mail, the calendar,
+Drive, the Obsidian vault, a local git command or the clock. Some are follow-ups that carry a `history` of earlier turns. The harness
 gives every row the same folders, `~/notes`, `~/repos/meru` and
 `~/repos/blog` (`evalFolders`), so a row can ask about "meru" by name the way
 a user asks about their own project. A fixed rule splits the set: of every ten rows
-with the same route, the 3rd, 6th and 9th go to a held-out set of 40 rows, and the
-other 95 form the fit set. Tune on the fit set and
+with the same route, the 3rd, 6th and 9th go to a held-out set of 46 rows, and the
+other 107 form the fit set. New rows go at the end of the file, so the rows already
+there keep their side of the split. Tune on the fit set and
 report the held-out numbers.
 
 **The report.** The harness sends every question through `Decide` with the shipped
@@ -320,8 +326,8 @@ share of turns that *missed* (the route lacks a search or a tool the question ne
 a fallback never misses) and latency at p50 and p95.
 
 **Temperature.** A sweep from 0.5 to 5 picks the value with the lowest ECE over all
-135 rows. Temperature never changes the top pick, so fitting it on every row leaks
-nothing into the accuracy numbers. The held-out set alone, at 40 rows, gives an ECE
+rows. Temperature never changes the top pick, so fitting it on every row leaks
+nothing into the accuracy numbers. The held-out set alone, at 46 rows, gives an ECE
 too jumpy to fit on.
 
 **Threshold.** A sweep of `min_confidence` shows the fallback rate, accuracy and
@@ -330,6 +336,108 @@ and break ties by the lowest missed rate.
 
 **Refit** after any change to the prompt, the examples or the fast model, and write
 the results into `config.toml` defaults and `config.example.toml`.
+
+## Decision rules
+
+`decision` picks how `decide` turns the four probabilities into a route.
+
+- **`top`**, the default, takes the most likely letter. A winner below
+  `min_confidence` takes the fallback, `search+tools`.
+- **`marginal`** asks two yes/no questions. B and D both search, so
+  P(search) = P(B) + P(D). C and D both call tools, so P(tools) = P(C) + P(D). The
+  turn gets a search when P(search) reaches `search_threshold`, and tools when
+  P(tools) reaches `tools_threshold`. Two yeses give `search+tools`, one gives
+  `search` or `tools`, and none gives `direct`. It uses no floor, so a spread-out
+  distribution adds what the spread covers rather than both. Fewer than two letters
+  still take the fallback, with outcome `degraded`. The outcome is otherwise `ok`,
+  so the metric's outcome set stays the same three values. The confidence is the
+  weaker of the two answers: P(search) for a yes and 1 − P(search) for a no, and
+  the same for tools.
+
+The case behind `marginal` came from a real turn: "what was the last email I sent?"
+gave direct 0.049, search 0.473, tools 0.260, search+tools 0.218. `top` chose
+search and the turn got no Gmail tools, though the two tool letters held 0.478
+between them.
+
+**How the harness compares them.** `make router-eval` replays both rules over the
+same saved completions at the configured temperature, 1.25. For each set it prints
+exact accuracy, the missed rate (the route lacks a search or tools the label
+needs), and two over-offer rates: a search the label doesn't need, and tools the
+label doesn't need. It prints them apart because extra tools cost more: each
+tool's schema lengthens the prompt and slows the turn, and the `lite` model picks
+worse from a long tool list. It also counts the rows whose route differs from
+`top`'s.
+
+It tries each threshold in {0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5}, 49 pairs, and
+ranks them on the fit set alone: a pair must keep its tool over-offer within 5
+points of `top`'s, and among those the lowest missed rate wins, then the highest
+accuracy, then the lowest tool over-offer, then the lowest search over-offer. When
+the fit set can't tell two pairs apart, the higher tools threshold wins, then the
+higher search threshold, because the pair that offers less costs less on questions
+the set lacks. The held-out numbers play no part in the pick.
+
+**Results.** Measured on the development machine: Ollama 0.34.0, MiniCPM5-2B at
+Q4_K_M, 107 fit rows and 46 held-out rows, `min_confidence = 0.45`. Two runs gave
+the same routes on every row; only latency moved. The fit set picked
+`search_threshold = 0.30` and `tools_threshold = 0.25`. Rates are shares of all
+rows in the set.
+
+| rule | set | accuracy | missed | extra search | extra tools | rows changed |
+| --- | --- | --- | --- | --- | --- | --- |
+| `top`, floor 0.45 | fit | 0.850 | 0.103 | 0.084 | 0.019 | 0 |
+| `top`, floor 0.60 | fit | 0.804 | 0.084 | 0.121 | 0.037 | 8 |
+| `marginal` 0.30 / 0.25 | fit | 0.841 | 0.065 | 0.112 | 0.019 | 7 |
+| `top`, floor 0.45 | held-out | 0.761 | 0.196 | 0.130 | 0.000 | 0 |
+| `top`, floor 0.60 | held-out | 0.717 | 0.109 | 0.174 | 0.065 | 7 |
+| `marginal` 0.30 / 0.25 | held-out | 0.739 | 0.152 | 0.174 | 0.022 | 7 |
+| `top`, floor 0.45 | connected rows | 0.500 | 0.333 | 0.444 | 0.000 | 0 |
+| `marginal` 0.30 / 0.25 | connected rows | 0.444 | 0.278 | 0.556 | 0.000 | 3 |
+
+On the held-out set `marginal` missed 7 of 46 turns against 9, got one row fewer
+exactly right (34 against 35), added an unneeded search to 8 turns against 6, and
+added unneeded tools to 1 against 0. Raising `top`'s floor to 0.60 misses less
+still, but offers unneeded tools on 3 held-out turns against `marginal`'s 1. The best pairs on the fit
+set:
+
+| search / tools | fit missed | fit accuracy | held-out missed | held-out accuracy | held-out extra tools |
+| --- | --- | --- | --- | --- | --- |
+| 0.30 / 0.25 | 0.065 | 0.841 | 0.152 | 0.739 | 0.022 |
+| 0.30 / 0.20 | 0.065 | 0.841 | 0.109 | 0.761 | 0.022 |
+| 0.25 / 0.25 | 0.065 | 0.832 | 0.152 | 0.717 | 0.022 |
+| 0.35 / 0.25 | 0.075 | 0.850 | 0.174 | 0.717 | 0.022 |
+| 0.30 / 0.30 | 0.075 | 0.841 | 0.152 | 0.761 | 0.000 |
+
+The first two pairs score the same on the fit set. The tie rule picked 0.25; 0.20
+would have missed two fewer held-out turns, but the pick can't see those.
+
+Over all 153 rows, the chosen pair routes 14 differently from `top`. Seven
+improve. Four of them now match the label, such as "try the last question again"
+(direct to search) and "look up reviews for the books on my reading list" (search
+to search+tools). Three `tools` requests that `top` sent to search, among them the
+email question and "text alex that I'm on my way", now get tools along with an
+unneeded search. Six get worse: four `direct` or `tools` questions gain a search
+they don't need, "what documents do you have indexed" gains tools, and "what's
+changed in upstream ollama since the version my project pins", which `top` sent to
+the fallback, loses its tools. "What does the onboarding doc in drive say about
+laptops" misses its tools under both rules and gains a search under `marginal`.
+
+**The connected-server rows.** `top` sent 6 of the 18 somewhere that lacks what
+they need, and `marginal` sent 5. Both rules send "search my obsidian vault for
+notes about sourdough" and "add a line to today's daily note in obsidian" to
+`search`, with P(tools) at 0.07 and 0.14, and "what's uncommitted in my blog repo right
+now?" to `search` at 0.92. No threshold on the grid reaches those. In the eval,
+without the system prompt and history of the real turn, the email question gave
+search 0.646, tools 0.111, search+tools 0.165: `top` chose search, and `marginal`
+chose search+tools with P(tools) at 0.276, just over the 0.25 bar. The router's
+prompt takes no list of connected servers, so the eval gives it none; the agent
+loop's rules after the router handle server names and tool nouns.
+
+**Decision.** `marginal` lowers the missed rate on both sets and keeps tool
+over-offer within 3 points, so it ships behind `decision = "marginal"`. The
+default stays `top`. On 46 held-out rows the gain is 2 turns, it costs one exact
+match, and the email question that prompted it already gets Gmail tools from the
+fifth rule after the router (ARCHITECTURE.md, "Routing"). Revisit with labelled
+turns from real transcripts.
 
 ## Observability
 
@@ -408,6 +516,10 @@ pages follow in the same pull request.
 
 - Refit the temperature and the threshold on labelled turns from real transcripts
   once there are enough of them.
+- Questions about the Obsidian vault and a repository's working tree route to
+  `search` at 0.68 to 0.92 under both decision rules (see "Decision rules"). The
+  prompt names the indexed folders but no connected servers; naming them in
+  option C is the next thing to measure.
 - `tools` has the weakest recall: the model still answers questions about recent
   events, such as last night's score or the latest release, from memory, and sends
   requests such as "text alex that I'm on my way" to `search`. In v0.2 the agent

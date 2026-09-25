@@ -369,10 +369,81 @@ func TestDecideModelError(t *testing.T) {
 	}
 }
 
+func TestMarginal(t *testing.T) {
+	// The email question from a real turn: the top letter is search, yet
+	// the two tool letters hold 0.478 between them.
+	email := map[Route]float64{RouteDirect: 0.049, RouteSearch: 0.473, RouteTools: 0.260, RouteSearchTools: 0.218}
+	tests := []struct {
+		name            string
+		p               map[Route]float64
+		searchT, toolsT float64
+		want            Route
+		wantConf        float64 // the weaker answer's probability
+	}{
+		{"email, both yes", email, 0.30, 0.25, RouteSearchTools, 0.478},
+		{"email, a strict tools bar", email, 0.30, 0.5, RouteSearch, 1 - 0.478},
+		{"neither", map[Route]float64{RouteDirect: 0.9, RouteSearch: 0.06, RouteTools: 0.04}, 0.3, 0.3, RouteDirect, 0.94},
+		{"tools only", map[Route]float64{RouteDirect: 0.3, RouteTools: 0.7}, 0.3, 0.3, RouteTools, 0.7},
+		{"D counts for both", map[Route]float64{RouteDirect: 0.6, RouteSearchTools: 0.4}, 0.4, 0.4, RouteSearchTools, 0.4},
+		{"at the threshold is a yes", map[Route]float64{RouteDirect: 0.75, RouteSearch: 0.25}, 0.25, 0.25, RouteSearch, 0.25},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, conf := marginal(tt.p, tt.searchT, tt.toolsT)
+			if got != tt.want || !near(conf, tt.wantConf) {
+				t.Errorf("marginal = %s %v, want %s %v", got, conf, tt.want, tt.wantConf)
+			}
+		})
+	}
+}
+
+func TestRouteForInvertsNeeds(t *testing.T) {
+	for _, o := range options {
+		if got := routeFor(needs(o.route)); got != o.route {
+			t.Errorf("routeFor(needs(%s)) = %s", o.route, got)
+		}
+	}
+}
+
+func TestDecideMarginal(t *testing.T) {
+	ln := math.Log
+	cfg := testConfig()
+	cfg.Rule, cfg.SearchThreshold, cfg.ToolsThreshold = RuleMarginal, 0.3, 0.25
+	tests := []struct {
+		name    string
+		lps     []engine.PositionLogProbs
+		want    Route
+		outcome Outcome
+	}{
+		// RuleTop gives search here, and the turn gets no tools.
+		{"email", []engine.PositionLogProbs{alts("A", ln(0.049), "B", ln(0.473), "C", ln(0.26), "D", ln(0.218))}, RouteSearchTools, OutcomeOK},
+		// RuleTop falls back to search+tools at 0.42; marginal adds only
+		// what the spread covers, a search.
+		{"spread, no fallback", []engine.PositionLogProbs{alts("A", ln(0.42), "B", ln(0.40), "C", ln(0.18))}, RouteSearch, OutcomeOK},
+		{"direct", []engine.PositionLogProbs{alts("A", ln(0.85), "B", ln(0.1), "C", ln(0.05))}, RouteDirect, OutcomeOK},
+		{"degraded still falls back", []engine.PositionLogProbs{alts("A", ln(0.9))}, RouteSearchTools, OutcomeDegraded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := decide(engine.Completion{LogProbs: tt.lps}, cfg)
+			if d.Route != tt.want || d.Outcome != tt.outcome {
+				t.Errorf("decide = %s %s, want %s %s", d.Route, d.Outcome, tt.want, tt.outcome)
+			}
+		})
+	}
+	// The zero Rule is RuleTop: the email question goes to search.
+	top := testConfig()
+	if d := decide(engine.Completion{LogProbs: []engine.PositionLogProbs{alts("A", ln(0.049), "B", ln(0.473), "C", ln(0.26), "D", ln(0.218))}}, top); d.Route != RouteSearch {
+		t.Errorf("zero Rule gave %s, want search", d.Route)
+	}
+}
+
 func TestConfigFrom(t *testing.T) {
-	good := config.Router{TopLogProbs: 20, Temperature: 1, MinConfidence: 0.45, Fallback: "search+tools"}
+	good := config.Router{TopLogProbs: 20, Temperature: 1, MinConfidence: 0.45, Fallback: "search+tools",
+		Decision: "marginal", SearchThreshold: 0.3, ToolsThreshold: 0.25}
 	cfg, err := ConfigFrom(good, "fast-model")
-	want := Config{Model: "fast-model", TopLogProbs: 20, Temperature: 1, MinConfidence: 0.45, Fallback: RouteSearchTools}
+	want := Config{Model: "fast-model", TopLogProbs: 20, Temperature: 1, MinConfidence: 0.45, Fallback: RouteSearchTools,
+		Rule: RuleMarginal, SearchThreshold: 0.3, ToolsThreshold: 0.25}
 	if err != nil || cfg != want {
 		t.Fatalf("ConfigFrom(good) = %+v, %v; want %+v", cfg, err, want)
 	}
@@ -390,6 +461,9 @@ func TestConfigFrom(t *testing.T) {
 		{"temperature NaN", func(r *config.Router) { r.Temperature = math.NaN() }, "m"},
 		{"min_confidence 1.5", func(r *config.Router) { r.MinConfidence = 1.5 }, "m"},
 		{"fallback unknown", func(r *config.Router) { r.Fallback = "web" }, "m"},
+		{"decision unknown", func(r *config.Router) { r.Decision = "both" }, "m"},
+		{"search_threshold -0.1", func(r *config.Router) { r.SearchThreshold = -0.1 }, "m"},
+		{"tools_threshold NaN", func(r *config.Router) { r.ToolsThreshold = math.NaN() }, "m"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
