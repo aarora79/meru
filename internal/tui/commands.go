@@ -11,7 +11,7 @@ import (
 
 // commandList names the slash commands the chat understands, for the line
 // that answers an unknown one.
-const commandList = "/new, /usage, /me, /mcp"
+const commandList = "/new, /usage, /me, /mcp, /exit"
 
 // command runs a line that starts with "/" instead of sending it as a
 // question:
@@ -22,7 +22,10 @@ const commandList = "/new, /usage, /me, /mcp"
 //   - /me opens a box with what Meru knows about the user, the memories
 //     merud puts into every prompt;
 //   - /mcp opens a box with each MCP server's state, the table `meru mcp`
-//     prints.
+//     prints;
+//   - /exit quits the chat, the same as Ctrl-D: an answer still streaming
+//     stops first. People type it out of habit from other chat programs,
+//     and without it the line would go nowhere.
 //
 // Any other command leaves the text in the input, so the user can fix a
 // typo, and shows one dim line with the commands the chat knows.
@@ -52,6 +55,9 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		m.mcpBox = &mcpBox{loading: true}
 		m.input.Blur()
 		return m, mcpCmd(m.ask)
+	case "/exit":
+		m.stopTurn()
+		return m, tea.Quit
 	}
 	m.notice = "unknown command " + name + " · commands: " + commandList
 	return m, nil

@@ -307,6 +307,7 @@ help line and the behaviour come from one place.
 | PgUp / PgDn | scroll the conversation | same |
 | `/usage` then Enter | open the usage box | same; the answer keeps streaming behind it |
 | `/mcp` then Enter | open the MCP status box | same |
+| `/exit` then Enter | quit | stop and quit, like Ctrl-D |
 
 While the approval box is open, the keys answer it instead, and typing doesn't reach
 the input:
@@ -609,7 +610,11 @@ stops a streaming answer, clears the screen and forgets the session ID, so the n
 question asks `merud` for a new session. It also counts up `m.turn`: the stopped
 answer may still send events, and `handleEvent` drops any event whose turn number
 isn't the current one, so a late `session` event can't bring the old session back.
-Any other `/word` stays in the input and the help line lists the commands.
+`/exit` does what Ctrl-D does: it stops a streaming answer and returns `tea.Quit`.
+People type it out of habit from other chat programs. The help line leaves it out,
+because it would push the line past 80 columns, and Ctrl-C already shows there as
+the way to quit. Any other `/word` stays in the input and the help line lists the
+commands.
 
 `/new` exists because a conversation carries forward: each turn's prompt holds the
 turns before it. After a small model answers "I don't know" twice, it tends to say it
@@ -630,7 +635,7 @@ other command it leaves the text in the input, so you can fix a typo, and sets
 `notice`, a dim line that takes the help line's place until the next key:
 
 ```text
-unknown command /usag · commands: /new, /usage, /me, /mcp
+unknown command /usag · commands: /new, /usage, /me, /mcp, /exit
 ```
 
 `applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A

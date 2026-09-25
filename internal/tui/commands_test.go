@@ -1,4 +1,5 @@
-// This file tests the slash commands that aren't about usage: /new.
+// This file tests the slash commands that aren't about usage: /new and
+// /exit.
 
 package tui
 
@@ -53,6 +54,35 @@ func TestNewSession(t *testing.T) {
 	last := merud.reqs[len(merud.reqs)-1]
 	if last.Op != rpc.OpAsk || last.Session != "" || last.Text != "second question" {
 		t.Errorf("request after /new = %+v, want an ask with no session", last)
+	}
+}
+
+// TestExit checks /exit: it quits the chat, stopping an answer that is
+// still streaming, and the line for an unknown command lists it.
+func TestExit(t *testing.T) {
+	merud := &fakeMerud{block: true}
+	m := testModel(merud.ask, newFakeSender())
+	m, _ = update(t, m, typeText("a question"), press(tea.KeyEnter))
+	if !m.streaming {
+		t.Fatal("before /exit: no answer streaming")
+	}
+
+	m, cmd := update(t, m, typeText("/exit"), press(tea.KeyEnter))
+	if m.streaming {
+		t.Error("after /exit: the answer still streams")
+	}
+	if cmd == nil {
+		t.Fatal("/exit returned no command; want tea.Quit")
+	}
+	// A tea.Cmd is a function; calling it gives the message it would send.
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Errorf("/exit sent %T, want tea.QuitMsg", cmd())
+	}
+
+	m = testModel(nil, newFakeSender())
+	m, _ = update(t, m, typeText("/quit"), press(tea.KeyEnter))
+	if !strings.Contains(m.notice, "/exit") {
+		t.Errorf("unknown-command notice %q doesn't list /exit", m.notice)
 	}
 }
 
