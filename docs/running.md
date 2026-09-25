@@ -1025,8 +1025,9 @@ for your email and puts it in your profile, which covers a server started withou
 it.
 
 Before the first run, turn on the Gmail, Calendar, Drive and Docs APIs in Google
-Cloud Console and create an OAuth client of type "Desktop app"; the
-[quick start](https://workspacemcp.com/quick-start) lists the steps. The client ID
+Cloud Console and create an OAuth client of type "Desktop app".
+[google-setup.md](google-setup.md) walks through every step, from a new Google
+Cloud project to the first sign-in. The client ID
 and secret go in the server's environment when you start it. They never pass
 through Meru, and `secrets.toml` doesn't hold them. The first time the model uses
 a Google tool, the server gives you a link to sign in to Google.
