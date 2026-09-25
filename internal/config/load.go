@@ -136,7 +136,8 @@ func defaults() Config {
 		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
-		Web: Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
+		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
+		Chat: Chat{MouseCopy: true},
 	}
 }
 

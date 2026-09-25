@@ -270,9 +270,10 @@ type Web struct {
 // ignores it.
 type Chat struct {
 	// MouseCopy makes a click on a code block's "⧉ copy N" label copy the
-	// block. It is off by default: to see clicks, the chat has to capture
-	// the mouse, and then the terminal's own click-and-drag selection
-	// needs a modifier key (Option in iTerm2, Shift in most others).
+	// block. It is on by default, since a click is what most people try
+	// first. To see clicks the chat captures the mouse, so the terminal's
+	// own click-and-drag selection needs a modifier key (Option in iTerm2,
+	// Shift in most others); false gives plain selection back.
 	MouseCopy bool `toml:"mouse_copy"`
 }
 

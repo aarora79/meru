@@ -165,8 +165,9 @@ disabled = []
 # Let a click on a code block's "⧉ copy N" label copy the block. /copy N
 # and Ctrl-Y copy with the keyboard either way. With this on, the chat
 # takes the mouse, so to select text yourself hold Option while you drag
-# (iTerm2) or Shift (most other terminals).
-mouse_copy = false
+# (iTerm2) or Shift (most other terminals). false gives plain selection
+# back.
+mouse_copy = true
 
 # MCP servers: programs that give the model tools. None by default.
 # `meru mcp add <name>` writes an entry for you and `meru mcp` shows each

@@ -24,10 +24,11 @@
 // prints (MCPTable).
 //
 // Each code block in a finished answer gets a "⧉ copy N" label. /copy N and
-// Ctrl-Y put a block on the system clipboard, and with [chat] mouse_copy on,
-// so does a click on its label (code.go, copy.go, clipboard.go).
+// Ctrl-Y put a block on the system clipboard, and so does a click on its
+// label while [chat] mouse_copy is on, its default (code.go, copy.go,
+// clipboard.go).
 //
 // The package holds no model or store logic; it draws what merud sends. It
-// captures the mouse only with [chat] mouse_copy on, since capture takes
-// click-and-drag selection away from the terminal.
+// captures the mouse only with [chat] mouse_copy on; capture takes
+// click-and-drag selection away from the terminal, and false gives it back.
 package tui

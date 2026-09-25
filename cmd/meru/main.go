@@ -182,13 +182,16 @@ flags:`)
 // load leaves the header without them and the settings at their defaults,
 // instead of stopping the chat; merud reports config errors when it starts.
 func chatInfo() tui.Info {
+	// fallback is what the chat gets when the config can't be read: no
+	// profile or model in the header, and mouse copying on, its default.
+	fallback := tui.Info{MouseCopy: true}
 	path, err := config.DefaultPath()
 	if err != nil {
-		return tui.Info{}
+		return fallback
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
-		return tui.Info{}
+		return fallback
 	}
 	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy}
 }
