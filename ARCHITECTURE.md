@@ -577,7 +577,10 @@ order.
    a `direct` question that names an indexed folder becomes `search`, a
    question that names a connected tool server gets tools, and so does a
    question that says "remember", names the web, or names what a connected
-   server's tools act on ("email" for Gmail's tools). From v0.4, a separate
+   server's tools act on ("email" for Gmail's tools). The same four signs
+   skip the search on a `tools` turn: a web, mail or notes-app question gets no
+   excerpts, which crowd the answer and cost time, and the file tools stay on
+   offer. `search` and `search+tools` always search. From v0.4, a separate
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
@@ -589,7 +592,10 @@ order.
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
-   history and the question. Each part has its own cap, in characters (a token is
+   history and the question. A turn about your files (every turn that searches
+   first, or would in `agentic` mode) also gets a note on the file tools, between
+   the two groups: other turns share the whole opening with it and keep a shorter
+   prompt. Each part has its own cap, in characters (a token is
    about four):
 
    | Part | Cap | Past the cap |
@@ -604,9 +610,10 @@ order.
    tokens. The caps keep one part from crowding out the others; a `lite` turn
    uses well under a tenth of the model's 131k-token window. On the `tools` and
    `search+tools` routes the model also gets the allowed tools' schemas; on
-   `search` it gets the three file tools' schemas and those of the local
-   commands that don't ask, with a note that says it may read whole files, list
-   folders and grep when the excerpts fall short, and run the `cmd.` tools.
+   `search` it gets the four file tools' schemas and those of the local
+   commands that don't ask, with a note that says it may run the `cmd.` tools.
+   The note on the file tools says it may read whole files, list folders, grep
+   and search again when the excerpts fall short.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
    On a route that offers tools, the loop first gives each MCP server that isn't
    connected one try, then lists the tools (see [MCP](#mcp)).
@@ -1095,11 +1102,11 @@ retrieval = "auto"      # the default; or "agentic"
 
 | | `auto` | `agentic` |
 | --- | --- | --- |
-| Search before the answer | yes, on every route but `direct` | no |
+| Search before the answer | yes, on turns about your files (see below) | no |
 | Earlier conversations in the prompt | yes | no |
 | Profile and recalled memories | yes | yes |
 | File tools offered | the four, on the routes that offer tools | the same |
-| Note in the prompt | the excerpts, with the rule on citing | "look first with `search_files` or `grep`, then `read_file`, stop after two or three rounds, cite the excerpts" |
+| Note in the prompt, on turns about your files | the excerpts, with the rule on citing, and "read, list, grep or search again when the excerpts fall short" | "look first with `search_files` or `grep`, then `read_file`, stop after two or three rounds, cite the excerpts" |
 
 `agentic` needs `search_files` in `[builtin] tools`; `merud` refuses to start
 without it. A built-in skill, `file-research`, carries the same advice for the
@@ -1145,8 +1152,8 @@ What the numbers say:
   question, so `auto` reprocesses everything after them.
 - **The web questions fell from 5/6 to 2/6.** The file tools' note also joins
   web turns, which offer every tool, and the 2B model read fewer pages or wrote
-  a call as text. This loss comes from the note, not from retrieval; showing it
-  only on turns about files would test that.
+  a call as text. This loss comes from the note, not from retrieval; the note
+  now joins only turns about your files (see below).
 - **`agentic` cost more prompt tokens on file questions**, 1.2 to 3 times as many,
   because each tool round sends the prompt again.
 
@@ -1162,6 +1169,65 @@ v0.4 "Done when" tests for recall. The numbers give no reason to drop it: the
 one tool that searched by meaning was the one that answered the questions
 `agentic` passed.
 
+#### Turns that aren't about your files
+
+Two changes in `auto` mode followed from these numbers. `agentic` won its time on
+turns that need no files, and the web questions pointed at the note on the file
+tools.
+
+- **No search first on a tool question.** A `tools` turn skips the search when the
+  question points at a connected tool. The four signs that add tools to a route
+  decide it (see [Routing](#routing)): the question names a tool server, says
+  "remember", names the web, or names what a server's tools act on. `search` and
+  `search+tools` always search: the router, or the folder rule, saw files in the
+  question. The turn still offers the file tools, so the model can look when it
+  has to. Before this, "search the web for the latest Go release" put ten
+  excerpts from your folders in the prompt, and since `web_search` numbers its
+  results from `[1]` too, the Sources list under the answer could name one of
+  your files.
+- **The file-tools note only on file turns.** The note that the model may read,
+  list, grep and search the folders joins only a turn about your files that
+  offers the file tools. It sits after the parts every turn shares and before the
+  parts each question changes, so a web question's prompt is shorter and still
+  shares its whole opening with a file question's. The note on the folders that
+  every turn carries names them and nothing more.
+
+We measured both with `meru check` on a made-up setup, so that no personal data
+entered the test: eight Markdown notes in one folder, the test MCP server
+(`cmd/fakemcp`) connected as `almanac`, and 18 questions shaped like the owner's.
+`lite` profile, `auto` mode, three runs before the change and three after, each
+from an empty `meru.db`.
+
+| Category (questions) | Before passed | After passed | Before mean s | After mean s | File sources per turn, before → after |
+| --- | --- | --- | --- | --- | --- |
+| direct (3) | 9/9 | 9/9 | 1.6 | 1.3 | 0 → 0 |
+| files: list, grep, read (3) | 9/9 | 9/9 | 3.2 | 3.1 | 8 → 8 |
+| retrieval: by meaning (3) | 9/9 | 9/9 | 3.6 | 3.2 | 8 → 8 |
+| web (2) | 2/6 | 5/6 | 11.6 | 9.3 | 8 → 0 |
+| mcp: `almanac` by name (2) | 6/6 | 6/6 | 4.5 | 1.5 | 8 → 0 |
+| memory: "remember that…" (1) | 2/3 | 1/3 | 3.7 | 3.7 | 8 → 8 |
+| session: two turns (2) | 6/6 | 5/6 | 6.6 | 4.6 | 8 → 6.7 |
+| datetime (2) | 6/6 | 6/6 | 6.7 | 6.2 | 4 → 4 |
+| **all (18)** | **49/54** | **50/54** | | | |
+
+A run's turn time fell from 87 s to 70 s. The eight folder files make every
+search return all of them, so "file sources" counts eight wherever a search ran.
+What the numbers say:
+
+- **Tool questions got faster and lost the stray sources.** The two `almanac`
+  questions fell from 4.5 s to 1.5 s, and every web and `almanac` turn went from
+  eight file sources to none.
+- **The web questions passed more often.** "What is SearXNG, with a source?"
+  failed all three runs before: each answer cited a number such as `[1]` and gave
+  no link. After, all three gave the link.
+- **File questions held.** The nine file and retrieval runs passed before and
+  after, at about the same time.
+- **The losses don't come from the rule.** "Remember that my favourite tea is
+  jasmine" routed to `search+tools` in every run, which the rule leaves alone;
+  in the failing runs, after the first run had saved the fact, the model
+  answered that it already knew. The failed session turn routed `direct`, which
+  the change doesn't touch either.
+
 ### Citations
 
 `merud` numbers the chunks it found and puts them in the prompt under "From your
@@ -1169,9 +1235,9 @@ files", with a rule that tells the model to cite each excerpt it uses as `[1]`,
 `[2]` and so on, and never to invent one. When a search finds nothing, the prompt
 says so instead, and the model answers without citing files.
 
-The system prompt names the folders in `[index] folders` on every turn, says that
-Meru searches them before it answers, and says the model can't open or list files
-itself. With no folders set, it tells the model that Meru hasn't indexed anything
+The system prompt names the folders in `[index] folders` on every turn and says
+that Meru searches them before it answers. The note that the model may read, list,
+grep and search the folders itself joins only turns about your files. With no folders set, it tells the model that Meru hasn't indexed anything
 yet and where you add folders. Without this note a small model answers "I don't
 have access to your files" while it reads excerpts from them, and can't say what
 Meru indexes.
