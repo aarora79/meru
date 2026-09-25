@@ -560,7 +560,10 @@ Restart `merud`: it reads the folder list only when it starts, and `meru index`
 can't add a folder that isn't listed. At startup it scans every listed folder, cuts each file into
 chunks, embeds them with the `embed` model and stores them in `~/.meru/meru.db`.
 The first scan of a large folder takes a while, because every chunk goes through
-the embedding model; later scans re-read only files whose content changed. While
+the embedding model; later scans re-read only files whose content changed. To stop
+indexing a folder, take it out of `[index] folders` and restart `merud`: the
+startup scan drops its files, and `meru index -status` shows the smaller count.
+While
 `merud` runs it watches the folders and re-indexes a file about half a second after
 you save it.
 

@@ -1058,6 +1058,11 @@ The indexer cuts each file into chunks along its own structure:
   editors keep the mtime when the content changes.
 - **Removals.** After a folder's scan, the indexer deletes the store's entries for
   files the scan didn't keep: deleted files, and files a new ignore rule now covers.
+- **Folders you drop leave the index.** Before it walks the folders, the startup
+  scan deletes every stored file that sits in none of them. Take `~/notes-old` out
+  of `[index] folders`, restart `merud`, and search stops finding its files. The
+  test works on whole folder names, so `~/notes` keeps nothing from `~/notes-old`.
+  An empty list empties the index.
 - **Missing folders keep their entries.** A folder that doesn't exist, such as one
   on an unplugged drive, and a folder the scan can't read both keep what the store
   holds for them.

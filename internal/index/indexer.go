@@ -1,7 +1,8 @@
 // This file holds the Indexer: it walks the configured folders, reads each
 // file that passes the skip rules, skips it when the store already holds the
 // same version, and otherwise chunks it, embeds the chunks in batches and
-// hands everything to the store. It also removes files that disappeared.
+// hands everything to the store. It also removes files that disappeared,
+// and files whose folder left [index] folders.
 
 package index
 
@@ -16,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -177,7 +179,8 @@ func (ix *Indexer) roots() (resolved []string, missing []error) {
 
 // Scan indexes every configured folder: new and changed files go in,
 // unchanged ones are left alone, and files that disappeared (or that the
-// skip rules now exclude) come out. merud runs it at startup.
+// skip rules now exclude) come out, as do files from a folder that left
+// [index] folders. merud runs it at startup.
 //
 // A file that can't be read or parsed counts as Failed and the scan goes
 // on. Scan fails, returning the report so far, when ctx ends or when the
@@ -214,10 +217,12 @@ func (ix *Indexer) scan(ctx context.Context, force bool) (Report, error) {
 		// a drive that isn't plugged in right now.
 		ix.log.WarnContext(ctx, "index: folder unavailable; keeping its index entries", "err", m)
 	}
+	err = ix.pruneOutside(ctx, roots, &rep)
 	for _, root := range roots {
-		if err = ix.scanTree(ctx, root, root, force, &rep); err != nil {
+		if err != nil {
 			break
 		}
+		err = ix.scanTree(ctx, root, root, force, &rep)
 	}
 	rep.Duration = time.Since(start)
 	span.SetAttributes(reportAttrs(rep)...)
@@ -376,6 +381,51 @@ func (ix *Indexer) remove(ctx context.Context, p string, rep *Report) error {
 		}
 		ix.log.DebugContext(ctx, "index: removed", "path", q)
 		rep.Removed++
+	}
+	return nil
+}
+
+// pruneOutside removes every stored file that sits outside all the
+// configured folders, which happens when you take a folder out of
+// [index] folders and restart merud. The store has to mirror files and
+// config (ARCHITECTURE.md, "Keeping it current"), and nothing else would
+// ever remove those entries: scanTree only looks inside the folders it
+// walks. With no folders configured, every stored file goes.
+//
+// A file counts as inside when it sits under one of roots (the folders
+// with symlinks resolved, where the walk stores files) or under a folder
+// as written in config. The second covers a folder that doesn't exist
+// right now, such as one on an unplugged drive: it keeps its entries, as
+// Scan promises. The test is within, the same one IndexPaths uses, so
+// "/notes" doesn't claim "/notes-old/a.md".
+//
+// Each removal is one DeleteDocument call, which drops the file's chunks,
+// vectors and keyword rows in one transaction. Memories, sessions and
+// tool calls live in other tables and stay put.
+func (ix *Indexer) pruneOutside(ctx context.Context, roots []string, rep *Report) error {
+	// An empty prefix asks the store for every path it holds.
+	stored, err := ix.sink.Paths(ctx, "")
+	if err != nil {
+		return fmt.Errorf("list indexed paths: %w", err)
+	}
+	// slices.Concat builds a new slice, so appending never writes into
+	// the backing array of roots or ix.folders.
+	keep := slices.Concat(roots, ix.folders)
+	dropped := 0
+	for _, p := range stored {
+		if underAny(keep, p) {
+			continue
+		}
+		if err := ix.sink.DeleteDocument(ctx, p); err != nil {
+			return fmt.Errorf("remove %s: %w", p, err)
+		}
+		ix.log.DebugContext(ctx, "index: removed; folder left config", "path", p)
+		dropped++
+	}
+	rep.Removed += dropped
+	if dropped > 0 {
+		// Only the count at info: paths stay in the debug lines above.
+		ix.log.InfoContext(ctx, "index: removed files whose folder left [index] folders", "files", dropped)
 	}
 	return nil
 }

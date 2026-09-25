@@ -659,7 +659,7 @@
 
 <p>The indexer cuts each file into <b>chunks</b> of about 500 tokens along its own structure: Markdown by heading, Go code by function or type, other code and text by blank lines, HTML by heading, and PDFs by page, as plain text without layout. Each chunk repeats the last 50 tokens of the one before, so a sentence cut at a boundary still appears whole somewhere.</p>
 
-<p><code>merud</code> reads the folder list when it starts, so a change takes a restart. It scans the folders at startup and re-reads a file only when its timestamp or contents change. While it runs it watches the folders, and re-indexes a file half a second after you save it. <code>meru index</code> rescans on demand, and <code>meru index -status</code> shows what the index holds. Email, calendar and Drive stay out of the index: Meru asks their tools at question time, so your mail never lands in <code>meru.db</code>.</p>
+<p><code>merud</code> reads the folder list when it starts, so a change takes a restart. It scans the folders at startup and re-reads a file only when its timestamp or contents change. The same scan drops the files of any folder you took off the list. While it runs it watches the folders, and re-indexes a file half a second after you save it. <code>meru index</code> rescans on demand, and <code>meru index -status</code> shows what the index holds. Email, calendar and Drive stay out of the index: Meru asks their tools at question time, so your mail never lands in <code>meru.db</code>.</p>
 
 <!-- ============================================================ -->
 <h2 id="hybrid-search">Finding things: hybrid search</h2>
