@@ -43,15 +43,35 @@ func ParseRoute(s string) (Route, bool) {
 	return "", false
 }
 
+// Rule says how Decide turns the four letters' probabilities into a route.
+type Rule string
+
+// The two rules (docs/fast-router.md, "Decision rules").
+const (
+	// RuleTop takes the most likely letter, and the fallback when that
+	// letter scores below MinConfidence. It is the default.
+	RuleTop Rule = "top"
+	// RuleMarginal reads the letters as two yes/no questions. B and D both
+	// search, so P(B) + P(D) is the chance the turn needs a search; C and D
+	// both call tools, so P(C) + P(D) is the chance it needs tools. Each
+	// question is a yes at or above its threshold, and the route offers
+	// what the yeses add up to. It has no fallback: a spread-out
+	// distribution adds what the spread covers instead.
+	RuleMarginal Rule = "marginal"
+)
+
 // Outcome says how sure the router was.
 type Outcome string
 
 // The three outcomes. They are also the "outcome" attribute on the
 // meru.route.decisions metric, so the set must stay small and fixed.
 const (
-	// OutcomeOK means the model gave a clear answer above the confidence floor.
+	// OutcomeOK means the rule chose the route itself: under RuleTop the
+	// winner reached the confidence floor, and under RuleMarginal the
+	// distribution held two letters or more.
 	OutcomeOK Outcome = "ok"
-	// OutcomeLowConfidence means the winning route scored below MinConfidence.
+	// OutcomeLowConfidence means the winning route scored below
+	// MinConfidence. RuleMarginal never gives it.
 	OutcomeLowConfidence Outcome = "low_confidence"
 	// OutcomeDegraded means fewer than two route letters appeared among the
 	// alternatives, so the distribution means nothing.
@@ -65,6 +85,12 @@ type Config struct {
 	Temperature   float64 // above 0; 1.0 leaves the probabilities as the model gave them
 	MinConfidence float64 // 0 to 1; a winner below this takes the fallback
 	Fallback      Route   // the route to take when the model is unsure
+	// Rule picks how the letters become a route. The zero value, "",
+	// means RuleTop, so a Config built by hand keeps today's behaviour.
+	Rule Rule
+	// SearchThreshold and ToolsThreshold, 0 to 1, are RuleMarginal's two
+	// bars. RuleTop ignores them.
+	SearchThreshold, ToolsThreshold float64
 	// Log receives one debug line per decision. Nil means no log lines.
 	// ConfigFrom leaves it nil; merud sets it to its own logger.
 	Log *slog.Logger
@@ -79,11 +105,14 @@ func ConfigFrom(r config.Router, fastModel string) (Config, error) {
 		return Config{}, fmt.Errorf("router.fallback %q: want one of direct, search, tools, search+tools", r.Fallback)
 	}
 	cfg := Config{
-		Model:         fastModel,
-		TopLogProbs:   r.TopLogProbs,
-		Temperature:   r.Temperature,
-		MinConfidence: r.MinConfidence,
-		Fallback:      fb,
+		Model:           fastModel,
+		TopLogProbs:     r.TopLogProbs,
+		Temperature:     r.Temperature,
+		MinConfidence:   r.MinConfidence,
+		Fallback:        fb,
+		Rule:            Rule(r.Decision),
+		SearchThreshold: r.SearchThreshold,
+		ToolsThreshold:  r.ToolsThreshold,
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -106,6 +135,12 @@ func (cfg Config) validate() error {
 		return fmt.Errorf("router.temperature %v: want a number above 0", cfg.Temperature)
 	case !(cfg.MinConfidence >= 0 && cfg.MinConfidence <= 1):
 		return fmt.Errorf("router.min_confidence %v: want 0 to 1", cfg.MinConfidence)
+	case cfg.Rule != "" && cfg.Rule != RuleTop && cfg.Rule != RuleMarginal:
+		return fmt.Errorf("router.decision %q: want top or marginal", cfg.Rule)
+	case !(cfg.SearchThreshold >= 0 && cfg.SearchThreshold <= 1):
+		return fmt.Errorf("router.search_threshold %v: want 0 to 1", cfg.SearchThreshold)
+	case !(cfg.ToolsThreshold >= 0 && cfg.ToolsThreshold <= 1):
+		return fmt.Errorf("router.tools_threshold %v: want 0 to 1", cfg.ToolsThreshold)
 	}
 	if _, ok := ParseRoute(string(cfg.Fallback)); !ok {
 		return fmt.Errorf("router.fallback %q: want one of direct, search, tools, search+tools", cfg.Fallback)
@@ -132,9 +167,12 @@ type Turn struct {
 type Decision struct {
 	// Route is the chosen route, or cfg.Fallback when Outcome isn't ok.
 	Route Route
-	// Confidence is the winning letter's probability after normalising, 0
-	// to 1. With a low_confidence outcome it is the score that fell short,
-	// not the fallback's. It is 0 when the outcome is degraded.
+	// Confidence is how sure the router was, 0 to 1. Under RuleTop it is
+	// the winning letter's probability after normalising; with a
+	// low_confidence outcome it is the score that fell short, not the
+	// fallback's. Under RuleMarginal it is the weaker of the two answers:
+	// P(search) for a yes, 1 - P(search) for a no, and the same for tools.
+	// It is 0 when the outcome is degraded.
 	Confidence float64
 	Outcome    Outcome
 	// Probs is the whole distribution. It may be nil or hold one route when
@@ -144,7 +182,8 @@ type Decision struct {
 
 // Decide picks a route for one turn. It sends a single prompt to the fast
 // model, reads the probabilities the model gave each route letter, and
-// returns the most likely route with its confidence.
+// turns them into a route by cfg.Rule: the most likely letter, or the two
+// yes/no questions of RuleMarginal.
 //
 // It returns an error only when cfg is invalid or the model call itself
 // fails. A model that answers unclearly is not an error: Decide returns the
@@ -238,7 +277,9 @@ func round3(p float64) float64 {
 }
 
 // decide reads a Decision out of a finished completion. It is Decide
-// without the I/O, split out so tests can feed it fixtures.
+// without the I/O, split out so tests can feed it fixtures. A degraded
+// distribution takes the fallback under either rule; otherwise cfg.Rule
+// picks how the letters become a route.
 func decide(comp engine.Completion, cfg Config) Decision {
 	var p map[Route]float64
 	if len(comp.LogProbs) > 0 {
@@ -248,6 +289,10 @@ func decide(comp engine.Completion, cfg Config) Decision {
 	// all, so its "confidence" means nothing.
 	if len(p) < 2 {
 		return Decision{Route: cfg.Fallback, Outcome: OutcomeDegraded, Probs: p}
+	}
+	if cfg.Rule == RuleMarginal {
+		r, conf := marginal(p, cfg.SearchThreshold, cfg.ToolsThreshold)
+		return Decision{Route: r, Confidence: conf, Outcome: OutcomeOK, Probs: p}
 	}
 	win, conf := best(p)
 	if conf < cfg.MinConfidence {

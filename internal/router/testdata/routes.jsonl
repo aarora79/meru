@@ -133,3 +133,21 @@
 {"q": "what database does wordpress use", "route": "direct", "why": "general knowledge; wordpress isn't the user's project"}
 {"q": "what is sqlite good for", "route": "direct", "why": "general knowledge, even though the user's project uses it"}
 {"q": "what language is kubernetes written in", "route": "direct", "why": "general knowledge"}
+{"q": "what was the last email I sent?", "route": "tools", "why": "sent mail lives in Gmail; the google server reads it", "tag": "connected"}
+{"q": "show my unread emails from the school office", "route": "tools", "why": "an inbox search through the google server", "tag": "connected"}
+{"q": "reply to Jordan's email and tell him Thursday works", "route": "tools", "why": "sending mail is a google tool; the reply text is in the question", "tag": "connected"}
+{"q": "did the conference organisers email me back?", "route": "tools", "why": "an inbox search through the google server", "tag": "connected"}
+{"q": "what meetings do I have tomorrow?", "route": "tools", "why": "calendar events come from the google server", "tag": "connected"}
+{"q": "am I free at 3 this afternoon?", "route": "tools", "why": "free time comes from the calendar", "tag": "connected"}
+{"q": "when's my next meeting with Priya", "route": "tools", "why": "a calendar lookup", "tag": "connected"}
+{"q": "find the offsite agenda doc in my google drive", "route": "tools", "why": "a Drive search through the google server; Drive isn't an indexed folder", "tag": "connected"}
+{"q": "what does the onboarding doc in drive say about laptops", "route": "tools", "why": "reads a Google Doc through the google server", "tag": "connected"}
+{"q": "search my obsidian vault for notes about sourdough", "route": "tools", "why": "the vault is reached through the obsidian server", "tag": "connected"}
+{"q": "add a line to today's daily note in obsidian saying the demo went well", "route": "tools", "why": "appending to a vault note is an obsidian tool", "tag": "connected"}
+{"q": "run git log on the meru repo and show me the last few commits", "route": "tools", "why": "git history comes from a local command, not the index", "tag": "connected"}
+{"q": "what's uncommitted in my blog repo right now?", "route": "tools", "why": "the working tree's state comes from git status, a local command", "tag": "connected"}
+{"q": "what time is it?", "route": "direct", "why": "the datetime tool is offered on every route, direct included", "tag": "connected"}
+{"q": "what day of the week is christmas this year", "route": "direct", "why": "the datetime tool is offered on every route, direct included", "tag": "connected"}
+{"q": "compare my offsite notes with the agenda doc in drive", "route": "search+tools", "why": "the user's notes plus a Drive doc", "tag": "connected"}
+{"q": "email the team the release checklist from my meru repo", "route": "search+tools", "why": "the checklist is in an indexed repo; sending mail is a tool", "tag": "connected"}
+{"q": "is the meeting from my trip notes on my calendar yet?", "route": "search+tools", "why": "the notes name the meeting; the calendar is a tool", "tag": "connected"}

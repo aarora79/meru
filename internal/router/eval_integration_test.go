@@ -4,7 +4,8 @@
 // Decide against the real local Ollama and prints a report for the fit set
 // and the held-out set: accuracy, per-route precision and recall, the
 // confusion matrix, calibration error, fallback rate and latency. It then
-// sweeps the temperature and the confidence floor. Run it with
+// sweeps the temperature and the confidence floor, and compares the top-letter
+// rule with the marginal rule over a grid of thresholds. Run it with
 //
 //	make router-eval
 //
@@ -146,7 +147,91 @@ func TestRouterEval(t *testing.T) {
 			fmt.Fprintf(&b, "want %-12s got %-12s [%s] %q\n", s.Want, win, formatProbs(d.Probs), heldRows[i].Q)
 		}
 	}
+
+	writeRules(&b, cfg, fit, held, append(append([]labelled(nil), fitRows...), heldRows...), all)
 	t.Log("\n" + b.String())
+}
+
+// ruleGrid is the thresholds the harness tries for each of the marginal
+// rule's two questions.
+var ruleGrid = []float64{0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5}
+
+// toolsSlack is how far the marginal rule's tool over-offer on the fit set
+// may exceed the top rule's before the grid ranks it last.
+const toolsSlack = 0.05
+
+// writeRules compares the shipped top-letter rule with the marginal rule
+// over the saved completions. It picks the marginal thresholds on the fit
+// set (rankGrid), then prints both rules on both sets, the best grid points,
+// the email question that prompted the comparison, the connected-server
+// rows, and every row the chosen thresholds route differently. rows and all
+// hold the same questions in the same order.
+func writeRules(b *strings.Builder, cfg Config, fit, held []sample, rows []labelled, all []sample) {
+	top := topRule(cfg)
+	topFit := scoreRule(fit, top, top)
+	var points []gridPoint
+	for _, s := range ruleGrid {
+		for _, tl := range ruleGrid {
+			m := marginalRule(cfg, s, tl)
+			points = append(points, gridPoint{Search: s, Tools: tl,
+				Fit: scoreRule(fit, m, top), Held: scoreRule(held, m, top)})
+		}
+	}
+	ranked := rankGrid(points, topFit.OverTools+toolsSlack)
+	pick := ranked[0]
+	chosen := marginalRule(cfg, pick.Search, pick.Tools)
+	name := fmt.Sprintf("marginal s=%.2f t=%.2f", pick.Search, pick.Tools)
+
+	fmt.Fprintf(b, "\n== decision rules, T=%.2f (thresholds picked on the fit set: lowest missed with tool over-offer <= top's %.3f + %.2f)\n",
+		cfg.Temperature, topFit.OverTools, toolsSlack)
+	fmt.Fprintf(b, "%-24s %-5s %8s %7s %11s %10s %8s\n", "rule", "set", "accuracy", "missed", "over-search", "over-tools", "changed")
+	// The connected-server rows, from both sets, as a set of their own.
+	var connected []sample
+	for i, r := range rows {
+		if r.Tag == "connected" {
+			connected = append(connected, all[i])
+		}
+	}
+	for _, set := range []struct {
+		name    string
+		samples []sample
+	}{{"fit", fit}, {"held", held}, {"all", all}, {"conn", connected}} {
+		scoreRule(set.samples, top, top).write(b, fmt.Sprintf("top, floor %.2f", cfg.MinConfidence), set.name)
+		// Other floors, for a fair match: a higher floor also misses less,
+		// by falling back to search+tools more often.
+		for _, floor := range []float64{0, 0.6, 0.7} {
+			c := cfg
+			c.MinConfidence = floor
+			scoreRule(set.samples, topRule(c), top).write(b, fmt.Sprintf("top, floor %.2f", floor), set.name)
+		}
+		scoreRule(set.samples, chosen, top).write(b, name, set.name)
+	}
+
+	fmt.Fprintf(b, "\n== marginal grid, best 10 by the fit-set rule (changed counts rows against top)\n")
+	fmt.Fprintf(b, "%-6s %-6s | %-38s | %s\n", "s", "t", "fit: acc  missed  over-s over-t chg", "held: acc  missed  over-s over-t chg")
+	for _, g := range ranked[:min(10, len(ranked))] {
+		fmt.Fprintf(b, "%-6.2f %-6.2f | %5.3f %7.3f %7.3f %6.3f %3d | %5.3f %7.3f %7.3f %6.3f %3d\n", g.Search, g.Tools,
+			g.Fit.Accuracy, g.Fit.Missed, g.Fit.OverSearch, g.Fit.OverTools, g.Fit.Changed,
+			g.Held.Accuracy, g.Held.Missed, g.Held.OverSearch, g.Held.OverTools, g.Held.Changed)
+	}
+
+	fmt.Fprintf(b, "\n== connected-server rows (want, top, %s)\n", name)
+	for i, r := range rows {
+		if r.Tag != "connected" {
+			continue
+		}
+		d := decide(all[i].Comp, cfg)
+		fmt.Fprintf(b, "%-12s %-12s %-12s [%s] %q\n", r.Route, top(all[i].Comp), chosen(all[i].Comp), formatProbs(d.Probs), r.Q)
+	}
+
+	fmt.Fprintf(b, "\n== rows %s routes differently from top (want, top, marginal)\n", name)
+	for i, r := range rows {
+		if chosen(all[i].Comp) == top(all[i].Comp) {
+			continue
+		}
+		d := decide(all[i].Comp, cfg)
+		fmt.Fprintf(b, "%-12s %-12s %-12s [%s] %q\n", r.Route, top(all[i].Comp), chosen(all[i].Comp), formatProbs(d.Probs), r.Q)
+	}
 }
 
 // accuracyOfOK is the accuracy over the turns that didn't fall back: how

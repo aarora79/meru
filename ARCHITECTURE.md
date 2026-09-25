@@ -685,11 +685,30 @@ lack of context: an unsure router spends tokens rather than guesses.
 
 ```toml
 [router]
-top_logprobs   = 20             # Ollama's cap
-temperature    = 1.25           # fitted by `make router-eval`
-min_confidence = 0.45           # below this, take the fallback
-fallback       = "search+tools"
+top_logprobs     = 20             # Ollama's cap
+temperature      = 1.25           # fitted by `make router-eval`
+min_confidence   = 0.45           # below this, take the fallback
+fallback         = "search+tools"
+decision         = "top"          # or "marginal"
+search_threshold = 0.30           # "marginal" only
+tools_threshold  = 0.25           # "marginal" only
 ```
+
+`decision` picks how the four probabilities become a route. The default, `top`,
+takes the most likely letter as described above. `marginal` asks two yes/no
+questions instead. B and D both search, so P(B) + P(D) is the chance the turn
+needs a search; C and D both call tools, so P(C) + P(D) is the chance it needs
+tools. Each sum that reaches its threshold adds its half, and a turn with two
+yeses gets `search+tools`. `marginal` needs no confidence floor, so it takes the
+fallback only when fewer than two letters appear. Take "what was the last email I
+sent?" at search 0.473, tools 0.260, search+tools 0.218: `top` picked search and
+offered no mail tools, though the two tool letters held 0.478. `marginal`
+picks `search+tools`. On the held-out set, `marginal` missed a needed search or
+tool on 7 of 46 turns against 9 for `top`, but added an unneeded search on 8 turns
+against 6 and unneeded tools on 1 against 0. Two turns in 46 isn't enough to
+change the default, and the fifth rule below already adds mail tools to that
+email question. [docs/fast-router.md](docs/fast-router.md#decision-rules) has
+the numbers.
 
 The router lives in `internal/router` as one function, `Decide`, which returns the
 route, its confidence, the full distribution and an outcome (`ok`,
@@ -738,7 +757,8 @@ in the same four or more letters, so "email" matches `gmail`. The router sent
 the model grepped the user's files.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
-135 questions, 40 of them held out, and fits the temperature. At 1.25 the
+153 questions, 46 of them held out, and fits the temperature. It also compares
+the two `decision` rules on the same answers. At 1.25 the
 probabilities sit close to calibrated, so `min_confidence = 0.45` means what it
 says. Refit after any change to the prompt, the examples or the `fast` model.
 

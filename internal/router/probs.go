@@ -1,6 +1,7 @@
 // This file turns the model's log probabilities into a distribution over
-// the four routes, and picks the winner. It is pure arithmetic, with no I/O,
-// so the tests can check it number by number.
+// the four routes, and picks the route by either rule: the top letter, or
+// the two yes/no questions. It is pure arithmetic, with no I/O, so the tests
+// can check it number by number.
 
 package router
 
@@ -69,4 +70,42 @@ func best(p map[Route]float64) (Route, float64) {
 		return "", 0
 	}
 	return win, top
+}
+
+// marginal applies RuleMarginal to p. It returns the route and how sure the
+// weaker of its two answers was.
+//
+// B and D both search, so P(search) = P(B) + P(D); C and D both call tools,
+// so P(tools) = P(C) + P(D). Each is a yes at or above its threshold. Take
+// "what was the last email I sent?" at direct 0.049, search 0.473, tools
+// 0.260, search+tools 0.218: the top letter is search, and that turn offered
+// no mail tools. Asked as two questions, P(tools) is 0.478, above a 0.25
+// bar, so the route is search+tools. See docs/fast-router.md, "Decision
+// rules", for how the thresholds were picked.
+func marginal(p map[Route]float64, searchT, toolsT float64) (Route, float64) {
+	ps := p[RouteSearch] + p[RouteSearchTools]
+	pt := p[RouteTools] + p[RouteSearchTools]
+	search, tools := ps >= searchT, pt >= toolsT
+	// A no is as sure as the chance of a yes is small.
+	if !search {
+		ps = 1 - ps
+	}
+	if !tools {
+		pt = 1 - pt
+	}
+	return routeFor(search, tools), min(ps, pt)
+}
+
+// routeFor returns the route that offers a search when search is true and
+// tools when tools is true.
+func routeFor(search, tools bool) Route {
+	switch {
+	case search && tools:
+		return RouteSearchTools
+	case search:
+		return RouteSearch
+	case tools:
+		return RouteTools
+	}
+	return RouteDirect
 }

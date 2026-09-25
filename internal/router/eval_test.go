@@ -2,7 +2,8 @@
 // testdata/routes.jsonl, splits it into a fit set and a held-out set, and
 // turns a list of model answers into a report (accuracy, per-route precision
 // and recall, the confusion matrix, calibration error, fallback rate and
-// latency). It has no build tag, so `go test` checks the arithmetic with
+// latency). It also scores the two decision rules against each other and
+// ranks the marginal rule's thresholds. It has no build tag, so `go test` checks the arithmetic with
 // fixtures; eval_integration_test.go feeds it answers from the real model.
 
 package router
@@ -33,6 +34,10 @@ type labelled struct {
 		Q string `json:"q"`
 		A string `json:"a"`
 	} `json:"history"`
+	// Tag groups rows for the report. "connected" marks questions that need
+	// a connected tool server (mail, calendar, Drive, the notes vault, a
+	// local command) or the clock.
+	Tag string `json:"tag"`
 }
 
 // turn builds the router's input for this row: the history as alternating
@@ -493,5 +498,193 @@ func TestFitTemperature(t *testing.T) {
 	}
 	if eces[0] <= eces[len(eces)-1] {
 		t.Errorf("ECE should fall as temperature rises here: %v", eces)
+	}
+}
+
+// A decision rule turns one saved completion into a route. The harness
+// compares rules by replaying each one over the same completions, so every
+// rule sees exactly the same model output.
+type rule func(comp engine.Completion) Route
+
+// topRule replays decide under RuleTop with cfg's floor and fallback: the
+// most likely letter wins, and a winner below cfg.MinConfidence takes
+// cfg.Fallback.
+func topRule(cfg Config) rule {
+	cfg.Rule = RuleTop // cfg is a copy, so the caller's Config is untouched
+	return func(comp engine.Completion) Route { return decide(comp, cfg).Route }
+}
+
+// marginalRule replays decide under RuleMarginal with the two thresholds
+// given. A degraded distribution still takes cfg.Fallback.
+func marginalRule(cfg Config, searchT, toolsT float64) rule {
+	cfg.Rule, cfg.SearchThreshold, cfg.ToolsThreshold = RuleMarginal, searchT, toolsT
+	return func(comp engine.Completion) Route { return decide(comp, cfg).Route }
+}
+
+// ruleReport scores one rule on one set. Every rate is a share of all N
+// rows, so the rates of two rules on the same set compare directly.
+type ruleReport struct {
+	N        int
+	Accuracy float64 // the route matches the label exactly
+	// Missed counts routes that lack a search or tools the label needs.
+	Missed float64
+	// OverSearch and OverTools count routes that offer a search, or tools,
+	// the label doesn't need. Extra tools cost more than an extra search:
+	// their schemas lengthen the prompt, and the lite model handles a long
+	// tool list worse.
+	OverSearch, OverTools float64
+	// Changed counts rows where this rule's route differs from the base
+	// rule's.
+	Changed int
+}
+
+// scoreRule replays r and base over samples and scores r against the
+// labels, counting the rows where the two disagree.
+func scoreRule(samples []sample, r, base rule) ruleReport {
+	rep := ruleReport{N: len(samples)}
+	if len(samples) == 0 {
+		return rep
+	}
+	var right, missed, overS, overT int
+	for _, s := range samples {
+		got := r(s.Comp)
+		if got != base(s.Comp) {
+			rep.Changed++
+		}
+		if got == s.Want {
+			right++
+		}
+		ns, nt := needs(s.Want)
+		gs, gt := needs(got)
+		if (ns && !gs) || (nt && !gt) {
+			missed++
+		}
+		if gs && !ns {
+			overS++
+		}
+		if gt && !nt {
+			overT++
+		}
+	}
+	n := float64(len(samples))
+	rep.Accuracy = float64(right) / n
+	rep.Missed = float64(missed) / n
+	rep.OverSearch = float64(overS) / n
+	rep.OverTools = float64(overT) / n
+	return rep
+}
+
+// gridPoint is one pair of marginal thresholds with its scores on the fit
+// and held-out sets.
+type gridPoint struct {
+	Search, Tools float64
+	Fit, Held     ruleReport
+}
+
+// rankGrid sorts points best first, judged on the fit set only. A point
+// whose tool over-offer is at most toolsLimit comes before one above it.
+// Among those, the lowest missed rate wins, then the highest accuracy,
+// then the lowest tool over-offer, then the lowest search over-offer. When
+// the fit set can't tell two points apart, the higher tools threshold wins,
+// then the higher search threshold: of two rules that score the same, the
+// one that offers less costs less on questions the set lacks. The held-out
+// scores play no part, so they stay an honest check of the pick.
+func rankGrid(points []gridPoint, toolsLimit float64) []gridPoint {
+	out := slices.Clone(points)
+	ok := func(g gridPoint) bool { return g.Fit.OverTools <= toolsLimit+1e-9 }
+	// SortFunc sorts by the comparison below: negative puts a first,
+	// positive puts b first. The thresholds settle every tie, so the
+	// ranking is the same on every run.
+	slices.SortFunc(out, func(a, b gridPoint) int {
+		if ok(a) != ok(b) {
+			if ok(a) {
+				return -1
+			}
+			return 1
+		}
+		for _, d := range []float64{
+			a.Fit.Missed - b.Fit.Missed,
+			b.Fit.Accuracy - a.Fit.Accuracy,
+			a.Fit.OverTools - b.Fit.OverTools,
+			a.Fit.OverSearch - b.Fit.OverSearch,
+			b.Tools - a.Tools,
+			b.Search - a.Search,
+		} {
+			if d < -1e-9 {
+				return -1
+			}
+			if d > 1e-9 {
+				return 1
+			}
+		}
+		return 0
+	})
+	return out
+}
+
+// write prints r as one row of the rules table.
+func (r ruleReport) write(w io.Writer, name, set string) {
+	fmt.Fprintf(w, "%-24s %-5s %8.3f %7.3f %11.3f %10.3f %8d\n",
+		name, set, r.Accuracy, r.Missed, r.OverSearch, r.OverTools, r.Changed)
+}
+
+func TestScoreRule(t *testing.T) {
+	ln := math.Log
+	samples := []sample{
+		// Top picks search; the marginal rule at 0.45 adds tools. Right.
+		{Want: RouteSearchTools, Comp: completion(alts("A", ln(0.05), "B", ln(0.47), "C", ln(0.26), "D", ln(0.22)))},
+		// Direct wanted. Top picks direct; marginal at 0.45 agrees.
+		{Want: RouteDirect, Comp: completion(alts("A", ln(0.8), "B", ln(0.1), "C", ln(0.1)))},
+		// Tools wanted, but both rules see mostly search: a miss and an
+		// extra search for both.
+		{Want: RouteTools, Comp: completion(alts("A", ln(0.1), "B", ln(0.8), "C", ln(0.1)))},
+		// Search wanted; the tool letters add up to 0.5, so the marginal
+		// rule over-offers tools.
+		{Want: RouteSearch, Comp: completion(alts("B", ln(0.5), "C", ln(0.25), "D", ln(0.25)))},
+		// Degraded: one letter. Both rules fall back to search+tools.
+		{Want: RouteDirect, Comp: completion(alts("A", ln(0.9)))},
+	}
+	cfg := testConfig()
+	top := topRule(cfg)
+	if rep := scoreRule(samples, top, top); rep.Changed != 0 || !near(rep.Accuracy, 0.4) ||
+		!near(rep.Missed, 0.4) || !near(rep.OverSearch, 0.4) || !near(rep.OverTools, 0.2) {
+		t.Errorf("top rule: %+v", rep)
+	}
+	rep := scoreRule(samples, marginalRule(cfg, 0.45, 0.45), top)
+	// The marginal rule fixes the first row and breaks the fourth, so
+	// accuracy holds at 0.4 while the missed rate halves.
+	if rep.N != 5 || rep.Changed != 2 || !near(rep.Accuracy, 0.4) || !near(rep.Missed, 0.2) ||
+		!near(rep.OverSearch, 0.4) || !near(rep.OverTools, 0.4) {
+		t.Errorf("marginal rule: %+v", rep)
+	}
+	var b strings.Builder
+	rep.write(&b, "marginal", "fit")
+	if !strings.Contains(b.String(), "0.400") {
+		t.Errorf("row text: %q", b.String())
+	}
+}
+
+func TestRankGrid(t *testing.T) {
+	pt := func(s, tl, missed, acc, overT float64) gridPoint {
+		return gridPoint{Search: s, Tools: tl, Fit: ruleReport{Missed: missed, Accuracy: acc, OverTools: overT}}
+	}
+	points := []gridPoint{
+		pt(0.2, 0.2, 0.00, 0.50, 0.40), // lowest missed, but too many tools
+		pt(0.3, 0.3, 0.10, 0.70, 0.10),
+		pt(0.4, 0.2, 0.10, 0.80, 0.10), // ties with 0.4/0.4 below, which wins on its higher tools bar
+		pt(0.4, 0.4, 0.10, 0.80, 0.10), // same missed as 0.3/0.3, better accuracy
+		pt(0.5, 0.5, 0.20, 0.90, 0.00),
+	}
+	got := rankGrid(points, 0.15)
+	var order [][2]float64
+	for _, g := range got {
+		order = append(order, [2]float64{g.Search, g.Tools})
+	}
+	want := [][2]float64{{0.4, 0.4}, {0.4, 0.2}, {0.3, 0.3}, {0.5, 0.5}, {0.2, 0.2}}
+	if !slices.Equal(order, want) {
+		t.Errorf("order %v, want %v", order, want)
+	}
+	if points[0].Search != 0.2 {
+		t.Error("rankGrid sorted its input in place")
 	}
 }
