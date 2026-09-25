@@ -159,6 +159,11 @@ Each line under "Sources:" links to its file. In a terminal that supports links
 or Ctrl-click the line to open the file. macOS Terminal shows the same lines
 without the link. A pipe or a file gets plain text.
 
+In `meru chat`, a web or file link in an answer works the same way. The chat shows
+the URL without `https://`, cut with `…` to fit the line, such as
+`mail.google.com/mail/u/0/#inbox/18f2…`, and Cmd-click or Ctrl-click opens the full
+URL. With `NO_COLOR=1` the chat shows the full URL as plain text instead.
+
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
 
@@ -1006,8 +1011,13 @@ watches it. `meru mcp add google` prints the command:
 ```sh
 USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
 GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
-  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
 ```
+
+`--tool-tier extended` loads 45 tools from the four services. Reading a mail
+thread and saving an attachment sit in workspace-mcp's extended tier, so a server
+started with `--tool-tier core` lacks them, and `meru tools` warns that the allow
+list names a tool google doesn't offer.
 
 Every Google tool takes your account's address. `USER_GOOGLE_EMAIL` gives the
 server a default, so the model never has to supply it. `meru setup user` also asks

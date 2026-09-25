@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
@@ -38,10 +37,11 @@ type codeBlock struct {
 // but blank lines is left out, because there is nothing in it to copy.
 //
 // It parses src with goldmark, the CommonMark parser Glamour uses to draw
-// the answer, so both agree on where each block starts and ends.
+// the answer, set up as Glamour sets it up (markdownParser in links.go), so
+// both agree on where each block starts and ends.
 func findCodeBlocks(src string) []codeBlock {
 	source := []byte(src)
-	doc := goldmark.New().Parser().Parse(text.NewReader(source))
+	doc := markdownParser().Parser().Parse(text.NewReader(source))
 
 	var blocks []codeBlock
 	// ast.Walk visits every node of the parsed document, depth first. The

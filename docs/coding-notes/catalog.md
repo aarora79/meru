@@ -20,7 +20,7 @@ It holds two servers, one for each kind of example the docs use, in this order:
 
 | Name | Server | Transport | Needs | Allowed | Asks first |
 | --- | --- | --- | --- | --- | --- |
-| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, save a mail's attachment, send mail, list and change events, search Drive, read a doc | send mail, change an event |
+| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, save a mail's attachment, send mail, list and change events, search Drive, read a doc | send mail, change an event |
 | `obsidian` | `uvx mcp-obsidian` | stdio | Local REST API plugin key | list, read and search notes, append to a note | append |
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
@@ -94,14 +94,19 @@ text all print the same line:
 const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
     "WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
     "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
-    "uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
+    "uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
 ```
 
 The OAuth client ID and secret go in the server's environment when you start it,
 so the entry has no `api_key` need and nothing of Google's passes through
 `secrets.toml`. The server offers 120-odd tools. `--tools` limits the process to
-four services, and `Allow` names nine tools from them; `send_gmail_message` and
-`manage_event` sit in `Confirm`.
+four services, and `--tool-tier extended` to their 45 core and extended tools.
+Extended is the smallest tier that holds every tool in `Allow`:
+`get_gmail_thread_content` and `get_gmail_attachment_content` sit there, not in
+core. Without the flag the server loads every tool of the four services, or the
+tier that `WORKSPACE_MCP_TOOL_TIER` names, so the flag also keeps your shell from
+changing the tier. `TestGoogleToolTier` checks the flag. `Allow` names nine tools;
+`send_gmail_message` and `manage_event` sit in `Confirm`.
 
 `get_gmail_attachment_content` saves a mail's attachment to disk and returns the
 saved filename, not the text. `WORKSPACE_ATTACHMENT_DIR` tells the server where
