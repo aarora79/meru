@@ -574,7 +574,8 @@ order.
    the model alone. Four rules then adjust the route (see [Routing](#routing)):
    a `direct` question that names an indexed folder becomes `search`, a
    question that names a connected tool server gets tools, and so does a
-   question that says "remember" or names the web. From v0.4, a separate
+   question that says "remember", names the web, or names what a connected
+   server's tools act on ("email" for Gmail's tools). From v0.4, a separate
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
@@ -692,7 +693,7 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
-Four rules override the router, in this order. The first: when it picks `direct` and
+Five rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
 in the prompt, the router sent "what database does Meru use to store its index?" to
@@ -724,6 +725,14 @@ The fourth: when the question says "web", "internet" or "online" as a whole word
 `web_search` exists and the route is `direct` or `search`, the loop adds the rest.
 The router sent "Search the web: what is SearXNG?" to `direct`, and the model, with
 no tools, wrote a tool call as plain text.
+
+The fifth: when a word in the question matches something a connected server's
+tools act on, the loop adds tools. The nouns come from the tool names, singular
+and lower case, minus common verbs and words such as "file": `gmail`, `message`,
+`calendar`, `event`, `drive`, `note`. A word matches when it equals a noun or ends
+in the same four or more letters, so "email" matches `gmail`. The router sent
+"what was the last email I sent?" to `search`, which offers no server's tools, and
+the model grepped the user's files.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
 135 questions, 40 of them held out, and fits the temperature. At 1.25 the
@@ -1171,7 +1180,7 @@ Meru keeps no index file. The database already indexes the files, and
    into the system prompt of every turn, under "What you know about the user",
    up to 2,000 characters; past that, the newest files win and the rest wait
    for recall. These are the facts Meru should never have to search for: your
-   name, your work, where you live, how you like answers. Without them, the
+   name, your email, your work, where you live, how you like answers. Without them, the
    model can't tell whether "Sam" in a letter is you or someone you know.
    `meru setup user` asks for them one at a time and saves each as a memory,
    and you can add more in chat ("remember that I work on the registry team").
@@ -1295,7 +1304,7 @@ own the first time you run `meru`.
 5. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
 6. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
-   name, your work, where you live and how you like answers, and saves each as a
+   name, your email, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
 7. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new `config.toml`

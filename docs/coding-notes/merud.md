@@ -760,7 +760,7 @@ the same structs, and checks the output with no servers and with `merud` down.
 profile kinds, `rpc.ProfileKinds()`, which `merud` puts into every prompt. When
 there are some, it asks whether to keep them and add more (the default) or to
 forget them all first. Then it asks five things, and Enter skips any of them:
-your name, your work, where you live, any other facts (one per line, until an
+your name, your email, your work, where you live, any other facts (one per line, until an
 empty line), and how you like answers. Each answer becomes one memory through
 `OpMemoryAdd`, of kind `me`, or `preferences` for the last one, and saves as soon
 as you type it.

@@ -174,6 +174,7 @@ It asks one short question at a time, and Enter skips any of them:
 ```text
 Answer a few questions about you. Press Enter to skip one.
 Your name: Dana Reyes
+Your email address, the one your Google or other accounts use: dana@example.com
 What you do, your role and where you work: staff engineer at Acme
 Where you live (a city is enough): Boston
 Anything else Meru should always know about you? One fact per line; an empty line ends.
@@ -189,7 +190,9 @@ Saved:
 Each answer becomes one memory, a Markdown file under `~/.meru/memory/me/` or
 `~/.meru/memory/preferences/` that you can read and edit. Run it again to add
 more; when Meru already knows something, it asks whether to keep that or start
-over. `meru setup` offers this step too, when `merud` is running.
+over. `meru setup` offers this step too, when `merud` is running. Tools such as
+Gmail and Calendar take your address on every call, so the email answer saves
+the model from searching your files for it.
 
 To see, add or delete memories by hand:
 
@@ -871,9 +874,15 @@ connects to it at `http://127.0.0.1:8000/mcp` and never starts, restarts or
 watches it. `meru mcp add google` prints the command:
 
 ```sh
+USER_GOOGLE_EMAIL=<your Google address> \
 GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
   uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
 ```
+
+Every Google tool takes your account's address. `USER_GOOGLE_EMAIL` gives the
+server a default, so the model never has to supply it. `meru setup user` also asks
+for your email and puts it in your profile, which covers a server started without
+it.
 
 Before the first run, turn on the Gmail, Calendar, Drive and Docs APIs in Google
 Cloud Console and create an OAuth client of type "Desktop app"; the
