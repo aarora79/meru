@@ -329,15 +329,15 @@ sequenceDiagram
 | Decision | Made by | How |
 | --- | --- | --- |
 | Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load |
-| What to search for | `merud`, with no model | The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again" |
+| What to search for | `merud`, with no model | The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again". With `[index] retrieval = "agentic"` no search runs first, and the `main` model writes its own `search_files` queries |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. Each `[[commands]]` entry is one tool. The built-in tools need no entry |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or `[[commands]]` entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config |
 | Whether a call runs without asking | you, in `config.toml` and at the prompt | `dispatch` stops and asks when the tool is in its entry's `confirm` list, or its `[[commands]]` entry says `confirm = true`, unless you already approved that tool for this session. `configure` asks every time. `web_fetch` asks for a URL that no search result or question of yours gave, and before a download |
 | When the turn ends | the `main` model, with a cap | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
-the three read-only file tools, `read_file`, `list_folder` and `grep`, and the
-local commands that don't ask first. A question such as "write about everything
+`datetime`, the four read-only file tools, `read_file`, `list_folder`, `grep` and
+`search_files`, and the local commands that don't ask first. A question such as "write about everything
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
@@ -375,7 +375,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   ```toml
   [builtin]
   tools   = ["configure", "datetime", "remember", "write_file", "read_file",
-             "list_folder", "grep", "web_search", "web_fetch"]   # all nine, the default
+             "list_folder", "grep", "search_files", "web_search",
+             "web_fetch"]   # all ten, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -394,7 +395,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
-  clock tool, `datetime`; and three read-only file tools. `web_search`,
+  clock tool, `datetime`; and four read-only file tools. `web_search`,
   `datetime` and the file tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
 
@@ -403,6 +404,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
+  | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
@@ -575,19 +577,28 @@ order.
    a `direct` question that names an indexed folder becomes `search`, a
    question that names a connected tool server gets tools, and so does a
    question that says "remember", names the web, or names what a connected
-   server's tools act on ("email" for Gmail's tools). From v0.4, a separate
+   server's tools act on ("email" for Gmail's tools). The same four signs
+   skip the search on a `tools` turn: a web, mail or notes-app question gets no
+   excerpts, which crowd the answer and cost time, and the file tools stay on
+   offer. `search` and `search+tools` always search. From v0.4, a separate
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, today's date with a pointer to the `datetime` tool (a model knows only its
    training data, so without the date a trip that ended last week reads as one
    still to come; the time of day goes through the tool, since it changes every
-   minute and would cost Ollama's reuse), your profile, the note on your folders, the tools note, and the list of
+   minute and would cost Ollama's reuse), one line on your computer that `merud`
+   reads at startup (the OS and version, the processor, memory, the shell and the
+   time zone, and no host or user name; without it the model answered a GPU
+   question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, the tools note, and the list of
    skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
-   history and the question. Each part has its own cap, in characters (a token is
+   history and the question. A turn about your files (every turn that searches
+   first, or would in `agentic` mode) also gets a note on the file tools, between
+   the two groups: other turns share the whole opening with it and keep a shorter
+   prompt. Each part has its own cap, in characters (a token is
    about four):
 
    | Part | Cap | Past the cap |
@@ -602,9 +613,10 @@ order.
    tokens. The caps keep one part from crowding out the others; a `lite` turn
    uses well under a tenth of the model's 131k-token window. On the `tools` and
    `search+tools` routes the model also gets the allowed tools' schemas; on
-   `search` it gets the three file tools' schemas and those of the local
-   commands that don't ask, with a note that says it may read whole files, list
-   folders and grep when the excerpts fall short, and run the `cmd.` tools.
+   `search` it gets the four file tools' schemas and those of the local
+   commands that don't ask, with a note that says it may run the `cmd.` tools.
+   The note on the file tools says it may read whole files, list folders, grep
+   and search again when the excerpts fall short.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
    On a route that offers tools, the loop first gives each MCP server that isn't
    connected one try, then lists the tools (see [MCP](#mcp)).
@@ -1037,7 +1049,8 @@ plain text with no layout.
 
 SQLite does both searches; our code merges the results.
 
-A search runs on the `search`, `tools` and `search+tools` routes. `tools` searches
+With `[index] retrieval = "auto"`, the default, a search runs before the answer
+on the `search`, `tools` and `search+tools` routes. `tools` searches
 because the router sends some questions about your files there. It also runs on a
 `direct` question that
 names an indexed folder (see [Routing](#routing)). Its query is the question, with an earlier
@@ -1116,6 +1129,147 @@ The list sizes are fixed constants in `internal/retrieve`: 50 hits from each sea
 and 10 chunks after the merge. They aren't config keys. We'll tune them once we have
 measurements from real questions.
 
+### Search first, or let the model look
+
+A coding agent finds code with `ls`, `grep` and a file reader, and no search
+before the answer. Meru can work that way too. The `search_files` built-in tool
+runs the same hybrid search for a query the model writes, and returns numbered
+excerpts, so search by meaning becomes one tool next to `grep`, `list_folder` and
+`read_file`. `[index] retrieval` picks who decides when to search:
+
+```toml
+[index]
+retrieval = "auto"      # the default; or "agentic"
+```
+
+| | `auto` | `agentic` |
+| --- | --- | --- |
+| Search before the answer | yes, on turns about your files (see below) | no |
+| Earlier conversations in the prompt | yes | no |
+| Profile and recalled memories | yes | yes |
+| File tools offered | the four, on the routes that offer tools | the same |
+| Note in the prompt, on turns about your files | the excerpts, with the rule on citing, and "read, list, grep or search again when the excerpts fall short" | "look first with `search_files` or `grep`, then `read_file`, stop after two or three rounds, cite the excerpts" |
+
+`agentic` needs `search_files` in `[builtin] tools`; `merud` refuses to start
+without it. A built-in skill, `file-research`, carries the same advice for the
+fast model to pick. In both modes a `search_files` excerpt numbers on from the
+turn's other excerpts and joins the `sources` event (see [Citations](#citations)).
+
+We measured both modes with `meru check` on the owner's 19 questions and real
+folders: 5,600 files, on the `lite` profile (MiniCPM5 2B), three runs of each,
+from the same copy of `meru.db`.
+
+| Category (questions) | `auto` passed | `agentic` passed | `auto` median s | `agentic` median s |
+| --- | --- | --- | --- | --- |
+| direct (3) | 9/9 | 9/9 | 1.5 | 1.8 |
+| files: list, grep, read (3) | 9/9 | 9/9 | 8.3 | 5.6 |
+| retrieval: by meaning (3) | 9/9 | 9/9 | 8.0 | 8.7 |
+| web (2) | 5/6 | 2/6 | 24.0 | 18.1 |
+| mcp (2) | 5/6 | 6/6 | 15.0 | 7.4 |
+| command (1) | 3/3 | 3/3 | 25.5 | 19.0 |
+| profile (1) | 3/3 | 3/3 | 11.5 | 1.3 |
+| session: two turns (2) | 5/6 | 0/6 | 30.1 | 42.0 |
+| datetime (2) | 6/6 | 6/6 | 4.9 | 5.2 |
+| **all (19)** | **54/57** | **47/57** | 10.8 | 7.0 |
+
+A whole run of the 19 questions took 292 s of turn time with `auto` and 271 s
+with `agentic`, on average.
+
+What the numbers say:
+
+- **On one-hop questions the two tie.** "What does my knowledge base say about
+  Coase?" passed 3 of 3 both ways, at about the same time. The model called
+  `search_files` once and answered.
+- **`agentic` lost where the answer takes several steps.** "So when did I visit
+  Lisbon?" failed all three `agentic` runs. The answer sits in travel PDFs.
+  The up-front search put them in the prompt, and `auto` answered in one round.
+  With the tools, the 2B model kept searching and reading. Twice it ended its
+  turn by writing a tool call as plain text, and once it never called
+  `search_files` and grepped instead. The next question in that session read the
+  broken turn in its history and failed too.
+- **`agentic` was faster on turns that don't need your files.** "Which Obsidian
+  vaults do I have?" took 1.2 s against 14 s, and "what is my name?" 1.3 s
+  against 11.5 s. With no excerpts, the prompt stays the same from turn to turn,
+  and Ollama reuses its work on it. The up-front excerpts change with each
+  question, so `auto` reprocesses everything after them.
+- **The web questions fell from 5/6 to 2/6.** The file tools' note also joins
+  web turns, which offer every tool, and the 2B model read fewer pages or wrote
+  a call as text. This loss comes from the note, not from retrieval; the note
+  now joins only turns about your files (see below).
+- **`agentic` cost more prompt tokens on file questions**, 1.2 to 3 times as many,
+  because each tool round sends the prompt again.
+
+So `auto` stays the default. It already holds both approaches: the excerpts in the
+prompt, and `search_files` for a second look. We didn't measure the `full`
+profile: the test machine was already 16 GB into swap, and a 23 GB model would
+have measured the disk. A larger model may follow the explore loop better;
+rerun `meru check` with each setting before changing the default for `full`.
+
+Dropping the vector index would take more than this mode. Recalled memories,
+earlier conversations and `search_files` itself all search it, and so do the
+v0.4 "Done when" tests for recall. The numbers give no reason to drop it: the
+one tool that searched by meaning was the one that answered the questions
+`agentic` passed.
+
+#### Turns that aren't about your files
+
+Two changes in `auto` mode followed from these numbers. `agentic` won its time on
+turns that need no files, and the web questions pointed at the note on the file
+tools.
+
+- **No search first on a tool question.** A `tools` turn skips the search when the
+  question points at a connected tool. The four signs that add tools to a route
+  decide it (see [Routing](#routing)): the question names a tool server, says
+  "remember", names the web, or names what a server's tools act on. `search` and
+  `search+tools` always search: the router, or the folder rule, saw files in the
+  question. The turn still offers the file tools, so the model can look when it
+  has to. Before this, "search the web for the latest Go release" put ten
+  excerpts from your folders in the prompt, and since `web_search` numbers its
+  results from `[1]` too, the Sources list under the answer could name one of
+  your files.
+- **The file-tools note only on file turns.** The note that the model may read,
+  list, grep and search the folders joins only a turn about your files that
+  offers the file tools. It sits after the parts every turn shares and before the
+  parts each question changes, so a web question's prompt is shorter and still
+  shares its whole opening with a file question's. The note on the folders that
+  every turn carries names them and nothing more.
+
+We measured both with `meru check` on a made-up setup, so that no personal data
+entered the test: eight Markdown notes in one folder, the test MCP server
+(`cmd/fakemcp`) connected as `almanac`, and 18 questions shaped like the owner's.
+`lite` profile, `auto` mode, three runs before the change and three after, each
+from an empty `meru.db`.
+
+| Category (questions) | Before passed | After passed | Before mean s | After mean s | File sources per turn, before → after |
+| --- | --- | --- | --- | --- | --- |
+| direct (3) | 9/9 | 9/9 | 1.6 | 1.3 | 0 → 0 |
+| files: list, grep, read (3) | 9/9 | 9/9 | 3.2 | 3.1 | 8 → 8 |
+| retrieval: by meaning (3) | 9/9 | 9/9 | 3.6 | 3.2 | 8 → 8 |
+| web (2) | 2/6 | 5/6 | 11.6 | 9.3 | 8 → 0 |
+| mcp: `almanac` by name (2) | 6/6 | 6/6 | 4.5 | 1.5 | 8 → 0 |
+| memory: "remember that…" (1) | 2/3 | 1/3 | 3.7 | 3.7 | 8 → 8 |
+| session: two turns (2) | 6/6 | 5/6 | 6.6 | 4.6 | 8 → 6.7 |
+| datetime (2) | 6/6 | 6/6 | 6.7 | 6.2 | 4 → 4 |
+| **all (18)** | **49/54** | **50/54** | | | |
+
+A run's turn time fell from 87 s to 70 s. The eight folder files make every
+search return all of them, so "file sources" counts eight wherever a search ran.
+What the numbers say:
+
+- **Tool questions got faster and lost the stray sources.** The two `almanac`
+  questions fell from 4.5 s to 1.5 s, and every web and `almanac` turn went from
+  eight file sources to none.
+- **The web questions passed more often.** "What is SearXNG, with a source?"
+  failed all three runs before: each answer cited a number such as `[1]` and gave
+  no link. After, all three gave the link.
+- **File questions held.** The nine file and retrieval runs passed before and
+  after, at about the same time.
+- **The losses don't come from the rule.** "Remember that my favourite tea is
+  jasmine" routed to `search+tools` in every run, which the rule leaves alone;
+  in the failing runs, after the first run had saved the fact, the model
+  answered that it already knew. The failed session turn routed `direct`, which
+  the change doesn't touch either.
+
 ### Citations
 
 `merud` numbers the chunks it found and puts them in the prompt under "From your
@@ -1123,15 +1277,18 @@ files", with a rule that tells the model to cite each excerpt it uses as `[1]`,
 `[2]` and so on, and never to invent one. When a search finds nothing, the prompt
 says so instead, and the model answers without citing files.
 
-The system prompt names the folders in `[index] folders` on every turn, says that
-Meru searches them before it answers, and says the model can't open or list files
-itself. With no folders set, it tells the model that Meru hasn't indexed anything
+The system prompt names the folders in `[index] folders` on every turn and says
+that Meru searches them before it answers. The note that the model may read, list,
+grep and search the folders itself joins only turns about your files. With no folders set, it tells the model that Meru hasn't indexed anything
 yet and where you add folders. Without this note a small model answers "I don't
 have access to your files" while it reads excerpts from them, and can't say what
 Meru indexes.
 
 Before the first token, `merud` sends the client a `sources` event that lists each
-excerpt with its number, path (as `~/…`), heading, and line range or PDF page. Once
+excerpt with its number, path (as `~/…`), heading, and line range or PDF page.
+When `search_files` returns excerpts later in the turn, they take the next
+numbers, ride on the call's `tool_result` event, and `merud` sends a new
+`sources` event that holds every source so far. Clients keep the last one. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
 same list under the answer. Both list only the sources the answer cites, and an
 answer that cites none gets no list: the model decides when a source matters. An
@@ -1286,14 +1443,15 @@ with no change to config.
 
 ### Built-in skills
 
-Meru ships with three skills. `writing` and `explainer` come from the owner's
-`my-ai-assets` repo; `web-research` is Meru's own:
+Meru ships with four skills. `writing` and `explainer` come from the owner's
+`my-ai-assets` repo; `web-research` and `file-research` are Meru's own:
 
 | Skill | What it does |
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
 | `web-research` | For questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree |
+| `file-research` | For questions about the user's own files: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts |
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
@@ -2177,8 +2335,8 @@ transcript lines hold. No level writes question or answer text. With
   delete it; it's yours.
 - The indexer reads only the folders you list, never follows a symlink, and never
   indexes a file that looks like a secret. The file tools, `read_file`,
-  `list_folder` and `grep`, apply the same rules through the indexer's own code,
-  so the model can read no file that search couldn't reach.
+  `list_folder`, `grep` and `search_files`, apply the same rules through the
+  indexer's own code, so the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
 
 ---
@@ -2269,7 +2427,7 @@ We'll settle these with working code and measurements.
 - **Indexing:** only the folders in `[index] folders`, nothing by default; secrets,
   hidden files, build folders and ignored files skipped; symlinks never followed;
   email, calendar and Drive reached live through MCP, not indexed.
-- **Built-in skills:** `writing` and `explainer` ship in the binary
+- **Built-in skills:** `writing`, `explainer`, `web-research` and `file-research` ship in the binary
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` checks Ollama, pulls the models, writes a first
   `config.toml`, and offers a catalog of MCP servers, each added "for you" (with

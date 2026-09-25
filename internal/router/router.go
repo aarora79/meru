@@ -231,7 +231,9 @@ func Decide(ctx context.Context, eng engine.Engine, cfg Config, turn Turn) (Deci
 	for _, o := range options {
 		span.SetAttributes(attribute.Float64("meru.route.p."+string(o.route), d.Probs[o.route]))
 	}
-	logger(cfg).DebugContext(ctx, "route", "route", d.Route,
+	// Info, not debug: the decision and its numbers, with no question text,
+	// are what a later look at routing needs, and one line a turn is cheap.
+	logger(cfg).InfoContext(ctx, "route", "route", d.Route,
 		"confidence", round3(d.Confidence), "outcome", d.Outcome,
 		"probs", formatProbs(d.Probs), "model", cfg.Model,
 		"ms", time.Since(start).Milliseconds())

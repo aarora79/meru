@@ -21,6 +21,15 @@ It runs two searches and merges them:
 citations, so the model can answer "the launch is on 12 May [1]" and the user can
 open the file.
 
+Two callers run `Search`, through adapters in `merud`. The agent runs it before
+the answer on a turn about the user's files (the search routes, and a `tools`
+turn whose question points at no connected tool), with
+`[index] retrieval = "auto"`, the default. The built-in `search_files` tool runs it when the model asks, with
+the model's own query and `TopN` set to the tool's `limit` (8 unless the model
+says). With `retrieval = "agentic"` only the tool runs it (see
+[builtin](builtin.md) and [agent](agent.md)). Both get the same list sizes, the
+same merge and the same `Cite` lines.
+
 `retrieve.SearchMemories` does the same for memories, with a third list: the
 newest memories. See [memories.go](#memoriesgo-recall) below.
 
@@ -88,7 +97,8 @@ the question or any chunk text. The engine's own HTTP span for the embedding
 call nests under it.
 
 `Options` holds the three list sizes. Its zero value means ARCHITECTURE.md's
-starting values: 50 from each search and 10 after the merge.
+starting values: 50 from each search and 10 after the merge. `search_files`
+sets `TopN` alone, to the number of excerpts the model asked for.
 
 `Result` embeds `store.ChunkWithDoc` and adds the RRF score, so `r.Path`,
 `r.Heading` and `r.Text` work directly.
@@ -104,6 +114,8 @@ starting values: 50 from each search and 10 after the merge.
 A PDF chunk gets `page 3` instead of lines, and a chunk with no heading leaves
 the heading out. `Format` writes a one-line instruction ("Cite the ones you
 use by number") and then each chunk's text under its citation line.
+`search_files` calls `Cite` too, with numbers that follow the prompt's, so an
+excerpt the tool found reads the same as one the prompt held.
 
 ### memories.go: recall
 
@@ -208,5 +220,8 @@ with still comes back when it is the only one outside the excluded kinds.
 - **Number the sessions rather than make `rrf` generic.** A generic `rrf` could
   take text IDs, but a small map in `SearchSessions` does the job and leaves
   `rrf` as the architecture doc prints it.
+- **One search for both modes.** The agent's up-front search and the
+  `search_files` tool call the same `Search`. Comparing the two retrieval modes
+  then measures who decides when to search, and nothing else.
 - **Past sessions have no numbers.** They aren't files, so they get no
   citation and no `sources` event; the agent writes them as dated lines.

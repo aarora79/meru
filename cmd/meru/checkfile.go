@@ -49,8 +49,10 @@ type checkWant struct {
 	// one. Both ignore case.
 	AnswerAny []string `json:"answer_any,omitempty"`
 	AnswerAll []string `json:"answer_all,omitempty"`
-	// SourcesAny needs a path in the sources event that holds one of these;
-	// SourcesNone needs no path to hold any of them. Both ignore case.
+	// SourcesAny needs a path in the turn's sources events that holds one
+	// of these; SourcesNone needs no path to hold any of them. The events
+	// cover the excerpts in the prompt and those a tool such as
+	// search_files returned. Both ignore case.
 	SourcesAny  []string `json:"sources_any,omitempty"`
 	SourcesNone []string `json:"sources_none,omitempty"`
 	// MaxSeconds is how long the turn may take. Zero means no limit.
@@ -156,7 +158,7 @@ type turnRecord struct {
 	// refused approval is in Tools but not in Ran.
 	Tools   []string
 	Ran     []string
-	Sources []string // paths from the sources event, each once
+	Sources []string // paths from every sources event, each once
 	Answer  string
 	Seconds float64
 	Error   string // the error event's text, if the turn failed

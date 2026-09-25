@@ -253,7 +253,7 @@ func reportOf(rep index.Report) rpc.IndexReport {
 }
 
 // searchAdapter lets retrieve.Search and retrieve.SearchSessions serve as
-// the agent's Searcher. The agent doesn't hold the store or the list
+// the agent's Searcher, and retrieve.Search as search_files' searcher. The agent doesn't hold the store or the list
 // sizes; this type in main joins them, the way routerAdapter joins the
 // router.
 type searchAdapter struct {
@@ -264,6 +264,12 @@ type searchAdapter struct {
 // Search runs hybrid search over the store with the default list sizes.
 func (s searchAdapter) Search(ctx context.Context, query string) ([]retrieve.Result, error) {
 	return retrieve.Search(ctx, s.st, s.eng, query, retrieve.Options{})
+}
+
+// SearchFiles runs the same hybrid search for search_files, keeping the
+// limit best chunks instead of the default ten.
+func (s searchAdapter) SearchFiles(ctx context.Context, query string, limit int) ([]retrieve.Result, error) {
+	return retrieve.Search(ctx, s.st, s.eng, query, retrieve.Options{TopN: limit})
 }
 
 // SearchSessions recalls the n past sessions that best match query,

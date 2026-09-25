@@ -97,7 +97,7 @@ because `web_search` checks a call's own `max_results` against the same cap.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all nine, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all ten, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
 }
 ```
@@ -202,8 +202,15 @@ return errors.Join(errs...)
 read and change the outer function's variables (`errs` here). `errors.Join`
 glues the errors together and returns `nil` when the list is empty.
 
+`checkIndex` also checks `[index] retrieval`: `"auto"`, the default, or
+`"agentic"`, the two constants `RetrievalAuto` and `RetrievalAgentic`. Agentic
+retrieval runs no search before the answer, so `validate` refuses it when
+`[builtin] tools` leaves out `search_files`: the model would lose search by
+meaning altogether and keep only `grep` (see
+[Retrieval](../../ARCHITECTURE.md#retrieval)).
+
 `checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
-the nine in `builtinTools`, and the message lists them. A name in `confirm` must
+the ten in `builtinTools`, and the message lists them. A name in `confirm` must
 also be in `tools`; otherwise the confirm line would do nothing, which is
 almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
 because `builtin` imports `config` and Go refuses an import cycle. A test in

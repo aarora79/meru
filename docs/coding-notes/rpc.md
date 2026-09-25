@@ -74,6 +74,15 @@ the skills the turn loaded, with only `name` set, such as
 Reusing the field keeps one name for one idea on the wire, and `description`
 has `omitempty`, so each entry stays that small.
 
+The `search_files` tool added `Sources` to `ToolEvent`, set on a `tool_result`
+event: the excerpts that call returned, numbered as the model reads them. After
+a round whose calls returned excerpts, `merud` sends another `sources` event
+that holds every source of the turn so far, the prompt's and the tools'. A
+client keeps the last `sources` event it saw, so both clients' `Sources:` lists
+and `Cited` cover what the model found through the tool, with no client change.
+`meru check` adds up the paths of every `sources` event, which gives the same
+set.
+
 Two MCP ops back `meru mcp add`. `mcp_probe` carries the server to try in
 `Server`, a `ProbeServer` with the fields of an `[[mcp.servers]]` entry minus the
 allow lists, and answers with one `probe` event. Its `Probe`, a `ProbeResult`,

@@ -1,4 +1,5 @@
-// This file tests the route rule for what connected tools act on.
+// This file tests the route rule for connected tools: toolTarget, and the
+// nouns in the tools' names that it matches.
 
 package agent
 
@@ -130,6 +131,32 @@ func TestConnectedTools(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ConnectedTools(tt.cfg); !slices.Equal(got, tt.want) {
 				t.Errorf("ConnectedTools = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToolTarget(t *testing.T) {
+	specs := append(googleAndNotes(), spec("remember"))
+	tests := []struct {
+		question string
+		specs    []engine.ToolSpec
+		want     string
+	}{
+		{"search my Obsidian vault for AI", specs, "names a tool server"},
+		{"ask google for my unread mail", specs, "names a tool server"},
+		{"remember that my name is Dana", specs, "asks Meru to remember"},
+		{"search the web for the latest Go release", specs, "asks for the web"},
+		{"what's on my calendar tomorrow?", specs, "names what a tool handles"},
+		{"what did Naur argue about programming?", specs, ""},
+		{"list the folders in ~/backup", specs, ""},
+		{"search the web for the latest Go release", []engine.ToolSpec{spec("read_file")}, ""},
+		{"remember that my name is Dana", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.question, func(t *testing.T) {
+			if got := toolTarget(tt.question, tt.specs); got != tt.want {
+				t.Errorf("toolTarget = %q, want %q", got, tt.want)
 			}
 		})
 	}

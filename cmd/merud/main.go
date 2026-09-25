@@ -214,7 +214,8 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if len(cfg.Index.Folders) == 0 {
 		files = nil
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, eng, mems.syncNow, log)
+	search := searchAdapter{st: st, eng: eng}
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, search, eng, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
@@ -227,8 +228,11 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
-	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
+	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
+	machine := machineLine(ctx)
+	a.UseMachine(machine)
+	log.Info("machine", "line", machine)
 	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
 	if err != nil {
 		return err

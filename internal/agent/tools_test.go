@@ -161,9 +161,9 @@ func TestToolsOfferedByRoute(t *testing.T) {
 		{"search with no file tools", "search", noFiles, nil, ""},
 		{"search offers commands that don't ask", "search", cmds, []string{"read_file", "cmd.git-log", "grep"}, fileToolsNote + " " + commandsNote},
 		{"search with commands and no file tools", "search", onlyCmds, []string{"cmd.git-log"}, commandsNote},
-		{"tools offers every command", "tools", cmds, []string{"notes.search", "read_file", "cmd.git-log", "cmd.git-push", "grep"}, toolsNote},
-		{"tools offers all", "tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
-		{"search+tools offers all", "search+tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote},
+		{"tools offers every command", "tools", cmds, []string{"notes.search", "read_file", "cmd.git-log", "cmd.git-push", "grep"}, toolsNote + " " + fileToolsNote},
+		{"tools offers all", "tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote + " " + fileToolsNote},
+		{"search+tools offers all", "search+tools", all, []string{"notes.search", "read_file", "remember", "list_folder", "grep"}, toolsNote + " " + fileToolsNote},
 		{"no runner", "tools", nil, nil, ""},
 		{"no allowed tools", "search+tools", &fakeTools{}, nil, ""},
 	}

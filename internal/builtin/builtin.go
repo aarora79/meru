@@ -1,7 +1,7 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
-// and web_search and web_fetch in web.go, webguard.go and webdownload.go.
+// search_files in search.go, and web_search and web_fetch in web.go, webguard.go and webdownload.go.
 
 package builtin
 
@@ -45,6 +45,7 @@ type Tools struct {
 	memory     *memory.Store  // where remember saves; nil leaves remember out
 	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
 	files      *index.Indexer // what the file tools read through; nil leaves them out
+	search     FileSearcher   // what search_files searches with; nil leaves it out
 	web        *webClients    // web_search and web_fetch, as [web] sets them
 	onChange   func(context.Context) error
 	onRemember func(context.Context) // runs after remember saves; nil for none
@@ -127,6 +128,13 @@ func (t *Tools) missing(name string) string {
 		if t.files == nil {
 			return "[index] folders is empty"
 		}
+	case SearchFiles:
+		if t.files == nil {
+			return "[index] folders is empty"
+		}
+		if t.search == nil {
+			return "merud has no search index"
+		}
 	case WebSearch:
 		if t.web.searxngURL == "" {
 			return "[web] searxng_url is empty"
@@ -161,6 +169,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 	}
 	if t.files != nil {
 		specs = append(specs, t.fileToolSpecs()...)
+		if t.search != nil {
+			specs = append(specs, t.searchSpec())
+		}
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
 	// DeleteFunc drops, in place, each spec the function returns true for.
@@ -239,6 +250,13 @@ func (t *Tools) Status() []rpc.ServerInfo {
 				Confirm:     t.Confirm(f.name) != dispatch.ConfirmNever,
 			})
 		}
+		if t.search != nil {
+			tools = append(tools, rpc.ToolInfo{
+				Name:        SearchFiles,
+				Description: "Searches the indexed folders by meaning and by words.",
+				Confirm:     t.Confirm(SearchFiles) != dispatch.ConfirmNever,
+			})
+		}
 	}
 	if t.web.searxngURL != "" {
 		tools = append(tools, rpc.ToolInfo{
@@ -273,6 +291,7 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool that [builtin] tools turns on", name)
 	}
 	var text string
+	var sources []rpc.Citation // only search_files sets these
 	var err error
 	switch {
 	case name == Configure:
@@ -289,6 +308,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.listFolder(ctx, args)
 	case name == Grep && t.files != nil:
 		text, err = t.grep(ctx, args)
+	case name == SearchFiles && t.files != nil && t.search != nil:
+		text, sources, err = t.searchFiles(ctx, args)
 	case name == WebSearch && t.web.searxngURL != "":
 		text, err = t.webSearch(ctx, args)
 	case name == WebFetch:
@@ -299,7 +320,7 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 	if err != nil {
 		return dispatch.Result{Text: err.Error(), IsError: true}, nil
 	}
-	return dispatch.Result{Text: text}, nil
+	return dispatch.Result{Text: text, Sources: sources}, nil
 }
 
 // configureArgs is the JSON object the model sends to configure. The

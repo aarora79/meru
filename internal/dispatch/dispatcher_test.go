@@ -416,6 +416,40 @@ func TestSessionOnContext(t *testing.T) {
 	}
 }
 
+// TestCiteNumbersAndSources checks that a backend can reserve citation
+// numbers through the counter the caller put on ctx, that Dispatch hands
+// the backend's Sources back unchanged, and that CiteNumbers outside a
+// turn reserves nothing and returns 1.
+func TestCiteNumbersAndSources(t *testing.T) {
+	b := &fakeBackend{kind: KindBuiltin, tools: []string{"search_files"},
+		call: func(ctx context.Context) (Result, error) {
+			first := CiteNumbers(ctx, 2)
+			return Result{Text: "two excerpts", Sources: []rpc.Citation{
+				{N: first, Path: "~/a.md"}, {N: first + 1, Path: "~/b.md"},
+			}}, nil
+		}}
+	d := New([]Backend{b}, nil, Options{})
+	used := 10 // ten numbers already went to excerpts in the prompt
+	ctx := WithCiteNumbers(context.Background(), func(n int) int {
+		first := used + 1
+		used += n
+		return first
+	})
+	res, out := d.Dispatch(ctx, newCall("search_files", &sink{}, nil))
+	if out.Outcome != OutcomeOK {
+		t.Fatalf("outcome = %s, want ok", out.Outcome)
+	}
+	if len(res.Sources) != 2 || res.Sources[0].N != 11 || res.Sources[1].N != 12 || res.Sources[1].Path != "~/b.md" {
+		t.Errorf("sources = %+v, want [11] ~/a.md and [12] ~/b.md", res.Sources)
+	}
+	if used != 12 {
+		t.Errorf("counter at %d after the call, want 12", used)
+	}
+	if n := CiteNumbers(context.Background(), 3); n != 1 {
+		t.Errorf("CiteNumbers outside a turn = %d, want 1", n)
+	}
+}
+
 func TestBadArgsStillEncode(t *testing.T) {
 	b := &fakeBackend{kind: KindMCP, tools: []string{"web.search"}}
 	d := New([]Backend{b}, &fakeRecorder{}, Options{})
