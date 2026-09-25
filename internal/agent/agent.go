@@ -55,19 +55,21 @@ const whoIsWho = "The person asking is the user, and the files are theirs. " +
 // folders Meru searches. Without it a small model answers "I don't have
 // access to your files" even while it reads excerpts from them, and can't say
 // what it has indexed. With agentic retrieval, Meru searches nothing up
-// front, so the note says the model looks for itself.
+// front, so the note leaves out the search.
+//
+// The note stays the same on every turn, so Ollama can reuse its work on
+// it. What the model may do with the file tools goes in a note of its own,
+// on file turns only; see fileToolsNoteFor.
 func filesNote(folders []string, agentic bool) string {
 	if len(folders) == 0 {
 		return "Meru hasn't indexed any of the user's files yet. " +
 			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
 	}
 	if agentic {
-		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
-			"When a question needs them, look in them yourself with the file tools offered with the question."
+		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + "."
 	}
 	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
-		"When a question needs them, Meru searches first and puts the best excerpts below. " +
-		"You can't open or list files yourself."
+		"When a question needs them, Meru searches first and puts the best excerpts below."
 }
 
 // noResults stands in for the excerpts when a search finds nothing, or when
@@ -286,45 +288,26 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		dec.Route = "search"
 	}
 	// The same gap for tools: "search my obsidian vault" can route to
-	// search, which offers only the file tools. When a question names a
-	// connected tool server and the route lacks the full set, add them.
-	if r, ok := withTools(dec.Route); ok && a.tools != nil && namesFolder(question, toolServers(a.tools.Tools())) {
-		a.log.DebugContext(ctx, "route changed: the question names a tool server",
-			"from", dec.Route, "to", r, "confidence", dec.Confidence)
-		dec.Route = r
+	// search, which offers only the file tools. When the question points at
+	// a connected tool (toolTarget in toolnouns.go lists the four signs) and
+	// the route lacks the full set of tools, add them. A wrong guess costs
+	// a prompt that holds the tool schemas, and the model need not call any.
+	var target string
+	if a.tools != nil {
+		target = toolTarget(question, a.tools.Tools())
 	}
-	// And for memory: the router can send "remember that my name is Dana"
-	// to direct, and a direct turn offers no remember tool, so the model
-	// would say it will remember and save nothing. When the question holds
-	// "remember" as a whole word and the route has no tools, add them. A
-	// wrong guess ("do you remember the trip?") costs a prompt that holds
-	// the tool schemas, and the model need not call any.
-	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksToRemember(question, a.tools.Tools()) {
-		a.log.DebugContext(ctx, "route changed: the question asks Meru to remember",
-			"from", dec.Route, "to", r, "confidence", dec.Confidence)
-		dec.Route = r
-	}
-	// And for the web: the router sent "Search the web: what is SearXNG?" to
-	// direct, and the model, with no tools, wrote a tool call as plain text.
-	// When the question says "web", "internet" or "online" and web_search
-	// exists, a route without tools gets them. A wrong guess ("build a web
-	// app") costs the tool schemas in the prompt, nothing more.
-	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksForWeb(question, a.tools.Tools()) {
-		a.log.DebugContext(ctx, "route changed: the question asks for the web",
-			"from", dec.Route, "to", r, "confidence", dec.Confidence)
-		dec.Route = r
-	}
-	// And for what connected tools act on: the router sent "what was the last
-	// email I sent?" to search, which offers no server's tools, and the model
-	// grepped the user's files. When a question names something a connected
-	// server's tools handle ("email" and gmail, "calendar" and calendars),
-	// a route without tools gets them (toolnouns.go).
-	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksAboutToolNoun(question, a.tools.Tools()) {
-		a.log.DebugContext(ctx, "route changed: the question names what a tool handles",
+	if r, ok := withTools(dec.Route); ok && target != "" {
+		a.log.DebugContext(ctx, "route changed: the question "+target,
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
 	route = dec.Route
+	// fileTurn says whether the turn is about the user's files; see
+	// aboutFiles.
+	fileTurn := aboutFiles(dec.Route, target)
+	if dec.Route == "tools" && !fileTurn {
+		a.log.DebugContext(ctx, "no search first: the question "+target)
+	}
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
 	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
@@ -332,14 +315,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	// Every route but "direct" looks in the user's files first. "tools"
-	// searches too, because the router sends some questions about the
-	// user's files there, and an answer from the files beats one from the
-	// model alone. With agentic retrieval no route does: the model looks
+	// A file turn looks in the user's files first. "tools" searches too,
+	// because the router sends some questions about the user's files
+	// there, and an answer from the files beats one from the model alone.
+	// A "tools" turn whose question points at a connected tool doesn't:
+	// excerpts from the files only crowd a web or mail answer, and cost
+	// time. With agentic retrieval no turn searches first: the model looks
 	// with the file tools instead.
 	var files string
 	var docs []string // the full paths of the files in the prompt, for the transcript
-	if a.searchesFirst(dec.Route) {
+	if a.searchesFirst(fileTurn) {
 		var sources []rpc.Citation
 		files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
 		if err != nil {
@@ -372,7 +357,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
-		files: files, toolsNote: a.noteFor(specs),
+		files: files, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
 	})
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
@@ -566,19 +551,37 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 	return dec, nil
 }
 
-// searches reports whether a route looks in the user's files: every route
-// but "direct"; see Handle.
-func searches(route string) bool {
-	return route != "direct"
+// aboutFiles reports whether a turn on route is about the user's files.
+// target is what toolTarget found in the question, "" for nothing.
+//
+// "search" and "search+tools" are always about files: the router, or the
+// rule for a question that names an indexed folder, saw files in the
+// question. "tools" is about files unless the question points at a
+// connected tool: the router sends some file questions there, but "search
+// the web for the latest Go release" or "what's on my calendar?" needs no
+// excerpts. "direct" never is.
+//
+// One rule decides two things (ARCHITECTURE.md, "Retrieval"): a file turn
+// searches first in "auto" mode, and a file turn that offers the file
+// tools gets the note on using them. A turn that isn't about files still
+// offers the file tools, so the model can look when it has to.
+func aboutFiles(route, target string) bool {
+	switch route {
+	case "search", "search+tools":
+		return true
+	case "tools":
+		return target == ""
+	}
+	return false
 }
 
-// searchesFirst reports whether a turn on route searches the user's files
-// before the model answers: on a route that searches, when the agent has a
-// Searcher and [index] retrieval is "auto". With "agentic" it never does,
+// searchesFirst reports whether a turn searches the user's files before
+// the model answers: a file turn (see aboutFiles), when the agent has a
+// Searcher and [index] retrieval is "auto". With "agentic" no turn does,
 // and earlier conversations stay out of the prompt too, since they come
 // from the same search step.
-func (a *Agent) searchesFirst(route string) bool {
-	return searches(route) && a.search != nil && !a.agentic
+func (a *Agent) searchesFirst(fileTurn bool) bool {
+	return fileTurn && a.search != nil && !a.agentic
 }
 
 // folderNames returns the last part of each folder, in lower case, such as
@@ -808,6 +811,9 @@ func shortPath(home, p string) string {
 //   - the parts that stay the same from turn to turn: the configured prompt
 //     with whoIsWho, the user's profile, filesNote, the tools note on a
 //     turn that offers tools, and the list of skills;
+//   - the note on the file tools, on a file turn that offers them. It
+//     changes only with the kind of turn, so it comes after the parts every
+//     turn shares and before the parts each question changes;
 //   - the parts each question changes: the recalled memories, the picked
 //     skills' instructions, and the excerpts from the user's files with any
 //     earlier conversations.
@@ -836,6 +842,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	add(a.filesNote)
 	add(sec.toolsNote)
 	add(sec.skillList)
+	add(sec.fileTools)
 	add(sec.memories)
 	add(sec.skillBodies)
 	add(sec.files)

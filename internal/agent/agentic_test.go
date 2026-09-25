@@ -97,7 +97,7 @@ func TestAgenticTurnSkipsSearchFirst(t *testing.T) {
 					t.Errorf("system prompt holds %q", gone)
 				}
 			}
-			for _, want := range []string{exploreNote, "look in them yourself", "Sam is the user's manager"} {
+			for _, want := range []string{exploreNote, "Sam is the user's manager"} {
 				if !strings.Contains(system, want) {
 					t.Errorf("system prompt lacks %q", want)
 				}
@@ -209,34 +209,58 @@ func TestToolSourcesNumberAfterThePrompts(t *testing.T) {
 	}
 }
 
-func TestNoteFor(t *testing.T) {
-	spec := func(names ...string) []engine.ToolSpec {
-		var specs []engine.ToolSpec
-		for _, n := range names {
-			specs = append(specs, engine.ToolSpec{Name: n})
-		}
-		return specs
+// names builds tool schemas that carry only a name, enough for the notes.
+func names(ns ...string) []engine.ToolSpec {
+	var specs []engine.ToolSpec
+	for _, n := range ns {
+		specs = append(specs, engine.ToolSpec{Name: n})
 	}
+	return specs
+}
+
+func TestNoteFor(t *testing.T) {
 	tests := []struct {
-		name    string
-		agentic bool
-		specs   []engine.ToolSpec
-		want    string
+		name  string
+		specs []engine.ToolSpec
+		want  string
 	}{
-		{"none", false, nil, ""},
-		{"file tools", false, spec("read_file", "search_files"), fileToolsNote},
-		{"file tools and a command", false, spec("grep", "cmd.git-log"), fileToolsNote + " " + commandsNote},
-		{"with datetime", false, spec("datetime", "grep"), toolsNote},
-		{"agentic file tools", true, spec("read_file", "search_files"), exploreNote},
-		{"agentic with a command", true, spec("grep", "cmd.git-log"), commandsNote + " " + exploreNote},
-		{"agentic with datetime", true, spec("datetime", "grep"), toolsNote + " " + exploreNote},
-		{"agentic, no file tools", true, spec("datetime"), toolsNote},
+		{"none", nil, ""},
+		{"file tools alone", names("read_file", "search_files"), ""},
+		{"file tools and a command", names("grep", "cmd.git-log"), commandsNote},
+		{"with datetime", names("datetime", "grep"), toolsNote},
+		{"an MCP tool", names("obsidian.obsidian_read_note", "cmd.git-log"), toolsNote},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := noteFor(tt.specs); got != tt.want {
+				t.Errorf("noteFor = %q\nwant %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFileToolsNoteFor covers which turns get the note on the file tools:
+// only a file turn that offers them, with the note for its retrieval mode.
+func TestFileToolsNoteFor(t *testing.T) {
+	tests := []struct {
+		name     string
+		agentic  bool
+		specs    []engine.ToolSpec
+		fileTurn bool
+		want     string
+	}{
+		{"file turn", false, names("datetime", "read_file", "search_files"), true, fileToolsNote},
+		{"file turn, agentic", true, names("datetime", "grep"), true, exploreNote},
+		{"not a file turn", false, names("web_search", "read_file", "grep"), false, ""},
+		{"not a file turn, agentic", true, names("web_search", "read_file", "grep"), false, ""},
+		{"file turn with no file tools", false, names("datetime", "cmd.git-log"), true, ""},
+		{"no tools", true, nil, true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &Agent{agentic: tt.agentic}
-			if got := a.noteFor(tt.specs); got != tt.want {
-				t.Errorf("noteFor = %q\nwant %q", got, tt.want)
+			if got := a.fileToolsNoteFor(tt.specs, tt.fileTurn); got != tt.want {
+				t.Errorf("fileToolsNoteFor = %q\nwant %q", got, tt.want)
 			}
 		})
 	}

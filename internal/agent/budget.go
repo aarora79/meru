@@ -40,15 +40,17 @@ const (
 
 // The order of the system prompt's sections. The parts that stay the same
 // from turn to turn come first: the system prompt, whoIsWho, today's date,
-// the profile,
-// the files note, the tools note and the list of skills. Then come the
-// parts each question changes: recalled memories, the picked skills'
-// instructions, and the file excerpts with earlier conversations.
+// the profile, the files note, the tools note and the list of skills. The
+// note on the file tools comes next, on file turns only (see aboutFiles).
+// Then come the parts each question changes: recalled memories, the picked
+// skills' instructions, and the file excerpts with earlier conversations.
 //
 // The order matters for speed. Ollama reuses its work on a prompt's opening
 // tokens when the next prompt starts the same way, and it stops reusing at
 // the first token that differs. With the changing parts last, a follow-up
 // in the same session reprocesses only them, the history and the question.
+// With the file-tools note after the shared parts, a web question after a
+// file question still reuses everything up to the list of skills.
 
 // today tells the model the date, in merud's local time zone, such as
 // "Today is Thursday, 24 September 2026." A model knows only its training
@@ -68,7 +70,8 @@ type sections struct {
 	skillList   string // every skill's name and description; "" for none
 	skillBodies string // the picked skills' instructions; "" for none
 	files       string // file excerpts, then earlier conversations; "" for none
-	toolsNote   string // toolsNote or fileToolsNote when the turn offers tools; "" for none
+	toolsNote   string // toolsNote or commandsNote when the turn offers tools; "" for none
+	fileTools   string // fileToolsNote or exploreNote on a file turn with the file tools; "" otherwise
 }
 
 // trimHistory drops the oldest messages from history until the rest fits

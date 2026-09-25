@@ -600,10 +600,18 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### Search first, or let the model look
 
-By default Meru searches your files before the model answers, on every route but
-`direct`, and puts the ten best excerpts in the prompt. The model can still call
-`search_files`, `grep` and `read_file` when those fall short. That is
-`retrieval = "auto"`.
+By default Meru searches your files before the model answers and puts the ten
+best excerpts in the prompt. The model can still call `search_files`, `grep` and
+`read_file` when those fall short. That is `retrieval = "auto"`.
+
+Meru skips that search when a question needs no answer from your files. It
+never searches on the `direct` route. On the `tools` route it skips the search
+when the question names a connected server ("ask obsidian"), says "remember",
+names the web ("search the web for …"), or names what a server's tools handle
+("my last email", "my calendar"). Those turns still offer the file tools, but
+their prompt drops the note on using them, so a web answer doesn't list your
+files as its sources. The `search` and `search+tools` routes always search.
+With `merud -v`, the log says `no search first` and why.
 
 With `retrieval = "agentic"`, Meru runs no search first and leaves out earlier
 conversations. The model looks for itself, the way a coding agent uses `ls`,

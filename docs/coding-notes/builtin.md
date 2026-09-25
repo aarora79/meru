@@ -326,7 +326,8 @@ read, and only what search could already put in the prompt.
 
 `IsFileTool` names the four file tools, these three and `search_files`. The
 agent offers them, with `datetime` and the commands that don't ask, on the
-`search` route.
+`search` route. It also uses `IsFileTool` to decide when the prompt gets the
+note on using them: only on a turn about the user's files that offers one.
 
 ### search.go
 

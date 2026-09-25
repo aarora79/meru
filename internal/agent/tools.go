@@ -30,19 +30,17 @@ const toolsNote = "You may call the tools offered with this question when they h
 	"Some calls ask the user first, and the user may say no. " +
 	"When a tool asks for the user's email address, use the one in what you know about the user; don't search for it."
 
-// fileToolsNote replaces toolsNote on a turn that offers only the file
-// tools, and perhaps commands: the "search" route with datetime off. It
-// tells the model when to reach for them: when the excerpts from search
-// don't hold enough.
+// fileToolsNote joins the system prompt on a file turn that offers the
+// file tools, in "auto" mode (see fileToolsNoteFor). It tells the model
+// when to reach for them: when the excerpts from search don't hold enough.
 const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
 	"list folders with list_folder, find every matching line with grep, and search again in other words with search_files."
 
-// exploreNote joins the tools note when [index] retrieval is "agentic" and
-// the turn offers the file tools. No excerpts sit in the prompt, so it
-// tells the model to look for itself, in the order that finds things
-// fastest, and carries the rule on citing that citeRule carries in "auto"
-// mode. The two-or-three-rounds limit keeps a small model from searching
-// until it runs out of rounds.
+// exploreNote takes fileToolsNote's place when [index] retrieval is
+// "agentic". No excerpts sit in the prompt, so it tells the model to look
+// for itself, in the order that finds things fastest, and carries the rule
+// on citing that citeRule carries in "auto" mode. The two-or-three-rounds
+// limit keeps a small model from searching until it runs out of rounds.
 const exploreNote = "To answer from the user's files, look in them first: call search_files, which finds passages " +
 	"by meaning and by words, or grep for an exact name or phrase; use list_folder to see what a folder holds. " +
 	"Then read_file the files that matter, and answer. Stop after two or three rounds of tool calls. " +
@@ -55,40 +53,47 @@ const exploreNote = "To answer from the user's files, look in them first: call s
 const commandsNote = "You may also run the cmd. tools offered with this question. " +
 	"Each runs one program the user declared and returns what it printed."
 
-// noteFor returns the note for a turn that offers specs: toolsNote when
-// any is an MCP tool, an A2A skill or a built-in other than the file tools
-// (datetime included); otherwise fileToolsNote for file tools and
-// commandsNote for commands, the "search" route's two kinds; and "" for
-// none. With agentic retrieval, a turn that offers the file tools also gets
-// exploreNote, in place of fileToolsNote, since no excerpts sit in its
-// prompt.
-func (a *Agent) noteFor(specs []engine.ToolSpec) string {
-	var files, cmds, others bool
+// noteFor returns the tools note for a turn that offers specs: toolsNote
+// when any is an MCP tool, an A2A skill or a built-in other than the file
+// tools (datetime included); otherwise commandsNote when any is a command;
+// and "" for none. The file tools get a note of their own; see
+// fileToolsNoteFor.
+func noteFor(specs []engine.ToolSpec) string {
+	var cmds bool
 	for _, s := range specs {
 		switch {
 		case builtin.IsFileTool(s.Name):
-			files = true
+			// Nothing to do here: a Go switch doesn't fall through, so
+			// this case only keeps file tools out of the default below.
 		case toolKind(s.Name) == dispatch.KindCommand:
 			cmds = true
 		default:
-			others = true
+			return toolsNote
 		}
 	}
-	var notes []string
-	if others {
-		notes = append(notes, toolsNote)
-	} else {
-		if files && !a.agentic {
-			notes = append(notes, fileToolsNote)
-		}
-		if cmds {
-			notes = append(notes, commandsNote)
-		}
+	if cmds {
+		return commandsNote
 	}
-	if files && a.agentic {
-		notes = append(notes, exploreNote)
+	return ""
+}
+
+// fileToolsNoteFor returns the note on the file tools for a turn that
+// offers specs: fileToolsNote, or exploreNote with agentic retrieval, when
+// fileTurn is true and specs hold a file tool; "" otherwise. fileTurn comes
+// from aboutFiles.
+//
+// A turn that isn't about files, such as a web question, gets no note even
+// when it offers the file tools. Its prompt stays shorter, and the model
+// isn't told to go looking in the user's folders for an answer that lives
+// on the web or in their mail.
+func (a *Agent) fileToolsNoteFor(specs []engine.ToolSpec, fileTurn bool) string {
+	if !fileTurn || !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return builtin.IsFileTool(s.Name) }) {
+		return ""
 	}
-	return strings.Join(notes, " ")
+	if a.agentic {
+		return exploreNote
+	}
+	return fileToolsNote
 }
 
 // ToolRunner lists the tools the model may use and runs the calls it makes.

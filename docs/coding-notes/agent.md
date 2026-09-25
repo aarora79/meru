@@ -187,12 +187,14 @@ agentic)` to the end of it, so every turn tells the model which folders Meru
 searches:
 
 ```text
-Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. You can't open or list files yourself.
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below.
 ```
 
-With `[index] retrieval = "agentic"`, `New` sets `a.agentic`, and the note's
-second half says instead that the model looks in the folders itself with the
-file tools offered. With no folders, the note says that Meru hasn't indexed any
+With `[index] retrieval = "agentic"`, `New` sets `a.agentic`, and the note
+leaves out the second sentence, since Meru searches nothing first. The note
+says nothing about the file tools: that goes in a note of its own, which only
+file turns get (see `fileToolsNoteFor` below). So the note every turn carries
+stays the same, and Ollama can reuse its work on it. With no folders, the note says that Meru hasn't indexed any
 files yet and that the user lists folders under `[index] folders` in
 `~/.meru/config.toml`. Without the note a small model answered "I don't have
 access to your files" while it read excerpts from them, and couldn't say what
@@ -233,7 +235,8 @@ visa letter and guessed that you were the co-applicant it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
 date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
-skills; then the recalled memories, the picked skills' instructions, and last
+skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
+file tools; then the recalled memories, the picked skills' instructions, and last
 the files section, which holds the numbered excerpts and then the earlier
 conversations. `prompt` takes the changing parts in one `sections` struct and
 leaves out each empty part.
@@ -317,7 +320,8 @@ tools, and the model then says it will remember and saves nothing. So when the
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
-count. A wrong guess, such as "do you remember the trip?", costs a prompt
+count. It is one of the four signs `toolTarget` checks, so a `tools` turn that
+asks Meru to remember also skips the search of your files. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
 ### Skills (skills.go)
@@ -450,10 +454,12 @@ show up twice in the prompt.
 
 ### searchFiles
 
-On every route but `direct`, `Handle` calls `searchFiles` between routing and
-the prompt. `searches(route)` is `route != "direct"`. `tools` searches too:
-the router sends some questions about your files to `tools`, and an answer
-from the files beats one from the model alone.
+On a file turn, `Handle` calls `searchFiles` between routing and the prompt.
+`aboutFiles(route, target)` says which turns those are: `search` and
+`search+tools` always, `tools` unless the question points at a connected tool
+(see the tool rule below), and `direct` never. `tools` searches because the
+router sends some questions about your files there, and an answer from the
+files beats one from the model alone.
 
 One rule runs first. When the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
@@ -475,21 +481,49 @@ its name with the folder. The `route` event, the turn's log line and its span
 show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
-A second rule does the same for tools. When a question names a connected tool
-server, such as "search my obsidian vault", and the route is `direct` or
-`search`, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
-`search+tools`. `toolServers` reads the server names from the tool names:
-`obsidian` from `obsidian.obsidian_simple_search`, `research` from
-`a2a.research.summarize`. It leaves out the built-in tools, whose owner,
-`meru`, is also the assistant's name. It reads them on each turn, because the
+A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
+four signs that a question points at a connected tool, and returns the first
+it finds as words for the log line, or `""` for none:
+
+| Sign | Example | Found by |
+| --- | --- | --- |
+| names a tool server | "search my obsidian vault" | `namesFolder` over `toolServers` |
+| asks Meru to remember | "remember that my name is Dana" | `asksToRemember` |
+| asks for the web | "search the web: what is SearXNG?" | `asksForWeb` |
+| names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
+
+When it finds one and the route is `direct` or `search`, `withTools` adds the
+rest: `direct` becomes `tools` and `search` becomes `search+tools`.
+`toolServers` reads the server names from the tool names: `obsidian` from
+`obsidian.obsidian_simple_search`, `research` from `a2a.research.summarize`.
+It leaves out the built-in tools, whose owner, `meru`, is also the
+assistant's name. `Handle` reads the tools on each turn, because the
 configure tool can add a server while `merud` runs. In testing, the router
 sent "Search my Obsidian vault for notes mentioning 'AI'" to `search`, and
 the model, offered no tools, said it couldn't search the vault.
 
+`Handle` keeps what `toolTarget` found in `target` and uses it a second time,
+in `aboutFiles`: a `tools` turn with a target isn't a file turn, so it skips
+the search.
+
+```go
+fileTurn := aboutFiles(dec.Route, target)
+```
+
+Before this rule, "search the web for the latest Go release" searched your
+folders too. The excerpts crowded the prompt and cost time, and `web_search`
+numbers its results from `[1]` as the excerpts are, so a `[1]` meant for a web
+page also named the first excerpt, and the Sources list under a web answer
+showed one of your files. The file tools stay
+on offer on such a turn, so the model can still look at your files when it
+has to. `search` and `search+tools` keep their search whatever the question
+says: the router, or the folder rule, saw files in it. So "search my obsidian
+vault", sent to `search` and moved to `search+tools`, still searches.
+
 Then the search:
 
 ```go
-if a.searchesFirst(dec.Route) {
+if a.searchesFirst(fileTurn) {
     var sources []rpc.Citation
     files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
     ...
@@ -548,21 +582,21 @@ msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, p
   count in `t.cites`, so excerpts that `search_files` returns later in the turn
   number from 11 after ten up-front ones (see the tool rounds below).
 
-**Agentic retrieval.** `searchesFirst(route)` is `searches(route)`, a
+**Agentic retrieval.** `searchesFirst(fileTurn)` is `fileTurn`, a
 Searcher, and `!a.agentic`. With `[index] retrieval = "agentic"` it is false
 on every route, so the turn has no file excerpts, no `noResults` note, no
 up-front `sources` event and no earlier conversations, which hang off the same
 `if`. The profile and the recalled memories stay: they cost one embedding, and
 they are about you, which no file tool can find. The routes still offer what
-they offered, so `search` gets the four file tools, and the notes tell the
-model to use them (see `noteFor` below). The folder rule still turns a
+they offered, so `search` gets the four file tools, and on a file turn
+`exploreNote` tells the model to use them (see `fileToolsNoteFor` below). The folder rule still turns a
 `direct` question that names an indexed folder into `search`, which is now how
 that question gets the file tools. `ARCHITECTURE.md`, "Retrieval", has the
 numbers that compare the two modes.
 
 ### Earlier conversations (earlier.go)
 
-On the same routes, right after the file search, one line in `Handle` adds past
+On the same turns, right after the file search, one line in `Handle` adds past
 sessions to the prompt (v0.4):
 
 ```go
@@ -654,7 +688,7 @@ answer := transcript.Line{
 }
 ```
 
-`Route` is the route after both override rules, the one the `route` event
+`Route` is the route after the override rules, the one the `route` event
 showed. `Ms` counts from `start`, when `merud` received the question. `Sources`
 is the `docs` list from `searchFiles`, empty on a turn that didn't search. The
 user line carries `start` as its time too, so a row rebuilt from the file gets
@@ -731,19 +765,32 @@ indexed folder, and a declared `git log` answers it. A command with
 `direct`, or when the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model
 can't call a tool it hasn't seen, and the prompt stays shorter.
 
-`a.noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn
-whose tools are all file tools or commands, the "search" kinds, gets
-`fileToolsNote` when it has file tools (when the excerpts aren't enough, the
-model may read whole files, list folders, grep and search again) and
-`commandsNote` when it has commands (it may run the `cmd.` tools). Any other
-turn with tools, `datetime` included, gets `toolsNote`: the model may call the
-tools, and some calls ask you first. A turn with no tools gets none. With
-agentic retrieval, a turn that offers file tools also gets `exploreNote`, in
-place of `fileToolsNote`: look first with `search_files` or `grep`, then
-`read_file` what matters, stop after two or three rounds, and cite
-`search_files`' excerpts by number. It carries the citing rule that `citeRule`
-carries when excerpts sit in the prompt. `Handle` also records the schemas' size,
-characters divided by four, as `meru.context.tokens` with `section = "tools"`.
+Two functions pick the notes `prompt` adds to the system prompt.
+`noteFor(specs)` gives `toolsNote` to a turn that offers any tool but the file
+tools and commands, `datetime` included: the model may call the tools, and
+some calls ask you first. A turn whose tools are only file tools and
+commands gets `commandsNote` when it has commands (it may run the `cmd.`
+tools). A turn with no tools gets none.
+
+`a.fileToolsNoteFor(specs, fileTurn)` gives the note on the file tools, and
+only to a file turn that offers them. In `auto` mode that is `fileToolsNote`:
+when the excerpts aren't enough, the model may read whole files, list
+folders, grep and search again. With agentic retrieval it is `exploreNote`:
+look first with `search_files` or `grep`, then `read_file` what matters, stop
+after two or three rounds, and cite `search_files`' excerpts by number. It
+carries the citing rule that `citeRule` carries when excerpts sit in the
+prompt. A web or mail question gets neither, even though its turn offers the
+file tools: its prompt stays shorter, and the model isn't told to go looking
+in your folders for an answer that lives elsewhere. `prompt` puts this note
+after the list of skills, so a file turn and any other turn share the whole
+opening of the prompt up to it.
+
+A Go `switch` runs only the first case that matches and never falls through
+to the next, so `noteFor` has a case for the file tools with no body: it
+keeps them out of the `default` case, which returns `toolsNote`.
+
+`Handle` also records the schemas' size, characters divided by four, as
+`meru.context.tokens` with `section = "tools"`.
 
 **The loop.** `converse` runs the rounds:
 

@@ -382,11 +382,13 @@ that isn't connected fails at once with `mcp.ErrUnavailable`. One goroutine per
 session waits for it to end and marks the server not connected; it never starts
 the server again (ARCHITECTURE.md, "MCP").
 
-`Handle` also calls `Tools()` on each turn for a second route rule: when the
-question names a connected MCP server or A2A agent (`toolServers`) and the route
-has no tools, `withTools` adds them, `direct` to `tools` and `search` to
-`search+tools`. It reads the names each turn because `configure` can add a server
-while `merud` runs.
+`Handle` also calls `Tools()` on each turn for a second route rule. `toolTarget`
+looks for a sign that the question points at a connected tool: it names an MCP
+server or A2A agent (`toolServers`), says "remember", names the web, or names what
+a server's tools act on. When it finds one and the route has no tools, `withTools`
+adds them, `direct` to `tools` and `search` to `search+tools`. On a `tools` turn
+the same sign skips the search of your files (`aboutFiles`). It reads the names
+each turn because `configure` can add a server while `merud` runs.
 
 ### `config.Config`: settings, checked once
 
@@ -505,9 +507,9 @@ sequenceDiagram
     RT->>E: Generate(one token, log probabilities)
     E-->>RT: Completion with log probabilities
     RT-->>A: Decision{Route, Confidence, Outcome}
-    A->>A: namesFolder, withTools: search → search+tools
+    A->>A: namesFolder, toolTarget, withTools: search → search+tools
     A-->>U: emit route event
-    opt route isn't direct, or a direct question names an indexed folder
+    opt a file turn (aboutFiles): search or search+tools, or tools with no tool target
         A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
         A-->>U: emit sources event
     end
@@ -515,7 +517,7 @@ sequenceDiagram
         A->>D: ConnectMissing: one try at each MCP server that isn't connected
         A->>A: toolSpecs(route) again
     end
-    A->>A: prompt(system prompt + excerpts + toolsNote, history, question)
+    A->>A: prompt(system prompt + toolsNote + fileToolsNote + excerpts, history, question)
     A->>E: round 1: Stream(messages, toolSpecs(route))
     E-->>A: Delta{ToolCalls: obsidian.obsidian_simple_search}
     A-->>U: emit tool_call event
@@ -570,9 +572,10 @@ The same path as a reading list, in order:
    (`probs.go`). The prompt names the `[index] folders` on option B's line.
    Back in `Handle`, a `direct` route becomes `search` when the question names an
    indexed folder as a whole word (`namesFolder`), and a route without tools gains
-   them when the question names a connected tool server (`withTools`).
-6. **`internal/agent/agent.go` → `searchFiles`**, on every route but `direct`
-   (`searches`; `tools` searches too), calls
+   them when the question points at a connected tool (`toolTarget`, `withTools`).
+6. **`internal/agent/agent.go` → `searchFiles`**, on a file turn (`aboutFiles`:
+   `search` and `search+tools`, and `tools` when the question points at no
+   connected tool), calls
    **`internal/retrieve/search.go` → `Search`** with the query from `searchQuery`:
    the question alone when it has three or more subject words (`subjectWords`),
    and otherwise the question plus the session's latest earlier question that

@@ -44,7 +44,8 @@ func TestTrimHistory(t *testing.T) {
 
 // TestPromptOrder checks that the parts of the system prompt that stay the
 // same from turn to turn come before the parts each question changes, so
-// Ollama can reuse its work on the opening of the prompt.
+// Ollama can reuse its work on the opening of the prompt. The note on the
+// file tools, which only file turns get, sits between them.
 func TestPromptOrder(t *testing.T) {
 	a := New(testConfig(t), &fakeEngine{}, &fakeRouter{}, nil, nil, nil, nil, quietLog())
 	msgs := a.prompt(t.Context(), nil, "q", sections{
@@ -53,9 +54,10 @@ func TestPromptOrder(t *testing.T) {
 		skillBodies: "SKILL-BODIES",
 		files:       "FILES",
 		toolsNote:   toolsNote,
+		fileTools:   fileToolsNote,
 	})
 	system := msgs[0].Content
-	order := []string{whoIsWho, "Today is ", a.filesNote, toolsNote, "SKILL-LIST", "MEMORIES", "SKILL-BODIES", "FILES"}
+	order := []string{whoIsWho, "Today is ", a.filesNote, toolsNote, "SKILL-LIST", fileToolsNote, "MEMORIES", "SKILL-BODIES", "FILES"}
 	last := -1
 	for _, part := range order {
 		i := strings.Index(system, part)

@@ -22,8 +22,9 @@ citations, so the model can answer "the launch is on 12 May [1]" and the user ca
 open the file.
 
 Two callers run `Search`, through adapters in `merud`. The agent runs it before
-the answer on the search routes, with `[index] retrieval = "auto"`, the
-default. The built-in `search_files` tool runs it when the model asks, with
+the answer on a turn about the user's files (the search routes, and a `tools`
+turn whose question points at no connected tool), with
+`[index] retrieval = "auto"`, the default. The built-in `search_files` tool runs it when the model asks, with
 the model's own query and `TopN` set to the tool's `limit` (8 unless the model
 says). With `retrieval = "agentic"` only the tool runs it (see
 [builtin](builtin.md) and [agent](agent.md)). Both get the same list sizes, the

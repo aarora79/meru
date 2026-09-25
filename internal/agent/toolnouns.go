@@ -1,6 +1,7 @@
-// This file holds the route rule for what connected tools act on: a
-// question about "my last email" needs the gmail tools even when it names
-// no server and the router picks search.
+// This file holds the route rule for connected tools: toolTarget, which
+// spots a question that points at one, and the part of it that works out
+// what connected tools act on. A question about "my last email" needs the
+// gmail tools even when it names no server and the router picks search.
 
 package agent
 
@@ -11,6 +12,39 @@ import (
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 )
+
+// toolTarget returns what in question points at one of the tools in
+// specs, as words for a log line, or "" when nothing does. Handle uses it
+// twice: to add tools to a route that lacks them, and to skip the search
+// before the answer on a "tools" turn (see aboutFiles). It checks four
+// signs, in order, each added after the router missed one:
+//
+//   - "names a tool server": "search my obsidian vault" routed to search,
+//     which offers only the file tools.
+//   - "asks Meru to remember": "remember that my name is Dana" routed
+//     direct, and the model said it would remember and saved nothing.
+//   - "asks for the web": "Search the web: what is SearXNG?" routed direct,
+//     and the model, with no tools, wrote a tool call as plain text.
+//   - "names what a tool handles": "what was the last email I sent?" routed
+//     to search, and the model grepped the user's files.
+//
+// Each sign compares the question's words with names Meru already holds,
+// so the rule stays easy to explain and to test. A wrong guess ("do you
+// remember the trip?") offers tools the model need not call, and skips a
+// search the model can still run itself with search_files.
+func toolTarget(question string, specs []engine.ToolSpec) string {
+	switch {
+	case namesFolder(question, toolServers(specs)):
+		return "names a tool server"
+	case asksToRemember(question, specs):
+		return "asks Meru to remember"
+	case asksForWeb(question, specs):
+		return "asks for the web"
+	case asksAboutToolNoun(question, specs):
+		return "names what a tool handles"
+	}
+	return ""
+}
 
 // toolNouns returns the nouns in the names of the MCP and A2A tools in
 // specs, singular and lower case: "gmail" and "message" from
