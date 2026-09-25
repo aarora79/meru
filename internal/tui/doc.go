@@ -17,6 +17,10 @@
 // the user's choice back on a channel. See ARCHITECTURE.md, "Approving a
 // tool call".
 //
+// Questions typed while a turn runs wait in a queue of up to five, and the
+// chat sends each one when the turn before it ends. merud still gets one
+// turn at a time; the queue lives here.
+//
 // A line typed with a leading "/" is a command for the chat itself and never
 // reaches the model. /usage opens a box with merud's usage numbers, and the
 // header shows the last hour of them. /me shows what Meru knows about the

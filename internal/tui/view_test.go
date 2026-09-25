@@ -94,6 +94,9 @@ func TestViewGolden(t *testing.T) {
 		usageBox bool
 		meBox    bool
 		mcpBox   bool
+		// queued, when set, are typed and sent while the turn runs, so
+		// they wait in the queue.
+		queued []string
 	}{
 		{name: "approval", width: 80, q: "Email Sam the garden plan", approval: mail,
 			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden plan"}`), toolResult("1", "notes.search", "ok", 120),
@@ -107,6 +110,8 @@ func TestViewGolden(t *testing.T) {
 		{name: "empty", width: 80},
 		{name: "waiting", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct}},
 		{name: "streaming", width: 80, q: "What is Meru?", evs: []rpc.Event{session, direct, tok("Meru is a personal "), tok("assistant that runs")}},
+		{name: "queued", width: 80, q: "What should I plant in April?", evs: []rpc.Event{session, direct, tok("Sow tomatoes and beans ")}, queued: gardenQueue},
+		{name: "queued-narrow", width: 40, q: "What should I plant in April?", evs: []rpc.Event{session, direct, tok("Sow tomatoes and beans ")}, queued: gardenQueue},
 		{name: "markdown", width: 80, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 		{name: "skills", width: 80, q: "Write a short email to my landlord", evs: []rpc.Event{session,
 			{Type: rpc.EventRoute, Route: "direct", Confidence: 0.91, Skills: []rpc.SkillInfo{{Name: "writing"}}},
@@ -150,6 +155,9 @@ func TestViewGolden(t *testing.T) {
 			if tt.mcpBox {
 				m, _ = update(t, m, typeText("/mcp"), press(tea.KeyEnter), mcpMsg{rows: mcpFixture})
 			}
+			for _, q := range tt.queued {
+				m, _ = update(t, m, typeText(q), press(tea.KeyEnter))
+			}
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))
 			}
@@ -173,6 +181,10 @@ func TestViewGolden(t *testing.T) {
 		})
 	}
 }
+
+// gardenQueue holds two follow-up questions typed while an answer streams.
+// The second is long enough to wrap at 40 columns.
+var gardenQueue = []string{"Which of those grow in shade?", "And how far apart should I plant them along a fence?"}
 
 // bigIndex is an index status with numbers of a realistic size, from a
 // user who has told Meru about themselves.

@@ -248,6 +248,16 @@ mouse, which takes plain click-and-drag selection away from the terminal, so
 selecting text needs Option (iTerm2) or Shift (most others);
 `[chat] mouse_copy = false` gives plain selection back.
 
+While a turn runs, Enter puts the next question in a queue, drawn under the
+running turn with a dim `queued` mark. When the turn ends, the chat sends the
+oldest queued question in the same session, so `merud` still gets one turn at a
+time; the queue lives in the client. It holds five questions at most, because
+each one costs a whole turn and a longer line of them is more often a slip than
+a plan. Ctrl-C stops the running turn and drops the queue: a user who stops an
+answer wants the screen back. `/new` drops it too, since those questions
+belonged to the old conversation. Commands that only open a box or copy text
+run at once.
+
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
 
@@ -2508,7 +2518,8 @@ We'll settle these with working code and measurements.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream. Each code block gets a `⧉ copy N` label; `/copy N` or Ctrl-Y copies
-  it, and so does a click, unless `[chat] mouse_copy` is off.
+  it, and so does a click, unless `[chat] mouse_copy` is off. Questions typed
+  while a turn runs wait in a queue of up to five in the client.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
   trust comes only from editing the `confirm` list. With no one to ask (scripts,

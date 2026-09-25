@@ -119,14 +119,15 @@ In `meru chat`:
 | Key | What it does |
 | --- | --- |
 | Enter | send the question |
-| Ctrl-C | stop the answer that is streaming; press again when idle to quit |
+| Enter while an answer streams | queue the question, marked `queued`; it goes when the turns before it end, and up to five wait |
+| Ctrl-C | stop the answer that is streaming and drop any queued questions; press again when idle to quit |
 | Ctrl-D | quit |
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
 | Ctrl-Y | copy the last code block of the newest answer |
 | `/copy N`, then Enter | copy code block N; `/copy` alone works like Ctrl-Y |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
-| `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
+| `/new`, then Enter | start a new conversation: the screen clears, queued questions go, and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 | `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
 | `/exit`, then Enter | quit, like Ctrl-D |

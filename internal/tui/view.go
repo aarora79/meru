@@ -32,7 +32,7 @@ func (m Model) View() string {
 	input := m.style.inputBox.Render(m.input.View())
 	// While a box is open, the help line lists the keys that answer it
 	// instead, and a notice takes the line until the next key.
-	helpLine := m.helpView(m.keys.ShortHelp())
+	helpLine := m.helpView(m.shortHelp())
 	switch {
 	case m.approval != nil:
 		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices))
@@ -53,6 +53,22 @@ func (m Model) View() string {
 		pane = m.mcpBoxView(m.width, m.conversation.Height)
 	}
 	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
+}
+
+// shortHelp returns the keys the help line shows. While a turn runs, Enter
+// queues the question rather than sending it, and Ctrl-C only stops the
+// turn, so their labels say so. "queue" takes one column more than "send",
+// and "stop" five fewer than "stop/quit", so the line still fits 80
+// columns.
+//
+// m.keys is a value, so keys is a copy, and SetHelp changes only the copy.
+func (m Model) shortHelp() []key.Binding {
+	keys := m.keys
+	if m.streaming {
+		keys.Send.SetHelp("enter", "queue")
+		keys.Stop.SetHelp("ctrl+c", "stop")
+	}
+	return keys.ShortHelp()
 }
 
 // helpView draws the help line for keys. The help component cuts a line
@@ -161,9 +177,10 @@ func shortSession(id string) string {
 	return "session " + id
 }
 
-// renderConversation draws every turn, with a blank line before each. An
-// empty conversation shows a one-line hint instead, and under it the
-// profile nudge while merud says it knows nothing about the user.
+// renderConversation draws every turn, with a blank line before each, and
+// then the questions waiting in the queue. An empty conversation shows a
+// one-line hint instead, and under it the profile nudge while merud says it
+// knows nothing about the user.
 func (m *Model) renderConversation() string {
 	if len(m.turns) == 0 {
 		hint := "Ask a question below. The answer comes from models on this machine."
@@ -178,7 +195,22 @@ func (m *Model) renderConversation() string {
 		b.WriteString(m.renderTurn(&m.turns[i]))
 		b.WriteString("\n")
 	}
+	for _, q := range m.queue {
+		b.WriteString("\n")
+		b.WriteString(m.renderQueued(q))
+		b.WriteString("\n")
+	}
 	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// renderQueued draws a question that waits for the running turn to end:
+// the "You" label with a dim "queued" beside it, and the question in its
+// box, as a sent question looks. When merud takes it, the same question
+// shows again as a turn, without the mark.
+func (m *Model) renderQueued(q string) string {
+	width := max(m.width-answerIndent, 10)
+	return m.style.you.Render("You") + "  " + m.style.dim.Render("queued") + "\n" +
+		m.style.question.Render(ansi.Wrap(q, width-2, ""))
 }
 
 // renderTurn draws one turn: the "You" label and the question, then the
