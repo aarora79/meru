@@ -68,10 +68,19 @@ type Tools struct {
 // the next turn can recall the new fact. A nil onChange or onRemember does
 // nothing. files is merud's indexer, which read_file, list_folder and grep
 // read through, so they see the [index] folders with the indexer's skip
-// rules; a nil files leaves the three out. web is the [web] section:
+// rules; a nil files leaves the three out. New also lets them read
+// outputDir, through files.ReadAlso: what write_file wrote, what web_fetch
+// downloaded, and the mail attachments the google server saves in its
+// attachments folder. web is the [web] section:
 // web_search needs its SearXNG URL. web_fetch saves downloads in outputDir's downloads folder,
 // and answers a prompt only after UseModel.
 func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
+	// merud calls New once at startup, before any tool call, as ReadAlso
+	// asks. The indexer never indexes outputDir, so nothing in it reaches
+	// search.
+	if files != nil && outputDir != "" {
+		files.ReadAlso(outputDir)
+	}
 	return &Tools{
 		now:        time.Now,
 		configPath: configPath,
@@ -240,9 +249,9 @@ func (t *Tools) Status() []rpc.ServerInfo {
 	}
 	if t.files != nil {
 		for _, f := range []struct{ name, desc string }{
-			{ReadFile, "Reads a whole file in the indexed folders."},
-			{ListFolder, "Lists a folder in the indexed folders."},
-			{Grep, "Finds matching lines in the indexed folders."},
+			{ReadFile, "Reads a whole file in the indexed folders or the output folder."},
+			{ListFolder, "Lists a folder in the indexed folders or the output folder."},
+			{Grep, "Finds matching lines in the indexed folders or the output folder."},
 		} {
 			tools = append(tools, rpc.ToolInfo{
 				Name:        f.name,

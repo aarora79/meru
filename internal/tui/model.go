@@ -7,6 +7,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -36,6 +37,11 @@ const (
 	// maxInputLines caps how tall the input box grows as a question gains
 	// lines. Past that, the text area scrolls.
 	maxInputLines = 5
+	// maxQueue caps how many questions wait behind the running turn. Each
+	// one is a whole turn with the model, which can take a minute, so a
+	// longer line of them is more likely a slip, such as a held-down Enter,
+	// than a plan. Five also fit on the screen under the running turn.
+	maxQueue = 5
 )
 
 // Info is what meru read from config.toml for the chat screen: what the
@@ -175,6 +181,10 @@ type Model struct {
 
 	// streaming is true from Enter until the turn ends or the user cancels.
 	streaming bool
+	// queue holds the questions typed while a turn runs, oldest first.
+	// When the turn ends, the next one goes to merud; merud still gets one
+	// turn at a time.
+	queue []string
 	// turn counts questions. Events carry the turn they belong to, so events
 	// from a cancelled turn can't leak into the next one.
 	turn int
@@ -325,11 +335,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openApproval(msg)
 		return m, nil
 	case turnDoneMsg:
-		m.handleDone(msg)
+		next := m.handleDone(msg)
 		// Check merud again: the answer may have come while it indexed new
 		// files, and a turn that failed may mean merud went away. The
-		// answer also changed the usage numbers.
-		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask))
+		// answer also changed the usage numbers. next runs the queued
+		// question, if one waited; tea.Batch skips a nil command.
+		return m, tea.Batch(next, pingCmd(m.ask), usageCmd(m.ask))
 	case spinner.TickMsg:
 		// Returning no command lets the spinner stop ticking when idle.
 		if !m.streaming {
@@ -360,10 +371,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		// While an answer streams, Ctrl-C stops that turn and keeps the
-		// chat open, the way Ctrl-C stops a command in a shell.
+		// chat open, the way Ctrl-C stops a command in a shell. It drops
+		// the queued questions too: a user who stops a turn wants the
+		// screen back, not the next answer starting on its own.
 		m.stopTurn()
 		m.current().state = stateStopped
 		m.numberBlocks(m.current())
+		m.notice = m.dropQueue()
 		m.refresh()
 		return m, nil
 	case m.approval != nil:
@@ -399,22 +413,39 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// submit sends the typed question, unless the input is blank or an answer is
-// still streaming. It returns the command that runs the turn and the command
-// that starts the spinner; tea.Batch runs both. A line that starts with "/"
-// is a command for the chat itself and never goes to the model; it works
-// while an answer streams too.
+// submit sends the typed question, unless the input is blank. While a turn
+// runs, the question waits in the queue instead, and handleDone sends it
+// when the turn ends. A line that starts with "/" is a command for the chat
+// itself and never goes to the model; it works while an answer streams too.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if strings.HasPrefix(text, "/") {
 		return m.command(text)
 	}
-	if text == "" || m.streaming {
+	if text == "" {
+		return m, nil
+	}
+	if m.streaming && len(m.queue) >= maxQueue {
+		// The text stays in the input, so the user can send it later.
+		m.notice = fmt.Sprintf("queue full: %d questions wait · press enter again when the next one starts", maxQueue)
 		return m, nil
 	}
 	m.input.Reset()
 	m.layout()
 	m.lastQuestion = text
+	m.conversation.GotoBottom() // asking a question jumps to the newest text
+	if m.streaming {
+		m.queue = append(m.queue, text)
+		m.refresh()
+		return m, nil
+	}
+	return m, m.startTurn(text)
+}
+
+// startTurn sends text to merud as a new turn and marks the screen busy.
+// It returns the command that runs the turn and the command that starts
+// the spinner; tea.Batch runs both.
+func (m *Model) startTurn(text string) tea.Cmd {
 	m.turn++
 	m.streaming = true
 
@@ -425,7 +456,6 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	m.cancel = cancel
 
 	m.turns = append(m.turns, exchange{question: text, state: stateActive})
-	m.conversation.GotoBottom() // asking a question jumps to the newest text
 	m.refresh()
 	req := rpc.Request{
 		Op:      rpc.OpAsk,
@@ -433,7 +463,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		Text:    text,
 		Source:  rpc.SourceTUI,
 	}
-	return m, tea.Batch(streamCmd(ctx, m.ask, m.send, m.turn, req), m.spin.Tick)
+	return tea.Batch(streamCmd(ctx, m.ask, m.send, m.turn, req), m.spin.Tick)
 }
 
 // handleEvent applies one event from merud to the current turn. It ignores
@@ -482,9 +512,14 @@ func (m *Model) handleEvent(msg eventMsg) {
 // handleDone ends the current turn. A connection error shows in the turn,
 // and marks merud as unreachable in the header. A turn the user already
 // stopped is ignored, because Ctrl-C ended it.
-func (m *Model) handleDone(msg turnDoneMsg) {
+//
+// When questions wait in the queue, handleDone starts the oldest and
+// returns the command that runs it; otherwise it returns nil. The next
+// question goes even after an error, so each queued question gets its own
+// answer or its own error.
+func (m *Model) handleDone(msg turnDoneMsg) tea.Cmd {
 	if !m.streaming || msg.turn != m.turn {
-		return
+		return nil
 	}
 	m.stopTurn()
 	cur := m.current()
@@ -497,7 +532,27 @@ func (m *Model) handleDone(msg turnDoneMsg) {
 		cur.state = stateDone
 	}
 	m.numberBlocks(cur)
-	m.refresh()
+	if len(m.queue) == 0 {
+		m.refresh()
+		return nil
+	}
+	next := m.queue[0]
+	m.queue = m.queue[1:]
+	return m.startTurn(next) // startTurn redraws the screen
+}
+
+// dropQueue empties the queue and returns a notice that says how many
+// questions went, or "" when none waited.
+func (m *Model) dropQueue() string {
+	n := len(m.queue)
+	m.queue = nil
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "dropped 1 queued question"
+	}
+	return fmt.Sprintf("dropped %d queued questions", n)
 }
 
 // current returns a pointer to the newest turn, so callers can change it in

@@ -26,7 +26,8 @@ import (
 // Limits on a download.
 const (
 	// downloadsFolder is the folder under [skills] output_dir that holds
-	// downloads. read_file and grep may read it (see index.ReadAlso).
+	// downloads. read_file and grep may read it, as they read all of
+	// output_dir (see index.ReadAlso).
 	downloadsFolder = "downloads"
 	// downloadCap refuses a file over 50 MiB: past most PDFs, datasets and
 	// archives a person asks an assistant for, and small enough that a

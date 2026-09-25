@@ -305,9 +305,9 @@ help line and the behaviour come from one place.
 
 | Key | Idle | While an answer streams |
 |---|---|---|
-| Enter | send the question | ignored |
+| Enter | send the question | queue the question; up to five wait |
 | Ctrl-J | new line in the question | same |
-| Ctrl-C | quit | stop this answer, keep the chat open |
+| Ctrl-C | quit | stop this answer, drop the queue, keep the chat open |
 | Ctrl-D | quit | stop and quit |
 | Up (on the input's first line) | put the last question back | same |
 | PgUp / PgDn | scroll the conversation | same |
@@ -332,9 +332,11 @@ The input is a multi-line text area. Enter sends, so the text area's "new line" 
 set to Ctrl-J. `layout` grows the box by one row per line, up to five, and gives the
 conversation the rows that are left.
 
-`submit` runs on Enter. A line that starts with `/` goes to `command` in `usage.go`
-and never reaches the model. Otherwise `submit` clears the input, adds an `exchange`, bumps the turn
-counter, and returns two commands joined by `tea.Batch`: the stream and the spinner.
+`submit` runs on Enter. A line that starts with `/` goes to `command` in
+`commands.go` and never reaches the model. Otherwise `submit` clears the input. While
+a turn runs, it appends the question to `m.queue` and stops there. When the screen
+is idle, it calls `startTurn`, which adds an `exchange`, bumps the turn counter, and
+returns two commands joined by `tea.Batch`: the stream and the spinner.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -370,6 +372,41 @@ never to store a context in a struct.
 
 Any event also marks `merud` as connected. `handleDone` ends the turn. A connection
 error marks the turn failed and turns the header's status red.
+
+#### Typing ahead
+
+You can type the next question while an answer streams. Enter puts it in
+`m.queue`, a slice of strings, oldest first, and the conversation draws it under
+the running turn:
+
+```text
+You  queued
+  │ Which of those grow in shade?
+```
+
+When a turn ends, `handleDone` takes the oldest question off the front of the
+queue, `m.queue[1:]`, and passes it to `startTurn`. It returns the command that
+runs the new turn, and `Update` batches it with the status and usage checks.
+`tea.Batch` skips a nil command, so `Update` needs no `if` for an empty queue. The
+next question goes after an error too, so each question gets its own answer or its
+own error. `merud` still sees one turn at a time, in the same session, and nothing
+in `rpc` or `merud` changed for this.
+
+`maxQueue` caps the queue at five. Each queued question costs a whole turn with the
+model, so a longer line is more likely a held-down Enter or a paste than a plan.
+Past the cap, the question stays in the input and the notice line says the queue
+is full.
+
+Ctrl-C stops the running turn and calls `dropQueue`, which empties the queue and
+returns a notice such as `dropped 2 queued questions`. Someone who stops an answer
+wants the screen back; three more answers starting on their own would take it away
+again. Up still brings back the last question you typed, queued or sent, so a
+dropped question is one key away.
+
+While a turn runs, the help line reads `enter queue · ctrl+c stop` in place of
+`enter send · ctrl+c stop/quit`. `shortHelp` in `view.go` changes the labels on a
+copy of the key map: `m.keys` is a struct value, so `keys := m.keys` copies it,
+and `SetHelp` on the copy leaves the model's own keys alone.
 
 ### view.go
 
@@ -625,6 +662,10 @@ stops a streaming answer, clears the screen and forgets the session ID, so the n
 question asks `merud` for a new session. It also counts up `m.turn`: the stopped
 answer may still send events, and `handleEvent` drops any event whose turn number
 isn't the current one, so a late `session` event can't bring the old session back.
+`newSession` also drops the queue and says how many questions went: they were typed
+for the old conversation, and sending them into the new one would carry it on.
+The other commands only open a box or copy text, so they run at once while a turn
+runs and never wait in the queue.
 `/exit` does what Ctrl-D does: it stops a streaming answer and returns `tea.Quit`.
 People type it out of habit from other chat programs. The help line leaves it out,
 because it would push the line past 80 columns, and Ctrl-C already shows there as
@@ -895,7 +936,8 @@ only in "notty". The golden tests use "notty", so they can't catch that change.
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
-streaming, a finished Markdown answer, a fallback route, a route badge with a
+streaming, two questions queued behind a streaming answer at 80 and 40 columns, a
+finished Markdown answer, a fallback route, a route badge with a
 skill, an answer with sources, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
@@ -926,6 +968,12 @@ about one tool call. It checks each key (o, s, d, capitals, ←/→ with Enter, 
 not offered), that typing stays out of the input while the box is open, that Ctrl-C
 closes the box and stops the turn, and that a request from a stopped turn gets
 "deny" at once.
+
+The queue tests in `model_test.go` type questions behind a running turn. They check
+that `merud` gets them in order and in one session, after an answer and after an
+error; that `/usage`, `/me`, `/mcp` and `/copy` leave the queue alone and `/new`
+drops it; that Ctrl-C drops it with a notice that counts the questions; and that a
+sixth question stays in the input.
 
 `usage_test.go` checks `/usage` against a fake `merud`: the box opens and fills, the
 request is `OpUsage` and no question goes to the model. It checks each key while the
@@ -977,6 +1025,10 @@ locks.
 token that waits on a channel for the next one. That spreads one turn across many
 commands. With `Send`, one goroutine owns the whole turn and reads like the one-shot
 `meru "..."` client.
+
+**Why queue in the client and not in `merud`?** Each turn's prompt holds the turns
+before it, so a queued question has to wait for the answer before it anyway. Keeping the queue in the chat needs no new
+request type, and Ctrl-C or `/new` can drop it without asking `merud`.
 
 **Why turn numbers?** Cancelling a context doesn't stop a goroutine on the spot. Turn
 numbers let `Update` ignore the stragglers without waiting for the goroutine to

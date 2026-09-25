@@ -248,6 +248,16 @@ mouse, which takes plain click-and-drag selection away from the terminal, so
 selecting text needs Option (iTerm2) or Shift (most others);
 `[chat] mouse_copy = false` gives plain selection back.
 
+While a turn runs, Enter puts the next question in a queue, drawn under the
+running turn with a dim `queued` mark. When the turn ends, the chat sends the
+oldest queued question in the same session, so `merud` still gets one turn at a
+time; the queue lives in the client. It holds five questions at most, because
+each one costs a whole turn and a longer line of them is more often a slip than
+a plan. Ctrl-C stops the running turn and drops the queue: a user who stops an
+answer wants the screen back. `/new` drops it too, since those questions
+belonged to the old conversation. Commands that only open a box or copy text
+run at once.
+
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
 
@@ -412,7 +422,7 @@ and arguments and offers the choices `merud` sends, at most these three:
 
   | Tool | What it returns |
   | --- | --- |
-  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. |
+  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
@@ -420,14 +430,18 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
 
-  The file tools reach only the `[index] folders` and the downloads folder
-  `web_fetch` saves in, and they skip what the indexer skips (see
+  The file tools reach only the `[index] folders` and `[skills] output_dir`
+  (`~/meru-output`), and they skip what the indexer skips (see
   [What stays out](#what-stays-out)): they never follow a symlink, and they
   refuse secret, hidden, ignored, binary and oversized files with the
-  indexer's reason. Apart from downloads, they read nothing that search
-  couldn't already put in the prompt. The indexer never indexes the downloads
-  folder, so a web page can't reach a later turn through search. `merud`
-  leaves the file tools out when no `[index]` folder is listed.
+  indexer's reason. The output folder holds what `write_file` wrote, what
+  `web_fetch` downloaded and the mail attachments the `google` server saves
+  (see [Adding an MCP server](#adding-an-mcp-server)). The file tools only
+  read there; `write_file` keeps its own rules. Outside the output folder, they
+  read nothing that search couldn't already put in the prompt. The indexer
+  never indexes the output folder, so a web page or an attachment can't reach
+  a later turn through search. `merud` leaves the file tools out when no
+  `[index]` folder is listed.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -1624,18 +1638,28 @@ OAuth 2.1 mode needs HTTP, so you start it yourself and `merud` connects to it
 (see [MCP](#mcp)). The catalog prints the command:
 
 ```sh
-GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
+USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
+  GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
   uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
 ```
 
 The server offers 120-odd tools across twelve Google services. `--tools` limits the
 process to Gmail, Calendar, Drive and Docs, and the catalog's `allow` limits the
-model to eight of those: search and read mail and threads, send mail, list and
-change calendar events, search Drive, and read a doc. Sending mail and changing an
-event sit in `confirm`. So two layers apply: the server decides what exists, and
-Meru decides what the model sees. The OAuth client ID and secret go in the
-server's environment when you start it, never through Meru. Google's own Workspace
-MCP servers are remote only, so the catalog keeps the local one.
+model to nine of those: search and read mail and threads, save a mail's
+attachment, send mail, list and change calendar events, search Drive, and read a
+doc. Sending mail and changing an event sit in `confirm`. So two layers apply:
+the server decides what exists, and Meru decides what the model sees. The OAuth
+client ID and secret go in the server's environment when you start it, never
+through Meru. Google's own Workspace MCP servers are remote only, so the catalog
+keeps the local one.
+
+`get_gmail_attachment_content` saves the attachment as a file and returns its
+name, not its text. `WORKSPACE_ATTACHMENT_DIR` points the server at
+`~/meru-output/attachments`, inside the output folder the file tools read, so the
+model calls `read_file` with the saved filename next, and a PDF comes back page
+by page. The server deletes each saved file after an hour. The model reaches the
+file on disk, with no network call: the server's download URL is on loopback,
+and `web_fetch` refuses loopback.
 
 The catalog has no shell server; to let the model run a program, declare it in
 `[[commands]]` (see [Local commands](#local-commands)).
@@ -2534,7 +2558,8 @@ We'll settle these with working code and measurements.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream. Each code block gets a `⧉ copy N` label; `/copy N` or Ctrl-Y copies
-  it, and so does a click, unless `[chat] mouse_copy` is off.
+  it, and so does a click, unless `[chat] mouse_copy` is off. Questions typed
+  while a turn runs wait in a queue of up to five in the client.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
   trust comes only from editing the `confirm` list. With no one to ask (scripts,

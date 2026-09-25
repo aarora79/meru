@@ -8,6 +8,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"reflect"
@@ -156,24 +157,27 @@ func runStream(t *testing.T, cmd tea.Cmd) tea.Msg {
 	return msg
 }
 
-// finishTurn runs each command in the Enter batch and returns the
-// turnDoneMsg, or nil if none returned one. The spinner's tick command
-// returns at once; the stream command returns when the turn ends. It takes no
-// *testing.T, so a test may call it from its own goroutine.
+// finishTurn runs cmd and the commands batched inside it, in order, until
+// one returns a turnDoneMsg, and returns that message, or nil if none did.
+// A batch can hold another batch: the one a finished turn returns holds the
+// next queued turn's batch. The spinner's tick command returns at once; the
+// stream command returns when the turn ends. It takes no *testing.T, so a
+// test may call it from its own goroutine.
 func finishTurn(cmd tea.Cmd) tea.Msg {
 	if cmd == nil {
 		return nil
 	}
-	batch, ok := cmd().(tea.BatchMsg)
+	msg := cmd()
+	if isDone(msg) {
+		return msg
+	}
+	batch, ok := msg.(tea.BatchMsg)
 	if !ok {
 		return nil
 	}
 	for _, c := range batch {
-		if c == nil {
-			continue
-		}
-		if msg := c(); isDone(msg) {
-			return msg
+		if done := finishTurn(c); done != nil {
+			return done
 		}
 	}
 	return nil
@@ -244,11 +248,6 @@ func TestEnterIgnored(t *testing.T) {
 	}{
 		{"blank line", func(m Model) Model {
 			m, _ = update(t, m, typeText("   "))
-			return m
-		}},
-		{"answer still streaming", func(m Model) Model {
-			m.streaming = true
-			m, _ = update(t, m, typeText("second"))
 			return m
 		}},
 	}
@@ -576,5 +575,218 @@ func TestDoneStatsKept(t *testing.T) {
 		if !strings.Contains(view, s) {
 			t.Errorf("view lacks %q:\n%s", s, view)
 		}
+	}
+}
+
+// startStreaming returns a screen with the question "first" sent and its
+// turn running, and the command that runs it.
+func startStreaming(t *testing.T, merud *fakeMerud, snd *fakeSender) (Model, tea.Cmd) {
+	t.Helper()
+	m, cmd := update(t, testModel(merud.ask, snd), typeText("first"), press(tea.KeyEnter))
+	if !m.streaming {
+		t.Fatal("not streaming after the first question")
+	}
+	return m, cmd
+}
+
+// queue types each question and presses Enter after it.
+func queue(t *testing.T, m Model, questions ...string) Model {
+	t.Helper()
+	for _, q := range questions {
+		var cmd tea.Cmd
+		m, cmd = update(t, m, typeText(q), press(tea.KeyEnter))
+		if cmd != nil {
+			t.Errorf("Enter on %q while streaming returned a command, want none", q)
+		}
+	}
+	return m
+}
+
+// askTexts returns the text of each question merud received, leaving out
+// the status and usage checks.
+func askTexts(reqs []rpc.Request) (texts, sessions []string) {
+	for _, r := range reqs {
+		if r.Op == rpc.OpAsk {
+			texts = append(texts, r.Text)
+			sessions = append(sessions, r.Session)
+		}
+	}
+	return texts, sessions
+}
+
+func TestEnterWhileStreamingQueues(t *testing.T) {
+	merud := &fakeMerud{events: reply}
+	m, _ := startStreaming(t, merud, newFakeSender())
+	m = queue(t, m, "second", "  third  ")
+
+	if want := []string{"second", "third"}; !reflect.DeepEqual(m.queue, want) {
+		t.Errorf("queue = %q, want %q", m.queue, want)
+	}
+	if m.input.Value() != "" {
+		t.Errorf("input = %q after queueing, want empty", m.input.Value())
+	}
+	if len(m.turns) != 1 {
+		t.Errorf("got %d turns, want 1: a queued question isn't a turn yet", len(m.turns))
+	}
+	if n := strings.Count(m.View(), "You  queued"); n != 2 {
+		t.Errorf("view shows %d queued questions, want 2:\n%s", n, m.View())
+	}
+	// Up brings back the question typed last, queued or not.
+	m, _ = update(t, m, press(tea.KeyUp))
+	if got := m.input.Value(); got != "third" {
+		t.Errorf("input after Up = %q, want third", got)
+	}
+}
+
+// TestQueueSendsInOrder runs a turn with two questions queued behind it,
+// and checks that each one goes to merud in order, in the same session,
+// whether the turn before it answered or failed.
+func TestQueueSendsInOrder(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []rpc.Event
+		want   turnState
+	}{
+		{"answers", reply, stateDone},
+		{"errors", []rpc.Event{{Type: rpc.EventSession, Session: "s1"}, {Type: rpc.EventError, Error: "model not loaded"}}, stateFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merud := &fakeMerud{events: tt.events}
+			snd := newFakeSender()
+			m, cmd := startStreaming(t, merud, snd)
+			m = queue(t, m, "second", "third")
+
+			// Each finished turn returns the command that runs the next.
+			for range 3 {
+				done := runStream(t, cmd)
+				m = drain(t, m, snd)
+				m, cmd = update(t, m, done)
+			}
+			if done := finishTurn(cmd); done != nil {
+				t.Errorf("a fourth turn ran: %+v", done)
+			}
+
+			texts, sessions := askTexts(merud.reqs)
+			if want := []string{"first", "second", "third"}; !reflect.DeepEqual(texts, want) {
+				t.Errorf("merud got %q, want %q", texts, want)
+			}
+			if want := []string{"", "s1", "s1"}; !reflect.DeepEqual(sessions, want) {
+				t.Errorf("sessions = %q, want %q", sessions, want)
+			}
+			if len(m.turns) != 3 {
+				t.Fatalf("got %d turns, want 3", len(m.turns))
+			}
+			for i, turn := range m.turns {
+				if turn.question != texts[i] || turn.state != tt.want {
+					t.Errorf("turn %d = %q in state %v, want %q in state %v", i, turn.question, turn.state, texts[i], tt.want)
+				}
+			}
+			if len(m.queue) != 0 || m.streaming {
+				t.Errorf("queue = %q, streaming = %v; want empty and idle", m.queue, m.streaming)
+			}
+		})
+	}
+}
+
+// TestCommandsWhileQueued checks the slash commands while a turn runs with
+// two questions queued: the boxes open at once and leave the queue alone,
+// /new stops the turn and drops the queue, and /exit quits.
+func TestCommandsWhileQueued(t *testing.T) {
+	tests := []struct {
+		command   string
+		wantQueue int
+		wantBusy  bool
+		wantQuit  bool
+		notice    string
+	}{
+		{command: "/usage", wantQueue: 2, wantBusy: true},
+		{command: "/me", wantQueue: 2, wantBusy: true},
+		{command: "/mcp", wantQueue: 2, wantBusy: true},
+		{command: "/copy", wantQueue: 2, wantBusy: true, notice: "no code block to copy yet"},
+		{command: "/new", notice: "new session: the next question starts fresh · dropped 2 queued questions"},
+		{command: "/exit", wantQueue: 2, wantQuit: true}, // the chat ends, so the queue goes unasked
+	}
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			merud := &fakeMerud{events: reply}
+			m, _ := startStreaming(t, merud, newFakeSender())
+			m = queue(t, m, "second", "third")
+
+			m, cmd := update(t, m, typeText(tt.command), press(tea.KeyEnter))
+			if len(m.queue) != tt.wantQueue {
+				t.Errorf("queue = %q, want %d questions", m.queue, tt.wantQueue)
+			}
+			if m.streaming != tt.wantBusy {
+				t.Errorf("streaming = %v, want %v", m.streaming, tt.wantBusy)
+			}
+			quit := cmd != nil && cmd() == tea.Quit()
+			if quit != tt.wantQuit {
+				t.Errorf("quit = %v, want %v", quit, tt.wantQuit)
+			}
+			if tt.notice != "" && !strings.Contains(m.notice, tt.notice) {
+				t.Errorf("notice = %q, want it to hold %q", m.notice, tt.notice)
+			}
+		})
+	}
+}
+
+// TestStopDropsQueue checks that Ctrl-C stops the running turn, drops the
+// queued questions with a notice that counts them, and that the stopped
+// turn's late end starts nothing.
+func TestStopDropsQueue(t *testing.T) {
+	tests := []struct {
+		name   string
+		queued []string
+		notice string
+	}{
+		{"none queued", nil, ""},
+		{"one queued", []string{"second"}, "dropped 1 queued question"},
+		{"two queued", []string{"second", "third"}, "dropped 2 queued questions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merud := &fakeMerud{events: reply}
+			m, _ := startStreaming(t, merud, newFakeSender())
+			m = queue(t, m, tt.queued...)
+
+			m, _ = update(t, m, press(tea.KeyCtrlC))
+			if m.streaming || len(m.queue) != 0 {
+				t.Errorf("streaming = %v, queue = %q; want idle and empty", m.streaming, m.queue)
+			}
+			if m.notice != tt.notice {
+				t.Errorf("notice = %q, want %q", m.notice, tt.notice)
+			}
+			if tt.notice != "" && !strings.Contains(m.View(), tt.notice) {
+				t.Errorf("view lacks %q:\n%s", tt.notice, m.View())
+			}
+			m, cmd := update(t, m, turnDoneMsg{turn: m.turn, err: context.Canceled})
+			if done := finishTurn(cmd); done != nil || len(m.turns) != 1 {
+				t.Errorf("the stopped turn's end started another: %d turns", len(m.turns))
+			}
+		})
+	}
+}
+
+// TestQueueCap checks that a question past maxQueue stays in the input
+// with a notice, and that the queue keeps what it had.
+func TestQueueCap(t *testing.T) {
+	merud := &fakeMerud{events: reply}
+	m, _ := startStreaming(t, merud, newFakeSender())
+	for i := range maxQueue {
+		m = queue(t, m, fmt.Sprintf("question %d", i+2))
+	}
+	m, cmd := update(t, m, typeText("one too many"), press(tea.KeyEnter))
+	if cmd != nil {
+		t.Error("Enter on a full queue returned a command, want none")
+	}
+	if len(m.queue) != maxQueue {
+		t.Errorf("queue holds %d, want %d", len(m.queue), maxQueue)
+	}
+	if got := m.input.Value(); got != "one too many" {
+		t.Errorf("input = %q, want the question kept", got)
+	}
+	if !strings.Contains(m.notice, "queue full") {
+		t.Errorf("notice = %q, want it to say the queue is full", m.notice)
 	}
 }

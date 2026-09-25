@@ -107,12 +107,8 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	}
 	// The file tools share merud's indexer, so they skip what it skips.
 	// They don't reload when configure changes config.toml: a change to
-	// [index] needs a restart anyway.
-	// The file tools may also read what web_fetch downloads. The indexer
-	// never indexes that folder; see index.ReadAlso.
-	if ix != nil && slices.Contains(cfg.Builtin.Tools, builtin.WebFetch) {
-		ix.ReadAlso(filepath.Join(outputDir, "downloads"))
-	}
+	// [index] needs a restart anyway. builtin.New also lets them read the
+	// output folder, which the indexer never indexes; see index.ReadAlso.
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)

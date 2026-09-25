@@ -119,14 +119,15 @@ In `meru chat`:
 | Key | What it does |
 | --- | --- |
 | Enter | send the question |
-| Ctrl-C | stop the answer that is streaming; press again when idle to quit |
+| Enter while an answer streams | queue the question, marked `queued`; it goes when the turns before it end, and up to five wait |
+| Ctrl-C | stop the answer that is streaming and drop any queued questions; press again when idle to quit |
 | Ctrl-D | quit |
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
 | Ctrl-Y | copy the last code block of the newest answer |
 | `/copy N`, then Enter | copy code block N; `/copy` alone works like Ctrl-Y |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
-| `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
+| `/new`, then Enter | start a new conversation: the screen clears, queued questions go, and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 | `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
 | `/exit`, then Enter | quit, like Ctrl-D |
@@ -678,8 +679,10 @@ can use four read-only tools on the same folders:
   excerpts in the prompt, for the words the model picks, and returns numbered
   excerpts it can cite.
 
-They reach only your `[index] folders`, and the folder `web_fetch` downloads
-into, and skip what the indexer skips. They run without asking; to approve each call, add
+`read_file`, `list_folder` and `grep` reach your `[index] folders` and
+`~/meru-output`, where `write_file` writes, `web_fetch` saves downloads and the
+`google` server saves mail attachments; `search_files` searches only the index.
+All four skip what the indexer skips. They run without asking; to approve each call, add
 them to `[builtin] confirm`. `meru` shows each call as it runs:
 
 ```text
@@ -833,7 +836,7 @@ A fetch brings the page's text into the conversation and keeps nothing on disk.
 A download writes the file to your disk and keeps it there after the chat ends;
 the model sees only the path, the size, the type and the first 2,000 characters.
 `read_file` and `grep` can then read the file, as long as you index at least one
-folder, which turns those tools on. Search never indexes the downloads folder.
+folder, which turns those tools on. Search never indexes the output folder.
 
 The built-in `web-research` skill tells the model how to use the two tools:
 search first, read the one or two best pages with a prompt, prefer the project's
@@ -1001,7 +1004,7 @@ connects to it at `http://127.0.0.1:8000/mcp` and never starts, restarts or
 watches it. `meru mcp add google` prints the command:
 
 ```sh
-USER_GOOGLE_EMAIL=<your Google address> \
+USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
 GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
   uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
 ```
@@ -1020,15 +1023,48 @@ a Google tool, the server gives you a link to sign in to Google.
 
 Run the command in a terminal, or from `launchd` or `systemd` the way you run
 Ollama. The server offers more than 120 tools. `--tools` limits it to four Google
-services, and the catalog's `allow` list gives the model eight tools:
+services, and the catalog's `allow` list gives the model nine tools:
 
 | Tool | Asks first |
 | --- | --- |
 | `search_gmail_messages`, `get_gmail_message_content`, `get_gmail_thread_content` | no |
+| `get_gmail_attachment_content` | no |
 | `send_gmail_message` | yes |
 | `get_events` | no |
 | `manage_event` | yes |
 | `search_drive_files`, `get_doc_content` | no |
+
+#### Read a mail's attachment
+
+Ask for a file a mail carries, such as "find the hotel folio Dana Reyes sent and
+read the PDF". The model finds the mail, then calls
+`get_gmail_attachment_content`. The server saves the attachment in the folder
+`WORKSPACE_ATTACHMENT_DIR` names, `~/meru-output/attachments`, and reports a
+name such as `folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf`. The model passes
+that name to `read_file`, which reads the PDF page by page. The server deletes
+each saved file after an hour. `read_file` needs at least one `[index]` folder,
+which turns the file tools on. If you changed `[skills] output_dir`, point
+`WORKSPACE_ATTACHMENT_DIR` at the `attachments` folder inside it.
+
+If you added `google` before this, do two things:
+
+1. Stop the server, with Ctrl-C in its terminal or by stopping its `launchd` or
+   `systemd` job, and start it again with `WORKSPACE_ATTACHMENT_DIR` set, as in
+   the command above. For a `launchd` or `systemd` job, add the variable to the
+   job's environment; the server expands the `~` itself. Without the variable,
+   the server saves attachments in `~/.workspace-mcp/attachments`, where Meru's
+   file tools can't read.
+2. Add the tool to the end of the server's `allow` list in `~/.meru/config.toml`:
+
+   ```toml
+   [[mcp.servers]]
+   name  = "google"
+   url   = "http://127.0.0.1:8000/mcp"
+   allow = [..., "get_doc_content", "get_gmail_attachment_content"]
+   ```
+
+   Then restart `merud` (`pkill merud; merud &`). `meru mcp` shows one more
+   tool under ALLOWED.
 
 The catalog has no shell server; to let the model run a program, declare it in
 `[[commands]]` (see [Local commands](#local-commands)).

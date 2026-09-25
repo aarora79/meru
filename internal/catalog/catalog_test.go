@@ -290,6 +290,30 @@ func TestCatalogIsTwoServers(t *testing.T) {
 	}
 }
 
+// TestGoogleAttachments checks the google entry's side of reading a mail
+// attachment: the model may call get_gmail_attachment_content without a
+// question, since it only reads, and the start command makes the server
+// save attachments where read_file reads.
+func TestGoogleAttachments(t *testing.T) {
+	google, _ := Find("google")
+	const tool = "get_gmail_attachment_content"
+	if !slices.Contains(google.Allow, tool) {
+		t.Errorf("google allow = %v, want it to hold %s", google.Allow, tool)
+	}
+	if slices.Contains(google.Confirm, tool) {
+		t.Errorf("google confirm = %v, want it without %s, which only reads", google.Confirm, tool)
+	}
+	const env = "WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments "
+	if !strings.Contains(google.Start, env) {
+		t.Errorf("google start = %q, want it to set %q", google.Start, env)
+	}
+	// The variable must come before the program, so the shell passes it
+	// to the server.
+	if strings.Index(google.Start, env) > strings.Index(google.Start, "uvx ") {
+		t.Errorf("google start = %q, want %q before uvx", google.Start, env)
+	}
+}
+
 // TestTemplateHoldsCatalog checks that the config template holds each
 // catalog entry exactly as Block renders it, commented out line by line.
 // The config package can't call Block itself, because this package

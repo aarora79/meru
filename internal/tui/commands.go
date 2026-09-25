@@ -17,7 +17,8 @@ const commandList = "/new, /usage, /me, /mcp, /copy, /exit"
 // question:
 //
 //   - /new starts a new session, so the next question carries none of the
-//     conversation so far;
+//     conversation so far. While a turn runs, it stops that turn and drops
+//     the queued questions, which belonged to the old conversation;
 //   - /usage opens the usage box and asks merud for the numbers;
 //   - /me opens a box with what Meru knows about the user, the memories
 //     merud puts into every prompt;
@@ -26,8 +27,12 @@ const commandList = "/new, /usage, /me, /mcp, /copy, /exit"
 //   - /copy N copies code block N to the clipboard, and /copy alone the
 //     newest answer's last block, as Ctrl-Y does (copy.go);
 //   - /exit quits the chat, the same as Ctrl-D: an answer still streaming
-//     stops first. People type it out of habit from other chat programs,
-//     and without it the line would go nowhere.
+//     stops first, and the queued questions go unasked. People type it out
+//     of habit from other chat programs, and without it the line would go
+//     nowhere.
+//
+// The other commands only open a box or copy text, so they run at once,
+// even while a turn runs; none of them waits in the queue.
 //
 // Any other command leaves the text in the input, so the user can fix a
 // typo, and shows one dim line with the commands the chat knows.
@@ -77,7 +82,9 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 //
 // A streaming answer stops first. Counting up m.turn makes the events it
 // may still send belong to no turn, so a late "session" event can't bring
-// the old session back.
+// the old session back. Queued questions go too: the user typed them for
+// the old conversation, and sending them into the new one would carry it
+// on. The notice says how many went.
 func (m *Model) newSession() {
 	m.stopTurn()
 	m.turn++
@@ -85,5 +92,8 @@ func (m *Model) newSession() {
 	m.blockCount = 0 // the code blocks went with the turns
 	m.session = ""
 	m.notice = "new session: the next question starts fresh"
+	if dropped := m.dropQueue(); dropped != "" {
+		m.notice += " · " + dropped
+	}
 	m.refresh()
 }
