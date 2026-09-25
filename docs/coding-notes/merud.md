@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `user.go`, `memory.go`, `skills.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp add` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -276,7 +276,14 @@ microseconds, so a skill you add or edit by hand counts from the next turn with
 no restart. A file watcher would do the same with more moving parts: a watch on
 the folder and on each skill folder, kept in step as folders come and go, and a
 goroutine to own it. Each load logs one `skill skipped` warning per bad folder
-and one `skills loaded` line with the names.
+and one `skills loaded` line with the names and the disabled ones.
+
+`newSkillService` takes `[skills] disabled` and hands it to both
+`skills.InstallBuiltins` and `skills.Load`, so a disabled skill is neither
+installed nor loaded. A disabled name that is neither a built-in nor a folder
+under `~/.meru/skills` gets one info line, `disabled skill not found`; it isn't
+an error, because you may add that skill later. `TestSkillServiceDisabled`
+checks that a disabled built-in stays off disk and out of the list.
 
 The service answers three ops:
 
@@ -297,7 +304,134 @@ file by hand. The model's way to write a file, `write_file`, does.
 
 `mcpBackend` joins the MCP pool to `dispatch`, and `mcpServerConfigs` turns the
 `[[mcp.servers]]` entries into the pool's settings, secrets resolved. Both are
-described in [dispatch.md](dispatch.md).
+described in [dispatch.md](dispatch.md). `probeConfig` does the same for the one
+server a probe names, and `probeResult` copies `mcp.ProbeInfo` into
+`rpc.ProbeResult`. The `mcp` package doesn't import `rpc`, so `main` joins them.
+
+`mcpBackend` also has a `ConnectMissing` method, one line that calls
+`pool.ConnectMissing`. That method makes it a `dispatch.Connector`, so the agent
+loop's one try per turn at a server that isn't connected reaches the pool (see
+[mcp.md](mcp.md)). Go has no `implements` keyword: a type satisfies an interface
+by having its methods, and `Dispatcher.ConnectMissing` checks for the method at
+run time.
+
+`mcpStatus` turns the pool's `[]mcp.ServerStatus` into the rows `meru mcp`
+prints:
+
+```go
+row := rpc.MCPStatus{
+    Name:      st.Name,
+    Transport: st.Transport,
+    State:     rpc.MCPConnected,
+    URL:       st.URL,
+    Tools:     st.Offered,
+    Allowed:   st.Listed,
+    Confirm:   st.Confirms,
+}
+if !st.Connected {
+    row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+}
+```
+
+A server that isn't connected gets `Tools = -1`, which the client draws as `—`:
+with no tool list, any count would be a guess. `Allowed` and `Confirm` come from
+config, so they show either way. The line inside the `if` sets three fields at
+once, in the order the line names them.
+
+### merud: tools.go
+
+`toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
+pool, the A2A client, the built-in tools, the local commands and the
+`dispatch.Dispatcher` that joins them.
+
+`newToolService` checks the `[[commands]]` entries with `commands.New` first,
+before any MCP server starts, so a bad entry stops `merud` with an error that
+names it and leaves nothing to clean up. It then joins the four backends in
+this order:
+
+```go
+s.dispatcher = dispatch.New(
+    []dispatch.Backend{bt, cmds, mcpBackend{pool: pool}, ac},
+    st,
+    dispatch.Options{Redact: s.redact, Log: log},
+)
+```
+
+The first backend to offer a name keeps it, so no MCP server can shadow
+`configure`, and one named `cmd` can't shadow a command. The commands don't
+reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides
+`tools` and `log`, it answers the two ops `meru mcp add` uses, and the one behind
+`meru mcp` and `/mcp`:
+
+| Op | What it does | Reply |
+| --- | --- | --- |
+| `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
+| `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
+| `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order |
+
+**Status.** `handleMCPStatus` takes the current pool under `s.mu`, since a reload
+may swap it, and reads `pool.Status()`. That reads what the pool holds and sends
+nothing to any server, so `meru mcp` answers at once while a server is down.
+`TestMCPStatusOp` builds a pool with one server up and one that answers 503,
+checks both rows, and checks that the op sent the down server no request.
+
+**Probe.** `handleProbe` loads `secrets.toml` from disk each time instead of using
+the copy it holds, because `meru mcp add` may have saved the server's key a moment
+before. The probe calls no tool and the model never sees what it finds, so it
+skips `dispatch`: like the memory ops, it is a command you run. The error text
+goes through `Redact` before it leaves, in case a server echoes a key back.
+
+**Reload.** `reloadMCP` is the path the `configure` tool already used. It loads
+`config.toml` and `secrets.toml`, builds a new pool from the servers config lists
+now, swaps it into the dispatcher with `Replace`, and closes the old pool:
+
+```go
+s.mu.Lock()
+old := s.pool
+s.pool, s.secrets = pool, sec
+s.mu.Unlock()
+s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
+old.Close()
+```
+
+The new pool has no memory of the old one, so a server you added appears, one you
+changed restarts with its new settings, and one you removed is gone. `old.Close()`
+stops every child the old pool started, the removed server's included. A config
+that fails to load, or a bad server entry, returns the error before anything
+changes, and the old pool keeps running. `reload`, a second mutex, lets one
+reload run at a time.
+
+`handleReload` passes `context.WithoutCancel(ctx)`: a context with the request's
+values but none of its cancellation. A client that hangs up mid-reload then can't
+leave `merud` with a pool whose servers all failed to start.
+`TestMCPReloadStopsOldChildren` runs the test binary as a stdio server, changes
+and then removes it, and checks each old process is gone.
+
+**Built-in tools.** `newToolService` hands `cfg.Builtin` to `builtin.New`, whose
+`tools` list says which built-ins the model may use. Right after, it logs one
+`built-in tool off` info line for each entry of `bt.Off()`: a tool the list
+names whose setting is missing, such as `grep` with no `[index] folders`. The
+e2e test `TestBuiltinToolsSwitch` cuts the list to `datetime` and `grep`, and
+checks what `meru tools` shows and that the log says why `grep` is off.
+
+**Web search.** `newToolService` also hands `cfg.Web` to `builtin.New`, which
+offers `web_search` when `searxng_url` is set. `web_fetch` needs no `[web]`
+key. When `[builtin] tools` lists `web_fetch`, `newToolService` first calls
+`ix.ReadAlso` on `<output_dir>/downloads`, so the file tools can read what
+`web_fetch` downloads; after, it calls
+`bt.UseModel(eng, cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the
+fast model. `newToolService` takes the engine as a `builtin.Generator`, the one
+method that needs. Right after, `run` calls `logWebSearch`, which runs
+`catalog.CheckSearXNG` and writes one info line: `web search ready`,
+`web search not ready` with the reason, or `web search off`, which also covers
+`[builtin] tools` leaving `web_search` out. Each line says whether `web_fetch`
+is on. The check never
+stops `merud`: SearXNG may start later, and `web_search` tells the model what's
+wrong when it runs. It sends SearXNG an empty query, which SearXNG refuses before
+it asks any search engine, so starting `merud` sends nothing off the machine.
+`TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with nothing on the
+SearXNG port, checks the log line, and runs a turn in which the model calls
+`web_search` and still answers.
 
 ### meru: main.go
 
@@ -317,8 +451,12 @@ case flags.NArg() == 1 && flags.Arg(0) == "usage":
     err = usageCmd(ctx, *socket, stdout)
 case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
     err = setupUserCmd(ctx, *socket, terminal(stdout))
+case flags.NArg() == 2 && flags.Arg(0) == "config" && flags.Arg(1) == "template":
+    err = configTemplateCmd(stdout)
 case flags.Arg(0) == "memory":
     err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
+case flags.Arg(0) == "check":
+    err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 default:
     p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
     err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
@@ -327,12 +465,14 @@ default:
 
 - `meru "question"` and `meru question words` both work; the words are joined.
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
-  `usage`, `setup`, `memory` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
+  `usage`, `setup`, `memory`, `mcp` or `check` needs quotes. `usage`, like `ping` and `chat`, is a
   command only as the one word, so `meru usage of semicolons` asks a question.
+  `config template` is a command only as those two words; it needs no `merud`
+  and prints the config template from `internal/config`.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
   `Sources:` list follows the answer: one line per file the answer cites, such
-  as `[1] ~/notes/garden.md, "Budget", lines 3–5`. `rpc.Cited` picks those
+  as `[1] ~/notes/garden.md, "Planting", lines 3–5`. `rpc.Cited` picks those
   lines; an answer that cites no number gets no list.
   When standard output is a styled terminal (`look.links`), each line is a
   link to its file (`rpc.FileURL`, `rpc.Hyperlink`); a pipe gets plain text.
@@ -374,7 +514,7 @@ and writes the answer back. For one-shot `meru`, that function is the
 Meru wants to run mail.send (mcp) with:
   {
     "to": "sam@example.com",
-    "subject": "Garden budget"
+    "subject": "Garden plan"
   }
 Run mail.send? [o]nce  [s]ession  [d]eny:
 ```
@@ -400,18 +540,23 @@ Run mail.send? [o]nce  [s]ession  [d]eny:
 source: its name, kind, transport and whether `merud` reached it, then the
 tools the model may use, with "asks first" or "always asks" beside those that
 need approval, the count allowed out of the count offered, and a warning for
-each `allow` entry the source doesn't offer. With no source, it says how to
-add one. `toolsText` pads tool names with `%-*s`, whose `*` takes the width
-from the argument list.
+each `allow` entry the source doesn't offer. A local command gets one more
+line, `runs:` and its argv template, from `ToolInfo.Argv`. With no source, it
+says how to add one. `toolsText` pads tool names with `%-*s`, whose `*` takes
+the width from the argument list.
 
 `meru log` sends `OpLog` with `Limit` from `-n` (20 by default) and prints one
 line per call, newest first. `writeLog` lines up the columns with
 `text/tabwriter`, which pads each tab-separated cell to the widest in its
 column. It writes the table into a buffer first, so `-v` can put each call's
-result on its own line under it without breaking the columns.
+result on its own line under it without breaking the columns. `argsCell` fills
+the last column: the arguments as compact JSON cut to 60 characters, or for a
+local command (`kind` "command") the `argv` from the row, written as a command
+line with `rpc.ArgvLine` and cut to 160, since the argv is the audit record.
 
 `rpc.ArgsLines` and `rpc.ArgsLine` format arguments for the prompt and the log,
-so `meru chat` shows them the same way.
+so `meru chat` shows them the same way. `rpc.ArgvLine` joins an argv with spaces
+and quotes an element that holds a space or a quote, for display only.
 
 ### meru: usage.go
 
@@ -455,7 +600,7 @@ in the client. They write `config.toml` and `secrets.toml` through
 import besides `rpc`, `config`, `tui` and `loopback`.
 
 Every flow runs on a `console`: a reader for the answers, a writer for the
-prompts, and three functions that touch the world, so a test can swap each one:
+prompts, and the functions that touch the world, so a test can swap each one:
 
 ```go
 type console struct {
@@ -464,6 +609,8 @@ type console struct {
     readSecret    func() (string, error)
     run           func(ctx context.Context, name string, args ...string) error
     ollamaVersion func(ctx context.Context, baseURL string) (string, error)
+    answers       func(ctx context.Context, rawURL string) bool
+    searxng       func(ctx context.Context, baseURL string) error
 }
 ```
 
@@ -473,15 +620,56 @@ type console struct {
   progress bar. More in [go-basics/os-exec.md](go-basics/os-exec.md).
 - `ollamaVersion` makes one `GET /api/version` with `net/http`. The client may
   not import the engine, and one plain call is all the check needs.
+- `answers` is `urlAnswers` from `probe.go`: does anything accept a TCP
+  connection at a server's URL within a second?
+- `searxng` is `catalog.CheckSearXNG`: does SearXNG answer JSON at
+  `[web] searxng_url`? `TestSetupWebSearch` swaps it for a script of answers;
+  `TestSetupWebSearchReal` keeps the real check and runs it against `httptest`
+  servers and a closed port.
 
-`offer` shows one server and asks for a path: `d` asks for each key without
-echo, shows the block, and writes it after a yes; `s` prints the block, the
-install step and the `secrets.toml` lines, and writes nothing; `k` skips.
-`setupCmd` runs the five steps from ARCHITECTURE.md "First run and setup". It
+`offer` shows one server and asks for a path: `d` runs `doIt`; `s` prints the
+block, the install step and the `secrets.toml` lines, and writes nothing; `k`
+skips. `doIt` goes in this order:
+
+1. Ask for what the entry needs: each key without echo, and a note for each
+   thing you do yourself. An entry with `Start`, such as `google`, prints the
+   command that starts the server; Meru never runs it.
+2. Ping `merud`. When it answers, save the keys to `secrets.toml` now, because
+   `merud` starts the server in the next step and reads them from there.
+3. Try the server (`probeAndPick` in `probe.go`, below) and let the user pick
+   its tools. Without `merud`, skip this: a catalog entry keeps its own lists,
+   and a server of your own gets an empty `allow`. For an entry with `Start`,
+   `doIt` first calls `c.answers(ctx, e.URL)`. When nothing answers, it skips the
+   probe, keeps the catalog's lists, and says `merud` connects on the next
+   question after you start the server.
+4. Show the block and write it after a yes.
+5. Send `mcp_reload` (`reload` in `mcp.go`), so the server works without a
+   restart, and print its state as `meru tools` would.
+
+`setupCmd` runs the seven steps from ARCHITECTURE.md "First run and setup". It
 writes `config.toml` only when none exists. Rewriting an existing one would
-drop your comments, so setup tells you what to change instead.
+drop your comments, so setup tells you what to change instead, and points at
+`meru config template`.
 
-Step 5 offers `meru setup user` when `merud` answers a ping, and says to run it
+Step 3 writes the config template with your answers in it. `firstConfig`
+replaces two whole lines of `config.Template()`: `profile = "lite"` and
+`folders = []`. Matching `"\n" + line + "\n"` hits the line itself, never the
+same words inside a comment, and every comment stays. When either line isn't
+there exactly once, `firstConfig` fails; `TestFirstConfig` catches that in CI,
+and checks that exactly those two lines change. `writeNewConfig` then loads the
+text through `config.Load` before it renames it into place, as before.
+`configTemplateCmd` prints the same template for `meru config template`.
+
+Step 4, Web search, is `checkWebSearch`. It calls `c.searxng`, which is
+`catalog.CheckSearXNG` outside tests, on `[web] searxng_url`. When SearXNG answers
+JSON it says so and moves on. When nothing answers (`ErrSearXNGDown`) it prints
+`searxngStart`, the commands from docs/running.md that start SearXNG in Docker
+on `127.0.0.1:8888`; when SearXNG answers HTML (`ErrSearXNGNoJSON`) it prints
+`catalog.SearXNGFormatsHint`. Then it waits: Enter checks again, `s` skips. Web
+search is optional, so the step never stops setup. An empty `searxng_url` says
+web search is off and asks nothing.
+
+Step 6 offers `meru setup user` when `merud` answers a ping, and says to run it
 later when it doesn't: the answers go to `merud`, which owns the memory folder.
 
 `config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
@@ -490,6 +678,81 @@ works on the Meru home in `/tmp/x`, the same one `merud -config
 
 `setup_test.go` scripts whole sessions: the answers go in as a string, and the
 test reads back the files and the output.
+
+Setup offers each catalog entry, in catalog order: `google`, then `obsidian`.
+
+### meru: mcp.go
+
+`mcpCmd` reads the words after `meru mcp`. With no words, or `status`, it calls
+`mcpStatus`, which sends `mcp_status` and prints the rows with `tui.MCPTable`, the
+same function the chat's `/mcp` box uses, so the two views can't drift apart.
+`--json` prints the rows as a JSON array instead. `rows` starts as
+`[]rpc.MCPStatus{}` so that a config with no servers prints `[]`; a nil slice
+would print `null`.
+
+`addEntry` turns the words after `add` into a `catalog.Entry`:
+
+| Words | Entry |
+| --- | --- |
+| `stdio <name> -- <command> [args...]` | `catalog.Custom`, a server `merud` starts |
+| `http <name> <url> [--remote]` | `catalog.Custom` with a URL; a URL off this machine needs `--remote` |
+| `<name> -- <command>`, `<name> --url <url>` | the older forms, read as `stdio` and `http` |
+| `<catalog-name>` | `catalog.Find`; any word after the name is an error |
+
+`mcpList` prints the catalog, then each server in `config.toml` with what
+`merud` says about it (from `tools`): connected or not, how many tools it offers,
+and how many the model may use. A server in the file that `merud` doesn't list
+says "not loaded yet". Without `merud`, the list comes from the file alone.
+
+`remove` asks first (or not, with `--yes`), calls `catalog.RemoveServer`, prints
+the lines it took out, and sends `mcp_reload`. It leaves `secrets.toml` alone,
+since another server may use the same key.
+
+`reload` sends `mcp_reload` and prints the new server's block with `toolsText`,
+the function behind `meru tools`. A reload that fails doesn't fail the command:
+`config.toml` is already written, so `reload` prints how to restart `merud`
+instead.
+
+### meru: probe.go
+
+`probeAndPick` sends `mcp_probe` with the entry's command, args, env and URL.
+Env values go as written, so `secret:obsidian_api_key` stays a reference and
+`merud` looks up the key. When the probe fails (a missing program, a timeout on
+a first `npx` download), it prints `merud`'s reason and offers `r` to try again,
+`w` to write the entry anyway, or `c` to cancel.
+
+`urlAnswers(ctx, rawURL)` dials the URL's host and port over TCP, with a
+one-second limit, and closes the connection at once. It sends no request, so it
+says only that something listens there; the probe finds out what. `doIt` asks it
+before it probes a server the user runs, because a probe of nothing would fail
+after its own timeout.
+
+`propose` gives each tool a state: `off`, `ask` (allowed, in `confirm`) or
+`allow`. The three are constants numbered by `iota`, which counts up from 0
+inside one `const` block.
+
+- For a catalog entry, the catalog's lists decide. A tool the catalog doesn't
+  name starts `off`, with its hint shown, since nobody has read it.
+- For a server of your own, the hints decide. A tool that says `readOnlyHint`
+  starts as `allow`; every other tool starts as `ask`. A hint is the server's
+  claim, so a tool with no hint counts as one that may change something.
+
+The table's last column comes from `hint`: `read-only`, `may delete`,
+`changes things` (the tool carries hints, but neither of those), or `no hint`.
+The hints arrive as `*bool` pointers, and nil means the server said nothing.
+merud's MCP library reads a missing `readOnlyHint` as false, so `ReadOnly` is
+nil only for a tool with no hints at all.
+
+`pickTools` prints the table and reads one line. Enter accepts. Any other line
+is a list of edits: `-name` turns a tool off, `+name` allows it without asking,
+`?name` makes it ask. `applyEdits` checks every word before it changes any
+state, so a typo in the third word doesn't leave the first two applied.
+
+`mcp_test.go` runs each command against `fakeMerud`, a few lines that speak the
+socket protocol by hand: read one JSON request, write events. It records the ops
+it saw, so a test can check that a write ends with `mcp_reload`. `TestMCPStatus`
+checks the table from `meru mcp` and `meru mcp status`, reads `--json` back into
+the same structs, and checks the output with no servers and with `merud` down.
 
 ### meru: user.go
 
@@ -577,6 +840,63 @@ or `-y` may sit before or after the name.
 
 `skills_test.go` runs the three words against an in-process server and feeds
 `skillsCmd` scripted answers, with and without a terminal.
+
+### meru: check.go and checkfile.go
+
+`meru check` reruns a fixed set of your own questions and grades each answer,
+so you can see what a change made better or worse. The questions sit in
+`~/.meru/checks.jsonl`, one JSON object per line, outside the repo;
+[running.md](../running.md#check-answers-on-your-own-files) gives the format.
+`checkfile.go` reads the file and grades a turn; `check.go` asks `merud` and
+prints.
+
+```text
+$ meru check --only direct,web-go
+PASS  direct-capital  direct  direct          1.0s  -
+FAIL  web-go          web     tools          31.0s  web_search, web_fetch
+      answer lacks all of: 1.27.1
+
+direct  1/1
+web     0/1
+
+1 of 2 passed in 32s
+```
+
+- `parseChecks` reads the file line by line with a `bufio.Scanner` and skips
+  blank lines and `#` comments. `parseCheckLine` decodes each line with a
+  `json.Decoder` set to `DisallowUnknownFields`, so a typo such as `answr_any`
+  stops the run with its line number instead of passing every answer. A
+  missing `id`, `category` or `question`, and an `id` used twice, stop it too.
+- `runChecks` asks the questions one at a time with `askCheck`, which is `ask`
+  without the printing: it gathers the route, the tools, the sources, the
+  answer and the time from the events. A map from session group to `merud`'s
+  session ID lets questions with the same `"session"` value continue one
+  session. The first of a group sends no session, and the `session` event
+  gives the ID the rest send.
+- Nobody watches a check, so the `ApproveFunc` given to `rpc.Do` denies every
+  call and notes `approval denied: <tool>`. A refused call reaches the turn's
+  `Tools` from its `tool_call` event but stays out of `Ran`, since its
+  `tool_result` says `declined`. `grade` checks `tools` against `Ran`, so a
+  question that needs an approved tool fails.
+- `grade` returns one reason per `want` field that fails, such as `route
+  search, want direct` or `tool web_fetch not called`. An empty list is a pass.
+  `toolMatches` accepts a full name, a server prefix ending at a dot, or the
+  name after the prefix, so `"obsidian"` and `"git-log"` both work.
+- Each result prints as soon as `grade` returns, since a run of 17 questions
+  takes minutes. `writeCheckLine` pads the id and category to the widest in
+  the file, so the lines line up without a `tabwriter`, which needs every row
+  before it can print one. PASS is green and FAIL red through `look`.
+- `--json` prints each `checkResult` as one line of JSON instead of the table.
+  `--save` appends the same records to `~/.meru/checks-results/<date>.jsonl`,
+  with the run's start time in each, so two runs can be compared later.
+  `compactJSON` turns off HTML escaping, so an answer with `<` stays readable.
+- `checkCmd` returns `errChecksFailed` when any question fails. `run` exits 1
+  on it without printing it, because the summary already says how many
+  failed. A file that isn't there, or `merud` not answering, fails at once
+  with a message.
+- `check_test.go` runs `meru check` against a fake `merud` over a real socket.
+  It checks the session IDs each question sends, that approvals get a deny,
+  the printed table, the saved records and the exit code.
 
 ## Go ideas used here
 

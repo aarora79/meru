@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aarora79/meru/internal/store"
 	"github.com/ledongthuc/pdf"
@@ -42,6 +43,22 @@ func chunkPDF(data []byte, lim limits) ([]store.Chunk, error) {
 		return nil, errNoText
 	}
 	return chunks, nil
+}
+
+// PDFText returns the plain text of each page of the PDF in data, page 1
+// first. ReadText and the web_fetch tool in internal/builtin use it, so
+// a PDF on disk and one fetched from the web read the same way. It fails
+// as pdfPages does, and when no page holds any text, which usually means a
+// scan.
+func PDFText(data []byte) ([]string, error) {
+	pages, err := pdfPages(data)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(strings.Join(pages, "")) == "" {
+		return nil, errNoText
+	}
+	return pages, nil
 }
 
 // pdfPages returns the plain text of each page of data, page 1 first. A

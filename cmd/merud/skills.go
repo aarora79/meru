@@ -28,8 +28,9 @@ import (
 // the folder and on every skill folder in it, kept in step as folders come
 // and go, plus a goroutine to own it; the stamp needs none of that.
 type skillService struct {
-	dir string // usually ~/.meru/skills
-	log *slog.Logger
+	dir      string   // usually ~/.meru/skills
+	disabled []string // [skills] disabled: skills merud neither installs nor loads
+	log      *slog.Logger
 
 	mu    sync.Mutex       // guards reg and stamp; turns ask from many goroutines
 	reg   *skills.Registry // the last load
@@ -38,17 +39,25 @@ type skillService struct {
 
 // newSkillService copies the built-in skills into dir where no folder of
 // that name exists yet (your copy wins), loads the registry, and logs one
-// warning per skill folder it skipped. It fails when dir can't be created
-// or read, or a built-in can't be written; merud then refuses to start.
-func newSkillService(dir string, log *slog.Logger) (*skillService, error) {
-	installed, err := skills.InstallBuiltins(dir)
+// warning per skill folder it skipped. disabled is [skills] disabled: those
+// skills are neither copied nor loaded. A disabled name that matches no
+// skill gets an info line, since the user may add that skill later. It
+// fails when dir can't be created or read, or a built-in can't be written;
+// merud then refuses to start.
+func newSkillService(dir string, disabled []string, log *slog.Logger) (*skillService, error) {
+	installed, err := skills.InstallBuiltins(dir, disabled)
 	if err != nil {
 		return nil, err
 	}
 	if len(installed) > 0 {
 		log.Info("built-in skills installed", "dir", dir, "skills", strings.Join(installed, ","))
 	}
-	s := &skillService{dir: dir, log: log}
+	for _, name := range disabled {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err != nil && !skills.IsBuiltin(name) {
+			log.Info("disabled skill not found; nothing to turn off", "skill", name)
+		}
+	}
+	s := &skillService{dir: dir, disabled: disabled, log: log}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadLocked(context.Background()); err != nil {
@@ -87,7 +96,7 @@ func (s *skillService) loadLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	reg, err := skills.Load(s.dir)
+	reg, err := skills.Load(s.dir, s.disabled)
 	if err != nil {
 		return err
 	}
@@ -100,7 +109,7 @@ func (s *skillService) loadLocked(ctx context.Context) error {
 		names = append(names, sum.Name)
 	}
 	s.log.InfoContext(ctx, "skills loaded", "dir", s.dir, "skills", strings.Join(names, ","),
-		"skipped", len(reg.Warnings()))
+		"skipped", len(reg.Warnings()), "disabled", strings.Join(s.disabled, ","))
 	return nil
 }
 
@@ -153,6 +162,14 @@ func (s *skillService) handleShow(ctx context.Context, req rpc.Request, emit fun
 	return emit(rpc.Event{Type: rpc.EventSkills, Skills: []rpc.SkillInfo{info}})
 }
 
+// joinAnd joins names as English does: "a", "a and b", "a, b and c".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
 // handleReset answers OpSkillReset: it puts the shipped copy of the
 // built-in skill named req.ID back in the skills directory and loads the
 // registry again. The reply is "done" alone. It fails for a skill Meru
@@ -162,7 +179,7 @@ func (s *skillService) handleReset(ctx context.Context, req rpc.Request) error {
 	defer s.mu.Unlock()
 	err := skills.Reset(s.dir, req.ID)
 	if errors.Is(err, skills.ErrNotBuiltin) {
-		return fmt.Errorf("%q isn't a built-in skill; reset restores only %s", req.ID, strings.Join(skills.Builtins(), " and "))
+		return fmt.Errorf("%q isn't a built-in skill; reset restores only %s", req.ID, joinAnd(skills.Builtins()))
 	}
 	if err != nil {
 		return err

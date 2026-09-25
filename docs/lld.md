@@ -32,7 +32,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | Package | What it does | Start reading at |
 | --- | --- | --- |
 | `cmd/merud` | the daemon: starts everything, serves questions, the index ops and the tool ops | `main.go`: `main`, `run`, `serve`, then `index.go` and `tools.go` |
-| `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp add` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go` |
+| `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go`, `mcp.go`, `probe.go` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
@@ -42,7 +42,8 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file` and the read-only `read_file`, `list_folder` and `grep` | `builtin.go`: `Confirm`, `Call`; then `files.go` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder` and `grep`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
+| `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
 | `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
@@ -70,13 +71,14 @@ is also the order to learn the packages in: start at the bottom.
 flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
     merud --> index & retrieve & store
-    merud --> dispatch & mcp & a2a & builtin & secrets
+    merud --> dispatch & mcp & a2a & builtin & commands & secrets
     merud --> memory & skills & summarize
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     tui --> rpc
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
     builtin --> dispatch & catalog & secrets & config & memory & index
+    commands --> dispatch & engine & rpc & config
     summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
     dispatch --> store & transcript & engine & rpc & obs
@@ -97,7 +99,7 @@ flowchart TD
 reads the profile and the skills through them, `builtin` saves memories, and
 `index` copies the memory files into the store. `builtin` imports `index` so the
 file tools apply the indexer's skip rules instead of a copy, and `agent` imports
-`builtin` for `IsFileTool`, which names the tools the `search` route offers. `mcp` doesn't
+`builtin` for `IsFileTool`, which names the file tools the `search` route offers. `mcp` doesn't
 know `dispatch`: `cmd/merud/backends.go` wraps the pool in `mcpBackend`, so the
 pool stays a plain MCP client.
 
@@ -106,7 +108,8 @@ Three things to notice:
 - **`cmd/meru` stays small.** It reaches `rpc`, `tui`, `config` and `loopback`,
   plus `catalog` and `secrets` for `meru setup` and `meru mcp add`, which write
   `config.toml` and `secrets.toml` and talk to no model and no store. It never
-  reaches `engine`, `agent`, `transcript`, `store`, `index`, `dispatch` or `mcp`.
+  reaches `engine`, `agent`, `transcript`, `store`, `index`, `dispatch`, `mcp` or
+  `commands`.
   The client only moves messages; the daemon does the work. A test in
   `internal/policy` fails the build if this ever changes.
 - **`loopback` imports nothing of Meru's.** It sits at the bottom so every package
@@ -167,6 +170,7 @@ type Event struct {
     Approval   *Approval    // approval event: a call waiting for your answer
     Servers    []ServerInfo // tools event: each tool source and its allowed tools
     Log        []LogEntry   // log event: the newest tool_calls rows
+    MCP        []MCPStatus  // mcp_status event: one row per MCP server
 
     // Stats, on the "done" event that ends an ask:
     TTFTMillis     int64 // question received to first token, routing included
@@ -188,9 +192,11 @@ type Event struct {
 | `index_status` | one `status`; `done` |
 | `tools` | one `tools`; `done` |
 | `log` | one `log`; `done` |
+| `mcp_status` | one `mcp_status`; `done` |
 
 `meru index` sends `index`, and `meru index -status` sends `index_status`.
-`meru tools` sends `tools`, and `meru log -n 5` sends `log` with `Limit` 5. A
+`meru tools` sends `tools`, `meru mcp` sends `mcp_status`, and `meru log -n 5`
+sends `log` with `Limit` 5. A
 `Citation` holds the number the answer cites, the path (as `~/…` under your home
 folder), the heading, the line range or PDF page, and the fused score. The `done`
 that ends an ask carries the turn's timings and token counts, which `meru chat`
@@ -205,7 +211,7 @@ more line back on the same connection:
 // internal/rpc/protocol.go
 type Approval struct {
     ID      string          // the Reply must carry it back
-    Name    string          // the tool's full name, such as "obsidian.search_vault"
+    Name    string          // the tool's full name, such as "obsidian.obsidian_simple_search"
     Kind    string          // "mcp", "a2a" or "builtin"
     Args    json.RawMessage // the call's arguments
     Choices []Choice        // what the client may offer: "once", "session", "deny"
@@ -307,20 +313,34 @@ turns a `direct` route into `search`.
 ### `agent.ToolRunner` and `dispatch.Backend`: how a turn reaches a tool
 
 ```go
-// internal/agent/agent.go
+// internal/agent/tools.go
 type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+    Asks(name string) bool // would a call ask first? picks the "search" route's commands
+    ConnectMissing(ctx context.Context) // one try at each tool server that isn't connected
 }
 
 // internal/dispatch/dispatch.go
 type Backend interface {
-    Kind() string                              // "mcp", "a2a" or "builtin"
+    Kind() string                              // "mcp", "a2a", "builtin" or "command"
     Tools() []engine.ToolSpec                  // allowed tools, by full name
     Confirm(name string) Confirm               // ConfirmNever, ConfirmAsk or ConfirmAlways
     Locate(name string) (server, tool string)  // for rows and metrics
     Call(ctx context.Context, name string, args json.RawMessage) (Result, error)
     Status() []rpc.ServerInfo                  // for `meru tools`
+}
+
+// A Backend may also be a Connector: one try at each server it can't reach.
+type Connector interface {
+    ConnectMissing(ctx context.Context)
+}
+
+// A Backend may also be a CallConfirmer: it decides per call whether the
+// call asks, and dispatch asks it before Confirm. ok = false leaves the
+// choice to Confirm. builtin.Tools uses it for web_fetch's URL guard.
+type CallConfirmer interface {
+    ConfirmCall(c Call) (confirm Confirm, ok bool)
 }
 ```
 
@@ -331,17 +351,36 @@ returns no error. A call that couldn't run still comes back with an outcome
 tells the model what happened.
 
 A `dispatch.Call` carries the call's ID, the tool's full name, the arguments, the
-session, the source, the trace ID, and two functions: `Append`, which writes a
+session, the user's words (`Question`: this turn's question and the earlier ones
+in the history, which `web_fetch`'s guard reads), the source, the trace ID, and
+two functions: `Append`, which writes a
 transcript line through the agent, and `Approve`, the rpc server's
 `ApproveFunc`. `dispatch` never touches the socket or the session file itself.
 
-`Backend` is the one interface with three implementations, which is why it
-exists: `builtin.Tools`, `mcpBackend` (in `cmd/merud/backends.go`, wrapping
-`*mcp.Pool`) and `*a2a.Client`. `cmd/merud/tools.go` builds them in that order in
-`newToolService`. When two backends offer the same name, the first keeps it, so no
-server can shadow `configure`. `Dispatcher.Replace` swaps in a new MCP backend
+`Backend` is the one interface with four implementations, which is why it
+exists: `builtin.Tools`, `*commands.Set`, `mcpBackend` (in
+`cmd/merud/backends.go`, wrapping `*mcp.Pool`) and `*a2a.Client`.
+`cmd/merud/tools.go` builds them in that order in `newToolService`. When two
+backends offer the same name, the first keeps it, so no server can shadow
+`configure` or a `cmd.` tool. `*commands.Set` is also a `dispatch.Auditor`: its
+`AuditArgs` returns the argv a call will run, and `dispatch` records that in
+place of the model's arguments in the `tool_call` line, the approval prompt and
+the row. `Dispatcher.Replace` swaps in a new MCP backend
 after `configure` changes the servers. `dispatch.Recorder`, one method,
 `InsertToolCall`, is how `dispatch` writes the row; `*store.Store` satisfies it.
+
+`mcpBackend` is the one `Connector`. `merud` tries each MCP server once, in
+`mcp.NewPool`, and never again on its own: no timer, no background goroutine, no
+retry loop. On a turn on a tools route, `Handle` calls
+`ToolRunner.ConnectMissing`, which `Dispatcher.ConnectMissing` passes to each
+backend that is a `Connector`, and `mcp.Pool.ConnectMissing` gives each server
+that isn't connected one try: 5 seconds for an HTTP server (`httpRetryTimeout`),
+30 for a stdio child (`connectTimeout`). `Handle` then lists the tools again, so a
+server the user started after `merud`, or a child that crashed, is back for this
+turn. `Pool.Tools` offers only connected servers' tools, and a call to a server
+that isn't connected fails at once with `mcp.ErrUnavailable`. One goroutine per
+session waits for it to end and marks the server not connected; it never starts
+the server again (ARCHITECTURE.md, "MCP").
 
 `Handle` also calls `Tools()` on each turn for a second route rule: when the
 question names a connected MCP server or A2A agent (`toolServers`) and the route
@@ -365,6 +404,7 @@ type Config struct {
     MCP           MCP           // Servers: the [[mcp.servers]] entries (v0.3)
     A2A           A2A           // Agents: the [[a2a.agents]] entries (v0.3)
     Builtin       Builtin       // Confirm: built-in tools that ask first (v0.3)
+    Web           Web           // SearXNGURL (loopback only), Fetch, MaxResults (v0.3)
     Dir           string        // Meru's home, usually ~/.meru
 }
 ```
@@ -393,7 +433,8 @@ sequenceDiagram
     M->>E: embedDims: embed one probe text to learn the vector size
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
-    M->>M: newToolService: secrets.Load, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
+    M->>M: newToolService: secrets.Load, commands.New, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
+    M->>M: logWebSearch: catalog.CheckSearXNG, one info line, never fatal
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     par errgroup, until Ctrl-C, SIGTERM or a server error
@@ -407,16 +448,18 @@ sequenceDiagram
 
 All of this is in `cmd/merud/main.go` (`run` and `serve`), `cmd/merud/runtime.go`
 (`checkRuntime` and `warm`), `cmd/merud/index.go` (`startupScan`, `watch` and the
-adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`
-and `reloadMCP`).
+adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`,
+`reloadMCP` and `logWebSearch`).
 
 `newToolService` loads `secrets.toml` first and fails when other users can read
-it, then starts the MCP pool and builds the A2A client, which contacts no agent
-until a turn needs one. It joins the built-in tools, the pool and the A2A client
-in one `Dispatcher`, in that order. Last, `store.ReplayToolCalls` rebuilds
+it, then checks the `[[commands]]` entries with `commands.New`, starts the MCP
+pool and builds the A2A client, which contacts no agent until a turn needs one.
+It joins the built-in tools, the commands, the pool and the A2A client in one
+`Dispatcher`, in that order. Last, `store.ReplayToolCalls` rebuilds
 `tool_calls` from the transcripts, but only when the table is empty, so a deleted
-`meru.db` loses no history. A bad `[[mcp.servers]]` or `[[a2a.agents]]` entry
-stops `merud` here, with a message that names the entry and the key. The probe asks the embedding model rather than config for the vector
+`meru.db` loses no history. A bad `[[commands]]`, `[[mcp.servers]]` or
+`[[a2a.agents]]` entry stops `merud` here, with a message that names the entry
+and the key; a command's program missing from `PATH` only logs a warning. The probe asks the embedding model rather than config for the vector
 size, so a new embedding model can't leave a stale number behind; when the model or
 the size changed, `store.Open` drops the old vectors and the startup scan re-embeds.
 
@@ -427,6 +470,12 @@ errors and never stop the server. A scan and a `meru index` run take turns, so t
 walks never race over the same files. `signal.NotifyContext` turns Ctrl-C into a
 cancelled `context.Context`, and every step watches that context, so `merud` stops
 cleanly wherever it is. ([more on context](coding-notes/go-basics/context.md))
+
+`logWebSearch` runs `catalog.CheckSearXNG` against `[web] searxng_url` and logs
+`web search ready`, `web search not ready` with the reason, or `web search off`.
+The check asks SearXNG for an empty query, which SearXNG refuses without asking
+any search engine, and gives up after 3 seconds. A missing SearXNG never stops
+`merud`: `web_search` reports the same problem to the model when it runs.
 
 ## 5. One question, function by function
 
@@ -462,13 +511,17 @@ sequenceDiagram
         A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
         A-->>U: emit sources event
     end
+    opt the route offers tools
+        A->>D: ConnectMissing: one try at each MCP server that isn't connected
+        A->>A: toolSpecs(route) again
+    end
     A->>A: prompt(system prompt + excerpts + toolsNote, history, question)
     A->>E: round 1: Stream(messages, toolSpecs(route))
-    E-->>A: Delta{ToolCalls: obsidian.search_vault}
+    E-->>A: Delta{ToolCalls: obsidian.obsidian_simple_search}
     A-->>U: emit tool_call event
-    A->>D: Dispatch(Call{ID, Name, Args, Append, Approve})
+    A->>D: Dispatch(Call{ID, Name, Args, Question, Append, Approve})
     D->>T: Append(tool_call line)
-    opt the tool is on a confirm list
+    opt the tool is on a confirm list, or ConfirmCall says this call asks
         D-->>U: approval event (through Approve)
         U-->>D: Reply{Choice}
         D->>T: Append(approval line)
@@ -529,23 +582,26 @@ The same path as a reading list, in order:
    numbers them, and the agent puts them under the system prompt and sends the
    same numbered list to the client as a `sources` event. A failed search is logged
    and the turn answers without your files.
-7. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
+7. **Back in `Handle`**, when `toolSpecs(route)` isn't empty, `Handle` calls
+   `ToolRunner.ConnectMissing` once and then `toolSpecs` again, so a server that
+   answers now joins this turn's tools. A server that still fails is left out.
+8. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
    `answer` with the schemas from `toolSpecs(route)`, or none on the last allowed
    round (`[agent] max_rounds`, default 8). When the model calls tools,
    `runTools` gives each an ID, emits `tool_call`, and runs the calls at the same
    time in an `errgroup`, each through `ToolRunner.Dispatch`. Each result goes
    back to the model as a `RoleTool` message, in call order, and each call emits
    `tool_result` as it ends. The loop stops when a round has no tool calls.
-8. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
+9. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
    offers the tool, or ends the call as `denied`. It writes the `tool_call` line,
    asks through `approve` when the tool needs a yes, runs `Backend.Call`, redacts
    secrets, cuts the result (16,000 characters for the model, 4,000 for the log),
    and writes the `tool_result` line, the `tool_calls` row, the metrics and the
    `meru.dispatch` span.
-9. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
-   Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
-   Ollama sends each tool call whole, in a chunk of its own.
-10. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
+10. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
+    Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
+    Ollama sends each tool call whole, in a chunk of its own.
+11. **`internal/transcript/transcript.go` → `Append`** adds one JSON line to the
     session file; `History` reads only the user and assistant lines back into
     messages, so earlier tool results stay out of later prompts.
 
@@ -567,20 +623,49 @@ and passes the session ID back each time so the conversation continues. Its
 1. **`cmd/meru/tools.go` → `toolsCmd`** sends `tools`. `merud`'s
    **`handleTools`** emits one `tools` event from `Dispatcher.Servers`, which joins
    each backend's `Status`. `toolsText` prints each source, whether `merud`
-   reached it, its allowed tools and which ask first.
+   reached it, its allowed tools and which ask first, and for a local command the
+   argv template it runs.
 2. **`cmd/meru/log.go` → `logCmd`** sends `log` with `-n` as `Limit`.
    **`handleLog`** reads the newest rows with `store.ToolCalls` and cuts each
    result to 300 characters. `writeLog` lines them up with `text/tabwriter`; `-v`
-   adds each result under its row.
+   adds each result under its row. A local command's row shows the argv it ran,
+   as a command line.
 
 ### `meru setup` and `meru mcp add`
 
-These talk to you, not to `merud`, so they live in the client
-(`cmd/meru/setup.go`). They read the catalog from `internal/catalog`, save keys
-with `secrets.Set`, and add a server with `catalog.AppendServer`, which appends
-the block to `config.toml`, loads the result from a temporary copy, and renames
-it into place only when it loads. The built-in `configure` tool calls the same
-`AppendServer`, so chat and terminal write the same block.
+These talk to you, so they live in the client (`cmd/meru/setup.go`, `mcp.go`
+and `probe.go`). They read the catalog from `internal/catalog` and save keys
+with `secrets.Set`. Before writing, `probeAndPick` sends `mcp_probe`, shows the
+tools `merud` found, and lets you pick which the model may use.
+`catalog.AppendServer` then appends the block to `config.toml`, loads the result
+from a temporary copy, and renames it into place only when it loads; `meru mcp
+remove` takes a block out the same way with `catalog.RemoveServer`. Both end
+with `mcp_reload`. The built-in `configure` tool calls the same `AppendServer`,
+so chat and terminal write the same block.
+
+The catalog holds two entries, in this order: `google` (Gmail, Calendar, Drive
+and Docs) and `obsidian` (notes). Web search is built in, so it has no entry;
+`setupCmd`'s Web search step calls `checkWebSearch`, which runs
+`catalog.CheckSearXNG` and on failure prints the container commands or the
+`formats` setting, then waits for Enter or `s`. `google` is a `url` entry
+the user starts; its `Entry.Start` holds the command, which `meru mcp add` prints
+and never runs. Before it probes such an entry, `doIt` asks `urlAnswers`, a
+one-second TCP dial to the URL's host and port. When nothing answers, it skips
+the probe and writes the catalog's lists.
+
+### `meru mcp` and `/mcp`, function by function
+
+1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows.
+   With `--json` it prints them as a JSON array; otherwise it prints
+   `tui.MCPTable(rows)`. In `meru chat`, `/mcp` opens a box that asks the same
+   op (`internal/tui/mcp.go`, `mcpCmd`) and draws the same `MCPTable`.
+2. **`cmd/merud/tools.go` → `handleMCPStatus`** reads `mcp.Pool.Status` and
+   emits one `mcp_status` event. It sends nothing to any server, so it answers at
+   once while one is down.
+3. **`cmd/merud/backends.go` → `mcpStatus`** turns each `mcp.ServerStatus` into
+   an `rpc.MCPStatus`: `State` is `connected` or `not connected`, `Tools` is
+   `-1` for a server that isn't connected (the table shows `—`), and `Allowed`
+   and `Confirm` come from config, so they show either way.
 
 ### `meru index`, function by function
 

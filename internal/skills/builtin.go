@@ -1,4 +1,4 @@
-// This file holds the built-in skills: the copies of writing and explainer
+// This file holds the built-in skills: writing, explainer and web-research,
 // compiled into the binary, InstallBuiltins to put them on disk on first run,
 // and Reset to restore one after you've edited it.
 
@@ -82,17 +82,22 @@ func Edited(dir, name string) (bool, error) {
 // InstallBuiltins copies each built-in skill to <dir>/<name>/ when no file or
 // folder called <name> exists there yet, and returns the names it copied.
 // A folder that already exists is left alone, even an empty one: your copy
-// wins (ARCHITECTURE.md, "Built-in skills").
+// wins (ARCHITECTURE.md, "Built-in skills"). A skill named in disabled,
+// [skills] disabled from config, isn't copied, so a user who deleted it
+// and disabled it doesn't get it back.
 //
 // Each skill is written into a hidden temporary folder first and then renamed
 // into place, so a crash halfway leaves no half-written skill that later runs
 // would mistake for your edited copy. Folders get mode 0700 and files 0600.
 // It fails when dir can't be created or a file can't be written.
-func InstallBuiltins(dir string) (installed []string, err error) {
+func InstallBuiltins(dir string, disabled []string) (installed []string, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create skills directory %s: %w", dir, err)
 	}
 	for _, name := range Builtins() {
+		if slices.Contains(disabled, name) {
+			continue
+		}
 		target := filepath.Join(dir, name)
 		// Lstat looks at the entry itself without following a symbolic link,
 		// so a link you put there also counts as "already exists".

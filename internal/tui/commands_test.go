@@ -1,4 +1,5 @@
-// This file tests the slash commands that aren't about usage: /new.
+// This file tests the slash commands that aren't about usage: /new and
+// /exit.
 
 package tui
 
@@ -56,6 +57,35 @@ func TestNewSession(t *testing.T) {
 	}
 }
 
+// TestExit checks /exit: it quits the chat, stopping an answer that is
+// still streaming, and the line for an unknown command lists it.
+func TestExit(t *testing.T) {
+	merud := &fakeMerud{block: true}
+	m := testModel(merud.ask, newFakeSender())
+	m, _ = update(t, m, typeText("a question"), press(tea.KeyEnter))
+	if !m.streaming {
+		t.Fatal("before /exit: no answer streaming")
+	}
+
+	m, cmd := update(t, m, typeText("/exit"), press(tea.KeyEnter))
+	if m.streaming {
+		t.Error("after /exit: the answer still streams")
+	}
+	if cmd == nil {
+		t.Fatal("/exit returned no command; want tea.Quit")
+	}
+	// A tea.Cmd is a function; calling it gives the message it would send.
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Errorf("/exit sent %T, want tea.QuitMsg", cmd())
+	}
+
+	m = testModel(nil, newFakeSender())
+	m, _ = update(t, m, typeText("/quit"), press(tea.KeyEnter))
+	if !strings.Contains(m.notice, "/exit") {
+		t.Errorf("unknown-command notice %q doesn't list /exit", m.notice)
+	}
+}
+
 // TestSourceLinks checks that each source line links to its file when links
 // are on, including every screen line of a source that wraps, and that the
 // links don't count toward the line's width.
@@ -64,13 +94,13 @@ func TestSourceLinks(t *testing.T) {
 	m.look.links = true
 	m.home = "/Users/u"
 	ex := &exchange{
-		answer: "It is 4,200 dollars [1].",
-		sources: []rpc.Citation{{N: 1, Path: "~/notes/a long folder name/garden budget notes.md",
-			Heading: "Budget for the vegetable garden", StartLine: 3, EndLine: 5}},
+		answer: "On 12 April [1].",
+		sources: []rpc.Citation{{N: 1, Path: "~/notes/a long folder name/garden plan notes.md",
+			Heading: "Planting the vegetable garden", StartLine: 3, EndLine: 5}},
 	}
 	const width = 40
 	block := m.sourcesBlock(ex, width)
-	const url = "file:///Users/u/notes/a%20long%20folder%20name/garden%20budget%20notes.md"
+	const url = "file:///Users/u/notes/a%20long%20folder%20name/garden%20plan%20notes.md"
 	lines := strings.Split(block, "\n")
 	if len(lines) < 3 {
 		t.Fatalf("want the source to wrap over several lines:\n%s", block)

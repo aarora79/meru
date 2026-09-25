@@ -89,8 +89,18 @@ type proc struct {
 // fails the test if a race-enabled binary reported a data race.
 func startProc(t *testing.T, name string, env []string, args ...string) *proc {
 	t.Helper()
+	return startProcInput(t, name, env, "", args...)
+}
+
+// startProcInput is startProc with input as the process's standard input,
+// for a command that asks questions. An empty input gives it none.
+func startProcInput(t *testing.T, name string, env []string, input string, args ...string) *proc {
+	t.Helper()
 	cmd := exec.Command(bin(name), args...)
 	cmd.Env = append(os.Environ(), env...)
+	if input != "" {
+		cmd.Stdin = strings.NewReader(input)
+	}
 	p := &proc{name: name, cmd: cmd, stdout: &syncBuffer{}, stderr: &syncBuffer{}, done: make(chan struct{})}
 	cmd.Stdout = p.stdout
 	cmd.Stderr = p.stderr
@@ -229,8 +239,11 @@ func (h *home) log() string {
 // fakeConfig returns a config.toml that points merud at the fake Ollama at
 // baseURL, with the test model names. extra is appended as-is, for tests
 // that need more keys.
+//
+// Web search is off, so no test reaches a SearXNG that happens to run on
+// this machine; TestWebSearchMissingSearXNG turns it on.
 func fakeConfig(baseURL, extra string) string {
-	return fmt.Sprintf("[ollama]\nbase_url = %q\n\n[models]\nfast = %q\nmain = %q\nembed = %q\n\n%s",
+	return fmt.Sprintf("[ollama]\nbase_url = %q\n\n[models]\nfast = %q\nmain = %q\nembed = %q\n\n[web]\nsearxng_url = \"\"\n\n%s",
 		baseURL, fastModel, mainModel, embedModel, extra)
 }
 
@@ -401,6 +414,14 @@ type result struct {
 func runMeru(t *testing.T, h *home, args ...string) result {
 	t.Helper()
 	p := startMeru(t, h, args...)
+	code := p.wait(t, callTimeout)
+	return result{stdout: p.stdout.String(), stderr: p.stderr.String(), code: code}
+}
+
+// runMeruInput is runMeru with input typed on meru's standard input.
+func runMeruInput(t *testing.T, h *home, input string, args ...string) result {
+	t.Helper()
+	p := startProcInput(t, "meru", nil, input, append([]string{"-socket", h.socket}, args...)...)
 	code := p.wait(t, callTimeout)
 	return result{stdout: p.stdout.String(), stderr: p.stderr.String(), code: code}
 }

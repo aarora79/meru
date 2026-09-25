@@ -17,7 +17,7 @@ import (
 // String returns the citation as one line of plain text, numbered the way
 // the answer cites it:
 //
-//	[1] ~/notes/garden.md, "Budget", lines 3–8
+//	[1] ~/notes/garden.md, "Planting", lines 3–8
 //
 // The heading appears when the excerpt has one. A text file gives a line
 // range (or "line 7" for one line) and a PDF gives a page. Having a String

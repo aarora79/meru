@@ -14,15 +14,35 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 )
 
-// Roots returns the [index] folders with symlinks resolved, leaving out the
-// ones that don't exist now. These are the paths the store keys files by.
+// Roots returns the folders Check, Walk and ReadText reach, with symlinks
+// resolved, leaving out the ones that don't exist now: the [index] folders,
+// which are the paths the store keys files by, then any folder ReadAlso
+// added.
 func (ix *Indexer) Roots() []string {
 	// The second result lists the missing folders; Roots has no use for it.
 	resolved, _ := ix.roots()
+	for _, f := range ix.readOnly {
+		if r, err := filepath.EvalSymlinks(f); err == nil {
+			resolved = append(resolved, r)
+		}
+	}
 	return resolved
+}
+
+// ReadAlso adds dir, an absolute path, to the folders Check, Walk and
+// ReadText reach, under the same skip rules as an [index] folder. Scan and
+// the watcher never see it, so nothing in it reaches the store or search.
+// merud adds the web_fetch downloads folder this way, so read_file and
+// grep can read what the model downloaded. dir may not exist yet; Roots
+// leaves it out until it does.
+//
+// Call it before the indexer serves any file tool call: it changes a field
+// that the file tool methods read without a lock.
+func (ix *Indexer) ReadAlso(dir string) {
+	ix.readOnly = append(ix.readOnly, filepath.Clean(dir))
 }
 
 // Checked is what Check learns about one path.
@@ -76,7 +96,8 @@ func (ix *Indexer) Check(p string) (Checked, error) {
 // itself unresolved, so a link at p stays a link for Check to refuse. When
 // folders nest, the deepest one wins.
 func (ix *Indexer) locate(p string) (path, root string) {
-	for _, f := range ix.folders {
+	// slices.Concat returns a new slice holding both lists.
+	for _, f := range slices.Concat(ix.folders, ix.readOnly) {
 		r, err := filepath.EvalSymlinks(f)
 		if err != nil {
 			continue // the folder doesn't exist now
@@ -226,16 +247,14 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error) {
 	}
 	switch kind {
 	case KindPDF:
-		pages, err := pdfPages(data)
+		pages, err := PDFText(data)
 		if err != nil {
 			return Text{}, "", err
 		}
-		if strings.TrimSpace(strings.Join(pages, "")) == "" {
-			return Text{}, "", errNoText
-		}
 		return Text{Kind: kind, Pages: pages}, "", nil
 	case KindHTML:
-		return Text{Kind: kind, Pages: []string{readHTML(string(data)).b.String()}}, "", nil
+		_, text := HTMLText(string(data))
+		return Text{Kind: kind, Pages: []string{text}}, "", nil
 	default:
 		return Text{Kind: kind, Pages: []string{string(data)}}, "", nil
 	}

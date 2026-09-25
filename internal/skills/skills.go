@@ -30,7 +30,7 @@ const (
 const fileName = "SKILL.md"
 
 // namePattern matches a skill name: lowercase letters and digits in words
-// joined by single hyphens, such as "writing" or "portfolio-review". A name
+// joined by single hyphens, such as "writing" or "meeting-notes". A name
 // that passes can't hold a path separator, "..", spaces or capitals, so it is
 // safe as a folder name on every platform and reads the same everywhere.
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -67,7 +67,9 @@ type Registry struct {
 	warnings []error
 }
 
-// Load reads every skill folder directly under dir (usually ~/.meru/skills).
+// Load reads every skill folder directly under dir (usually ~/.meru/skills),
+// except the folders disabled names ([skills] disabled from config). It
+// skips those without a warning: the user asked for it.
 //
 // A bad skill doesn't stop the load: Load skips it and records why, and
 // Warnings returns those reasons. A folder is bad when it has no SKILL.md, the
@@ -78,7 +80,7 @@ type Registry struct {
 //
 // Load returns an empty registry when dir doesn't exist yet, and fails only
 // when dir exists but can't be read.
-func Load(dir string) (*Registry, error) {
+func Load(dir string, disabled []string) (*Registry, error) {
 	// &Registry{...} builds a Registry and returns a pointer to it, so every
 	// caller shares the one value instead of copying it.
 	r := &Registry{dir: dir, skills: make(map[string]Skill)}
@@ -93,7 +95,7 @@ func Load(dir string) (*Registry, error) {
 	// stable order.
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasPrefix(name, ".") {
+		if strings.HasPrefix(name, ".") || slices.Contains(disabled, name) {
 			continue
 		}
 		folder := filepath.Join(dir, name)

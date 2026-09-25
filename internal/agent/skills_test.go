@@ -59,10 +59,10 @@ func (f fixedSkills) Registry(context.Context) *skills.Registry { return f.reg }
 func builtinRegistry(t *testing.T) *skills.Registry {
 	t.Helper()
 	dir := t.TempDir()
-	if _, err := skills.InstallBuiltins(dir); err != nil {
+	if _, err := skills.InstallBuiltins(dir, nil); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := skills.Load(dir)
+	reg, err := skills.Load(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestPickNone(t *testing.T) {
 // no pick call and leaves the prompt as it was, and that a failed pick
 // call still answers.
 func TestPickSkipped(t *testing.T) {
-	empty, err := skills.Load(filepath.Join(t.TempDir(), "none"))
+	empty, err := skills.Load(filepath.Join(t.TempDir(), "none"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestRouteErrorStopsPick(t *testing.T) {
 
 func TestParsePick(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"writing", "explainer", "portfolio-review"} {
+	for _, name := range []string{"writing", "explainer", "meeting-notes", "web-research"} {
 		if err := os.MkdirAll(filepath.Join(dir, name), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +227,7 @@ func TestParsePick(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reg, err := skills.Load(dir)
+	reg, err := skills.Load(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,14 +239,17 @@ func TestParsePick(t *testing.T) {
 		{" Writing.", []string{"writing"}},
 		{"explainer, writing", []string{"explainer", "writing"}},
 		{"- writing\n- explainer", []string{"writing", "explainer"}},
-		{"portfolio-review", []string{"portfolio-review"}},
+		{"meeting-notes", []string{"meeting-notes"}},
 		{"writing, writing", []string{"writing"}},
-		{"writing, explainer, portfolio-review", []string{"writing", "explainer"}},
+		{"writing, explainer, meeting-notes", []string{"writing", "explainer"}},
 		{"none", nil},
 		{"None.", nil},
 		{"", nil},
 		{"poetry", nil},
 		{"`writing`", []string{"writing"}},
+		{"web-research", []string{"web-research"}},
+		{"web-research, writing", []string{"web-research", "writing"}},
+		{"Web-Research.", []string{"web-research"}},
 	}
 	for _, tt := range tests {
 		if got := parsePick(tt.in, reg); !slices.Equal(got, tt.want) {

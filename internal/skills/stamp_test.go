@@ -54,7 +54,7 @@ func TestStamp(t *testing.T) {
 // after an edit, and for a skill Meru doesn't ship.
 func TestEditedAndFile(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := InstallBuiltins(dir); err != nil {
+	if _, err := InstallBuiltins(dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	writeSkill(t, dir, "notes", skillText("notes", "d", "mine"))
@@ -76,7 +76,7 @@ func TestEditedAndFile(t *testing.T) {
 		t.Error("Edited succeeded with no file to compare")
 	}
 
-	r, err := Load(dir)
+	r, err := Load(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

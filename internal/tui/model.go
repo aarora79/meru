@@ -179,6 +179,8 @@ type Model struct {
 	usageBox *usageBox
 	// meBox is the open /me box, or nil, and works the same way.
 	meBox *meBox
+	// mcpBox is the open /mcp box, or nil, and works the same way.
+	mcpBox *mcpBox
 	// notice is a dim line that takes the help line's place until the next
 	// key press, such as the answer to an unknown /command.
 	notice string
@@ -284,6 +286,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case meMsg:
 		m.applyMe(msg)
 		return m, nil
+	case mcpMsg:
+		m.applyMCP(msg)
+		return m, nil
 	case refreshMsg:
 		// Check now, and book the next check. Only this branch books one,
 		// so there is one chain of checks however many answers arrive.
@@ -340,7 +345,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.approvalKey(msg)
 		return m, nil
 	case m.boxOpen():
-		// So do the /usage and /me boxes, until Esc or q closes them.
+		// So do the /usage, /me and /mcp boxes, until Esc or q closes them.
 		m.boxKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):

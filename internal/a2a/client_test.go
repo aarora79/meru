@@ -51,7 +51,7 @@ func TestNewDoesNoIO(t *testing.T) {
 
 func TestNewRejectsBadConfig(t *testing.T) {
 	_, err := New(context.Background(), []AgentConfig{{Name: "x", URL: "https://agent.example.com"}}, nil)
-	if err == nil || !strings.Contains(err.Error(), "network = true") {
+	if err == nil || !strings.Contains(err.Error(), "remote = true") {
 		t.Fatalf("New() = %v, want a loopback error", err)
 	}
 }
@@ -365,7 +365,7 @@ func TestHeadersOnEveryRequest(t *testing.T) {
 func TestCardCannotPointOffMachine(t *testing.T) {
 	// The card sits on loopback, but it names an agent URL on another
 	// machine (192.0.2.1 is TEST-NET-1, reserved for documentation). Without
-	// network = true the dialer must refuse it before any packet leaves.
+	// remote = true the dialer must refuse it before any packet leaves.
 	ta := startAgent(t, agentOptions{interfaceURL: "http://192.0.2.1:9/"})
 	c := newClient(t, AgentConfig{URL: ta.srv.URL, Allow: []string{"summarize"}})
 

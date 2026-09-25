@@ -12,6 +12,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -23,21 +24,53 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// testServerEnv, when set to "1", turns the test binary into the stdio test
-// server.
+// testServerEnv turns the test binary into a stdio test server. Its value
+// picks how the server behaves:
+//
+//   - "1" serves the test tools;
+//   - "hang" never answers, and exits when its stdin closes;
+//   - "hanglist" answers the handshake but never answers tools/list.
 const testServerEnv = "MERU_MCP_TESTSERVER"
+
+// testPIDEnv, when set, names a file the stdio test server writes its
+// process ID to, so a test can check the process is gone afterwards.
+const testPIDEnv = "MERU_MCP_TESTPID"
 
 // TestMain runs before the package's tests. It either serves MCP (when the
 // Pool started this binary as a child) or runs the tests as usual.
 func TestMain(m *testing.M) {
-	if os.Getenv(testServerEnv) == "1" {
-		if err := newTestServer().Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+	mode := os.Getenv(testServerEnv)
+	if mode == "" {
+		os.Exit(m.Run())
+	}
+	if path := os.Getenv(testPIDEnv); path != "" {
+		if err := os.WriteFile(path, []byte(fmt.Sprint(os.Getpid())), 0o600); err != nil {
 			fmt.Fprintln(os.Stderr, "test server:", err)
 			os.Exit(1)
 		}
-		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	srv := newTestServer()
+	switch mode {
+	case "hang":
+		// Read and drop whatever arrives until stdin closes.
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	case "hanglist":
+		srv.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				if method == "tools/list" {
+					<-ctx.Done()
+					return nil, ctx.Err()
+				}
+				return next(ctx, method, req)
+			}
+		})
+	}
+	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		fmt.Fprintln(os.Stderr, "test server:", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // Argument and output types for the test tools. The struct tags name the
@@ -73,7 +106,11 @@ func newTestServer() *mcp.Server {
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
 	}
 
-	mcp.AddTool(s, &mcp.Tool{Name: "echo", Description: "Echo the text back."},
+	// echo says it changes nothing and crash says it destroys; the rest
+	// carry no annotations. Probe's tests read these hints.
+	yes := true
+	mcp.AddTool(s, &mcp.Tool{Name: "echo", Description: "Echo the text back.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}},
 		func(_ context.Context, _ *mcp.CallToolRequest, in echoArgs) (*mcp.CallToolResult, any, error) {
 			return text(in.Text), nil, nil
 		})
@@ -108,7 +145,8 @@ func newTestServer() *mcp.Server {
 		func(_ context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 			return text(fmt.Sprint(os.Getpid())), nil, nil
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: "crash", Description: "Exit the process."},
+	mcp.AddTool(s, &mcp.Tool{Name: "crash", Description: "Exit the process.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &yes}},
 		func(_ context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 			os.Exit(3)
 			return nil, nil, nil

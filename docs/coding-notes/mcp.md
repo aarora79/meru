@@ -1,8 +1,9 @@
 # mcp
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
-and the tests `config_test.go`, `pool_test.go`, `call_test.go`, `headers_test.go`,
-`stdio_test.go`, `stdio_unix_test.go`, `testserver_test.go`)
+`probe.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
+`headers_test.go`, `stdio_test.go`, `stdio_unix_test.go`, `probe_test.go`,
+`probe_unix_test.go`, `testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
 [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4
@@ -21,13 +22,29 @@ reads `Pool.Tools` for the prompt and calls `Pool.Call` to run a tool. `dispatch
 owns the confirmation prompt, the `tool_calls` row and the metrics; see
 [dispatch.md](dispatch.md).
 
+`Probe` is the one piece outside the Pool. It starts a server for a moment, lists
+every tool it offers with the hints the server gives, and stops it. `meru mcp add`
+uses it, through merud, to show you a new server's tools before you pick which to
+allow.
+
 The package speaks both transports in the current MCP spec, through the official
 Go SDK (`github.com/modelcontextprotocol/go-sdk`):
 
 - **stdio.** The Pool starts the server as a child process and sends JSON-RPC
   messages, one per line, over its stdin and stdout.
 - **Streamable HTTP.** The Pool connects to a server that is already running, at a
-  URL. The URL must be loopback unless the entry says `network = true`.
+  URL. The URL must be loopback unless the entry says `remote = true`.
+
+The Pool supervises nothing. It starts a stdio server because the transport is the
+child's stdin and stdout, and it connects to an HTTP server that you start. It
+never restarts either one on its own, checks its health or retries on a timer:
+
+| When | What the Pool does |
+| --- | --- |
+| `NewPool`, at `merud`'s start | one try per server |
+| a turn on a tools route (`ConnectMissing`) | one try per server that isn't connected |
+| a turn that offers no tools, or no turn at all | nothing |
+| a call to a server that isn't connected | fails at once with `ErrUnavailable` |
 
 ## The picture
 
@@ -47,23 +64,24 @@ flowchart LR
     call -- "allowed" --> http
 ```
 
-A call from the agent loop, when the server has died since the last call:
+A stdio server that crashes, and comes back on the next turn on a tools route:
 
 ```mermaid
 sequenceDiagram
+    participant A as agent.Handle
     participant D as dispatch
     participant P as Pool
     participant W as watch goroutine
     participant S as stdio server
     S--xW: process exits
     W->>P: session = nil, lastErr = "server went away"
-    D->>P: Call("files.read", args)
-    P->>P: allowed? yes
-    P->>P: reconnect wait passed? yes
+    D->>P: Call("files.read", args), later in the same turn
+    P-->>D: ErrUnavailable: files: not connected
+    Note over A,S: the next turn on a tools route
+    A->>D: ConnectMissing(ctx)
+    D->>P: ConnectMissing(ctx)
     P->>S: start a new process, handshake, list tools
-    P->>S: tools/call read
-    S-->>P: result
-    P-->>D: Result{Text, IsError, Duration}
+    A->>P: Tools() now lists files.read again
 ```
 
 ## Walk through the code
@@ -81,10 +99,11 @@ type ServerConfig struct {
     Args    []string
     Env     map[string]string
     URL     string
-    Network bool
+    Remote  bool
     Headers map[string]string
     Allow   []string
     Confirm []string
+    AlwaysConfirm []string
     Timeout time.Duration
 }
 ```
@@ -94,15 +113,24 @@ type ServerConfig struct {
 It refuses:
 
 - an entry with both `command` and `url`, or neither;
-- a URL that isn't loopback, unless `network = true` (the rule lives in
-  `loopback.CheckURL`, which the engine and the telemetry exporter also use);
+- a URL that isn't loopback, unless `remote = true` (the rule lives in
+  `loopback.CheckURL`, which the engine and the telemetry exporter also use).
+  `remote` covers only where `merud` connects. It says nothing about what the
+  server reaches: the catalog's `google` server sits on loopback and talks to
+  Google. A config written before the rename says `network`, and `config.Load`
+  names the rename when it finds that key (see [config.md](config.md));
 - a name with anything but letters, digits, `-` and `_`. The name becomes the
   prefix of every tool name, so a `.` in it would make `a.b.c` ambiguous;
 - `*` or any other wildcard in `allow` or `confirm`. Deny-by-default means you name
   each tool. A wildcard would also let in tools a server adds in a later release
   that no one has read;
-- `headers` on a stdio entry, a header name with a space, colon or line break, or
-  a header value with a line break, which could smuggle in a second header;
+- `headers` or `remote` on a stdio entry, `args` on a `url` entry, a header name
+  with a space, colon or line break, or a header value with a line break, which
+  could smuggle in a second header;
+- `env` on a `url` entry. `merud` starts no process for an HTTP server, so the
+  variables would go nowhere. The message says so and points at `headers`: "env
+  does nothing on a url server, because merud doesn't start it. Set the variables
+  where you start the server, or send a key with headers";
 - a `confirm` entry missing from `allow`. That tool never reaches the model, so
   the entry does nothing, and it is almost always a typo.
 
@@ -139,7 +167,7 @@ return &mcp.CommandTransport{Command: cmd, TerminateDuration: terminateWait}
 
 ```go
 s.mu.Lock()
-err := p.connectLocked(ctx, s)
+err := p.connectLocked(ctx, s, connectTimeout)
 s.mu.Unlock()
 if err != nil {
     log.Warn("mcp server failed to start", ...)
@@ -148,27 +176,81 @@ if err != nil {
 ```
 
 A server that fails to start doesn't stop the others. The Pool logs it, `Status`
-reports it, and a later call tries again.
+reports it, and `ConnectMissing` tries it again at the start of the next turn that
+offers tools.
 
 `tryConnectLocked` holds the details:
 
 1. It creates the child's process context from `context.Background()`, not from
    `ctx`. merud passes `NewPool` a startup context, and the child must outlive it.
    `s.stop` cancels this context at `Close`.
-2. It runs the MCP handshake and lists the tools, both bounded by
-   `connectTimeout` (30 s).
+2. It runs the MCP handshake and lists the tools, both bounded by `limit`:
+   `connectTimeout` (30 s) at startup and for a stdio server, `httpRetryTimeout`
+   (5 s) when a turn tries an HTTP server again.
 3. `allowedTools` keeps the tools in `allow`, renames each to `<server>.<tool>`,
    and sorts them. A stable order keeps the prompt the same from turn to turn.
 4. It starts a goroutine, `watch`, that blocks on `cs.Wait()` until the session
-   ends. When a server dies, `watch` marks it disconnected at once and reaps the
-   child process.
+   ends. When a server dies, `watch` marks it not connected at once and reaps the
+   child process. It never starts the server again.
 
-**Reconnects.** The rule is: a dead server restarts on the next call to one of its
-tools, at most once every 10 seconds (`defaultReconnectAfter`). A call inside that
-wait fails fast with `ErrUnavailable`. There is no background restart loop, so a
-server that crashes on start doesn't spin, and a server nobody calls stays down
-until someone needs it. `Tools` keeps listing a dead server's tools so the model
-can still call one and bring it back.
+**Connecting again.** `ConnectMissing` is the one path that reconnects, and only a
+turn calls it:
+
+```go
+func (p *Pool) ConnectMissing(ctx context.Context) {
+    for _, s := range p.servers {
+        s.mu.Lock()
+        if s.closed || s.session != nil {
+            s.mu.Unlock()
+            continue
+        }
+        limit := connectTimeout
+        if s.cfg.URL != "" {
+            limit = httpRetryTimeout
+        }
+        err := p.connectLocked(ctx, s, limit)
+        ...
+```
+
+It walks the servers in config order and tries each one that isn't connected,
+once. An HTTP server gets 5 seconds: it is somebody else's process, and it
+either answers at once or isn't running. A stdio server gets the full 30, because
+`npx -y` or `uvx` may still be downloading it. A failure goes to the log and to
+`lastErr` for `Status`, and the turn carries on without that server. The agent
+loop reaches this method through `dispatch.Connector` (see
+[dispatch.md](dispatch.md) and [agent.md](agent.md)).
+
+`Tools` lists only the tools of servers with a live session, so a dead server's
+tools drop out of the next prompt. `sessionFor`, which `Call` uses, never
+connects:
+
+```go
+switch {
+case s.closed:
+    return nil, fmt.Errorf("%w: %s: pool closed", ErrUnavailable, s.cfg.Name)
+case s.session == nil:
+    return nil, fmt.Errorf("%w: %s: not connected: %s", ErrUnavailable, s.cfg.Name, s.lastErr)
+}
+```
+
+A `switch` with no value after it tests each `case` in turn and runs the first
+that is true, like a chain of `if … else if`. `%w` wraps `ErrUnavailable` in the
+error, so `dispatch` can find it with `errors.Is`.
+
+With no timer, no background loop and no wait, nothing runs while nobody asks. A
+server that crashes on start doesn't spin, and a server nobody needs is never
+touched again. `markFailed` drops the session when a call finds the connection
+gone, so the server shows as not connected, and the next turn tries it.
+
+**Status.** `Status` reports each server in config order from what the Pool
+holds, and sends nothing to any server. `ServerStatus` carries the name, the
+transport, the `URL` of an HTTP server, `Connected`, `Offered` (tools the server
+listed), `Allowed` (tools the model sees), `Unknown` (allow entries the server
+doesn't offer) and `LastError`. Two counts come from config, so they show while
+the server is down: `Listed`, the length of `allow`, and `Confirms`, the allowed
+tools that ask first. `Confirms` counts a tool once when both `confirm` and
+`always_confirm` name it. `meru tools` and `meru mcp` both read `Status`, through
+`cmd/merud` (see [merud.md](merud.md)).
 
 Each `server` has a `sync.Mutex` next to the fields it guards. Calls lock it only
 to read or swap the session, never during the tool call itself, so many calls to
@@ -196,8 +278,66 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 A `RoundTripper` must not change the request it gets, so it sets the headers on a
 copy. It adds them only for the server's own host: a server marked
-`network = true` may redirect elsewhere, and the key must not follow. More on
+`remote = true` may redirect elsewhere, and the key must not follow. More on
 clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md).
+
+### probe.go
+
+`Probe(ctx, cfg, log)` answers "what does this server offer?" before the server
+goes into config. It returns a `ProbeInfo`: the name and version the server gives
+in the handshake, and every tool it offers, sorted by name.
+
+```go
+cfg.Allow, cfg.Confirm, cfg.Timeout = nil, nil, 0
+if err := cfg.Validate(); err != nil {
+    return ProbeInfo{}, err
+}
+```
+
+`cfg` arrives as a copy, since Go passes structs by value, so clearing the allow
+and confirm lists touches nothing the caller holds. What's left for `Validate` to
+check is how to reach the server: the name, `command` or `url`, the loopback rule,
+and the header and env names. An empty allow list was always valid; it gives the
+model nothing.
+
+`Probe` reaches the server with `dialTransport` and `newClient`, the same two
+functions the Pool uses, so a probe sees what the Pool would see: the same trimmed
+environment for a stdio child, and the same loopback redirect rule and headers for
+Streamable HTTP. It then runs the handshake and `listTools` under one 30-second
+limit (`connectTimeout`). A first `npx -y` or `uvx` run downloads the server
+before it starts, so a timeout says that, and says to try again.
+
+**Hints.** MCP lets a server annotate each tool. `Probe` copies two of the
+annotations into `ProbeTool`, as `*bool` so "not given" stays apart from
+"false":
+
+- `ReadOnly`, from `readOnlyHint`: the tool changes nothing. The Go SDK decodes
+  this one into a plain `bool`, so a missing hint reads as `false`, which is also
+  MCP's default. `ReadOnly` is nil only when the tool has no annotations at all.
+- `Destructive`, from `destructiveHint`: the tool may delete or overwrite. The SDK
+  keeps it as a pointer, so nil means the server left it out.
+
+MCP calls both hints from the server, not promises. Meru uses them only to
+propose which tools to allow and which to confirm; you decide.
+
+**No stray processes.** The child must end whatever happens, so the cleanup comes
+in two `defer`s, which run last-in, first-out when `Probe` returns:
+
+```go
+procCtx, stop := context.WithCancel(context.Background())
+defer stop()
+...
+cs, err := newClient(log).Connect(cctx, t, nil)
+if err != nil { ... } // the SDK closes the connection itself
+defer func() { _ = cs.Close() }()
+```
+
+`cs.Close` closes the child's stdin and waits for it to exit; `stop` kills it if
+it hasn't. `probe_unix_test.go` proves it: a test server that never answers the
+handshake, and one that answers it but never lists its tools, both leave no
+process behind once `Probe` gives up.
+
+The probe calls no tool, so it doesn't go through `dispatch`.
 
 ### call.go
 
@@ -217,8 +357,8 @@ if !allowed {
    about the call. `dispatch` only calls tools the pool listed, so it records a
    made-up name as `denied` before the pool sees it.
 2. **Arguments.** They must be a JSON object; empty means `{}`.
-3. **Session.** `sessionFor` returns the live session, restarting the server if
-   the reconnect wait has passed.
+3. **Session.** `sessionFor` returns the live session, or fails at once with
+   `ErrUnavailable` when the server isn't connected. It never starts the server.
 4. **Call.** `cs.CallTool` runs under a timeout (60 s unless the entry sets
    `Timeout`). If you cancel `ctx`, or the timeout passes, the SDK sends the server
    a `notifications/cancelled` message and `Call` returns an error that wraps
@@ -254,29 +394,46 @@ failed: `tool_error` (the convention's name), or Meru's `denied`, `unavailable` 
   [go-basics/type-switches.md](go-basics/type-switches.md).
 - **Iterators** — `cs.Tools` pages through the server's tool list. More in
   [go-basics/iterators.md](go-basics/iterators.md).
-- **Build tags** — `stdio_unix_test.go` runs only on Unix-like systems. More in
-  [go-basics/build-tags.md](go-basics/build-tags.md).
+- **Build tags** — `stdio_unix_test.go` and `probe_unix_test.go` run only on
+  Unix-like systems. More in [go-basics/build-tags.md](go-basics/build-tags.md).
 
 ## Try it
 
 ```sh
 go test -race ./internal/mcp/...
-go test -race -run TestCrashedServerRestarts -v ./internal/mcp/
+go test -race -run 'TestCrashedServerComesBackOnTheNextTurn|TestConnectOnDemand|TestNoBackgroundWork' -v ./internal/mcp/
+go test -race -run TestProbe -v ./internal/mcp/
 ```
 
 The tests start one test server, written with the same SDK, three ways: in memory,
 as a stdio child, and over Streamable HTTP on 127.0.0.1. The stdio child is the
 test binary itself. `TestMain` checks the `MERU_MCP_TESTSERVER` variable; when it
 is set, the binary serves MCP instead of running tests. Go's own `os/exec` tests
-use the same trick, and it needs no build step.
+use the same trick, and it needs no build step. The variable's value picks a
+behaviour: `1` serves the tools, `hang` never answers, and `hanglist` answers the
+handshake but never lists its tools. The last two drive the probe timeout tests.
+
+Four tests check the connect rule. `TestConnectOnDemand` counts dials against a
+server that is down: one at startup, none for a call between turns, exactly one
+per `ConnectMissing`, and none once the server is connected.
+`TestNoBackgroundWork` points the Pool at an HTTP server that answers 503, reads
+`Status` and `Tools`, waits, and checks that the server got no request after the
+startup try. `TestCrashedServerComesBackOnTheNextTurn` crashes a stdio child and
+checks that calls fail and its tools leave the list until `ConnectMissing` starts
+a new process. `TestStatusCountsFromConfig` checks `URL`, `Listed` and
+`Confirms` for a server that never connected.
 
 ## Why it's built this way
 
 - **The official SDK.** It implements both transports, the handshake, paging and
   cancellation, and the MCP maintainers keep it current with the spec. Writing our
   own JSON-RPC client would be several hundred lines to test and keep in step.
-- **Lazy restarts.** A background loop that restarts dead servers needs its own
-  goroutine, backoff and shutdown. Restarting on the next call needs one time check.
+- **No supervision.** The operating system already runs processes and restarts
+  them (`launchd`, `systemd`). A restart loop inside `merud` would need its own
+  goroutine, backoff and shutdown, and would do work while nobody asks. One try
+  per turn that offers tools needs a loop over the servers and nothing else. An
+  earlier version retried on the next call, at most once every 10 seconds; the
+  turn-level try replaced it, so a call never waits on a server start.
 - **No wildcards.** A wildcard is one character, and the cost of one shows up later:
   a server update adds `delete_everything`, and the model can call it.
 - **Servers start one after another.** Most setups have a handful of servers, and
@@ -284,3 +441,9 @@ use the same trick, and it needs no build step.
   `errgroup`; we'll add it if startup time turns out to hurt.
 - **A trimmed environment.** Passing merud's whole environment is the default in
   `os/exec`, and it would give every server every secret merud can see.
+- **Probe with the Pool's own code.** `Probe` could have been a small client of
+  its own. Sharing `dialTransport` and `newClient` means a server that passes a
+  probe starts the same way in the Pool, environment and headers included.
+- **`mcp` returns its own `ProbeInfo`.** The package imports nothing from `rpc`,
+  so it stays a plain MCP client. `cmd/merud` copies the result into
+  `rpc.ProbeResult`, field for field.

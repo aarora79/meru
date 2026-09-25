@@ -64,7 +64,7 @@ func (a *Agent) earlierSection(ctx context.Context, query, sessionID string) str
 // characters, and returns it with the number of sessions it holds. Each
 // line reads:
 //
-//   - 2026-09-17 (7 days ago): Set the garden budget at 400 dollars. The user said: "what should …"
+//   - 2026-09-17 (7 days ago): Chose two raised beds for the garden. The user said: "how many …"
 //
 // The date is the day the session started, in local time, with how long
 // ago that was, since a small model can't work out "last week" from a date

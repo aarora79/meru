@@ -513,6 +513,7 @@ func TestDeniedCallLocation(t *testing.T) {
 		{"a2a.helper.plan", KindA2A, "helper", "plan"},
 		{"web.search.deep", KindMCP, "web", "search.deep"},
 		{"launch_missiles", KindBuiltin, "meru", "launch_missiles"},
+		{"cmd.rm-rf", KindCommand, "meru", "cmd.rm-rf"},
 		{strings.Repeat("x", 500), KindBuiltin, "meru", strings.Repeat("x", maxDeniedName)},
 	}
 	for _, tt := range tests {
@@ -521,6 +522,115 @@ func TestDeniedCallLocation(t *testing.T) {
 			t.Errorf("guessLocation(%.20q) = %s, %s, %.20s; want %s, %s, %.20s",
 				tt.name, kind, server, tool, tt.kind, tt.server, tt.tool)
 		}
+	}
+}
+
+// auditBackend is a fakeBackend that is also an Auditor: it records
+// "audited" arguments in place of the model's, except for "{}".
+type auditBackend struct {
+	fakeBackend
+}
+
+// AuditArgs returns a fixed object, or nil for empty arguments. The
+// struct embeds fakeBackend, so auditBackend gets all of its methods and
+// adds this one.
+func (b *auditBackend) AuditArgs(name string, args json.RawMessage) json.RawMessage {
+	if string(args) == "{}" {
+		return nil
+	}
+	return json.RawMessage(`{"argv": ["prog", "sk-secret-value-123"]}`)
+}
+
+// TestAuditor checks that dispatch records an Auditor's arguments in the
+// tool_call line, the approval prompt and the row, redacted and compacted,
+// and keeps the model's arguments when AuditArgs returns nil.
+func TestAuditor(t *testing.T) {
+	b := &auditBackend{fakeBackend{kind: KindCommand, tools: []string{"cmd.prog"}, confirm: map[string]Confirm{"cmd.prog": ConfirmAsk}}}
+	rec := &fakeRecorder{}
+	redact := func(s string) string { return strings.ReplaceAll(s, "sk-secret-value-123", "[secret:key]") }
+	d := New([]Backend{b}, rec, Options{Redact: redact})
+	s := &sink{}
+	a := &approver{choice: rpc.ChoiceOnce}
+	c := newCall("cmd.prog", s, a)
+	c.Args = json.RawMessage(`{"x":1}`)
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK {
+		t.Fatalf("outcome = %q", out.Outcome)
+	}
+	const want = `{"argv":["prog","[secret:key]"]}`
+	if got := string(rec.rows[0].Args); got != want {
+		t.Errorf("row args = %s, want %s", got, want)
+	}
+	if got := string(s.lines[0].Args); got != want {
+		t.Errorf("tool_call args = %s, want %s", got, want)
+	}
+	if got := string(a.asked[0].Args); got != want {
+		t.Errorf("approval args = %s, want %s", got, want)
+	}
+
+	c = newCall("cmd.prog", &sink{}, a)
+	c.Args = json.RawMessage(`{}`)
+	d.Dispatch(context.Background(), c)
+	if got := string(rec.rows[1].Args); got != "{}" {
+		t.Errorf("with no audit, row args = %s, want the model's", got)
+	}
+}
+
+// callConfirmBackend is a fakeBackend that is also a CallConfirmer: a
+// call whose arguments say "ask" asks every time, and any other call
+// leaves the choice to Confirm.
+type callConfirmBackend struct {
+	fakeBackend
+	seen []Call // the calls ConfirmCall got
+}
+
+// ConfirmCall returns ConfirmAlways for arguments holding "ask", and ok =
+// false otherwise.
+func (b *callConfirmBackend) ConfirmCall(c Call) (Confirm, bool) {
+	b.seen = append(b.seen, c)
+	if strings.Contains(string(c.Args), "ask") {
+		return ConfirmAlways, true
+	}
+	return ConfirmNever, false
+}
+
+// TestCallConfirmer checks that dispatch prefers a backend's per-call
+// answer, falls back to Confirm when there is none, passes the question
+// through, and declines a job's call that asks.
+func TestCallConfirmer(t *testing.T) {
+	b := &callConfirmBackend{fakeBackend: fakeBackend{kind: KindBuiltin, tools: []string{"fetch"},
+		confirm: map[string]Confirm{"fetch": ConfirmNever}}}
+	d := New([]Backend{b}, nil, Options{})
+	a := &approver{choice: rpc.ChoiceOnce}
+
+	c := newCall("fetch", &sink{}, a)
+	c.Args = json.RawMessage(`{"url":"known"}`)
+	c.Question = "what does https://go.dev say?"
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK || a.askCount() != 0 {
+		t.Errorf("known call: outcome %q after %d prompts; want ok with none", out.Outcome, a.askCount())
+	}
+	if b.seen[0].Question != c.Question {
+		t.Errorf("ConfirmCall got question %q, want %q", b.seen[0].Question, c.Question)
+	}
+
+	c.Args = json.RawMessage(`{"url":"ask"}`)
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK || a.askCount() != 1 {
+		t.Fatalf("asking call: outcome %q after %d prompts; want ok after one", out.Outcome, a.askCount())
+	}
+	if got := a.asked[0].Choices; len(got) != 2 || got[0] != rpc.ChoiceOnce || got[1] != rpc.ChoiceDeny {
+		t.Errorf("choices = %v, want once and deny", got)
+	}
+
+	c.Source = rpc.SourceJob
+	if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeDeclined || a.askCount() != 1 {
+		t.Errorf("job call: outcome %q after %d prompts; want declined with no new prompt", out.Outcome, a.askCount())
+	}
+}
+
+func TestAsks(t *testing.T) {
+	b := &fakeBackend{kind: KindCommand, tools: []string{"cmd.a", "cmd.b"}, confirm: map[string]Confirm{"cmd.b": ConfirmAsk}}
+	d := New([]Backend{b}, nil, Options{})
+	if d.Asks("cmd.a") || !d.Asks("cmd.b") || !d.Asks("cmd.gone") {
+		t.Errorf("Asks = %v, %v, %v; want false, true, true", d.Asks("cmd.a"), d.Asks("cmd.b"), d.Asks("cmd.gone"))
 	}
 }
 

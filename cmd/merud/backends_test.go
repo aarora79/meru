@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/mcp"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // echoArgs is the argument object of the test server's tools.
@@ -27,9 +29,17 @@ type echoArgs struct {
 }
 
 // startMCPServer runs an MCP server with three tools (echo, fail and
-// delete) over Streamable HTTP, and stops it when the test ends. It
-// returns the server's URL.
+// delete, which carries a destructive hint) over Streamable HTTP, and
+// stops it when the test ends. It returns the server's URL.
 func startMCPServer(t *testing.T) string {
+	t.Helper()
+	url, _ := startMCPServerAuth(t)
+	return url
+}
+
+// startMCPServerAuth is startMCPServer that also returns a function that
+// reports the last Authorization header the server received.
+func startMCPServerAuth(t *testing.T) (url string, lastAuth func() string) {
 	t.Helper()
 	srv := sdk.NewServer(&sdk.Implementation{Name: "test"}, nil)
 	sdk.AddTool(srv, &sdk.Tool{Name: "echo", Description: "Say it back."},
@@ -40,21 +50,36 @@ func startMCPServer(t *testing.T) string {
 		func(_ context.Context, _ *sdk.CallToolRequest, _ echoArgs) (*sdk.CallToolResult, any, error) {
 			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "nope"}}}, nil, nil
 		})
-	sdk.AddTool(srv, &sdk.Tool{Name: "delete", Description: "Delete a thing."},
+	yes := true
+	sdk.AddTool(srv, &sdk.Tool{Name: "delete", Description: "Delete a thing.",
+		Annotations: &sdk.ToolAnnotations{DestructiveHint: &yes}},
 		func(_ context.Context, _ *sdk.CallToolRequest, _ echoArgs) (*sdk.CallToolResult, any, error) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: "deleted"}}}, nil, nil
 		})
-	ts := httptest.NewServer(sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil))
+	var mu sync.Mutex // guards auth
+	var auth string
+	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, nil)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = r.Header.Get("Authorization")
+		mu.Unlock()
+		h.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
-	return ts.URL + "/mcp"
+	return ts.URL + "/mcp", func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return auth
+	}
 }
 
 func TestMCPBackend(t *testing.T) {
 	url := startMCPServer(t)
 	pool, err := mcp.NewPool(context.Background(), []mcp.ServerConfig{{
 		Name: "files", URL: url,
-		Allow:   []string{"echo", "fail", "delete", "missing"},
-		Confirm: []string{"delete"},
+		Allow:         []string{"echo", "fail", "delete", "missing"},
+		Confirm:       []string{"delete"},
+		AlwaysConfirm: []string{"fail"},
 	}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +95,9 @@ func TestMCPBackend(t *testing.T) {
 	}
 	if b.Confirm("files.delete") != dispatch.ConfirmAsk || b.Confirm("files.echo") != dispatch.ConfirmNever {
 		t.Error("Confirm doesn't follow the confirm list")
+	}
+	if b.Confirm("files.fail") != dispatch.ConfirmAlways {
+		t.Error("a tool in always_confirm should ask every time, with no session approval")
 	}
 
 	calls := []struct {
@@ -107,8 +135,11 @@ func TestMCPBackend(t *testing.T) {
 		if tool.Description == "" {
 			t.Errorf("tool %s has no description", tool.Name)
 		}
-		if tool.Confirm != (tool.Name == "files.delete") {
+		if tool.Confirm != (tool.Name == "files.delete" || tool.Name == "files.fail") {
 			t.Errorf("tool %s Confirm = %v", tool.Name, tool.Confirm)
+		}
+		if tool.AlwaysAsks != (tool.Name == "files.fail") {
+			t.Errorf("tool %s AlwaysAsks = %v", tool.Name, tool.AlwaysAsks)
 		}
 	}
 	if got := strings.Join(names, ","); got != "files.delete,files.echo,files.fail" {
@@ -123,7 +154,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		if !ok {
 			return v, nil
 		}
-		if name == "brave" {
+		if name == "obsidian_api_key" {
 			return "sk-123", nil
 		}
 		return "", errors.New("no secret named " + name)
@@ -137,15 +168,15 @@ func TestMCPServerConfigs(t *testing.T) {
 	}{
 		{
 			name: "stdio with a secret in env",
-			servers: []config.MCPServer{{Name: "search", Command: "brave-mcp", Args: []string{"--stdio"},
-				Env: map[string]string{"BRAVE_KEY": "secret:brave", "MODE": "plain"}, Allow: []string{"web_search"},
+			servers: []config.MCPServer{{Name: "obsidian", Command: "uvx", Args: []string{"mcp-obsidian"},
+				Env: map[string]string{"OBSIDIAN_API_KEY": "secret:obsidian_api_key", "OBSIDIAN_PORT": "27124"}, Allow: []string{"obsidian_simple_search"},
 				Timeout: "90s"}},
 			check: func(t *testing.T, got []mcp.ServerConfig) {
 				c := got[0]
-				if c.Env["BRAVE_KEY"] != "sk-123" || c.Env["MODE"] != "plain" {
+				if c.Env["OBSIDIAN_API_KEY"] != "sk-123" || c.Env["OBSIDIAN_PORT"] != "27124" {
 					t.Errorf("Env = %v", c.Env)
 				}
-				if c.Timeout != 90*time.Second || c.Command != "brave-mcp" || c.Args[0] != "--stdio" {
+				if c.Timeout != 90*time.Second || c.Command != "uvx" || c.Args[0] != "mcp-obsidian" {
 					t.Errorf("config = %+v", c)
 				}
 			},
@@ -153,7 +184,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		{
 			name: "http with a secret header",
 			servers: []config.MCPServer{{Name: "cal", URL: "http://127.0.0.1:8123/mcp",
-				Headers: map[string]string{"Authorization": "secret:brave"}, Allow: []string{"list"}, Confirm: []string{"list"}}},
+				Headers: map[string]string{"Authorization": "secret:obsidian_api_key"}, Allow: []string{"list"}, Confirm: []string{"list"}}},
 			check: func(t *testing.T, got []mcp.ServerConfig) {
 				c := got[0]
 				if c.Headers["Authorization"] != "sk-123" || c.Timeout != 0 || c.Confirm[0] != "list" {
@@ -174,7 +205,7 @@ func TestMCPServerConfigs(t *testing.T) {
 		{
 			name:    "the pool's rules apply",
 			servers: []config.MCPServer{{Name: "x", URL: "https://mcp.example.com/mcp"}},
-			wantErr: "network = true",
+			wantErr: "remote = true",
 		},
 		{
 			name:    "no servers",
@@ -203,5 +234,62 @@ func TestMCPServerConfigs(t *testing.T) {
 			}
 			tt.check(t, got)
 		})
+	}
+}
+
+// TestMCPStatusOp checks the mcp_status reply against a pool with one
+// server up and one down. The rows join config with the pool's state, and
+// building them sends no request to either server.
+func TestMCPStatusOp(t *testing.T) {
+	upURL := startMCPServer(t)
+	// count counts the requests the down server receives. It answers 503, as a
+	// server that isn't ready would.
+	var mu sync.Mutex // guards count
+	count := 0
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		count++
+		mu.Unlock()
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(down.Close)
+
+	pool, err := mcp.NewPool(context.Background(), []mcp.ServerConfig{
+		{Name: "files", URL: upURL, Allow: []string{"echo", "delete"}, Confirm: []string{"delete"}},
+		{Name: "google", URL: down.URL + "/mcp", Allow: []string{"a", "b", "c"}, Confirm: []string{"c"}, AlwaysConfirm: []string{"b"}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	mu.Lock()
+	before := count
+	mu.Unlock()
+
+	s := &toolService{pool: pool}
+	var events []rpc.Event
+	if err := s.handleMCPStatus(func(ev rpc.Event) error { events = append(events, ev); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != rpc.EventMCPStatus {
+		t.Fatalf("events = %+v, want one mcp_status", events)
+	}
+	rows := events[0].MCP
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want 2", rows)
+	}
+	up := rpc.MCPStatus{Name: "files", Transport: "http", State: "connected", URL: upURL, Tools: 3, Allowed: 2, Confirm: 1}
+	if rows[0] != up {
+		t.Errorf("row 1 = %+v, want %+v", rows[0], up)
+	}
+	got := rows[1]
+	if got.Name != "google" || got.State != "not connected" || got.Tools != -1 || got.Allowed != 3 || got.Confirm != 2 || got.Err == "" {
+		t.Errorf("row 2 = %+v, want not connected, tools -1, 3 allowed, 2 confirm, a reason", got)
+	}
+	mu.Lock()
+	after := count
+	mu.Unlock()
+	if after != before {
+		t.Errorf("the status op sent %d requests to the down server, want none", after-before)
 	}
 }

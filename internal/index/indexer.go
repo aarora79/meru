@@ -86,6 +86,7 @@ func (r *Report) skip(reason string) {
 // can run while Scan does.
 type Indexer struct {
 	folders  []string      // the configured folders, "~" expanded, cleaned
+	readOnly []string      // folders the file tools may read but Scan never indexes; see ReadAlso
 	ignore   []pattern     // [index] ignore, compiled
 	maxBytes int64         // max_file_mb in bytes
 	lim      limits        // chunk size and overlap in characters
@@ -683,7 +684,7 @@ func (ix *Indexer) embed(ctx context.Context, chunks []store.Chunk) ([]engine.Ve
 }
 
 // embedText is what gets embedded for a chunk: its heading path, then its
-// text. The second chunk of a long "Budget > Q3" section doesn't repeat the
+// text. The second chunk of a long "Garden > Spring" section doesn't repeat the
 // heading line, and without the path its vector would lose what the section
 // is about.
 func embedText(c store.Chunk) string {

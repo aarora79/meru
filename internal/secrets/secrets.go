@@ -17,7 +17,7 @@ import (
 )
 
 // Prefix marks a config value that names a secret instead of holding one:
-// "secret:brave_api_key".
+// "secret:obsidian_api_key".
 const Prefix = "secret:"
 
 // minRedactLen is the shortest value Redact hides. A value of a few

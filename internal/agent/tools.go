@@ -28,23 +28,41 @@ const toolsNote = "You may call the tools offered with this question when they h
 	"Some calls ask the user first, and the user may say no."
 
 // fileToolsNote replaces toolsNote on a turn that offers only the three
-// file tools, the "search" route. It tells the model when to reach for
+// file tools, and perhaps commands: the "search" route. It tells the model when to reach for
 // them: when the excerpts from search don't hold enough.
 const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
 	"list folders with list_folder, and find every matching line with grep."
 
-// noteFor returns the note for a turn that offers specs: fileToolsNote
-// when they are all file tools, toolsNote otherwise, and "" for none.
+// commandsNote joins the system prompt on a "search" turn that offers
+// local commands. It names them by their prefix, so the model knows the
+// cmd. tools are there to run.
+const commandsNote = "You may also run the cmd. tools offered with this question. " +
+	"Each runs one program the user declared and returns what it printed."
+
+// noteFor returns the note for a turn that offers specs: toolsNote when
+// any is an MCP tool, an A2A skill or a built-in other than the file tools;
+// otherwise fileToolsNote for file tools and commandsNote for commands, the
+// "search" route's two kinds; and "" for none.
 func noteFor(specs []engine.ToolSpec) string {
-	if len(specs) == 0 {
-		return ""
-	}
+	var files, cmds bool
 	for _, s := range specs {
-		if !builtin.IsFileTool(s.Name) {
+		switch {
+		case builtin.IsFileTool(s.Name):
+			files = true
+		case toolKind(s.Name) == dispatch.KindCommand:
+			cmds = true
+		default:
 			return toolsNote
 		}
 	}
-	return fileToolsNote
+	var notes []string
+	if files {
+		notes = append(notes, fileToolsNote)
+	}
+	if cmds {
+		notes = append(notes, commandsNote)
+	}
+	return strings.Join(notes, " ")
 }
 
 // ToolRunner lists the tools the model may use and runs the calls it makes.
@@ -57,6 +75,13 @@ type ToolRunner interface {
 	// that couldn't run comes back as an outcome other than "ok", with a
 	// Result the model can read.
 	Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
+	// Asks reports whether a call to the named tool would ask the user
+	// first.
+	Asks(name string) bool
+	// ConnectMissing gives each tool server that isn't connected one try
+	// and returns when the tries have ended. Handle calls it once per turn
+	// that offers tools, before it lists them.
+	ConnectMissing(ctx context.Context)
 }
 
 // turn holds what the rounds need to know about the turn they run in.
@@ -72,17 +97,40 @@ type turn struct {
 	rounds int
 	// calls counts the tool calls so far, to number their IDs.
 	calls int
+	// question is what the user typed, for dispatch.Call.Question: see
+	// userWords.
+	question string
+}
+
+// userWords returns question, then each earlier question of the user's in
+// history, newest first, one per line. It holds only what the user typed:
+// never the prompt's excerpts, memories or tool results, where a URL could
+// come from a file or a web page instead of the user. web_fetch's guard
+// reads it to tell a URL the user gave from one the model made up.
+func userWords(question string, history []engine.Message) string {
+	words := []string{question}
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == engine.RoleUser {
+			words = append(words, history[i].Content)
+		}
+	}
+	return strings.Join(words, "\n")
 }
 
 // toolSpecs returns the tool schemas to offer on route: every tool the
-// ToolRunner allows on "tools" and "search+tools", only the three file
-// tools (read_file, list_folder, grep) on "search", and nil on "direct" or
-// when tools are off. A model can't call a tool it hasn't seen, and the
-// prompt stays shorter (ARCHITECTURE.md, "Who decides what").
+// ToolRunner allows on "tools" and "search+tools"; on "search", the three
+// file tools (read_file, list_folder, grep) and the local commands that
+// don't ask first; and nil on "direct" or when tools are off. A model can't
+// call a tool it hasn't seen, and the prompt stays shorter (ARCHITECTURE.md,
+// "Who decides what").
 //
 // "search" gets the file tools because a question such as "write about
 // everything in my work folder" lands there, and ten excerpts can't cover
-// a folder. The tools only read what search could already reach.
+// a folder. The tools only read what search could already reach. It gets
+// the commands that don't ask because the user declared them to report on
+// something, and a question such as "what changed in the meru repo this
+// week?" lands on "search" when meru is an indexed folder. A command that
+// asks first changes something, so it waits for a tools route.
 func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	if a.tools == nil {
 		return nil
@@ -91,13 +139,22 @@ func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	case "tools", "search+tools":
 		return a.tools.Tools()
 	case "search":
-		var files []engine.ToolSpec
+		var specs []engine.ToolSpec
 		for _, s := range a.tools.Tools() {
-			if builtin.IsFileTool(s.Name) {
-				files = append(files, s)
+			if s.Name == builtin.DateTime || builtin.IsFileTool(s.Name) ||
+				(toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
+				specs = append(specs, s)
 			}
 		}
-		return files
+		return specs
+	}
+	// Every other route, "direct" included, gets datetime alone: it reads
+	// the clock, costs a short schema, and "what time is it?" or "what day
+	// is Christmas?" routes direct.
+	for _, s := range a.tools.Tools() {
+		if s.Name == builtin.DateTime {
+			return []engine.ToolSpec{s}
+		}
 	}
 	return nil
 }
@@ -114,12 +171,14 @@ func schemaChars(specs []engine.ToolSpec) int {
 }
 
 // toolKind says which kind of source a tool's full name points at:
-// "a2a.<agent>.<skill>" is an A2A agent, "<server>.<tool>" an MCP server,
-// and a name with no dot a built-in tool.
+// "a2a.<agent>.<skill>" is an A2A agent, "cmd.<name>" a local command,
+// "<server>.<tool>" an MCP server, and a name with no dot a built-in tool.
 func toolKind(name string) string {
 	switch {
 	case strings.HasPrefix(name, "a2a."):
 		return dispatch.KindA2A
+	case strings.HasPrefix(name, "cmd."):
+		return dispatch.KindCommand
 	case strings.Contains(name, "."):
 		return dispatch.KindMCP
 	default:
@@ -233,14 +292,15 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	for i, c := range calls {
 		g.Go(func() error {
 			res, outcome := a.tools.Dispatch(gctx, dispatch.Call{
-				ID:      ids[i],
-				Name:    c.Name,
-				Args:    argsOf(c.Arguments),
-				Session: t.sess.ID(),
-				Source:  t.source,
-				Append:  appendTo,
-				Approve: t.approve,
-				TraceID: t.traceID,
+				ID:       ids[i],
+				Name:     c.Name,
+				Args:     argsOf(c.Arguments),
+				Session:  t.sess.ID(),
+				Question: t.question,
+				Source:   t.source,
+				Append:   appendTo,
+				Approve:  t.approve,
+				TraceID:  t.traceID,
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			return t.emit(rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{

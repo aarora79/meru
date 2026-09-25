@@ -14,15 +14,15 @@ header with a `name` and a `description`, then Markdown instructions. This packa
 reads those folders into a `Registry`. `merud` puts each skill's name and
 description in the system prompt, and reads the instructions only when a turn
 picks the skill (see [agent](agent.md) for the pick). The package also carries
-Meru's two built-in skills, `writing` and `explainer`, inside the binary, and
-copies them to disk on first run.
+Meru's three built-in skills, `writing`, `explainer` and `web-research`, inside
+the binary, and copies each to disk when its folder is missing.
 
 ## The picture
 
 ```mermaid
 flowchart LR
     subgraph binary["merud binary"]
-        embedded["builtin/writing/SKILL.md<br/>builtin/explainer/SKILL.md"]
+        embedded["builtin/writing/SKILL.md<br/>builtin/explainer/SKILL.md<br/>builtin/web-research/SKILL.md"]
     end
     embedded -- "InstallBuiltins<br/>(only if the folder is missing)" --> disk["~/.meru/skills/&lt;name&gt;/SKILL.md"]
     embedded -- "Reset(name)" --> disk
@@ -70,7 +70,10 @@ warning at load time, not as a skill that quietly loses its description.
 
 ### skills.go
 
-`Load(dir)` lists the folders in `dir` and calls `loadSkill` on each. `loadSkill`
+`Load(dir, disabled)` lists the folders in `dir` and calls `loadSkill` on each,
+except the folders `disabled` names. `disabled` is `[skills] disabled` from
+`config.toml`; `Load` skips those folders without a warning, since the user
+asked for it. `loadSkill`
 reads `SKILL.md` through `readSkillFile`, which stops reading one byte past the
 256 KiB limit:
 
@@ -116,8 +119,10 @@ var builtinFS embed.FS
 The `//go:embed` line tells the compiler to copy the `builtin` folder into the
 program. [go-basics/embed.md](go-basics/embed.md) explains it.
 
-`InstallBuiltins(dir)` runs at first start. For each built-in it checks whether
-`<dir>/<name>` exists (as a folder, a file or a link), and skips it if so. That rule
+`InstallBuiltins(dir, disabled)` runs at every start. It skips a built-in that
+`disabled` names, so a user who deletes one and disables it doesn't get it back
+on the next start. For each other built-in it checks whether `<dir>/<name>`
+exists (as a folder, a file or a link), and skips it if so. That rule
 is "your copy wins" from ARCHITECTURE.md: Meru never overwrites a skill you edited.
 When the folder is missing, `installOne` writes the files into a hidden temporary
 folder and renames it into place. A crash halfway through leaves a hidden folder that
@@ -163,6 +168,22 @@ come from the owner's `my-ai-assets` repo. Nobody edits them here. To update one
 copy the new version into both places. `TestBuiltinsMatchRepo` fails when the two
 copies differ.
 
+`builtin/web-research/SKILL.md` is Meru's own, so it has no twin in
+`.claude/skills/`, and `TestBuiltinsMatchRepo` checks only the two copied skills
+against the repo (the `fromAssets` list). It tells the model how to answer a
+question about current facts with `web_search` and `web_fetch`: search first,
+treat a snippet as a pointer, read the one or two best pages with a prompt,
+prefer the project's own site, check dates against today, quote versions from
+the page, cite each URL and say when sources disagree. Its description decides
+when the fast model picks it, so it names the questions that need it: "the
+latest version or release of something, news, prices", and "when asked to search
+the web". The integration test in `internal/agent` checks that the `lite` model
+picks it for "search the web for the latest Go release".
+
+`merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
+folder is missing. So a user who installed Meru before `web-research` shipped
+gets it on the next start, and keeps any edits to the other two.
+
 The explainer skill tells the model to build a printable poster with the
 `poster-making` skill. Meru doesn't ship `poster-making` (AGENTS.md keeps it a repo
 tool), so inside Meru that step has no skill to load. The model should skip the
@@ -189,6 +210,9 @@ go test -run TestBuiltinsMatchRepo -v ./internal/skills/
 ```
 
 The second command proves the shipped skills match the repo copies.
+`TestDisabled` checks `[skills] disabled`: a disabled built-in isn't installed,
+a disabled folder doesn't load, a name that matches nothing does no harm, and a
+folder you add loads with no change to the list.
 
 ## Why it's built this way
 
@@ -202,5 +226,8 @@ The second command proves the shipped skills match the repo copies.
   goroutine to own it. A stamp per turn needs none of that and costs microseconds.
 - **Warnings, not failure.** Skills are files you edit by hand. A typo in one should
   cost you that one skill, with a message saying why.
+- **Disable by name, in config.** Deleting a built-in's folder alone doesn't
+  stick, because `merud` installs it again on the next start. One list in
+  `[skills] disabled` covers built-ins and your own skills the same way.
 - **Copy on first run, never overwrite.** The simpler option, reading the built-ins
   straight from the binary, would leave you no way to edit them.

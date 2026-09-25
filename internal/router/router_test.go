@@ -423,7 +423,7 @@ func TestDecideAgainstFakeOllama(t *testing.T) {
 	}
 	cfg := testConfig()
 	cfg.TopLogProbs = 7
-	got, err := Decide(context.Background(), eng, cfg, Turn{Question: "What did I note about the budget?"})
+	got, err := Decide(context.Background(), eng, cfg, Turn{Question: "What did I note about the garden?"})
 	if err != nil {
 		t.Fatalf("Decide: %v", err)
 	}

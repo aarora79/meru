@@ -15,13 +15,17 @@
 //	meru [-socket path] usage            show how much you use Meru
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] setup user       tell Meru who you are
+//	meru config template                 print every config key with its default
 //	meru [-socket path] memory list      show what Meru remembers; also add, forget
 //	meru [-socket path] skills list      show the skills; also show, reset
-//	meru [-socket path] mcp add <name>   add an MCP server; `meru mcp list-catalog` lists them
+//	meru [-socket path] mcp              the state of each MCP server; also mcp status [--json]
+//	meru [-socket path] mcp list         the MCP server catalog and your servers
+//	meru [-socket path] mcp add ...      add an MCP server; also remove
+//	meru [-socket path] check [file]     rerun your own questions and grade the answers
 //
 // A question whose first word is ping, chat, index, tools, log, usage, setup,
-// memory, skills or mcp needs quotes, so meru reads it as a question and not
-// as a command.
+// memory, skills, mcp or check needs quotes, so meru reads it as a question and not
+// as a command. So does the question "config template".
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -79,13 +83,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru usage            show how much you use Meru
   meru setup            set up Ollama, the models, config and tools
   meru setup user       tell Meru who you are
+  meru config template  print every config key with its default
   meru memory list [kind] | add <kind> <text...> | forget <id>
                         show, save or delete what Meru remembers
   meru skills list | show <name> | reset [--yes] <name>
                         show the skills, print one, or restore a built-in
-  meru mcp add <name>   add an MCP server (meru mcp list-catalog lists them)
-  meru mcp add <name> -- <command> [args...] | --url <url>
+  meru mcp [status] [--json]
+                        show the state of each MCP server
+  meru mcp list         show the server catalog and your MCP servers
+  meru mcp add <catalog-name>
+                        add a server from the catalog
+  meru mcp add stdio <name> -- <command> [args...]
+  meru mcp add http <name> <url> [--remote]
                         add a server that isn't in the catalog
+  meru mcp remove [--yes] <name>
+                        take a server out of config.toml
+  meru check [file] [--only id,category] [--json] [--save]
+                        rerun your questions from ~/.meru/checks.jsonl
+                        and grade the answers
 
 flags:`)
 		flags.PrintDefaults()
@@ -130,12 +145,16 @@ flags:`)
 		err = setupCmd(ctx, *socket, terminal(stdout))
 	case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
 		err = setupUserCmd(ctx, *socket, terminal(stdout))
+	case flags.NArg() == 2 && flags.Arg(0) == "config" && flags.Arg(1) == "template":
+		err = configTemplateCmd(stdout)
 	case flags.Arg(0) == "memory":
 		err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.Arg(0) == "skills":
 		err = skillsCmd(ctx, *socket, flags.Args()[1:], os.Stdin, stdout, isTerminal(os.Stdin))
 	case flags.Arg(0) == "mcp":
 		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
+	case flags.Arg(0) == "check":
+		err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
@@ -148,6 +167,9 @@ flags:`)
 	case ctx.Err() != nil:
 		fmt.Fprintln(stderr) // end the half-printed line
 		return exitInterrupted
+	case errors.Is(err, errChecksFailed):
+		// The summary already said how many failed.
+		return exitError
 	case err != nil:
 		fmt.Fprintf(stderr, "meru: %v\n", err)
 		return exitError

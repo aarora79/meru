@@ -106,7 +106,15 @@ overlap_tokens = 0
 watch = false
 
 [builtin]
+tools   = ["configure", "grep"]
 confirm = ["configure"]
+
+[skills]
+disabled = ["explainer", "not-yet"]
+
+[web]
+searxng_url = "http://localhost:8889"
+max_results = 5
 
 [[mcp.servers]]
 name    = "notes"
@@ -128,7 +136,7 @@ name    = "research"
 url     = "http://127.0.0.1:9100"
 allow   = ["summarize"]
 confirm = ["summarize"]
-network = false
+remote  = false
 `
 	cfg, err := Load(writeConfig(t, body))
 	if err != nil {
@@ -139,7 +147,7 @@ network = false
 		Models:        profiles["lite"],
 		Ollama:        Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
 		Agent:         Agent{MaxRounds: 3, HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
-		Skills:        Skills{OutputDir: "~/meru-output"},
+		Skills:        Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
 		Router:        Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct"},
 		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
 		Log:           Log{Level: "debug"},
@@ -151,7 +159,8 @@ network = false
 			OverlapTokens: 0,
 			Watch:         false,
 		},
-		Builtin: Builtin{Confirm: []string{"configure"}},
+		Builtin: Builtin{Tools: []string{"configure", "grep"}, Confirm: []string{"configure"}},
+		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5},
 		MCP: MCP{Servers: []MCPServer{
 			{
 				Name: "notes", Command: "notes-mcp", Args: []string{"--root", "~/notes"},
@@ -217,8 +226,22 @@ func TestLoadErrors(t *testing.T) {
 		{"index overlap negative", "[index]\noverlap_tokens = -1", "index.overlap_tokens"},
 		{"index overlap past half", "[index]\nchunk_tokens = 100\noverlap_tokens = 51", "index.overlap_tokens"},
 		{"index unknown key", "[index]\nfolder = []", "unknown keys: index.folder"},
+		{"old mcp network key", "[[mcp.servers]]\nname = \"g\"\nurl = \"http://127.0.0.1:8000/mcp\"\nnetwork = true", "network was renamed remote"},
+		{"old a2a network key", "[[a2a.agents]]\nname = \"r\"\nurl = \"http://127.0.0.1:9100\"\nnetwork = false", "network was renamed remote"},
 		{"output_dir empty", "[skills]\noutput_dir = \"\"", "skills.output_dir is empty"},
 		{"output_dir relative", "[skills]\noutput_dir = \"out\"", `skills.output_dir "out" must be an absolute path`},
+		{"searxng not loopback", "[web]\nsearxng_url = \"http://192.168.1.20:8888\"", "web.searxng_url"},
+		{"searxng hostname", "[web]\nsearxng_url = \"https://searx.example.org\"", "web.searxng_url"},
+		{"searxng scheme", "[web]\nsearxng_url = \"127.0.0.1:8888\"", "web.searxng_url"},
+		{"web max_results zero", "[web]\nmax_results = 0", "web.max_results"},
+		{"web max_results high", "[web]\nmax_results = 21", "web.max_results"},
+		{"web unknown key", "[web]\nread_page = true", "unknown keys: web.read_page"},
+		{"old web read_pages key", "[web]\nread_pages = true", movedFetch},
+		{"old web fetch key", "[web]\nfetch = false", movedFetch},
+		{"old web fetch key true", "[web]\nfetch = true", movedFetch},
+		{"builtin unknown tool", "[builtin]\ntools = [\"grep\", \"shell\"]", `builtin.tools: "shell" is not a built-in tool; the built-in tools are configure, datetime,`},
+		{"builtin confirm not in tools", "[builtin]\ntools = [\"grep\"]\nconfirm = [\"write_file\"]", `builtin.confirm: "write_file" isn't in builtin.tools`},
+		{"builtin default confirm, tools empty", "[builtin]\ntools = []", `builtin.confirm: "write_file" isn't in builtin.tools`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -249,6 +272,52 @@ func TestBuiltinConfirmDefault(t *testing.T) {
 	}
 	if len(cfg.Builtin.Confirm) != 0 {
 		t.Errorf("builtin.confirm = %q after confirm = [], want empty", cfg.Builtin.Confirm)
+	}
+}
+
+// TestBuiltinToolsDefault checks that every built-in tool is on by
+// default, that tools = [] turns them all off, and that BuiltinTools
+// hands out a copy.
+func TestBuiltinToolsDefault(t *testing.T) {
+	cfg, err := Load(writeConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 9 {
+		t.Errorf("default builtin.tools = %q, want all nine: %q", cfg.Builtin.Tools, builtinTools)
+	}
+	cfg, err = Load(writeConfig(t, "[builtin]\ntools = []\nconfirm = []"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Builtin.Tools) != 0 {
+		t.Errorf("builtin.tools = %q after tools = [], want empty", cfg.Builtin.Tools)
+	}
+	names := BuiltinTools()
+	names[0] = "changed"
+	if builtinTools[0] != "configure" {
+		t.Error("BuiltinTools returned the package's own slice")
+	}
+}
+
+// TestWebDefaults checks the [web] defaults: search on at the SearXNG
+// port the docs use, and an empty URL turning search off.
+func TestWebDefaults(t *testing.T) {
+	cfg, err := Load(writeConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
+	if cfg.Web != want {
+		t.Errorf("default web = %+v, want %+v", cfg.Web, want)
+	}
+	cfg, err = Load(writeConfig(t, "[web]\nsearxng_url = \"\"\nmax_results = 20"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want = Web{SearXNGURL: "", MaxResults: 20}
+	if cfg.Web != want {
+		t.Errorf("web = %+v, want %+v", cfg.Web, want)
 	}
 }
 
@@ -302,33 +371,50 @@ func TestCheckLoopbackURL(t *testing.T) {
 	}
 }
 
-// TestExampleMatchesDefaults checks that config.example.toml at the repo root
-// parses, uses only known keys, and shows the real defaults.
-func TestExampleMatchesDefaults(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config.example.toml"))
+// TestTemplateMatchesDefaults checks that the template parses, uses only
+// known keys, and shows the real defaults: loading it gives the same
+// Config as no file at all.
+func TestTemplateMatchesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(Template()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("Load example: %v", err)
+		t.Fatalf("Load the template: %v", err)
 	}
 	want := defaults()
 	want.Models = profiles["lite"]
-	cfg.Dir = ""
+	want.Dir = dir
 	if !reflect.DeepEqual(cfg, want) {
-		t.Errorf("example config:\n got %+v\nwant %+v", cfg, want)
+		t.Errorf("template:\n got %+v\nwant %+v", cfg, want)
 	}
 }
 
-// TestExampleCommentedBlocks uncomments the sample [[mcp.servers]] and
-// [[a2a.agents]] blocks in config.example.toml and checks that they load,
-// so the samples can't drift from the real keys. A sample starts at a
-// "# [[" line and ends at the first line that isn't "# " plus text.
-func TestExampleCommentedBlocks(t *testing.T) {
+// TestExampleIsTemplate checks that config.example.toml at the repo root is
+// a byte-for-byte copy of template.toml, the file the binaries embed.
+func TestExampleIsTemplate(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "config.example.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if string(data) != Template() {
+		t.Error("config.example.toml differs from internal/config/template.toml. Edit the template, " +
+			"then copy it over the example: cp internal/config/template.toml config.example.toml")
+	}
+}
+
+// TestTemplateCommentedBlocks uncomments the sample [[mcp.servers]],
+// [[a2a.agents]] and [[commands]] blocks in the template and checks that
+// they load, so the samples can't drift from the real keys. A sample
+// starts at a "# [[" line and ends at the first line that isn't "# " plus
+// text. The commands package checks the [[commands]] samples further, and
+// the catalog package checks that the catalog's servers match its Block.
+func TestTemplateCommentedBlocks(t *testing.T) {
 	var sample strings.Builder
 	in := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(Template(), "\n") {
 		if strings.HasPrefix(line, "# [[") {
 			in = true
 		}
@@ -343,8 +429,9 @@ func TestExampleCommentedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
 	}
-	if len(cfg.MCP.Servers) != 2 || len(cfg.A2A.Agents) != 1 {
-		t.Errorf("samples hold %d servers and %d agents, want 2 and 1", len(cfg.MCP.Servers), len(cfg.A2A.Agents))
+	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 4 {
+		t.Errorf("samples hold %d servers, %d agents and %d commands, want 3, 1 and 4",
+			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands))
 	}
 }
 

@@ -41,20 +41,20 @@ func writeSkillFile(t *testing.T, dir, name, description, body string) {
 func TestSkillService(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "skills")
-	s, err := newSkillService(dir, obs.Discard())
+	s, err := newSkillService(dir, nil, obs.Discard())
 	if err != nil {
 		t.Fatalf("newSkillService: %v", err)
 	}
 
-	// First run: the two built-ins, neither edited.
+	// First run: the three built-ins, none edited.
 	evs, err := collect(t, func(emit func(rpc.Event) error) error { return s.handleList(ctx, emit) })
 	if err != nil || len(evs) != 1 {
 		t.Fatalf("list = %v, %v", evs, err)
 	}
 	got := evs[0].Skills
-	if len(got) != 2 || got[0].Name != "explainer" || got[1].Name != "writing" ||
-		!got[0].Builtin || got[0].Edited || got[1].Edited || got[0].Description == "" {
-		t.Fatalf("skills = %+v, want explainer and writing, built-in and not edited", got)
+	if len(got) != 3 || got[0].Name != "explainer" || got[1].Name != "web-research" || got[2].Name != "writing" ||
+		!got[0].Builtin || !got[1].Builtin || got[0].Edited || got[1].Edited || got[2].Edited || got[0].Description == "" {
+		t.Fatalf("skills = %+v, want explainer, web-research and writing, built-in and not edited", got)
 	}
 
 	// Hand edits count on the next call: a new skill, a broken one, and an
@@ -105,7 +105,7 @@ func TestSkillService(t *testing.T) {
 		t.Error("after reset writing still has the edited description")
 	}
 	if err := s.handleReset(ctx, rpc.Request{Op: rpc.OpSkillReset, ID: "notes"}); err == nil ||
-		!strings.Contains(err.Error(), "explainer and writing") {
+		!strings.Contains(err.Error(), "explainer, web-research and writing") {
 		t.Errorf("reset notes error = %v, want one naming the built-ins", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestSkillService(t *testing.T) {
 func TestSkillServiceKeepsEdits(t *testing.T) {
 	dir := t.TempDir()
 	writeSkillFile(t, dir, "writing", "Mine.", "Mine.")
-	s, err := newSkillService(dir, obs.Discard())
+	s, err := newSkillService(dir, nil, obs.Discard())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +140,30 @@ func TestExpandHome(t *testing.T) {
 		if err != nil || got != tt.want {
 			t.Errorf("expandHome(%q) = %q, %v; want %q", tt.in, got, err, tt.want)
 		}
+	}
+}
+
+// TestSkillServiceDisabled checks that a skill [skills] disabled names is
+// neither installed nor listed, and that a name matching no skill is fine.
+func TestSkillServiceDisabled(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "skills")
+	s, err := newSkillService(dir, []string{"explainer", "not-yet"}, obs.Discard())
+	if err != nil {
+		t.Fatalf("newSkillService: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "explainer")); !os.IsNotExist(err) {
+		t.Errorf("the disabled explainer was installed: %v", err)
+	}
+	evs, err := collect(t, func(emit func(rpc.Event) error) error { return s.handleList(ctx, emit) })
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("list = %v, %v", evs, err)
+	}
+	var names []string
+	for _, sk := range evs[0].Skills {
+		names = append(names, sk.Name)
+	}
+	if strings.Join(names, ",") != "web-research,writing" {
+		t.Errorf("skills = %v, want web-research and writing", names)
 	}
 }

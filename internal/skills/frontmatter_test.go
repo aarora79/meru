@@ -27,8 +27,8 @@ func TestParseFrontmatter(t *testing.T) {
 		},
 		{
 			name:       "plain value over indented lines",
-			in:         "---\nname: portfolio-review\ndescription: Review holdings. Use when asked about\n  positions, concentration, or trades.\n---\nbody\n",
-			wantFields: map[string]string{"name": "portfolio-review", "description": "Review holdings. Use when asked about positions, concentration, or trades."},
+			in:         "---\nname: meeting-notes\ndescription: Turn a meeting transcript into decisions and action items. Use when asked to write up a meeting,\n  list what was agreed, or who owns what.\n---\nbody\n",
+			wantFields: map[string]string{"name": "meeting-notes", "description": "Turn a meeting transcript into decisions and action items. Use when asked to write up a meeting, list what was agreed, or who owns what."},
 			wantBody:   "body",
 		},
 		{

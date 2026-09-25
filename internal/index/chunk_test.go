@@ -136,13 +136,13 @@ func TestChunkTextLines(t *testing.T) {
 func TestChunkMarkdown(t *testing.T) {
 	src := `Intro before any heading.
 
-# Budget
+# Garden
 
-The yearly budget.
+The garden plan.
 
-## Q3
+## Spring
 
-Spend on hardware.
+Sow in trays.
 
 ` + "```sh" + `
 # not a heading, inside a fence
@@ -150,11 +150,11 @@ Spend on hardware.
 make build
 ` + "```" + `
 
-### Hardware
+### Tomatoes
 
-Laptops.
+Six plants.
 
-## Q4 ##
+## Autumn ##
 
 Nothing yet.
 
@@ -176,10 +176,10 @@ Text.
 	}
 	want := []row{
 		{"", 1, 1, "Intro before any heading."},
-		{"Budget", 3, 5, "# Budget"},
-		{"Budget > Q3", 7, 15, "## Q3"},
-		{"Budget > Q3 > Hardware", 17, 19, "### Hardware"},
-		{"Budget > Q4", 21, 23, "## Q4 ##"},
+		{"Garden", 3, 5, "# Garden"},
+		{"Garden > Spring", 7, 15, "## Spring"},
+		{"Garden > Spring > Tomatoes", 17, 19, "### Tomatoes"},
+		{"Garden > Autumn", 21, 23, "## Autumn ##"},
 		// "# Empty" has no text of its own, so it makes no chunk.
 		{"Empty > Under empty", 27, 29, "## Under empty"},
 	}
@@ -445,5 +445,37 @@ func TestChunkPDFFailures(t *testing.T) {
 				t.Error("chunkPDF succeeded; want an error")
 			}
 		})
+	}
+}
+
+// TestHTMLText checks the exported reader web_fetch uses: the first
+// <title> comes back on its own, and the text leaves out <head>.
+func TestHTMLText(t *testing.T) {
+	tests := []struct {
+		name, src, title, text string
+	}{
+		{"title and body", "<html><head><title> Go\n 1.26 </title><style>p{}</style></head><body><p>Released.</p></body></html>", "Go 1.26", "Released."},
+		{"no title", "<p>Just text</p>", "", "Just text"},
+		{"svg title ignored", "<title>Page</title><svg><title>Icon</title></svg><p>Body</p>", "Page", "Body"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			title, text := HTMLText(tt.src)
+			if title != tt.title || strings.TrimSpace(text) != tt.text {
+				t.Errorf("HTMLText = %q, %q; want %q, %q", title, text, tt.title, tt.text)
+			}
+		})
+	}
+}
+
+// TestPDFText checks the exported PDF reader: one string per page, and an
+// error for a PDF with no text.
+func TestPDFText(t *testing.T) {
+	pages, err := PDFText(minimalPDF([]string{"One", "Two"}))
+	if err != nil || len(pages) != 2 || !strings.Contains(pages[1], "Two") {
+		t.Fatalf("PDFText = %q, %v", pages, err)
+	}
+	if _, err := PDFText(minimalPDF([]string{""})); err == nil {
+		t.Error("PDFText of a blank PDF succeeded; want an error")
 	}
 }

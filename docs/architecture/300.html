@@ -257,7 +257,9 @@
     <li><a href="#skills">Skills: instructions loaded on demand</a></li>
     <li><a href="#loop">The agent loop: five steps</a></li>
     <li><a href="#mcp">Tools over MCP</a></li>
+    <li><a href="#local-commands">Local commands</a></li>
     <li><a href="#setup">First run and setup</a></li>
+    <li><a href="#web-search">Web search</a></li>
     <li><a href="#a2a">Other agents over A2A</a></li>
     <li><a href="#scheduler">Scheduled jobs</a></li>
     <li><a href="#observability">Seeing where the time went</a></li>
@@ -273,12 +275,12 @@
 
 <p>Meru runs on a machine you pick: your Mac, a Linux box or a cloud server. It answers questions, searches your notes and calls the tools you already use.</p>
 
-<p>An assistant that reads your notes, your mail and your brokerage account could leak all three. A <b>cloud model</b>, one that runs on another company's servers, would receive every prompt you type. Meru has no code that talks to one. It runs open-weight models, whose weights anyone can download, through <b>Ollama</b>, a program that serves models locally, and it connects only to <b>loopback</b>, the 127.0.0.1 address that never leaves the machine.</p>
+<p>An assistant that reads your notes, your mail and your calendar could leak all three. A <b>cloud model</b>, one that runs on another company's servers, would receive every prompt you type. Meru has no code that talks to one. It runs open-weight models, whose weights anyone can download, through <b>Ollama</b>, a program that serves models locally, and it connects only to <b>loopback</b>, the 127.0.0.1 address that never leaves the machine.</p>
 
 <p>Six principles shape every choice below:</p>
 
 <ol>
-  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. MCP servers are separate programs: one you add, such as web search or Gmail, can reach the network on its own (see <a href="#mcp">Tools over MCP</a>).</li>
+  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, and to the public web pages the model fetches with <code>web_fetch</code>, which you turn off by taking it out of <code>[builtin] tools</code>. A page URL that no search result or question of yours gave asks you first, so the model can't send your data out in a URL. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
   <li><b>Files are the source of truth; SQLite is a projection.</b> Meru can rebuild everything in the database from your files and config. Delete <code>meru.db</code> and it re-indexes.</li>
   <li><b>You can inspect everything.</b> Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn, so you can find out why it said something and why it took so long.</li>
   <li><b>Few, narrow abstractions.</b> One engine interface, one store, one agent loop we own, and two wire protocols: <b>MCP</b> (Model Context Protocol) for tools and <b>A2A</b> (Agent2Agent) for other agents. Broad frameworks for large language models change their APIs every few releases, and we don't want to chase them.</li>
@@ -405,9 +407,8 @@
   <rect x="350" y="420" width="170" height="150" rx="10" class="b"/>
   <text x="364" y="442" class="t1" font-size="13" font-weight="700">MCP servers</text>
   <text x="364" y="460" class="t3" font-size="11">separate processes</text>
-  <text x="364" y="486" class="t2 mono" font-size="11.5">obsidian</text>
-  <text x="364" y="508" class="t2 mono" font-size="11.5">robinhood</text>
-  <text x="364" y="530" class="t2 mono" font-size="11.5">gmail / calendar</text>
+  <text x="364" y="486" class="t2 mono" font-size="11.5">google</text>
+  <text x="364" y="508" class="t2 mono" font-size="11.5">obsidian</text>
   <path d="M400 352 L400 418" class="lna" marker-end="url(#f1b)"/>
   <text x="408" y="392" class="t3" font-size="10.5">stdio or</text>
   <text x="408" y="406" class="t3" font-size="10.5">Streamable HTTP</text>
@@ -432,7 +433,7 @@
   <path d="M668 352 L668 388 L852 388 L852 418" class="lnd" marker-end="url(#f1a)"/>
   <text x="760" y="382" class="t3" font-size="10.5" text-anchor="middle">OTLP/HTTP</text>
 
-  <text x="16" y="624" class="t3" font-size="11.5">All of this runs on one machine. MCP servers and A2A agents stay on loopback unless their config entry says network = true.</text>
+  <text x="16" y="624" class="t3" font-size="11.5">All of this runs on one machine. MCP servers and A2A agents stay on loopback unless their config entry says remote = true.</text>
 </svg>
 </div>
 <figcaption><b>Figure 1.</b> Two arrows leave <code>merud</code> for programs it doesn't own: the engine's, to Ollama, and dispatch's, to MCP servers and A2A agents. Each has one guarded entry point, which is where the privacy rules live.</figcaption>
@@ -504,15 +505,15 @@
 
 <p>A <b>turn</b> is everything between your question and the finished answer. A <b>session</b> is one conversation, a run of turns that share a transcript. Figure 2 follows two turns of one session. In the first, Meru searches your files and calls a tool that only reads. The second builds on the first and calls a tool that changes something, so Meru asks you before it runs. Later sections explain each step.</p>
 
-<p>Four parts share the work. The <b>agent loop</b> inside <code>merud</code> runs the turn. The <b>fast model</b>, which Meru uses as the <b>router</b>, is a small model that picks a <b>route</b>, one of four: answer directly, search your files first, call tools, or search and call tools. It picks nothing else. From v0.4 a second short call picks which skills, files of instructions for one kind of task, to load. The <b>main model</b> chooses tools and writes the answer. Every tool call it makes passes through <b><code>dispatch</code></b>, one Go function, on its way to an <b>MCP server</b>, a separate program that offers tools such as <code>get_portfolio</code>.</p>
+<p>Four parts share the work. The <b>agent loop</b> inside <code>merud</code> runs the turn. The <b>fast model</b>, which Meru uses as the <b>router</b>, is a small model that picks a <b>route</b>, one of four: answer directly, search your files first, call tools, or search and call tools. It picks nothing else. From v0.4 a second short call picks which skills, files of instructions for one kind of task, to load. The <b>main model</b> chooses tools and writes the answer. Every tool call it makes passes through <b><code>dispatch</code></b>, one Go function, on its way to an <b>MCP server</b>, a separate program that offers tools such as <code>search_gmail_messages</code>.</p>
 
 <p>The main model reads the <b>context</b>, everything <code>merud</code> sends it with your question; <a href="#loop">the agent loop</a> lists the parts. One part is each allowed tool's <b>schema</b>: its name, description and argument types. For each MCP server, <code>config.toml</code> names the tools the model may see (<code>allow</code>, the <b>allowlist</b>) and the allowed tools that still need a yes from you on every call (<code>confirm</code>).</p>
 
 <figure id="fig-end-to-end">
 <div class="figbox">
-<svg viewBox="0 0 1146 1680" role="img" aria-labelledby="fqt fqd">
+<svg viewBox="0 0 1146 1744" role="img" aria-labelledby="fqt fqd">
   <title id="fqt">A question, end to end: two turns of one session</title>
-  <desc id="fqd">Sequence diagram with eight participants: you, the meru client, the merud agent loop, the store, the fast model, the main model, dispatch and an MCP server. Turn 1 starts a new session. You ask what changed in your portfolio this week. The client opens a new session and passes the question to the agent loop, which appends the user line to the session JSONL, asks the fast model to pick a route, and gets back route search plus tools. The loop runs hybrid search for the question over three sources, file chunks, memories and session summaries, gets the top chunks and relevant memories, sends the client a sources event that numbers the excerpts, and builds the context within budgets. Inside a loop that repeats until the model answers without a tool call, at most 8 rounds, the loop sends the context and the schemas of allowed tools to the main model, which returns a tool call robinhood.get_portfolio. Dispatch checks the allowlist, finds the tool is not in the confirm list, calls get_portfolio on the MCP server and gets holdings, writes tool_call and tool_result lines and a tool_calls row to the store, and returns the result. The loop sends the context and tool result to the main model, which answers without a tool call. The loop streams tokens to the client, the client shows you the answer followed by the sources it cites, and the loop appends the assistant line. Turn 2 continues the same session. You ask to sell half of the one that dropped most. The loop loads this session's recent messages, the fast model reads them and returns route tools without rewriting the question, the loop searches files and recalls relevant memories, because the tools route searches too, and the main model, given the context with turn 1 and the tool schemas, returns a tool call robinhood.place_order. Dispatch checks the allowlist, finds place_order in the confirm list, and asks the client, which offers you three choices: approve once, approve for this session, or deny. You approve once, the client sends approved once to dispatch, and dispatch calls place_order on the MCP server, which reports the order placed. Dispatch writes the tool_call, approval and tool_result lines and the tool_calls row, returns the result, the main model answers without a tool call, the loop streams tokens to the client, the client shows you the answer, and the loop appends the assistant line.</desc>
+  <desc id="fqd">Sequence diagram with eight participants: you, the meru client, the merud agent loop, the store, the fast model, the main model, dispatch and an MCP server. Turn 1 starts a new session. You ask what you agreed on the launch date in email this week. The client opens a new session and passes the question to the agent loop, which appends the user line to the session JSONL, asks the fast model to pick a route, and gets back route search plus tools. The loop runs hybrid search for the question over three sources, file chunks, memories and session summaries, gets the top chunks and relevant memories, sends the client a sources event that numbers the excerpts, builds the context within budgets, and tries once each MCP server that isn't connected. Inside a loop that repeats until the model answers without a tool call, at most 8 rounds, the loop sends the context and the schemas of allowed tools to the main model, which returns a tool call google.search_gmail_messages. Dispatch checks the allowlist, finds the tool is not in the confirm list, calls search_gmail_messages on the MCP server and gets the matching messages, writes tool_call and tool_result lines and a tool_calls row to the store, and returns the result. The loop sends the context and tool result to the main model, which answers without a tool call. The loop streams tokens to the client, the client shows you the answer followed by the sources it cites, and the loop appends the assistant line. Turn 2 continues the same session. You ask Meru to reply to that thread and confirm you can make it. The loop loads this session's recent messages, the fast model reads them and returns route tools without rewriting the question, the loop searches files and recalls relevant memories, because the tools route searches too, and the main model, given the context with turn 1 and the tool schemas, returns a tool call google.send_gmail_message. Dispatch checks the allowlist, finds send_gmail_message in the confirm list, and asks the client, which offers you three choices: approve once, approve for this session, or deny. You approve once, the client sends approved once to dispatch, and dispatch calls send_gmail_message on the MCP server, which reports the message sent. Dispatch writes the tool_call, approval and tool_result lines and the tool_calls row, returns the result, the main model answers without a tool call, the loop streams tokens to the client, the client shows you the answer, and the loop appends the assistant line.</desc>
   <defs>
     <marker id="sqa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="sqb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -538,130 +539,134 @@
     <rect x="1034" y="12" width="104" height="40" rx="7" class="b"/>
     <text x="1086" y="37" class="t1">MCP server</text>
   </g>
-  <line x1="56" y1="52" x2="56" y2="1636" class="life"/>
-  <line x1="196" y1="60" x2="196" y2="1636" class="life"/>
-  <line x1="371" y1="60" x2="371" y2="1636" class="life"/>
-  <line x1="621" y1="52" x2="621" y2="1636" class="life"/>
-  <line x1="736" y1="52" x2="736" y2="1636" class="life"/>
-  <line x1="851" y1="52" x2="851" y2="1636" class="life"/>
-  <line x1="966" y1="52" x2="966" y2="1636" class="life"/>
-  <line x1="1086" y1="52" x2="1086" y2="1636" class="life"/>
+  <line x1="56" y1="52" x2="56" y2="1700" class="life"/>
+  <line x1="196" y1="60" x2="196" y2="1700" class="life"/>
+  <line x1="371" y1="60" x2="371" y2="1700" class="life"/>
+  <line x1="621" y1="52" x2="621" y2="1700" class="life"/>
+  <line x1="736" y1="52" x2="736" y2="1700" class="life"/>
+  <line x1="851" y1="52" x2="851" y2="1700" class="life"/>
+  <line x1="966" y1="52" x2="966" y2="1700" class="life"/>
+  <line x1="1086" y1="52" x2="1086" y2="1700" class="life"/>
   <g font-size="12">
   <rect x="0" y="90" width="1146" height="28" class="band"/>
   <text x="12" y="109" class="ta" font-size="12.5" font-weight="700">Turn 1 · starts a new session</text>
-  <text x="126.0" y="136" class="t2 halo" text-anchor="middle">&quot;what changed in my</text>
-  <text x="126.0" y="151" class="t2 halo" text-anchor="middle">portfolio this week?&quot;</text>
-  <path d="M56 157 L194 157" class="ln" marker-end="url(#sqa)"/>
-  <text x="283.5" y="178" class="t2 halo" text-anchor="middle">new session + question</text>
-  <path d="M196 184 L369 184" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="205" class="t2 halo" text-anchor="middle">append user line to session JSONL</text>
-  <path d="M371 211 L619 211" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="232" class="t2 halo" text-anchor="middle">pick a route</text>
-  <path d="M371 238 L734 238" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="259" class="t2 halo mono" text-anchor="middle" font-size="11">route = search + tools</text>
-  <path d="M736 265 L373 265" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="286" class="t2 halo" text-anchor="middle">hybrid search on the question:</text>
-  <text x="496.0" y="300" class="t2 halo" text-anchor="middle">chunks, memories, session summaries</text>
-  <path d="M371 306 L619 306" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="327" class="t2 halo" text-anchor="middle">top chunks, relevant memories</text>
-  <path d="M621 333 L373 333" class="lnd" marker-end="url(#sqa)"/>
-  <text x="283.5" y="354" class="t2 halo" text-anchor="middle">sources [1], [2], …</text>
-  <path d="M371 360 L198 360" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="263.0" y="375" width="216" height="24" rx="5" class="ba2"/>
-  <text x="371" y="391" class="t1" text-anchor="middle">build context within budgets</text>
-  <text x="611.0" y="451" class="t2 halo" text-anchor="middle">context + schemas of allowed tools</text>
-  <path d="M371 457 L849 457" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="478" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.get_portfolio</text>
-  <path d="M851 484 L373 484" class="lnd" marker-end="url(#sqa)"/>
-  <text x="668.5" y="505" class="t2 halo" text-anchor="middle">dispatch</text>
-  <path d="M371 511 L964 511" class="ln" marker-end="url(#sqa)"/>
-  <rect x="850.0" y="526" width="232" height="24" rx="5" class="ba2"/>
-  <text x="966" y="542" class="t1" text-anchor="middle">allowlist ✓ · not in confirm list</text>
-  <text x="1026.0" y="572" class="t1 halo mono" text-anchor="middle" font-size="11">get_portfolio</text>
-  <path d="M966 578 L1084 578" class="lna" marker-end="url(#sqb)"/>
-  <text x="1026.0" y="599" class="t2 halo" text-anchor="middle">holdings</text>
-  <path d="M1086 605 L968 605" class="lnd" marker-end="url(#sqa)"/>
-  <text x="793.5" y="626" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
-  <path d="M966 632 L623 632" class="ln" marker-end="url(#sqa)"/>
-  <text x="668.5" y="653" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M966 659 L373 659" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="680" class="t2 halo" text-anchor="middle">context + tool result</text>
-  <path d="M371 686 L849 686" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="707" class="t2 halo" text-anchor="middle">answer, no tool call</text>
-  <path d="M851 713 L373 713" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="18" y="417" width="1120" height="311" rx="6" class="bg"/>
-  <path d="M18 437 L62 437 L70 429 L70 417 " class="ln"/>
-  <text x="26" y="432" class="t2" font-size="11.5" font-weight="700">loop</text>
-  <text x="80" y="432" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
-  <text x="283.5" y="742" class="t2 halo" text-anchor="middle">stream tokens</text>
-  <path d="M371 748 L198 748" class="lnd" marker-end="url(#sqa)"/>
-  <text x="126.0" y="769" class="t2 halo" text-anchor="middle">answer, then the</text>
-  <text x="126.0" y="784" class="t2 halo" text-anchor="middle">sources it cites</text>
-  <path d="M196 790 L58 790" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="811" class="t2 halo" text-anchor="middle">append assistant line</text>
-  <path d="M371 817 L619 817" class="ln" marker-end="url(#sqa)"/>
-  <rect x="0" y="844" width="1146" height="28" class="band"/>
-  <text x="12" y="863" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
-  <text x="126.0" y="890" class="t2 halo" text-anchor="middle">&quot;sell half of the one</text>
-  <text x="126.0" y="905" class="t2 halo" text-anchor="middle">that dropped most&quot;</text>
-  <path d="M56 911 L194 911" class="ln" marker-end="url(#sqa)"/>
-  <text x="283.5" y="932" class="t2 halo" text-anchor="middle">same session + question</text>
-  <path d="M196 938 L369 938" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="959" class="t2 halo" text-anchor="middle">load this session&#x27;s recent messages</text>
-  <path d="M371 965 L619 965" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="986" class="t2 halo" text-anchor="middle">pick a route, reading turn 1 too</text>
-  <path d="M371 992 L734 992" class="ln" marker-end="url(#sqa)"/>
-  <text x="553.5" y="1013" class="t2 halo mono" text-anchor="middle" font-size="11">route = tools</text>
-  <path d="M736 1019 L373 1019" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1040" class="t2 halo" text-anchor="middle">search files, recall memories</text>
-  <path d="M371 1046 L619 1046" class="ln" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1067" class="t2 halo" text-anchor="middle">top chunks, relevant memories</text>
-  <path d="M621 1073 L373 1073" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1124" class="t2 halo" text-anchor="middle">context (with turn 1) + tool schemas</text>
-  <path d="M371 1130 L849 1130" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1151" class="t2 halo mono" text-anchor="middle" font-size="11">tool call robinhood.place_order</text>
-  <path d="M851 1157 L373 1157" class="lnd" marker-end="url(#sqa)"/>
-  <text x="668.5" y="1178" class="t2 halo" text-anchor="middle">dispatch</text>
-  <path d="M371 1184 L964 1184" class="ln" marker-end="url(#sqa)"/>
-  <rect x="821.0" y="1199" width="290" height="24" rx="5" class="ba2"/>
-  <text x="966" y="1215" class="t1" text-anchor="middle">allowlist ✓ · place_order is in confirm list</text>
-  <text x="581.0" y="1245" class="t2 halo mono" text-anchor="middle" font-size="11">ask: place_order(...)?</text>
-  <path d="M966 1251 L198 1251" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="126.0" y="1272" class="t2 halo" text-anchor="middle">approve once ·</text>
-  <text x="126.0" y="1287" class="t2 halo" text-anchor="middle">for this session ·</text>
-  <text x="126.0" y="1302" class="t2 halo" text-anchor="middle">deny?</text>
-  <path d="M196 1308 L58 1308" class="lnd2" marker-end="url(#sqc)"/>
-  <text x="126.0" y="1329" class="t1 halo" text-anchor="middle">approve once</text>
-  <path d="M56 1335 L194 1335" class="lna2" marker-end="url(#sqc)"/>
-  <text x="581.0" y="1356" class="t1 halo" text-anchor="middle">approved once</text>
-  <path d="M196 1362 L964 1362" class="lna2" marker-end="url(#sqc)"/>
-  <text x="1026.0" y="1383" class="t1 halo mono" text-anchor="middle" font-size="11">place_order</text>
-  <path d="M966 1389 L1084 1389" class="lna" marker-end="url(#sqb)"/>
-  <text x="1026.0" y="1410" class="t2 halo" text-anchor="middle">order placed</text>
-  <path d="M1086 1416 L968 1416" class="lnd" marker-end="url(#sqa)"/>
-  <text x="793.5" y="1437" class="t2 halo" text-anchor="middle">tool_call, approval, tool_result lines, row</text>
-  <path d="M966 1443 L623 1443" class="ln" marker-end="url(#sqa)"/>
-  <text x="668.5" y="1464" class="t2 halo" text-anchor="middle">result</text>
-  <path d="M966 1470 L373 1470" class="lnd" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1491" class="t2 halo" text-anchor="middle">context + tool result</text>
-  <path d="M371 1497 L849 1497" class="ln" marker-end="url(#sqa)"/>
-  <text x="611.0" y="1518" class="t2 halo" text-anchor="middle">answer, no tool call</text>
-  <path d="M851 1524 L373 1524" class="lnd" marker-end="url(#sqa)"/>
-  <rect x="18" y="1090" width="1120" height="449" rx="6" class="bg"/>
-  <path d="M18 1110 L62 1110 L70 1102 L70 1090 " class="ln"/>
-  <text x="26" y="1105" class="t2" font-size="11.5" font-weight="700">loop</text>
-  <text x="80" y="1105" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
-  <text x="283.5" y="1553" class="t2 halo" text-anchor="middle">stream tokens</text>
-  <path d="M371 1559 L198 1559" class="lnd" marker-end="url(#sqa)"/>
-  <text x="126.0" y="1580" class="t2 halo" text-anchor="middle">answer</text>
-  <path d="M196 1586 L58 1586" class="lnd" marker-end="url(#sqa)"/>
-  <text x="496.0" y="1607" class="t2 halo" text-anchor="middle">append assistant line</text>
-  <path d="M371 1613 L619 1613" class="ln" marker-end="url(#sqa)"/>
+  <text x="126.0" y="136" class="t2 halo" text-anchor="middle">&quot;what did we agree on</text>
+  <text x="126.0" y="151" class="t2 halo" text-anchor="middle">the launch date in</text>
+  <text x="126.0" y="166" class="t2 halo" text-anchor="middle">email this week?&quot;</text>
+  <path d="M56 172 L194 172" class="ln" marker-end="url(#sqa)"/>
+  <text x="283.5" y="193" class="t2 halo" text-anchor="middle">new session + question</text>
+  <path d="M196 199 L369 199" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="220" class="t2 halo" text-anchor="middle">append user line to session JSONL</text>
+  <path d="M371 226 L619 226" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="247" class="t2 halo" text-anchor="middle">pick a route</text>
+  <path d="M371 253 L734 253" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="274" class="t2 halo mono" text-anchor="middle" font-size="11">route = search + tools</text>
+  <path d="M736 280 L373 280" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="301" class="t2 halo" text-anchor="middle">hybrid search on the question:</text>
+  <text x="496.0" y="315" class="t2 halo" text-anchor="middle">chunks, memories, session summaries</text>
+  <path d="M371 321 L619 321" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="342" class="t2 halo" text-anchor="middle">top chunks, relevant memories</text>
+  <path d="M621 348 L373 348" class="lnd" marker-end="url(#sqa)"/>
+  <text x="283.5" y="369" class="t2 halo" text-anchor="middle">sources [1], [2], …</text>
+  <path d="M371 375 L198 375" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="263.0" y="390" width="216" height="24" rx="5" class="ba2"/>
+  <text x="371" y="406" class="t1" text-anchor="middle">build context within budgets</text>
+  <rect x="201.0" y="424" width="340" height="24" rx="5" class="ba2"/>
+  <text x="371" y="440" class="t1" text-anchor="middle">try MCP servers that aren&#x27;t connected, once</text>
+  <text x="611.0" y="500" class="t2 halo" text-anchor="middle">context + schemas of allowed tools</text>
+  <path d="M371 506 L849 506" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="527" class="t2 halo mono" text-anchor="middle" font-size="11">tool call google.search_gmail_messages</text>
+  <path d="M851 533 L373 533" class="lnd" marker-end="url(#sqa)"/>
+  <text x="668.5" y="554" class="t2 halo" text-anchor="middle">dispatch</text>
+  <path d="M371 560 L964 560" class="ln" marker-end="url(#sqa)"/>
+  <rect x="850.0" y="575" width="232" height="24" rx="5" class="ba2"/>
+  <text x="966" y="591" class="t1" text-anchor="middle">allowlist ✓ · not in confirm list</text>
+  <text x="1026.0" y="621" class="t1 halo mono" text-anchor="middle" font-size="10">search_gmail_messages</text>
+  <path d="M966 627 L1084 627" class="lna" marker-end="url(#sqb)"/>
+  <text x="1026.0" y="648" class="t2 halo" text-anchor="middle">matching messages</text>
+  <path d="M1086 654 L968 654" class="lnd" marker-end="url(#sqa)"/>
+  <text x="793.5" y="675" class="t2 halo" text-anchor="middle">tool_call + tool_result lines, tool_calls row</text>
+  <path d="M966 681 L623 681" class="ln" marker-end="url(#sqa)"/>
+  <text x="668.5" y="702" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M966 708 L373 708" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="729" class="t2 halo" text-anchor="middle">context + tool result</text>
+  <path d="M371 735 L849 735" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="756" class="t2 halo" text-anchor="middle">answer, no tool call</text>
+  <path d="M851 762 L373 762" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="18" y="466" width="1120" height="311" rx="6" class="bg"/>
+  <path d="M18 486 L62 486 L70 478 L70 466 " class="ln"/>
+  <text x="26" y="481" class="t2" font-size="11.5" font-weight="700">loop</text>
+  <text x="80" y="481" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
+  <text x="283.5" y="791" class="t2 halo" text-anchor="middle">stream tokens</text>
+  <path d="M371 797 L198 797" class="lnd" marker-end="url(#sqa)"/>
+  <text x="126.0" y="818" class="t2 halo" text-anchor="middle">answer, then the</text>
+  <text x="126.0" y="833" class="t2 halo" text-anchor="middle">sources it cites</text>
+  <path d="M196 839 L58 839" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="860" class="t2 halo" text-anchor="middle">append assistant line</text>
+  <path d="M371 866 L619 866" class="ln" marker-end="url(#sqa)"/>
+  <rect x="0" y="893" width="1146" height="28" class="band"/>
+  <text x="12" y="912" class="ta" font-size="12.5" font-weight="700">Turn 2 · continues the same session</text>
+  <text x="126.0" y="939" class="t2 halo" text-anchor="middle">&quot;reply to that thread</text>
+  <text x="126.0" y="954" class="t2 halo" text-anchor="middle">and confirm I</text>
+  <text x="126.0" y="969" class="t2 halo" text-anchor="middle">can make it&quot;</text>
+  <path d="M56 975 L194 975" class="ln" marker-end="url(#sqa)"/>
+  <text x="283.5" y="996" class="t2 halo" text-anchor="middle">same session + question</text>
+  <path d="M196 1002 L369 1002" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1023" class="t2 halo" text-anchor="middle">load this session&#x27;s recent messages</text>
+  <path d="M371 1029 L619 1029" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="1050" class="t2 halo" text-anchor="middle">pick a route, reading turn 1 too</text>
+  <path d="M371 1056 L734 1056" class="ln" marker-end="url(#sqa)"/>
+  <text x="553.5" y="1077" class="t2 halo mono" text-anchor="middle" font-size="11">route = tools</text>
+  <path d="M736 1083 L373 1083" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1104" class="t2 halo" text-anchor="middle">search files, recall memories</text>
+  <path d="M371 1110 L619 1110" class="ln" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1131" class="t2 halo" text-anchor="middle">top chunks, relevant memories</text>
+  <path d="M621 1137 L373 1137" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1188" class="t2 halo" text-anchor="middle">context (with turn 1) + tool schemas</text>
+  <path d="M371 1194 L849 1194" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1215" class="t2 halo mono" text-anchor="middle" font-size="11">tool call google.send_gmail_message</text>
+  <path d="M851 1221 L373 1221" class="lnd" marker-end="url(#sqa)"/>
+  <text x="668.5" y="1242" class="t2 halo" text-anchor="middle">dispatch</text>
+  <path d="M371 1248 L964 1248" class="ln" marker-end="url(#sqa)"/>
+  <rect x="796.0" y="1263" width="340" height="24" rx="5" class="ba2"/>
+  <text x="966" y="1279" class="t1" font-size="11" text-anchor="middle">allowlist ✓ · send_gmail_message is in confirm list</text>
+  <text x="581.0" y="1309" class="t2 halo mono" text-anchor="middle" font-size="11">ask: send_gmail_message(...)?</text>
+  <path d="M966 1315 L198 1315" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="126.0" y="1336" class="t2 halo" text-anchor="middle">approve once ·</text>
+  <text x="126.0" y="1351" class="t2 halo" text-anchor="middle">for this session ·</text>
+  <text x="126.0" y="1366" class="t2 halo" text-anchor="middle">deny?</text>
+  <path d="M196 1372 L58 1372" class="lnd2" marker-end="url(#sqc)"/>
+  <text x="126.0" y="1393" class="t1 halo" text-anchor="middle">approve once</text>
+  <path d="M56 1399 L194 1399" class="lna2" marker-end="url(#sqc)"/>
+  <text x="581.0" y="1420" class="t1 halo" text-anchor="middle">approved once</text>
+  <path d="M196 1426 L964 1426" class="lna2" marker-end="url(#sqc)"/>
+  <text x="1026.0" y="1447" class="t1 halo mono" text-anchor="middle" font-size="10">send_gmail_message</text>
+  <path d="M966 1453 L1084 1453" class="lna" marker-end="url(#sqb)"/>
+  <text x="1026.0" y="1474" class="t2 halo" text-anchor="middle">message sent</text>
+  <path d="M1086 1480 L968 1480" class="lnd" marker-end="url(#sqa)"/>
+  <text x="793.5" y="1501" class="t2 halo" text-anchor="middle">tool_call, approval, tool_result lines, row</text>
+  <path d="M966 1507 L623 1507" class="ln" marker-end="url(#sqa)"/>
+  <text x="668.5" y="1528" class="t2 halo" text-anchor="middle">result</text>
+  <path d="M966 1534 L373 1534" class="lnd" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1555" class="t2 halo" text-anchor="middle">context + tool result</text>
+  <path d="M371 1561 L849 1561" class="ln" marker-end="url(#sqa)"/>
+  <text x="611.0" y="1582" class="t2 halo" text-anchor="middle">answer, no tool call</text>
+  <path d="M851 1588 L373 1588" class="lnd" marker-end="url(#sqa)"/>
+  <rect x="18" y="1154" width="1120" height="449" rx="6" class="bg"/>
+  <path d="M18 1174 L62 1174 L70 1166 L70 1154 " class="ln"/>
+  <text x="26" y="1169" class="t2" font-size="11.5" font-weight="700">loop</text>
+  <text x="80" y="1169" class="t3" font-size="11.5">until the model answers without a tool call, max 8 rounds</text>
+  <text x="283.5" y="1617" class="t2 halo" text-anchor="middle">stream tokens</text>
+  <path d="M371 1623 L198 1623" class="lnd" marker-end="url(#sqa)"/>
+  <text x="126.0" y="1644" class="t2 halo" text-anchor="middle">answer</text>
+  <path d="M196 1650 L58 1650" class="lnd" marker-end="url(#sqa)"/>
+  <text x="496.0" y="1671" class="t2 halo" text-anchor="middle">append assistant line</text>
+  <path d="M371 1677 L619 1677" class="ln" marker-end="url(#sqa)"/>
   </g>
-  <text x="12" y="1666" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the confirmation.</text>
+  <text x="12" y="1730" class="t3" font-size="11.5">Solid arrows are requests, dashed arrows are replies. Blue arrows leave merud for a tool; amber arrows carry the confirmation.</text>
 </svg>
 </div>
-<figcaption><b>Figure 2.</b> Each dashed frame is one run of the agent loop, and both turns go round it twice: <code>main</code> asks for a tool, gets the result, then answers. Turn 2 searches too: the <code>tools</code> route searches your files, because the router sends some questions about them there, and recall runs on every route. Only turn 2 stops for you, because <code>place_order</code> sits in the server's <code>confirm</code> list.</figcaption>
+<figcaption><b>Figure 2.</b> Each dashed frame is one run of the agent loop, and both turns go round it twice: <code>main</code> asks for a tool, gets the result, then answers. Turn 2 searches too: the <code>tools</code> route searches your files, because the router sends some questions about them there, and recall runs on every route. Only turn 2 stops for you, because <code>send_gmail_message</code> sits in the server's <code>confirm</code> list.</figcaption>
 </figure>
 
 <h3>Who decides what</h3>
@@ -671,14 +676,14 @@
   <tbody>
     <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. <code>merud</code> searches anyway when a <code>direct</code> question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load.</td></tr>
     <tr><td>What to search for</td><td><code>merud</code>, with no model</td><td>The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: <code>merud</code> appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again".</td></tr>
-    <tr><td>Which tools the model may use</td><td>you, in <code>config.toml</code></td><td>Only tools in each server's or agent's <code>allow</code> list reach the model; the rest don't exist to it. The built-in tools need no entry.</td></tr>
-    <tr><td>Which tool to call, with what arguments</td><td>the <code>main</code> model</td><td>It reads each allowed tool's name, description and argument schema, as the MCP server or agent card wrote them, and picks.</td></tr>
-    <tr><td>Whether a call runs without asking</td><td>you, in <code>config.toml</code> and at the prompt</td><td><code>dispatch</code> stops and asks when the tool is in its entry's <code>confirm</code> list, unless you already approved that tool for this session. <code>configure</code> asks every time.</td></tr>
+    <tr><td>Which tools the model may use</td><td>you, in <code>config.toml</code></td><td>Only tools in each server's or agent's <code>allow</code> list reach the model; the rest don't exist to it. Each <code>[[commands]]</code> entry is one tool. The built-in tools need no entry.</td></tr>
+    <tr><td>Which tool to call, with what arguments</td><td>the <code>main</code> model</td><td>It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or <code>[[commands]]</code> entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config.</td></tr>
+    <tr><td>Whether a call runs without asking</td><td>you, in <code>config.toml</code> and at the prompt</td><td><code>dispatch</code> stops and asks when the tool is in its entry's <code>confirm</code> list, or its <code>[[commands]]</code> entry says <code>confirm = true</code>, unless you already approved that tool for this session. <code>configure</code> asks every time. <code>web_fetch</code> asks for a URL that no search result or question of yours gave, and before a download.</td></tr>
     <tr><td>When the turn ends</td><td>the <code>main</code> model, with a cap</td><td>The turn ends when the model answers without calling a tool, or at the round cap (<code>[agent] max_rounds</code>, default 8). The last round offers no tools, so the model has to answer.</td></tr>
   </tbody>
 </table></div>
 
-<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers only the three read-only file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>: a question such as "write about everything in my work folder" lands there, and ten excerpts can't cover a folder. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
+<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers the three read-only file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, and the local commands that don't ask first. A question such as "write about everything in my work folder" lands on <code>search</code>, and ten excerpts can't cover a folder. So does "what changed in the meru repo this week?" when <code>meru</code> is an indexed folder, and a declared <code>git log</code> answers it. A command with <code>confirm = true</code> changes something, so it waits for a tools route. So do <code>web_search</code> and <code>web_fetch</code>: the router's option C names the web, so a question that needs it lands on a tools route. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
 
 <h3 id="approving">Approving a tool call</h3>
 
@@ -696,21 +701,27 @@
 <ul>
   <li><b>The question travels on the same socket.</b> <code>merud</code> sends the client an <code>approval</code> event with an ID, the call and the choices it offers, and holds the call. The client writes back one <code>Reply</code> line with that ID and a choice. A choice the approval didn't offer counts as deny.</li>
   <li><b>Each choice is recorded.</b> <code>merud</code> appends an <code>approval</code> line to the transcript, between the call's <code>tool_call</code> and <code>tool_result</code> lines, and the <code>tool_calls</code> row keeps the choice:
-<pre><code>{"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"robinhood","tool":"place_order","choice":"once","trace_id":"9c2e…"}</code></pre>
+<pre><code>{"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"google","tool":"send_gmail_message","choice":"once","trace_id":"9c2e…"}</code></pre>
   </li>
-  <li><b>Built-in tools have their own confirm list.</b> A <b>built-in tool</b> is one that <code>merud</code> provides itself instead of an MCP server. They belong to no server entry, so <code>config.toml</code> gives them one section:
+  <li><b>Built-in tools have their own section.</b> A <b>built-in tool</b> is one that <code>merud</code> provides itself instead of an MCP server. They belong to no server entry, so <code>config.toml</code> gives them one section with two lists:
 <pre><code>[builtin]
+tools   = ["configure", "datetime", "remember", "write_file", "read_file",
+           "list_folder", "grep", "web_search", "web_fetch"]   # all nine, the default
 confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory</code></pre>
-  The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever this list says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it here; <code>write_file</code>, which asks before each file it saves because the shipped list names it; and three read-only file tools that run without asking unless you list them:
+  <code>tools</code> lists the built-ins the model may use. Take a name out and <code>merud</code> doesn't register that tool with <code>dispatch</code>: the model never sees it, and <code>meru tools</code> doesn't list it. <code>configure</code> can go too; <code>meru mcp add</code> still works without it. An unknown name stops <code>merud</code> at load, with the valid names in the message, and so does a <code>confirm</code> entry that <code>tools</code> doesn't list. A listed tool still needs what it works on: the file tools need <code>[index] folders</code>, <code>write_file</code> needs <code>[skills] output_dir</code>, and <code>web_search</code> needs <code>[web] searxng_url</code>. Without it the tool stays off, and <code>merud</code> logs one info line at startup that names the tool and the missing setting.
+  <p>The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever <code>confirm</code> says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it in <code>confirm</code>; <code>write_file</code>, which asks before each file it saves because the shipped list names it; the two web tools, <code>web_search</code> and <code>web_fetch</code> (see <a href="#web-search">Web search</a>); and three read-only file tools. <code>web_search</code> and the file tools run without asking unless you list them. <code>web_fetch</code> runs without asking for a URL a search result or your question gave, and asks otherwise:
 <div class="tbl"><table>
   <thead><tr><th>Tool</th><th>What it returns</th></tr></thead>
   <tbody>
     <tr><td><code>read_file</code></td><td>A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page.</td></tr>
     <tr><td><code>list_folder</code></td><td>A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries.</td></tr>
     <tr><td><code>grep</code></td><td>Every line that holds a word or an RE2 regular expression, as <code>path:line: text</code>, until 200 lines, 5 seconds or 20,000 files.</td></tr>
+    <tr><td><code>web_search</code></td><td>Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when <code>[web] searxng_url</code> is set.</td></tr>
+    <tr><td><code>web_fetch</code></td><td>One public web page's text, 12,000 characters per call, like <code>read_file</code>; with a <code>prompt</code>, the <code>fast</code> model's answer from the page; with <code>save</code>, a file saved in <code>~/meru-output/downloads/</code>. Offered while <code>[builtin] tools</code> lists it.</td></tr>
   </tbody>
 </table></div>
-  The file tools reach only the <code>[index] folders</code>, and they skip what the indexer skips (see <a href="#getting-your-content-in">Getting your content in</a>): they never follow a symlink, and they refuse secret, hidden, ignored, binary and oversized files with the indexer's reason. They read nothing that search couldn't already put in the prompt. <code>merud</code> leaves them out when no folder is listed. In <code>tool_calls</code> and the metrics, a built-in call has <code>kind = "builtin"</code> and <code>server = "meru"</code>.</li>
+  The file tools reach only the <code>[index] folders</code> and the downloads folder <code>web_fetch</code> saves in, and they skip what the indexer skips (see <a href="#getting-your-content-in">Getting your content in</a>): they never follow a symlink, and they refuse secret, hidden, ignored, binary and oversized files with the indexer's reason. Apart from downloads, they read nothing that search couldn't already put in the prompt. The indexer never indexes the downloads folder, so a web page can't reach a later turn through search. <code>merud</code> leaves the file tools out when no <code>[index]</code> folder is listed. In <code>tool_calls</code> and the metrics, a built-in call has <code>kind = "builtin"</code> and <code>server = "meru"</code>.</li>
+  <li><b>Local commands ask per entry.</b> A <code>[[commands]]</code> entry with <code>confirm = true</code> asks before each run and offers all three choices; one without runs without asking. Read-only commands run freely, and anything that changes something should ask. A command call has <code>kind = "command"</code>, <code>server = "meru"</code> and <code>tool = "cmd.&lt;name&gt;"</code>, and its <code>tool_call</code> line, prompt and row show the argv it runs (see <a href="#local-commands">Local commands</a>).</li>
   <li><b>Session approvals stay inside the running <code>merud</code>.</b> <code>dispatch</code> keeps them in memory, per session and tool. They end with the session or with <code>merud</code>, and never reach <code>config.toml</code>. To stop Meru asking about a tool for good, remove it from the <code>confirm</code> list yourself. Lasting trust then comes from one place, a file you edit and can read back.</li>
   <li><b>One-shot <code>meru "..."</code></b> asks on standard error with the same choices, as <code>[o]nce [s]ession [d]eny</code>, so the answer on standard output stays clean. Its session ends with the answer, so "for this session" covers only this question. When standard input isn't a terminal (a script or a pipe), nobody can answer, so the client denies without asking and says so.</li>
   <li><b>Nobody to ask means no.</b> A scheduled job, or a client that passed no way to ask, can't say yes, so <code>dispatch</code> ends every call that needs a yes as <code>declined</code> without a prompt. A job's output says which calls it skipped.</li>
@@ -722,9 +733,9 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <li><b>A session is one transcript file.</b> <code>meru chat</code> keeps one session open until you quit. Each one-shot <code>meru "..."</code> starts a new session.</li>
   <li><b>Each turn starts with the session's history.</b> <code>merud</code> loads your earlier questions and Meru's earlier answers from this session, newest first, until the history budget, its fixed share of the context, is full. Older turns drop out of the prompt but stay in the transcript. From v0.4, search can find them there.</li>
   <li><b>Earlier tool results stay out of the history.</b> The answer that used a result already carries what mattered from it, and raw results can run to thousands of tokens. The transcript keeps the full results.</li>
-  <li><b>The router sees the history too</b>, so it can tell that a follow-up like "sell half of the one that dropped most" needs tools. It picks a route and nothing else; no model rewrites the follow-up.</li>
+  <li><b>The router sees the history too</b>, so it can tell that a follow-up like "reply to that thread and confirm I can make it" needs tools. It picks a route and nothing else; no model rewrites the follow-up.</li>
   <li><b>A follow-up search adds an earlier question.</b> On the search routes, a short question (fewer than three words that aren't filler) gets the session's latest earlier question appended, so "and the one after that?" still finds the right files. A longer question names its own subject and is searched alone: appending a question about a trip to one about a work project filled the results with travel papers. It skips earlier questions made only of filler words, so "search again" after "try that again" still carries the subject from before them.</li>
-  <li><b>The <code>main</code> model resolves the reference.</b> It reads turn 1's answer in the history, which named the stocks and their moves, and works out which one dropped most. It reads answers, not the raw tool results behind them.</li>
+  <li><b>The <code>main</code> model resolves the reference.</b> It reads turn 1's answer in the history, which named the thread and the date agreed in it, and works out which thread "that thread" means. It reads answers, not the raw tool results behind them.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -803,15 +814,15 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <pre><code>~/.meru/sessions/2026/09/2026-09-23T101502-7f3a.jsonl</code></pre>
 
-<p>One question about a portfolio takes four lines on disk, and a fifth closes the session:</p>
+<p>One question about email takes four lines on disk, and a fifth closes the session:</p>
 
-<pre><code>{"ts":"2026-09-23T10:15:02Z","type":"user","text":"what changed in my portfolio this week?","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"robinhood","tool":"get_portfolio","args":{},"trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:04Z","type":"tool_result","call_id":"call-1","outcome":"ok","ok":true,"ms":812,"result":"NVDA 120 shares…","trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Two positions moved…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
-{"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Reviewed the week's portfolio changes; two positions fell more than 5%."}</code></pre>
+<pre><code>{"ts":"2026-09-23T10:15:02Z","type":"user","text":"what did we agree on the launch date in email this week?","trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"google","tool":"search_gmail_messages","args":{"query":"launch date"},"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:04Z","type":"tool_result","call_id":"call-1","outcome":"ok","ok":true,"ms":812,"result":"Re: Launch date, from Sam…","trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Sam and Priya agreed on 14 October…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}
+{"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Found the launch date agreed in email: 14 October, in the thread with Sam."}</code></pre>
 
-<p>The file records the whole exchange. The question arrived at 10:15:02. A second later the model asked the <code>robinhood</code> server for <code>get_portfolio</code>, which answered in 812 ms. The answer landed at 10:15:09, after the model read 2,310 tokens and wrote 188. The first four lines carry the same <code>trace_id</code>, which links them to the timing data covered later. The session ended at 10:31, and <code>merud</code> asked the <code>fast</code> model for the one-sentence <code>summary</code> on the last line. The indexer embeds that summary, so a later question such as "what did we decide about the portfolio last week?" can find this session.</p>
+<p>The file records the whole exchange. The question arrived at 10:15:02. A second later the model asked the <code>google</code> server for <code>search_gmail_messages</code> with the query "launch date", and the server answered in 812 ms with the thread "Re: Launch date" from Sam. The answer landed at 10:15:09 and named 14 October, after the model read 2,310 tokens and wrote 188. The first four lines carry the same <code>trace_id</code>, which links them to the timing data covered later. The session ended at 10:31, and <code>merud</code> asked the <code>fast</code> model for the one-sentence <code>summary</code> on the last line. The indexer embeds that summary, so a later question such as "what date did we pick for the launch?" can find this session.</p>
 
 <p>A tool call's lines share a <code>call_id</code>, because the calls of one round run at the same time and their lines can interleave. An <code>approval</code> line sits between the two when the call asked you first. <code>result</code> holds the first 4,000 characters of what the tool returned, with secrets removed.</p>
 
@@ -900,7 +911,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
     <tr><td><code>session_vec</code> (v0.4)</td><td>one vector per session summary, for "what did we decide last week"</td><td>session summaries</td></tr>
     <tr><td><code>message_fts</code> (v0.4)</td><td>keyword index over messages, for "what did we say about X"</td><td>messages</td></tr>
     <tr><td><code>turns</code></td><td>one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. <code>meru usage</code> and the chat's usage numbers count it</td><td><code>sessions/*.jsonl</code> (the assistant line holds route, duration and files)</td></tr>
-    <tr><td><code>tool_calls</code></td><td>audit log: every MCP, A2A and built-in tool call, with its call ID, session, <code>kind</code> (<code>mcp</code>, <code>a2a</code> or <code>builtin</code>), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID</td><td><code>sessions/*.jsonl</code></td></tr>
+    <tr><td><code>tool_calls</code></td><td>audit log: every MCP, A2A, built-in and local command call, with its call ID, session, <code>kind</code> (<code>mcp</code>, <code>a2a</code>, <code>builtin</code> or <code>command</code>), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID</td><td><code>sessions/*.jsonl</code></td></tr>
     <tr><td><code>memories</code> (v0.4)</td><td>one row per memory file: its ID (<code>&lt;kind&gt;/&lt;name&gt;.md</code>), kind, text, created, source, mtime and content hash</td><td><code>memory/*/*.md</code></td></tr>
     <tr><td><code>memory_vec</code> / <code>memory_fts</code> (v0.4)</td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
     <tr><td><code>jobs</code> / <code>job_runs</code> (v0.5)</td><td>scheduled jobs and each run's outcome</td><td>jobs: <code>[[jobs]]</code> in <code>config.toml</code>; runs: the job's session transcript</td></tr>
@@ -985,7 +996,7 @@ watch          = true</code></pre>
 <div class="tbl"><table>
   <thead><tr><th>File</th><th>Split by</th><th>Heading kept</th><th>Citation points to</th></tr></thead>
   <tbody>
-    <tr><td>Markdown</td><td>heading, then paragraphs</td><td>the heading path, such as <code>Budget &gt; Q3</code></td><td>lines</td></tr>
+    <tr><td>Markdown</td><td>heading, then paragraphs</td><td>the heading path, such as <code>Garden &gt; Spring</code></td><td>lines</td></tr>
     <tr><td>Go</td><td>top-level declaration, read with Go's own parser</td><td>the declaration's name</td><td>lines</td></tr>
     <tr><td>other code, plain text</td><td>blank-line blocks</td><td>none</td><td>lines</td></tr>
     <tr><td>HTML</td><td><code>&lt;h1&gt;</code> to <code>&lt;h6&gt;</code>, then paragraphs; scripts, styles and <code>&lt;head&gt;</code> dropped</td><td>the heading path</td><td>none</td></tr>
@@ -996,7 +1007,7 @@ watch          = true</code></pre>
 <ul>
   <li><b>Size.</b> A chunk holds about <code>chunk_tokens</code> (500) tokens and repeats the last <code>overlap_tokens</code> (50) of the chunk before it, so a sentence cut at a boundary still appears whole in one chunk. Meru estimates a token as four characters, because Ollama doesn't expose the embedding model's tokenizer.</li>
   <li><b>No chunk passes the limit.</b> A paragraph too big for one chunk gets split at line breaks, then between words, and last at a fixed width.</li>
-  <li><b>The heading path travels with the text.</b> Each embedded chunk starts with its heading path, so the third chunk of a long "Budget &gt; Q3" section still embeds as being about Q3's budget.</li>
+  <li><b>The heading path travels with the text.</b> Each embedded chunk starts with its heading path, so the third chunk of a long "Garden &gt; Spring" section still embeds as being about the garden in spring.</li>
 </ul>
 
 <h3>Keeping it current</h3>
@@ -1022,7 +1033,7 @@ watch          = true</code></pre>
 <p><b>Retrieval-augmented generation</b> (RAG) means searching your files first and handing the model what it found, so it answers from your notes instead of from memory. The search has to find the right passages, and each of the two usual methods misses a kind of question:</p>
 
 <ul>
-  <li><b>Vector search</b> finds passages whose embeddings sit near the question's, so it catches paraphrase. It misses exact strings such as ticker symbols and error codes.</li>
+  <li><b>Vector search</b> finds passages whose embeddings sit near the question's, so it catches paraphrase. It misses exact strings such as project code names and error codes.</li>
   <li><b>BM25</b>, the standard keyword-ranking formula, matches those exact strings and fails when a passage uses different words from the question.</li>
 </ul>
 
@@ -1153,10 +1164,10 @@ func rrf(lists ...[]int64) map[int64]float64 {
 
 <p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites, and an answer that cites none gets no list: the model decides when a source matters. An earlier rule listed every excerpt when the answer cited none, in case a small model forgot to cite; in use it printed ten unrelated files under general answers and under an answer built from an Obsidian search.</p>
 
-<pre><code>The Q3 budget for the garden project is 4,200 dollars [1].
+<pre><code>The garden project sows tomatoes on 12 April [1].
 
 Sources:
-[1] ~/notes/garden.md, "Budget", lines 3–5</code></pre>
+[1] ~/notes/garden.md, "Planting", lines 3–5</code></pre>
 
 <p>With a tiny index, every chunk lands in the top 10. A minimum fused score, or keeping fewer than 10 chunks, would shorten the prompt; choosing either waits for measurements (see <a href="#open-questions">Open questions</a>).</p>
 
@@ -1183,7 +1194,7 @@ Sources:
 created: 2026-09-23
 source: session 2026-09-23T101502-7f3a
 ---
-Prefers index funds over individual stocks for retirement accounts.</code></pre>
+Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <ul>
   <li><b>The folder is the kind.</b> A file has no <code>kind:</code> field that could disagree with its path, and you can browse by kind in a file manager or with <code>ls</code>.</li>
@@ -1200,14 +1211,14 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 
 <ul>
   <li><b>Facts</b> (semantic memory) stay true over time. Everything in the folders above is a fact.</li>
-  <li><b>Episodes</b> (episodic memory: what happened when) already live in the session transcripts, so memory files don't copy them. When a session ends, <code>merud</code> asks the <code>fast</code> model for a one- or two-sentence summary and appends it to the transcript as a <code>summary</code> line. The indexer embeds those summaries, so "what did we decide about the portfolio last week?" finds the right session.</li>
+  <li><b>Episodes</b> (episodic memory: what happened when) already live in the session transcripts, so memory files don't copy them. When a session ends, <code>merud</code> asks the <code>fast</code> model for a one- or two-sentence summary and appends it to the transcript as a <code>summary</code> line. The indexer embeds those summaries, so "what did we decide about the garden beds last week?" finds the right session.</li>
 </ul>
 
 <h3>How Meru uses them</h3>
 
 <ol>
   <li><b>Indexing.</b> The indexer treats <code>~/.meru/memory/</code> like any folder you index: each file gets a vector and a keyword entry. It picks up hand edits through the same mtime and content-hash check it runs on your notes.</li>
-  <li><b>Recall.</b> Each turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges all three with <code>rrf</code>. The top results go into the context, up to the memory budget. Recall runs on every route, including turns that only call tools, because a preference such as "always ask before trading" has to reach the model on the turns that place trades.</li>
+  <li><b>Recall.</b> Each turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges all three with <code>rrf</code>. The top results go into the context, up to the memory budget. Recall runs on every route, including turns that only call tools, because a preference such as "always ask before sending mail" has to reach the model on the turns that send mail.</li>
   <li><b>Saving.</b> The model saves a memory by calling the built-in <code>remember</code> tool with a folder and the text. The call goes through <code>dispatch</code> like any other tool, so it lands in <code>tool_calls</code> and the transcript. Memories save without asking; add <code>remember</code> to <code>builtin.confirm</code> in <code>config.toml</code> if you want to approve each one.</li>
   <li><b>Your commands.</b> <code>meru memory list | add | forget</code> work on the files.</li>
 </ol>
@@ -1220,37 +1231,44 @@ Prefers index funds over individual stocks for retirement accounts.</code></pre>
 <p>A <b>skill</b> is a markdown file of instructions for one kind of task, at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>. Like a memory file, it opens with YAML frontmatter:</p>
 
 <pre><code>---
-name: portfolio-review
-description: Review holdings through a valuation lens. Use when asked about
-  positions, concentration, or whether to buy or sell.
+name: meeting-notes
+description: Turn a meeting transcript into decisions and action items. Use when
+  asked to write up a meeting, list what was agreed, or who owns what.
 ---
 
 &lt;the instructions, loaded only when the skill is chosen&gt;</code></pre>
 
 <p>The system prompt carries only each skill's <code>name</code> and <code>description</code>. From v0.4, a short call to the <code>fast</code> model picks the skills a turn needs, and <code>merud</code> loads only their bodies, so each new skill adds two lines to the prompt until that call chooses it.</p>
 
-<p>A skill's <code>name</code> is lowercase letters and digits in words joined by <code>-</code>, such as <code>portfolio-review</code>, and must match its folder's name. A <code>SKILL.md</code> may be up to 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and the other skills still load.</p>
+<p>A skill's <code>name</code> is lowercase letters and digits in words joined by <code>-</code>, such as <code>meeting-notes</code>, and must match its folder's name. A <code>SKILL.md</code> may be up to 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and the other skills still load.</p>
 
 <p>Skills are plain files, so any other agent that reads this format can use the same directory.</p>
 
+<p>To turn a skill off, name it in <code>[skills] disabled</code>:</p>
+<pre><code>[skills]
+disabled = ["explainer"]   # the default is [], every skill on</code></pre>
+<p><code>merud</code> doesn't load a disabled skill, so the model never sees it. For a built-in skill, <code>merud</code> also doesn't install it: delete its folder and disable it, and it stays gone. A name that matches no skill isn't an error, since you may add that skill later; <code>merud</code> logs it at info and moves on. A skill folder you add loads with no change to config.</p>
+
 <h3 id="builtin-skills">Built-in skills</h3>
 
-<p>Meru ships with two skills, taken from the owner's <code>my-ai-assets</code> repo:</p>
+<p>Meru ships with three skills. <code>writing</code> and <code>explainer</code> come from the owner's <code>my-ai-assets</code> repo; <code>web-research</code> is Meru's own:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>writing</code></td><td>Plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
     <tr><td><code>explainer</code></td><td>Builds a self-contained HTML page that teaches a topic, with diagrams</td></tr>
+    <tr><td><code>web-research</code></td><td>For questions that need current facts: search, read the one or two best pages with <code>web_fetch</code> and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree</td></tr>
   </tbody>
 </table></div>
 
 <ul>
-  <li><b>They ship inside the binary.</b> Go's <code>embed</code> package compiles files into the program, and the repo keeps them under <code>internal/skills/builtin/</code>. On first run, <code>merud</code> copies each one to <code>~/.meru/skills/&lt;name&gt;/</code> unless that folder already exists.</li>
+  <li><b>They ship inside the binary.</b> Go's <code>embed</code> package compiles files into the program, and the repo keeps them under <code>internal/skills/builtin/</code>. On first run, <code>merud</code> copies each one to <code>~/.meru/skills/&lt;name&gt;/</code> unless that folder already exists or <code>[skills] disabled</code> names it.</li>
   <li><b>Your copy wins.</b> <code>merud</code> never overwrites a skill you've edited. To get the shipped version back, run <code>meru skills reset &lt;name&gt;</code>.</li>
   <li><b>You add more by dropping in a folder.</b> Any <code>SKILL.md</code> under <code>~/.meru/skills/</code> counts, whether you wrote it or copied it from elsewhere.</li>
+  <li><b>You turn one off in config.</b> <code>[skills] disabled</code> names the skills <code>merud</code> skips, built-in or yours (see <a href="#skills">Skills</a>).</li>
   <li><b>Skills that make files need somewhere to put them.</b> The built-in <code>write_file</code> tool (v0.4) writes only inside <code>~/meru-output/</code> (configurable). It can't touch any other path, and it goes through <code>dispatch</code> like every tool.</li>
-  <li><b>These skills want the <code>full</code> profile.</b> The <code>lite</code> model can run them, but a 2B model writes weaker explainers.</li>
+  <li><b>These skills want the <code>full</code> profile.</b> The <code>lite</code> model can run them, but a 2B model writes weaker explainers and reads pages less well.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -1262,21 +1280,21 @@ description: Review holdings through a valuation lens. Use when asked about
 
 <ol>
   <li><b>Route.</b> The <code>fast</code> model picks one of four routes: answer directly, search your files first (RAG, retrieval-augmented generation), call tools, or search and call tools. It picks by classification, reading one decoded token's probabilities (see <a href="#routing">Routing</a>). On the search routes, <code>merud</code> then searches your files for the question, with an earlier question appended on a follow-up. No model rewrites the query. The <code>tools</code> route searches too: the router sends some questions about your files there, and an answer from the files beats one from the model alone. Three rules then adjust the route (see <a href="#routing">Routing</a>): a <code>direct</code> question that names an indexed folder becomes <code>search</code>, a question that names a connected tool server gets tools, and so does a question that says "remember". From v0.4, a separate short call picks the skills to load.</li>
-  <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and, on the <code>tools</code> and <code>search+tools</code> routes, the allowed tools' schemas, each within its own token budget. On <code>search</code> the model gets the three file tools' schemas, and a note that says it may read whole files, list folders and grep when the excerpts fall short.</li>
+  <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and, on the <code>tools</code> and <code>search+tools</code> routes, the allowed tools' schemas, each within its own token budget. On <code>search</code> the model gets the three file tools' schemas and those of the local commands that don't ask, with a note that says it may read whole files, list folders and grep when the excerpts fall short, and run the <code>cmd.</code> tools. On a route that offers tools, the loop first gives each MCP server that isn't connected one try, then lists the tools (see <a href="#mcp">MCP</a>).</li>
   <li><b>Call <code>main</code>.</b> Stream text to the client as it arrives. Ollama sends each tool call whole, in a chunk of its own, and the loop collects them. It tells the client about each call with a <code>tool_call</code> event.</li>
   <li><b>Dispatch tools.</b> Every call goes through one function, <code>dispatch</code>, in this order:
     <ol>
       <li><b>Allowlist.</b> A tool that no backend offers is <code>denied</code>. It doesn't run, but it still gets a <code>tool_call</code> line, a <code>tool_result</code> line and a <code>tool_calls</code> row, so a model that keeps reaching for forbidden tools shows up in the log.</li>
       <li><b>Transcript.</b> The <code>tool_call</code> line goes in before the call runs. If it can't be written, the call doesn't run.</li>
       <li><b>Confirm.</b> Each tool asks never, asks unless approved for this session, or asks every time (<code>configure</code> only). If you say no, or nobody can be asked, the outcome is <code>declined</code>.</li>
-      <li><b>Call.</b> The MCP server, A2A agent or built-in tool runs, under its own timeout. The outcome is <code>ok</code>, <code>error</code>, <code>timeout</code> or <code>cancelled</code>.</li>
+      <li><b>Call.</b> The MCP server, A2A agent, built-in tool or local command runs, under its own timeout. The outcome is <code>ok</code>, <code>error</code>, <code>timeout</code> or <code>cancelled</code>.</li>
       <li><b>Record.</b> <code>dispatch</code> removes secret values from the arguments, the result and any error text, then writes the <code>tool_result</code> line, the <code>tool_calls</code> row, the metrics and the <code>meru.dispatch</code> span. The model reads up to 16,000 characters of the result, with a note when <code>dispatch</code> cut it; the transcript and the row keep 4,000.</li>
     </ol>
-    <p style="margin: 8px 0 0">No other code path reaches a server, agent or built-in tool. The calls of one round run at the same time (<code>errgroup</code>, Go's helper for running calls together and collecting their errors), and each sends its <code>tool_result</code> event to the client as it ends. A denied or declined call still reaches the model as a result, so it can answer without the tool or ask you what to do.</p></li>
+    <p style="margin: 8px 0 0">No other code path reaches a server, agent, built-in tool or local command. The calls of one round run at the same time (<code>errgroup</code>, Go's helper for running calls together and collecting their errors), and each sends its <code>tool_result</code> event to the client as it ends. A denied or declined call still reaches the model as a result, so it can answer without the tool or ask you what to do.</p></li>
   <li><b>Repeat</b> from step 3 with the tool results, until the model answers without calling a tool or the turn reaches <code>[agent] max_rounds</code> model calls (default 8). The last allowed round offers no tools, so the model has to answer with what it has.</li>
 </ol>
 
-<p><code>dispatch</code> sees the tools through one interface, <code>Backend</code>, with three implementations in a fixed order: the built-in tools, the MCP client pool, then the A2A client. When two backends offer the same name, the first keeps it, so no MCP server can shadow <code>configure</code>.</p>
+<p><code>dispatch</code> sees the tools through one interface, <code>Backend</code>, with four implementations in a fixed order: the built-in tools, the local commands, the MCP client pool, then the A2A client. When two backends offer the same name, the first keeps it, so no MCP server can shadow <code>configure</code> or a <code>cmd.</code> tool.</p>
 
 <p>A <code>context.Context</code>, Go's value for carrying a cancel signal and a deadline, runs through the whole turn. If the client disconnects or you press Ctrl-C, <code>merud</code> cancels the turn: generation stops, <code>merud</code> drops in-flight tool calls, and their <code>tool_calls</code> rows record the cancellation.</p>
 
@@ -1364,10 +1382,11 @@ fallback       = "search+tools"</code></pre>
 
 <p>The router lives in <code>internal/router</code> as one function, <code>Decide</code>, which returns the route, its confidence, the full distribution and an outcome (<code>ok</code>, <code>low_confidence</code> or <code>degraded</code>). A model that answers unclearly isn't an error; <code>Decide</code> returns the fallback and says why.</p>
 
-<p>Three rules override the router, in this order. The first: when it picks <code>direct</code> and the question names an indexed folder as a whole word, such as "meru" for <code>~/repos/meru</code>, the agent loop changes the route to <code>search</code>. Even with the folders in the prompt, the router sent "what database does Meru use to store its index?" to <code>direct</code> at 0.621, and the model made up an answer. A wrong guess costs one search of about 50 ms, and the model uses only the excerpts that help. The turn's route event, log line and span show <code>search</code>; the <code>meru.route</code> span and metric still record what the router chose. The rule matches the last part of each folder path, in any case, and skips names under three letters. "hey meru, what's the capital of France" searches too, because the assistant shares its name with the folder.</p>
+<p>Four rules override the router, in this order. The first: when it picks <code>direct</code> and the question names an indexed folder as a whole word, such as "meru" for <code>~/repos/meru</code>, the agent loop changes the route to <code>search</code>. Even with the folders in the prompt, the router sent "what database does Meru use to store its index?" to <code>direct</code> at 0.621, and the model made up an answer. A wrong guess costs one search of about 50 ms, and the model uses only the excerpts that help. The turn's route event, log line and span show <code>search</code>; the <code>meru.route</code> span and metric still record what the router chose. The rule matches the last part of each folder path, in any case, and skips names under three letters. "hey meru, what's the capital of France" searches too, because the assistant shares its name with the folder.</p>
 
-<p>The second: when the question names a connected MCP server or A2A agent as a whole word, and the route offers at most the file tools, the agent loop adds the rest. <code>direct</code> becomes <code>tools</code>, and <code>search</code> becomes <code>search+tools</code>. The names come from the tools <code>dispatch</code> offers, such as "obsidian" from <code>obsidian.search_vault</code> and "research" from <code>a2a.research.summarize</code>, and the loop reads them on each turn, because <code>configure</code> can add a server while <code>merud</code> runs. Built-in tools don't count: their owner is <code>meru</code>, the assistant's own name, which would match most questions. The router sent "Search my Obsidian vault for notes mentioning 'AI'" to <code>search</code> at 0.65; with no tools offered, the model said it couldn't search the vault. With the rule it listed the vaults, searched one and answered. A wrong guess costs a prompt that holds the tool schemas.</p>
-<p>The third: when the question holds "remember" as a whole word and the route offers at most the file tools, the loop adds the rest, so the model can call <code>remember</code>. "Remember that I work on the registry team" reads like chit-chat to the router, and a <code>direct</code> turn would answer "noted" and save nothing.</p>
+<p>The second: when the question names a connected MCP server or A2A agent as a whole word, and the route is <code>direct</code> or <code>search</code>, the agent loop adds the rest. <code>direct</code> becomes <code>tools</code>, and <code>search</code> becomes <code>search+tools</code>. The names come from the tools <code>dispatch</code> offers, such as "obsidian" from <code>obsidian.obsidian_simple_search</code> and "research" from <code>a2a.research.summarize</code>, and the loop reads them on each turn, because <code>configure</code> can add a server while <code>merud</code> runs. Built-in tools don't count: their owner is <code>meru</code>, the assistant's own name, which would match most questions. The router sent "Search my Obsidian vault for notes mentioning 'AI'" to <code>search</code> at 0.65; with no tools offered, the model said it couldn't search the vault. With the rule it listed the vaults, searched one and answered. A wrong guess costs a prompt that holds the tool schemas.</p>
+<p>The third: when the question holds "remember" as a whole word and the route is <code>direct</code> or <code>search</code>, the loop adds the rest, so the model can call <code>remember</code>. "Remember that I work on the registry team" reads like chit-chat to the router, and a <code>direct</code> turn would answer "noted" and save nothing.</p>
+<p>The fourth: when the question says "web", "internet" or "online" as a whole word, <code>web_search</code> exists and the route is <code>direct</code> or <code>search</code>, the loop adds the rest. The router sent "Search the web: what is SearXNG?" to <code>direct</code>, and the model, with no tools, wrote a tool call as plain text.</p>
 
 <p><code>make router-eval</code> scores the router against the local Ollama on a labelled set of 135 questions, 40 of them held out, and fits the temperature. At 1.25 the probabilities sit close to calibrated, so <code>min_confidence = 0.45</code> means what it says. Refit after any change to the prompt, the examples or the <code>fast</code> model.</p>
 
@@ -1376,7 +1395,7 @@ fallback       = "search+tools"</code></pre>
 <!-- ============================================================ -->
 <h2 id="mcp">Tools over MCP</h2>
 
-<p>An <b>MCP server</b> is a program that offers tools, such as "search my notes" or "list my events", in a form any MCP client can call. Meru is an MCP <b>client</b>; it hosts no servers. <code>config.toml</code> lists the servers, and Meru merges their tools into one set of names, prefixed per server: the model sees <code>search_vault</code> from the <code>obsidian</code> server as <code>obsidian.search_vault</code>. It supports the two transports in the current MCP spec, both provided by the official Go SDK:</p>
+<p>An <b>MCP server</b> is a program that offers tools, such as "search my notes" or "list my events", in a form any MCP client can call. Meru is an MCP <b>client</b>; it hosts no servers. <code>config.toml</code> lists the servers, and Meru merges their tools into one set of names, prefixed per server: the model sees <code>obsidian_simple_search</code> from the <code>obsidian</code> server as <code>obsidian.obsidian_simple_search</code>. It supports the two transports in the current MCP spec, both provided by the official Go SDK:</p>
 
 <ul>
   <li><b>stdio:</b> <code>merud</code> starts the server as a child process and talks to it over stdin and stdout. Most local servers work this way.</li>
@@ -1385,46 +1404,170 @@ fallback       = "search+tools"</code></pre>
 
 <p>Meru can use any MCP server you already run, with no new code.</p>
 
+<p><b><code>merud</code> doesn't supervise servers.</b> The operating system already ships a process supervisor, and a second one inside the daemon would trade the first design rule for convenience:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Transport</th><th>What <code>merud</code> does</th><th>What it never does</th></tr></thead>
+  <tbody>
+    <tr><td>stdio</td><td>starts the server as a child, because the transport is the child's stdin and stdout</td><td>restart it on its own, watch its health, back off and retry</td></tr>
+    <tr><td>Streamable HTTP</td><td>connects to a URL</td><td>start it, restart it, health-check it, wait for it</td></tr>
+  </tbody>
+</table></div>
+
+<p>Starting a stdio child isn't supervision: until the child exists there is no server to talk to. An HTTP server is somebody else's process with its own lifetime. You start it with <code>launchd</code>, <code>systemd</code> or by hand, the way you start Ollama.</p>
+
+<p><b>Connecting: once at startup, once more per turn.</b> <code>merud</code> tries each configured server once when it starts: connect, <code>initialize</code>, <code>tools/list</code>. A failure is recorded with its reason, and the server stays listed as not connected. A server that isn't connected has no tool list, so its tools aren't offered. At the start of each turn on a tools route, before it lists them, <code>merud</code> tries each server that isn't connected once more, inside that turn: 5 seconds for an HTTP server, 30 seconds for a stdio child, which may still be downloading. If the try fails, the turn carries on without that server. A stdio child that crashed counts as not connected and follows the same rule. For stdio, "try" means start the child and run the handshake; for HTTP, connect to the URL.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th></th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td><code>merud</code> starts</td><td>one try per server</td></tr>
+    <tr><td>a turn on a tools route</td><td>one try per server that isn't connected, before the tool list</td></tr>
+    <tr><td>a turn that offers no tools, or no turn at all</td><td>nothing</td></tr>
+    <tr><td>a call to a server that died mid-turn</td><td>fails at once; the next turn tries again</td></tr>
+  </tbody>
+</table></div>
+
+<p>There is no loop, timer, goroutine or backoff, and nothing runs while nobody asks: a server that fails and is never needed again is never touched again. The one goroutine per session waits for the session to end so that <code>/mcp</code> reports a dead server at once; it marks the server not connected and never reconnects. So you can start <code>workspace-mcp</code> after <code>merud</code>, and it works on your next question with no restart.</p>
+
 <pre><code>[[mcp.servers]]
 name    = "obsidian"
-command = "npx"                   # stdio: merud starts this process
-args    = ["-y", "obsidian-mcp", "serve", "--vault", "/Users/you/notes"]
-allow   = ["list_vaults", "search_vault", "read_note"]   # tool-level allowlist
-confirm = []                      # allowed tools that still need a yes per call
+command = "uvx"                   # stdio: merud starts this process
+args    = ["mcp-obsidian"]
+env     = { OBSIDIAN_API_KEY = "secret:obsidian_api_key", OBSIDIAN_PORT = "27124" }  # stdio only
+allow   = ["obsidian_simple_search", "obsidian_get_file_contents", "obsidian_append_content"]  # tool-level allowlist
+confirm = ["obsidian_append_content"]   # allowed tools that still need a yes per call
+always_confirm = []               # ask every call, with no approval for the session
 timeout = "60s"                   # longest one call may take; the default
 
 [[mcp.servers]]
-name    = "calendar"
-url     = "http://127.0.0.1:8123/mcp"   # Streamable HTTP: server already running
-headers = { Authorization = "secret:calendar_token" }   # value from secrets.toml
-allow   = ["list_events"]
-network = false                          # true only if the URL isn't loopback</code></pre>
+name    = "google"
+url     = "http://127.0.0.1:8000/mcp"   # Streamable HTTP: you start the server
+headers = { Authorization = "secret:google_token" }   # value from secrets.toml
+allow   = ["search_gmail_messages", "send_gmail_message"]
+confirm = ["send_gmail_message"]
+remote  = false                          # true only if the URL isn't loopback</code></pre>
 
 <div class="tbl"><table>
   <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
   <tbody>
     <tr><td><code>command</code>, <code>args</code></td><td>stdio transport: <code>merud</code> starts this process. An entry has either <code>command</code> or <code>url</code>.</td></tr>
-    <tr><td><code>url</code></td><td>Streamable HTTP transport: the server is already running here.</td></tr>
-    <tr><td><code>env</code>, <code>headers</code></td><td>extra environment for a stdio server, or HTTP headers for a URL. A value may name a secret as <code>secret:&lt;name&gt;</code> (see <a href="#setup">First run and setup</a>).</td></tr>
+    <tr><td><code>url</code></td><td>Streamable HTTP transport: you run the server, and <code>merud</code> connects to it here.</td></tr>
+    <tr><td><code>env</code>, <code>headers</code></td><td>extra environment for a stdio server, or HTTP headers for a URL. <code>env</code> goes only with <code>command</code>: a <code>url</code> entry with <code>env</code> fails to load, with a message that points at <code>headers</code>. A value may name a secret as <code>secret:&lt;name&gt;</code> (see <a href="#setup">First run and setup</a>).</td></tr>
     <tr><td><code>allow</code></td><td>the tools the model may call. Anything missing stays hidden.</td></tr>
     <tr><td><code>confirm</code></td><td>allowed tools that still need a yes from you on every call.</td></tr>
-    <tr><td><code>network</code></td><td><code>merud</code> refuses a non-loopback URL unless this is <code>true</code>.</td></tr>
+    <tr><td><code>remote</code></td><td><code>merud</code> refuses a non-loopback URL unless this is <code>true</code>, the same rule A2A agents follow. It covers only whether <code>merud</code> may connect to a URL on another machine, and says nothing about what the server itself reaches: <code>google</code> has <code>remote = false</code> and talks to Google all day. Before the rename it was called <code>network</code>, and a config that still says <code>network</code> fails to load with "network was renamed remote".</td></tr>
     <tr><td><code>timeout</code></td><td>the longest one call may take; 60 seconds unless set.</td></tr>
   </tbody>
 </table></div>
 
-<p><code>merud</code> reads the servers when it starts. The one exception is <code>configure</code>: after it adds a server, <code>merud</code> builds a new pool from the new config and swaps it in while it runs. <code>meru tools</code> lists each server, whether <code>merud</code> reached it, the tools the model may use and which of them ask first, and warns about each <code>allow</code> entry the server doesn't offer, most often a typo.</p>
+<p><code>merud</code> reads the servers when it starts, and again on a <b>reload</b>: after <code>configure</code> adds a server, and when a client sends the <code>mcp_reload</code> op, as <code>meru mcp add</code> does. A reload reads <code>config.toml</code> and <code>secrets.toml</code>, builds a new pool from the servers config lists now, swaps it in, and closes the old one, which stops its child processes. So a server you add, change or remove takes effect without a restart. A config that doesn't load, or a bad server entry, fails the reload with an error that names the problem, and the old pool keeps running.</p>
+
+<p><code>merud</code> can also <b>probe</b> a server that isn't in config yet (the <code>mcp_probe</code> op): start it, list every tool with its <code>readOnlyHint</code> and <code>destructiveHint</code>, and stop it (see <a href="#setup">First run and setup</a>). A probe needs no allow list, since it calls no tool, and the model never sees what it finds. It is a user command, like the memory ops, so it doesn't go through <code>dispatch</code>.</p>
+
+<p><b>Status.</b> <code>meru mcp</code> (or <code>meru mcp status</code>) and <code>/mcp</code> in <code>meru chat</code> show one row per configured server:</p>
+
+<pre><code>$ meru mcp
+SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
+google     http       connected       124        8        2   127.0.0.1:8000/mcp
+obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH</code></pre>
+
+<div class="tbl"><table>
+  <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>SERVER</code></td><td>the <code>name</code> from config</td></tr>
+    <tr><td><code>TRANSPORT</code></td><td><code>stdio</code> or <code>http</code></td></tr>
+    <tr><td><code>STATE</code></td><td><code>connected</code> or <code>not connected</code>; config has no key that turns a server off, so there is no third state</td></tr>
+    <tr><td><code>TOOLS</code></td><td>how many tools the server offers, from its <code>tools/list</code>; <code>—</code> when not connected, since there is no list to count</td></tr>
+    <tr><td><code>ALLOWED</code></td><td>how many tools config allows</td></tr>
+    <tr><td><code>CONFIRM</code></td><td>how many allowed tools ask first, from <code>confirm</code> and <code>always_confirm</code></td></tr>
+    <tr><td>last field</td><td>the URL of an HTTP server, or why the server isn't connected</td></tr>
+  </tbody>
+</table></div>
+
+<p>The data comes from the <code>mcp_status</code> op, which <code>merud</code> answers from config and the pool's own record of each server. It sends nothing to any server, so the view is instant and works while a server is down. <code>ALLOWED</code> and <code>CONFIRM</code> come from config and show either way, which tells you what you would get. <code>meru mcp --json</code> prints the same rows for scripts. Tool names stay out of this view: <code>meru tools</code> lists each server, whether <code>merud</code> reached it, the tools the model may use and which of them ask first, and warns about each <code>allow</code> entry the server doesn't offer, most often a typo.</p>
 
 <p>Tools are <b>deny-by-default</b>. A server that offers 40 tools gives the model none until you allow specific ones.</p>
 
 <ul>
+  <li><b>Commands ask every time.</b> A tool in <code>always_confirm</code> asks before every call and offers only "approve once" and "deny", like the built-in <code>configure</code>. It is for a tool that runs commands, where a session approval would let the model run any command unseen for the rest of the session. No catalog entry needs it today.</li>
   <li><b>No wildcards.</b> <code>allow</code> and <code>confirm</code> name each tool; <code>merud</code> refuses <code>*</code> or any other pattern. A wildcard would admit tools a server adds in a later release, which nobody has read.</li>
   <li><b>A timeout per call.</b> Each server entry may set <code>timeout</code>, 60 seconds unless set. When it passes, or you cancel the turn, Meru tells the server to cancel the call.</li>
-  <li><b>Lazy reconnect.</b> A server that crashes, or fails to start, restarts on the next call to one of its tools, at most once every 10 seconds. A call inside that wait fails at once. Meru runs no background restart loop, so a server that crashes on start doesn't spin.</li>
+  <li><b>One try per turn, no retry loop.</b> A server that crashes, or fails to start, gets one try at the start of the next turn on a tools route (see above). A call to a server that isn't connected fails at once. Nothing retries on a timer, so a server that crashes on start doesn't spin.</li>
   <li><b>A short environment for stdio servers.</b> A child process gets only <code>PATH</code>, <code>HOME</code> and the few variables Windows programs need, plus the entry's own <code>env</code>. The rest of <code>merud</code>'s environment stays out, because it may hold another tool's API key.</li>
 </ul>
 
 <p>Meru doesn't confine MCP servers. Each one runs as an ordinary process with your user's permissions, and can read files or reach the network by itself. Adding a server to config means trusting it. Meru's allowlist picks which tools the model may call; what each call does is up to the server.</p>
+
+<p>Meru uses no MCP shell server. It runs the programs you declare in <code>[[commands]]</code> itself (see <a href="#local-commands">Local commands</a>), because a shell server confines nothing Meru doesn't, adds a runtime and a process to supervise, and keeps the real policy, which program with which arguments, where <code>dispatch</code> can't see or log it.</p>
+
+<!-- ============================================================ -->
+<h2 id="local-commands">Local commands</h2>
+
+<p>Meru runs local programs as built-in tools that you declare in <code>config.toml</code>. The model picks a declared command and fills in its parameters. It never writes a command line.</p>
+
+<pre><code>[[commands]]
+name        = "git-log"
+description = "Commits from the past week in one of the user's repositories"
+argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
+timeout     = "10s"           # default 30s, at most 300s
+confirm     = false           # true asks before each run
+cwd         = "~"             # the default
+env_allowlist = []            # names passed through besides PATH, HOME and LANG
+
+  [commands.params.repo]
+  type        = "path"        # string, int, enum or path
+  under       = "~/repos"     # a path must resolve inside this folder
+  description = "The repository's folder, such as meru"</code></pre>
+
+<p>Each entry becomes one tool, <code>cmd.&lt;name&gt;</code>, whose description ends with the argv template, and whose argument schema has one required property per parameter.</p>
+
+<p><b>Why named commands, not a command allowlist.</b> One <code>run_command</code> tool with a list of allowed programs looks like deny-by-default and isn't. Half the Unix toolbox runs a shell through its flags:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Allow this</th><th>And you have allowed</th></tr></thead>
+  <tbody>
+    <tr><td><code>git</code></td><td><code>git -c core.pager='sh -c …' log</code></td></tr>
+    <tr><td><code>find</code></td><td><code>find . -exec sh -c … \;</code></td></tr>
+    <tr><td><code>awk</code></td><td><code>awk 'BEGIN{system("…")}'</code></td></tr>
+    <tr><td><code>tar</code></td><td><code>tar --checkpoint-action=exec=…</code></td></tr>
+    <tr><td><code>ssh</code></td><td><code>ssh host &lt;any command&gt;</code></td></tr>
+    <tr><td><code>rsync</code></td><td><code>rsync -e '…'</code></td></tr>
+  </tbody>
+</table></div>
+
+<p><code>sonirico/mcp-shell</code> carried CVE-2026-55581 (CVSS 8.4) until 0.6.0: its validator checked only the first token and let <code>/bin/bash -c</code> through. Checking arguments means owning a validation engine that is never finished. A declared command needs none: the program and its flags come from config, and a parameter fills one argv element.</p>
+
+<p><b>How a call runs.</b></p>
+
+<ol>
+  <li><code>exec.CommandContext(argv[0], argv[1:]...)</code>. Never <code>sh -c</code>, never a string.</li>
+  <li>A <code>{param}</code> placeholder becomes part of exactly one argv element, even when the value holds spaces, quotes or a semicolon. A placeholder inside a longer element, such as <code>"--repo={repo}"</code>, is fine: the result is still one element. <code>{{</code> and <code>}}</code> write a literal brace; any other brace fails the entry at startup.</li>
+  <li><code>merud</code> refuses at startup an <code>argv[0]</code> that runs code given as text: <code>sh</code>, <code>bash</code>, <code>zsh</code>, <code>dash</code>, <code>ksh</code>, <code>fish</code>, <code>python</code>, <code>perl</code>, <code>ruby</code>, <code>node</code>, <code>env</code>, <code>pwsh</code>, <code>powershell</code>, <code>cmd</code> and <code>osascript</code>, matched on the base name without case, <code>.exe</code> or a version (<code>python3.12</code> counts). You declared the command, so this guards against a slip, not an attacker; a script of your own, run by its path, is fine.</li>
+  <li>The program gets <code>PATH</code>, <code>HOME</code> and <code>LANG</code>, plus the names in <code>env_allowlist</code>, and on Windows <code>SystemRoot</code> and <code>USERPROFILE</code>. The rest of <code>merud</code>'s environment stays out.</li>
+  <li>It starts in <code>cwd</code>, your home folder unless set.</li>
+  <li>Each run has a timeout, 30 seconds unless set, at most 300. On Unix the program runs in its own process group, and the timeout kills the whole group, so a child it started dies too. On Windows the timeout kills the program alone.</li>
+  <li><code>merud</code> keeps the first 1 MiB of stdout and of stderr and says when it cut.</li>
+  <li>The model reads the exit code, stdout, and stderr when there is any, each labelled. A non-zero exit is a result, not an error: the call's outcome is <code>ok</code>, and the model sees the code and decides what to do.</li>
+</ol>
+
+<p><b>Parameter types.</b> Every parameter is required, and an unknown one fails the call.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Type</th><th>Accepts</th></tr></thead>
+  <tbody>
+    <tr><td><code>string</code></td><td>non-empty text, no null byte, at most <code>max_len</code> bytes (default 4096). It may not start with <code>-</code> when it fills a whole element, where the program would read it as a flag</td></tr>
+    <tr><td><code>int</code></td><td>a whole number, within <code>min</code> and <code>max</code> when set</td></tr>
+    <tr><td><code>enum</code></td><td>one of <code>values</code></td></tr>
+    <tr><td><code>path</code></td><td>a path that exists and, once <code>filepath.EvalSymlinks</code> resolves every link, lies inside <code>under</code>. <code>~</code> expands, and a relative path starts at <code>under</code>. The argv gets the resolved path</td></tr>
+  </tbody>
+</table></div>
+
+<p>A path resolves before the check, because a prefix check on the path as written lets a symlink out of the tree. This mirrors <code>write_file</code>'s rule for <code>~/meru-output/</code>.</p>
+
+<p><b>Checked at startup.</b> <code>merud</code> refuses to start, naming the command, on a duplicate or badly formed <code>name</code>; an empty <code>argv</code>; a placeholder or an interpreter in <code>argv[0]</code>; a placeholder with no parameter, or a parameter no placeholder uses; an unknown type, or a key the type doesn't take; a <code>path</code> with no <code>under</code>; an <code>under</code> or <code>cwd</code> that isn't an existing folder; an <code>enum</code> with no <code>values</code>; <code>min</code> above <code>max</code>; and a timeout over 300 seconds. A program missing from <code>PATH</code> gets a warning in <code>merud.log</code>, not a refusal. <code>merud</code> reads the list when it starts; restart it after a change.</p>
+
+<p><b>The audit record.</b> <code>dispatch</code> asks the commands backend, before it writes the <code>tool_call</code> line, which argv the call will run, and records <code>{"argv":[...],"params":{...}}</code> in place of the model's arguments: in the transcript, the approval prompt and the <code>tool_calls</code> row. An audit log without the arguments isn't one. <code>meru log</code> shows the argv as a command line, and <code>meru tools</code> shows each command's template. The <code>meru.dispatch</code> span carries <code>meru.command.exit_code</code> and <code>meru.command.truncated</code>; the argv goes on the span only with <code>capture_content = true</code>, since a path or search term can say something about the question. The metrics use <code>kind = "command"</code>, <code>server = "meru"</code> and <code>tool = "cmd.&lt;name&gt;"</code>, all names from config, never the arguments.</p>
 
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
@@ -1434,51 +1577,114 @@ network = false                          # true only if the URL isn't loopback</
 <ol>
   <li><b>Ollama.</b> Meru checks that Ollama answers. If it doesn't, Meru prints the install step for your platform and waits for you to press Enter.</li>
   <li><b>Models.</b> With no <code>config.toml</code> yet, you pick <code>lite</code> (the default) or <code>full</code>. Meru names the profile's models and, after a yes, downloads each with <code>ollama pull</code>, which draws its own progress bar.</li>
-  <li><b>Your files.</b> Meru asks which folders to index (for example <code>~/notes</code>) and writes a short <code>config.toml</code> with the profile and the folders. It writes the file only when none exists: rewriting yours would drop your comments, so for an existing file setup says what to edit instead. <code>merud</code> creates the rest of <code>~/.meru/</code> when it starts; setup doesn't write <code>prompt.md</code> or the built-in skills yet.</li>
+  <li><b>Your files.</b> Meru asks which folders to index (for example <code>~/notes</code>) and writes <code>config.toml</code> from the config template, with two lines filled in: the profile and <code>[index] folders</code>. The template holds every key. What is on by default stays uncommented, with its default value, so you see it and can change it; what is off, such as the catalog's MCP servers, sits there commented, ready to uncomment. Setup writes the file only when none exists: rewriting yours would drop your comments, so for an existing file setup says what to edit instead. <code>meru config template</code> prints the template, to compare with your file or to start over. <code>merud</code> creates the rest of <code>~/.meru/</code> when it starts; setup doesn't write <code>prompt.md</code> or the built-in skills yet.</li>
+  <li><b>Web search.</b> Meru checks that SearXNG answers JSON at <code>[web] searxng_url</code>. When nothing answers, it prints the commands that start SearXNG in Docker; when SearXNG answers HTML, it names the <code>search.formats</code> setting to change. Then it waits: Enter checks again, <code>s</code> skips. Meru works without web search (see <a href="#web-search">Web search</a>).</li>
   <li><b>Tools.</b> Meru offers the catalog's servers, one at a time, and you pick a path for each (see below). You can skip any of them and add them later.</li>
   <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
-  <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new server or a new <code>config.toml</code> takes a restart of <code>merud</code>.</li>
+  <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new <code>config.toml</code> takes a restart of <code>merud</code>; a new server doesn't (see <a href="#mcp">MCP</a>).</li>
 </ol>
 
 <h3>Adding an MCP server</h3>
 
-<p>The binary carries a small catalog of known servers:</p>
+<p>The binary carries a small catalog of known servers, one for each kind of example this document uses: mail and calendar, and notes. Web search needs no server; it is built in (see <a href="#web-search">Web search</a>).</p>
 
 <div class="tbl"><table>
-  <thead><tr><th>Name</th><th>Server</th><th>Needs</th><th>Asks first</th></tr></thead>
+  <thead><tr><th>Name</th><th>Server</th><th>Transport</th><th>Needs</th><th>Asks first</th></tr></thead>
   <tbody>
-    <tr><td><code>brave</code></td><td>Brave Search (<code>@brave/brave-search-mcp-server</code>)</td><td>an API key</td><td>nothing</td></tr>
-    <tr><td><code>fetch</code></td><td>web page fetch (<code>mcp-server-fetch</code>)</td><td>nothing</td><td>nothing</td></tr>
-    <tr><td><code>gmail</code></td><td><code>workspace-mcp --tools gmail</code></td><td>a Google OAuth client and a sign-in</td><td>draft, send</td></tr>
-    <tr><td><code>calendar</code></td><td><code>workspace-mcp --tools calendar</code></td><td>a Google OAuth client and a sign-in</td><td>changing an event</td></tr>
-    <tr><td><code>drive</code></td><td><code>workspace-mcp --tools drive docs</code></td><td>a Google OAuth client and a sign-in</td><td>creating or editing a doc</td></tr>
-    <tr><td><code>obsidian</code></td><td><code>mcp-obsidian</code>, through Obsidian's Local REST API plugin</td><td>the plugin's API key</td><td>appending to a note</td></tr>
+    <tr><td><code>google</code></td><td><code>taylorwilsdon/google_workspace_mcp</code> (<code>uvx workspace-mcp</code>)</td><td>Streamable HTTP on <code>127.0.0.1:8000/mcp</code></td><td>a Google OAuth client, a sign-in, and you running it</td><td>sending mail, changing an event</td></tr>
+    <tr><td><code>obsidian</code></td><td><code>mcp-obsidian</code>, through Obsidian's Local REST API plugin</td><td>stdio</td><td>the plugin's API key</td><td>appending to a note</td></tr>
   </tbody>
 </table></div>
 
-<p>Each entry lists the install command, what the server needs, and a starting <code>allow</code> and <code>confirm</code> list: reading allowed, anything that sends, writes or changes something in <code>confirm</code>. One Google Workspace server covers Gmail, Calendar, Drive and Docs; each entry runs it with its own <code>--tools</code> flag, so you add only the services you want and each asks Google only for its own permissions.</p>
+<p>Each entry lists the install command, what the server needs, and a starting <code>allow</code> and <code>confirm</code> list: reading allowed, anything that sends, writes, runs or changes something in <code>confirm</code>.</p>
+
+<p><code>google</code> is the one <code>url</code> entry. The server's README marks stdio as legacy, and its OAuth 2.1 mode needs HTTP, so you start it yourself and <code>merud</code> connects to it (see <a href="#mcp">MCP</a>). The catalog prints the command:</p>
+
+<pre><code>GOOGLE_OAUTH_CLIENT_ID=&lt;your client ID&gt; GOOGLE_OAUTH_CLIENT_SECRET=&lt;your client secret&gt; \
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs</code></pre>
+
+<p>The server offers 120-odd tools across twelve Google services. <code>--tools</code> limits the process to Gmail, Calendar, Drive and Docs, and the catalog's <code>allow</code> limits the model to eight of those: search and read mail and threads, send mail, list and change calendar events, search Drive, and read a doc. Sending mail and changing an event sit in <code>confirm</code>. So two layers apply: the server decides what exists, and Meru decides what the model sees. The OAuth client ID and secret go in the server's environment when you start it, never through Meru. Google's own Workspace MCP servers are remote only, so the catalog keeps the local one.</p>
+
+<p>The catalog has no shell server; to let the model run a program, declare it in <code>[[commands]]</code> (see <a href="#local-commands">Local commands</a>).</p>
 
 <p>For each server, you choose one of two paths:</p>
 
 <ul>
-  <li><b>"Do it for me."</b> Meru asks only for what the server needs, one question at a time, and reads each key without showing it on screen: "Paste your Brave Search API key". A Google entry notes that the server opens a browser window for the sign-in the first time Meru uses it. Then Meru shows you the exact config block it will add, and writes it only after you approve.</li>
+  <li><b>"Do it for me."</b> Meru asks only for what the server needs, one question at a time, and reads each key without showing it on screen: "Paste the API key from Obsidian's Local REST API plugin". For <code>google</code>, Meru prints the command that starts the server and never runs it, and notes that the server gives you a sign-in link the first time the model uses a Google tool. Then Meru shows you the exact config block it will add, and writes it only after you approve.</li>
   <li><b>"Show me how."</b> Meru prints the config block, any install command and the <code>secrets.toml</code> lines, and names the file to paste them into. Nothing changes until you do it yourself.</li>
 </ul>
 
 <p>Meru adds the block to the end of <code>config.toml</code> as plain text, so your comments stay. It writes a temporary copy first and loads it, and replaces the file only when the copy loads and its servers pass the same checks <code>merud</code> runs.</p>
 
-<p>Outside setup, <code>meru mcp add gmail</code> offers the same two paths, and <code>meru mcp list-catalog</code> lists the entries. A server that isn't in the catalog works too: <code>meru mcp add &lt;name&gt; -- &lt;command&gt; [args...]</code>, or <code>--url &lt;url&gt;</code>. Its entry starts with an empty <code>allow</code> list. Nobody knows a server's tool names until <code>merud</code> connects to it, and a guess would either miss or allow a tool nobody has read. So the entry gives the model nothing at first; after a restart, <code>meru tools</code> lists what the server offers, and you add the tools you want to <code>allow</code>. A URL off this machine gets <code>network = true</code>, because you typed it on purpose.</p>
+<p>Outside setup, one command adds any server:</p>
+
+<pre><code>meru mcp add &lt;catalog-name&gt;                        # a catalog entry
+meru mcp add stdio &lt;name&gt; -- &lt;command&gt; [args...]   # a server merud starts
+meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HTTP server you run</code></pre>
+
+<p><code>meru mcp add google</code> offers the same two paths as setup. The older forms, <code>meru mcp add &lt;name&gt; -- &lt;command&gt;</code> and <code>--url &lt;url&gt;</code>, still work. <code>meru mcp</code> shows the state of each configured server (see <a href="#mcp">MCP</a>). <code>meru mcp list</code> shows the catalog, then each server in <code>config.toml</code> with what <code>merud</code> says about it: connected or not, and how many tools it offers and allows. <code>meru mcp remove &lt;name&gt;</code> takes one <code>[[mcp.servers]]</code> block out of <code>config.toml</code>, with the comment lines above it, keeps every other line, and checks the result loads before it replaces the file, as the append does.</p>
+
+<p>Nobody knows a server's tool names until something connects to it, and a guess would either miss or allow a tool nobody has read. So <code>meru</code> asks <code>merud</code> to <b>probe</b> the server first: <code>merud</code> starts it for a moment (or connects, for a URL), lists every tool it offers, and stops it. The probe uses the same code, trimmed environment, loopback rule and resolved secrets as the pool, calls no tool, and saves nothing. It gives up after 30 seconds; a first <code>npx -y</code> or <code>uvx</code> run downloads the server, so the error says to try again.</p>
+
+<p>For each tool the probe reports two MCP hints, when the server gives them: <code>readOnlyHint</code> (the tool changes nothing) and <code>destructiveHint</code> (it may delete or overwrite). From them <code>meru</code> proposes a split: read-only tools go in <code>allow</code>, and tools that may change something go in <code>allow</code> and <code>confirm</code>, so each call asks first. A tool with no hints counts as one that may change something. For a catalog entry the probe runs too, but the catalog's own lists win over the hints, and a tool the catalog doesn't name starts out of <code>allow</code>. You edit the proposal before <code>meru</code> writes the entry: Enter accepts, and <code>-name</code>, <code>+name</code> and <code>?name</code> leave a tool out, allow it without asking, or make it ask. MCP calls these hints, not promises: a server can mislabel a tool, so the proposal is a starting point and you make the call. When the probe fails, <code>meru</code> says why and offers to try again, to write the entry anyway (with the catalog's lists, or an empty <code>allow</code>), or to cancel. For a server you run, such as <code>google</code>, <code>meru</code> probes only when something answers at the URL. When nothing does, it writes the catalog's lists and says <code>merud</code> connects on your first question after you start the server. A URL off this machine needs <code>--remote</code>, and <code>meru</code> says that each tool call sends your data there; the entry gets <code>remote = true</code>.</p>
+
+<p>After it writes the entry, <code>meru</code> asks <code>merud</code> to reload its MCP servers, so the new tools work without a restart.</p>
 
 <p>In chat, "connect my Gmail" works too: the model calls the built-in <code>configure</code> tool, which adds a catalog entry, or a custom one from a name and a command or URL. <code>configure</code> never writes an entry whose secret is missing from <code>secrets.toml</code>. It tells the model to send you to <code>meru mcp add &lt;name&gt;</code> in a terminal instead, because a key typed into chat would pass through the model, the approval prompt and the transcript. After it writes, <code>merud</code> rebuilds the MCP client pool and swaps it in, so the new server works without a restart.</p>
 
 <p><b>Config changes always ask.</b> <code>configure</code> goes through <code>dispatch</code> and asks you every time, and offers only "approve once" and "deny". A session approval isn't available for it, and <code>builtin.confirm</code> can't switch the prompt off. Config grants lasting trust, so the model can't grant any to itself. (Built-in tools need no allowlist entry: the model always sees <code>configure</code>, and from v0.4 <code>remember</code> and <code>write_file</code>.)</p>
 
-<p><b>Secrets stay out of config.</b> API keys and OAuth client secrets go in <code>~/.meru/secrets.toml</code>, a flat list of <code>name = "value"</code> lines. A config value refers to one as <code>secret:&lt;name&gt;</code>, in an MCP server's <code>env</code> or <code>headers</code> or an A2A agent's <code>headers</code>:</p>
+<p><b>Secrets stay out of config.</b> API keys go in <code>~/.meru/secrets.toml</code>, a flat list of <code>name = "value"</code> lines. A config value refers to one as <code>secret:&lt;name&gt;</code>, in an MCP server's <code>env</code> or <code>headers</code> or an A2A agent's <code>headers</code>:</p>
 
-<pre><code>env = { BRAVE_API_KEY = "secret:brave_api_key" }</code></pre>
+<pre><code>env = { OBSIDIAN_API_KEY = "secret:obsidian_api_key" }</code></pre>
+
+<p><code>env</code> belongs to a stdio server, which <code>merud</code> starts. A <code>url</code> entry with <code>env</code> fails at startup: <code>merud</code> starts no process for it, so the variables would go nowhere. The message names the server and points at <code>headers</code>, the way to send a key to an HTTP server.</p>
 
 <p><code>merud</code> swaps in the value when it starts a server or calls an agent, and refuses to start when group or other users can read <code>secrets.toml</code> (it says to run <code>chmod 600</code>). <code>meru mcp add</code> writes the file with mode <code>0600</code>. Before <code>dispatch</code> writes a transcript line, a <code>tool_calls</code> row, a log line or a span, it replaces each stored value of 8 or more characters with <code>[secret:&lt;name&gt;]</code>; shorter values would match ordinary words. A config file you share or commit holds names only.</p>
 
+<h2 id="web-search">Web search</h2>
+
+<p>Meru searches the web through <b>SearXNG</b>, a metasearch engine you run on your own machine. SearXNG keeps no index of its own. It passes the search words to engines such as Google, Bing, DuckDuckGo and Wikipedia, drops the cookies and headers that identify you, and merges what comes back. It needs no account and no API key. You start it once, in Docker (<code>docs/running.md</code>, "Web search"), and <code>merud</code> reaches it on loopback, as it reaches Ollama.</p>
+
+<p>Two built-in tools use it. Both go through <code>dispatch</code>, so every search, page and download lands in the transcript and in <code>tool_calls</code>, and both wait for a tools route:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Tool</th><th>Offered when</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>web_search</code></td><td><code>[web] searxng_url</code> is set and <code>[builtin] tools</code> lists it, as both are by default</td><td>One GET to <code>&lt;searxng_url&gt;/search?format=json</code>, with a 15-second limit. It returns up to <code>max_results</code> results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL.</td></tr>
+    <tr><td><code>web_fetch</code></td><td><code>[builtin] tools</code> lists it, as it does by default</td><td>Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers.</td></tr>
+  </tbody>
+</table></div>
+
+<pre><code>[web]
+searxng_url = "http://127.0.0.1:8888"   # loopback only; "" turns web_search off
+max_results = 8                         # 1 to 20</code></pre>
+
+<p><code>web_fetch</code> has no key under <code>[web]</code>: <code>[builtin] tools</code> is its one switch. A config that still says <code>fetch</code> or the older <code>read_pages</code> under <code>[web]</code> stops <code>merud</code> with a message that says to list <code>web_fetch</code> in <code>[builtin] tools</code>, or leave it out to turn page fetching off.</p>
+
+<p><code>web_fetch</code> takes <code>{"url", "prompt"?, "offset"?, "save"?}</code>:</p>
+
+<ul>
+  <li><b>Without <code>prompt</code></b> it returns the page's text, 12,000 characters per call, with the offset for the next call, as <code>read_file</code> does.</li>
+  <li><b>With <code>prompt</code></b> it hands the page's text, up to 48,000 characters from <code>offset</code>, to the <code>fast</code> model with thinking off, and returns <code>From &lt;final URL&gt; (fetched &lt;date&gt;): &lt;answer&gt;</code>. The instruction is short: answer only from the page, quote numbers, versions and dates as the page writes them, and say when the page doesn't say. A longer page gets an answer from its first 48,000 characters, and the result says so and gives the offset for the rest. The call gets a <code>gen_ai.chat</code> span under the call's <code>meru.dispatch</code> span; its tokens don't join the turn's usage, as the router's and the skill pick's don't. The tool description tells the model to pass a prompt for one fact or a summary, and to leave it out when it needs the text itself.</li>
+  <li><b>With <code>save</code></b> it downloads the file to <code>&lt;[skills] output_dir&gt;/downloads/</code>, at most 50 MiB and 2 minutes, through the same client and checks as a fetch. The name comes from the <code>Content-Disposition</code> filename or the URL's last path part, cut down to letters, digits, <code>.</code>, <code>-</code> and <code>_</code>; a name in use gets <code>-2</code>, <code>-3</code> and so on, so a download never overwrites. The file gets mode <code>0600</code>, and the write goes through an <code>os.Root</code> that refuses symlinks. The result gives the path, the size, the content type and, for HTML, PDF or text, the first 2,000 characters of its text. <code>read_file</code> and <code>grep</code> can read the downloads folder; the indexer never indexes it.</li>
+</ul>
+
+<p><b>The URL guard.</b> A URL is a way out: <code>https://attacker.example/?notes=&lt;your notes&gt;</code> carries data in its path or query, and a page the model reads can ask it to build one. So <code>web_fetch</code> runs without asking only when the URL appeared, in the same session, in a <code>web_search</code> result or in something the user typed: this turn's question or an earlier one. The guard compares URLs with the scheme and host in lower case and the fragment dropped; the query counts, because that is where data would go. Any other URL asks, offering once and deny with no session choice, as <code>configure</code> does; a session choice would let every later made-up URL through. <code>save</code> asks every time, even for a known URL, because a download stays on disk; there it offers once, session and deny, as <code>write_file</code> does. A scheduled job has nobody to ask, so <code>dispatch</code> declines a call that asks there.</p>
+
+<p><code>dispatch</code> decides whether a tool asks per tool, from <code>Confirm</code>. For the guard, a backend may also have <code>ConfirmCall(call)</code>, which decides per call and which <code>dispatch</code> asks first. The built-ins keep each session's known URLs in memory: <code>web_search</code> adds each result it shows, and <code>ConfirmCall</code> adds the URLs in the call's <code>Question</code>, which the agent fills with the user's words (this turn's question and the earlier questions in the session's history), never with excerpts or tool results. The sets end with <code>merud</code>; at most 256 sessions keep one, the session used longest ago goes first, and one session holds at most 2,000 URLs.</p>
+
+<p><b>Why built in.</b> SearXNG's API is one GET that returns JSON. The MCP server that wraps it, <code>mcp-searxng</code>, needs Node.js, an npm package to pin and a child process per start; the built-in tools need a few hundred lines of Go and nothing to install. SearXNG needs no key, account or card, so web search works on day one.</p>
+
+<p><b>What stays on the machine.</b> <code>searxng_url</code> must be a loopback address, and <code>merud</code> refuses to start otherwise. The search client uses no proxy and follows no redirect. Your question, your files and the answer stay here.</p>
+
+<p><b>What leaves.</b> SearXNG sends the search words to the engines it asks, with no account and no cookies, spread across several companies. The model writes those words, so they can hold words from your question.</p>
+
+<p><b>Fetching pages is on by default.</b> Asked for the latest Go release, the <code>lite</code> model trusted months-old snippets and answered 1.26; the answer sat on go.dev's release page, which it couldn't read. So <code>merud</code> fetches public pages when the model asks, under the URL guard, and taking <code>web_fetch</code> out of <code>[builtin] tools</code> turns that off. It is the one case where <code>merud</code> connects off this machine with no <code>remote = true</code> entry. The site sees your IP address and a User-Agent that names Meru. <code>web_fetch</code> keeps no cookies and uses no proxy. It checks each address as it connects, after DNS, and refuses loopback, private networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local addresses (169.254/16, where cloud metadata services answer, and fe80::/10), unspecified and multicast addresses, 0.0.0.0/8 and 100.64.0.0/10. The check runs on the connection itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS name that points inside your network, and the model can't use the tool to read a service on your machine or LAN.</p>
+
+<p><b>When SearXNG isn't there.</b> <code>merud</code> starts anyway, and logs one line that says whether SearXNG answers JSON. The check sends an empty query, which SearXNG refuses without asking any engine, so it sends nothing off the machine. A <code>web_search</code> call then fails with "SearXNG isn't answering on &lt;url&gt;. See "Web search" in docs/running.md.", and the model tells you. A SearXNG that answers HTML has JSON turned off, and the error names the <code>search.formats</code> setting in <code>settings.yml</code>. <code>meru setup</code> runs the same check in its Web search step.</p>
+
+<!-- ============================================================ -->
 <!-- ============================================================ -->
 <h2 id="a2a">Other agents over A2A</h2>
 
@@ -1491,7 +1697,7 @@ name    = "research"
 url     = "http://127.0.0.1:9100"   # Meru reads the agent card from here
 allow   = ["summarize"]              # skills from the agent card
 confirm = []
-network = false                      # true only if the agent isn't on loopback
+remote  = false                      # true only if the agent isn't on loopback
 timeout = "60s"                      # the default</code></pre>
 
 <figure id="fig-a2a">
@@ -1541,19 +1747,19 @@ timeout = "60s"                      # the default</code></pre>
   <text x="225" y="380" class="t2" text-anchor="middle">tool result</text>
   <path d="M340 386 L112 386" class="ln" marker-end="url(#f5a)"/>
   </g>
-  <text x="16" y="462" class="t3" font-size="11.5">The agent's URL must be loopback unless its config entry says network = true. Long tasks use A2A streaming updates, under the same per-call timeout as a tool.</text>
+  <text x="16" y="462" class="t3" font-size="11.5">The agent's URL must be loopback unless its config entry says remote = true. Long tasks use A2A streaming updates, under the same per-call timeout as a tool.</text>
 </svg>
 </div>
 <figcaption><b>Figure 6.</b> To the model, a remote agent is one more tool. Everything that makes the call safe to audit happens in the two boxes on the <code>dispatch</code> line, the same boxes an MCP call passes through.</figcaption>
 </figure>
 
-<p>Agents are deny-by-default too. Meru can reach only the agents in config, and only the skills in <code>allow</code> become tools. An agent on another machine may use a cloud model, so your data would leave the machine. Reaching one takes <code>network = true</code>; without it, <code>merud</code> refuses any agent URL that isn't loopback.</p>
+<p>Agents are deny-by-default too. Meru can reach only the agents in config, and only the skills in <code>allow</code> become tools. An agent on another machine may use a cloud model, so your data would leave the machine. Reaching one takes <code>remote = true</code>; without it, <code>merud</code> refuses any agent URL that isn't loopback. As for MCP, <code>remote</code> covers only where <code>merud</code> connects, and a config that still says <code>network</code> fails with "network was renamed remote".</p>
 
 <ul>
   <li><b>Lazy card fetch.</b> <code>merud</code> starts without contacting any agent. It reads an agent's card the first time a turn needs its tools, so an agent that starts after <code>merud</code> shows up on the next turn. A failed fetch waits 10 seconds before the next try; inside that wait the agent offers no tools and a call fails at once.</li>
   <li><b>Always a stream.</b> Meru sends every call with <code>SendStreamingMessage</code>, under the same per-call timeout as a tool (60 seconds unless the entry sets <code>timeout</code>). When the card says the agent can't stream, the SDK sends a plain request instead, so one code path covers both. When the timeout passes or you cancel the turn, Meru asks the agent to cancel the task.</li>
   <li><b>No follow-up turns.</b> An agent that asks for more input ends the call with an error result. Carrying a task across turns waits until something needs it.</li>
-  <li><b>Guards on the connection.</b> The config check covers the card's URL, but the card names the URLs the calls go to. So the client's dialer checks each address just before it connects, after DNS, and refuses anything off loopback unless the entry says <code>network = true</code>. The client follows no redirects, because a redirect could carry the entry's <code>headers</code>, which may hold an API key, to another host.</li>
+  <li><b>Guards on the connection.</b> The config check covers the card's URL, but the card names the URLs the calls go to. So the client's dialer checks each address just before it connects, after DNS, and refuses anything off loopback unless the entry says <code>remote = true</code>. The client follows no redirects, because a redirect could carry the entry's <code>headers</code>, which may hold an API key, to another host.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -1567,7 +1773,7 @@ schedule = "0 7 * * 1-5"          # 7:00 on weekdays
 prompt   = "Brief me on today's calendar, unread email and anything due this week."
 output   = "notification"          # or "digest", or a file path</code></pre>
 
-<p>Each run is a session with its own transcript, so a job's work lands in the same log and traces as your questions. <code>merud</code> runs it through the same agent loop as a question you type, and sends the output to a digest, a file or a notification. Jobs don't stream, since no one is watching, and nobody can approve a tool call, so <code>dispatch</code> declines every call that needs a yes during a job. The operating system's service manager (<code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service) restarts <code>merud</code> after a reboot. The scheduler lives inside <code>merud</code>, so jobs use the loaded models and land in the same audit log and traces.</p>
+<p>Each run is a session with its own transcript, so a job's work lands in the same log and traces as your questions. <code>merud</code> runs it through the same agent loop as a question you type, and sends the output to a digest, a file or a notification. Jobs don't stream, since no one is watching, and nobody can approve a tool call, so <code>dispatch</code> declines every call that needs a yes during a job. That includes a local command with <code>confirm = true</code>: its outcome is <code>declined</code>, its row still goes in, and the job's output says it skipped the call, so a brief with a missing section has a reason on record. The operating system's service manager (<code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service) restarts <code>merud</code> after a reboot. The scheduler lives inside <code>merud</code>, so jobs use the loaded models and land in the same audit log and traces.</p>
 
 <!-- ============================================================ -->
 <h2 id="observability">Seeing where the time went</h2>
@@ -1701,7 +1907,8 @@ capture_content  = false                     # prompt/response text in spans</co
 <ul>
   <li><b>MCP</b> spans follow the OTel MCP semantic conventions: each is named <code>tools/call &lt;tool&gt;</code> and carries <code>mcp.method.name</code> and <code>gen_ai.tool.name</code>.</li>
   <li><b>A2A</b> spans follow the GenAI convention for a call to a remote agent: each is named <code>invoke_agent &lt;agent&gt;</code>, with <code>gen_ai.operation.name = invoke_agent</code>, <code>gen_ai.agent.name</code>, <code>server.address</code> and <code>server.port</code>. Meru adds <code>meru.a2a.skill</code>, <code>meru.a2a.task.id</code> and <code>meru.a2a.task.state</code>.</li>
-  <li><b>Built-in</b> tools have only the <code>meru.dispatch</code> span.</li>
+  <li><b>Built-in</b> tools have only the <code>meru.dispatch</code> span, except <code>web_fetch</code> with a prompt, which adds the <code>fast</code> model's <code>gen_ai.chat</code> span under it.</li>
+  <li><b>Local commands</b> add <code>meru.command.exit_code</code> and <code>meru.command.truncated</code> to the <code>meru.dispatch</code> span, which has no child.</li>
 </ul>
 
 <p>MCP and A2A spans also carry <code>meru.tool.server</code> and <code>meru.tool.allowed</code>. A failed call's <code>error.type</code> says how it failed: <code>tool_error</code> (the MCP convention's name) when the server or agent reports failure, or Meru's own <code>denied</code>, <code>unavailable</code> or <code>timeout</code>. Arguments and results go on the spans only when <code>capture_content = true</code>. <code>merud</code> writes each trace ID to the session transcript, <code>messages</code> and <code>tool_calls</code>, and to every log line of the turn.</p>
@@ -1722,7 +1929,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>meru.turn.duration</code></td><td>histogram</td><td>route, source (cli/tui/job), outcome</td><td>end-to-end latency</td></tr>
     <tr><td><code>meru.turn.iterations</code></td><td>histogram</td><td>route</td><td>loop depth</td></tr>
     <tr><td><code>meru.context.tokens</code></td><td>histogram</td><td>section (system/skills/memories/chunks/history/tools)</td><td>data for the context budget policy</td></tr>
-    <tr><td><code>meru.tool.calls</code></td><td>counter</td><td><code>meru.tool.kind</code> (mcp/a2a/builtin), <code>meru.tool.server</code>, <code>gen_ai.tool.name</code>, <code>meru.outcome</code> (ok/error/denied/declined/cancelled/timeout)</td><td>tool usage and failures</td></tr>
+    <tr><td><code>meru.tool.calls</code></td><td>counter</td><td><code>meru.tool.kind</code> (mcp/a2a/builtin/command), <code>meru.tool.server</code>, <code>gen_ai.tool.name</code>, <code>meru.outcome</code> (ok/error/denied/declined/cancelled/timeout)</td><td>tool usage and failures</td></tr>
     <tr><td><code>meru.sessions</code></td><td>counter</td><td>source</td><td>sessions started</td></tr>
     <tr><td><code>meru.turn.tokens</code></td><td>counter</td><td><code>gen_ai.token.type</code> (input/output), route, source</td><td>the main model's tokens per answered question, summed over its model calls</td></tr>
     <tr><td><code>meru.turn.docs</code></td><td>histogram</td><td>route</td><td>distinct files each answered question read</td></tr>
@@ -1766,9 +1973,12 @@ capture_content  = false                     # prompt/response text in spans</co
 
 <ul>
   <li>The codebase contains no path to a cloud model. The engine talks only to a model runtime on loopback.</li>
-  <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>network = true</code> in its config entry. The A2A client checks each address again as it connects and follows no redirects, so an agent card can't send your messages elsewhere.</li>
+  <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>remote = true</code> in its config entry. <code>remote</code> says where <code>merud</code> may connect, not what the server reaches: a loopback server such as <code>google</code> still talks to Google. The A2A client checks each address again as it connects and follows no redirects, so an agent card can't send your messages elsewhere.</li>
   <li>API keys live in <code>~/.meru/secrets.toml</code>, which <code>merud</code> refuses to read when other users can. Config names them, never holds them, and <code>dispatch</code> strips their values from transcripts, <code>tool_calls</code>, logs and spans. No key passes through the model: <code>configure</code> sends you to <code>meru mcp add</code> to type one.</li>
+  <li>Web search sends the search words to SearXNG on loopback, and SearXNG sends them to the search engines it asks. That is the one part of a question that leaves the machine when the model searches.</li>
+  <li><code>web_fetch</code> makes <code>merud</code> fetch public pages off this machine, by default, when the model asks; taking it out of <code>[builtin] tools</code> turns it off. It refuses any address on this machine or your network. It runs without asking only for a URL that a search result or your own question gave in the same session, so the model can't carry your data out in a URL it made up; any other URL, and every download, asks you first, and a scheduled job declines them (see <a href="#web-search">Web search</a>).</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
+  <li>A local command runs with your permissions too, and reaches the network if you declare one that does, such as <code>curl</code> or <code>ssh</code>. You chose it, and the <code>tool_calls</code> row records each run with its argv.</li>
   <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
   <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, apply the same rules through the indexer's own code, so the model can read no file that search couldn't reach.</li>
@@ -1784,7 +1994,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><b>No sandbox.</b> An MCP server you add can do anything your user account can. The allowlist picks which tools the model calls and leaves each tool's behavior to its server.</li>
   <li><b>No 120B-class models.</b> A 120B model at 4-bit needs about 60 GB, which pushes even a 64 GB machine into swap.</li>
   <li><b>Exact vector search only.</b> Meru compares the query against every stored vector, with no vector index: 147 ms over 100,000 chunks on the development machine. Past that, the plan is fewer dimensions or distances computed in Go, before another database.</li>
-  <li><b>Remote agents can leak.</b> An A2A agent on another machine may send your data to a cloud model. Meru can't see what it does with a message, so treat <code>network = true</code> as consent for your data to leave.</li>
+  <li><b>Remote agents can leak.</b> An A2A agent on another machine may send your data to a cloud model. Meru can't see what it does with a message, so treat <code>remote = true</code> as consent for your data to leave.</li>
 </ul>
 
 <h3>Deliberate non-goals</h3>
@@ -1795,6 +2005,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><b>Not multi-user.</b> One machine and one person, which keeps the design simple.</li>
   <li><b>No cloud fallback.</b> Calling a cloud AI service when the local model struggles would break principle 1.</li>
   <li><b>Not an agent framework.</b> The loop exists to serve Meru, and we won't package it as a library.</li>
+  <li><b>Not a shell.</b> Meru runs programs you declared, with parameters the model fills in. It never runs a command line a model composed, and ships no shell tool.</li>
 </ul>
 
 <h3 id="open-questions">Open questions</h3>
@@ -1825,14 +2036,15 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>). Temperature 1.25 and <code>min_confidence = 0.45</code>, fitted with <code>make router-eval</code>.</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus vector distance over every stored vector, merged in Go with reciprocal-rank fusion. The query is the question, plus on a short follow-up the session's latest earlier question that isn't only filler words; no model call rewrites it. List sizes are constants (50, 50, 10) until measurements say otherwise.</td></tr>
     <tr><td>Indexing</td><td>Only the folders in <code>[index] folders</code>, nothing by default; secrets, hidden files, build folders and ignored files skipped; symlinks never followed; email, calendar and Drive reached live through MCP, not indexed.</td></tr>
-    <tr><td>Built-in skills</td><td><code>writing</code> and <code>explainer</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
-    <tr><td>Setup</td><td><code>meru setup</code> checks Ollama, pulls the models, writes a first <code>config.toml</code>, and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste. A server outside the catalog starts with an empty <code>allow</code> list.</td></tr>
+    <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code> and <code>web-research</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
+    <tr><td>Setup</td><td><code>meru setup</code> checks Ollama, pulls the models, writes a first <code>config.toml</code>, and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste. For a server outside the catalog, <code>merud</code> probes it first, and <code>meru</code> proposes <code>allow</code> and <code>confirm</code> from the tools' read-only and destructive hints. A reload makes the server work without a restart.</td></tr>
     <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for styling and Glamour for Markdown answers, in <code>meru chat</code> only. Answers always stream.</td></tr>
     <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny, asked over the same socket as the answer. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask (scripts, scheduled jobs), <code>dispatch</code> declines the call.</td></tr>
     <tr><td>Tool results</td><td>The model reads up to 16,000 characters of each result; the transcript and <code>tool_calls</code> keep 4,000, with secrets removed.</td></tr>
     <tr><td>Secrets</td><td>One file, <code>~/.meru/secrets.toml</code>, mode <code>0600</code>, referred to from config as <code>secret:&lt;name&gt;</code>. No system keychain: each platform has its own, and a file only you can read works the same everywhere.</td></tr>
     <tr><td>Memory</td><td>One Markdown file per memory under <code>~/.meru/memory/&lt;kind&gt;/</code>, no index file. Session summaries in the transcripts serve as episodic memory. Memories save without asking, through the <code>remember</code> tool and <code>dispatch</code>.</td></tr>
     <tr><td>Other agents</td><td>An A2A client on the A2A project's Go SDK (protocol 1.0), through the same <code>dispatch</code> path as MCP tools.</td></tr>
+    <tr><td>Local commands</td><td>Named commands in <code>[[commands]]</code>, with typed parameters that each fill one argv element, run with no shell; no MCP shell server and no command allowlist.</td></tr>
     <tr><td>Isolation</td><td>No sandbox. Meru runs as an ordinary user process, and the tool and agent allowlists control what the model can call.</td></tr>
   </tbody>
 </table></div>

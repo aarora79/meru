@@ -10,8 +10,8 @@ Meru  tools · 0.82
   │ Run mail.send?  mcp                │
   │ {                                  │
   │   "to": "sam@example.com",         │
-  │   "subject": "Garden budget",      │
-  │   "body": "The Q3 budget is 4,200… │
+  │   "subject": "Garden plan",        │
+  │   "body": "We sow the tomatoes on… │
   │ }                                  │
   │                                    │
   │  o once   s this session  [d deny] │

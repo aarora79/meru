@@ -19,7 +19,9 @@
 //
 // A line typed with a leading "/" is a command for the chat itself and never
 // reaches the model. /usage opens a box with merud's usage numbers, and the
-// header shows the last hour of them.
+// header shows the last hour of them. /me shows what Meru knows about the
+// user, and /mcp the state of each MCP server, the same table `meru mcp`
+// prints (MCPTable).
 //
 // The package holds no model or store logic; it draws what merud sends. It
 // leaves out mouse scrolling.

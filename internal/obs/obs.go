@@ -201,8 +201,8 @@ func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
 
 // ToolCallMetric describes one finished tool call, for RecordToolCall.
 type ToolCallMetric struct {
-	Kind    string // "mcp", "a2a" or "builtin"
-	Server  string // the MCP server or A2A agent; "meru" for a built-in
+	Kind    string // "mcp", "a2a", "builtin" or "command"
+	Server  string // the MCP server or A2A agent; "meru" for a built-in or a command
 	Tool    string // the tool's name without the server
 	Outcome string // "ok", "error", "denied", "declined", "cancelled" or "timeout"
 	// Duration is how long the tool ran. It is zero for a call that never

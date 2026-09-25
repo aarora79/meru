@@ -118,7 +118,7 @@ From v0.4, `merud` appends a `summary` line once a session has gone quiet
 for `[agent] summary_idle` (see [summarize](summarize.md)):
 
 ```json
-{"ts":"2026-09-23T10:46:00Z","type":"summary","text":"The user set the garden budget at 400 dollars."}
+{"ts":"2026-09-23T10:46:00Z","type":"summary","text":"The user chose two raised beds for the garden."}
 ```
 
 A session that goes on after its summary gets another one later. The file

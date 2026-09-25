@@ -15,6 +15,7 @@ import (
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
+	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -33,28 +34,27 @@ func TestConfigure(t *testing.T) {
 		wantServer string // the server config.toml must hold afterwards
 	}{
 		{
-			name:       "catalog entry with no secret",
-			args:       `{"action":"add_mcp_server","catalog":"fetch"}`,
-			wantText:   "Allowed tools: fetch",
-			wantServer: "fetch",
+			name:       "catalog entry with no secret, which the user starts",
+			args:       `{"action":"add_mcp_server","catalog":"google"}`,
+			wantText:   "Meru only connects to it",
+			wantServer: "google",
 		},
 		{
 			name:       "catalog entry with its secret",
-			args:       `{"action":"add_mcp_server","catalog":"brave"}`,
-			secrets:    map[string]string{"brave_api_key": "fake-key-0123456789"},
-			wantText:   "brave_web_search",
-			wantServer: "brave",
+			args:       `{"action":"add_mcp_server","catalog":"obsidian"}`,
+			secrets:    map[string]string{"obsidian_api_key": "fake-key-0123456789"},
+			wantText:   "obsidian_simple_search",
+			wantServer: "obsidian",
 		},
 		{
 			name:     "catalog entry that asks first",
-			args:     `{"action":"add_mcp_server","catalog":"gmail"}`,
-			secrets:  map[string]string{"google_oauth_client_id": "fake-id-0123456789", "google_oauth_client_secret": "fake-secret-0123456789"},
-			wantText: "These ask the user before each call: draft_gmail_message, send_gmail_message",
+			args:     `{"action":"add_mcp_server","catalog":"google"}`,
+			wantText: "These ask the user before each call: send_gmail_message, manage_event",
 		},
 		{
 			name:    "missing secret",
-			args:    `{"action":"add_mcp_server","catalog":"brave"}`,
-			wantErr: "meru mcp add brave",
+			args:    `{"action":"add_mcp_server","catalog":"obsidian"}`,
+			wantErr: "meru mcp add obsidian",
 		},
 		{
 			name:       "custom command",
@@ -68,11 +68,11 @@ func TestConfigure(t *testing.T) {
 			wantText:   "allows no tools yet",
 			wantServer: "cal",
 		},
-		{"unknown action", `{"action":"remove_mcp_server","catalog":"fetch"}`, nil, "unknown", "", ""},
-		{"unknown key", `{"action":"add_mcp_server","catalog":"fetch","allow":["*"]}`, nil, "valid JSON", "", ""},
-		{"not an object", `"fetch"`, nil, "valid JSON", "", ""},
+		{"unknown action", `{"action":"remove_mcp_server","catalog":"google"}`, nil, "unknown", "", ""},
+		{"unknown key", `{"action":"add_mcp_server","catalog":"google","allow":["*"]}`, nil, "valid JSON", "", ""},
+		{"not an object", `"google"`, nil, "valid JSON", "", ""},
 		{"unknown catalog name", `{"action":"add_mcp_server","catalog":"slack"}`, nil, "not in the catalog", "", ""},
-		{"catalog and custom", `{"action":"add_mcp_server","catalog":"fetch","name":"x","command":"y"}`, nil, "not both", "", ""},
+		{"catalog and custom", `{"action":"add_mcp_server","catalog":"google","name":"x","command":"y"}`, nil, "not both", "", ""},
 		{"nothing to add", `{"action":"add_mcp_server"}`, nil, "give catalog", "", ""},
 		{"command and url", `{"action":"add_mcp_server","name":"x","command":"y","url":"http://127.0.0.1:1/mcp"}`, nil, "exactly one", "", ""},
 		{"neither command nor url", `{"action":"add_mcp_server","name":"x"}`, nil, "exactly one", "", ""},
@@ -90,7 +90,7 @@ func TestConfigure(t *testing.T) {
 				}
 			}
 			changes := 0
-			tools := New(configPath, config.Builtin{}, nil, "", nil, func(context.Context) error {
+			tools := New(configPath, config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, func(context.Context) error {
 				changes++
 				return nil
 			}, nil)
@@ -138,8 +138,8 @@ func TestConfigure(t *testing.T) {
 }
 
 func TestConfigureTwiceRefuses(t *testing.T) {
-	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{}, nil, "", nil, nil, nil)
-	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`)
+	tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, nil, nil)
+	args := json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`)
 	if res, _ := tools.Call(context.Background(), Configure, args); res.IsError {
 		t.Fatalf("first call: %s", res.Text)
 	}
@@ -151,8 +151,8 @@ func TestConfigureTwiceRefuses(t *testing.T) {
 
 func TestConfigureReloadFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	tools := New(path, config.Builtin{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
-	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"fetch"}`))
+	tools := New(path, config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, func(context.Context) error { return errors.New("pool broke") }, nil)
+	res, _ := tools.Call(context.Background(), Configure, json.RawMessage(`{"action":"add_mcp_server","catalog":"google"}`))
 	if !res.IsError || !strings.Contains(res.Text, "restart merud") || !strings.Contains(res.Text, "pool broke") {
 		t.Errorf("Result = %+v, want an error that says to restart merud", res)
 	}
@@ -162,7 +162,7 @@ func TestConfigureReloadFails(t *testing.T) {
 }
 
 func TestBackend(t *testing.T) {
-	tools := New("config.toml", config.Builtin{Confirm: []string{Configure, "write_file"}}, nil, "", nil, nil, nil)
+	tools := New("config.toml", config.Builtin{Tools: config.BuiltinTools(), Confirm: []string{Configure, "write_file"}}, config.Web{}, nil, "", nil, nil, nil)
 
 	confirms := []struct {
 		name string
@@ -185,11 +185,12 @@ func TestBackend(t *testing.T) {
 		t.Errorf("Locate = %q, %q", s, tool)
 	}
 
+	// web_fetch needs no setting, so it comes too.
 	specs := tools.Tools()
-	if len(specs) != 1 || specs[0].Name != Configure {
-		t.Fatalf("Tools = %+v, want configure alone", specs)
+	if len(specs) != 3 || specs[0].Name != Configure || specs[1].Name != DateTime || specs[2].Name != WebFetch {
+		t.Fatalf("Tools = %+v, want configure, datetime and web_fetch", specs)
 	}
-	if !strings.Contains(specs[0].Description, "gmail") {
+	if !strings.Contains(specs[0].Description, "google") {
 		t.Error("the description doesn't list the catalog")
 	}
 	var schema map[string]any
@@ -199,7 +200,7 @@ func TestBackend(t *testing.T) {
 
 	st := tools.Status()
 	if len(st) != 1 || st[0].Name != "meru" || !st[0].Connected || st[0].Kind != "builtin" ||
-		len(st[0].Tools) != 1 || !st[0].Tools[0].AlwaysAsks {
+		len(st[0].Tools) != 3 || !st[0].Tools[0].AlwaysAsks || st[0].Tools[1].Name != DateTime {
 		t.Errorf("Status = %+v", st)
 	}
 
@@ -217,7 +218,7 @@ func rememberTools(t *testing.T, cfg config.Builtin) (*Tools, *memory.Store, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(filepath.Join(dir, "config.toml"), cfg, mem, "", nil, nil, nil), mem, dir
+	return New(filepath.Join(dir, "config.toml"), cfg, config.Web{}, mem, "", nil, nil, nil), mem, dir
 }
 
 // TestRemember runs each call through a real Dispatcher, the only path the
@@ -251,14 +252,14 @@ func TestRemember(t *testing.T) {
 		{"no kind", `{"text":"x"}`, "", "is unknown", "", "", ""},
 		{"empty text", `{"kind":"me","text":"  "}`, "", "text is empty", "", "", ""},
 		{"text over 4 KiB", `{"kind":"me","text":"` + strings.Repeat("a", 4097) + `"}`, "", "over the 4096-byte limit", "", "", ""},
-		{"a secret in the text", `{"kind":"reference","text":"The brave key is fake-key-0123456789"}`, "", "holds a secret", "", "", ""},
+		{"a secret in the text", `{"kind":"reference","text":"The obsidian key is fake-key-0123456789"}`, "", "holds a secret", "", "", ""},
 		{"unknown key", `{"kind":"me","text":"x","folder":"me"}`, "", "valid JSON", "", "", ""},
 		{"not an object", `"x"`, "", "valid JSON", "", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tools, mem, dir := rememberTools(t, config.Builtin{})
-			if err := secrets.Set(secrets.Path(dir), "brave_api_key", "fake-key-0123456789"); err != nil {
+			tools, mem, dir := rememberTools(t, config.Builtin{Tools: config.BuiltinTools()})
+			if err := secrets.Set(secrets.Path(dir), "obsidian_api_key", "fake-key-0123456789"); err != nil {
 				t.Fatal(err)
 			}
 			d := dispatch.New([]dispatch.Backend{tools}, nil, dispatch.Options{})
@@ -289,14 +290,14 @@ func TestRemember(t *testing.T) {
 }
 
 func TestRememberSpecAndConfirm(t *testing.T) {
-	tools, mem, _ := rememberTools(t, config.Builtin{})
+	tools, mem, _ := rememberTools(t, config.Builtin{Tools: config.BuiltinTools()})
 	// A folder the user made by hand joins the kinds.
 	if err := os.Mkdir(filepath.Join(mem.Dir(), "recipes"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	specs := tools.Tools()
-	if len(specs) != 2 || specs[1].Name != Remember {
-		t.Fatalf("Tools = %+v, want configure and remember", specs)
+	if len(specs) != 4 || specs[2].Name != Remember {
+		t.Fatalf("Tools = %+v, want configure, datetime, remember and web_fetch", specs)
 	}
 	// The struct below names only the part of the schema the test reads;
 	// json.Unmarshal skips the rest.
@@ -307,7 +308,7 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 			} `json:"kind"`
 		} `json:"properties"`
 	}
-	if err := json.Unmarshal(specs[1].Parameters, &schema); err != nil {
+	if err := json.Unmarshal(specs[2].Parameters, &schema); err != nil {
 		t.Fatal(err)
 	}
 	for _, k := range append(memory.DefaultKinds(), "recipes") {
@@ -316,8 +317,8 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"third person", `"me"`, `"preferences"`, "secrets"} {
-		if !strings.Contains(specs[1].Description, want) {
-			t.Errorf("description lacks %q: %s", want, specs[1].Description)
+		if !strings.Contains(specs[2].Description, want) {
+			t.Errorf("description lacks %q: %s", want, specs[2].Description)
 		}
 	}
 
@@ -325,14 +326,14 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 	if got := tools.Confirm(Remember); got != dispatch.ConfirmNever {
 		t.Errorf("Confirm(remember) = %v, want ConfirmNever by default", got)
 	}
-	if st := tools.Status(); st[0].Offered != 2 || st[0].Tools[1].Confirm {
+	if st := tools.Status(); st[0].Offered != 4 || st[0].Tools[2].Confirm {
 		t.Errorf("Status = %+v, want remember listed without confirm", st)
 	}
-	asking, _, _ := rememberTools(t, config.Builtin{Confirm: []string{Remember}})
+	asking, _, _ := rememberTools(t, config.Builtin{Tools: config.BuiltinTools(), Confirm: []string{Remember}})
 	if got := asking.Confirm(Remember); got != dispatch.ConfirmAsk {
 		t.Errorf("Confirm(remember) = %v, want ConfirmAsk when listed", got)
 	}
-	if st := asking.Status(); !st[0].Tools[1].Confirm {
+	if st := asking.Status(); !st[0].Tools[2].Confirm {
 		t.Errorf("Status = %+v, want remember to show confirm", st)
 	}
 }
@@ -346,7 +347,7 @@ func TestRememberRunsHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := 0
-	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{}, mem, "", nil, nil, func(context.Context) { runs++ })
+	tools := New(filepath.Join(dir, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, mem, "", nil, nil, func(context.Context) { runs++ })
 	ctx := context.Background()
 	if res, _ := tools.Call(ctx, Remember, json.RawMessage(`{"kind":"people","text":"Sam is the user's manager"}`)); res.IsError {
 		t.Fatalf("remember failed: %s", res.Text)
@@ -356,5 +357,71 @@ func TestRememberRunsHook(t *testing.T) {
 	}
 	if runs != 1 {
 		t.Errorf("onRemember ran %d times, want 1", runs)
+	}
+}
+
+// TestBuiltinToolsSwitch checks [builtin] tools. With every setting there,
+// the nine names config.BuiltinTools gives are exactly the tools offered
+// and listed. A name left out is neither offered, listed nor run. A listed
+// tool whose setting is missing stays off, and Off says why.
+func TestBuiltinToolsSwitch(t *testing.T) {
+	dir := t.TempDir()
+	mem, err := memory.Open(filepath.Join(dir, "memory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix, err := index.New(config.Index{Folders: []string{dir}, MaxFileMB: 1}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := config.Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
+	configPath := filepath.Join(dir, "config.toml")
+	// names returns the sorted names Tools offers and Status lists.
+	names := func(tools *Tools) (offered, listed []string) {
+		for _, s := range tools.Tools() {
+			offered = append(offered, s.Name)
+		}
+		for _, ti := range tools.Status()[0].Tools {
+			listed = append(listed, ti.Name)
+		}
+		slices.Sort(offered)
+		slices.Sort(listed)
+		return offered, listed
+	}
+
+	all := New(configPath, config.Builtin{Tools: config.BuiltinTools()}, web, mem, filepath.Join(dir, "out"), ix, nil, nil)
+	want := config.BuiltinTools()
+	slices.Sort(want)
+	if offered, listed := names(all); !slices.Equal(offered, want) || !slices.Equal(listed, want) {
+		t.Errorf("all on: offered %v, listed %v; want %v", offered, listed, want)
+	}
+	if off := all.Off(); len(off) != 0 {
+		t.Errorf("all settings there, but Off = %v", off)
+	}
+
+	some := New(configPath, config.Builtin{Tools: []string{Grep, DateTime}}, web, mem, filepath.Join(dir, "out"), ix, nil, nil)
+	if offered, listed := names(some); !slices.Equal(offered, []string{DateTime, Grep}) || !slices.Equal(listed, offered) {
+		t.Errorf("two on: offered %v, listed %v; want [datetime grep]", offered, listed)
+	}
+	for _, name := range []string{Configure, Remember, WriteFile, WebFetch} {
+		if _, err := some.Call(context.Background(), name, json.RawMessage(`{}`)); err == nil {
+			t.Errorf("%s ran while [builtin] tools leaves it out", name)
+		}
+	}
+
+	bare := New(configPath, config.Builtin{Tools: config.BuiltinTools()}, config.Web{MaxResults: 8}, nil, "", nil, nil, nil)
+	var offTools []string
+	for _, o := range bare.Off() {
+		if o.Reason == "" {
+			t.Errorf("Off gives %s no reason", o.Tool)
+		}
+		offTools = append(offTools, o.Tool)
+	}
+	wantOff := []string{Remember, WriteFile, ReadFile, ListFolder, Grep, WebSearch}
+	if !slices.Equal(offTools, wantOff) {
+		t.Errorf("Off = %v, want %v", offTools, wantOff)
+	}
+	if offered, _ := names(bare); !slices.Equal(offered, []string{Configure, DateTime, WebFetch}) {
+		t.Errorf("no settings: offered %v, want [configure datetime web_fetch]", offered)
 	}
 }

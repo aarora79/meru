@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -71,7 +72,7 @@ func (f *fakeMemories) texts() []string {
 
 // someMemories is what the fake starts with in the list tests.
 var someMemories = []rpc.MemoryInfo{
-	{ID: "project/garden.md", Kind: "project", Text: "The garden budget is\n4,200 dollars.", Created: "2026-09-20"},
+	{ID: "project/garden.md", Kind: "project", Text: "The garden gets two\nraised beds.", Created: "2026-09-20"},
 	{ID: "preferences/answers-short.md", Kind: "preferences", Text: "Answers: short", Created: "2026-09-24", Source: "meru setup user"},
 	{ID: "me/name-dana-reyes.md", Kind: "me", Text: "Name: Dana Reyes", Created: "2026-09-24", Source: "meru setup user"},
 }
@@ -84,7 +85,7 @@ preferences
   preferences/answers-short.md  Answers: short  2026-09-24 · meru setup user
 
 project
-  project/garden.md             The garden budget is 4,200 dollars.  2026-09-20
+  project/garden.md             The garden gets two raised beds.  2026-09-20
 `
 	tests := []struct {
 		name      string
@@ -104,7 +105,7 @@ project
 			wantOut: "Saved me/m1.md\n", wantTexts: []string{"me I have two kids"}},
 		{name: "forget", start: someMemories, args: []string{"forget", "me/name-dana-reyes.md"},
 			wantOut:   "Forgot me/name-dana-reyes.md: Name: Dana Reyes\n",
-			wantTexts: []string{"project The garden budget is\n4,200 dollars.", "preferences Answers: short"}},
+			wantTexts: []string{"project The garden gets two\nraised beds.", "preferences Answers: short"}},
 		{name: "forget an unknown ID", start: someMemories, args: []string{"forget", "me/nobody.md"},
 			wantCode: 1, wantErr: `no memory has the ID "me/nobody.md"`},
 		{name: "add without text", args: []string{"add", "me"}, wantCode: 1, wantErr: "usage: meru memory"},
@@ -151,7 +152,7 @@ func TestMemoryCommandOlderMerud(t *testing.T) {
 func TestSetupUser(t *testing.T) {
 	known := []rpc.MemoryInfo{
 		{ID: "me/name-sam.md", Kind: "me", Text: "Name: Sam"},
-		{ID: "project/garden.md", Kind: "project", Text: "Garden budget"},
+		{ID: "project/garden.md", Kind: "project", Text: "Garden beds"},
 	}
 	tests := []struct {
 		name      string
@@ -182,14 +183,14 @@ func TestSetupUser(t *testing.T) {
 			name:      "keep what Meru knows",
 			start:     known,
 			input:     "\nDana\n\n\n\n\n",
-			wantTexts: []string{"me Name: Sam", "project Garden budget", "me Name: Dana"},
+			wantTexts: []string{"me Name: Sam", "project Garden beds", "me Name: Dana"},
 			wantOut:   []string{"already knows", "Name: Sam"},
 		},
 		{
 			name:      "replace what Meru knows",
 			start:     known,
 			input:     "n\nDana\n\n\n\n\n",
-			wantTexts: []string{"project Garden budget", "me Name: Dana"},
+			wantTexts: []string{"project Garden beds", "me Name: Dana"},
 			wantOut:   []string{"Forgot all of it"},
 		},
 	}
@@ -209,7 +210,7 @@ func TestSetupUser(t *testing.T) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
 			}
-			if strings.Contains(out.String(), "Garden budget") {
+			if strings.Contains(out.String(), "Garden beds") {
 				t.Errorf("setup user showed a memory outside the profile:\n%s", out)
 			}
 		})
@@ -231,17 +232,17 @@ func TestSetupOffersProfile(t *testing.T) {
 	sock := startServer(t, f.handle)
 	writeConfig(t, sock)
 	// No download, skip the servers, yes to the profile, a name, skip the rest.
-	c, out, _ := scripted("n\n" + strings.Repeat("k\n", 6) + "\nDana\n\n\n\n\n")
+	c, out, _ := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "\nDana\n\n\n\n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	if got := f.texts(); !slices.Equal(got, []string{"me Name: Dana"}) {
 		t.Errorf("memories = %q, want the name", got)
 	}
-	about := strings.Index(out.String(), "5. About you")
-	test := strings.Index(out.String(), "6. A test question")
+	about := strings.Index(out.String(), "6. About you")
+	test := strings.Index(out.String(), "7. A test question")
 	if about < 0 || test < about || !strings.Contains(out.String(), "I answer questions.") {
-		t.Errorf("want step 5 about you before step 6 and its answer:\n%s", out)
+		t.Errorf("want step 6 about you before step 7 and its answer:\n%s", out)
 	}
 }
 

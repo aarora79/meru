@@ -85,14 +85,19 @@ demands it, and say which one in the PR. In practice:
 docs, coding notes, code comments, commit messages, PR descriptions, issue text, HTML
 pages and posters. Load the skill before drafting and run its revision pass before
 committing. In short: short words, active voice with a named actor, no `-ly` padding,
-no stock phrases, acronyms spelled out on first use, and none of the sentence-shape
+no stale phrases, acronyms spelled out on first use, and none of the sentence-shape
 tells it lists.
+
+Examples come from the catalog servers (`google` for mail and calendar, `obsidian`
+for notes) and the built-in `web_search`, and the repository carries no trading or
+personal-finance examples.
 
 The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
 `explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
-repo tool only and doesn't ship. Update the built-ins by copying from `my-ai-assets`,
-never by editing them in place.
+repo tool only and doesn't ship. Update those two built-ins by copying from
+`my-ai-assets`, never by editing them in place. The third built-in, `web-research`,
+is Meru's own; its only copy lives in `internal/skills/builtin/web-research/`.
 
 ## Non-negotiables
 
@@ -106,10 +111,15 @@ never by editing them in place.
    response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
-   except to A2A agents and Streamable HTTP MCP servers marked `network = true`.
+   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, and
+   to public web pages through `web_fetch`, which is on by default and fetches only
+   when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
+   loopback and private addresses at connect time, and asks the user before it
+   fetches a URL that no search result or question of the user's gave in the same
+   session, and before any download.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
-   session transcript. That covers MCP tools, A2A agents and built-in tools such as
-   `configure` and `remember`. Never add a second path.
+   session transcript. That covers MCP tools, A2A agents, local commands and
+   built-in tools such as `configure` and `remember`. Never add a second path.
 
 ## Shape
 
@@ -135,7 +145,7 @@ The repo as it stands. Each package has a `doc.go` and a note in
 cmd/
   merud/             the daemon: config, engine, router, store, indexer, tools, socket, agent loop
   meru/              the thin client: one question, `meru chat`, `ping`, `index`, `tools`, `log`,
-                     `setup`, `mcp add`, and the approval prompt
+                     `setup`, `mcp add`/`list`/`remove`, and the approval prompt
   fakeollama/        a fake Ollama server for end-to-end tests
   fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/
@@ -149,6 +159,7 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
   builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
+  commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and the safe append to config.toml
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer
@@ -166,7 +177,7 @@ test/e2e/            end-to-end tests: real binaries against the fake Ollama and
 deploy/              launchd and systemd files, the local Grafana stack, dashboards
 docs/                architecture levels, coding notes, CI, running guide, posters
 .github/             CI, security scans, Dependabot
-config.example.toml  every config key with its default
+config.example.toml  every config key with its default; a copy of internal/config/template.toml
 Makefile             `make check` runs everything CI runs
 ```
 
@@ -174,7 +185,8 @@ Makefile             `make check` runs everything CI runs
 and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `mcp`, `dispatch`,
-`a2a`, `builtin` or anything else that talks to a model or stores data.
+`a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
+or runs a program.
 `internal/policy` fails the build if that changes, directly or through another
 package. `loopback` imports only the standard library, so any package can use it.
 

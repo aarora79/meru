@@ -28,8 +28,8 @@ import (
 // any server. dispatch records the call with the outcome "denied".
 var ErrNotAllowed = errors.New("tool not allowed")
 
-// ErrUnavailable means the tool is allowed but its server isn't running and
-// couldn't be started. The error text says why.
+// ErrUnavailable means the tool is allowed but its server isn't connected.
+// The error text says why.
 var ErrUnavailable = errors.New("mcp server unavailable")
 
 // Result is what one tool call returned.
@@ -51,7 +51,8 @@ type Result struct {
 // Call runs the tool with the namespaced name ("<server>.<tool>") and the
 // model's JSON arguments. It fails with ErrNotAllowed, before contacting any
 // server, when the tool isn't in its server's allow list. It fails with
-// ErrUnavailable when the server is down and won't restart.
+// ErrUnavailable when the server isn't connected; Call never starts or
+// reconnects a server itself.
 //
 // The call stops when ctx ends or when the server's timeout passes; the
 // error then wraps context.Canceled or context.DeadlineExceeded, and the SDK
@@ -85,7 +86,7 @@ func (p *Pool) Call(ctx context.Context, name string, args json.RawMessage) (res
 		return Result{}, fmt.Errorf("call %s: %w", name, err)
 	}
 
-	cs, err := p.sessionFor(ctx, s)
+	cs, err := p.sessionFor(s)
 	if err != nil {
 		return Result{}, err
 	}

@@ -60,11 +60,11 @@ func TestIntegrationDecide(t *testing.T) {
 	}{
 		{"What is the capital of France?", RouteDirect},
 		{"Explain what a hash map is in two sentences.", RouteDirect},
-		{"What did I write in my notes about the Q3 budget?", RouteSearch},
+		{"What did I write in my notes about the Q3 launch plan?", RouteSearch},
 		{"Summarise the design doc in my meru repository.", RouteSearch},
 		{"What is the weather in Paris right now?", RouteTools},
 		{"Send an email to Sam saying I'll be late.", RouteTools},
-		{"Compare my notes on the vendor contract with today's stock price of the vendor.", RouteSearchTools},
+		{"Compare my notes on the vendor contract with the vendor's latest news.", RouteSearchTools},
 	}
 	matched := 0
 	for _, tt := range questions {

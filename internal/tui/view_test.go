@@ -60,7 +60,7 @@ func TestViewGolden(t *testing.T) {
 	tok := func(s string) rpc.Event { return rpc.Event{Type: rpc.EventToken, Text: s} }
 	search := rpc.Event{Type: rpc.EventRoute, Route: "search", Confidence: 0.88}
 	sources := rpc.Event{Type: rpc.EventSources, Sources: []rpc.Citation{
-		{N: 1, Path: "~/notes/garden.md", Heading: "Budget", StartLine: 3, EndLine: 5, Score: 0.032},
+		{N: 1, Path: "~/notes/garden.md", Heading: "Planting", StartLine: 3, EndLine: 5, Score: 0.032},
 		{N: 2, Path: "~/notes/plants.md", StartLine: 1, EndLine: 9, Score: 0.016},
 	}}
 
@@ -71,7 +71,7 @@ func TestViewGolden(t *testing.T) {
 		return rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: id, Name: name, Kind: "mcp", Outcome: outcome, DurationMillis: ms}}
 	}
 	tools := rpc.Event{Type: rpc.EventRoute, Route: "tools", Confidence: 0.82}
-	mailArgs := `{"to":"sam@example.com","subject":"Garden budget","body":"The Q3 budget is 4,200 dollars."}`
+	mailArgs := `{"to":"sam@example.com","subject":"Garden plan","body":"We sow the tomatoes on 12 April."}`
 	mail := &rpc.Approval{ID: "1", Name: "mail.send", Kind: "mcp", Args: json.RawMessage(mailArgs),
 		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny}}
 
@@ -86,20 +86,22 @@ func TestViewGolden(t *testing.T) {
 		// approval, when set, opens the approval box after the events.
 		approval *rpc.Approval
 		// index and usage, when set, arrive as status and usage replies
-		// before anything else; usageBox then types /usage, and meBox
-		// types /me and answers it with profileFixture.
+		// before anything else; usageBox then types /usage, meBox types
+		// /me and answers it with profileFixture, and mcpBox types /mcp
+		// and answers it with mcpFixture.
 		index    *rpc.IndexStatus
 		usage    []rpc.UsageWindow
 		usageBox bool
 		meBox    bool
+		mcpBox   bool
 	}{
-		{name: "approval", width: 80, q: "Email Sam the garden budget", approval: mail,
-			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+		{name: "approval", width: 80, q: "Email Sam the garden plan", approval: mail,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden plan"}`), toolResult("1", "notes.search", "ok", 120),
 				toolCall("2", "mail.send", mailArgs)}},
-		{name: "tools", width: 80, q: "Email Sam the garden budget", done: true,
-			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden budget"}`), toolResult("1", "notes.search", "ok", 120),
+		{name: "tools", width: 80, q: "Email Sam the garden plan", done: true,
+			evs: []rpc.Event{session, tools, toolCall("1", "notes.search", `{"query":"garden plan"}`), toolResult("1", "notes.search", "ok", 120),
 				toolCall("2", "mail.send", mailArgs), toolResult("2", "mail.send", "declined", 0),
-				tok("I found the budget, 4,200 dollars, but didn't send the email."), stats}},
+				tok("I found the plan, tomatoes on 12 April, but didn't send the email."), stats}},
 		{name: "approval-narrow", width: 40, q: "Email Sam", approval: mail,
 			evs: []rpc.Event{session, tools, toolCall("2", "mail.send", mailArgs)}},
 		{name: "empty", width: 80},
@@ -112,7 +114,7 @@ func TestViewGolden(t *testing.T) {
 		{name: "fallback", width: 80, q: "Find my notes on Rust", evs: []rpc.Event{session, fallback, tok("I can't search yet."), stats}, done: true},
 		{name: "error", width: 80, q: "Hello?", err: errors.New("connect to merud at /home/u/.meru/merud.sock: no such file (is merud running?)"), done: true},
 		{name: "stopped", width: 80, q: "Tell me a long story", evs: []rpc.Event{session, direct, tok("Once upon a time")}},
-		{name: "sources", width: 80, q: "What is the Q3 budget for the garden project?", evs: []rpc.Event{session, search, sources, tok("The Q3 budget for the garden project is 4,200 dollars [1]."), stats}, done: true},
+		{name: "sources", width: 80, q: "When does the garden project sow tomatoes?", evs: []rpc.Event{session, search, sources, tok("The garden project sows tomatoes on 12 April [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 		// The header at three widths: everything; the usage dropped; then
 		// the vectors, size and memory count dropped too.
@@ -126,6 +128,8 @@ func TestViewGolden(t *testing.T) {
 		{name: "me-narrow", width: 40, height: 24, index: bigIndex, meBox: true},
 		{name: "usage", width: 80, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 		{name: "usage-narrow", width: 40, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
+		{name: "mcp", width: 100, height: 20, index: bigIndex, mcpBox: true},
+		{name: "mcp-narrow", width: 40, height: 20, index: bigIndex, mcpBox: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,6 +146,9 @@ func TestViewGolden(t *testing.T) {
 			}
 			if tt.meBox {
 				m, _ = update(t, m, typeText("/me"), press(tea.KeyEnter), meMsg{memories: profileFixture})
+			}
+			if tt.mcpBox {
+				m, _ = update(t, m, typeText("/mcp"), press(tea.KeyEnter), mcpMsg{rows: mcpFixture})
 			}
 			if tt.name == "stopped" {
 				m, _ = update(t, m, press(tea.KeyCtrlC))

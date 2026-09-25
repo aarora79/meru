@@ -22,6 +22,28 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// MaxWebResults caps [web] max_results, and the max_results a web_search
+// call may ask for.
+const MaxWebResults = 20
+
+// builtinTools names every built-in tool, in the order the template lists
+// them: the default for [builtin] tools. The names match the constants in
+// internal/builtin, which imports this package; a test there checks that
+// each name here is a tool it serves.
+var builtinTools = []string{
+	"configure", "datetime", "remember", "write_file",
+	"read_file", "list_folder", "grep", "web_search", "web_fetch",
+}
+
+// BuiltinTools returns the names of all nine built-in tools, the default
+// for [builtin] tools. It returns a copy, so a caller can't change the
+// list the defaults use.
+func BuiltinTools() []string { return slices.Clone(builtinTools) }
+
+// movedFetch is the message for the old [web] fetch key and for
+// read_pages, the name before it.
+const movedFetch = "web.fetch moved: list web_fetch in [builtin] tools, or remove it to turn page fetching off"
+
 // routes lists the four routes the router can pick, in the router's letter
 // order (A to D). The fallback must be one of them. See docs/fast-router.md.
 var routes = []string{"direct", "search", "tools", "search+tools"}
@@ -98,10 +120,17 @@ func defaults() Config {
 			OverlapTokens: 50,
 			Watch:         true,
 		},
-		// write_file asks before each call: a file it writes stays on your
-		// disk after the chat ends (ARCHITECTURE.md, "Approving a tool call").
-		Builtin: Builtin{Confirm: []string{"write_file"}},
-		Skills:  Skills{OutputDir: "~/meru-output"},
+		// Every built-in tool is on. web_fetch, which fetches public pages
+		// off this machine, is on too: a small model needs the page itself
+		// to answer "what's the latest release?" right, and the URL guard
+		// in internal/builtin asks before any fetch the model could use to
+		// leak data. write_file asks before each call: a file it writes
+		// stays on your disk after the chat ends (ARCHITECTURE.md,
+		// "Approving a tool call").
+		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
+		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
+		// web_search runs through a SearXNG the user starts on this port.
+		Web: Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
 	}
 }
 
@@ -129,6 +158,13 @@ func Load(path string) (Config, error) {
 		if unknown := md.Undecoded(); len(unknown) > 0 {
 			keys := make([]string, len(unknown))
 			for i, k := range unknown {
+				if renamedNetwork(k) {
+					return Config{}, fmt.Errorf("config %s: network was renamed remote: write remote = true in %s "+
+						"to let merud connect to a URL on another machine", path, k[0]+"."+k[1])
+				}
+				if s := k.String(); s == "web.fetch" || s == "web.read_pages" {
+					return Config{}, fmt.Errorf("config %s: %s", path, movedFetch)
+				}
 				keys[i] = k.String()
 			}
 			slices.Sort(keys)
@@ -227,7 +263,20 @@ func validate(cfg Config) error {
 		add("log.level %q is unknown; use \"debug\", \"info\", \"warn\" or \"error\"", cfg.Log.Level)
 	}
 
+	if u := cfg.Web.SearXNGURL; u != "" {
+		if err := loopback.CheckURL(u); err != nil {
+			add("web.searxng_url: %w; SearXNG must run on this machine, or set searxng_url = \"\" to turn web search off", err)
+		}
+	}
+	// 20 results already fill a few thousand tokens of the prompt.
+	if n := cfg.Web.MaxResults; n < 1 || n > MaxWebResults {
+		add("web.max_results is %d; it must be between 1 and %d", n, MaxWebResults)
+	}
+
 	for _, err := range checkIndex(cfg.Index) {
+		add("%w", err)
+	}
+	for _, err := range checkBuiltin(cfg.Builtin) {
 		add("%w", err)
 	}
 
@@ -286,6 +335,27 @@ func checkIndex(ix Index) []error {
 	return errs
 }
 
+// checkBuiltin checks the [builtin] section and returns one error per
+// problem: a tool name Meru doesn't have, or a confirm entry that tools
+// doesn't list. The second is almost always a typo or a tool taken out of
+// tools and forgotten in confirm; either way the confirm line would do
+// nothing, so Load says so.
+func checkBuiltin(b Builtin) []error {
+	var errs []error
+	for _, name := range b.Tools {
+		if !slices.Contains(builtinTools, name) {
+			errs = append(errs, fmt.Errorf("builtin.tools: %q is not a built-in tool; the built-in tools are %s",
+				name, strings.Join(builtinTools, ", ")))
+		}
+	}
+	for _, name := range b.Confirm {
+		if !slices.Contains(b.Tools, name) {
+			errs = append(errs, fmt.Errorf("builtin.confirm: %q isn't in builtin.tools; add it there, or take it out of confirm", name))
+		}
+	}
+	return errs
+}
+
 // LogLevel turns a [log] level name into the slog level merud logs at. It
 // returns false for a name it doesn't know, so validate can refuse it.
 func LogLevel(name string) (slog.Level, bool) {
@@ -309,4 +379,13 @@ func LogLevel(name string) (slog.Level, bool) {
 func ProfileModels(name string) (Models, bool) {
 	m, ok := profiles[name]
 	return m, ok
+}
+
+// renamedNetwork reports whether k is the old network key of an
+// [[mcp.servers]] or [[a2a.agents]] entry, which is now called remote. Load
+// names the rename rather than calling the key unknown, so a config written
+// before the rename gets a message that says what to change.
+func renamedNetwork(k toml.Key) bool {
+	return len(k) == 3 && k[2] == "network" &&
+		((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
 }

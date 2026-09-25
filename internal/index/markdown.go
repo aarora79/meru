@@ -12,7 +12,7 @@ import (
 // mdSection is the text under one heading, up to the next heading of any
 // level.
 type mdSection struct {
-	heading string // the heading path, such as "Budget > Q3"; "" before the first heading
+	heading string // the heading path, such as "Garden > Spring"; "" before the first heading
 	title   span   // the heading line itself; empty before the first heading
 	body    span   // everything after the heading line
 }

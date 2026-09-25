@@ -53,19 +53,23 @@ func TestIntegrationPickSkills(t *testing.T) {
 	a.pickSkills(ctx, reg, "hello")
 
 	questions := []struct {
-		q    string
-		want []string // what a person would pick; the first case is asserted
+		q      string
+		want   []string // what a person would pick
+		assert bool     // fail the test when the pick differs
 	}{
-		{"write a short email to my landlord", []string{"writing"}},
-		{"make an explainer page about how DNS works", []string{"explainer"}},
-		{"tidy up this paragraph so it reads better: we was going to the shop", []string{"writing"}},
-		{"what is the capital of France?", nil},
-		{"what's the weather in Paris right now?", nil},
-		{"hi there", nil},
+		{"write a short email to my landlord", []string{"writing"}, true},
+		{"search the web for the latest Go release", []string{"web-research"}, true},
+		{"search the web for the latest Go release and tell me its version, with sources", []string{"web-research"}, false},
+		{"what's the latest version of Python?", []string{"web-research"}, false},
+		{"make an explainer page about how DNS works", []string{"explainer"}, false},
+		{"tidy up this paragraph so it reads better: we was going to the shop", []string{"writing"}, false},
+		{"what is the capital of France?", nil, false},
+		{"what's the weather in Paris right now?", []string{"web-research"}, false},
+		{"hi there", nil, false},
 	}
 	var times []time.Duration
 	matched := 0
-	for i, tt := range questions {
+	for _, tt := range questions {
 		start := time.Now()
 		got := a.pickSkills(ctx, reg, tt.q)
 		took := time.Since(start)
@@ -76,7 +80,7 @@ func TestIntegrationPickSkills(t *testing.T) {
 			mark = "✓"
 		}
 		t.Logf("%s %-70q -> %v (want %v) in %v", mark, tt.q, got, tt.want, took.Round(time.Millisecond))
-		if i == 0 && !slices.Equal(got, tt.want) {
+		if tt.assert && !slices.Equal(got, tt.want) {
 			t.Errorf("pick for %q = %v, want %v", tt.q, got, tt.want)
 		}
 	}

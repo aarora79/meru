@@ -1,8 +1,8 @@
 # config
 
-**Code:** `internal/config/` (`config.go`, `load.go`, `loopback.go`)
+**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `loopback.go`)
 **Milestone:** v0.1
-**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability)
+**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
 
 ## What it does
 
@@ -12,8 +12,11 @@ profile, and checks every value. If anything is wrong, `merud` stops with a
 message that names the key. After `Load` returns, the rest of Meru trusts the
 values it gets.
 
-Meru never writes this file. `config.example.toml` at the repo root lists every
-key with its default.
+This package never writes the file. It holds the config template,
+`template.toml`: every key, with what is on by default uncommented at its
+default value and what is off in comments. `meru setup` writes the template as
+a new `config.toml`, and `meru config template` prints it. `config.example.toml`
+at the repo root is a byte-for-byte copy.
 
 ## The picture
 
@@ -45,6 +48,72 @@ type Ollama struct {
 A **struct** is a named group of fields, like a Python dataclass. The text in
 backticks is the tag. More in [go-basics/struct-tags.md](go-basics/struct-tags.md).
 
+`Commands` holds the `[[commands]]` entries (v0.3): each is a `Command` with a
+name, a description, an `argv`, a `cwd`, a `timeout`, `confirm`, an
+`env_allowlist`, and a `params` table of `CommandParam` values keyed by
+parameter name. The double brackets in `[[commands]]` make a TOML array of
+tables, which the parser decodes into a slice (`[]Command`); each
+`[commands.params.<name>]` becomes one entry of the `Params` map. `Min` and
+`Max` are `*int64`, pointers, so that "no bound" (`nil`) differs from a bound of
+0. `Load` only decodes these entries. The rules for placeholders, paths and
+interpreters live in [commands](commands.md), which checks the entries when
+`merud` starts, as the MCP pool checks `[[mcp.servers]]`.
+
+`MCPServer` is one `[[mcp.servers]]` entry and `A2AAgent` one `[[a2a.agents]]`
+entry. Each has a `Remote` field:
+
+```go
+// Remote lets merud connect to a URL that isn't loopback. It covers
+// only where merud connects; it says nothing about what the server
+// itself reaches. It was called network before.
+Remote bool `toml:"remote"`
+```
+
+The key was `network` until the rename. `network = false` on a Gmail server read
+as "this server stays off the network", which is false: the `google` server runs
+on loopback and talks to Google. `remote` names the one thing the key controls.
+`MCPServer.Env` belongs to a stdio server; the `mcp` package refuses it on a `url`
+entry, because `merud` starts no process whose environment it could set (see
+[mcp.md](mcp.md)).
+
+`Web` is the `[web]` section (v0.3), for the built-in web tools
+([builtin](builtin.md)):
+
+```go
+type Web struct {
+    SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
+    MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
+}
+```
+
+`validate` runs `searxng_url` through the same `loopback.CheckURL` as the Ollama
+and OTLP addresses, because `merud` connects to it. It skips the check for an
+empty URL, which is how you turn web search off. The default URL isn't empty, so
+a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
+explains what to do when nothing answers there. `MaxWebResults` is exported
+because `web_search` checks a call's own `max_results` against the same cap.
+
+`Builtin` is the `[builtin]` section, for the tools built into `merud`:
+
+```go
+type Builtin struct {
+    Tools   []string `toml:"tools"`   // default: all nine, from BuiltinTools()
+    Confirm []string `toml:"confirm"` // default ["write_file"]
+}
+```
+
+`Tools` is the one switch for each built-in, `web_fetch` included; `[web]` has
+no `fetch` key any more. A name left out means [builtin](builtin.md) doesn't
+register that tool. The TOML parser writes over the default only when the key
+is there, so `tools = []` sticks and turns every built-in off. `web_fetch`
+connects off this machine, which is why its own guard, and not config, decides
+when it asks.
+
+`Skills` holds `OutputDir`, the folder `write_file` writes in, and `Disabled`,
+the skill names `merud` neither installs nor loads (see [skills](skills.md)).
+`Disabled` defaults to an empty list and isn't checked: a name may match a
+skill the user adds later.
+
 ### load.go
 
 `Load` starts from a `Config` full of defaults and lets the TOML parser write
@@ -72,6 +141,31 @@ default:
 - `md.Undecoded()` lists keys the file has but no struct field wants. That
   catches typos such as `profil = "full"`, which would otherwise do nothing
   without a word.
+
+One unknown key gets its own message. A config written before the rename still
+says `network`, and "unknown keys: mcp.servers.network" wouldn't say what to
+change. So inside the loop over the unknown keys, `Load` asks `renamedNetwork`
+first:
+
+```go
+func renamedNetwork(k toml.Key) bool {
+    return len(k) == 3 && k[2] == "network" &&
+        ((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
+}
+```
+
+A `toml.Key` is a slice of strings, one per level of the key's path, so
+`network` inside `[[mcp.servers]]` arrives as `["mcp", "servers", "network"]`.
+When it matches, `Load` fails with "network was renamed remote: write remote =
+true in mcp.servers to let merud connect to a URL on another machine".
+`TestLoadErrors` covers the old key in both tables.
+
+`[web] fetch`, which `[builtin] tools` replaced, gets the same treatment, and
+so does `read_pages`, its name before that. `Load` compares the key's dotted
+form, `k.String()`, with `"web.fetch"` and `"web.read_pages"`, and fails with
+the constant `movedFetch`: "web.fetch moved: list web_fetch in [builtin] tools,
+or remove it to turn page fetching off". `Load` doesn't read the old value
+across; the user decides once, in one place.
 
 Next, `Load` sets `Dir` to the folder that holds the config file. Pointing
 `merud -config` at another folder moves the whole Meru home there, which is
@@ -108,10 +202,55 @@ return errors.Join(errs...)
 read and change the outer function's variables (`errs` here). `errors.Join`
 glues the errors together and returns `nil` when the list is empty.
 
+`checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
+the nine in `builtinTools`, and the message lists them. A name in `confirm` must
+also be in `tools`; otherwise the confirm line would do nothing, which is
+almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
+because `builtin` imports `config` and Go refuses an import cycle. A test in
+`builtin` checks that the two lists agree. `BuiltinTools()` hands out a copy,
+made with `slices.Clone`, so no caller can change the defaults.
+
 `[log] level` must be `debug`, `info`, `warn` or `error`. `LogLevel` turns the
 name into the `slog.Level` `merud` logs at, and returns `false` for any other
 name, so `validate` and `merud`'s `openLog` share one list. `merud -v` sets
 `cfg.Log.Level` to `debug` after `Load` returns, so the flag beats the file.
+
+### template.go and template.toml
+
+`template.toml` is the config template. Every section and key sits in it.
+The uncommented lines hold the defaults, so `Load` of the template gives the
+same `Config` as no file at all; `TestTemplateMatchesDefaults` checks that.
+The `[models]` lines stay empty, with the `lite` names in comments, because a
+name there would override the profile: a user who then picked `full` would
+still run the `lite` model. The MCP servers, local commands and A2A agent
+sit in comments, ready to uncomment.
+
+`template.go` compiles the file into the binary:
+
+```go
+//go:embed template.toml
+var templateText string
+
+func Template() string { return templateText }
+```
+
+The `//go:embed` line is a directive to the compiler: at build time it copies
+the file's bytes into the string, so `meru` needs no data file next to it.
+The package imports `embed` with a blank name (`_`), which turns the
+directive on without using anything from the package. More in
+[go-basics/embed.md](go-basics/embed.md).
+
+`config.example.toml` at the repo root is a copy, for readers of the repo.
+Two files could drift, so `TestExampleIsTemplate` fails when they differ and
+says which command copies one over the other. A generate step that writes the
+example from the template would need a `go generate` line and a check that
+someone ran it; the test is the simpler guard.
+
+Two more tests keep the comments honest. `TestTemplateCommentedBlocks`
+uncomments every `# [[` block and loads the result. The catalog's two server
+blocks can't come from `catalog.Block` here, because `catalog` imports
+`config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
+the catalog package checks it against `Block`'s output.
 
 ### loopback.go
 
@@ -153,8 +292,10 @@ if !addr.Unmap().IsLoopback() { ... }
 go test ./internal/config/...
 ```
 
-`TestExampleMatchesDefaults` loads `config.example.toml` and checks that it
-shows the same values as `defaults()`, so the example can't drift from the code.
+`TestTemplateMatchesDefaults` loads the template and checks that it shows the
+same values as `defaults()`, so the template can't drift from the code.
+`TestExampleIsTemplate` checks that `config.example.toml` is still a copy.
+`go run ./cmd/meru config template` prints the template.
 
 ## Why it's built this way
 
@@ -164,5 +305,8 @@ shows the same values as `defaults()`, so the example can't drift from the code.
   `otlp_endpont` is worse than a refusal to start.
 - **Report every problem at once.** Stopping at the first error makes the
   user restart `merud` once per mistake.
+- **One template, embedded.** The file setup writes, the file `meru config
+  template` prints and the example in the repo come from one source, and tests
+  tie it to the defaults and the catalog.
 - **Our own loopback check.** The engine package has one too; the two will
   merge into one later. Both use only the standard library.

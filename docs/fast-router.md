@@ -304,7 +304,7 @@ model pulled, and skips otherwise.
 written the way a user types them, about 30 per route, each with its route and a
 reason. Some are follow-ups that carry a `history` of earlier turns. The harness
 gives every row the same folders, `~/notes`, `~/repos/meru` and
-`~/repos/portfolio` (`evalFolders`), so a row can ask about "meru" by name the way
+`~/repos/blog` (`evalFolders`), so a row can ask about "meru" by name the way
 a user asks about their own project. A fixed rule splits the set: of every ten rows
 with the same route, the 3rd, 6th and 9th go to a held-out set of 40 rows, and the
 other 95 form the fit set. Tune on the fit set and
@@ -517,7 +517,7 @@ use", "what is sqlite good for", "what language is kubernetes written in".
   loop adds tools when the question names a connected MCP server or A2A agent as
   a whole word and the route offers none: `direct` becomes `tools`, and `search`
   becomes `search+tools`. The names come from the tools dispatch offers, such as
-  "obsidian" from `obsidian.search_vault` and "research" from
+  "obsidian" from `obsidian.obsidian_simple_search` and "research" from
   `a2a.research.summarize`, read on each turn because `configure` can add a
   server while merud runs. Built-in tools don't count: their owner is "meru",
   the assistant's own name. With the rule, the same question listed the vaults,

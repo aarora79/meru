@@ -41,7 +41,7 @@ flowchart LR
     fetch --> card["agent card<br/>skills, URLs, streaming?"]
     card --> kept["allowed skills →<br/>a2a.agent.skill tools"]
     call -- "not in allow" --> denied["ErrNotAllowed<br/>(no agent contact)"]
-    call -- "allowed" --> agent["agent<br/>(loopback unless network = true)"]
+    call -- "allowed" --> agent["agent<br/>(loopback unless remote = true)"]
 ```
 
 One call to an agent that streams:
@@ -74,7 +74,7 @@ the secrets they name.
 type AgentConfig struct {
     Name    string
     URL     string
-    Network bool
+    Remote  bool
     Headers map[string]string
     Allow   []string
     Confirm []string
@@ -85,8 +85,11 @@ type AgentConfig struct {
 `Validate` follows the MCP rules, so both kinds of entry fail the same way. It
 collects every problem and joins them with `errors.Join`. It refuses:
 
-- a URL that isn't loopback, unless `network = true`. The rule lives in
-  `loopback.CheckURL`, which MCP, the engine and the telemetry exporter share;
+- a URL that isn't loopback, unless `remote = true`. The rule lives in
+  `loopback.CheckURL`, which MCP, the engine and the telemetry exporter share.
+  `remote` covers only where `merud` connects, as for MCP. A config written
+  before the rename says `network`, and `config.Load` fails on that key with
+  "network was renamed remote" (see [config.md](config.md));
 - a name with anything but letters, digits, `-` and `_`, because the name sits
   between two dots in the tool name;
 - `*` or any other wildcard in `allow` or `confirm`;
@@ -140,7 +143,7 @@ guards:
    outside `127.0.0.0/8` and `::1`. The config check covers only the card's URL,
    and the card names the URLs the calls go to. The dialer covers those too, after
    DNS, so a card on loopback can't send Meru's messages to another machine.
-   `network = true` turns this guard off.
+   `remote = true` turns this guard off.
 2. **No redirects.** Headers may carry an API key, and a redirect could carry it
    to another host. A2A servers have no reason to redirect.
 3. **Headers on every request.** An `http.Client` sends each request through its

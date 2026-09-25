@@ -10,7 +10,7 @@
 no question for `[agent] summary_idle` (30 minutes by default), the
 **Summarizer** asks the `fast` model for a one- or two-sentence summary and
 appends it to the transcript as a `summary` line. It then embeds the summary,
-so a later question such as "what did we decide about the garden budget?" can
+so a later question such as "what did we decide about the garden beds?" can
 find the session by meaning. `merud` runs one Summarizer beside the socket
 server, and the agent reads what it wrote through `retrieve.SearchSessions`.
 
@@ -101,9 +101,9 @@ that, the session would stay due and cost a model call every minute.
 `Input` turns a transcript into what the model reads:
 
 ```text
-User: Let's plan the garden. How much should we spend?
+User: Let's plan the garden. How many raised beds should we build?
 […]
-User: OK, 400 then. Should I start tomatoes from seed?
+User: OK, two then. Should I start tomatoes from seed?
 Meru: Yes, indoors six weeks before the last frost.
 ```
 

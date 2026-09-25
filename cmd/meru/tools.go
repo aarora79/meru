@@ -1,7 +1,7 @@
 // This file holds `meru tools`: it asks merud which tools the model may use
-// and prints them, grouped by source (an MCP server, an A2A agent, or
-// merud's built-in tools). merud decides what is allowed; this side only
-// formats the answer.
+// and prints them, grouped by source (an MCP server, an A2A agent, merud's
+// built-in tools, or the local commands). merud decides what is allowed;
+// this side only formats the answer.
 
 package main
 
@@ -48,6 +48,13 @@ func toolsCmd(ctx context.Context, socket string, args []string, stdout io.Write
 //	  notes.read
 //	  2 of 5 tools allowed
 //
+// A local command adds a line under its name with the program it runs:
+//
+//	commands  command · connected
+//	  cmd.git-log
+//	    runs: git -C {repo} log --oneline -n 20
+//	  1 of 1 tools allowed
+//
 // Tool names line up in one column across all blocks, so the marks after
 // them do too. lk colours the status and the marks when the terminal
 // allows.
@@ -92,11 +99,16 @@ func toolsText(servers []rpc.ServerInfo, lk look) string {
 			}
 			if mark == "" {
 				fmt.Fprintf(&b, "  %s\n", t.Name)
-				continue
+			} else {
+				// %-*s pads the name with spaces to nameWidth columns; the *
+				// takes the width from the argument before the name.
+				fmt.Fprintf(&b, "  %-*s  %s\n", nameWidth, t.Name, lk.amber.Render(mark))
 			}
-			// %-*s pads the name with spaces to nameWidth columns; the *
-			// takes the width from the argument before the name.
-			fmt.Fprintf(&b, "  %-*s  %s\n", nameWidth, t.Name, lk.amber.Render(mark))
+			// A local command shows the program it runs, so you can see
+			// exactly what the model may start.
+			if len(t.Argv) > 0 {
+				fmt.Fprintf(&b, "    %s\n", lk.dim.Render("runs: "+rpc.ArgvLine(t.Argv)))
+			}
 		}
 		fmt.Fprintf(&b, "  %s\n", lk.dim.Render(fmt.Sprintf("%d of %d tools allowed", len(s.Tools), s.Offered)))
 		for _, u := range s.Unknown {

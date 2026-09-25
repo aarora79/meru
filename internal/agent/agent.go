@@ -254,6 +254,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
+	t.question = userWords(question, history)
 	// The user line carries start as its time, so a turns row rebuilt from
 	// the transcript gets the same time as the row written live.
 	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
@@ -285,10 +286,20 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// to direct, and a direct turn offers no remember tool, so the model
 	// would say it will remember and save nothing. When the question holds
 	// "remember" as a whole word and the route has no tools, add them. A
-	// wrong guess ("do you remember the budget?") costs a prompt that holds
+	// wrong guess ("do you remember the trip?") costs a prompt that holds
 	// the tool schemas, and the model need not call any.
 	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksToRemember(question, a.tools.Tools()) {
 		a.log.DebugContext(ctx, "route changed: the question asks Meru to remember",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
+	// And for the web: the router sent "Search the web: what is SearXNG?" to
+	// direct, and the model, with no tools, wrote a tool call as plain text.
+	// When the question says "web", "internet" or "online" and web_search
+	// exists, a route without tools gets them. A wrong guess ("build a web
+	// app") costs the tool schemas in the prompt, nothing more.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksForWeb(question, a.tools.Tools()) {
+		a.log.DebugContext(ctx, "route changed: the question asks for the web",
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
@@ -321,6 +332,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
 	specs := a.toolSpecs(dec.Route)
+	// A turn on a tools route first gives each tool server that isn't
+	// connected one try, then lists the tools again: a server the user
+	// started after merud, or one that crashed, is back for this turn. This
+	// is the only place merud reconnects, so nothing runs while nobody
+	// asks (ARCHITECTURE.md, "MCP"). A server that still fails is left out.
+	// The search route offers only the file tools and commands, never a
+	// server's tools, so it doesn't wait on a server that may take 30
+	// seconds to start.
+	if len(specs) > 0 && (dec.Route == "tools" || dec.Route == "search+tools") {
+		a.tools.ConnectMissing(ctx)
+		specs = a.toolSpecs(dec.Route)
+	}
 	memories := a.memorySection(ctx, searchQuery(question, history))
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
@@ -553,7 +576,7 @@ func withTools(route string) (string, bool) {
 }
 
 // toolServers returns, in lower case, the names of the MCP servers and A2A
-// agents behind specs: "obsidian" for "obsidian.search_vault" and
+// agents behind specs: "obsidian" for "obsidian.obsidian_simple_search" and
 // "research" for "a2a.research.summarize". Built-in tools belong to no
 // server; their owner, "meru", is also the assistant's name, so it would
 // match nearly every question addressed to it.
@@ -599,10 +622,10 @@ func words(text string) []string {
 }
 
 // standaloneWords is how many subject words make a question stand on its
-// own. "and the budget?" has one and "how much did it cost?" two, so both
+// own. "and the watering?" has one and "how long was the stay?" two, so both
 // borrow the earlier question; "i did some work on the bakery site, remind
 // me" has four (work, bakery, site, remind) and doesn't. Two would be too few:
-// "how much did it cost" would lose what "it" is.
+// "how long was the stay" would lose which stay.
 const standaloneWords = 3
 
 // searchQuery is the text a turn searches for. No model rewrites the query.

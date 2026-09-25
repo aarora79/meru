@@ -1,6 +1,7 @@
 // This file connects the MCP client pool to dispatch: mcpBackend lets
 // dispatch reach the pool's tools, and mcpServerConfigs turns the
 // [[mcp.servers]] entries of config.toml into the pool's settings.
+// probeConfig and probeResult do the same for a server the user probes.
 
 package main
 
@@ -20,7 +21,8 @@ import (
 )
 
 // mcpBackend is the dispatch.Backend for the MCP servers in config. The
-// pool does the real work: allowlists, timeouts and reconnects. This type
+// pool does the real work: allowlists, timeouts and the one try per turn
+// at a server that isn't connected. This type
 // only changes the shape of what goes in and out.
 type mcpBackend struct {
 	pool *mcp.Pool
@@ -36,9 +38,18 @@ func (b mcpBackend) Kind() string { return dispatch.KindMCP }
 // Tools returns the allowed tools of every server, named "<server>.<tool>".
 func (b mcpBackend) Tools() []engine.ToolSpec { return b.pool.Tools() }
 
-// Confirm returns ConfirmAsk for a tool in its server's confirm list and
-// ConfirmNever for the rest.
+// ConnectMissing makes mcpBackend a dispatch.Connector: it gives each
+// server that isn't connected one try, at the start of a turn that offers
+// tools (see mcp.Pool.ConnectMissing).
+func (b mcpBackend) ConnectMissing(ctx context.Context) { b.pool.ConnectMissing(ctx) }
+
+// Confirm returns ConfirmAlways for a tool in its server's always_confirm
+// list, ConfirmAsk for one in its confirm list, and ConfirmNever for the
+// rest.
 func (b mcpBackend) Confirm(name string) dispatch.Confirm {
+	if b.pool.AlwaysConfirms(name) {
+		return dispatch.ConfirmAlways
+	}
 	if b.pool.NeedsConfirm(name) {
 		return dispatch.ConfirmAsk
 	}
@@ -86,10 +97,35 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 					Name:        t.Name,
 					Description: t.Description,
 					Confirm:     b.pool.NeedsConfirm(t.Name),
+					AlwaysAsks:  b.pool.AlwaysConfirms(t.Name),
 				})
 			}
 		}
 		out = append(out, info)
+	}
+	return out
+}
+
+// mcpStatus turns the pool's report into the rows `meru mcp` prints. A
+// server that isn't connected gets Tools = -1, which the client shows as
+// "—": it has no tool list, so any count would be a guess. Allowed and
+// Confirm come from config, so they show either way.
+func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
+	out := make([]rpc.MCPStatus, 0, len(servers))
+	for _, st := range servers {
+		row := rpc.MCPStatus{
+			Name:      st.Name,
+			Transport: st.Transport,
+			State:     rpc.MCPConnected,
+			URL:       st.URL,
+			Tools:     st.Offered,
+			Allowed:   st.Listed,
+			Confirm:   st.Confirms,
+		}
+		if !st.Connected {
+			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+		}
+		out = append(out, row)
 	}
 	return out
 }
@@ -112,9 +148,11 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 			Command: s.Command,
 			Args:    s.Args,
 			URL:     s.URL,
-			Network: s.Network,
+			Remote:  s.Remote,
 			Allow:   s.Allow,
 			Confirm: s.Confirm,
+
+			AlwaysConfirm: s.AlwaysConfirm,
 		}
 		if s.Timeout != "" {
 			d, err := time.ParseDuration(s.Timeout)
@@ -139,6 +177,49 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 		return nil, err
 	}
 	return out, nil
+}
+
+// probeConfig turns the server a client wants to probe into the pool's
+// settings, passing each env and header value through resolve as
+// mcpServerConfigs does. It leaves the checks to mcp.Probe. It fails,
+// naming the key, when a secret can't be found, and never puts a value in
+// the error.
+func probeConfig(ps rpc.ProbeServer, resolve func(string) (string, error)) (mcp.ServerConfig, error) {
+	c := mcp.ServerConfig{
+		Name:    ps.Name,
+		Command: ps.Command,
+		Args:    ps.Args,
+		URL:     ps.URL,
+		Remote:  ps.Remote,
+	}
+	var err error
+	if c.Env, err = resolveAll(ps.Env, resolve); err != nil {
+		return mcp.ServerConfig{}, fmt.Errorf("mcp server %q: env %w", ps.Name, err)
+	}
+	if c.Headers, err = resolveAll(ps.Headers, resolve); err != nil {
+		return mcp.ServerConfig{}, fmt.Errorf("mcp server %q: headers %w", ps.Name, err)
+	}
+	return c, nil
+}
+
+// probeResult copies what mcp.Probe found into the shape the socket
+// carries. The two types match field for field; mcp doesn't import rpc, so
+// main joins them.
+func probeResult(info mcp.ProbeInfo) *rpc.ProbeResult {
+	out := &rpc.ProbeResult{
+		ServerName:    info.ServerName,
+		ServerVersion: info.ServerVersion,
+		Tools:         make([]rpc.ProbeTool, 0, len(info.Tools)), // [] rather than null in the JSON
+	}
+	for _, t := range info.Tools {
+		out.Tools = append(out.Tools, rpc.ProbeTool{
+			Name:        t.Name,
+			Description: t.Description,
+			ReadOnly:    t.ReadOnly,
+			Destructive: t.Destructive,
+		})
+	}
+	return out
 }
 
 // resolveAll returns a copy of m with every value passed through resolve,

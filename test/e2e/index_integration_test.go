@@ -27,7 +27,7 @@ import (
 )
 
 // TestIntegrationNotesAnswer indexes notesFolder (see index_test.go) with
-// the real embedding model and asks about the garden budget.
+// the real embedding model and asks when the garden project sows tomatoes.
 func TestIntegrationNotesAnswer(t *testing.T) {
 	h := newHome(t)
 	cfg, err := config.Load(h.config) // no file yet: the lite defaults
@@ -46,7 +46,7 @@ func TestIntegrationNotesAnswer(t *testing.T) {
 
 	// The question says "my notes", as a person asking about their files
 	// would, which steers the router to search.
-	const question = "According to my notes, what is the Q3 budget for the garden project?"
+	const question = "According to my notes, when does the garden project sow tomatoes?"
 	timedAsk(t, h.socket, "Say hello in one word.") // warm-up, not measured
 
 	start := time.Now()
@@ -82,8 +82,9 @@ func TestIntegrationNotesAnswer(t *testing.T) {
 		t.Logf("source %s (score %.4f)", s, s.Score)
 	}
 
-	if !strings.Contains(strings.ReplaceAll(answer.String(), ",", ""), "4200") {
-		t.Errorf("answer %q doesn't hold 4,200", answer.String())
+	// A model may write "April 12" or "12 April", so look for each part.
+	if !strings.Contains(answer.String(), "April") || !strings.Contains(answer.String(), "12") {
+		t.Errorf("answer %q doesn't hold 12 April", answer.String())
 	}
 	if len(sources) == 0 || !strings.HasSuffix(sources[0].Path, "garden.md") {
 		t.Errorf("sources = %+v, want garden.md first", sources)

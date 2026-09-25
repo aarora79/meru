@@ -148,14 +148,14 @@ func TestMemorySectionInPrompt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testConfig(t)
 			eng := &fakeEngine{pieces: []string{"ok"}}
-			search := &fakeSearcher{results: []retrieve.Result{result("/n/budget.md", "Q3 budget", "The Q3 budget is 40k.", 1, 9, 0.03)}}
+			search := &fakeSearcher{results: []retrieve.Result{result("/n/launch.md", "Q3 launch", "The Q3 launch is on 12 May.", 1, 9, 0.03)}}
 			tools := &fakeTools{specs: []engine.ToolSpec{spec("notes.search")}}
 			a := New(cfg, eng, &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}},
 				search, tools, nil, tt.mems, quietLog())
-			if _, err := run(context.Background(), a, rpc.Request{Text: "should I tell Sam about the budget?"}); err != nil {
+			if _, err := run(context.Background(), a, rpc.Request{Text: "should I tell Sam about the launch?"}); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
-			if got := tt.mems.queries; !slices.Equal(got, []string{"should I tell Sam about the budget?"}) {
+			if got := tt.mems.queries; !slices.Equal(got, []string{"should I tell Sam about the launch?"}) {
 				t.Errorf("recall queries = %q, want the question once", got)
 			}
 			system := eng.lastCall().msgs[0].Content
@@ -290,7 +290,7 @@ func TestRecallAcrossSessions(t *testing.T) {
 		}
 	}
 	syncNow(ctx)
-	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{}, mem, "", nil, nil, syncNow)
+	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, mem, "", nil, nil, syncNow)
 	disp := dispatch.New([]dispatch.Backend{tools}, st, dispatch.Options{})
 
 	eng := &fakeEngine{rounds: []fakeRound{

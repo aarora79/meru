@@ -1,0 +1,20 @@
+Meru मेरु lite · minicpm5:2b … ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ MCP servers                        │
+  │                                    │
+  │ SERVER     TRANSPORT  STATE      … │
+  │ google     http       connected  … │
+  │ obsidian   stdio      connected  … │
+  │ notes      stdio      not connect… │
+  │                                    │
+  │ meru tools lists each tool; meru   │
+  │ mcp list shows the catalog and     │
+  │ meru mcp add adds a server.        │
+  ╰────────────────────────────────────╯
+
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+esc/q close · ctrl+c stop/quit

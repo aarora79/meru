@@ -7,13 +7,17 @@
 // name without one hiding the other. The agent loop reads the kept tools with
 // Tools, and calls one with Call.
 //
+// Probe starts a server for a moment, before it goes into config, and
+// reports every tool it offers with the server's read-only and destructive
+// hints. It calls no tool, so it needs no allow list.
+//
 // It speaks the two transports in the current MCP spec, both through the
 // official Go SDK (github.com/modelcontextprotocol/go-sdk):
 //
 //   - stdio: the Pool starts the server as a child process and talks JSON-RPC
 //     over its stdin and stdout.
 //   - Streamable HTTP: the Pool connects to a server that is already running,
-//     at a URL that must be loopback unless the entry says network = true.
+//     at a URL that must be loopback unless the entry says remote = true.
 //
 // What the package leaves to others: it doesn't ask the user to confirm a
 // call (NeedsConfirm only answers the question), and it doesn't write the

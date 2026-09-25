@@ -17,14 +17,17 @@
 https://ollama.com/download      # Ollama's download page, printed by meru setup
 https://ollama.com/install.sh    # the Linux install command meru setup prints
 
+# meru setup prints the commands that start SearXNG, for web search, when it
+# doesn't answer. The user runs them; Meru never fetches these files.
+https://raw.githubusercontent.com/searxng/searxng/master/container/  # SearXNG's compose file and .env example
+
 # The MCP server catalog (internal/catalog) prints each server's upstream
 # page and where to get what it needs. meru prints these links for the user;
 # merud never fetches them.
-https://github.com/brave/brave-search-mcp-server             # the web search server's docs
 https://github.com/modelcontextprotocol/servers/tree/main/src/fetch  # the fetch server's docs
 https://github.com/taylorwilsdon/google_workspace_mcp        # the Google Workspace server's docs
 https://github.com/MarkusPfundstein/mcp-obsidian             # the Obsidian server's docs
-https://brave.com/search/api/                                # where to get a Brave Search API key
+https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem  # the filesystem server's docs
+https://github.com/CursorTouch/Windows-MCP                   # the Windows server's docs
 https://workspacemcp.com/quick-start                         # how to make a Google OAuth client
 https://docs.astral.sh/uv/getting-started/installation/      # how to install uv, which runs uvx
-https://nodejs.org/                                          # where to get Node.js, which runs npx

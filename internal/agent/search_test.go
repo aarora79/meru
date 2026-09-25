@@ -78,14 +78,14 @@ func TestSearchRouteAddsExcerptsAndSources(t *testing.T) {
 	}
 	garden := filepath.Join(home, "notes", "garden.md")
 	search := &fakeSearcher{results: []retrieve.Result{
-		result(garden, "Budget", "The Q3 budget for the garden project is 4,200 dollars.", 3, 5, 0.032),
+		result(garden, "Planting", "The garden project sows tomatoes on 12 April.", 3, 5, 0.032),
 		result("/srv/shared/plan.md", "", "Plant tomatoes in May.", 1, 1, 0.016),
 	}}
 	for _, route := range []string{"search", "search+tools"} {
 		t.Run(route, func(t *testing.T) {
-			eng := &fakeEngine{pieces: []string{"It is 4,200 dollars [1]."}}
+			eng := &fakeEngine{pieces: []string{"On 12 April [1]."}}
 			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: route, Confidence: 0.9, Outcome: "ok"}}, search, nil, nil, nil, quietLog())
-			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "What is the garden budget?"})
+			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "When does the garden project sow tomatoes?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
@@ -99,7 +99,7 @@ func TestSearchRouteAddsExcerptsAndSources(t *testing.T) {
 				t.Fatalf("event types = %v, want %v", types, wantTypes)
 			}
 			wantSources := []rpc.Citation{
-				{N: 1, Path: filepath.Join("~", "notes", "garden.md"), Heading: "Budget", StartLine: 3, EndLine: 5, Score: 0.032},
+				{N: 1, Path: filepath.Join("~", "notes", "garden.md"), Heading: "Planting", StartLine: 3, EndLine: 5, Score: 0.032},
 				{N: 2, Path: "/srv/shared/plan.md", StartLine: 1, EndLine: 1, Score: 0.016},
 			}
 			if got := evs[2].Sources; !reflect.DeepEqual(got, wantSources) {
@@ -116,8 +116,8 @@ func TestSearchRouteAddsExcerptsAndSources(t *testing.T) {
 				"cite each excerpt you use by its number",
 				"Never invent",
 				"From your files",
-				`[1] ` + filepath.Join("~", "notes", "garden.md") + `, "Budget", lines 3–5`,
-				"The Q3 budget for the garden project is 4,200 dollars.",
+				`[1] ` + filepath.Join("~", "notes", "garden.md") + `, "Planting", lines 3–5`,
+				"The garden project sows tomatoes on 12 April.",
 				"[2] /srv/shared/plan.md, line 1",
 			} {
 				if !strings.Contains(system, want) {
@@ -242,10 +242,10 @@ func TestSearchQueryOnFollowUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := run(context.Background(), a, rpc.Request{Session: evs[0].Session, Text: "and the budget?"}); err != nil {
+	if _, err := run(context.Background(), a, rpc.Request{Session: evs[0].Session, Text: "and the watering?"}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"What did I plan for the garden?", "and the budget?\nWhat did I plan for the garden?"}
+	want := []string{"What did I plan for the garden?", "and the watering?\nWhat did I plan for the garden?"}
 	if !reflect.DeepEqual(search.queries, want) {
 		t.Errorf("queries = %q, want %q", search.queries, want)
 	}
@@ -269,16 +269,16 @@ func TestSearchQuery(t *testing.T) {
 		want     string
 	}{
 		{"no history", "what database does meru use", nil, "what database does meru use"},
-		{"follow-up joins the last question", "and the budget?", hist("What did I plan for the garden?"),
-			"and the budget?\nWhat did I plan for the garden?"},
+		{"follow-up joins the last question", "and the watering?", hist("What did I plan for the garden?"),
+			"and the watering?\nWhat did I plan for the garden?"},
 		{"retry skips an all-filler question", "search again i think it is specified",
 			hist("what database does meru use", "try the last question again now"),
 			"search again i think it is specified\nwhat database does meru use"},
 		{"only filler before", "search again", hist("try again", "check my docs"), "search again"},
 		{"a new topic stands alone", "i think i did some work on the bakery site what was it remind me again",
 			hist("so when did i visit lisbon"), "i think i did some work on the bakery site what was it remind me again"},
-		{"two subject words still borrow", "how much did it cost?", hist("what did I pay for the hotel in Lisbon"),
-			"how much did it cost?\nwhat did I pay for the hotel in Lisbon"},
+		{"two subject words still borrow", "how long was the stay?", hist("which hotel did I book in Lisbon"),
+			"how long was the stay?\nwhich hotel did I book in Lisbon"},
 		{"pointing words don't count", "and the one after that?", hist("what is on my calendar Monday"),
 			"and the one after that?\nwhat is on my calendar Monday"},
 	}

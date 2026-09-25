@@ -57,14 +57,14 @@ func TestOpenCreatesKinds(t *testing.T) {
 // frontmatter intact, find in List, forget.
 func TestAddGetForget(t *testing.T) {
 	s := openTest(t)
-	m, err := s.Add("preferences", "  Prefers index funds over individual stocks for retirement accounts.\n", "session 2026-09-23T101502-7f3a")
+	m, err := s.Add("preferences", "  Prefers short replies, with the answer in the first sentence.\n", "session 2026-09-23T101502-7f3a")
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if m.ID != "preferences/prefers-index-funds-over-individual-stocks-for.md" {
+	if m.ID != "preferences/prefers-short-replies-with-the-answer-in-the.md" {
 		t.Errorf("ID = %q", m.ID)
 	}
-	if m.Kind != "preferences" || m.Path != filepath.Join(s.Dir(), "preferences", "prefers-index-funds-over-individual-stocks-for.md") {
+	if m.Kind != "preferences" || m.Path != filepath.Join(s.Dir(), "preferences", "prefers-short-replies-with-the-answer-in-the.md") {
 		t.Errorf("Kind, Path = %q, %q", m.Kind, m.Path)
 	}
 	checkMode(t, m.Path, 0o600)
@@ -74,7 +74,7 @@ func TestAddGetForget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFile := "---\ncreated: 2026-09-23\nsource: session 2026-09-23T101502-7f3a\n---\nPrefers index funds over individual stocks for retirement accounts.\n"
+	wantFile := "---\ncreated: 2026-09-23\nsource: session 2026-09-23T101502-7f3a\n---\nPrefers short replies, with the answer in the first sentence.\n"
 	if string(data) != wantFile {
 		t.Errorf("file =\n%s\nwant\n%s", data, wantFile)
 	}
@@ -86,7 +86,7 @@ func TestAddGetForget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Get(%q): %v", ref, err)
 		}
-		if got.Text != "Prefers index funds over individual stocks for retirement accounts." ||
+		if got.Text != "Prefers short replies, with the answer in the first sentence." ||
 			got.Source != "session 2026-09-23T101502-7f3a" ||
 			!got.Created.Equal(time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC)) ||
 			got.Modified.IsZero() {
@@ -142,7 +142,7 @@ func TestAddRejects(t *testing.T) {
 // TestSlugify checks the file names Add derives from text.
 func TestSlugify(t *testing.T) {
 	tests := []struct{ in, want string }{
-		{"Prefers index funds.", "prefers-index-funds"},
+		{"Prefers short replies.", "prefers-short-replies"},
 		{"  Lives in Seattle, WA (since 2019)!  ", "lives-in-seattle-wa-since-2019"},
 		{"../../etc/passwd", "etc-passwd"},
 		{`C:\Windows\system32`, "c-windows-system32"},

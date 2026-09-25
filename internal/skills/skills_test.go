@@ -64,7 +64,7 @@ func TestLoad(t *testing.T) {
 			} else {
 				writeSkill(t, dir, tt.folder, tt.content)
 			}
-			r, err := Load(dir)
+			r, err := Load(dir, nil)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -98,7 +98,7 @@ func TestLoadMixed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := Load(dir)
+	r, err := Load(dir, nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestLoadMixed(t *testing.T) {
 // TestLoadMissingDir checks that a skills directory that doesn't exist yet
 // gives an empty registry, not an error.
 func TestLoadMissingDir(t *testing.T) {
-	r, err := Load(filepath.Join(t.TempDir(), "nope"))
+	r, err := Load(filepath.Join(t.TempDir(), "nope"), nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestLoadMissingDir(t *testing.T) {
 func TestGetAndBody(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "notes", "---\nname: notes\ndescription: Take notes.\nlicense: MIT\n---\nVersion one.\n")
-	r, err := Load(dir)
+	r, err := Load(dir, nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -176,15 +176,21 @@ func repoSkill(t *testing.T, name string) []byte {
 	return data
 }
 
-// TestBuiltinsMatchRepo checks that each embedded skill is byte-for-byte the
-// copy in .claude/skills. AGENTS.md says the built-ins are copies, never
-// edited in place; this test catches drift in either direction.
+// fromAssets lists the built-in skills copied from the owner's
+// my-ai-assets repo, which .claude/skills also holds. web-research is
+// Meru's own and lives only under internal/skills/builtin.
+var fromAssets = []string{"explainer", "writing"}
+
+// TestBuiltinsMatchRepo checks the list of built-in skills, and that each
+// one copied from my-ai-assets is byte-for-byte the copy in .claude/skills.
+// AGENTS.md says those are copies, never edited in place; this test
+// catches drift in either direction.
 func TestBuiltinsMatchRepo(t *testing.T) {
 	names := Builtins()
-	if !slices.Equal(names, []string{"explainer", "writing"}) {
-		t.Fatalf("Builtins = %v, want [explainer writing]", names)
+	if !slices.Equal(names, []string{"explainer", "web-research", "writing"}) {
+		t.Fatalf("Builtins = %v, want [explainer web-research writing]", names)
 	}
-	for _, name := range names {
+	for _, name := range fromAssets {
 		t.Run(name, func(t *testing.T) {
 			shipped, err := builtinFS.ReadFile("builtin/" + name + "/" + fileName)
 			if err != nil {
@@ -197,19 +203,20 @@ func TestBuiltinsMatchRepo(t *testing.T) {
 	}
 }
 
-// TestInstallBuiltins checks the first-run install: both skills land and
-// load cleanly with private permissions, and a second run changes nothing.
+// TestInstallBuiltins checks the first-run install: all three skills land
+// and load cleanly with private permissions, and a second run changes
+// nothing.
 func TestInstallBuiltins(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "skills")
-	installed, err := InstallBuiltins(dir)
+	installed, err := InstallBuiltins(dir, nil)
 	if err != nil {
 		t.Fatalf("InstallBuiltins: %v", err)
 	}
-	if !slices.Equal(installed, []string{"explainer", "writing"}) {
+	if !slices.Equal(installed, []string{"explainer", "web-research", "writing"}) {
 		t.Errorf("installed = %v", installed)
 	}
 
-	r, err := Load(dir)
+	r, err := Load(dir, nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -227,12 +234,12 @@ func TestInstallBuiltins(t *testing.T) {
 	checkMode(t, filepath.Join(dir, "writing"), 0o700)
 	checkMode(t, filepath.Join(dir, "writing", fileName), 0o600)
 
-	again, err := InstallBuiltins(dir)
+	again, err := InstallBuiltins(dir, nil)
 	if err != nil || len(again) != 0 {
 		t.Errorf("second InstallBuiltins = %v, %v; want nothing installed", again, err)
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
-		t.Errorf("skills dir holds %d entries, want 2 (no temp folders left)", len(entries))
+	if entries, _ := os.ReadDir(dir); len(entries) != 3 {
+		t.Errorf("skills dir holds %d entries, want 3 (no temp folders left)", len(entries))
 	}
 }
 
@@ -251,9 +258,11 @@ func TestInstallKeepsEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed, err := InstallBuiltins(dir)
-	if err != nil || len(installed) != 0 {
-		t.Fatalf("InstallBuiltins = %v, %v; want nothing installed", installed, err)
+	// Only the skill with no folder yet goes in. This is also how a user
+	// who installed Meru before web-research shipped gets it.
+	installed, err := InstallBuiltins(dir, nil)
+	if err != nil || !slices.Equal(installed, []string{"web-research"}) {
+		t.Fatalf("InstallBuiltins = %v, %v; want [web-research] alone", installed, err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "writing", fileName)) // #nosec G304 -- a test temp dir
 	if err != nil || string(got) != edited {
@@ -276,7 +285,7 @@ func TestInstallKeepsEdits(t *testing.T) {
 	if err := Reset(dir, "explainer"); err != nil {
 		t.Fatalf("Reset explainer: %v", err)
 	}
-	r, err := Load(dir)
+	r, err := Load(dir, nil)
 	if err != nil || !r.Has("explainer") || !r.Has("writing") {
 		t.Errorf("after Reset, Load = %v, %v", r.List(), err)
 	}
@@ -323,5 +332,41 @@ func checkMode(t *testing.T, path string, want os.FileMode) {
 	}
 	if got := info.Mode().Perm(); got != want {
 		t.Errorf("%s mode = %o, want %o", path, got, want)
+	}
+}
+
+// TestDisabled checks [skills] disabled: a disabled built-in isn't
+// installed, so deleting it and disabling it keeps it gone; a disabled
+// folder that exists doesn't load; a name that matches nothing does no
+// harm; and a folder the user adds loads with no change to the list.
+func TestDisabled(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "skills")
+	disabled := []string{"explainer", "mine-too", "not-yet"}
+	installed, err := InstallBuiltins(dir, disabled)
+	if err != nil {
+		t.Fatalf("InstallBuiltins: %v", err)
+	}
+	if !slices.Equal(installed, []string{"web-research", "writing"}) {
+		t.Errorf("installed = %v, want web-research and writing", installed)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "explainer")); !os.IsNotExist(err) {
+		t.Errorf("the disabled explainer was installed: %v", err)
+	}
+	writeSkill(t, dir, "mine", skillText("mine", "My skill.", "Do it my way."))
+	writeSkill(t, dir, "mine-too", skillText("mine-too", "Another.", "Off for now."))
+
+	r, err := Load(dir, disabled)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var names []string
+	for _, s := range r.List() {
+		names = append(names, s.Name)
+	}
+	if !slices.Equal(names, []string{"mine", "web-research", "writing"}) {
+		t.Errorf("loaded %v, want mine, web-research and writing", names)
+	}
+	if len(r.Warnings()) != 0 {
+		t.Errorf("a disabled skill gave warnings: %v", r.Warnings())
 	}
 }

@@ -39,6 +39,11 @@ fmt.Print(string(out))
 
 - `internal/mcp/stdio.go` — starts each stdio MCP server with a trimmed
   environment and sends its stderr to merud's debug log.
+- `internal/commands/run.go` — runs each declared local command with no shell,
+  a short environment, output capped at 1 MiB per stream, and a timeout. On
+  Unix it sets `SysProcAttr.Setpgid` and a `Cancel` function that kills the
+  whole process group, and `WaitDelay` so a child that keeps the output open
+  can't hang the call.
 - `internal/mcp/testserver_test.go` — the test binary starts itself as a child
   that serves MCP.
 - `internal/policy/layout_test.go` — runs `go list` to read the client's imports.

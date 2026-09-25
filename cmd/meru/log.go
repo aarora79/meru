@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +24,11 @@ const defaultLogRows = 20
 // logArgsWidth caps the arguments at the end of each line, so a call with
 // long arguments still fits on one line of a wide terminal.
 const logArgsWidth = 60
+
+// logArgvWidth caps a local command's argv instead. It is wider, because
+// the argv is the audit record, and an absolute path alone can take 40
+// characters.
+const logArgvWidth = 160
 
 // logCmd runs `meru log [-n N] [-v]`. args are the words after "log". -n
 // sets how many calls to show and -v adds each call's result under it. It
@@ -81,7 +87,7 @@ func writeLog(w io.Writer, entries []rpc.LogEntry, verbose bool) error {
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s.%s\t%s\t%s\t%s\t%s\n",
 			localTime(e.Time), shortID(e.Session), e.Kind, e.Server, e.Tool,
-			e.Outcome, approval, millis(e.DurationMillis), rpc.ArgsLine(e.Args, logArgsWidth))
+			e.Outcome, approval, millis(e.DurationMillis), argsCell(e))
 	}
 	if err := tw.Flush(); err != nil {
 		return err
@@ -104,6 +110,23 @@ func writeLog(w io.Writer, entries []rpc.LogEntry, verbose bool) error {
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// argsCell returns the last cell of a log line: the arguments as compact
+// JSON, cut to logArgsWidth, or for a local command the program and
+// arguments it ran, as a reader would type them, cut to logArgvWidth. A
+// command's row holds {"argv":[...],"params":{...}}; a row without an argv,
+// such as a call whose arguments didn't render, shows its JSON.
+func argsCell(e rpc.LogEntry) string {
+	if e.Kind == "command" {
+		var a struct {
+			Argv []string `json:"argv"`
+		}
+		if err := json.Unmarshal(e.Args, &a); err == nil && len(a.Argv) > 0 {
+			return rpc.Cut(rpc.ArgvLine(a.Argv), logArgvWidth)
+		}
+	}
+	return rpc.ArgsLine(e.Args, logArgsWidth)
 }
 
 // localTime turns an RFC 3339 time from merud into this machine's local

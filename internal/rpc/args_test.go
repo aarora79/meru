@@ -50,6 +50,22 @@ func TestArgsLine(t *testing.T) {
 	}
 }
 
+func TestArgvLine(t *testing.T) {
+	tests := []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"git", "-C", "/home/sam/repos/meru", "log", "--since={since}"}, "git -C /home/sam/repos/meru log --since={since}"},
+		{[]string{"rg", "--", "two words", ""}, `rg -- "two words" ""`},
+		{[]string{"echo", `say "hi"`, `a\b`, "it's", "tab\there"}, `echo "say \"hi\"" "a\\b" "it's" "tab\there"`},
+	}
+	for _, tt := range tests {
+		if got := ArgvLine(tt.argv); got != tt.want {
+			t.Errorf("ArgvLine(%q) = %s, want %s", tt.argv, got, tt.want)
+		}
+	}
+}
+
 func TestCut(t *testing.T) {
 	if got := Cut("café au lait", 5); got != "café…" {
 		t.Errorf("Cut = %q, want %q", got, "café…")

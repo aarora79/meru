@@ -69,9 +69,9 @@ func TestIntegrationSummarize(t *testing.T) {
 	}
 	week := time.Now().AddDate(0, 0, -7)
 	for i, text := range []string{
-		"Let's plan the vegetable garden. How much should we budget for this season?",
-		"For raised beds, soil and seeds, 400 dollars covers it: about 250 for two beds, 100 for soil and 50 for seeds.",
-		"OK, let's go with 400. Should I start tomatoes from seed?",
+		"Let's plan the vegetable garden. How many raised beds should we build this season?",
+		"Two beds of 1.2 by 2.4 metres fit the sunny strip, with room for a path.",
+		"OK, let's go with two. Should I start tomatoes from seed?",
 		"Yes. Start them indoors six weeks before the last frost, around early April where you live.",
 	} {
 		typ := transcript.TypeUser
@@ -97,8 +97,8 @@ func TestIntegrationSummarize(t *testing.T) {
 		t.Fatalf("Sessions: %v", err)
 	}
 	t.Logf("summary in %s (summary and embedding): %q", took.Round(time.Millisecond), rows[0].Summary)
-	if !strings.Contains(rows[0].Summary, "400") {
-		t.Logf("the summary lost the budget figure")
+	if sum := strings.ToLower(rows[0].Summary); !strings.Contains(sum, "two") && !strings.Contains(sum, "2") {
+		t.Logf("the summary lost the bed count")
 	}
 	if todo, _ := st.SummariesWithoutVector(ctx, 5); len(todo) != 0 {
 		t.Errorf("summary not embedded")

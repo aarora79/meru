@@ -1,6 +1,7 @@
-// This file tests `meru setup` and `meru mcp` with scripted input: each test
-// feeds the answers a person would type and checks what landed in
-// config.toml and secrets.toml, and what the user saw.
+// This file tests `meru setup`, and `meru mcp add` with merud down, with
+// scripted input: each test feeds the answers a person would type and
+// checks what landed in config.toml and secrets.toml, and what the user
+// saw. mcp_test.go tests the probe step against a fake merud.
 
 package main
 
@@ -9,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
@@ -24,7 +28,7 @@ import (
 
 // fakeKey stands in for an API key. It is long enough for Redact and
 // obviously not a real one.
-const fakeKey = "fake-brave-key-0123456789"
+const fakeKey = "fake-obsidian-key-0123456789"
 
 // scripted returns a console that reads input as typed answers, runs no
 // programs (it records them in ran), and finds Ollama up.
@@ -39,6 +43,10 @@ func scripted(input string) (c *console, out *bytes.Buffer, ran *[]string) {
 			return nil
 		},
 		ollamaVersion: func(context.Context, string) (string, error) { return "0.12.11", nil },
+		// Nothing answers at a server's URL unless a test says so.
+		answers: func(context.Context, string) bool { return false },
+		// SearXNG answers unless a test says otherwise.
+		searxng: func(context.Context, string) error { return nil },
 	}
 	c.readSecret = c.line
 	return c, out, ran
@@ -57,24 +65,24 @@ func loadServers(t *testing.T, dir string) []config.MCPServer {
 func TestMCPAddDoIt(t *testing.T) {
 	dir := t.TempDir()
 	c, out, _ := scripted("d\n" + fakeKey + "\ny\n")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
 	servers := loadServers(t, dir)
-	if len(servers) != 1 || servers[0].Name != "brave" || servers[0].Env["BRAVE_API_KEY"] != "secret:brave_api_key" {
+	if len(servers) != 1 || servers[0].Name != "obsidian" || servers[0].Env["OBSIDIAN_API_KEY"] != "secret:obsidian_api_key" {
 		t.Errorf("servers = %+v", servers)
 	}
 	s, err := secrets.Load(secrets.Path(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Resolve("secret:brave_api_key"); got != fakeKey {
+	if got, _ := s.Resolve("secret:obsidian_api_key"); got != fakeKey {
 		t.Errorf("saved key = %q", got)
 	}
 	if strings.Contains(out.String(), fakeKey) {
 		t.Error("the key shows in the output")
 	}
-	for _, want := range []string{"[[mcp.servers]]", "pkill merud", "meru tools"} {
+	for _, want := range []string{"[[mcp.servers]]", "merud isn't running", "merud &"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -83,14 +91,14 @@ func TestMCPAddDoIt(t *testing.T) {
 
 func TestMCPAddReusesSavedKey(t *testing.T) {
 	dir := t.TempDir()
-	if err := secrets.Set(secrets.Path(dir), "brave_api_key", fakeKey); err != nil {
+	if err := secrets.Set(secrets.Path(dir), "obsidian_api_key", fakeKey); err != nil {
 		t.Fatal(err)
 	}
 	c, out, _ := scripted("d\ny\n")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
-	if !strings.Contains(out.String(), "Using brave_api_key") {
+	if !strings.Contains(out.String(), "Using obsidian_api_key") {
 		t.Errorf("output doesn't say it reused the key:\n%s", out)
 	}
 	if len(loadServers(t, dir)) != 1 {
@@ -104,7 +112,7 @@ func TestMCPAddWritesNothing(t *testing.T) {
 	tests := []struct {
 		name, input, wantOut string
 	}{
-		{"show me how", "s\n", "brave_api_key = \"<paste it here>\""},
+		{"show me how", "s\n", "obsidian_api_key = \"<paste it here>\""},
 		{"skip", "x\nk\n", "[d/s/k]"},
 		{"say no", "d\n" + fakeKey + "\nn\n", "Nothing was written"},
 		{"empty key", "d\n\n", "No key given"},
@@ -113,7 +121,7 @@ func TestMCPAddWritesNothing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			c, out, _ := scripted(tt.input)
-			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "brave"}, c); err != nil {
+			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 				t.Fatalf("mcp add: %v", err)
 			}
 			if !strings.Contains(out.String(), tt.wantOut) {
@@ -126,71 +134,13 @@ func TestMCPAddWritesNothing(t *testing.T) {
 	}
 }
 
-func TestMCPAddCustom(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want config.MCPServer
-	}{
-		{"command", []string{"add", "notes", "--", "notes-mcp", "--dir", "/x"},
-			config.MCPServer{Name: "notes", Command: "notes-mcp", Args: []string{"--dir", "/x"}}},
-		{"url", []string{"add", "cal", "--url", "http://127.0.0.1:8123/mcp"},
-			config.MCPServer{Name: "cal", URL: "http://127.0.0.1:8123/mcp"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			c, out, _ := scripted("d\ny\n")
-			if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), tt.args, c); err != nil {
-				t.Fatalf("mcp add: %v\n%s", err, out)
-			}
-			servers := loadServers(t, dir)
-			if len(servers) != 1 {
-				t.Fatalf("servers = %+v", servers)
-			}
-			s := servers[0]
-			if s.Name != tt.want.Name || s.Command != tt.want.Command || s.URL != tt.want.URL ||
-				!slices.Equal(s.Args, tt.want.Args) || len(s.Allow) != 0 {
-				t.Errorf("server = %+v, want %+v with an empty allow", s, tt.want)
-			}
-			if !strings.Contains(out.String(), "meru tools") {
-				t.Errorf("output doesn't point at meru tools:\n%s", out)
-			}
-		})
-	}
-}
-
-func TestMCPErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
-	}{
-		{"not in catalog", []string{"add", "slack"}, "not in the catalog"},
-		{"unknown subcommand", []string{"remove", "brave"}, "usage"},
-		{"no words", nil, "usage"},
-		{"bad name", []string{"add", "a.b", "--", "x"}, "letters, digits"},
-		{"url without scheme", []string{"add", "x", "--url", "127.0.0.1:1"}, "http://"},
-		{"dash dash without command", []string{"add", "x", "--"}, "usage"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, _, _ := scripted("")
-			err := mcpCmd(context.Background(), filepath.Join(t.TempDir(), "merud.sock"), tt.args, c)
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("error = %v, want one containing %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestMCPListCatalog(t *testing.T) {
 	for _, args := range [][]string{{"list-catalog"}, {"add"}} {
 		c, out, _ := scripted("")
 		if err := mcpCmd(context.Background(), "merud.sock", args, c); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"brave", "fetch", "gmail", "calendar", "drive", "obsidian"} {
+		for _, name := range catalog.Names() {
 			if !strings.Contains(out.String(), name) {
 				t.Errorf("%v: listing lacks %s", args, name)
 			}
@@ -201,11 +151,11 @@ func TestMCPListCatalog(t *testing.T) {
 func TestMCPAddAlreadyThere(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"),
-		[]byte("[[mcp.servers]]\nname = \"fetch\"\ncommand = \"uvx\"\n"), 0o600); err != nil {
+		[]byte("[[mcp.servers]]\nname = \"obsidian\"\ncommand = \"uvx\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, out, _ := scripted("")
-	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "fetch"}, c); err != nil {
+	if err := mcpCmd(context.Background(), filepath.Join(dir, "merud.sock"), []string{"add", "obsidian"}, c); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "already has") {
@@ -223,7 +173,7 @@ func TestSetupFirstRun(t *testing.T) {
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
 		"~/notes, /srv/papers\n" +
-		strings.Repeat("k\n", 6) // skip each catalog server
+		strings.Repeat("k\n", len(catalog.Entries())) // skip each catalog server
 	c, out, ran := scripted(input)
 	checks := 0
 	c.ollamaVersion = func(context.Context, string) (string, error) {
@@ -250,6 +200,15 @@ func TestSetupFirstRun(t *testing.T) {
 	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", "/srv/papers"}) {
 		t.Errorf("config = profile %q, folders %q", cfg.Profile, cfg.Index.Folders)
 	}
+	// The empty [models] lines in the template leave the tiers to the
+	// profile, so picking full gives full's models.
+	if cfg.Models != full {
+		t.Errorf("models = %+v, want the full profile's %+v", cfg.Models, full)
+	}
+	written, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if !strings.Contains(string(written), "[[mcp.servers]]") || !strings.Contains(string(written), "\nfolders = [\"~/notes\", \"/srv/papers\"]\n") {
+		t.Errorf("setup didn't write the filled-in template:\n%s", written)
+	}
 	for _, want := range []string{"Ollama isn't answering", "must be an absolute path", "meru setup user", "merud isn't running"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -274,7 +233,7 @@ func TestSetupExistingConfig(t *testing.T) {
 	}
 
 	// No download, skip each server, and no to setup user.
-	c, out, ran := scripted("n\n" + strings.Repeat("k\n", 6) + "n\n")
+	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
@@ -288,6 +247,95 @@ func TestSetupExistingConfig(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestSetupWebSearch walks the web search step: SearXNG down, then
+// answering HTML, then JSON; an empty URL; and a skip.
+func TestSetupWebSearch(t *testing.T) {
+	down := fmt.Errorf("%w on http://127.0.0.1:8888", catalog.ErrSearXNGDown)
+	html := fmt.Errorf("%w on http://127.0.0.1:8888", catalog.ErrSearXNGNoJSON)
+	tests := []struct {
+		name    string
+		url     string
+		answers []error // what each check returns, in order
+		input   string
+		want    []string
+	}{
+		{"answers", "http://127.0.0.1:8888", []error{nil}, "", []string{"SearXNG answers JSON at http://127.0.0.1:8888"}},
+		{
+			"down, then html, then json", "http://127.0.0.1:8888", []error{down, html, nil}, "\n\n",
+			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "docker compose up -d",
+				"SEARXNG_PORT=8888", "JSON is off", "settings.yml", "SearXNG answers JSON"},
+		},
+		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"docker compose up -d", "Skipped."}},
+		{"off", "", nil, "", []string{"Web search is off"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, out, _ := scripted(tt.input)
+			checks := 0
+			c.searxng = func(_ context.Context, u string) error {
+				if u != tt.url {
+					t.Errorf("checked %q, want %q", u, tt.url)
+				}
+				checks++
+				return tt.answers[checks-1]
+			}
+			if err := c.checkWebSearch(context.Background(), tt.url); err != nil {
+				t.Fatalf("checkWebSearch: %v\n%s", err, out)
+			}
+			if checks != len(tt.answers) {
+				t.Errorf("checked %d times, want %d", checks, len(tt.answers))
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(out.String(), w) {
+					t.Errorf("output lacks %q:\n%s", w, out)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupWebSearchReal runs the step's real check against httptest
+// servers: one answers JSON, one answers HTML then gets fixed, and one
+// port is closed.
+func TestSetupWebSearchReal(t *testing.T) {
+	jsonOn := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !jsonOn {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, "<!doctype html><title>403 Forbidden</title>")
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error": "No query"}`)
+	}))
+	defer srv.Close()
+
+	c, out, _ := scripted("\n")
+	c.searxng = func(ctx context.Context, u string) error {
+		err := catalog.CheckSearXNG(ctx, u)
+		jsonOn = true // the user fixes settings.yml before pressing Enter
+		return err
+	}
+	if err := c.checkWebSearch(context.Background(), srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "JSON is off") || !strings.Contains(out.String(), "SearXNG answers JSON") {
+		t.Errorf("output:\n%s", out)
+	}
+
+	closed := httptest.NewServer(http.NotFoundHandler())
+	addr := closed.URL
+	closed.Close()
+	c, out, _ = scripted("s\n")
+	c.searxng = catalog.CheckSearXNG
+	if err := c.checkWebSearch(context.Background(), addr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "SearXNG isn't answering on "+addr) {
+		t.Errorf("output:\n%s", out)
 	}
 }
 
@@ -324,5 +372,50 @@ func TestOllamaInstallHint(t *testing.T) {
 		if !strings.Contains(ollamaInstallHint(goos), "ollama") {
 			t.Errorf("%s: hint = %q", goos, ollamaInstallHint(goos))
 		}
+	}
+}
+
+// TestFirstConfig checks the template setup fills in: with the defaults
+// it is the template itself, and otherwise exactly two lines change.
+func TestFirstConfig(t *testing.T) {
+	same, err := firstConfig("lite", nil)
+	if err != nil || same != config.Template() {
+		t.Fatalf("firstConfig(lite, none) changed the template: %v", err)
+	}
+	got, err := firstConfig("full", []string{"~/notes", `C:\Users\me "quoted"`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		`profile = "full"`: true,
+		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`: true,
+	}
+	tmpl, lines := strings.Split(config.Template(), "\n"), strings.Split(got, "\n")
+	if len(tmpl) != len(lines) {
+		t.Fatalf("firstConfig has %d lines, the template %d", len(lines), len(tmpl))
+	}
+	for i := range lines {
+		if lines[i] == tmpl[i] {
+			continue
+		}
+		if !want[lines[i]] {
+			t.Errorf("line %d changed to %q", i+1, lines[i])
+		}
+		delete(want, lines[i])
+	}
+	if len(want) != 0 {
+		t.Errorf("lines not written: %v", want)
+	}
+}
+
+// TestConfigTemplateCmd checks that `meru config template` prints the
+// template as it is.
+func TestConfigTemplateCmd(t *testing.T) {
+	var out strings.Builder
+	if code := run(context.Background(), []string{"config", "template"}, &out, io.Discard); code != exitOK {
+		t.Fatalf("exit %d", code)
+	}
+	if out.String() != config.Template() {
+		t.Error("meru config template didn't print the template")
 	}
 }

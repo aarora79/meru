@@ -60,8 +60,9 @@ func DefaultKinds() []string {
 // Memory is one memory file.
 type Memory struct {
 	// ID is the file's path relative to the memory directory, with "/" as
-	// the separator on every OS, such as "preferences/index-funds.md". It
-	// stays the same until the file moves, so the indexer can key rows on it.
+	// the separator on every OS, such as
+	// "preferences/prefers-short-replies.md". It stays the same until the
+	// file moves, so the indexer can key rows on it.
 	ID string
 	// Kind is the folder the file sits in.
 	Kind string
@@ -130,8 +131,9 @@ func (s *Store) openRoot() (*os.Root, error) {
 // records where it came from and may be empty.
 //
 // The file name is a slug made from the first words of text, such as
-// "prefers-index-funds-over-individual.md", with "-2", "-3" and so on added
-// when that name is taken. Add creates the kind's folder when it is new.
+// "prefers-short-replies-with-the-answer-in-the.md", with "-2", "-3" and so
+// on added when that name is taken. Add creates the kind's folder when it
+// is new.
 //
 // It fails when kind isn't a valid folder name, text is empty, too long or not
 // UTF-8, source spans more than one line or is too long, or the file can't be
@@ -315,7 +317,7 @@ func (s *Store) listKind(root *os.Root, kind string) ([]Memory, []error) {
 	return memories, problems
 }
 
-// Get returns the memory with the given ID ("preferences/index-funds.md") or
+// Get returns the memory with the given ID ("preferences/prefers-short-replies.md") or
 // absolute path. It fails with ErrBadID when ref doesn't name a memory file
 // inside the directory, and with ErrNotFound when the file doesn't exist.
 func (s *Store) Get(ref string) (Memory, error) {

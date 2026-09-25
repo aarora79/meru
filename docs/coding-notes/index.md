@@ -100,8 +100,8 @@ An error from the engine or the store stops the scan, because Ollama being down
 would fail every file after it too.
 
 Each embedded text starts with the chunk's heading path. The third chunk of a
-long "Budget > Q3" section doesn't repeat the heading line, and the path keeps
-its vector about Q3's budget.
+long "Garden > Spring" section doesn't repeat the heading line, and the path keeps
+its vector about spring planting.
 
 ### skip.go and ignore.go
 
@@ -156,7 +156,7 @@ embedding model's tokenizer, and a chunk a few tokens off target does no harm.
 
 | Kind | Split | Heading | Location |
 | --- | --- | --- | --- |
-| markdown | by `#` heading, then paragraphs | heading path, `Budget > Q3` | lines |
+| markdown | by `#` heading, then paragraphs | heading path, `Garden > Spring` | lines |
 | Go | by top-level declaration, via `go/parser` | `Scan`, `Indexer.Scan`, `Report` | lines |
 | other code, text | by blank-line blocks | none | lines |
 | html | by `<h1>`–`<h6>`, then paragraphs | heading path | none |
@@ -172,16 +172,19 @@ brace in a string for the end of a function. A file that doesn't parse falls
 back to blank-line blocks.
 
 HTML goes through `golang.org/x/net/html`'s tokenizer, which copes with broken
-markup. Scripts, styles and `<head>` drop out, entities decode, and white space
-collapses except in `<pre>`. The extracted text doesn't line up with lines in
+markup. Scripts, styles, `<head>` and `<title>` drop out of the text, entities
+decode, and white space collapses except in `<pre>`. `readHTML` keeps the first
+`<title>` on the side, for `web_fetch`. The extracted text doesn't line up with lines in
 the file, so HTML chunks carry no line numbers.
 
 PDF text comes from `github.com/ledongthuc/pdf`, one page at a time, and chunks
 never cross a page. That library panics on some broken files, so `chunkPDF`
 recovers the panic and returns it as an error; the file counts as `Failed`. The
-page reading lives in `pdfPages`, which `chunkPDF` and `ReadText` share, and
-the HTML reading in `readHTML`, which `chunkHTML` and `ReadText` share. A
-PDF with no text layer (a scan) fails the same way. PDF quality is an open
+page reading lives in `pdfPages`, which `chunkPDF` shares with `PDFText`, and
+the HTML reading in `readHTML`, which `chunkHTML` shares with `HTMLText`.
+`ReadText` calls the two exported readers, and so does the `web_fetch` tool
+in [builtin](builtin.md), so a page from the web reads the way a file on disk
+does. A PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
 
 ### watch.go
@@ -215,7 +218,7 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
 ```
 
 - **`Roots`** returns the `[index] folders` with symlinks resolved, leaving out
-  the ones that don't exist now.
+  the ones that don't exist now, then any folder `ReadAlso` added.
 - **`Check`** takes one absolute path and returns a `Checked`: the path under
   its folder, the folder, what `os.Lstat` says, and a `Reason…` constant, or
   `""` when the indexer reads it. It runs `skipPath`, which checks every folder
@@ -234,6 +237,15 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
   on its folder, so `..` or a link swapped in after the check can't lead out,
   and it checks the size and the NUL byte again. `reason` is set when the file
   turns out to be skipped; `err` when it can't be read or a PDF has no text.
+
+**`ReadAlso(dir)`** adds a folder the four methods reach but `Scan` and the
+watcher never see. `merud` adds `web_fetch`'s downloads folder this way, so the
+model can `read_file` and `grep` what it downloaded under the same rules: no
+symlinks, no hidden or secret files, the size cap. Nothing in the folder reaches
+the store or search, so a web page can't reach a later turn through search.
+`merud` calls it once at startup, before any tool call, because the methods read
+the list without a lock. `locate` loops over `slices.Concat(ix.folders,
+ix.readOnly)`, a new slice that holds both lists.
 
 `Check` and `Walk` clear the cached ignore rules for the folder first, so a
 `.meruignore` you edited a moment ago counts even with `[index] watch = false`.

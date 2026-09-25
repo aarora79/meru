@@ -30,9 +30,9 @@ func near(a, b float64) bool {
 	return math.Abs(a-b) < 0.00005
 }
 
-// TestRRF checks the scores rrf gives. The "200.md" case is the "NVDA
-// results" table in docs/architecture/200.md, with chunk IDs 1 trades.md,
-// 2 earnings.md, 3 watchlist.md and 4 chip-stocks.md.
+// TestRRF checks the scores rrf gives. The "200.md" case is the "Kestrel
+// launch" table in docs/architecture/200.md, with chunk IDs 1 standup.md,
+// 2 launch-plan.md, 3 todo.md and 4 release-checklist.md.
 func TestRRF(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -42,7 +42,7 @@ func TestRRF(t *testing.T) {
 		{"no lists", nil, map[int64]float64{}},
 		{"one list", [][]int64{{5, 6}}, map[int64]float64{5: 1.0 / 61, 6: 1.0 / 62}},
 		{
-			"200.md: NVDA results",
+			"200.md: Kestrel launch",
 			[][]int64{{1, 2, 3}, {2, 4, 1}}, // keyword list, then meaning list
 			map[int64]float64{
 				2: 1.0/62 + 1.0/61, // 0.0325
@@ -151,12 +151,12 @@ func (f *fakeEngine) Info(ctx context.Context) (engine.ModelInfo, error) {
 }
 
 // testStore opens a store in a temporary folder with three documents. The
-// vectors are hand-placed: "budget" questions point along the first axis.
+// vectors are hand-placed: "launch" questions point along the first axis.
 //
-//	chunk 1  /n/budget.md   "Q3 budget"  near the budget axis, says "Q3 budget"
-//	chunk 2  /n/budget.md   "Travel"     off the axis, says "travel costs"
-//	chunk 3  /n/spending.md "Spending"   on the budget axis, never says "budget"
-//	chunk 4  /n/tax.pdf     page 3       far from the axis, says "budget" once
+//	chunk 1  /n/launch.md   "Q3 launch"  near the launch axis, says "Q3 launch"
+//	chunk 2  /n/launch.md   "Travel"     off the axis, says "travel dates"
+//	chunk 3  /n/roadmap.md  "Roadmap"    on the launch axis, never says "launch"
+//	chunk 4  /n/rocket.pdf  page 3       far from the axis, says "launch" once
 func testStore(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()
@@ -172,21 +172,21 @@ func testStore(t *testing.T) *store.Store {
 		vecs   []engine.Vector
 	}{
 		{
-			store.Document{Path: "/n/budget.md", Kind: "markdown", MTime: time.Now()},
+			store.Document{Path: "/n/launch.md", Kind: "markdown", MTime: time.Now()},
 			[]store.Chunk{
-				{Heading: "Q3 budget", Text: "The Q3 budget is 40k.", StartLine: 12, EndLine: 40},
-				{Heading: "Travel", Text: "Travel costs rose.", StartLine: 41, EndLine: 41},
+				{Heading: "Q3 launch", Text: "The Q3 launch is on 12 May.", StartLine: 12, EndLine: 40},
+				{Heading: "Travel", Text: "Travel dates moved.", StartLine: 41, EndLine: 41},
 			},
 			[]engine.Vector{{0.9, 0.3, 0}, {0.2, 1, 0}},
 		},
 		{
-			store.Document{Path: "/n/spending.md", Kind: "markdown", MTime: time.Now()},
-			[]store.Chunk{{Heading: "Spending", Text: "We plan to spend 40k this quarter.", StartLine: 1, EndLine: 9}},
+			store.Document{Path: "/n/roadmap.md", Kind: "markdown", MTime: time.Now()},
+			[]store.Chunk{{Heading: "Roadmap", Text: "We plan to ship the app this quarter.", StartLine: 1, EndLine: 9}},
 			[]engine.Vector{{1, 0, 0}},
 		},
 		{
-			store.Document{Path: "/n/tax.pdf", Kind: "pdf", MTime: time.Now()},
-			[]store.Chunk{{Text: "Household budget worksheet.", Page: 3}},
+			store.Document{Path: "/n/rocket.pdf", Kind: "pdf", MTime: time.Now()},
+			[]store.Chunk{{Text: "Model rocket launch worksheet.", Page: 3}},
 			[]engine.Vector{{0, 0, 1}},
 		},
 	}
@@ -213,7 +213,7 @@ func TestSearch(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
 	eng := &fakeEngine{vectors: map[string]engine.Vector{
-		"Q3 budget": {1, 0.1, 0},
+		"Q3 launch": {1, 0.1, 0},
 		"zebra":     {0, 0, 1},
 	}}
 
@@ -225,31 +225,31 @@ func TestSearch(t *testing.T) {
 	}{
 		{
 			// Vector order: 3, 1, 2, 4. Keyword order: 1, 4 ("Q3" and
-			// "budget" in chunk 1; "budget" in chunk 4). Chunk 1 is high in
+			// "launch" in chunk 1; "launch" in chunk 4). Chunk 1 is high in
 			// both lists: 1/62 + 1/61. Chunk 4 is last by meaning but second
 			// by keyword: 1/64 + 1/62 = 0.0318. That beats chunk 3, first by
 			// meaning only: 1/61 = 0.0164.
-			"both lists", "Q3 budget", Options{},
+			"both lists", "Q3 launch", Options{},
 			[]string{
-				`[1] /n/budget.md, "Q3 budget", lines 12–40`,
-				`[2] /n/tax.pdf, page 3`,
-				`[3] /n/spending.md, "Spending", lines 1–9`,
-				`[4] /n/budget.md, "Travel", line 41`,
+				`[1] /n/launch.md, "Q3 launch", lines 12–40`,
+				`[2] /n/rocket.pdf, page 3`,
+				`[3] /n/roadmap.md, "Roadmap", lines 1–9`,
+				`[4] /n/launch.md, "Travel", line 41`,
 			},
 		},
 		{
-			"top 2", "Q3 budget", Options{TopN: 2},
-			[]string{`[1] /n/budget.md, "Q3 budget", lines 12–40`, `[2] /n/tax.pdf, page 3`},
+			"top 2", "Q3 launch", Options{TopN: 2},
+			[]string{`[1] /n/launch.md, "Q3 launch", lines 12–40`, `[2] /n/rocket.pdf, page 3`},
 		},
 		{
 			// Each list holds one chunk, 3 by meaning and 1 by keyword. Both
 			// score 1/61, and the lower ID goes first.
-			"lists of 1", "Q3 budget", Options{VectorK: 1, KeywordK: 1},
-			[]string{`[1] /n/budget.md, "Q3 budget", lines 12–40`, `[2] /n/spending.md, "Spending", lines 1–9`},
+			"lists of 1", "Q3 launch", Options{VectorK: 1, KeywordK: 1},
+			[]string{`[1] /n/launch.md, "Q3 launch", lines 12–40`, `[2] /n/roadmap.md, "Roadmap", lines 1–9`},
 		},
 		{
 			"meaning only", "zebra", Options{VectorK: 1},
-			[]string{`[1] /n/tax.pdf, page 3`},
+			[]string{`[1] /n/rocket.pdf, page 3`},
 		},
 	}
 	for _, tt := range tests {
@@ -276,8 +276,8 @@ func TestSearch(t *testing.T) {
 func TestSearchSpan(t *testing.T) {
 	rec := useRecorder(t)
 	st := testStore(t)
-	eng := &fakeEngine{vectors: map[string]engine.Vector{"Q3 budget": {1, 0.1, 0}}}
-	if _, err := Search(context.Background(), st, eng, "Q3 budget", Options{TopN: 2}); err != nil {
+	eng := &fakeEngine{vectors: map[string]engine.Vector{"Q3 launch": {1, 0.1, 0}}}
+	if _, err := Search(context.Background(), st, eng, "Q3 launch", Options{TopN: 2}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -323,7 +323,7 @@ func TestSearchFailures(t *testing.T) {
 
 	boom := errors.New("ollama down")
 	eng = &fakeEngine{err: boom}
-	if _, err := Search(ctx, st, eng, "budget", Options{}); !errors.Is(err, boom) {
+	if _, err := Search(ctx, st, eng, "launch", Options{}); !errors.Is(err, boom) {
 		t.Errorf("err = %v, want it to wrap %v", err, boom)
 	}
 	spans := rec.Ended()
@@ -335,7 +335,7 @@ func TestSearchFailures(t *testing.T) {
 func TestCite(t *testing.T) {
 	result := func(heading string, start, end, page int) Result {
 		return Result{ChunkWithDoc: store.ChunkWithDoc{
-			Path:  "notes/budget.md",
+			Path:  "notes/launch.md",
 			Chunk: store.Chunk{Heading: heading, StartLine: start, EndLine: end, Page: page},
 		}}
 	}
@@ -345,11 +345,11 @@ func TestCite(t *testing.T) {
 		r    Result
 		want string
 	}{
-		{"lines", 1, result("Q3 budget", 12, 40, 0), `[1] notes/budget.md, "Q3 budget", lines 12–40`},
-		{"one line", 2, result("Q3 budget", 7, 7, 0), `[2] notes/budget.md, "Q3 budget", line 7`},
-		{"page", 3, result("", 0, 0, 4), `[3] notes/budget.md, page 4`},
-		{"nothing to locate", 4, result("", 0, 0, 0), `[4] notes/budget.md`},
-		{"quote in heading", 5, result(`The "plan"`, 1, 2, 0), `[5] notes/budget.md, "The \"plan\"", lines 1–2`},
+		{"lines", 1, result("Q3 launch", 12, 40, 0), `[1] notes/launch.md, "Q3 launch", lines 12–40`},
+		{"one line", 2, result("Q3 launch", 7, 7, 0), `[2] notes/launch.md, "Q3 launch", line 7`},
+		{"page", 3, result("", 0, 0, 4), `[3] notes/launch.md, page 4`},
+		{"nothing to locate", 4, result("", 0, 0, 0), `[4] notes/launch.md`},
+		{"quote in heading", 5, result(`The "plan"`, 1, 2, 0), `[5] notes/launch.md, "The \"plan\"", lines 1–2`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -365,18 +365,18 @@ func TestFormat(t *testing.T) {
 		t.Errorf("Format(nil) = %q, want empty", got)
 	}
 	results := []Result{
-		{ChunkWithDoc: store.ChunkWithDoc{Path: "notes/budget.md",
-			Chunk: store.Chunk{Heading: "Q3 budget", Text: "The Q3 budget is 40k.\n", StartLine: 12, EndLine: 40}}},
-		{ChunkWithDoc: store.ChunkWithDoc{Path: "docs/tax.pdf",
-			Chunk: store.Chunk{Text: "Household budget worksheet.", Page: 3}}},
+		{ChunkWithDoc: store.ChunkWithDoc{Path: "notes/launch.md",
+			Chunk: store.Chunk{Heading: "Q3 launch", Text: "The Q3 launch is on 12 May.\n", StartLine: 12, EndLine: 40}}},
+		{ChunkWithDoc: store.ChunkWithDoc{Path: "docs/rocket.pdf",
+			Chunk: store.Chunk{Text: "Model rocket launch worksheet.", Page: 3}}},
 	}
 	want := `Excerpts from the user's files. Cite the ones you use by number, like [1].
 
-[1] notes/budget.md, "Q3 budget", lines 12–40
-The Q3 budget is 40k.
+[1] notes/launch.md, "Q3 launch", lines 12–40
+The Q3 launch is on 12 May.
 
-[2] docs/tax.pdf, page 3
-Household budget worksheet.
+[2] docs/rocket.pdf, page 3
+Model rocket launch worksheet.
 `
 	if got := Format(results); got != want {
 		t.Errorf("Format =\n%s\nwant:\n%s", got, want)

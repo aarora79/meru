@@ -54,36 +54,36 @@ func TestSearchSessions(t *testing.T) {
 	dir := t.TempDir()
 	day := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 
-	garden := addSession(t, st, dir, day, "what should the garden budget be?",
-		"Set the garden budget at 400 dollars.", engine.Vector{1, 0, 0})
-	taxes := addSession(t, st, dir, day.Add(24*time.Hour), "when are taxes due?",
-		"Taxes are due in April.", engine.Vector{0, 1, 0})
+	garden := addSession(t, st, dir, day, "how many raised beds should the garden have?",
+		"Chose two raised beds for the garden.", engine.Vector{1, 0, 0})
+	library := addSession(t, st, dir, day.Add(24*time.Hour), "when does the library close?",
+		"The library closes at 6 pm on Saturdays.", engine.Vector{0, 1, 0})
 	hose := addSession(t, st, dir, day.Add(48*time.Hour), "the garden hose leaks", "", nil)
-	current := addSession(t, st, dir, day.Add(72*time.Hour), "garden budget again",
-		"Asked about the garden budget again.", engine.Vector{1, 0, 0})
+	current := addSession(t, st, dir, day.Add(72*time.Hour), "garden beds again",
+		"Asked about the garden beds again.", engine.Vector{1, 0, 0})
 
-	eng := &fakeEngine{vectors: map[string]engine.Vector{"garden budget": {1, 0, 0}}}
-	got, err := SearchSessions(ctx, st, eng, "garden budget", current, 3)
+	eng := &fakeEngine{vectors: map[string]engine.Vector{"garden beds": {1, 0, 0}}}
+	got, err := SearchSessions(ctx, st, eng, "garden beds", current, 3)
 	if err != nil {
 		t.Fatalf("SearchSessions: %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("got %d sessions, want 3: %+v", len(got), got)
 	}
-	// garden tops all three lists. taxes (second by meaning) and hose (second
+	// garden tops all three lists. library (second by meaning) and hose (second
 	// by message keyword) tie; the tie goes to the session seen first, in
 	// the meaning list.
-	if got[0].ID != garden || got[1].ID != taxes || got[2].ID != hose {
-		t.Errorf("order = %s, %s, %s; want garden, taxes, hose", got[0].ID, got[1].ID, got[2].ID)
+	if got[0].ID != garden || got[1].ID != library || got[2].ID != hose {
+		t.Errorf("order = %s, %s, %s; want garden, library, hose", got[0].ID, got[1].ID, got[2].ID)
 	}
-	if got[0].Summary != "Set the garden budget at 400 dollars." || !got[0].Started.Equal(day) {
+	if got[0].Summary != "Chose two raised beds for the garden." || !got[0].Started.Equal(day) {
 		t.Errorf("garden = %+v", got[0].Session)
 	}
-	if got[0].Match == nil || got[0].Match.Role != "user" || got[0].Match.Text != "what should the garden budget be?" {
+	if got[0].Match == nil || got[0].Match.Role != "user" || got[0].Match.Text != "how many raised beds should the garden have?" {
 		t.Errorf("garden's match = %+v, want the question", got[0].Match)
 	}
 	if got[1].Match != nil {
-		t.Errorf("taxes matched only by meaning but has match %+v", got[1].Match)
+		t.Errorf("library matched only by meaning but has match %+v", got[1].Match)
 	}
 	if got[2].Summary != "" || got[2].Match == nil {
 		t.Errorf("hose = %+v, want no summary and a match", got[2])
@@ -102,7 +102,7 @@ func TestSearchSessions(t *testing.T) {
 	}
 
 	// n cuts the list.
-	if two, _ := SearchSessions(ctx, st, eng, "garden budget", current, 1); len(two) != 1 || two[0].ID != garden {
+	if two, _ := SearchSessions(ctx, st, eng, "garden beds", current, 1); len(two) != 1 || two[0].ID != garden {
 		t.Errorf("n = 1 gave %+v", two)
 	}
 }

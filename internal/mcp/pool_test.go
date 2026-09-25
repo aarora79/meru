@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // transportCase is one way to reach the test server.
@@ -141,22 +144,28 @@ func TestCallRefusesToolsOutsideTheAllowList(t *testing.T) {
 }
 
 func TestNeedsConfirm(t *testing.T) {
-	cfg := ServerConfig{Name: "t", Command: "unused", Allow: []string{"echo", "add"}, Confirm: []string{"add"}}
+	cfg := ServerConfig{Name: "t", Command: "unused", Allow: []string{"echo", "add", "slow"},
+		Confirm: []string{"add"}, AlwaysConfirm: []string{"slow"}}
 	var calls atomic.Int32
 	p := openPool(t, cfg, nil, memoryDial(t, &calls))
 	tests := []struct {
-		name string
-		want bool
+		name       string
+		want       bool
+		wantAlways bool
 	}{
-		{"t.add", true},
-		{"t.echo", false},
-		{"t.secret", false},
-		{"other.add", false},
-		{"add", false},
+		{"t.add", true, false},
+		{"t.slow", true, true}, // always_confirm implies confirm
+		{"t.echo", false, false},
+		{"t.secret", false, false},
+		{"other.add", false, false},
+		{"add", false, false},
 	}
 	for _, tt := range tests {
 		if got := p.NeedsConfirm(tt.name); got != tt.want {
 			t.Errorf("NeedsConfirm(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+		if got := p.AlwaysConfirms(tt.name); got != tt.wantAlways {
+			t.Errorf("AlwaysConfirms(%q) = %v, want %v", tt.name, got, tt.wantAlways)
 		}
 	}
 }
@@ -331,8 +340,8 @@ func TestServerThatFailsToStart(t *testing.T) {
 		}
 	}
 
-	// A call to a dead server fails fast with ErrUnavailable, inside the
-	// reconnect wait.
+	// A call to a server that isn't connected fails at once with
+	// ErrUnavailable; Call never tries to connect.
 	for _, name := range []string{"missing.echo", "exits.echo", "refused.echo"} {
 		if _, err := p.Call(context.Background(), name, nil); !errors.Is(err, ErrUnavailable) {
 			t.Errorf("Call(%s) error = %v, want ErrUnavailable", name, err)
@@ -369,32 +378,143 @@ func TestNewPoolRefusesBadConfig(t *testing.T) {
 	}
 }
 
-func TestCrashedServerRestarts(t *testing.T) {
+func TestCrashedServerComesBackOnTheNextTurn(t *testing.T) {
 	p := openPool(t, stdioConfig(t, "t"), nil, dialTransport)
 	first := callText(t, p, "t.pid")
 
 	if _, err := p.Call(context.Background(), "t.crash", nil); err == nil {
 		t.Fatal("Call(t.crash) succeeded, want an error")
 	}
-	waitFor(t, "server to show as disconnected", func() bool { return !p.Status()[0].Connected })
+	waitFor(t, "server to show as not connected", func() bool { return !p.Status()[0].Connected })
 
-	// Inside the reconnect wait, calls fail fast.
+	// Nothing restarts it on its own: calls fail at once, and its tools
+	// leave the list the next turn would offer.
 	if _, err := p.Call(context.Background(), "t.pid", nil); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("Call inside the reconnect wait: error = %v, want ErrUnavailable", err)
+		t.Fatalf("Call after the crash: error = %v, want ErrUnavailable", err)
 	}
-	// The tools stay listed, so the model can still call them.
-	if !slices.Contains(toolNames(p), "t.pid") {
-		t.Error("Tools() dropped the crashed server's tools")
+	if names := toolNames(p); len(names) != 0 {
+		t.Errorf("Tools() = %v after the crash, want none", names)
 	}
 
-	// After the wait, the next call starts a new process.
-	p.reconnectAfter = 0
+	// The next turn that offers tools starts a new process.
+	p.ConnectMissing(context.Background())
 	second := callText(t, p, "t.pid")
 	if second == first {
-		t.Errorf("pid after restart = %s, same as before", second)
+		t.Errorf("pid after the turn's try = %s, same as before", second)
 	}
 	if st := p.Status()[0]; !st.Connected || st.LastError != "" {
-		t.Errorf("Status after restart = %+v", st)
+		t.Errorf("Status after the turn's try = %+v", st)
+	}
+}
+
+// countingDial returns a dialFunc that counts its calls and fails while
+// down holds true, as a server that isn't running would. Once down is
+// false it connects to an in-memory test server.
+func countingDial(t *testing.T, dials *atomic.Int32, down *atomic.Bool) dialFunc {
+	var calls atomic.Int32
+	up := memoryDial(t, &calls)
+	return func(ctx context.Context, cfg ServerConfig, log *slog.Logger) (mcp.Transport, error) {
+		dials.Add(1)
+		if down.Load() {
+			return nil, errors.New("connection refused")
+		}
+		return up(ctx, cfg, log)
+	}
+}
+
+func TestConnectOnDemand(t *testing.T) {
+	var dials atomic.Int32
+	var down atomic.Bool
+	down.Store(true)
+	cfg := ServerConfig{Name: "g", URL: "http://127.0.0.1:8000/mcp", Allow: []string{"echo"}}
+	p := openPool(t, cfg, nil, countingDial(t, &dials, &down))
+
+	if got := dials.Load(); got != 1 {
+		t.Fatalf("dials after startup = %d, want 1", got)
+	}
+	if st := p.Status()[0]; st.Connected || !strings.Contains(st.LastError, "connection refused") {
+		t.Errorf("Status after a failed start = %+v, want not connected with the reason", st)
+	}
+
+	// A call between turns doesn't try to connect.
+	if _, err := p.Call(context.Background(), "g.echo", nil); !errors.Is(err, ErrUnavailable) {
+		t.Errorf("Call while down: error = %v, want ErrUnavailable", err)
+	}
+	if got := dials.Load(); got != 1 {
+		t.Errorf("dials after a call = %d, want still 1", got)
+	}
+
+	// Each turn tries exactly once, and the count doesn't pile up.
+	for turn := 2; turn <= 3; turn++ {
+		p.ConnectMissing(context.Background())
+		if got := dials.Load(); got != int32(turn) {
+			t.Errorf("dials after turn %d = %d, want %d", turn-1, got, turn)
+		}
+		if names := toolNames(p); len(names) != 0 {
+			t.Errorf("Tools() = %v while down, want none", names)
+		}
+	}
+
+	// The user starts the server; the next turn connects and gets its tools.
+	down.Store(false)
+	p.ConnectMissing(context.Background())
+	if got := toolNames(p); !slices.Equal(got, []string{"g.echo"}) {
+		t.Errorf("Tools() after the server started = %v, want [g.echo]", got)
+	}
+	// A connected server isn't dialled again.
+	p.ConnectMissing(context.Background())
+	if got := dials.Load(); got != 4 {
+		t.Errorf("dials after connecting = %d, want 4", got)
+	}
+}
+
+func TestNoBackgroundWork(t *testing.T) {
+	// requests counts every HTTP request the fake server gets. It answers
+	// each with 503, as a server still starting up might.
+	var requests atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(ts.Close)
+
+	p := openPool(t, ServerConfig{Name: "down", URL: ts.URL + "/mcp", Allow: []string{"echo"}}, nil, dialTransport)
+	after := requests.Load()
+	if after == 0 {
+		t.Fatal("the startup try sent no request")
+	}
+	// Status reads only what the Pool holds.
+	for range 5 {
+		_ = p.Status()
+		_ = p.Tools()
+	}
+	// Longer than any retry wait the Pool ever had.
+	time.Sleep(300 * time.Millisecond)
+	if got := requests.Load(); got != after {
+		t.Errorf("requests with no turn running = %d, want %d (the startup try only)", got, after)
+	}
+}
+
+func TestStatusCountsFromConfig(t *testing.T) {
+	var dials atomic.Int32
+	var down atomic.Bool
+	down.Store(true)
+	cfg := ServerConfig{
+		Name: "g", URL: "http://127.0.0.1:8000/mcp",
+		Allow:         []string{"echo", "add", "pid"},
+		Confirm:       []string{"add"},
+		AlwaysConfirm: []string{"add", "pid"},
+	}
+	p := openPool(t, cfg, nil, countingDial(t, &dials, &down))
+	st := p.Status()[0]
+	want := ServerStatus{Name: "g", Transport: "http", URL: cfg.URL, Listed: 3, Confirms: 2}
+	if st.Name != want.Name || st.Transport != want.Transport || st.URL != want.URL ||
+		st.Listed != want.Listed || st.Confirms != want.Confirms || st.Connected {
+		t.Errorf("Status() = %+v, want %+v, not connected", st, want)
+	}
+	stdio := openPool(t, ServerConfig{Name: "s", Command: "unused", Allow: []string{"echo"}}, nil, memoryDial(t, new(atomic.Int32)))
+	if st := stdio.Status()[0]; st.Transport != "stdio" || st.URL != "" || !st.Connected || st.Listed != 1 {
+		t.Errorf("stdio Status() = %+v", st)
 	}
 }
 

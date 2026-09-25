@@ -94,7 +94,7 @@ func newFileTree(t *testing.T) (*Tools, fileTree) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(filepath.Join(base, "config.toml"), config.Builtin{}, nil, "", ix, nil, nil), tr
+	return New(filepath.Join(base, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", ix, nil, nil), tr
 }
 
 // longText returns 30,000 characters: "line NNNNN" lines, with a
@@ -141,12 +141,12 @@ func TestFileToolsOfferedAndNeverAsk(t *testing.T) {
 		}
 	}
 
-	asks := New("config.toml", config.Builtin{Confirm: []string{Grep}}, nil, "", tools.files, nil, nil)
+	asks := New("config.toml", config.Builtin{Tools: config.BuiltinTools(), Confirm: []string{Grep}}, config.Web{}, nil, "", tools.files, nil, nil)
 	if got := asks.Confirm(Grep); got != dispatch.ConfirmAsk {
 		t.Errorf("Confirm(grep) with [builtin] confirm = %v, want ConfirmAsk", got)
 	}
 
-	none := New("config.toml", config.Builtin{}, nil, "", nil, nil, nil)
+	none := New("config.toml", config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, nil, nil)
 	for _, s := range none.Tools() {
 		if IsFileTool(s.Name) {
 			t.Errorf("Tools() with no indexer offers %s", s.Name)

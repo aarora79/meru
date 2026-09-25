@@ -13,7 +13,7 @@ func TestCitationString(t *testing.T) {
 		c    Citation
 		want string
 	}{
-		{Citation{N: 1, Path: "~/notes/garden.md", Heading: "Budget", StartLine: 3, EndLine: 8}, `[1] ~/notes/garden.md, "Budget", lines 3–8`},
+		{Citation{N: 1, Path: "~/notes/garden.md", Heading: "Planting", StartLine: 3, EndLine: 8}, `[1] ~/notes/garden.md, "Planting", lines 3–8`},
 		{Citation{N: 2, Path: "~/notes/a.md", StartLine: 7, EndLine: 7}, `[2] ~/notes/a.md, line 7`},
 		{Citation{N: 3, Path: "/srv/paper.pdf", Page: 4}, `[3] /srv/paper.pdf, page 4`},
 		{Citation{N: 4, Path: "~/x.txt"}, `[4] ~/x.txt`},
@@ -32,10 +32,10 @@ func TestCited(t *testing.T) {
 		answer string
 		want   []int
 	}{
-		{"one mark", "It is 4,200 dollars [1].", []int{1}},
+		{"one mark", "On 12 April [1].", []int{1}},
 		{"marks in any order", "See [3] and [1].", []int{1, 3}},
 		{"list in one pair", "Both say so [2, 3].", []int{2, 3}},
-		{"no marks gives none", "It is 4,200 dollars.", nil},
+		{"no marks gives none", "On 12 April.", nil},
 		{"unknown number gives none", "See [9].", nil},
 		{"not a mark", "an array a[i] of [x]", nil},
 	}

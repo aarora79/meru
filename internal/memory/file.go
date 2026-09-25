@@ -80,8 +80,8 @@ func parseDate(value string) time.Time {
 // slugify turns the start of text into a file name without the ".md":
 // lowercase ASCII letters and digits, with every other run of characters
 // turned into one "-", cut at a word boundary to at most maxSlugBytes.
-// "Prefers index funds over individual stocks." becomes
-// "prefers-index-funds-over-individual-stocks".
+// "Prefers short replies with the answer first." becomes
+// "prefers-short-replies-with-the-answer-first".
 //
 // The result can't hold a path separator, a dot or a space, so it is safe on
 // every file system. Text with no ASCII letters or digits (a fact written in

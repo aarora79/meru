@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,13 +48,13 @@ confirm = ["send"]
 func TestToolCall(t *testing.T) {
 	t.Parallel()
 	s := startToolStack(t)
-	const answer = "Your garden budget is 4,200 dollars."
+	const answer = "Your garden plan: sow tomatoes on 12 April."
 	s.fake.enqueue(t, fastModel, toolsRoute())
 	s.fake.enqueue(t, mainModel,
 		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "notes.search", Arguments: map[string]any{"query": "garden"}}}},
 		fakeollama.Reply{Text: answer})
 
-	res := runMeru(t, s.home, "what is my garden budget?")
+	res := runMeru(t, s.home, "when do I sow the tomatoes?")
 	if res.code != 0 {
 		t.Fatalf("meru exited %d, stderr:\n%s\nmerud.log:\n%s", res.code, res.stderr, s.home.log())
 	}
@@ -67,7 +68,7 @@ func TestToolCall(t *testing.T) {
 	// The model's second request must carry the tool's result.
 	var sawResult bool
 	for _, r := range s.fake.chatRequests(t, mainModel) {
-		if strings.Contains(string(r.Body), "the garden budget for garden is 4,200 dollars") {
+		if strings.Contains(string(r.Body), "the garden plan for garden: sow tomatoes on 12 April") {
 			sawResult = true
 		}
 	}
@@ -138,5 +139,94 @@ func TestToolRefused(t *testing.T) {
 		if strings.Contains(string(r.Body), "you should not see this") || strings.Contains(string(r.Body), "sent to sam") {
 			t.Errorf("a refused tool ran; the model saw its result")
 		}
+	}
+}
+
+// TestWebSearchMissingSearXNG runs merud with [web] searxng_url pointing at
+// a port nothing listens on. merud starts anyway and logs why web search
+// isn't ready; `meru tools` lists web_search and web_fetch; and a turn in
+// which the model calls web_search completes, with the tool's error in
+// front of the model.
+func TestWebSearchMissingSearXNG(t *testing.T) {
+	t.Parallel()
+	// Take a free port and close it, so nothing answers there.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	searxng := "http://" + ln.Addr().String()
+	ln.Close()
+
+	f := startFake(t)
+	h := newHome(t)
+	cfg := strings.Replace(fakeConfig(f.url, "[router]\ntemperature = 1.0\n"),
+		`searxng_url = ""`, fmt.Sprintf("searxng_url = %q", searxng), 1)
+	h.writeConfig(t, cfg)
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	s := &stack{home: h, fake: f, merud: m}
+	if !strings.Contains(h.log(), "web search not ready") {
+		t.Errorf("merud.log lacks the web search line:\n%s", h.log())
+	}
+
+	const answer = "I couldn't search the web: SearXNG isn't running."
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "web_search", Arguments: map[string]any{"query": "latest Go release"}}}},
+		fakeollama.Reply{Text: answer})
+
+	res := runMeru(t, s.home, "search the web for the latest Go release")
+	if res.code != 0 || res.stdout != answer+"\n" {
+		t.Fatalf("meru exited %d, stdout %q, stderr:\n%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, s.home.log())
+	}
+	want := "SearXNG isn't answering on " + searxng
+	var sawError bool
+	for _, r := range s.fake.chatRequests(t, mainModel) {
+		if strings.Contains(string(r.Body), want) {
+			sawError = true
+		}
+	}
+	if !sawError {
+		t.Errorf("no request to the model carried %q", want)
+	}
+	for _, l := range readTranscript(t, sessionFiles(t, s.home)[0]) {
+		switch {
+		case l.Type == transcript.TypeToolCall && (l.Tool != "web_search" || l.Server != "meru" || l.Kind != "builtin"):
+			t.Errorf("tool_call line = %+v, want the built-in web_search", l)
+		case l.Type == transcript.TypeToolResult && l.Outcome != "error":
+			t.Errorf("tool_result line = %+v, want outcome error", l)
+		}
+	}
+
+	tools := runMeru(t, s.home, "tools")
+	// [builtin] tools lists both web tools by default, so meru tools does too.
+	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || !strings.Contains(tools.stdout, "web_fetch") {
+		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	}
+}
+
+// TestBuiltinToolsSwitch runs merud with [builtin] tools cut down to
+// datetime and grep, and no [index] folders. `meru tools` lists datetime
+// alone: configure and web_fetch are left out, and grep stays off for
+// want of a folder, with a line in merud.log that says why.
+func TestBuiltinToolsSwitch(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fakeConfig(f.url, "[builtin]\ntools = [\"datetime\", \"grep\"]\nconfirm = []\n"))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	tools := runMeru(t, h, "tools")
+	if tools.code != 0 || !strings.Contains(tools.stdout, "datetime") {
+		t.Fatalf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	}
+	for _, off := range []string{"configure", "web_fetch", "grep", "remember"} {
+		if strings.Contains(tools.stdout, off) {
+			t.Errorf("meru tools lists %s, which is off:\n%s", off, tools.stdout)
+		}
+	}
+	if log := h.log(); !strings.Contains(log, "built-in tool off") || !strings.Contains(log, "[index] folders is empty") {
+		t.Errorf("merud.log doesn't say why grep is off:\n%s", log)
 	}
 }

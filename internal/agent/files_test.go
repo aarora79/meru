@@ -34,7 +34,7 @@ func TestSearchTurnReadsAWholeFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{}, nil, "", ix, nil, nil)
+	tools := builtin.New(filepath.Join(cfg.Dir, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", ix, nil, nil)
 	disp := dispatch.New([]dispatch.Backend{tools}, nil, dispatch.Options{})
 
 	args, _ := json.Marshal(map[string]string{"path": "accounts.md"})
@@ -63,8 +63,8 @@ func TestSearchTurnReadsAWholeFile(t *testing.T) {
 	for _, s := range eng.calls[0].tools {
 		offered = append(offered, s.Name)
 	}
-	if strings.Join(offered, " ") != "read_file list_folder grep" {
-		t.Errorf("offered %v, want the three file tools", offered)
+	if strings.Join(offered, " ") != "datetime read_file list_folder grep" {
+		t.Errorf("offered %v, want datetime and the three file tools", offered)
 	}
 	// The second round reads the whole file.
 	msgs := eng.lastCall().msgs

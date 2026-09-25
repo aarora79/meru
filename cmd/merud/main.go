@@ -208,7 +208,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
 	// merud owns the skills folder too: the agent lists and loads skills
 	// from it each turn, and the skill ops answer `meru skills`.
-	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), log)
+	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), cfg.Skills.Disabled, log)
 	if err != nil {
 		return err
 	}
@@ -218,11 +218,12 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if len(cfg.Index.Folders) == 0 {
 		files = nil
 	}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, mems.syncNow, log)
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, eng, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
+	logWebSearch(ctx, cfg, log)
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
@@ -298,8 +299,8 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 }
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
-// the index ops to the index service, the tools and log ops to the tool
-// service, the memory ops to the memory service, the skill ops to the skill
+// the index ops to the index service, the tools, log and MCP probe,
+// reload and status ops to the tool service, the memory ops to the memory service, the skill ops to the skill
 // service, and the usage op to the store. The rpc server answers pings
 // itself.
 func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, st *store.Store) rpc.Handler {
@@ -315,6 +316,12 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 			return tools.handleTools(emit)
 		case rpc.OpLog:
 			return tools.handleLog(ctx, req.Limit, emit)
+		case rpc.OpMCPProbe:
+			return tools.handleProbe(ctx, req, emit)
+		case rpc.OpMCPReload:
+			return tools.handleReload(ctx, emit)
+		case rpc.OpMCPStatus:
+			return tools.handleMCPStatus(emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, emit)
 		case rpc.OpMemoryList:

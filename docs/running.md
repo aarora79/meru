@@ -3,13 +3,14 @@
 This guide takes you from nothing to asking Meru a question, then covers settings,
 indexing your files, running it as a service, the dashboard, and fixing common
 problems. It describes v0.3: questions, streamed answers, session transcripts,
-routing, answers from your own files with citations, and tools from MCP servers
-and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
+routing, answers from your own files with citations, web search through a
+SearXNG you run, and tools from MCP servers and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
 ([ROADMAP.md](../ROADMAP.md)).
 
 ## 1. Install the prerequisites
 
-You need two programs on the machine that will run Meru.
+You need two programs on the machine that will run Meru, and a third for web
+search.
 
 - **Go 1.26 or later**, to build Meru. Download it from <https://go.dev/dl/>, or on
   macOS run `brew install go`. Check with `go version`. The repo pins Go 1.26.6;
@@ -19,6 +20,11 @@ You need two programs on the machine that will run Meru.
   `http://127.0.0.1:11434`. Check with `curl http://127.0.0.1:11434/api/version`.
   `merud` refuses to start with an older Ollama, because the router needs log
   probabilities, which Ollama added in 0.12.11.
+- **Docker**, only for web search. Meru searches the web through SearXNG, which
+  runs in a container (see [Web search](#web-search)). Meru runs without Docker;
+  only the `web_search` tool stops working, and it tells the model why. On macOS,
+  Docker Desktop or Colima provides `docker compose`; check with
+  `docker compose version`.
 
 ## 2. Download the models
 
@@ -120,6 +126,8 @@ In `meru chat`:
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
 | `/new`, then Enter | start a new conversation: the screen clears and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
+| `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
+| `/exit`, then Enter | quit, like Ctrl-D |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
 index, the memories and the session on the left:
@@ -202,10 +210,12 @@ half a minute of the first memory.
 
 ### Skills
 
-A skill is a Markdown file of instructions for one kind of task. Meru ships two:
-`writing`, plain-English rules for emails, summaries and reports, and
-`explainer`, which builds a one-page HTML explainer on a topic. On its first
-start, `merud` copies both to `~/.meru/skills/<name>/SKILL.md`.
+A skill is a Markdown file of instructions for one kind of task. Meru ships
+three: `writing`, plain-English rules for emails, summaries and reports;
+`explainer`, which builds a one-page HTML explainer on a topic; and
+`web-research`, which tells the model how to search and read pages for a
+question about current facts. When it starts, `merud` copies each one it
+doesn't find to `~/.meru/skills/<name>/SKILL.md`.
 
 Every prompt lists each skill's name and description. For each question, a short
 call to the fast model picks the skills it needs, at most two, and only their
@@ -219,7 +229,7 @@ meru skills reset writing     # put the shipped copy back
 ```
 
 `reset` replaces your edits, so on a terminal it asks first; in a script, add
-`--yes`. It works only on the two built-ins.
+`--yes`. It works only on the three built-ins.
 
 **Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
 change on the next question; no restart. `merud` never overwrites your copy, even
@@ -241,6 +251,18 @@ List the decisions first, then each action item with its owner and date.
 The name takes lowercase letters and digits joined by `-`. The description is what
 the fast model reads when it picks, so say when to use the skill. `merud` skips a
 folder that breaks a rule, and `meru skills list` shows why under `Skipped:`.
+
+**Turn a skill off** by naming it in `[skills] disabled`, then restart `merud`:
+
+```toml
+[skills]
+disabled = ["explainer"]
+```
+
+`merud` doesn't load a disabled skill, and doesn't copy a disabled built-in back,
+so you can delete `~/.meru/skills/explainer/` and it stays gone. A name that
+matches no skill is fine; `merud.log` notes it. A folder you add loads with no
+change here.
 
 **Files skills make.** The built-in `write_file` tool saves a file, such as an
 explainer page, in `~/meru-output/`. It creates the folder the first time, writes
@@ -269,7 +291,7 @@ While it answers, the model may call a tool, such as a search of your notes. `me
 shows each call on standard error, dimmed, as it starts and ends:
 
 ```text
-→ notes.search {"query":"garden budget"}
+→ notes.search {"query":"garden plan"}
 ✓ notes.search 120 ms
 ```
 
@@ -280,7 +302,7 @@ arguments and waits:
 Meru wants to run mail.send (mcp) with:
   {
     "to": "sam@example.com",
-    "subject": "Garden budget"
+    "subject": "Garden plan"
   }
 Run mail.send? [o]nce  [s]ession  [d]eny:
 ```
@@ -319,8 +341,8 @@ meru  builtin · connected
   3 of 3 tools allowed
 ```
 
-Each block is one tool source: an MCP server, another agent, or Meru's built-in
-tools. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
+Each block is one tool source: an MCP server, another agent, Meru's built-in
+tools, or your local commands, each with the program it runs. "asks first" marks a tool in a `confirm` list; "always asks" marks one that
 asks whatever the config says. A source `merud` couldn't reach shows
 `not connected` and the reason. A warning names each `allow` entry the source
 doesn't offer, most often a typo. With no sources, `meru tools` says how to
@@ -341,7 +363,8 @@ meru log -v         # each call's result under it
 
 The columns are the local time, the session, the kind of tool, the tool, how the
 call ended, what you chose when asked (`-` when nobody was asked), how long it took,
-and its arguments, cut to fit one line.
+and its arguments, cut to fit one line. For a local command the last column is the
+program and arguments it ran, such as `git -C /Users/you/repos/meru log --oneline`.
 
 ### See how much you use Meru
 
@@ -372,14 +395,40 @@ to see the same table.
 
 ## 6. Change settings
 
-Without a config file, `merud` uses the `lite` profile and the defaults. To change
-anything, create `~/.meru/config.toml` with only the keys you want to change.
-[config.example.toml](../config.example.toml) lists every key with its default and
-an explanation. For example, to switch to the `full` profile:
+Without a config file, `merud` uses the `lite` profile and the defaults.
+`meru setup` writes `~/.meru/config.toml` from the config template, which holds
+every key. What is on by default is uncommented, with its default value, so you
+see it and can change it. What is off, such as the MCP servers in the catalog,
+the example local commands and an A2A agent, sits in comments; delete the `# `
+in front of a block's lines to turn it on. To see the template at any time, or
+to start over from it:
+
+```sh
+meru config template                      # print it
+meru config template > ~/.meru/config.toml   # start over; this replaces your file
+```
+
+[config.example.toml](../config.example.toml) in the repo is the same file. A
+config with only the keys you change works too; any key you leave out keeps its
+default. For example, to switch to the `full` profile:
 
 ```toml
 profile = "full"
 ```
+
+**Turn a built-in tool off** by taking its name out of `[builtin] tools`. The
+model then never sees it, and `meru tools` doesn't list it:
+
+```toml
+[builtin]
+tools   = ["datetime", "remember", "write_file", "read_file", "list_folder", "grep", "web_search"]
+confirm = ["write_file"]   # each name here must also be in tools
+```
+
+That list leaves out `configure` and `web_fetch`. A tool you list still needs
+what it works on: the file tools need `[index] folders`, and `web_search` needs
+`[web] searxng_url`. Without it the tool stays off, and `merud.log` has a
+`built-in tool off` line that says why.
 
 Restart `merud` after editing the file. It checks every value at startup and
 refuses to start on a typo, an unknown key or a bad value, naming the key. It also
@@ -440,11 +489,11 @@ Then ask about your notes. When the router sends a question to search, the answe
 cites the excerpts it used by number, and `meru` lists them after it:
 
 ```text
-$ meru "what is the Q3 budget for the garden project?"
-The Q3 budget for the garden project is 4,200 dollars [1].
+$ meru "when does the garden project sow tomatoes?"
+The garden project sows tomatoes on 12 April [1].
 
 Sources:
-[1] ~/notes/garden.md, "Budget", lines 3–5
+[1] ~/notes/garden.md, "Planting", lines 3–5
 ```
 
 Each source gives the file, the heading it sits under, and the lines (or the page,
@@ -514,6 +563,13 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
+### Dates and times
+
+Each question's prompt carries today's date. For the time, a weekday, days until a
+date or the time somewhere else, the model calls the built-in `datetime` tool, which
+reads your computer's clock. It needs no setup and is offered on every question:
+`meru "how many days until 25 December?"` shows `→ datetime` before the answer.
+
 ### Reading whole files
 
 Search puts the ten best excerpts in the prompt, about 500 tokens each. When a
@@ -524,8 +580,8 @@ can use three read-only tools on the same folders:
 - `list_folder` lists a folder, 1 to 3 levels deep;
 - `grep` finds every line that holds a word or a pattern.
 
-They reach only your `[index] folders` and skip what the indexer skips, so they
-read nothing search couldn't. They run without asking; to approve each call, add
+They reach only your `[index] folders`, and the folder `web_fetch` downloads
+into, and skip what the indexer skips. They run without asking; to approve each call, add
 them to `[builtin] confirm`. `meru` shows each call as it runs:
 
 ```text
@@ -539,7 +595,7 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 
 ### meru setup
 
-`meru setup` walks through a first run in six short steps:
+`meru setup` walks through a first run in seven short steps:
 
 1. **Ollama.** It checks that Ollama answers at `base_url`. If not, it prints the
    install command for your system and waits while you start it.
@@ -547,72 +603,455 @@ Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
    `config.toml`), and it runs `ollama pull` for each model, with Ollama's own
    progress bar.
 3. **Your files.** With no `config.toml` yet, it asks which folders to index and
-   writes the file. With one already there, it leaves the file alone and tells you
+   writes the config template with your profile and folders filled in. With one
+   already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
-4. **Tools.** It offers each server in the catalog, one at a time (see below).
-5. **About you.** If `merud` is running, it offers `meru setup user` (see
+4. **Web search.** It checks that SearXNG answers JSON at `[web] searxng_url`. If
+   nothing answers, it prints the container commands from
+   [Web search](#web-search); if SearXNG answers a web page, it names the
+   `formats` setting. Press Enter to check again, or type `s` to skip.
+5. **Tools.** It offers each server in the catalog, one at a time (see below).
+6. **About you.** If `merud` is running, it offers `meru setup user` (see
    [Tell Meru about you](#tell-meru-about-you)).
-6. **A test question.** If `merud` is running, it asks one question and prints
+7. **A test question.** If `merud` is running, it asks one question and prints
    the answer. If not, it tells you how to start `merud`.
+
+### Web search
+
+Meru searches the web through SearXNG, a search engine you run yourself. It holds
+no index: it passes your query to Google, Bing, DuckDuckGo and others, drops the
+parts that identify you, and merges the results. No account, no API key.
+
+You run it once, in Docker, and Meru uses it from then on.
+
+```sh
+mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
+curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml \
+     -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
+cp -i .env.example .env && printf 'SEARXNG_HOST=127.0.0.1\nSEARXNG_PORT=8888\n' >> .env
+docker compose up -d
+```
+
+The two lines added to `.env` matter. Upstream's compose file listens on port
+8080 on every network interface, which would let other machines on your network
+use your SearXNG. With them, it listens on `127.0.0.1:8888` only, where Meru looks.
+
+SearXNG answers on `http://127.0.0.1:8888` and returns web pages. Meru needs JSON,
+which is off by default: SearXNG answers a JSON request with `403 Forbidden`. The
+first start writes `~/srv/searxng/core-config/settings.yml`; add JSON to the end of
+it:
+
+```sh
+cat >> ~/srv/searxng/core-config/settings.yml <<'EOF'
+
+search:
+  formats:
+    - html
+    - json
+EOF
+```
+
+Then restart it and check that JSON comes back:
+
+```sh
+docker compose restart
+curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
+```
+
+A line starting `{"query":` means it works. A line of HTML means the `formats`
+change did not take; check the file path and restart again.
+
+Meru's default config already points at `http://127.0.0.1:8888`, so there is
+nothing else to do. `merud` logs `web search ready` when it starts, `meru tools`
+lists `web_search` under `meru`, and a question such as
+`meru "search the web for the latest Go release"` uses it. To turn web search off,
+set `searxng_url = ""` under `[web]` in `~/.meru/config.toml`.
+
+To stop it: `cd ~/srv/searxng && docker compose down`. To update it:
+`docker compose pull && docker compose up -d`.
+
+**What leaves your machine.** Your search words go to the engines SearXNG asks;
+that is what web search is. They go without an account and without cookies,
+spread across engines rather than building a profile with one company. Your
+question, your files and the model's answer never leave; only the search words do.
+The model writes those words, so they can hold words from your question.
+
+**If searches stop returning anything**, an engine is rate-limiting your address.
+SearXNG spreads queries across engines, which softens this rather than curing it.
+Wait, or turn off the offending engine in `settings.yml`.
+
+#### Reading web pages
+
+`web_search` returns titles, URLs and snippets. A snippet is short and often
+months old, so Meru also offers `web_fetch`, which reads a whole public page. It
+is on by default. It fetches only when the model asks, and it does one of three
+things:
+
+- **Read a page.** With no prompt, the model gets the page's text, HTML, PDF or
+  plain text, up to 5 MB, 12,000 characters at a time, as `read_file` does for
+  your files.
+- **Answer from a page.** With a prompt, such as "what is the latest stable
+  release, and when did it come out?", the fast model reads up to 48,000
+  characters of the page and answers from the page alone. The model sees one
+  line such as `From https://go.dev/doc/devel/release (fetched 2026-09-24): ...`
+  instead of the whole page.
+- **Download a file.** With `save`, the file goes to
+  `~/meru-output/downloads/` (under `[skills] output_dir`), up to 50 MB and 2
+  minutes. Meru never overwrites: a second `report.pdf` becomes `report-2.pdf`.
+
+A fetch brings the page's text into the conversation and keeps nothing on disk.
+A download writes the file to your disk and keeps it there after the chat ends;
+the model sees only the path, the size, the type and the first 2,000 characters.
+`read_file` and `grep` can then read the file, as long as you index at least one
+folder, which turns those tools on. Search never indexes the downloads folder.
+
+The built-in `web-research` skill tells the model how to use the two tools:
+search first, read the one or two best pages with a prompt, prefer the project's
+own site, check dates against today, and cite each URL.
+
+**When it asks you.** A web address can carry your data out, as in
+`https://example.com/?notes=my+tax+return`. A page the model reads could ask it
+to build one. So `web_fetch` runs without asking only for an address that a
+search result or your own question showed earlier in the same chat, or for another
+page on the same site when the address has no `?` part. For any other address it
+asks, offering once or deny, every time. Every download asks
+too, even from a search result, because the file stays on your disk; there you
+may approve it for the rest of the chat. A scheduled job has nobody to ask, so it
+skips those calls.
+
+```text
+$ meru "search the web for the latest Go release and tell me its version, with sources"
+→ web_search {"query":"latest Go release version"}
+✓ web_search 2.2s
+→ web_fetch {"url":"https://go.dev/doc/devel/release","prompt":"List the newest releases with their dates."}
+✓ web_fetch 1.1s
+...
+```
+
+**What it costs you.** `merud` itself connects to web sites: the one case where
+it connects off this machine without a `remote = true` entry. Each site you read
+sees your IP address and a User-Agent that names Meru, and can log that you read
+the page. The tool keeps no cookies and uses no proxy. It refuses any address on
+this machine or your local network (127.0.0.1, 192.168.x.x, 10.x.x.x, cloud
+metadata at 169.254.169.254 and the like), checked after DNS as it connects, and
+it follows at most 5 redirects, each checked the same way. So a page can't steer
+it at your router or another service on your network.
+
+**To turn it off**, take `web_fetch` out of `[builtin] tools` and restart
+`merud` (see [Change settings](#6-change-settings)). `[builtin] tools` is its
+only switch. A config that still says `fetch` or `read_pages` under `[web]`
+stops `merud` with "web.fetch moved: list web_fetch in [builtin] tools, or
+remove it to turn page fetching off"; delete the line and keep or drop
+`web_fetch` in `[builtin] tools`. To approve every fetch, even of
+a search result, add it to `[builtin] confirm`:
+
+```toml
+[builtin]
+confirm = ["write_file", "web_fetch"]
+```
 
 ### meru mcp add
 
-An MCP server gives the model tools. Meru knows six:
+An MCP server gives the model tools. Meru knows two, and `meru mcp list` shows
+them:
 
 ```sh
-meru mcp list-catalog
+meru mcp list
 ```
 
 | Name | What the model gets | What you need |
 | --- | --- | --- |
-| `brave` | web and news search | a Brave Search API key, and Node.js for `npx` |
-| `fetch` | reading a web page | `uv`, which provides `uvx` |
-| `gmail` | search and read mail; drafting and sending ask first | a Google OAuth client and `uv`; you sign in to Google on first use |
-| `calendar` | calendars and events; changing an event asks first | as for `gmail` |
-| `drive` | Drive files and Docs; creating or editing a doc asks first | as for `gmail` |
+| `google` | search and read mail and threads, send mail, list and change calendar events, search Drive, read a doc; sending mail and changing an event ask first | a Google OAuth client, `uv`, and the server running, which you start |
 | `obsidian` | list, read and search notes; appending asks first | Obsidian running with the Local REST API plugin, and `uv` |
 
-To add one:
+To add one, name it:
 
 ```sh
-meru mcp add brave
+meru mcp add obsidian
 ```
 
 Meru shows what the server does and offers two paths:
 
 - **d) Do it for me.** Meru asks for each thing the server needs, one at a time.
   It reads an API key without showing it on screen and saves it to
-  `~/.meru/secrets.toml`, never to `config.toml`. Then it shows the exact block
-  it will add to `config.toml` and writes it only after you say yes.
+  `~/.meru/secrets.toml`, never to `config.toml`. Then it tries the server (see
+  below), shows the exact block it will add to `config.toml`, and writes it only
+  after you say yes.
 - **s) Show me how.** Meru prints the install step, the block, the file to paste
   it into, and the lines to add to `secrets.toml`. It writes nothing.
 
-A server outside the catalog works too:
+`obsidian` is a stdio server: `merud` starts it as a child process. `google` is a server you start yourself (see
+[The google entry](#the-google-entry)).
+
+A server outside the catalog takes one command too:
 
 ```sh
-meru mcp add notes -- /usr/local/bin/notes-mcp --vault ~/notes   # a stdio server
-meru mcp add calendar --url http://127.0.0.1:8123/mcp            # a running HTTP server
+meru mcp add stdio notes -- /usr/local/bin/notes-mcp --vault ~/notes   # merud starts it
+meru mcp add http tasks http://127.0.0.1:8123/mcp                      # you start it
+meru mcp add http team https://mcp.example.com/mcp --remote            # on another machine
 ```
 
-Meru doesn't know such a server's tool names, so its `allow` list starts empty
-and the model gets none of its tools. After the restart below, run `meru tools`
-to see what the server offers, and name the tools to allow in `config.toml`.
+A URL off this machine needs `--remote`. Every call to one of its tools sends
+your data to that machine, and Meru says so before it writes anything. `remote`
+covers only where `merud` connects. It says nothing about what the server itself
+reaches: `google` runs on this machine with `remote = false` and talks to Google.
+The older forms, `meru mcp add notes -- <command>` and `meru mcp add tasks --url
+<url>`, still work.
 
-`merud` reads `config.toml` only when it starts. After adding a server, restart it
-and check what the model now has:
+An `env` table goes only on a stdio server. `merud` starts no process for a `url`
+server, so it has no environment to set, and `merud` refuses to start with this
+message:
+
+```text
+mcp server "tasks": env does nothing on a url server, because merud doesn't start it. Set the variables where you start the server, or send a key with headers
+```
+
+A config written before `network` became `remote` fails to load with "network was
+renamed remote". Change the key and restart `merud`.
+
+#### Meru tries the server first
+
+When `merud` runs, Meru asks it to start the server for a moment and list its
+tools. `merud` calls none of them. Many servers mark each tool as read-only or as
+one that may delete. From those marks Meru proposes which tools the model may use:
+
+```text
+Starting notes to see what it offers. The first run of an npx or uvx server downloads it, which can take a minute.
+notes-mcp 1.2.0 offers 4 tools.
+  allow  search       Searches the notes.  read-only
+  ask    write_note   Writes a note.       changes things
+  ask    delete_note  Deletes a note.      may delete
+  ask    mystery      Does something.      no hint
+Enter accepts. Or type changes: -name leaves a tool out, +name allows it without asking, ?name makes it ask.
+> -delete_note
+```
+
+- `allow` runs without asking. Meru proposes it for a tool the server marks
+  read-only.
+- `ask` is allowed, and asks you before each call. Meru proposes it for every
+  other tool, including one with no mark.
+- `off` leaves the tool out: the model never sees it.
+
+For a catalog entry, the catalog's own lists win over the marks, and a tool the
+catalog doesn't name starts `off`. A server can mark a tool wrong, so read the list
+before you press Enter. Type `-name`, `+name` or `?name` (several at once work)
+and Meru shows the table again.
+
+After you say yes to the block, Meru writes it and asks `merud` to reload its
+servers, so the new tools work at once:
+
+```text
+merud reloaded. No restart needed:
+notes  mcp · stdio · connected
+  notes.search
+  notes.write_note  asks first
+  2 of 4 tools allowed
+```
+
+When the server doesn't start (a wrong command, or a slow first download), Meru
+prints why and offers `r` to try again, `w` to write the entry anyway, or `c` to
+cancel. Written anyway, a catalog entry keeps the catalog's lists and a server of
+your own allows no tools yet: run `meru tools` once it works, and name the tools
+in `config.toml`.
+
+When `merud` isn't running, Meru can't try the server. It writes the catalog's
+lists, or an empty `allow` for a server of your own, and the server loads when
+`merud` starts.
+
+For a server you start, such as `google`, Meru first checks for one second whether
+anything answers at the URL. When nothing does, it skips the try, writes the
+catalog's lists, and says `merud` connects on your next question after you start
+the server.
+
+#### The google entry
+
+`google` runs [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
+for Gmail, Calendar, Drive and Docs. You start it and keep it running; `merud`
+connects to it at `http://127.0.0.1:8000/mcp` and never starts, restarts or
+watches it. `meru mcp add google` prints the command:
+
+```sh
+GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
+  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs
+```
+
+Before the first run, turn on the Gmail, Calendar, Drive and Docs APIs in Google
+Cloud Console and create an OAuth client of type "Desktop app"; the
+[quick start](https://workspacemcp.com/quick-start) lists the steps. The client ID
+and secret go in the server's environment when you start it. They never pass
+through Meru, and `secrets.toml` doesn't hold them. The first time the model uses
+a Google tool, the server gives you a link to sign in to Google.
+
+Run the command in a terminal, or from `launchd` or `systemd` the way you run
+Ollama. The server offers more than 120 tools. `--tools` limits it to four Google
+services, and the catalog's `allow` list gives the model eight tools:
+
+| Tool | Asks first |
+| --- | --- |
+| `search_gmail_messages`, `get_gmail_message_content`, `get_gmail_thread_content` | no |
+| `send_gmail_message` | yes |
+| `get_events` | no |
+| `manage_event` | yes |
+| `search_drive_files`, `get_doc_content` | no |
+
+The catalog has no shell server; to let the model run a program, declare it in
+`[[commands]]` (see [Local commands](#local-commands)).
+
+#### See each server's state
+
+`meru mcp`, or `meru mcp status`, prints one row per server in `config.toml`:
+
+```text
+$ meru mcp
+SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM
+google     http       connected       124        8        2   127.0.0.1:8000/mcp
+obsidian   stdio      not connected     —        5        1   exec: "uvx": executable file not found in $PATH
+```
+
+| Column | What it shows |
+| --- | --- |
+| `SERVER` | the `name` from config |
+| `TRANSPORT` | `stdio` or `http` |
+| `STATE` | `connected` or `not connected` |
+| `TOOLS` | how many tools the server offers; `—` when it isn't connected |
+| `ALLOWED` | how many tools your `allow` list names |
+| `CONFIRM` | how many allowed tools ask first, from `confirm` and `always_confirm` |
+| last field | the URL of an HTTP server, or why the server isn't connected |
+
+`ALLOWED` and `CONFIRM` come from `config.toml`, so they show while a server is
+down. `merud` answers from what it already holds and sends nothing to any server,
+so the table comes back at once. `meru mcp --json` prints the same rows as JSON,
+and `/mcp` in `meru chat` shows the table in a box.
+
+`merud` connects to each server once when it starts. A server that isn't connected
+gets one more try at the start of each turn on a tools route: 5 seconds for an
+HTTP server, 30 for a stdio server. Nothing retries between turns. So when `google`
+shows `not connected`, start it, and ask your question: `merud` connects on that
+turn, with no restart. A stdio server that crashed comes back the same way. A
+server that fails the try leaves its tools out of that turn, and the model answers
+without them.
+
+#### See and remove servers
+
+`meru mcp list` ends with the servers in your `config.toml` and what `merud` says
+about each:
+
+```text
+Your servers:
+  obsidian   stdio · uvx · connected · offers 13, 5 allowed
+  notes      stdio · notes-mcp · not connected: exit status 1 · 2 allowed in config
+```
+
+To take one out:
+
+```sh
+meru mcp remove notes          # asks first; --yes skips the question
+```
+
+Meru deletes that server's `[[mcp.servers]]` block and the comment lines right
+above it, keeps the rest of `config.toml` as it was, and asks `merud` to reload.
+Keys stay in `secrets.toml`, since another server may use them.
+
+In chat you can also ask Meru to "connect my Google mail". The model calls the
+built-in `configure` tool, which asks you every time, with only "approve once" and
+"deny". `configure` won't add a server that needs an API key you haven't saved yet,
+because keys never pass through the model; Meru tells you to run `meru mcp add`
+instead.
+
+If you edit `config.toml` by hand, restart `merud` to load the change:
 
 ```sh
 pkill merud; merud &
 meru tools
 ```
 
-In chat you can also ask Meru to "connect my Gmail". The model calls the built-in
-`configure` tool, which asks you every time, with only "approve once" and "deny".
-A server that needs an API key you haven't saved yet isn't added from chat, because
-keys never pass through the model; Meru tells you to run `meru mcp add` instead.
-
 `secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
 other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.
+
+### Local commands
+
+To let the model run a program on your machine, declare the whole command in
+`~/.meru/config.toml`. The model picks the command and fills in its parameters;
+it can't add a flag, chain a second program or reach a shell. This one answers
+"what changed in the meru repo this week?":
+
+```toml
+[[commands]]
+name        = "git-log"
+description = "Commits from the past week in one of the user's git repositories"
+argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
+timeout     = "10s"
+
+  [commands.params.repo]
+  type        = "path"
+  under       = "~/repos"
+  description = "The repository's folder, such as meru"
+```
+
+Restart `merud`, then check what the model gets:
+
+```sh
+pkill merud; merud &
+meru tools
+```
+
+```text
+commands  command · connected
+  cmd.git-log
+    runs: git -C {repo} log --since=1.week --oneline
+  1 of 1 tools allowed
+```
+
+Ask, and see what ran:
+
+```sh
+meru "what changed in the meru repo this week?"
+meru log -n 1
+```
+
+```text
+→ cmd.git-log {"repo":"meru"}
+✓ cmd.git-log 25 ms
+…
+2026-09-24 16:04:19  200416-1625  command  meru.cmd.git-log  ok  -  25 ms  git -C /Users/you/repos/meru log --since=1.week --oneline
+```
+
+The rules:
+
+- **Each `{param}` fills one argument.** A value with spaces, quotes or a `;` stays
+  one argument, and `merud` runs the program directly, with no shell. A
+  placeholder inside a longer argument, such as `"--grep={text}"`, works too.
+  Write `{{` and `}}` for a literal brace.
+- **Parameters have types.** `string` takes text up to `max_len` bytes (default
+  4096), and can't start with `-` when it fills a whole argument, so it can't
+  become a flag. `int` takes a whole number, within `min` and `max` if you set
+  them. `enum` takes one of `values`. `path` must exist and, with every link
+  followed, lie inside `under`; `~` works, and a relative path such as `meru`
+  starts at `under`. Every parameter is required.
+- **No shells or interpreters.** `merud` refuses to start when `argv[0]` is `sh`,
+  `bash`, `zsh`, `fish`, `python`, `perl`, `ruby`, `node`, `env`, `pwsh`,
+  `powershell`, `cmd`, `osascript` or the like. A script of your own, named by its
+  path, is fine.
+- **A short environment.** The program gets `PATH`, `HOME` and `LANG`, plus any
+  names in `env_allowlist = ["NAME"]`. It starts in `cwd`, your home folder
+  unless set.
+- **Limits.** `timeout` defaults to `"30s"`, at most `"300s"`; when it passes,
+  `merud` kills the program and everything it started. `merud` keeps the first
+  1 MiB of the output and of the errors.
+- **Asking first.** `confirm = true` makes each run ask, as a tool in a
+  `confirm` list does. Read-only commands can run freely; give anything that
+  changes something `confirm = true`. A scheduled job can't ask, so it skips such
+  a command and its log shows the call as declined.
+- **Routes.** Questions that go to search get the commands without
+  `confirm = true`, so a question about an indexed folder such as `meru` can still
+  run `git log`. The tools routes get every command.
+
+`merud` checks every entry at startup and refuses to start on a bad one, naming
+it: a duplicate name, a placeholder with no parameter, a parameter no placeholder
+uses, a `path` with no `under`, an `under` folder that doesn't exist, a timeout
+over `"300s"`, and so on. A program missing from `PATH` only gets a warning in
+`merud.log`. The config template (`meru config template`) has four starters,
+commented out: `git-log`, `git-status`, `search-notes` and `disk-free`.
 
 ## 9. Keep merud running
 
@@ -682,34 +1121,100 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 ### Check answers on your own files
 
 Unit and end-to-end tests run against fake models and made-up files. They can't
-tell whether Meru answers well from *your* files with *your* model. After each
-update, ask the same few questions and compare with last time. Keep your questions
-and the answers you expect in `~/.meru/checks.md`, outside the repo, since they
-name your own files and work.
+tell whether Meru answers well from *your* files with *your* model. `meru check`
+can: it asks a fixed set of questions, grades each answer against what you
+expect, and prints PASS or FAIL. Run it after each update and compare with last
+time.
 
-Five checks cover the ways answers have gone wrong so far. Fill in the brackets
-with something your files hold:
+Your questions live in `~/.meru/checks.jsonl`, outside the repo, since they
+name your own files and work. To start, copy the example and change it:
 
-1. **A new topic after an unrelated one.** In one `meru chat`, ask "when did I
-   visit [a place]?", then "I think I did some work for [a customer or project],
-   remind me what it was". The second answer should come from that project's
-   notes. If its sources are the first topic's files, the search mixed the two
-   questions.
-2. **A real follow-up.** Ask "what did I pay for [something]?", then "how much did
-   it cost?". The second answer should still be about the same thing: a short
-   follow-up borrows the question before it.
-3. **Recovery.** When the model says it has nothing, type `/new` and ask again in
-   one full question. It should answer.
-4. **A whole folder.** Ask "help me write about my work, using everything in
-   [folder]". In v0.3 a turn reads the 10 best excerpts, about 5,000 tokens, so
-   expect a partial answer. Whole-file tools and larger models should do better
-   here; this check shows when they do.
-5. **A tool by name.** Ask "search my [server name] for [topic]". Tool lines
-   (`→ server.tool`) should show before the answer.
+```sh
+cp docs/examples/checks.example.jsonl ~/.meru/checks.jsonl
+meru check
+```
 
-For each, note the route, the sources and the time from `~/.meru/merud.log`
-(`grep 'msg=turn' ~/.meru/merud.log | tail -5`), and whether the answer was right.
-With `-v`, the `search done` and `prompt built` lines show what the model read.
+```text
+PASS  direct-capital  direct     direct          1.0s  -
+PASS  files-grep      files      search          8.3s  grep
+FAIL  web-go          web        tools          31.0s  web_search, web_fetch
+      answer lacks all of: 1.27.1
+PASS  mcp-vaults      mcp        search+tools    3.7s  obsidian_list_vaults
+
+direct     1/1
+files      1/1
+web        0/1
+mcp        1/1
+
+3 of 4 passed in 44s
+```
+
+Each line shows the verdict, the id, the category, the route, the seconds the
+turn took and the tools the model asked for. Under a FAIL, one line per reason
+says what went wrong. `meru check` exits 0 when every question passes and 1
+otherwise.
+
+Nobody watches a check, so `meru check` denies every tool call that asks
+first, and prints `approval denied: <tool>` under the line. A question that
+needs such a tool fails, since its answer came without it.
+
+**The file.** One question per line, as JSON. `meru check` skips blank lines
+and lines that start with `#`. Each line has an `id`, a `category`, the
+`question` and a `want`:
+
+```json
+{"id": "direct-capital", "category": "direct", "question": "What is the capital of Australia?", "want": {"route": ["direct"], "answer_any": ["Canberra"]}}
+```
+
+Questions with the same `"session"` value run in one session, in file order,
+so the second can follow up on the first. Every other question starts a new
+session:
+
+```json
+{"id": "trip", "category": "session", "session": "topics", "question": "When did I visit Amsterdam?", "want": {"sources_any": ["amsterdam"]}}
+{"id": "work", "category": "session", "session": "topics", "question": "What work did I do for Fruitstand?", "want": {"sources_none": ["amsterdam"]}}
+```
+
+Every field in `want` is optional. A question passes when each field it sets
+passes. Text matches ignore case.
+
+| Field | Passes when | Example |
+| --- | --- | --- |
+| `route` | the router picked one of these routes | `"route": ["search", "search+tools"]` |
+| `tools` | the turn ran each of these tools | `"tools": ["obsidian", "read_file"]` |
+| `no_tools` | the model asked for no tool at all | `"no_tools": true` |
+| `answer_any` | the answer holds at least one of these | `"answer_any": ["Canberra"]` |
+| `answer_all` | the answer holds every one of these | `"answer_all": ["go.dev", "1.27"]` |
+| `sources_any` | a file the search found has one of these in its path | `"sources_any": ["coase", "firm"]` |
+| `sources_none` | no file the search found has any of these in its path | `"sources_none": ["ams-visa"]` |
+| `max_seconds` | the turn took less than this | `"max_seconds": 30` |
+
+A name in `tools` matches a tool the turn ran in one of three ways: the full
+name as `meru tools` lists it (`obsidian.obsidian_search_vault`), a server
+prefix (`obsidian` matches every obsidian tool), or the name without its prefix
+(`git-log` matches `cmd.git-log`). The sources are every file the search put in
+the prompt, whether or not the answer cites it.
+
+`meru check` stops before asking anything when a line is bad: JSON that doesn't
+parse, a field the format doesn't have, a missing `id`, `category` or
+`question`, or an `id` used twice. The message gives the line number.
+
+**Flags.**
+
+```sh
+meru check                         # every question in ~/.meru/checks.jsonl
+meru check other.jsonl             # another file
+meru check --only direct,web-go    # only these categories or ids
+meru check --json                  # one JSON record per question, no table
+meru check --save                  # also save the results
+```
+
+`--save` appends one JSON record per question to
+`~/.meru/checks-results/<date>.jsonl` and says so at the end. Each record holds
+the run's start time, the question, PASS or FAIL with the reasons, the route,
+the tools, the sources, the seconds and the whole answer. To compare two runs,
+pick them out by their `run` field; comparing them inside `meru check` is for
+later.
 
 ## 12. Troubleshooting
 
@@ -723,7 +1228,9 @@ With `-v`, the `search done` and `prompt built` lines show what the model read.
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
-| `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `config.example.toml` shows the allowed values. |
+| `web_search` answers that JSON is off, or `curl` on SearXNG prints HTML | SearXNG answers web pages only. Add `json` under `search: formats:` in `~/srv/searxng/core-config/settings.yml`, then `docker compose restart` (see [Web search](#web-search)). |
+| `web_search` says `SearXNG isn't answering on http://127.0.0.1:8888` | The container isn't running. Run `cd ~/srv/searxng && docker compose up -d`, and check that Docker itself runs. `docker compose ps` should show `127.0.0.1:8888->8888/tcp`. |
+| `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |

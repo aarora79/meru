@@ -20,7 +20,7 @@ const memoryHeader = "Things you remember that may matter here:"
 
 // memorySection recalls the memories that fit query and formats them for
 // the system prompt. It runs on every route, direct included: a preference
-// such as "always ask before trading" matters most on a turn that runs
+// such as "always ask before sending mail" matters most on a turn that runs
 // tools, and a fact about a person matters on a direct question about
 // them. It costs one embedding of the query.
 //

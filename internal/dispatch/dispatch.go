@@ -20,6 +20,7 @@ const (
 	KindMCP     = "mcp"
 	KindA2A     = "a2a"
 	KindBuiltin = "builtin"
+	KindCommand = "command" // a [[commands]] entry, named "cmd.<name>"
 )
 
 // Outcomes of a call, as they appear in tool_calls rows, transcript lines
@@ -48,20 +49,22 @@ const (
 	ConfirmAlways
 )
 
-// Backend is one source of tools: the MCP client pool, the A2A client, or
-// the built-in tools. There are three, which is why this is an interface.
+// Backend is one source of tools: the MCP client pool, the A2A client, the
+// built-in tools, or the local commands. There are four, which is why this
+// is an interface.
 type Backend interface {
-	// Kind returns KindMCP, KindA2A or KindBuiltin.
+	// Kind returns KindMCP, KindA2A, KindBuiltin or KindCommand.
 	Kind() string
 	// Tools returns the tools the model may use from this source, by full
-	// name: "<server>.<tool>", "a2a.<agent>.<skill>", or the built-in's
-	// name. Tools not on an allowlist aren't in it.
+	// name: "<server>.<tool>", "a2a.<agent>.<skill>", "cmd.<name>", or the
+	// built-in's name. Tools not on an allowlist aren't in it.
 	Tools() []engine.ToolSpec
 	// Confirm says whether the named tool asks first. name is one that
 	// Tools returned.
 	Confirm(name string) Confirm
 	// Locate splits a full name into the server (or agent) and the tool
-	// name for rows and metrics. For a built-in, server is "meru".
+	// name for rows and metrics. For a built-in or a command, server is
+	// "meru".
 	Locate(name string) (server, tool string)
 	// Call runs the named tool with args, a JSON object. A tool that ran
 	// and reported a failure returns a Result with IsError set and a nil
@@ -71,6 +74,46 @@ type Backend interface {
 	// `meru tools list`: whether it is connected and which tools it gives
 	// the model.
 	Status() []rpc.ServerInfo
+}
+
+// Auditor is an extra method a Backend may have. When the model's
+// arguments don't show what a call will do, AuditArgs returns what will
+// happen instead, as a JSON object, and Dispatch records that in their
+// place: in the tool_call line, the approval prompt, the tool_calls row and
+// the span. It returns nil to keep the model's arguments, for example when
+// they are invalid and the call will fail anyway.
+//
+// The commands backend is the one Auditor. The model sends {"repo":"meru"},
+// but the audit log must show the program that ran, such as
+// ["git","-C","/home/you/repos/meru","log"]. Dispatch writes the tool_call
+// line before the call runs, so the backend works that out up front rather
+// than in its Result.
+type Auditor interface {
+	AuditArgs(name string, args json.RawMessage) json.RawMessage
+}
+
+// CallConfirmer is an extra method a Backend may have. Confirm decides per
+// tool; ConfirmCall decides per call, from the call's arguments, session
+// and question. Dispatch asks ConfirmCall first, and uses what it returns
+// when ok is true; with ok false, Confirm decides as usual.
+//
+// The built-in tools are the one CallConfirmer. web_fetch runs without
+// asking for a URL that a web_search result or the user's own question in
+// the same session showed, and asks for any other URL, because a URL the
+// model made up can carry the user's data to a stranger's server in its
+// path or query (ARCHITECTURE.md, "Web search").
+type CallConfirmer interface {
+	ConfirmCall(c Call) (confirm Confirm, ok bool)
+}
+
+// Connector is an extra method a Backend may have. ConnectMissing tries
+// once to reach each of the backend's servers that isn't connected, and
+// returns when every try has ended. The agent loop calls it, through
+// Dispatcher.ConnectMissing, at the start of a turn that offers tools and
+// before it lists them. The MCP backend is the one Connector: merud never
+// retries an MCP server in the background (ARCHITECTURE.md, "MCP").
+type Connector interface {
+	ConnectMissing(ctx context.Context)
 }
 
 // Result is what a tool call hands back to the model.
@@ -92,6 +135,12 @@ type Call struct {
 	Args json.RawMessage
 	// Session is the session's ID. Session approvals are kept per session.
 	Session string
+	// Question is what the user typed: this turn's question, then the
+	// user's earlier questions that the model sees in its history, one per
+	// line. The agent fills it. A CallConfirmer reads it to tell a URL the
+	// user gave from one the model made up. It never reaches the transcript
+	// or the tool_calls row, which already hold the question.
+	Question string
 	// Source is where the question came from. A "job" has nobody to ask,
 	// so every call that needs a yes is declined.
 	Source rpc.Source

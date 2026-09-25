@@ -1,5 +1,5 @@
 // Package skills reads the skill folders under ~/.meru/skills/ and ships
-// Meru's two built-in skills, writing and explainer.
+// Meru's three built-in skills, writing, explainer and web-research.
 //
 // A skill is a folder holding a SKILL.md file: YAML frontmatter with a name
 // and a description, then a Markdown body of instructions. See
@@ -9,10 +9,12 @@
 // skill costs the prompt one line, not the whole file.
 //
 // The built-in skills live in builtin/ and ship inside the binary through Go's
-// embed package. They are byte-for-byte copies of the owner's my-ai-assets
-// skills (see AGENTS.md), so nobody edits them here. InstallBuiltins copies
+// embed package. writing and explainer are byte-for-byte copies of the
+// owner's my-ai-assets skills (see AGENTS.md), so nobody edits them here;
+// web-research is Meru's own, and this repo is its home. InstallBuiltins copies
 // them to disk only where no folder of that name exists, so your edits win;
-// Reset puts the shipped version back.
+// Reset puts the shipped version back. Both InstallBuiltins and Load take
+// [skills] disabled from config and skip the skills it names.
 //
 // Stamp tells merud when the folder changed, so it can call Load again;
 // Edited and File answer `meru skills list` and `meru skills show`.

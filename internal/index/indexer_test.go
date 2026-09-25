@@ -161,14 +161,14 @@ func TestEmbedBatches(t *testing.T) {
 
 func TestEmbedTextHasHeading(t *testing.T) {
 	root := tempRoot(t)
-	writeFiles(t, root, map[string]string{"n.md": "# Budget\n\n## Q3\n\nSpend less."})
+	writeFiles(t, root, map[string]string{"n.md": "# Garden\n\n## Spring\n\nSow early."})
 	ix, sink, _ := newTestIndexer(t, testConfig(root))
 	if _, err := ix.Scan(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	e, _ := sink.entry(filepath.Join(root, "n.md"))
 	// The fake engine's vector is the embedded text's length.
-	want := len("Budget > Q3\n\n## Q3\n\nSpend less.")
+	want := len("Garden > Spring\n\n## Spring\n\nSow early.")
 	if len(e.vecs) != 1 || int(e.vecs[0][0]) != want {
 		t.Errorf("vectors = %v; want one of %d, the heading path plus the text", e.vecs, want)
 	}
