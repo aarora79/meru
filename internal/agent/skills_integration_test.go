@@ -13,9 +13,11 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,4 +150,65 @@ func TestIntegrationRouteAndPick(t *testing.T) {
 	n := time.Duration(reps * len(questions))
 	t.Logf("route then pick: %v a turn; side by side: %v a turn",
 		(serial / n).Round(time.Millisecond), (together / n).Round(time.Millisecond))
+}
+
+// TestPickEval scores the skill pick on testdata/picks.jsonl: questions on
+// how to use a program, current facts, the user's own files, and plain
+// chat. It asks each question pickRuns times, because the same question
+// has drawn different picks on different runs, and prints the share of
+// right picks (see pickRight) by kind and overall. It asserts nothing; it
+// gives the numbers to compare before and after a change to the skill
+// descriptions or the pick prompt. `make pick-eval` runs it.
+func TestPickEval(t *testing.T) {
+	const pickRuns = 3
+	baseURL := envOr("MERU_TEST_OLLAMA", "http://127.0.0.1:11434")
+	model := envOr("MERU_TEST_FAST_MODEL", "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M")
+	eng, err := engine.NewOllama(baseURL, "5m", "", nil, nil)
+	if err != nil {
+		t.Fatalf("NewOllama: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if _, err := eng.Info(ctx); err != nil {
+		t.Skipf("Ollama not reachable at %s: %v", baseURL, err)
+	}
+	rows, err := loadPicks("testdata/picks.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig(t)
+	cfg.Models.Fast = model
+	a := New(cfg, eng, nil, nil, nil, nil, nil, quietLog())
+	reg := builtinRegistry(t)
+	a.pickSkills(ctx, reg, "hello") // load the model before the first scored call
+
+	// right and total count picks by kind; kinds keeps the file's order.
+	right, total := map[string]int{}, map[string]int{}
+	var kinds []string
+	for _, r := range rows {
+		if !slices.Contains(kinds, r.Kind) {
+			kinds = append(kinds, r.Kind)
+		}
+		var picks []string
+		for range pickRuns {
+			got := a.pickSkills(ctx, reg, r.Q)
+			total[r.Kind]++
+			mark := "x"
+			if pickRight(got, r.Want) {
+				right[r.Kind]++
+				mark = "ok"
+			}
+			picks = append(picks, fmt.Sprintf("%s %v", mark, got))
+		}
+		t.Logf("%-8s %-62q want %v: %s", r.Kind, r.Q, r.Want, strings.Join(picks, " | "))
+	}
+	allRight, all := 0, 0
+	for _, k := range kinds {
+		t.Logf("%-8s %2d of %2d right (%.0f%%)", k, right[k], total[k], 100*float64(right[k])/float64(total[k]))
+		allRight += right[k]
+		all += total[k]
+	}
+	t.Logf("overall  %2d of %2d right (%.0f%%): %d runs of %d questions, model %s",
+		allRight, all, 100*float64(allRight)/float64(all), pickRuns, len(rows), model)
 }

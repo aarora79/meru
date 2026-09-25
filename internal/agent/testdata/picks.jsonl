@@ -1,0 +1,21 @@
+{"q": "help me understand btop with some simple commands", "want": ["web-research"], "kind": "program"}
+{"q": "how do I use rsync to copy a folder to another machine?", "want": ["web-research"], "kind": "program"}
+{"q": "show me the basic ffmpeg command to turn a video into a gif", "want": ["web-research"], "kind": "program"}
+{"q": "what are the most useful tmux shortcuts?", "want": ["web-research"], "kind": "program"}
+{"q": "how do I undo the last git commit but keep my changes?", "want": ["web-research"], "kind": "program"}
+{"q": "explain the flags for the jq command with a few examples", "want": ["web-research"], "kind": "program"}
+{"q": "what's the latest version of Go?", "want": ["web-research"], "kind": "current"}
+{"q": "who won the most recent Tour de France?", "want": ["web-research"], "kind": "current"}
+{"q": "what's the weather in Lisbon this weekend?", "want": ["web-research"], "kind": "current"}
+{"q": "when is the next Ubuntu LTS release due?", "want": ["web-research"], "kind": "current"}
+{"q": "search the web for reviews of the Framework laptop", "want": ["web-research"], "kind": "current"}
+{"q": "what do my notes say about the garden shed plans?", "want": ["file-research"], "kind": "files"}
+{"q": "find the file where I wrote down the wifi setup steps", "want": ["file-research"], "kind": "files"}
+{"q": "which of my documents mention the book club?", "want": ["file-research"], "kind": "files"}
+{"q": "summarize my meeting notes from the sourdough workshop", "want": ["file-research"], "kind": "files"}
+{"q": "did I write anything about the trip to Kyoto?", "want": ["file-research"], "kind": "files"}
+{"q": "look through my papers folder for the one on coral reefs", "want": ["file-research"], "kind": "files"}
+{"q": "hi, how are you today?", "want": [], "kind": "chat"}
+{"q": "what is the capital of Canada?", "want": [], "kind": "chat"}
+{"q": "tell me a joke about cats", "want": [], "kind": "chat"}
+{"q": "thanks, that helped", "want": [], "kind": "chat"}

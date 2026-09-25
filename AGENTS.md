@@ -323,6 +323,7 @@ make vuln             # govulncheck
 make sec              # gosec
 make build            # binaries for five platforms in bin/
 make router-eval      # score the router on labelled questions against local Ollama
+make pick-eval        # score the skill pick on labelled questions against local Ollama
 go run ./cmd/merud    # run the daemon from source
 go run ./cmd/meru "..."
 ```

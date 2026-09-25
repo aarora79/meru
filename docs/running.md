@@ -256,8 +256,9 @@ A skill is a Markdown file of instructions for one kind of task. Meru ships
 four: `writing`, plain-English rules for emails, summaries and reports;
 `explainer`, which builds a one-page HTML explainer on a topic;
 `web-research`, which tells the model how to search and read pages for a
-question about current facts; and `file-research`, which tells it how to find
-and read things in your files with the file tools. When it starts, `merud` copies each one it
+question about how to use a program or about current facts; and
+`file-research`, which tells it how to find and read things in your files
+with the file tools. When it starts, `merud` copies each one it
 doesn't find to `~/.meru/skills/<name>/SKILL.md`.
 
 Every prompt lists each skill's name and description. For each question, a short
@@ -289,6 +290,19 @@ allows. With `web_search` off (no SearXNG) and `web_fetch` taken out of
 instructions out. If your `~/.meru/skills/web-research/SKILL.md` came from an
 older Meru, it lacks the line: run `meru skills reset web-research` and
 `meru skills reset file-research` to take the new copies.
+
+**After an upgrade, reset the research skills.** Newer copies of
+`web-research` and `file-research` carry sharper descriptions: `web-research`
+names how to use a program or command, and `file-research` rules that out.
+With the old wording the pick sent "help me understand btop with some simple
+commands" to `file-research`, and the model grepped your folders instead of
+searching the web. `merud` never overwrites your copies, so take the new ones
+with one command per skill:
+
+```sh
+meru skills reset --yes web-research
+meru skills reset --yes file-research
+```
 
 **Add your own** by making a folder under `~/.meru/skills/` whose name matches the
 skill's `name`, holding a `SKILL.md`:

@@ -270,17 +270,34 @@ func TestFilesNote(t *testing.T) {
 // a search that fails: each sends no sources, tells the model it found
 // nothing, and still answers.
 func TestSearchFindsNothing(t *testing.T) {
+	web := []engine.ToolSpec{spec("web_search"), spec("grep")}
+	failing := errors.New("embed: connection refused")
 	tests := []struct {
 		name   string
 		search *fakeSearcher
+		route  string
+		tools  []engine.ToolSpec // nil means no ToolRunner
+		want   string            // the note that stands in for the excerpts
 	}{
-		{"no results", &fakeSearcher{}},
-		{"search fails", &fakeSearcher{err: errors.New("embed: connection refused")}},
+		{"no results", &fakeSearcher{}, "search", nil, noResults},
+		{"search fails", &fakeSearcher{err: failing}, "search", nil, noResults},
+		{"no results with web_search", &fakeSearcher{}, "search+tools", web, noResultsWeb},
+		{"search fails with web_search", &fakeSearcher{err: failing}, "search+tools", web, noResultsWeb},
+		// The search route offers only the file tools, so web_search
+		// isn't there to point at.
+		{"search route leaves web_search out", &fakeSearcher{}, "search", web, noResults},
+		{"tools without web_search", &fakeSearcher{}, "search+tools", []engine.ToolSpec{spec("grep")}, noResults},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"I don't know."}}
-			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.9, Outcome: "ok"}}, tt.search, nil, nil, nil, quietLog())
+			// A nil *fakeTools inside the ToolRunner interface isn't a nil
+			// interface, so the agent gets a plain nil instead.
+			var tools ToolRunner
+			if tt.tools != nil {
+				tools = &fakeTools{specs: tt.tools}
+			}
+			a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}}, tt.search, tools, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "where are my notes?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
@@ -291,8 +308,16 @@ func TestSearchFindsNothing(t *testing.T) {
 				}
 			}
 			system := eng.lastCall().msgs[0].Content
-			if !strings.Contains(system, noResults) || strings.Contains(system, "From your files") {
-				t.Errorf("system prompt = %q, want the no-results note and no excerpts", system)
+			if !strings.Contains(system, tt.want) || strings.Contains(system, "From your files") {
+				t.Errorf("system prompt = %q, want %q and no excerpts", system, tt.want)
+			}
+			// Only one of the two notes goes in.
+			other := noResults
+			if tt.want == noResults {
+				other = noResultsWeb
+			}
+			if strings.Contains(system, other) {
+				t.Errorf("system prompt holds %q as well", other)
 			}
 		})
 	}

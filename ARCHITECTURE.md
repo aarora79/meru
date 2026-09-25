@@ -633,7 +633,16 @@ order.
    `search` it gets the four file tools' schemas and those of the local
    commands that don't ask, with a note that says it may run the `cmd.` tools.
    The note on the file tools says it may read whole files, list folders, grep
-   and search again when the excerpts fall short.
+   and search again when the excerpts fall short. A turn that offers both
+   `web_search` and a file tool adds a line to the tools note: when the files
+   don't answer, call `web_search` before answering from memory, and never make
+   up a command's flags or a version number. The line depends only on the tools
+   offered, so it keeps its place among the parts that stay the same. On such a
+   turn, a search that finds nothing tells the model to use `web_search` for how
+   to use a program and for facts that change, where it would otherwise say
+   "answer from what you know". A real turn drove both: "help me understand
+   btop with some simple commands" grepped the user's folders, found only pages
+   that name btop in passing, and answered with flags btop doesn't have.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
    On a route that offers tools, the loop first gives each MCP server that isn't
    connected one try, then lists the tools (see [MCP](#mcp)).
@@ -1517,8 +1526,19 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
-| `web-research` | For questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
-| `file-research` | For questions about the user's own files: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those four tools |
+| `web-research` | For how to use a program or command, and for questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
+| `file-research` | For questions about the user's own files, and not for how to use a program: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those four tools |
+
+The fast model picks from the descriptions alone, so their words decide which
+skill loads. `make pick-eval` asks the pick 21 labelled questions three times
+each: how to use a program, current facts, the user's files, and plain chat. A
+pick counts as right when it names the wanted skill and no research skill the
+question doesn't want. On the `lite` fast model (MiniCPM5 2B), the old
+descriptions got 50 of 63 right and chose `file-research` three times for the
+btop question. Naming programs and commands in `web-research`, and ruling them
+out in `file-research`, got 52 of 63, with no stray `file-research` pick. A
+line in the pick prompt that said to choose `file-research` only for the user's
+own files did worse, 42 of 63: naming the skill drew the model to it.
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
@@ -1527,7 +1547,8 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 - **Your copy wins.** `merud` never overwrites a skill you've edited, or one a
   newer Meru changed. To get the shipped version back, run
   `meru skills reset <name>`; a copy of `web-research` from before
-  `allowed-tools` needs it to bring its tools.
+  `allowed-tools` needs it to bring its tools, and copies of `web-research`
+  and `file-research` from before the sharper descriptions need it to get them.
 - **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
   counts, whether you wrote it or copied it from elsewhere.
 - **You turn one off in config.** `[skills] disabled` names the skills `merud`
