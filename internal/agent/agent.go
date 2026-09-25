@@ -293,6 +293,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
+	// And for the web: the router sent "Search the web: what is SearXNG?" to
+	// direct, and the model, with no tools, wrote a tool call as plain text.
+	// When the question says "web", "internet" or "online" and web_search
+	// exists, a route without tools gets them. A wrong guess ("build a web
+	// app") costs the tool schemas in the prompt, nothing more.
+	if r, ok := withTools(dec.Route); ok && a.tools != nil && asksForWeb(question, a.tools.Tools()) {
+		a.log.DebugContext(ctx, "route changed: the question asks for the web",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
+	}
 	route = dec.Route
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.

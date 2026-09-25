@@ -558,10 +558,10 @@ order.
    the question, with an earlier question appended on a follow-up. No model
    rewrites the query. The `tools` route searches too: the router sends some
    questions about your files there, and an answer from the files beats one from
-   the model alone. Three rules then adjust the route (see [Routing](#routing)):
+   the model alone. Four rules then adjust the route (see [Routing](#routing)):
    a `direct` question that names an indexed folder becomes `search`, a
    question that names a connected tool server gets tools, and so does a
-   question that says "remember". From v0.4, a separate
+   question that says "remember" or names the web. From v0.4, a separate
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
@@ -679,7 +679,7 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
-Three rules override the router, in this order. The first: when it picks `direct` and
+Four rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
 in the prompt, the router sent "what database does Meru use to store its index?" to
@@ -706,6 +706,11 @@ The third: when the question holds "remember" as a whole word and the route is
 `direct` or `search`, the loop adds the rest, so the model can call `remember`. "Remember that I
 work on the registry team" reads like chit-chat to the router, and a `direct` turn
 would answer "noted" and save nothing.
+
+The fourth: when the question says "web", "internet" or "online" as a whole word,
+`web_search` exists and the route is `direct` or `search`, the loop adds the rest.
+The router sent "Search the web: what is SearXNG?" to `direct`, and the model, with
+no tools, wrote a tool call as plain text.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
 135 questions, 40 of them held out, and fits the temperature. At 1.25 the
