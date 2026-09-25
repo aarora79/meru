@@ -967,3 +967,14 @@ and `expandHome`.
 - **Folders come from config only.** `meru index <folder>` rescans a folder
   you already listed; it can't add one. One place decides what `merud` may
   read.
+
+### merud: machine.go
+
+`machineLine` reads, once at startup, the facts a model needs to give commands and
+paths that fit: the OS and its version (`sw_vers` on macOS, `/etc/os-release` on
+Linux), the processor (`sysctl machdep.cpu.brand_string`, `/proc/cpuinfo`), the
+memory (`hw.memsize`, `/proc/meminfo`), the shell (`$SHELL`) and the time zone
+(`TZ`, else where `/etc/localtime` points). It runs each program with no shell and
+a two-second limit, leaves out any part it can't read, and never includes the host
+or user name. `agent.UseMachine` puts the line after today's date, in the part of
+the prompt that stays the same from turn to turn. merud also logs it at startup.

@@ -227,6 +227,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, searchAdapter{st: st, eng: eng}, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
+	machine := machineLine(ctx)
+	a.UseMachine(machine)
+	log.Info("machine", "line", machine)
 	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
 	if err != nil {
 		return err
