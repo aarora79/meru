@@ -655,7 +655,7 @@
 <!-- ============================================================ -->
 <h2 id="getting-content-in">Getting your content in</h2>
 
-<p>Meru reads only the folders you list under <code>[index] folders</code> in <code>config.toml</code>, and none until you list one. Inside them the <b>indexer</b> skips, in order: symbolic links, which it never follows; secret files such as <code>.env</code> or <code>id_rsa</code>, which no ignore file can bring back; hidden files; build folders such as <code>node_modules</code>; anything a <code>.gitignore</code> or <code>.meruignore</code> names; media, archives and programs; files over 5 MB; and anything else that isn't text. A <code>.meruignore</code> uses <code>.gitignore</code> syntax, so you can skip more, or bring back with <code>!name</code> a file git ignores. The file tools <code>read_file</code>, <code>list_folder</code> and <code>grep</code> follow the same rules, through the indexer's own code.</p>
+<p>Meru reads only the folders you list under <code>[index] folders</code> in <code>config.toml</code>, and none until you list one. Inside them the <b>indexer</b> skips, in order: symbolic links, which it never follows; secret files such as <code>.env</code> or <code>id_rsa</code>, which no ignore file can bring back; hidden files; build folders such as <code>node_modules</code>; anything a <code>.gitignore</code> or <code>.meruignore</code> names; media, archives and programs; files over 5 MB; and anything else that isn't text. A <code>.meruignore</code> uses <code>.gitignore</code> syntax, so you can skip more, or bring back with <code>!name</code> a file git ignores. The file tools <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code> follow the same rules, through the indexer's own code.</p>
 
 <p>The indexer cuts each file into <b>chunks</b> of about 500 tokens along its own structure: Markdown by heading, Go code by function or type, other code and text by blank lines, HTML by heading, and PDFs by page, as plain text without layout. Each chunk repeats the last 50 tokens of the one before, so a sentence cut at a boundary still appears whole somewhere.</p>
 
@@ -748,6 +748,12 @@
 
 <p>The search runs on the two routes that search, and looks for your question, plus an earlier question on a short follow-up; a question that names its own subject is searched alone. The tools route searches too, because the router sends some questions about your files there. So far it searches file chunks; from v0.4 it also searches memories and the summaries of past sessions. RRF merges the two lists within each source, and each source gets its own share of the prompt, so one busy source can't crowd out the others.</p>
 
+<h3 id="search-first">Search first, or let the model look</h3>
+
+<p>The model can also run this search itself. The <code>search_files</code> tool takes a query the model writes and returns numbered excerpts, which join the answer's sources like the prompt's. <code>[index] retrieval</code> decides who searches first. With <code>auto</code>, the default, <code>merud</code> searches before the answer, as above, and the model may search again with other words. With <code>agentic</code>, <code>merud</code> searches nothing first and adds no earlier conversations; the model looks with <code>search_files</code>, <code>grep</code>, <code>list_folder</code> and <code>read_file</code>, the way a coding agent explores a repository.</p>
+
+<p>On the owner's 19 check questions with the <code>lite</code> model, three runs each, <code>auto</code> passed 54 of 57 and <code>agentic</code> 47 of 57. Questions answered by one search tied. <code>agentic</code> failed "when did I visit Amsterdam?" every time: the answer sits in visa PDFs, and the 2B model kept searching and reading instead of answering. It was faster on questions that need no files, such as "which Obsidian vaults do I have?" (1.2 s against 14 s), because a prompt with no excerpts stays the same from turn to turn and Ollama reuses its work on it. So <code>auto</code> stays the default. ARCHITECTURE.md, "Retrieval", has the full table.</p>
+
 <!-- ============================================================ -->
 <h2 id="memory">Memory</h2>
 
@@ -782,7 +788,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <p>A skill is a Markdown file of instructions at <code>~/.meru/skills/&lt;name&gt;/SKILL.md</code>, with a name and a short description of when to use it. The prompt carries only names and descriptions. <code>merud</code> loads a skill's full text when a short model call picks it, so adding skills barely grows the prompt.</p>
 
-<p>Three skills ship inside the program:</p>
+<p>Four skills ship inside the program:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
@@ -790,6 +796,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
     <tr><td><code>writing</code></td><td>plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
     <tr><td><code>explainer</code></td><td>builds a self-contained web page that teaches a topic, with diagrams</td></tr>
     <tr><td><code>web-research</code></td><td>for questions about current facts: search, read the best one or two pages, prefer the project's own site, check dates, cite each URL</td></tr>
+    <tr><td><code>file-research</code></td><td>for questions about your own files: <code>search_files</code> for a topic, <code>grep</code> for an exact name, <code>list_folder</code> to look around, <code>read_file</code> for the whole text; stop after two or three rounds and cite</td></tr>
   </tbody>
 </table></div>
 
@@ -806,7 +813,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
   <li><b>Deny by default.</b> A server that offers 40 tools gives the model none until you name specific ones in its <code>allow</code> list. Wildcards aren't allowed: a <code>*</code> would let in tools a server adds in a later release, which nobody has read.</li>
   <li><b>Confirm.</b> Tools on the <code>confirm</code> list ask you on every call.</li>
   <li><b>Loopback unless you say otherwise.</b> <code>merud</code> refuses a server or agent URL off this machine unless its entry says <code>remote = true</code>. An agent elsewhere may pass your message to a cloud model, so that setting means consent for your data to leave. <code>remote</code> covers only where <code>merud</code> may connect. The <code>google</code> server sits on loopback with <code>remote = false</code> and still talks to Google. Before a rename it was <code>network</code>, and <code>merud</code> refuses to load a config that still says <code>network</code>. The A2A client checks each address again as it connects, and follows no redirects, so an agent's card can't point the calls somewhere else.</li>
-  <li><b>One door.</b> MCP tools, A2A agents, local commands and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>datetime</code>, <code>remember</code>, <code>write_file</code>, the web tools <code>web_search</code> and <code>web_fetch</code>, and three that only read your files: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches. The built-in tools need no allow entry. <code>[builtin] tools</code> in <code>config.toml</code> lists the ones the model sees, all nine by default; take a name out to turn that tool off. The three file tools reach only your <code>[index] folders</code> and the folder <code>web_fetch</code> downloads into, and skip what the indexer skips.</li>
+  <li><b>One door.</b> MCP tools, A2A agents, local commands and the built-in tools all go through <code>dispatch</code>. No other code reaches them. The built-in tools are <code>configure</code>, <code>datetime</code>, <code>remember</code>, <code>write_file</code>, the web tools <code>web_search</code> and <code>web_fetch</code>, and four that only read your files: <code>read_file</code> returns a whole file, 12,000 characters at a time; <code>list_folder</code> shows what a folder holds; <code>grep</code> finds every line that matches; <code>search_files</code> runs the hybrid search below for the words the model picks. The built-in tools need no allow entry. <code>[builtin] tools</code> in <code>config.toml</code> lists the ones the model sees, all ten by default; take a name out to turn that tool off. The four file tools reach only your <code>[index] folders</code> and the folder <code>web_fetch</code> downloads into, and skip what the indexer skips.</li>
 </ul>
 
 <figure id="fig-dispatch">

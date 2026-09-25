@@ -106,16 +106,16 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		ix.ReadAlso(filepath.Join(outputDir, "downloads"))
 	}
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
-	// A tool [builtin] tools lists but whose setting is missing stays off;
-	// say why, so the user isn't left guessing.
-	for _, off := range bt.Off() {
-		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
-	}
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)
 	// search_files runs the same hybrid search a turn runs before the
 	// answer, through the same store and embedding model.
 	bt.UseSearch(search)
+	// A tool [builtin] tools lists but whose setting is missing stays off;
+	// say why, so the user isn't left guessing.
+	for _, off := range bt.Off() {
+		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
+	}
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure, then the
 	// commands, so an MCP server named "cmd" can't shadow one.

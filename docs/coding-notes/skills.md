@@ -14,8 +14,9 @@ header with a `name` and a `description`, then Markdown instructions. This packa
 reads those folders into a `Registry`. `merud` puts each skill's name and
 description in the system prompt, and reads the instructions only when a turn
 picks the skill (see [agent](agent.md) for the pick). The package also carries
-Meru's three built-in skills, `writing`, `explainer` and `web-research`, inside
-the binary, and copies each to disk when its folder is missing.
+Meru's four built-in skills, `writing`, `explainer`, `web-research` and
+`file-research`, inside the binary, and copies each to disk when its folder is
+missing.
 
 ## The picture
 
@@ -168,9 +169,10 @@ come from the owner's `my-ai-assets` repo. Nobody edits them here. To update one
 copy the new version into both places. `TestBuiltinsMatchRepo` fails when the two
 copies differ.
 
-`builtin/web-research/SKILL.md` is Meru's own, so it has no twin in
-`.claude/skills/`, and `TestBuiltinsMatchRepo` checks only the two copied skills
-against the repo (the `fromAssets` list). It tells the model how to answer a
+`builtin/web-research/SKILL.md` and `builtin/file-research/SKILL.md` are
+Meru's own, so they have no twin in `.claude/skills/`, and
+`TestBuiltinsMatchRepo` checks only the two copied skills against the repo (the
+`fromAssets` list). It tells the model how to answer a
 question about current facts with `web_search` and `web_fetch`: search first,
 treat a snippet as a pointer, read the one or two best pages with a prompt,
 prefer the project's own site, check dates against today, quote versions from
@@ -180,9 +182,21 @@ latest version or release of something, news, prices", and "when asked to search
 the web". The integration test in `internal/agent` checks that the `lite` model
 picks it for "search the web for the latest Go release".
 
+`file-research` does the same job for your own files. It names the four file
+tools and when each fits: `search_files` for a topic in any words, `grep` for
+an exact name, code or phrase, `list_folder` to see a folder, and `read_file`
+for a whole file once a search has named it. It says to try other words once
+when a search misses, to stop after two or three rounds of tool calls, to cite
+`search_files`' excerpts by number and name any other file by its path, and to
+say where it looked when nothing answers. Its description names the questions
+it fits: what your files, notes or knowledge base say, or a file to find or
+read. It matters most with `[index] retrieval = "agentic"`, where no excerpts
+sit in the prompt.
+
 `merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
-folder is missing. So a user who installed Meru before `web-research` shipped
-gets it on the next start, and keeps any edits to the other two.
+folder is missing. So a user who installed Meru before `web-research` or
+`file-research` shipped gets them on the next start, and keeps any edits to the
+others.
 
 The explainer skill tells the model to build a printable poster with the
 `poster-making` skill. Meru doesn't ship `poster-making` (AGENTS.md keeps it a repo

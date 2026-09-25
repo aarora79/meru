@@ -675,7 +675,7 @@
   <thead><tr><th>Decision</th><th>Made by</th><th>How</th></tr></thead>
   <tbody>
     <tr><td>Answer directly, search, call tools, or search and call tools</td><td>the <code>fast</code> model (the router)</td><td>It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. <code>merud</code> searches anyway when a <code>direct</code> question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load.</td></tr>
-    <tr><td>What to search for</td><td><code>merud</code>, with no model</td><td>The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: <code>merud</code> appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again".</td></tr>
+    <tr><td>What to search for</td><td><code>merud</code>, with no model</td><td>The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: <code>merud</code> appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again". With <code>[index] retrieval = "agentic"</code> no search runs first, and the <code>main</code> model writes its own <code>search_files</code> queries.</td></tr>
     <tr><td>Which tools the model may use</td><td>you, in <code>config.toml</code></td><td>Only tools in each server's or agent's <code>allow</code> list reach the model; the rest don't exist to it. Each <code>[[commands]]</code> entry is one tool. The built-in tools need no entry.</td></tr>
     <tr><td>Which tool to call, with what arguments</td><td>the <code>main</code> model</td><td>It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or <code>[[commands]]</code> entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config.</td></tr>
     <tr><td>Whether a call runs without asking</td><td>you, in <code>config.toml</code> and at the prompt</td><td><code>dispatch</code> stops and asks when the tool is in its entry's <code>confirm</code> list, or its <code>[[commands]]</code> entry says <code>confirm = true</code>, unless you already approved that tool for this session. <code>configure</code> asks every time. <code>web_fetch</code> asks for a URL that no search result or question of yours gave, and before a download.</td></tr>
@@ -683,7 +683,7 @@
   </tbody>
 </table></div>
 
-<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers the three read-only file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, and the local commands that don't ask first. A question such as "write about everything in my work folder" lands on <code>search</code>, and ten excerpts can't cover a folder. So does "what changed in the meru repo this week?" when <code>meru</code> is an indexed folder, and a declared <code>git log</code> answers it. A command with <code>confirm = true</code> changes something, so it waits for a tools route. So do <code>web_search</code> and <code>web_fetch</code>: the router's option C names the web, so a question that needs it lands on a tools route. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
+<p>The <code>tools</code> and <code>search+tools</code> routes offer every allowed tool. <code>search</code> offers <code>datetime</code>, the four read-only file tools, <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code>, and the local commands that don't ask first. A question such as "write about everything in my work folder" lands on <code>search</code>, and ten excerpts can't cover a folder. So does "what changed in the meru repo this week?" when <code>meru</code> is an indexed folder, and a declared <code>git log</code> answers it. A command with <code>confirm = true</code> changes something, so it waits for a tools route. So do <code>web_search</code> and <code>web_fetch</code>: the router's option C names the web, so a question that needs it lands on a tools route. <code>direct</code> offers none. The model can't call a tool it hasn't seen, and the prompt stays shorter.</p>
 
 <h3 id="approving">Approving a tool call</h3>
 
@@ -706,16 +706,19 @@
   <li><b>Built-in tools have their own section.</b> A <b>built-in tool</b> is one that <code>merud</code> provides itself instead of an MCP server. They belong to no server entry, so <code>config.toml</code> gives them one section with two lists:
 <pre><code>[builtin]
 tools   = ["configure", "datetime", "remember", "write_file", "read_file",
-           "list_folder", "grep", "web_search", "web_fetch"]   # all nine, the default
+           "list_folder", "grep", "search_files", "web_search",
+           "web_fetch"]   # all ten, the default
 confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory</code></pre>
   <code>tools</code> lists the built-ins the model may use. Take a name out and <code>merud</code> doesn't register that tool with <code>dispatch</code>: the model never sees it, and <code>meru tools</code> doesn't list it. <code>configure</code> can go too; <code>meru mcp add</code> still works without it. An unknown name stops <code>merud</code> at load, with the valid names in the message, and so does a <code>confirm</code> entry that <code>tools</code> doesn't list. A listed tool still needs what it works on: the file tools need <code>[index] folders</code>, <code>write_file</code> needs <code>[skills] output_dir</code>, and <code>web_search</code> needs <code>[web] searxng_url</code>. Without it the tool stays off, and <code>merud</code> logs one info line at startup that names the tool and the missing setting.
-  <p>The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever <code>confirm</code> says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it in <code>confirm</code>; <code>write_file</code>, which asks before each file it saves because the shipped list names it; the two web tools, <code>web_search</code> and <code>web_fetch</code> (see <a href="#web-search">Web search</a>); and three read-only file tools. <code>web_search</code> and the file tools run without asking unless you list them. <code>web_fetch</code> runs without asking for a URL a search result or your question gave, and asks otherwise:
+  <p>The built-in tools are <code>configure</code>, which edits <code>config.toml</code> and always asks, whatever <code>confirm</code> says (see <a href="#setup">First run and setup</a>); <code>remember</code>, which saves a memory without asking unless you list it in <code>confirm</code>; <code>write_file</code>, which asks before each file it saves because the shipped list names it; the two web tools, <code>web_search</code> and <code>web_fetch</code> (see <a href="#web-search">Web search</a>); the clock tool, <code>datetime</code>; and four read-only file tools. <code>web_search</code>, <code>datetime</code> and the file tools run without asking unless you list them. <code>web_fetch</code> runs without asking for a URL a search result or your question gave, and asks otherwise:
 <div class="tbl"><table>
   <thead><tr><th>Tool</th><th>What it returns</th></tr></thead>
   <tbody>
     <tr><td><code>read_file</code></td><td>A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page.</td></tr>
     <tr><td><code>list_folder</code></td><td>A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries.</td></tr>
     <tr><td><code>grep</code></td><td>Every line that holds a word or an RE2 regular expression, as <code>path:line: text</code>, until 200 lines, 5 seconds or 20,000 files.</td></tr>
+    <tr><td><code>search_files</code></td><td>The hybrid search of <a href="#retrieval">Retrieval</a> for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's <code>sources</code> event. Offered when <code>[index] folders</code> is set.</td></tr>
+    <tr><td><code>datetime</code></td><td>The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, <code>direct</code> included, because "what day is Christmas?" routes direct.</td></tr>
     <tr><td><code>web_search</code></td><td>Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when <code>[web] searxng_url</code> is set.</td></tr>
     <tr><td><code>web_fetch</code></td><td>One public web page's text, 12,000 characters per call, like <code>read_file</code>; with a <code>prompt</code>, the <code>fast</code> model's answer from the page; with <code>save</code>, a file saved in <code>~/meru-output/downloads/</code>. Offered while <code>[builtin] tools</code> lists it.</td></tr>
   </tbody>
@@ -1041,7 +1044,7 @@ watch          = true</code></pre>
 
 <p>Before any search, the indexer splits files into <b>chunks</b>, pieces cut along the file's own structure: Markdown by heading, code by declaration or blank-line block, PDFs by page as plain text with no layout. <a href="#getting-your-content-in">Getting your content in</a> shows how.</p>
 
-<p>A search runs on the <code>search</code>, <code>tools</code> and <code>search+tools</code> routes. <code>tools</code> searches because the router sends some questions about your files there. It also runs on a <code>direct</code> question that names an indexed folder (see <a href="#routing">Routing</a>). Its query is the question, with an earlier question appended on a follow-up. So far a turn searches file chunks. From v0.4 it also searches memories and the summaries of past sessions. Each source gets the same keyword and meaning search, <code>rrf</code> merges the results within that source, and each source has its own share of the context budget, so one busy source can't crowd out the others. SQLite does both searches; our code merges the results:</p>
+<p>With <code>[index] retrieval = "auto"</code>, the default, a search runs before the answer on the <code>search</code>, <code>tools</code> and <code>search+tools</code> routes. <code>tools</code> searches because the router sends some questions about your files there. It also runs on a <code>direct</code> question that names an indexed folder (see <a href="#routing">Routing</a>). Its query is the question, with an earlier question appended on a follow-up. So far a turn searches file chunks. From v0.4 it also searches memories and the summaries of past sessions. Each source gets the same keyword and meaning search, <code>rrf</code> merges the results within that source, and each source has its own share of the context budget, so one busy source can't crowd out the others. SQLite does both searches; our code merges the results:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Piece</th><th>Comes from</th></tr></thead>
@@ -1156,13 +1159,67 @@ func rrf(lists ...[]int64) map[int64]float64 {
 
 <p>The list sizes are fixed constants in <code>internal/retrieve</code>: 50 hits from each search and 10 chunks after the merge. They aren't config keys. We'll tune them once we have measurements from real questions.</p>
 
+<h3 id="search-first-or-let-the-model-look">Search first, or let the model look</h3>
+
+<p>A coding agent finds code with <code>ls</code>, <code>grep</code> and a file reader, and no search before the answer. Meru can work that way too. The <code>search_files</code> built-in tool runs the same hybrid search for a query the model writes, and returns numbered excerpts, so search by meaning becomes one tool next to <code>grep</code>, <code>list_folder</code> and <code>read_file</code>. <code>[index] retrieval</code> picks who decides when to search:</p>
+
+<pre><code>[index]
+retrieval = "auto"      # the default; or "agentic"</code></pre>
+
+<div class="tbl"><table>
+  <thead><tr><th></th><th><code>auto</code></th><th><code>agentic</code></th></tr></thead>
+  <tbody>
+    <tr><td>Search before the answer</td><td>yes, on every route but <code>direct</code></td><td>no</td></tr>
+    <tr><td>Earlier conversations in the prompt</td><td>yes</td><td>no</td></tr>
+    <tr><td>Profile and recalled memories</td><td>yes</td><td>yes</td></tr>
+    <tr><td>File tools offered</td><td>the four, on the routes that offer tools</td><td>the same</td></tr>
+    <tr><td>Note in the prompt</td><td>the excerpts, with the rule on citing</td><td>"look first with <code>search_files</code> or <code>grep</code>, then <code>read_file</code>, stop after two or three rounds, cite the excerpts"</td></tr>
+  </tbody>
+</table></div>
+
+<p><code>agentic</code> needs <code>search_files</code> in <code>[builtin] tools</code>; <code>merud</code> refuses to start without it. A built-in skill, <code>file-research</code>, carries the same advice for the fast model to pick. In both modes a <code>search_files</code> excerpt numbers on from the turn's other excerpts and joins the <code>sources</code> event (see <a href="#citations">Citations</a>).</p>
+
+<p>We measured both modes with <code>meru check</code> on the owner's 19 questions and real folders: 5,600 files, on the <code>lite</code> profile (MiniCPM5 2B), three runs of each, from the same copy of <code>meru.db</code>.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Category (questions)</th><th><code>auto</code> passed</th><th><code>agentic</code> passed</th><th><code>auto</code> median s</th><th><code>agentic</code> median s</th></tr></thead>
+  <tbody>
+    <tr><td>direct (3)</td><td>9/9</td><td>9/9</td><td>1.5</td><td>1.8</td></tr>
+    <tr><td>files: list, grep, read (3)</td><td>9/9</td><td>9/9</td><td>8.3</td><td>5.6</td></tr>
+    <tr><td>retrieval: by meaning (3)</td><td>9/9</td><td>9/9</td><td>8.0</td><td>8.7</td></tr>
+    <tr><td>web (2)</td><td>5/6</td><td>2/6</td><td>24.0</td><td>18.1</td></tr>
+    <tr><td>mcp (2)</td><td>5/6</td><td>6/6</td><td>15.0</td><td>7.4</td></tr>
+    <tr><td>command (1)</td><td>3/3</td><td>3/3</td><td>25.5</td><td>19.0</td></tr>
+    <tr><td>profile (1)</td><td>3/3</td><td>3/3</td><td>11.5</td><td>1.3</td></tr>
+    <tr><td>session: two turns (2)</td><td>5/6</td><td>0/6</td><td>30.1</td><td>42.0</td></tr>
+    <tr><td>datetime (2)</td><td>6/6</td><td>6/6</td><td>4.9</td><td>5.2</td></tr>
+    <tr><td><b>all (19)</b></td><td><b>54/57</b></td><td><b>47/57</b></td><td>10.8</td><td>7.0</td></tr>
+  </tbody>
+</table></div>
+
+<p>A whole run of the 19 questions took 292 s of turn time with <code>auto</code> and 271 s with <code>agentic</code>, on average.</p>
+
+<p>What the numbers say:</p>
+
+<ul>
+  <li><b>On one-hop questions the two tie.</b> "What does my knowledge base say about Coase?" passed 3 of 3 both ways, at about the same time. The model called <code>search_files</code> once and answered.</li>
+  <li><b><code>agentic</code> lost where the answer takes several steps.</b> "So when did I visit Amsterdam?" failed all three <code>agentic</code> runs. The answer sits in visa PDFs. The up-front search put them in the prompt, and <code>auto</code> answered in one round. With the tools, the 2B model kept searching and reading. Twice it ended its turn by writing a tool call as plain text, and once it never called <code>search_files</code> and grepped instead. The next question in that session read the broken turn in its history and failed too.</li>
+  <li><b><code>agentic</code> was faster on turns that don't need your files.</b> "Which Obsidian vaults do I have?" took 1.2 s against 14 s, and "what is my name?" 1.3 s against 11.5 s. With no excerpts, the prompt stays the same from turn to turn, and Ollama reuses its work on it. The up-front excerpts change with each question, so <code>auto</code> reprocesses everything after them.</li>
+  <li><b>The web questions fell from 5/6 to 2/6.</b> The file tools' note also joins web turns, which offer every tool, and the 2B model read fewer pages or wrote a call as text. This loss comes from the note, not from retrieval; showing it only on turns about files would test that.</li>
+  <li><b><code>agentic</code> cost more prompt tokens on file questions</b>, 1.2 to 3 times as many, because each tool round sends the prompt again.</li>
+</ul>
+
+<p>So <code>auto</code> stays the default. It already holds both approaches: the excerpts in the prompt, and <code>search_files</code> for a second look. We didn't measure the <code>full</code> profile: the test machine was already 16 GB into swap, and a 23 GB model would have measured the disk. A larger model may follow the explore loop better; rerun <code>meru check</code> with each setting before changing the default for <code>full</code>.</p>
+
+<p>Dropping the vector index would take more than this mode. Recalled memories, earlier conversations and <code>search_files</code> itself all search it, and so do the v0.4 "Done when" tests for recall. The numbers give no reason to drop it: the one tool that searched by meaning was the one that answered the questions <code>agentic</code> passed.</p>
+
 <h3 id="citations">Citations</h3>
 
 <p><code>merud</code> numbers the chunks it found and puts them in the prompt under "From your files", with a rule that tells the model to cite each excerpt it uses as <code>[1]</code>, <code>[2]</code> and so on, and never to invent one. When a search finds nothing, the prompt says so instead, and the model answers without citing files.</p>
 
 <p>The system prompt names the folders in <code>[index] folders</code> on every turn, says that Meru searches them before it answers, and says the model can't open or list files itself. With no folders set, it tells the model that Meru hasn't indexed anything yet and where you add folders. Without this note a small model answers "I don't have access to your files" while it reads excerpts from them, and can't say what Meru indexes.</p>
 
-<p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites, and an answer that cites none gets no list: the model decides when a source matters. An earlier rule listed every excerpt when the answer cited none, in case a small model forgot to cite; in use it printed ten unrelated files under general answers and under an answer built from an Obsidian search.</p>
+<p>Before the first token, <code>merud</code> sends the client a <code>sources</code> event that lists each excerpt with its number, path (as <code>~/…</code>), heading, and line range or PDF page. When <code>search_files</code> returns excerpts later in the turn, they take the next numbers, ride on the call's <code>tool_result</code> event, and <code>merud</code> sends a new <code>sources</code> event that holds every source so far. Clients keep the last one. Once the answer ends, one-shot <code>meru</code> prints a <code>Sources:</code> list and <code>meru chat</code> shows the same list under the answer. Both list only the sources the answer cites, and an answer that cites none gets no list: the model decides when a source matters. An earlier rule listed every excerpt when the answer cited none, in case a small model forgot to cite; in use it printed ten unrelated files under general answers and under an answer built from an Obsidian search.</p>
 
 <pre><code>The garden project sows tomatoes on 12 April [1].
 
@@ -1251,7 +1308,7 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
 
 <h3 id="builtin-skills">Built-in skills</h3>
 
-<p>Meru ships with three skills. <code>writing</code> and <code>explainer</code> come from the owner's <code>my-ai-assets</code> repo; <code>web-research</code> is Meru's own:</p>
+<p>Meru ships with four skills. <code>writing</code> and <code>explainer</code> come from the owner's <code>my-ai-assets</code> repo; <code>web-research</code> and <code>file-research</code> are Meru's own:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Skill</th><th>What it does</th></tr></thead>
@@ -1259,6 +1316,7 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
     <tr><td><code>writing</code></td><td>Plain-English rules for any prose Meru writes: emails, summaries, reports</td></tr>
     <tr><td><code>explainer</code></td><td>Builds a self-contained HTML page that teaches a topic, with diagrams</td></tr>
     <tr><td><code>web-research</code></td><td>For questions that need current facts: search, read the one or two best pages with <code>web_fetch</code> and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree</td></tr>
+    <tr><td><code>file-research</code></td><td>For questions about the user's own files: <code>search_files</code> for a topic in any words, <code>grep</code> for an exact name or phrase, <code>list_folder</code> to see a folder, <code>read_file</code> for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts</td></tr>
   </tbody>
 </table></div>
 
@@ -1982,7 +2040,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>A local command runs with your permissions too, and reaches the network if you declare one that does, such as <code>curl</code> or <code>ssh</code>. You chose it, and the <code>tool_calls</code> row records each run with its argv.</li>
   <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
-  <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code> and <code>grep</code>, apply the same rules through the indexer's own code, so the model can read no file that search couldn't reach.</li>
+  <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code>, apply the same rules through the indexer's own code, so the model can read no file that search couldn't reach.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
 </ul>
 
@@ -2037,7 +2095,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>). Temperature 1.25 and <code>min_confidence = 0.45</code>, fitted with <code>make router-eval</code>.</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus vector distance over every stored vector, merged in Go with reciprocal-rank fusion. The query is the question, plus on a short follow-up the session's latest earlier question that isn't only filler words; no model call rewrites it. List sizes are constants (50, 50, 10) until measurements say otherwise.</td></tr>
     <tr><td>Indexing</td><td>Only the folders in <code>[index] folders</code>, nothing by default; secrets, hidden files, build folders and ignored files skipped; symlinks never followed; email, calendar and Drive reached live through MCP, not indexed.</td></tr>
-    <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code> and <code>web-research</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
+    <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code>, <code>web-research</code> and <code>file-research</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> checks Ollama, pulls the models, writes a first <code>config.toml</code>, and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste. For a server outside the catalog, <code>merud</code> probes it first, and <code>meru</code> proposes <code>allow</code> and <code>confirm</code> from the tools' read-only and destructive hints. A reload makes the server work without a restart.</td></tr>
     <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for styling and Glamour for Markdown answers, in <code>meru chat</code> only. Answers always stream.</td></tr>
     <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny, asked over the same socket as the answer. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask (scripts, scheduled jobs), <code>dispatch</code> declines the call.</td></tr>

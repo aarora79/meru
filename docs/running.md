@@ -214,10 +214,11 @@ half a minute of the first memory.
 ### Skills
 
 A skill is a Markdown file of instructions for one kind of task. Meru ships
-three: `writing`, plain-English rules for emails, summaries and reports;
-`explainer`, which builds a one-page HTML explainer on a topic; and
+four: `writing`, plain-English rules for emails, summaries and reports;
+`explainer`, which builds a one-page HTML explainer on a topic;
 `web-research`, which tells the model how to search and read pages for a
-question about current facts. When it starts, `merud` copies each one it
+question about current facts; and `file-research`, which tells it how to find
+and read things in your files with the file tools. When it starts, `merud` copies each one it
 doesn't find to `~/.meru/skills/<name>/SKILL.md`.
 
 Every prompt lists each skill's name and description. For each question, a short
@@ -577,11 +578,14 @@ reads your computer's clock. It needs no setup and is offered on every question:
 
 Search puts the ten best excerpts in the prompt, about 500 tokens each. When a
 question needs more, such as "summarize everything in ~/notes/work", the model
-can use three read-only tools on the same folders:
+can use four read-only tools on the same folders:
 
 - `read_file` reads one file whole, 12,000 characters per call, PDFs page by page;
 - `list_folder` lists a folder, 1 to 3 levels deep;
-- `grep` finds every line that holds a word or a pattern.
+- `grep` finds every line that holds a word or a pattern;
+- `search_files` runs the same search by meaning and keyword that puts the ten
+  excerpts in the prompt, for the words the model picks, and returns numbered
+  excerpts it can cite.
 
 They reach only your `[index] folders`, and the folder `web_fetch` downloads
 into, and skip what the indexer skips. They run without asking; to approve each call, add
@@ -593,6 +597,30 @@ $ meru "grep my notes for tomatoes and tell me which files mention it"
 ✓ grep 40 ms
 Two files mention tomatoes: ~/notes/garden.md and ~/notes/2026/may.md.
 ```
+
+### Search first, or let the model look
+
+By default Meru searches your files before the model answers, on every route but
+`direct`, and puts the ten best excerpts in the prompt. The model can still call
+`search_files`, `grep` and `read_file` when those fall short. That is
+`retrieval = "auto"`.
+
+With `retrieval = "agentic"`, Meru runs no search first and leaves out earlier
+conversations. The model looks for itself, the way a coding agent uses `ls`,
+`grep` and a file reader: `search_files` or `grep` first, then `read_file` on what
+matters, then the answer. Your profile and recalled memories still join every
+prompt.
+
+```toml
+[index]
+retrieval = "agentic"   # "auto" (the default) or "agentic"
+```
+
+`agentic` needs `search_files` in `[builtin] tools`; `merud` refuses to start
+without it. On the `lite` model it answered the owner's check questions less
+often than `auto` did: the 2B model sometimes kept searching until it ran out of
+rounds. [ARCHITECTURE.md](../ARCHITECTURE.md#retrieval) has the numbers. Run
+`meru check` with each setting on your own files before you switch.
 
 ## 8. Set up and connect tools
 
@@ -1194,8 +1222,8 @@ passes. Text matches ignore case.
 | `no_tools` | the model asked for no tool at all | `"no_tools": true` |
 | `answer_any` | the answer holds at least one of these | `"answer_any": ["Canberra"]` |
 | `answer_all` | the answer holds every one of these | `"answer_all": ["go.dev", "1.27"]` |
-| `sources_any` | a file the search found has one of these in its path | `"sources_any": ["coase", "firm"]` |
-| `sources_none` | no file the search found has any of these in its path | `"sources_none": ["ams-visa"]` |
+| `sources_any` | a file the search or `search_files` found has one of these in its path | `"sources_any": ["coase", "firm"]` |
+| `sources_none` | no file the search or `search_files` found has any of these in its path | `"sources_none": ["ams-visa"]` |
 | `max_seconds` | the turn took less than this | `"max_seconds": 30` |
 
 A name in `tools` matches a tool the turn ran in one of three ways: the full
