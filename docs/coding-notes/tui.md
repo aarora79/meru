@@ -19,7 +19,8 @@ Each code block in a finished answer gets a dim `⧉ copy N` label under it, and
 `cmd/meru/main.go` calls `tui.Run` for `meru chat`. Before that, `chatInfo` reads the
 profile and main model from `~/.meru/config.toml` for the header, and
 `[chat] mouse_copy` into `Info.MouseCopy`. If the file doesn't load, the header
-leaves them out and mouse copying stays off; `merud` reports config errors itself.
+leaves them out and mouse copying stays on, its default; `merud` reports config
+errors itself.
 
 ## The picture
 
@@ -449,11 +450,19 @@ style and one wrap width:
 
 ```go
 r, err := glamour.NewTermRenderer(
-	glamour.WithStandardStyle(m.look.markdownStyle),
+	glamour.WithStyles(chatStyle(m.look.markdownStyle)),
 	glamour.WithColorProfile(m.look.renderer.ColorProfile()),
 	glamour.WithWordWrap(m.width),
 )
 ```
+
+`chatStyle` starts from one of Glamour's built-in styles, "dark", "light" or
+"notty". The colour styles print "## " and "### " in front of each heading, which in
+the chat looked like Markdown that failed to render, so `chatStyle` clears those
+marks and leaves the colour and bold to show the heading. "notty" has no colour or
+bold, so it keeps its marks. `glamourstyles.DefaultStyles` holds pointers to styles
+Glamour shares, so `chatStyle` copies the struct (`c := *s`) and changes only the
+copy.
 
 Building one parses the style, so the model keeps it and builds a new one only when
 the width changes. Each finished answer keeps its rendered text and the width it was
@@ -881,6 +890,9 @@ Run the tests. They need no terminal and no `merud`:
 go test -race ./internal/tui/...
 ```
 
+`TestHeadingMarks` renders two headings in each style and checks that "##" shows
+only in "notty". The golden tests use "notty", so they can't catch that change.
+
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
 streaming, a finished Markdown answer, a fallback route, a route badge with a
@@ -997,12 +1009,13 @@ breaks on wrapping. Glamour already knows where each block's last line goes at e
 width, so the marker lets it decide.
 
 **Why a label with a number?** A terminal cell holds only text. A number works
-with the keyboard in every terminal, and a click on it is an extra for those who
-turn the mouse on.
+with the keyboard in every terminal, and a click on it works where the terminal
+reports the mouse.
 
-**Why is mouse copying off by default?** A program that captures the mouse gets
-every click and drag, so the terminal's own text selection needs a modifier key.
-Left off, selection works as it does in any other program.
+**Why is mouse copying on by default?** A click on the label is what most people
+try first. The cost: a program that captures the mouse gets every click and drag,
+so the terminal's own text selection needs a modifier key. `mouse_copy = false`
+gives plain selection back.
 
 **Why a renderer passed in, not the global one?** The tests build the model with an
 ASCII renderer, so the golden files hold plain text however the tests are run. The

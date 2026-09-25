@@ -183,17 +183,16 @@ with the first of `wl-copy`, `xclip` and `xsel` it finds. With none installed it
 asks the terminal to copy through OSC 52, an escape code that many terminals
 accept, and says so. In tmux, OSC 52 needs `set -g set-clipboard on`.
 
-To copy with a click on the label, set this in `~/.meru/config.toml` and restart
-`meru chat`:
+A click on the label copies the block too. For that the chat takes the mouse, so
+the wheel scrolls the conversation and a plain drag no longer selects text. To
+select text yourself, hold Option while you drag in iTerm2, or Shift in most other
+terminals. To give plain selection back, set this in `~/.meru/config.toml` and
+restart `meru chat`:
 
 ```toml
 [chat]
-mouse_copy = true
+mouse_copy = false
 ```
-
-The chat then takes the mouse, so the wheel scrolls the conversation and a plain
-drag no longer selects text. To select text yourself, hold Option while you drag
-in iTerm2, or Shift in most other terminals.
 
 One-shot `meru "..."` prints no labels: its output stays plain for pipes and
 scripts.

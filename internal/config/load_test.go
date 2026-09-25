@@ -122,6 +122,9 @@ disabled = ["explainer", "not-yet"]
 searxng_url = "http://localhost:8889"
 max_results = 5
 
+[chat]
+mouse_copy = false
+
 [[mcp.servers]]
 name    = "notes"
 command = "notes-mcp"
@@ -169,6 +172,7 @@ remote  = false
 		},
 		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},
 		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5},
+		Chat:    Chat{MouseCopy: false}, // false in the file beats the default, true
 		MCP: MCP{Servers: []MCPServer{
 			{
 				Name: "notes", Command: "notes-mcp", Args: []string{"--root", "~/notes"},

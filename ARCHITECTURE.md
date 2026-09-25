@@ -243,9 +243,10 @@ run on through the session, so `/copy N` names one block on the whole screen, an
 in the answer's Markdown, not in what Glamour drew, and hands the text to the
 system's clipboard program (`pbcopy`, `wl-copy`, `xclip`, `xsel` or `clip.exe`).
 With none installed, it sends OSC 52, an escape code that asks the terminal to set
-its clipboard. With `[chat] mouse_copy = true` a click on a label copies too. The
-setting is off by default, because a program that captures the mouse takes plain
-click-and-drag selection away from the terminal.
+its clipboard. A click on a label copies too. That needs the chat to capture the
+mouse, which takes plain click-and-drag selection away from the terminal, so
+selecting text needs Option (iTerm2) or Shift (most others);
+`[chat] mouse_copy = false` gives plain selection back.
 
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
@@ -2533,7 +2534,7 @@ We'll settle these with working code and measurements.
 - **Terminal UI:** Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for
   styling and Glamour for Markdown answers, in `meru chat` only. Answers always
   stream. Each code block gets a `⧉ copy N` label; `/copy N` or Ctrl-Y copies
-  it, and a click does too with `[chat] mouse_copy` on.
+  it, and so does a click, unless `[chat] mouse_copy` is off.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
   trust comes only from editing the `confirm` list. With no one to ask (scripts,

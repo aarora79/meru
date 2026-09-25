@@ -11,6 +11,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/glamour"
+	// Two Glamour packages share their names with names in this package:
+	// ansi with x/ansi below, styles with the styles type in styles.go. The
+	// name before each path gives the import another name in this file.
+	glamouransi "github.com/charmbracelet/glamour/ansi"
+	glamourstyles "github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
@@ -374,7 +379,7 @@ func (m *Model) renderedAnswer(t *exchange) string {
 func (m *Model) renderMarkdown(text string) (string, error) {
 	if m.markdown == nil || m.markdownWidth != m.width {
 		r, err := glamour.NewTermRenderer(
-			glamour.WithStandardStyle(m.look.markdownStyle),
+			glamour.WithStyles(chatStyle(m.look.markdownStyle)),
 			glamour.WithColorProfile(m.look.renderer.ColorProfile()),
 			glamour.WithWordWrap(m.width),
 		)
@@ -388,6 +393,30 @@ func (m *Model) renderMarkdown(text string) (string, error) {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
 	return tidy(out), nil
+}
+
+// chatStyle returns Glamour's built-in style called name ("dark", "light"
+// or "notty") with the "## " and "### " marks taken off the headings.
+// Glamour's colour styles print those marks in front of each heading on
+// purpose, but in the chat they read as Markdown that failed to render. The
+// colour and bold already mark a heading there. "notty" keeps its marks,
+// because without colour or bold they are all that sets a heading apart.
+//
+// glamourstyles.DefaultStyles holds pointers to Glamour's shared styles, so the
+// function copies the one it wants (*s makes a copy of the struct) and
+// changes only the copy. An unknown name falls back to "dark".
+func chatStyle(name string) glamouransi.StyleConfig {
+	s, ok := glamourstyles.DefaultStyles[name]
+	if !ok {
+		s = glamourstyles.DefaultStyles[glamourstyles.DarkStyle]
+	}
+	c := *s
+	if name == glamourstyles.NoTTYStyle {
+		return c
+	}
+	c.H2.Prefix, c.H3.Prefix, c.H4.Prefix = "", "", ""
+	c.H5.Prefix, c.H6.Prefix = "", ""
+	return c
 }
 
 // tidy trims what Glamour adds round its output: the blank lines above and

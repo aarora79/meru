@@ -104,14 +104,15 @@ with the rest and ignores it:
 
 ```go
 type Chat struct {
-    MouseCopy bool `toml:"mouse_copy"` // default false
+    MouseCopy bool `toml:"mouse_copy"` // default true
 }
 ```
 
 `MouseCopy` lets a click on a code block's `⧉ copy N` label copy the block (see
-[tui](tui.md)). It stays off by default: to see clicks, the chat has to capture
-the mouse, and the terminal's own click-and-drag selection then needs Option
-(iTerm2) or Shift (most others). `meru` may import `config`, so reading the key
+[tui](tui.md)). It is on by default. To see clicks, the chat has to capture the
+mouse, and the terminal's own click-and-drag selection then needs Option (iTerm2)
+or Shift (most others); `false` gives plain selection back. Because the default is
+true, `defaults()` sets it, where a Go zero value would give false. `meru` may import `config`, so reading the key
 keeps the client thin.
 
 `Builtin` is the `[builtin]` section, for the tools built into `merud`:

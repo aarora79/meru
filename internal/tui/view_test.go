@@ -242,6 +242,36 @@ func TestTidy(t *testing.T) {
 	}
 }
 
+// TestHeadingMarks checks that headings drop their "##" marks in the colour
+// styles and keep them in "notty", which has no bold to set them apart.
+func TestHeadingMarks(t *testing.T) {
+	tests := []struct {
+		style     string
+		wantMarks bool
+	}{
+		{"dark", false},
+		{"light", false},
+		{"notty", true},
+		{"no such style", false}, // falls back to dark
+	}
+	for _, tt := range tests {
+		t.Run(tt.style, func(t *testing.T) {
+			m := &Model{width: 80, look: look{renderer: plainLook().renderer, markdownStyle: tt.style}}
+			out, err := m.renderMarkdown("## Setup\n\n### htop\n\nText.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			plain := ansi.Strip(out)
+			if !strings.Contains(plain, "Setup") || !strings.Contains(plain, "htop") {
+				t.Fatalf("headings missing:\n%s", plain)
+			}
+			if got := strings.Contains(plain, "##"); got != tt.wantMarks {
+				t.Errorf("marks shown = %v, want %v:\n%s", got, tt.wantMarks, plain)
+			}
+		})
+	}
+}
+
 // TestHeaderStatus checks the connection status on the right of the header
 // through its three states.
 func TestHeaderStatus(t *testing.T) {
