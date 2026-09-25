@@ -1,6 +1,7 @@
 // This file holds the three ways to copy a code block from an answer:
 // /copy N, /copy or Ctrl-Y for the newest answer's last block, and, with
-// [chat] mouse_copy on, a click on a block's "⧉ copy N" label.
+// [chat] mouse_copy on, a click on a block's "⧉ copy N" label. Its mouse
+// handler also sends a click on a link to open.go.
 
 package tui
 
@@ -130,7 +131,9 @@ func copyCmd(copyText copyFunc, n int, text string) tea.Cmd {
 
 // handleMouse reacts to the mouse, which the chat only captures with
 // [chat] mouse_copy on. A left click on a "⧉ copy N" label copies block N,
-// and the wheel scrolls the conversation, as it would without capture.
+// a left click on a link opens it (open.go), and the wheel scrolls the
+// conversation, as it would without capture. The chat has to open links
+// itself: with the mouse captured, the terminal never sees the click.
 // While a box is open the mouse does nothing.
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !m.info.MouseCopy || m.approval != nil || m.boxOpen() {
@@ -144,6 +147,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress:
 		if n := m.labelUnder(msg.X, msg.Y); n > 0 {
 			return m.copyBlock(n)
+		}
+		if u := m.linkUnder(msg.X, msg.Y); u != "" {
+			return m.openLink(u)
 		}
 	}
 	return m, nil

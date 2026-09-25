@@ -159,10 +159,16 @@ Each line under "Sources:" links to its file. In a terminal that supports links
 or Ctrl-click the line to open the file. macOS Terminal shows the same lines
 without the link. A pipe or a file gets plain text.
 
-In `meru chat`, a web or file link in an answer works the same way. The chat shows
-the URL without `https://`, cut with `…` to fit the line, such as
-`mail.google.com/mail/u/0/#inbox/18f2…`, and Cmd-click or Ctrl-click opens the full
-URL. With `NO_COLOR=1` the chat shows the full URL as plain text instead.
+In `meru chat`, a web or file link in an answer is a link too. The chat shows the
+URL without `https://`, cut with `…` to fit the line, such as
+`mail.google.com/mail/u/0/#inbox/18f2…`. A plain click on it, or on a Sources line,
+opens the full URL in your browser, and the bottom line says
+`opened mail.google.com/…`. The chat does the opening itself, because with
+`[chat] mouse_copy` on, the default, it takes every click from the terminal (see
+[Copying code](#copying-code)). It opens `http`, `https` and `file` links only.
+With `mouse_copy = false` the terminal gets the click, and its own link click,
+often Cmd-click or Ctrl-click, opens the link. With `NO_COLOR=1` the chat shows the
+full URL as plain text instead.
 
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
@@ -189,8 +195,9 @@ with the first of `wl-copy`, `xclip` and `xsel` it finds. With none installed it
 asks the terminal to copy through OSC 52, an escape code that many terminals
 accept, and says so. In tmux, OSC 52 needs `set -g set-clipboard on`.
 
-A click on the label copies the block too. For that the chat takes the mouse, so
-the wheel scrolls the conversation and a plain drag no longer selects text. To
+A click on the label copies the block too, and a click on a link opens it. For
+that the chat takes the mouse, so the wheel scrolls the conversation and a plain
+drag no longer selects text. To
 select text yourself, hold Option while you drag in iTerm2, or Shift in most other
 terminals. To give plain selection back, set this in `~/.meru/config.toml` and
 restart `meru chat`:

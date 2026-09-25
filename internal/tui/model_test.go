@@ -99,6 +99,7 @@ func plainLook() look {
 func testModel(ask askFunc, send sender) Model {
 	m := newModel(ask, send, Info{Profile: "lite", Model: "minicpm5:2b"}, plainLook())
 	m.copy = func(string) (string, error) { return "", errors.New("no clipboard in tests") }
+	m.open = func(string) error { return errors.New("no browser in tests") }
 	return m
 }
 
