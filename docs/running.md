@@ -1216,8 +1216,8 @@ so the second can follow up on the first. Every other question starts a new
 session:
 
 ```json
-{"id": "trip", "category": "session", "session": "topics", "question": "When did I visit Amsterdam?", "want": {"sources_any": ["amsterdam"]}}
-{"id": "work", "category": "session", "session": "topics", "question": "What work did I do for Fruitstand?", "want": {"sources_none": ["amsterdam"]}}
+{"id": "trip", "category": "session", "session": "topics", "question": "When did I visit Lisbon?", "want": {"sources_any": ["lisbon"]}}
+{"id": "work", "category": "session", "session": "topics", "question": "What work did I do on the bakery site?", "want": {"sources_none": ["lisbon"]}}
 ```
 
 Every field in `want` is optional. A question passes when each field it sets
@@ -1231,7 +1231,7 @@ passes. Text matches ignore case.
 | `answer_any` | the answer holds at least one of these | `"answer_any": ["Canberra"]` |
 | `answer_all` | the answer holds every one of these | `"answer_all": ["go.dev", "1.27"]` |
 | `sources_any` | a file the search or `search_files` found has one of these in its path | `"sources_any": ["coase", "firm"]` |
-| `sources_none` | no file the search or `search_files` found has any of these in its path | `"sources_none": ["ams-visa"]` |
+| `sources_none` | no file the search or `search_files` found has any of these in its path | `"sources_none": ["lisbon-trip"]` |
 | `max_seconds` | the turn took less than this | `"max_seconds": 30` |
 
 A name in `tools` matches a tool the turn ran in one of three ways: the full

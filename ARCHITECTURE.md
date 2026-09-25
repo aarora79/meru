@@ -1139,7 +1139,7 @@ What the numbers say:
   Coase?" passed 3 of 3 both ways, at about the same time. The model called
   `search_files` once and answered.
 - **`agentic` lost where the answer takes several steps.** "So when did I visit
-  Amsterdam?" failed all three `agentic` runs. The answer sits in visa PDFs.
+  Lisbon?" failed all three `agentic` runs. The answer sits in travel PDFs.
   The up-front search put them in the prompt, and `auto` answered in one round.
   With the tools, the 2B model kept searching and reading. Twice it ended its
   turn by writing a tool call as plain text, and once it never called

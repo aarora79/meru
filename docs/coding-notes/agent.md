@@ -203,7 +203,7 @@ Meru had indexed.
 Before the files note comes `whoIsWho`: the person asking is the user, the files
 are theirs, and "I", "me" and "my" in a question mean the user, never the model.
 It joins every system prompt, a custom one from config too. Without it, the 2B
-model read "did I visit Amsterdam?" as a question about Meru, and answered that
+model read "did I visit Lisbon?" as a question about Meru, and answered that
 Meru had no record of a visit while the excerpts named the user as the
 traveller.
 
@@ -231,7 +231,7 @@ What you know about the user:
 
 The profile follows `whoIsWho`, so the rule that "I" means the user and the
 facts about who the user is sit side by side. Without them, the 2B model read a
-visa letter and guessed that you were the co-applicant it named.
+hotel booking and guessed that you were the other guest it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
 date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of

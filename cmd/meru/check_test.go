@@ -101,7 +101,7 @@ func TestGrade(t *testing.T) {
 		Route:   "search+tools",
 		Tools:   []string{"obsidian.obsidian_search_vault", "read_file", "cmd.git-log", "write_file"},
 		Ran:     []string{"obsidian.obsidian_search_vault", "read_file", "cmd.git-log"},
-		Sources: []string{"~/notes/Coase-Firm.md", "~/vault/ams-visa.md"},
+		Sources: []string{"~/notes/Coase-Firm.md", "~/vault/lisbon-trip.md"},
 		Answer:  "Transaction COSTS explain the firm. See go.dev.",
 		Seconds: 12.5,
 	}
@@ -133,7 +133,7 @@ func TestGrade(t *testing.T) {
 		{"sources any fail", checkWant{SourcesAny: []string{"naur", "theory"}}, rec, []string{"no source matches any of: naur, theory"}},
 		{"sources any, no sources", checkWant{SourcesAny: []string{"x"}}, turnRecord{}, []string{"no source matches any of: x"}},
 		{"sources none pass", checkWant{SourcesNone: []string{"naur"}}, rec, nil},
-		{"sources none fail", checkWant{SourcesNone: []string{"AMS-visa"}}, rec, []string{"source ~/vault/ams-visa.md matches AMS-visa"}},
+		{"sources none fail", checkWant{SourcesNone: []string{"Lisbon-trip"}}, rec, []string{"source ~/vault/lisbon-trip.md matches Lisbon-trip"}},
 		{"time pass", checkWant{MaxSeconds: 13}, rec, nil},
 		{"time fail", checkWant{MaxSeconds: 10}, rec, []string{"took 12.5s, want under 10s"}},
 		{"merud error", checkWant{}, turnRecord{Error: "model not found"}, []string{"merud error: model not found"}},
@@ -321,7 +321,7 @@ Results saved to ` + saved + "\n"
 // every "sources" event of a turn: the prompt's, and the later one merud
 // sends after search_files returns excerpts, as an agentic turn does.
 func TestCheckReadsToolSources(t *testing.T) {
-	found := []rpc.Citation{{N: 3, Path: "~/notes/naur.md"}, {N: 4, Path: "~/notes/visa.md"}}
+	found := []rpc.Citation{{N: 3, Path: "~/notes/naur.md"}, {N: 4, Path: "~/notes/lisbon.md"}}
 	f := &fakeTurns{answers: map[string][]rpc.Event{
 		"Naur?": {
 			{Type: rpc.EventRoute, Route: "search"},
@@ -336,7 +336,7 @@ func TestCheckReadsToolSources(t *testing.T) {
 	sock := startServer(t, f.handle)
 	path := writeChecks(t,
 		`{"id": "naur", "category": "retrieval", "question": "Naur?", "want": {"sources_any": ["naur"]}}`,
-		`{"id": "naur-no-visa", "category": "retrieval", "question": "Naur?", "want": {"sources_none": ["visa"]}}`,
+		`{"id": "naur-no-lisbon", "category": "retrieval", "question": "Naur?", "want": {"sources_none": ["lisbon"]}}`,
 	)
 	var out, errOut bytes.Buffer
 	run(context.Background(), []string{"-socket", sock, "check", "--json", path}, &out, &errOut)
@@ -351,11 +351,11 @@ func TestCheckReadsToolSources(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &none); err != nil {
 		t.Fatal(err)
 	}
-	if !any.Pass || !slices.Equal(any.Sources, []string{"~/a.md", "~/b.md", "~/notes/naur.md", "~/notes/visa.md"}) {
+	if !any.Pass || !slices.Equal(any.Sources, []string{"~/a.md", "~/b.md", "~/notes/naur.md", "~/notes/lisbon.md"}) {
 		t.Errorf("sources_any result = %+v, want a pass with all four paths", any)
 	}
 	if none.Pass {
-		t.Errorf("sources_none result passed, want a fail on ~/notes/visa.md from the tool's excerpts")
+		t.Errorf("sources_none result passed, want a fail on ~/notes/lisbon.md from the tool's excerpts")
 	}
 }
 

@@ -55,7 +55,7 @@ const (
 // today tells the model the date, in merud's local time zone, such as
 // "Today is Thursday, 24 September 2026." A model knows only its training
 // data, so without this it read "a trip from 15 to 20 September 2026" in a
-// visa letter on the 24th and said no visit was on record. The date changes
+// hotel booking on the 24th and said no visit was on record. The date changes
 // once a day, so it can sit among the parts that stay the same from turn to
 // turn; the time of day would change every minute and cost the reuse.
 func today(now time.Time) string {

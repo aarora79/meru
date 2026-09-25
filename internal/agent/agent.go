@@ -43,7 +43,7 @@ const citeRule = "Below, under \"From your files\", are numbered excerpts from t
 	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
 
 // whoIsWho joins the system prompt on every turn, whatever prompt config
-// sets. Without it, a small model read "did I visit Amsterdam?" as a
+// sets. Without it, a small model read "did I visit Lisbon?" as a
 // question about Meru and answered that Meru had no record of a visit,
 // while the excerpts in front of it named the user as the traveller. The
 // user's files are about the user, so "I" in a question points at them.
