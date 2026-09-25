@@ -524,6 +524,13 @@ echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-meru.conf
 `embed` model has the same effect on the vectors: `merud` drops them, keeps keyword
 search working, and re-embeds your files.
 
+### Dates and times
+
+Each question's prompt carries today's date. For the time, a weekday, days until a
+date or the time somewhere else, the model calls the built-in `datetime` tool, which
+reads your computer's clock. It needs no setup and is offered on every question:
+`meru "how many days until 25 December?"` shows `→ datetime` before the answer.
+
 ### Reading whole files
 
 Search puts the ten best excerpts in the prompt, about 500 tokens each. When a

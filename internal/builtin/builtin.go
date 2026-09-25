@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
@@ -46,6 +47,7 @@ type Tools struct {
 	web        *webClients    // web_search and web_fetch, as [web] sets them
 	onChange   func(context.Context) error
 	onRemember func(context.Context) // runs after remember saves; nil for none
+	now        func() time.Time      // the clock datetime reads; time.Now outside tests
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -69,6 +71,7 @@ type Tools struct {
 // and answers a prompt only after UseModel.
 func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Store, outputDir string, files *index.Indexer, onChange func(context.Context) error, onRemember func(context.Context)) *Tools {
 	return &Tools{
+		now:        time.Now,
 		configPath: configPath,
 		confirm:    slices.Clone(cfg.Confirm),
 		memory:     mem,
@@ -83,8 +86,8 @@ func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Stor
 // Kind returns dispatch.KindBuiltin.
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
-// Tools returns the specs of configure, remember, write_file, the three
-// file tools and the web tools for the model. It reads the memory folders on each call, so a
+// Tools returns the specs of configure, datetime, remember, write_file, the
+// three file tools and the web tools for the model. It reads the memory folders on each call, so a
 // kind folder the user adds shows up in remember's choices on the next
 // turn.
 func (t *Tools) Tools() []engine.ToolSpec {
@@ -92,7 +95,7 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		Name:        Configure,
 		Description: description(),
 		Parameters:  schema(),
-	}}
+	}, datetimeSpec()}
 	if t.memory != nil {
 		specs = append(specs, engine.ToolSpec{
 			Name:        Remember,
@@ -215,6 +218,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 	switch {
 	case name == Configure:
 		text, err = t.configure(ctx, args)
+	case name == DateTime:
+		text, err = dateTime(t.now(), args)
 	case name == Remember && t.memory != nil:
 		text, err = t.remember(ctx, args)
 	case name == WriteFile && t.outputDir != "":

@@ -71,7 +71,7 @@ func TestPromptOrder(t *testing.T) {
 
 func TestToday(t *testing.T) {
 	now := time.Date(2026, 9, 24, 15, 4, 0, 0, time.Local)
-	if got, want := today(now), "Today is Thursday, 24 September 2026."; got != want {
-		t.Errorf("today = %q, want %q", got, want)
+	if got := today(now); !strings.HasPrefix(got, "Today is Thursday, 24 September 2026. ") || !strings.Contains(got, "datetime tool") {
+		t.Errorf("today = %q, want the date and a pointer to the datetime tool", got)
 	}
 }

@@ -57,7 +57,8 @@ const (
 // once a day, so it can sit among the parts that stay the same from turn to
 // turn; the time of day would change every minute and cost the reuse.
 func today(now time.Time) string {
-	return "Today is " + now.Format("Monday, 2 January 2006") + "."
+	return "Today is " + now.Format("Monday, 2 January 2006") + ". " +
+		"For the time of day, a weekday, days between dates or the time in another place, call the datetime tool."
 }
 
 // sections is what a turn adds to the system prompt, beyond the parts

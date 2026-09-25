@@ -63,8 +63,8 @@ func TestSearchTurnReadsAWholeFile(t *testing.T) {
 	for _, s := range eng.calls[0].tools {
 		offered = append(offered, s.Name)
 	}
-	if strings.Join(offered, " ") != "read_file list_folder grep" {
-		t.Errorf("offered %v, want the three file tools", offered)
+	if strings.Join(offered, " ") != "datetime read_file list_folder grep" {
+		t.Errorf("offered %v, want datetime and the three file tools", offered)
 	}
 	// The second round reads the whole file.
 	msgs := eng.lastCall().msgs

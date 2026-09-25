@@ -185,8 +185,8 @@ func TestBackend(t *testing.T) {
 	}
 
 	specs := tools.Tools()
-	if len(specs) != 1 || specs[0].Name != Configure {
-		t.Fatalf("Tools = %+v, want configure alone", specs)
+	if len(specs) != 2 || specs[0].Name != Configure || specs[1].Name != DateTime {
+		t.Fatalf("Tools = %+v, want configure and datetime", specs)
 	}
 	if !strings.Contains(specs[0].Description, "google") {
 		t.Error("the description doesn't list the catalog")
@@ -294,8 +294,8 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	specs := tools.Tools()
-	if len(specs) != 2 || specs[1].Name != Remember {
-		t.Fatalf("Tools = %+v, want configure and remember", specs)
+	if len(specs) != 3 || specs[2].Name != Remember {
+		t.Fatalf("Tools = %+v, want configure, datetime and remember", specs)
 	}
 	// The struct below names only the part of the schema the test reads;
 	// json.Unmarshal skips the rest.
@@ -306,7 +306,7 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 			} `json:"kind"`
 		} `json:"properties"`
 	}
-	if err := json.Unmarshal(specs[1].Parameters, &schema); err != nil {
+	if err := json.Unmarshal(specs[2].Parameters, &schema); err != nil {
 		t.Fatal(err)
 	}
 	for _, k := range append(memory.DefaultKinds(), "recipes") {
@@ -315,8 +315,8 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"third person", `"me"`, `"preferences"`, "secrets"} {
-		if !strings.Contains(specs[1].Description, want) {
-			t.Errorf("description lacks %q: %s", want, specs[1].Description)
+		if !strings.Contains(specs[2].Description, want) {
+			t.Errorf("description lacks %q: %s", want, specs[2].Description)
 		}
 	}
 

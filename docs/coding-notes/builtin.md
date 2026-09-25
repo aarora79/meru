@@ -144,6 +144,26 @@ both pass the duplicate-name check and add the same server twice.
 `catalog` property lists the catalog names as an `enum`, so the model sees the
 valid choices.
 
+### datetime.go
+
+`datetime` reads the clock and nothing else: the date and time with weekday and
+zone, the time in another zone (`timezone`, an IANA name), and a date's weekday
+with how many days it is from today (`date`, `YYYY-MM-DD`). The system prompt
+already carries today's date; the time of day goes through this tool, because
+putting it in the prompt would change the prompt's opening every minute and stop
+Ollama reusing its work. The agent offers `datetime` on every route, `direct`
+included, since "what time is it?" routes direct.
+
+Two details:
+
+- The day count rounds the hours between midnights to whole days, so a
+  daylight-saving change, when one day is 23 or 25 hours long, doesn't cut a day.
+- The blank import of `time/tzdata` puts the time-zone database in the binary,
+  about 450 KB, so zone names resolve on a machine without zone files.
+
+`Tools.now` holds the clock, `time.Now` outside tests, so `datetime_test.go` can
+fix the time.
+
 ### remember.go
 
 `remember` takes two arguments, `kind` and `text`. The schema's `kind` enum comes
