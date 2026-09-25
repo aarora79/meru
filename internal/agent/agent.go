@@ -123,6 +123,7 @@ type Agent struct {
 	turns       TurnRecorder // nil keeps no turn rows
 	profile     Profile      // nil leaves the profile out of the prompt
 	skills      Skills       // nil turns skills off; set by UseSkills
+	machine     string       // describes the user's computer; set by UseMachine
 	maxRounds   int          // model calls per turn, at most; see converse
 	agentic     bool         // [index] retrieval = "agentic": no search before the answer
 	models      config.Models
@@ -837,6 +838,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 		}
 	}
 	add(today(time.Now()))
+	add(a.machine)
 	profile := a.profileSection(ctx)
 	add(profile)
 	add(a.filesNote)

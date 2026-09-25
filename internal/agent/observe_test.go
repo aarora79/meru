@@ -396,7 +396,9 @@ func TestDebugLogFollowsEachStage(t *testing.T) {
 	}
 }
 
-func TestInfoLogIsOneLinePerTurn(t *testing.T) {
+// TestInfoLogPerTurn checks the info log: one "route" line from the router,
+// with its numbers, and one "turn" line, and neither holds the question.
+func TestInfoLogPerTurn(t *testing.T) {
 	recordSpans(t)
 	tests := []struct {
 		name    string
@@ -415,8 +417,11 @@ func TestInfoLogIsOneLinePerTurn(t *testing.T) {
 			_, _ = run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: secretQuestion})
 
 			out := strings.TrimSpace(buf.String())
-			if n := strings.Count(out, "\n") + 1; n != 1 {
-				t.Fatalf("info log has %d lines, want 1:\n%s", n, out)
+			if strings.Count(out, "msg=turn ") != 1 || strings.Count(out, "\n")+1 > 2 {
+				t.Fatalf("info log should hold one turn line and at most one route line:\n%s", out)
+			}
+			if strings.Contains(out, secretQuestion) {
+				t.Errorf("info log holds the question:\n%s", out)
 			}
 			for _, want := range []string{"level=INFO msg=turn ", "ttft_ms=", "tokens_out=", "trace_id="} {
 				if !strings.Contains(out, want) {
