@@ -163,33 +163,33 @@ func TestSetupUser(t *testing.T) {
 	}{
 		{
 			name: "first time, every answer",
-			input: "Dana Reyes\nstaff engineer at Acme\nBoston\n" +
+			input: "Dana Reyes\ndana@example.com\nstaff engineer at Acme\nBoston\n" +
 				"I have two kids\nSam is my brother\n\n" +
 				"short, with bullet points\n",
 			wantTexts: []string{
-				"me Name: Dana Reyes", "me Work: staff engineer at Acme", "me Lives in: Boston",
+				"me Name: Dana Reyes", "me Email: dana@example.com", "me Work: staff engineer at Acme", "me Lives in: Boston",
 				"me I have two kids", "me Sam is my brother",
 				"preferences Answers: short, with bullet points",
 			},
-			wantOut: []string{"Saved:", "me/m1.md  Name: Dana Reyes", "preferences/m6.md  Answers: short", "meru memory list", "remember that"},
+			wantOut: []string{"Saved:", "me/m1.md  Name: Dana Reyes", "preferences/m7.md  Answers: short", "meru memory list", "remember that"},
 		},
 		{
 			name:      "skip everything",
-			input:     "\n\n\n\n\n",
+			input:     "\n\n\n\n\n\n",
 			wantTexts: nil,
 			wantOut:   []string{"Nothing saved"},
 		},
 		{
 			name:      "keep what Meru knows",
 			start:     known,
-			input:     "\nDana\n\n\n\n\n",
+			input:     "\nDana\n\n\n\n\n\n",
 			wantTexts: []string{"me Name: Sam", "project Garden beds", "me Name: Dana"},
 			wantOut:   []string{"already knows", "Name: Sam"},
 		},
 		{
 			name:      "replace what Meru knows",
 			start:     known,
-			input:     "n\nDana\n\n\n\n\n",
+			input:     "n\nDana\n\n\n\n\n\n",
 			wantTexts: []string{"project Garden beds", "me Name: Dana"},
 			wantOut:   []string{"Forgot all of it"},
 		},
@@ -232,7 +232,7 @@ func TestSetupOffersProfile(t *testing.T) {
 	sock := startServer(t, f.handle)
 	writeConfig(t, sock)
 	// No download, skip the servers, yes to the profile, a name, skip the rest.
-	c, out, _ := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "\nDana\n\n\n\n\n")
+	c, out, _ := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "\nDana\n\n\n\n\n\n")
 	if err := setupCmd(context.Background(), sock, c); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}

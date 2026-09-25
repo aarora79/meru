@@ -1171,7 +1171,7 @@ Meru keeps no index file. The database already indexes the files, and
    into the system prompt of every turn, under "What you know about the user",
    up to 2,000 characters; past that, the newest files win and the rest wait
    for recall. These are the facts Meru should never have to search for: your
-   name, your work, where you live, how you like answers. Without them, the
+   name, your email, your work, where you live, how you like answers. Without them, the
    model can't tell whether "Sam" in a letter is you or someone you know.
    `meru setup user` asks for them one at a time and saves each as a memory,
    and you can add more in chat ("remember that I work on the registry team").
@@ -1295,7 +1295,7 @@ own the first time you run `meru`.
 5. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
    for each (see below). You can skip any of them and add them later.
 6. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
-   name, your work, where you live and how you like answers, and saves each as a
+   name, your email, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
 7. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new `config.toml`

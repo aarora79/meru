@@ -25,7 +25,8 @@ import (
 // model that it may call them, and that the user may say no, so a declined
 // call doesn't surprise it.
 const toolsNote = "You may call the tools offered with this question when they help you answer. " +
-	"Some calls ask the user first, and the user may say no."
+	"Some calls ask the user first, and the user may say no. " +
+	"When a tool asks for the user's email address, use the one in what you know about the user; don't search for it."
 
 // fileToolsNote replaces toolsNote on a turn that offers only the three
 // file tools, and perhaps commands: the "search" route. It tells the model when to reach for

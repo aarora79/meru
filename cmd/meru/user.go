@@ -34,6 +34,10 @@ type profileQuestion struct {
 // for them.
 var profileQuestions = []profileQuestion{
 	{"Your name:", "Name", "me"},
+	// Tools such as Google's Gmail and Calendar take the account's address
+	// on every call. Without it in the profile, the model hunts through the
+	// user's files for one and gives up.
+	{"Your email address, the one your Google or other accounts use:", "Email", "me"},
 	{"What you do, your role and where you work:", "Work", "me"},
 	{"Where you live (a city is enough):", "Lives in", "me"},
 }

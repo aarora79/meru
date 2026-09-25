@@ -133,8 +133,11 @@ type Entry struct {
 // googleStart is the command that starts the google server. The user runs
 // it, in a terminal or from launchd or systemd, with their own OAuth
 // client; merud never does. --tools limits the process to the four
-// services the allow list draws from.
-const googleStart = "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
+// services the allow list draws from. USER_GOOGLE_EMAIL makes each tool's
+// user_google_email argument optional, with that address as the default
+// (core/server.py in workspace-mcp 4.0.9), so the model needn't know it.
+const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
+	"GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
 	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs"
 
 // installUV is the Install text for the servers that run with uvx.
