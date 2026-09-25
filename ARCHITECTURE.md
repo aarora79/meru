@@ -380,9 +380,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
   memory without asking unless you list it here; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
-  tools, `web_search` and `web_fetch` (see [Web search](#web-search)); and
-  three read-only file tools. `web_search` and the file tools run without
-  asking unless you list them. `web_fetch` runs without asking for a URL a
+  tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
+  clock tool, `datetime`; and three read-only file tools. `web_search`,
+  `datetime` and the file tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
 
   | Tool | What it returns |
@@ -390,6 +390,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
+  | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered unless `[web] fetch = false`. |
 
@@ -564,8 +565,10 @@ order.
    short call picks the skills to load.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
-   user, today's date (a model knows only its training data, so without it a trip
-   that ended last week reads as one still to come), your profile, the note on your folders, the tools note, and the list of
+   user, today's date with a pointer to the `datetime` tool (a model knows only its
+   training data, so without the date a trip that ended last week reads as one
+   still to come; the time of day goes through the tool, since it changes every
+   minute and would cost Ollama's reuse), your profile, the note on your folders, the tools note, and the list of
    skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that

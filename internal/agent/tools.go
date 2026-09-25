@@ -141,11 +141,20 @@ func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	case "search":
 		var specs []engine.ToolSpec
 		for _, s := range a.tools.Tools() {
-			if builtin.IsFileTool(s.Name) || (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
+			if s.Name == builtin.DateTime || builtin.IsFileTool(s.Name) ||
+				(toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
 				specs = append(specs, s)
 			}
 		}
 		return specs
+	}
+	// Every other route, "direct" included, gets datetime alone: it reads
+	// the clock, costs a short schema, and "what time is it?" or "what day
+	// is Christmas?" routes direct.
+	for _, s := range a.tools.Tools() {
+		if s.Name == builtin.DateTime {
+			return []engine.ToolSpec{s}
+		}
 	}
 	return nil
 }
