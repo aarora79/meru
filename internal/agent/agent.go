@@ -54,11 +54,16 @@ const whoIsWho = "The person asking is the user, and the files are theirs. " +
 // filesNote joins the system prompt on every turn and tells the model which
 // folders Meru searches. Without it a small model answers "I don't have
 // access to your files" even while it reads excerpts from them, and can't say
-// what it has indexed.
-func filesNote(folders []string) string {
+// what it has indexed. With agentic retrieval, Meru searches nothing up
+// front, so the note says the model looks for itself.
+func filesNote(folders []string, agentic bool) string {
 	if len(folders) == 0 {
 		return "Meru hasn't indexed any of the user's files yet. " +
 			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
+	}
+	if agentic {
+		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
+			"When a question needs them, look in them yourself with the file tools offered with the question."
 	}
 	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
 		"When a question needs them, Meru searches first and puts the best excerpts below. " +
@@ -117,6 +122,7 @@ type Agent struct {
 	profile     Profile      // nil leaves the profile out of the prompt
 	skills      Skills       // nil turns skills off; set by UseSkills
 	maxRounds   int          // model calls per turn, at most; see converse
+	agentic     bool         // [index] retrieval = "agentic": no search before the answer
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
@@ -134,7 +140,9 @@ type Agent struct {
 // offers the model the tools from tools on the "tools" and "search+tools"
 // routes, and only the file tools on "search", for at most
 // cfg.Agent.MaxRounds model calls per turn. tools may be
-// nil, which turns tools off. It writes a row for each answered turn to
+// nil, which turns tools off. With cfg.Index.Retrieval "agentic" it
+// searches nothing before the answer and leaves the model to explore with
+// the file tools; see searchesFirst. It writes a row for each answered turn to
 // turns, which may be nil to keep none. It puts the user's profile from
 // profile into every prompt; a nil profile leaves it out. log may be nil,
 // which means no log lines.
@@ -152,6 +160,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		system = DefaultSystemPrompt
 	}
 	system += "\n\n" + whoIsWho
+	agentic := cfg.Index.Retrieval == config.RetrievalAgentic
 	// &Agent{...} builds the struct and returns a pointer to it, so every
 	// caller shares one Agent instead of copying it.
 	return &Agent{
@@ -162,11 +171,12 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		turns:       turns,
 		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
+		agentic:     agentic,
 		models:      cfg.Models,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
-		filesNote:   filesNote(cfg.Index.Folders),
+		filesNote:   filesNote(cfg.Index.Folders, agentic),
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
 		home:        home,
 		log:         log,
@@ -178,7 +188,8 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 // files and found something, then the rounds, and last a "done" that
 // carries the turn's stats. Each round sends one "token" per piece of text;
 // a round that calls tools adds a "tool_call" per call and a "tool_result"
-// as each call ends. It has the rpc.Handler signature, so merud passes
+// as each call ends, then a new "sources" event when its calls returned
+// excerpts (see runTools). It has the rpc.Handler signature, so merud passes
 // a.Handle straight to rpc.Serve. The server holds the "done" back until
 // Handle returns, and sends "error" in its place if Handle fails.
 //
@@ -324,10 +335,11 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// Every route but "direct" looks in the user's files first. "tools"
 	// searches too, because the router sends some questions about the
 	// user's files there, and an answer from the files beats one from the
-	// model alone.
+	// model alone. With agentic retrieval no route does: the model looks
+	// with the file tools instead.
 	var files string
 	var docs []string // the full paths of the files in the prompt, for the transcript
-	if searches(dec.Route) && a.search != nil {
+	if a.searchesFirst(dec.Route) {
 		var sources []rpc.Citation
 		files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
 		if err != nil {
@@ -338,6 +350,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				return err
 			}
 		}
+		// Excerpts a tool finds later in the turn number on from these.
+		t.sources, t.cites = sources, len(sources)
 		// Past sessions join the files' section: no numbers, no sources event.
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), sessionID))
 	}
@@ -358,7 +372,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
-		files: files, toolsNote: noteFor(specs),
+		files: files, toolsNote: a.noteFor(specs),
 	})
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
@@ -556,6 +570,15 @@ func (a *Agent) route(ctx context.Context, question string, history []engine.Mes
 // but "direct"; see Handle.
 func searches(route string) bool {
 	return route != "direct"
+}
+
+// searchesFirst reports whether a turn on route searches the user's files
+// before the model answers: on a route that searches, when the agent has a
+// Searcher and [index] retrieval is "auto". With "agentic" it never does,
+// and earlier conversations stay out of the prompt too, since they come
+// from the same search step.
+func (a *Agent) searchesFirst(route string) bool {
+	return searches(route) && a.search != nil && !a.agentic
 }
 
 // folderNames returns the last part of each folder, in lower case, such as

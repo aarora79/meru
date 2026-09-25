@@ -104,9 +104,10 @@ max_file_mb = 20
 chunk_tokens = 300
 overlap_tokens = 0
 watch = false
+retrieval = "agentic"
 
 [builtin]
-tools   = ["configure", "grep"]
+tools   = ["configure", "grep", "search_files"]
 confirm = ["configure"]
 
 [skills]
@@ -158,8 +159,9 @@ remote  = false
 			ChunkTokens:   300,
 			OverlapTokens: 0,
 			Watch:         false,
+			Retrieval:     RetrievalAgentic,
 		},
-		Builtin: Builtin{Tools: []string{"configure", "grep"}, Confirm: []string{"configure"}},
+		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},
 		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5},
 		MCP: MCP{Servers: []MCPServer{
 			{
@@ -226,6 +228,9 @@ func TestLoadErrors(t *testing.T) {
 		{"index overlap negative", "[index]\noverlap_tokens = -1", "index.overlap_tokens"},
 		{"index overlap past half", "[index]\nchunk_tokens = 100\noverlap_tokens = 51", "index.overlap_tokens"},
 		{"index unknown key", "[index]\nfolder = []", "unknown keys: index.folder"},
+		{"index retrieval unknown", "[index]\nretrieval = \"rag\"", `index.retrieval "rag" is unknown; use "auto" or "agentic"`},
+		{"index retrieval empty", "[index]\nretrieval = \"\"", `index.retrieval "" is unknown`},
+		{"agentic without search_files", "[index]\nretrieval = \"agentic\"\n[builtin]\ntools = [\"grep\"]\nconfirm = []", "builtin.tools doesn't list search_files"},
 		{"old mcp network key", "[[mcp.servers]]\nname = \"g\"\nurl = \"http://127.0.0.1:8000/mcp\"\nnetwork = true", "network was renamed remote"},
 		{"old a2a network key", "[[a2a.agents]]\nname = \"r\"\nurl = \"http://127.0.0.1:9100\"\nnetwork = false", "network was renamed remote"},
 		{"output_dir empty", "[skills]\noutput_dir = \"\"", "skills.output_dir is empty"},
@@ -283,8 +288,8 @@ func TestBuiltinToolsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 9 {
-		t.Errorf("default builtin.tools = %q, want all nine: %q", cfg.Builtin.Tools, builtinTools)
+	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 10 {
+		t.Errorf("default builtin.tools = %q, want all ten: %q", cfg.Builtin.Tools, builtinTools)
 	}
 	cfg, err = Load(writeConfig(t, "[builtin]\ntools = []\nconfirm = []"))
 	if err != nil {
@@ -479,5 +484,17 @@ func TestDefaultPath(t *testing.T) {
 	want := filepath.Join(home, ".meru", "config.toml")
 	if got != want {
 		t.Errorf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
+// TestRetrievalDefault checks that [index] retrieval defaults to "auto",
+// today's search before the answer, when the file leaves it out.
+func TestRetrievalDefault(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "[index]\nfolders = [\"~/notes\"]\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Index.Retrieval != RetrievalAuto {
+		t.Errorf("index.retrieval = %q, want %q", cfg.Index.Retrieval, RetrievalAuto)
 	}
 }

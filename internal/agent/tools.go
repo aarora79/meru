@@ -8,7 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -28,11 +30,24 @@ const toolsNote = "You may call the tools offered with this question when they h
 	"Some calls ask the user first, and the user may say no. " +
 	"When a tool asks for the user's email address, use the one in what you know about the user; don't search for it."
 
-// fileToolsNote replaces toolsNote on a turn that offers only the three
-// file tools, and perhaps commands: the "search" route. It tells the model when to reach for
-// them: when the excerpts from search don't hold enough.
+// fileToolsNote replaces toolsNote on a turn that offers only the file
+// tools, and perhaps commands: the "search" route with datetime off. It
+// tells the model when to reach for them: when the excerpts from search
+// don't hold enough.
 const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
-	"list folders with list_folder, and find every matching line with grep."
+	"list folders with list_folder, find every matching line with grep, and search again in other words with search_files."
+
+// exploreNote joins the tools note when [index] retrieval is "agentic" and
+// the turn offers the file tools. No excerpts sit in the prompt, so it
+// tells the model to look for itself, in the order that finds things
+// fastest, and carries the rule on citing that citeRule carries in "auto"
+// mode. The two-or-three-rounds limit keeps a small model from searching
+// until it runs out of rounds.
+const exploreNote = "To answer from the user's files, look in them first: call search_files, which finds passages " +
+	"by meaning and by words, or grep for an exact name or phrase; use list_folder to see what a folder holds. " +
+	"Then read_file the files that matter, and answer. Stop after two or three rounds of tool calls. " +
+	"search_files numbers each excerpt: cite the ones you use by their number in square brackets, like [1]. " +
+	"Never invent a file, a quote or a citation. If what you find doesn't answer the question, say so."
 
 // commandsNote joins the system prompt on a "search" turn that offers
 // local commands. It names them by their prefix, so the model knows the
@@ -41,11 +56,14 @@ const commandsNote = "You may also run the cmd. tools offered with this question
 	"Each runs one program the user declared and returns what it printed."
 
 // noteFor returns the note for a turn that offers specs: toolsNote when
-// any is an MCP tool, an A2A skill or a built-in other than the file tools;
-// otherwise fileToolsNote for file tools and commandsNote for commands, the
-// "search" route's two kinds; and "" for none.
-func noteFor(specs []engine.ToolSpec) string {
-	var files, cmds bool
+// any is an MCP tool, an A2A skill or a built-in other than the file tools
+// (datetime included); otherwise fileToolsNote for file tools and
+// commandsNote for commands, the "search" route's two kinds; and "" for
+// none. With agentic retrieval, a turn that offers the file tools also gets
+// exploreNote, in place of fileToolsNote, since no excerpts sit in its
+// prompt.
+func (a *Agent) noteFor(specs []engine.ToolSpec) string {
+	var files, cmds, others bool
 	for _, s := range specs {
 		switch {
 		case builtin.IsFileTool(s.Name):
@@ -53,15 +71,22 @@ func noteFor(specs []engine.ToolSpec) string {
 		case toolKind(s.Name) == dispatch.KindCommand:
 			cmds = true
 		default:
-			return toolsNote
+			others = true
 		}
 	}
 	var notes []string
-	if files {
-		notes = append(notes, fileToolsNote)
+	if others {
+		notes = append(notes, toolsNote)
+	} else {
+		if files && !a.agentic {
+			notes = append(notes, fileToolsNote)
+		}
+		if cmds {
+			notes = append(notes, commandsNote)
+		}
 	}
-	if cmds {
-		notes = append(notes, commandsNote)
+	if files && a.agentic {
+		notes = append(notes, exploreNote)
 	}
 	return strings.Join(notes, " ")
 }
@@ -101,6 +126,28 @@ type turn struct {
 	// question is what the user typed, for dispatch.Call.Question: see
 	// userWords.
 	question string
+
+	// mu guards cites, which the calls of one round, each in its own
+	// goroutine, count up at the same time.
+	mu sync.Mutex
+	// cites counts the citation numbers handed out so far: to the
+	// excerpts in the prompt, then to those tools return (see nextCites).
+	cites int
+	// sources holds every excerpt the turn has shown the model, numbered,
+	// for the "sources" event. runTools adds the ones tools return.
+	sources []rpc.Citation
+}
+
+// nextCites reserves n citation numbers and returns the first. runTools
+// hands it to dispatch through the context, so a tool such as search_files
+// numbers its excerpts after the prompt's and after any other call's, and
+// the model's [n] marks name one excerpt across the whole turn.
+func (t *turn) nextCites(n int) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	first := t.cites + 1
+	t.cites += n
+	return first
 }
 
 // userWords returns question, then each earlier question of the user's in
@@ -263,6 +310,13 @@ func (r *reply) add(next reply) {
 // "tool_result" event as it ends, so a quick call reports before a slow one.
 // Dispatch writes the calls' transcript lines through Call.Append.
 //
+// A call that returns excerpts from the user's files, such as search_files,
+// numbers them through t.nextCites, and its tool_result event carries them.
+// Once every call has ended, runTools adds them to t.sources and sends a
+// "sources" event with every source so far, which the clients read in
+// place of the one before, so their Sources: list covers the excerpts the
+// model found through tools.
+//
 // It fails when emit fails or ctx ends. Either way it waits for every call
 // to return first, so no goroutine outlives the turn.
 func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) ([]engine.Message, error) {
@@ -283,13 +337,16 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	// dispatch writes, as it does for the agent's own lines.
 	appendTo := func(l transcript.Line) error { return a.appendLine(ctx, t.sess, l) }
 
-	// Each goroutine writes only its own slot of out, so they need no lock.
+	// Each goroutine writes only its own slot of out and found, so they
+	// need no lock.
 	out := make([]engine.Message, len(calls))
+	found := make([][]rpc.Citation, len(calls))
 	// errgroup.WithContext returns a group and a ctx that ends when any of
 	// the group's functions returns an error. g.Go starts a function in a
 	// new goroutine; g.Wait waits for all of them and returns the first
 	// error.
 	g, gctx := errgroup.WithContext(ctx)
+	gctx = dispatch.WithCiteNumbers(gctx, t.nextCites)
 	for i, c := range calls {
 		g.Go(func() error {
 			res, outcome := a.tools.Dispatch(gctx, dispatch.Call{
@@ -304,9 +361,11 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 				TraceID:  t.traceID,
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
+			found[i] = res.Sources
 			return t.emit(rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{
 				ID: ids[i], Name: c.Name, Kind: toolKind(c.Name),
 				Outcome: outcome.Outcome, DurationMillis: outcome.Duration.Milliseconds(),
+				Sources: res.Sources,
 			}})
 		})
 	}
@@ -319,7 +378,30 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := t.addSources(found); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// addSources adds the excerpts one round's calls returned to t.sources,
+// in number order, and sends a "sources" event with them all. A round
+// whose calls returned none sends nothing. It fails only when emit does.
+func (t *turn) addSources(found [][]rpc.Citation) error {
+	added := false
+	for _, f := range found {
+		if len(f) > 0 {
+			t.sources = append(t.sources, f...)
+			added = true
+		}
+	}
+	if !added {
+		return nil
+	}
+	// Calls that ran at the same time took their numbers in the order they
+	// asked, not call order, so sort by number.
+	slices.SortFunc(t.sources, func(x, y rpc.Citation) int { return x.N - y.N })
+	return t.emit(rpc.Event{Type: rpc.EventSources, Sources: slices.Clone(t.sources)})
 }
 
 // argsOf returns a call's arguments, or an empty JSON object when the model

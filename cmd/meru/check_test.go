@@ -317,6 +317,48 @@ Results saved to ` + saved + "\n"
 	}
 }
 
+// TestCheckReadsToolSources checks that sources_any and sources_none read
+// every "sources" event of a turn: the prompt's, and the later one merud
+// sends after search_files returns excerpts, as an agentic turn does.
+func TestCheckReadsToolSources(t *testing.T) {
+	found := []rpc.Citation{{N: 3, Path: "~/notes/naur.md"}, {N: 4, Path: "~/notes/visa.md"}}
+	f := &fakeTurns{answers: map[string][]rpc.Event{
+		"Naur?": {
+			{Type: rpc.EventRoute, Route: "search"},
+			{Type: rpc.EventSources, Sources: []rpc.Citation{{N: 1, Path: "~/a.md"}, {N: 2, Path: "~/b.md"}}},
+			{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: "1", Name: "search_files", Kind: "builtin"}},
+			{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: "1", Name: "search_files", Kind: "builtin", Outcome: "ok", Sources: found}},
+			{Type: rpc.EventSources, Sources: append([]rpc.Citation{{N: 1, Path: "~/a.md"}, {N: 2, Path: "~/b.md"}}, found...)},
+			{Type: rpc.EventToken, Text: "A theory [3]."},
+			{Type: rpc.EventDone, DurationMillis: 5000},
+		},
+	}}
+	sock := startServer(t, f.handle)
+	path := writeChecks(t,
+		`{"id": "naur", "category": "retrieval", "question": "Naur?", "want": {"sources_any": ["naur"]}}`,
+		`{"id": "naur-no-visa", "category": "retrieval", "question": "Naur?", "want": {"sources_none": ["visa"]}}`,
+	)
+	var out, errOut bytes.Buffer
+	run(context.Background(), []string{"-socket", sock, "check", "--json", path}, &out, &errOut)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d results, want 2:\n%s", len(lines), out.String())
+	}
+	var any, none checkResult
+	if err := json.Unmarshal([]byte(lines[0]), &any); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &none); err != nil {
+		t.Fatal(err)
+	}
+	if !any.Pass || !slices.Equal(any.Sources, []string{"~/a.md", "~/b.md", "~/notes/naur.md", "~/notes/visa.md"}) {
+		t.Errorf("sources_any result = %+v, want a pass with all four paths", any)
+	}
+	if none.Pass {
+		t.Errorf("sources_none result passed, want a fail on ~/notes/visa.md from the tool's excerpts")
+	}
+}
+
 func TestCheckJSONAndOnly(t *testing.T) {
 	f := &fakeTurns{answers: map[string][]rpc.Event{
 		"q1": {{Type: rpc.EventRoute, Route: "direct"}, {Type: rpc.EventToken, Text: "yes"}},

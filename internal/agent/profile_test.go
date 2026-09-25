@@ -139,7 +139,7 @@ func TestProfileInPrompt(t *testing.T) {
 			}
 			system := eng.lastCall().msgs[0].Content
 			if tt.want == "" {
-				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil)
+				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false)
 				if system != want {
 					t.Errorf("system prompt = %q\nwant %q", system, want)
 				}
@@ -147,7 +147,7 @@ func TestProfileInPrompt(t *testing.T) {
 			}
 			who := strings.Index(system, whoIsWho)
 			prof := strings.Index(system, tt.want)
-			files := strings.Index(system, filesNote(nil))
+			files := strings.Index(system, filesNote(nil, false))
 			if who < 0 || prof < 0 || files < 0 || !(who < prof && prof < files) {
 				t.Errorf("system prompt = %q\nwant whoIsWho, then %q, then filesNote", system, tt.want)
 			}

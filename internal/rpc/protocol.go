@@ -126,7 +126,10 @@ const (
 	// EventSources lists the excerpts from the user's files that merud put
 	// in the prompt, numbered as the answer cites them ([1], [2], ...). It
 	// comes after "route" and before the first "token", and only on a turn
-	// whose search found something.
+	// whose search found something. A round whose tool calls returned
+	// excerpts, such as search_files, sends it again after its
+	// "tool_result" events, with every source so far: each "sources" event
+	// replaces the one before it.
 	EventSources EventType = "sources"
 	// EventToken carries the next piece of the answer text.
 	EventToken EventType = "token"
@@ -316,6 +319,11 @@ type ToolEvent struct {
 	// "ok", "error", "denied", "declined", "cancelled" or "timeout".
 	Outcome        string `json:"outcome,omitempty"`
 	DurationMillis int64  `json:"duration_ms,omitempty"`
+	// Sources lists the excerpts from the user's files that the call
+	// returned, numbered as the model reads them. Set on "tool_result"
+	// only, by a tool such as search_files; the turn's next "sources"
+	// event holds them too.
+	Sources []Citation `json:"sources,omitempty"`
 }
 
 // Approval asks the user whether one tool call may run.

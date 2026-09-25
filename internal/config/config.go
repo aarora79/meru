@@ -129,7 +129,20 @@ type Index struct {
 	// Watch re-indexes a file as soon as it changes while merud runs. Default
 	// true. merud also rescans every folder at startup.
 	Watch bool `toml:"watch"`
+	// Retrieval says how a turn finds text in these folders. "auto", the
+	// default, searches before the model answers on the search routes and
+	// also offers the search_files tool. "agentic" skips that search and
+	// earlier conversations, and leaves the model to explore with
+	// search_files, grep, list_folder and read_file. See ARCHITECTURE.md,
+	// "Retrieval".
+	Retrieval string `toml:"retrieval"`
 }
+
+// The values [index] retrieval accepts.
+const (
+	RetrievalAuto    = "auto"
+	RetrievalAgentic = "agentic"
+)
 
 // MCP holds the [[mcp.servers]] entries. See ARCHITECTURE.md, "MCP".
 type MCP struct {
@@ -214,7 +227,7 @@ type Skills struct {
 // whatever Confirm says.
 type Builtin struct {
 	// Tools lists the built-in tools the model may use. A tool left out
-	// isn't registered at all. Default: all nine, as BuiltinTools returns
+	// isn't registered at all. Default: all ten, as BuiltinTools returns
 	// them. A listed tool whose setting is missing, such as the file tools
 	// with no [index] folders, still stays off.
 	Tools []string `toml:"tools"`

@@ -361,7 +361,7 @@ func TestRememberRunsHook(t *testing.T) {
 }
 
 // TestBuiltinToolsSwitch checks [builtin] tools. With every setting there,
-// the nine names config.BuiltinTools gives are exactly the tools offered
+// the ten names config.BuiltinTools gives are exactly the tools offered
 // and listed. A name left out is neither offered, listed nor run. A listed
 // tool whose setting is missing stays off, and Off says why.
 func TestBuiltinToolsSwitch(t *testing.T) {
@@ -390,6 +390,7 @@ func TestBuiltinToolsSwitch(t *testing.T) {
 	}
 
 	all := New(configPath, config.Builtin{Tools: config.BuiltinTools()}, web, mem, filepath.Join(dir, "out"), ix, nil, nil)
+	all.UseSearch(&fakeSearcher{})
 	want := config.BuiltinTools()
 	slices.Sort(want)
 	if offered, listed := names(all); !slices.Equal(offered, want) || !slices.Equal(listed, want) {
@@ -417,7 +418,7 @@ func TestBuiltinToolsSwitch(t *testing.T) {
 		}
 		offTools = append(offTools, o.Tool)
 	}
-	wantOff := []string{Remember, WriteFile, ReadFile, ListFolder, Grep, WebSearch}
+	wantOff := []string{Remember, WriteFile, ReadFile, ListFolder, Grep, SearchFiles, WebSearch}
 	if !slices.Equal(offTools, wantOff) {
 		t.Errorf("Off = %v, want %v", offTools, wantOff)
 	}
