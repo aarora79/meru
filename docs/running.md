@@ -1076,34 +1076,100 @@ manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 ### Check answers on your own files
 
 Unit and end-to-end tests run against fake models and made-up files. They can't
-tell whether Meru answers well from *your* files with *your* model. After each
-update, ask the same few questions and compare with last time. Keep your questions
-and the answers you expect in `~/.meru/checks.md`, outside the repo, since they
-name your own files and work.
+tell whether Meru answers well from *your* files with *your* model. `meru check`
+can: it asks a fixed set of questions, grades each answer against what you
+expect, and prints PASS or FAIL. Run it after each update and compare with last
+time.
 
-Five checks cover the ways answers have gone wrong so far. Fill in the brackets
-with something your files hold:
+Your questions live in `~/.meru/checks.jsonl`, outside the repo, since they
+name your own files and work. To start, copy the example and change it:
 
-1. **A new topic after an unrelated one.** In one `meru chat`, ask "when did I
-   visit [a place]?", then "I think I did some work for [a customer or project],
-   remind me what it was". The second answer should come from that project's
-   notes. If its sources are the first topic's files, the search mixed the two
-   questions.
-2. **A real follow-up.** Ask "which hotel did I book in [a city]?", then "how long
-   was the stay?". The second answer should still be about the same thing: a short
-   follow-up borrows the question before it.
-3. **Recovery.** When the model says it has nothing, type `/new` and ask again in
-   one full question. It should answer.
-4. **A whole folder.** Ask "help me write about my work, using everything in
-   [folder]". In v0.3 a turn reads the 10 best excerpts, about 5,000 tokens, so
-   expect a partial answer. Whole-file tools and larger models should do better
-   here; this check shows when they do.
-5. **A tool by name.** Ask "search my [server name] for [topic]". Tool lines
-   (`→ server.tool`) should show before the answer.
+```sh
+cp docs/examples/checks.example.jsonl ~/.meru/checks.jsonl
+meru check
+```
 
-For each, note the route, the sources and the time from `~/.meru/merud.log`
-(`grep 'msg=turn' ~/.meru/merud.log | tail -5`), and whether the answer was right.
-With `-v`, the `search done` and `prompt built` lines show what the model read.
+```text
+PASS  direct-capital  direct     direct          1.0s  -
+PASS  files-grep      files      search          8.3s  grep
+FAIL  web-go          web        tools          31.0s  web_search, web_fetch
+      answer lacks all of: 1.27.1
+PASS  mcp-vaults      mcp        search+tools    3.7s  obsidian_list_vaults
+
+direct     1/1
+files      1/1
+web        0/1
+mcp        1/1
+
+3 of 4 passed in 44s
+```
+
+Each line shows the verdict, the id, the category, the route, the seconds the
+turn took and the tools the model asked for. Under a FAIL, one line per reason
+says what went wrong. `meru check` exits 0 when every question passes and 1
+otherwise.
+
+Nobody watches a check, so `meru check` denies every tool call that asks
+first, and prints `approval denied: <tool>` under the line. A question that
+needs such a tool fails, since its answer came without it.
+
+**The file.** One question per line, as JSON. `meru check` skips blank lines
+and lines that start with `#`. Each line has an `id`, a `category`, the
+`question` and a `want`:
+
+```json
+{"id": "direct-capital", "category": "direct", "question": "What is the capital of Australia?", "want": {"route": ["direct"], "answer_any": ["Canberra"]}}
+```
+
+Questions with the same `"session"` value run in one session, in file order,
+so the second can follow up on the first. Every other question starts a new
+session:
+
+```json
+{"id": "trip", "category": "session", "session": "topics", "question": "When did I visit Amsterdam?", "want": {"sources_any": ["amsterdam"]}}
+{"id": "work", "category": "session", "session": "topics", "question": "What work did I do for Fruitstand?", "want": {"sources_none": ["amsterdam"]}}
+```
+
+Every field in `want` is optional. A question passes when each field it sets
+passes. Text matches ignore case.
+
+| Field | Passes when | Example |
+| --- | --- | --- |
+| `route` | the router picked one of these routes | `"route": ["search", "search+tools"]` |
+| `tools` | the turn ran each of these tools | `"tools": ["obsidian", "read_file"]` |
+| `no_tools` | the model asked for no tool at all | `"no_tools": true` |
+| `answer_any` | the answer holds at least one of these | `"answer_any": ["Canberra"]` |
+| `answer_all` | the answer holds every one of these | `"answer_all": ["go.dev", "1.27"]` |
+| `sources_any` | a file the search found has one of these in its path | `"sources_any": ["coase", "firm"]` |
+| `sources_none` | no file the search found has any of these in its path | `"sources_none": ["ams-visa"]` |
+| `max_seconds` | the turn took less than this | `"max_seconds": 30` |
+
+A name in `tools` matches a tool the turn ran in one of three ways: the full
+name as `meru tools` lists it (`obsidian.obsidian_search_vault`), a server
+prefix (`obsidian` matches every obsidian tool), or the name without its prefix
+(`git-log` matches `cmd.git-log`). The sources are every file the search put in
+the prompt, whether or not the answer cites it.
+
+`meru check` stops before asking anything when a line is bad: JSON that doesn't
+parse, a field the format doesn't have, a missing `id`, `category` or
+`question`, or an `id` used twice. The message gives the line number.
+
+**Flags.**
+
+```sh
+meru check                         # every question in ~/.meru/checks.jsonl
+meru check other.jsonl             # another file
+meru check --only direct,web-go    # only these categories or ids
+meru check --json                  # one JSON record per question, no table
+meru check --save                  # also save the results
+```
+
+`--save` appends one JSON record per question to
+`~/.meru/checks-results/<date>.jsonl` and says so at the end. Each record holds
+the run's start time, the question, PASS or FAIL with the reasons, the route,
+the tools, the sources, the seconds and the whole answer. To compare two runs,
+pick them out by their `run` field; comparing them inside `meru check` is for
+later.
 
 ## 12. Troubleshooting
 

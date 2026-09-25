@@ -59,6 +59,7 @@ $ meru mcp add stdio notes -- npx -y some-mcp  # any other server: Meru tries it
 $ meru mcp remove notes                    # take a server out of config.toml
 $ meru tools                               # each server, its allowed tools, which ask first
 $ meru log -n 20 -v                        # the latest tool calls, with results
+$ meru check --save                        # rerun your own questions from ~/.meru/checks.jsonl, grade them
 ```
 
 `merud` reads `[index] folders` and the servers in `~/.meru/config.toml` when it
@@ -66,7 +67,7 @@ starts, so restart it after changing either. API keys go in
 `~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
 `[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
 a pipe. Quote a question that starts with the word `ping`, `chat`, `index`,
-`tools`, `log`, `setup` or `mcp`, or `meru` reads that word as a command.
+`tools`, `log`, `setup`, `mcp` or `check`, or `meru` reads that word as a command.
 [docs/running.md](docs/running.md#7-index-your-files) shows the setup and the
 `Sources:` output.
 

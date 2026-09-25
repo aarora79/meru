@@ -20,9 +20,10 @@
 //	meru [-socket path] mcp              the state of each MCP server; also mcp status [--json]
 //	meru [-socket path] mcp list         the MCP server catalog and your servers
 //	meru [-socket path] mcp add ...      add an MCP server; also remove
+//	meru [-socket path] check [file]     rerun your own questions and grade the answers
 //
 // A question whose first word is ping, chat, index, tools, log, usage, setup,
-// memory, skills or mcp needs quotes, so meru reads it as a question and not
+// memory, skills, mcp or check needs quotes, so meru reads it as a question and not
 // as a command.
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
@@ -95,6 +96,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
                         add a server that isn't in the catalog
   meru mcp remove [--yes] <name>
                         take a server out of config.toml
+  meru check [file] [--only id,category] [--json] [--save]
+                        rerun your questions from ~/.meru/checks.jsonl
+                        and grade the answers
 
 flags:`)
 		flags.PrintDefaults()
@@ -145,6 +149,8 @@ flags:`)
 		err = skillsCmd(ctx, *socket, flags.Args()[1:], os.Stdin, stdout, isTerminal(os.Stdin))
 	case flags.Arg(0) == "mcp":
 		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
+	case flags.Arg(0) == "check":
+		err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it
@@ -157,6 +163,9 @@ flags:`)
 	case ctx.Err() != nil:
 		fmt.Fprintln(stderr) // end the half-printed line
 		return exitInterrupted
+	case errors.Is(err, errChecksFailed):
+		// The summary already said how many failed.
+		return exitError
 	case err != nil:
 		fmt.Fprintf(stderr, "meru: %v\n", err)
 		return exitError

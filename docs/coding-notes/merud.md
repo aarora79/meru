@@ -1,7 +1,7 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`)
-**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -436,6 +436,8 @@ case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
     err = setupUserCmd(ctx, *socket, terminal(stdout))
 case flags.Arg(0) == "memory":
     err = memoryCmd(ctx, *socket, flags.Args()[1:], stdout)
+case flags.Arg(0) == "check":
+    err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 default:
     p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
     err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
@@ -444,7 +446,7 @@ default:
 
 - `meru "question"` and `meru question words` both work; the words are joined.
   A question whose first word is `ping`, `chat`, `index`, `tools`, `log`,
-  `usage`, `setup`, `memory` or `mcp` needs quotes. `usage`, like `ping` and `chat`, is a
+  `usage`, `setup`, `memory`, `mcp` or `check` needs quotes. `usage`, like `ping` and `chat`, is a
   command only as the one word, so `meru usage of semicolons` asks a question.
 - `ask` writes each token to standard output the moment it arrives, as plain
   text, so pipes and scripts work. When `merud` sent a `sources` event, a
@@ -807,6 +809,63 @@ or `-y` may sit before or after the name.
 
 `skills_test.go` runs the three words against an in-process server and feeds
 `skillsCmd` scripted answers, with and without a terminal.
+
+### meru: check.go and checkfile.go
+
+`meru check` reruns a fixed set of your own questions and grades each answer,
+so you can see what a change made better or worse. The questions sit in
+`~/.meru/checks.jsonl`, one JSON object per line, outside the repo;
+[running.md](../running.md#check-answers-on-your-own-files) gives the format.
+`checkfile.go` reads the file and grades a turn; `check.go` asks `merud` and
+prints.
+
+```text
+$ meru check --only direct,web-go
+PASS  direct-capital  direct  direct          1.0s  -
+FAIL  web-go          web     tools          31.0s  web_search, web_fetch
+      answer lacks all of: 1.27.1
+
+direct  1/1
+web     0/1
+
+1 of 2 passed in 32s
+```
+
+- `parseChecks` reads the file line by line with a `bufio.Scanner` and skips
+  blank lines and `#` comments. `parseCheckLine` decodes each line with a
+  `json.Decoder` set to `DisallowUnknownFields`, so a typo such as `answr_any`
+  stops the run with its line number instead of passing every answer. A
+  missing `id`, `category` or `question`, and an `id` used twice, stop it too.
+- `runChecks` asks the questions one at a time with `askCheck`, which is `ask`
+  without the printing: it gathers the route, the tools, the sources, the
+  answer and the time from the events. A map from session group to `merud`'s
+  session ID lets questions with the same `"session"` value continue one
+  session. The first of a group sends no session, and the `session` event
+  gives the ID the rest send.
+- Nobody watches a check, so the `ApproveFunc` given to `rpc.Do` denies every
+  call and notes `approval denied: <tool>`. A refused call reaches the turn's
+  `Tools` from its `tool_call` event but stays out of `Ran`, since its
+  `tool_result` says `declined`. `grade` checks `tools` against `Ran`, so a
+  question that needs an approved tool fails.
+- `grade` returns one reason per `want` field that fails, such as `route
+  search, want direct` or `tool web_fetch not called`. An empty list is a pass.
+  `toolMatches` accepts a full name, a server prefix ending at a dot, or the
+  name after the prefix, so `"obsidian"` and `"git-log"` both work.
+- Each result prints as soon as `grade` returns, since a run of 17 questions
+  takes minutes. `writeCheckLine` pads the id and category to the widest in
+  the file, so the lines line up without a `tabwriter`, which needs every row
+  before it can print one. PASS is green and FAIL red through `look`.
+- `--json` prints each `checkResult` as one line of JSON instead of the table.
+  `--save` appends the same records to `~/.meru/checks-results/<date>.jsonl`,
+  with the run's start time in each, so two runs can be compared later.
+  `compactJSON` turns off HTML escaping, so an answer with `<` stays readable.
+- `checkCmd` returns `errChecksFailed` when any question fails. `run` exits 1
+  on it without printing it, because the summary already says how many
+  failed. A file that isn't there, or `merud` not answering, fails at once
+  with a message.
+- `check_test.go` runs `meru check` against a fake `merud` over a real socket.
+  It checks the session IDs each question sends, that approvals get a deny,
+  the printed table, the saved records and the exit code.
 
 ## Go ideas used here
 

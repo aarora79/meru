@@ -1,0 +1,20 @@
+# A starter check file for `meru check`. Copy it to ~/.meru/checks.jsonl,
+# then swap these questions for ones about your own files and tools.
+# docs/running.md, "Check answers on your own files", explains each field.
+#
+# Needs only a main model: general knowledge, no tools, no search.
+{"id": "direct-capital", "category": "direct", "question": "What is the capital of Australia?", "want": {"route": ["direct"], "no_tools": true, "answer_any": ["Canberra"]}}
+# Needs only a main model. max_seconds catches a model that stalls on sums.
+{"id": "direct-math", "category": "direct", "question": "What is 17% of 240?", "want": {"route": ["direct"], "no_tools": true, "answer_any": ["40.8"], "max_seconds": 30}}
+# Needs the meru repo in [index] folders, so the search finds its docs.
+{"id": "search-db", "category": "retrieval", "session": "meru-docs", "question": "What database does Meru use to store its index?", "want": {"route": ["search", "search+tools"], "answer_any": ["SQLite"], "sources_any": ["ARCHITECTURE.md", "docs/"]}}
+# The same session as the line above, so "it" means Meru's database.
+{"id": "search-driver", "category": "retrieval", "session": "meru-docs", "question": "Which Go driver does it use for that?", "want": {"answer_any": ["ncruces", "go-sqlite3"]}}
+# Needs web search: SearXNG running and [web_search] set in config.toml.
+{"id": "web-searxng", "category": "web", "question": "Search the web: what is SearXNG, in one sentence, with a source?", "want": {"tools": ["web_search"], "answer_any": ["metasearch", "meta-search"], "answer_all": ["http"]}}
+# Needs an MCP server named "obsidian" (meru mcp add obsidian). "obsidian"
+# matches any of its tools; name one, such as "obsidian.obsidian_list_vaults",
+# to want that tool.
+{"id": "mcp-vaults", "category": "mcp", "question": "Which Obsidian vaults do I have?", "want": {"tools": ["obsidian"]}}
+# Needs the git-log local command from docs/running.md, "Local commands".
+{"id": "command-git", "category": "command", "question": "What changed in the meru repo this week?", "want": {"tools": ["cmd.git-log"]}}
