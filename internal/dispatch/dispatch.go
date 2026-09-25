@@ -122,6 +122,11 @@ type Result struct {
 	Text string
 	// IsError is true when the tool ran and reported a failure.
 	IsError bool
+	// Sources lists the excerpts from the user's files that Text holds,
+	// numbered as Text numbers them, so the agent can add them to the
+	// turn's sources and the clients can list the ones the answer cites.
+	// search_files fills it; other tools leave it nil.
+	Sources []rpc.Citation
 }
 
 // Call is one tool call the model asked for.
@@ -181,4 +186,33 @@ func withSession(ctx context.Context, session string) context.Context {
 func SessionFrom(ctx context.Context) string {
 	s, _ := ctx.Value(sessionKey{}).(string)
 	return s
+}
+
+// citeKey is the key under which the agent puts its citation counter on
+// the context, as sessionKey does for the session.
+type citeKey struct{}
+
+// WithCiteNumbers returns a copy of ctx that carries next, the turn's
+// citation counter. next(n) reserves n citation numbers and returns the
+// first. The agent calls it before Dispatch, so a tool that returns
+// numbered excerpts can number them after the ones already in the
+// prompt, and the model's [n] marks name one excerpt across the turn.
+//
+// Backend.Call takes no turn, so, like the session, the counter rides on
+// the context rather than on a new parameter every backend would have to
+// take.
+func WithCiteNumbers(ctx context.Context, next func(n int) int) context.Context {
+	return context.WithValue(ctx, citeKey{}, next)
+}
+
+// CiteNumbers reserves n citation numbers for the call a backend is
+// running and returns the first. Calls that run at the same time get
+// ranges that don't overlap. Outside a turn, or when n is 0 or less, it
+// reserves nothing and returns 1.
+func CiteNumbers(ctx context.Context, n int) int {
+	next, ok := ctx.Value(citeKey{}).(func(int) int)
+	if !ok || n <= 0 {
+		return 1
+	}
+	return next(n)
 }

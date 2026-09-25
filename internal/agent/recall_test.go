@@ -161,7 +161,7 @@ func TestMemorySectionInPrompt(t *testing.T) {
 			system := eng.lastCall().msgs[0].Content
 			prof := strings.Index(system, "- Name is Dana Reyes")
 			mems := strings.Index(system, section)
-			files := strings.Index(system, filesNote(nil))
+			files := strings.Index(system, filesNote(nil, false))
 			if !tt.want {
 				if strings.Contains(system, memoryHeader) {
 					t.Errorf("system prompt holds the memory section:\n%s", system)

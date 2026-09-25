@@ -84,6 +84,15 @@ overlap_tokens = 50
 # Re-index a file as soon as it changes. merud also rescans every folder
 # when it starts, so edits made while it was stopped get in.
 watch = true
+# How a question finds text in these folders:
+#   "auto"     merud searches before the model answers, on every route but
+#              direct, and puts the ten best excerpts in the prompt. The
+#              model may also search again with search_files, grep and
+#              read_file.
+#   "agentic"  no search up front and no earlier conversations: the model
+#              explores with search_files, grep, list_folder and read_file.
+#              Needs search_files in [builtin] tools.
+retrieval = "auto"
 
 [log]
 # How much merud writes to merud.log: "debug", "info", "warn" or "error".
@@ -110,12 +119,13 @@ capture_content  = false   # put question and answer text into spans
 #   write_file    saves a file in [skills] output_dir
 #   read_file, list_folder, grep
 #                 read the [index] folders; off while folders is empty
+#   search_files  searches the [index] folders by meaning and by words
 #   web_search    searches through SearXNG at [web] searxng_url
 #   web_fetch     fetches a public web page when the model asks. merud then
 #                 connects to sites off this machine, and they see your IP
 #                 address. It asks you first for a URL no search result or
 #                 question of yours gave, and before any download.
-tools = ["configure", "datetime", "remember", "write_file", "read_file", "list_folder", "grep", "web_search", "web_fetch"]
+tools = ["configure", "datetime", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch"]
 # Tools that ask before each call; each must be in tools. configure always
 # asks, whatever this says. Add "remember" to approve each memory; take out
 # "write_file" to let it save without asking.
@@ -133,11 +143,12 @@ max_results = 8
 # The one folder write_file may write in. web_fetch saves downloads in its
 # downloads/ folder.
 output_dir = "~/meru-output"
-# Skills merud doesn't load. Three ship with Meru, and merud copies them to
+# Skills merud doesn't load. Four ship with Meru, and merud copies them to
 # skills/ on first run:
-#   writing       plain-English rules for any prose Meru writes
-#   explainer     builds a self-contained HTML page that teaches a topic
-#   web-research  searches, reads the best pages and cites them
+#   writing        plain-English rules for any prose Meru writes
+#   explainer      builds a self-contained HTML page that teaches a topic
+#   web-research   searches, reads the best pages and cites them
+#   file-research  finds things in your files with the file tools and cites them
 # A built-in named here isn't copied again. A folder you add to skills/
 # loads with no change here. For example: disabled = ["explainer"]
 disabled = []

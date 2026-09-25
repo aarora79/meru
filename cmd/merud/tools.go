@@ -56,8 +56,9 @@ type toolService struct {
 // newToolService loads secrets.toml, checks the [[commands]] entries,
 // starts the MCP pool and the A2A client, builds the built-in tools over the memory folder mem, with
 // onRemember to run after remember saves a memory, over the indexer
-// ix, which the file tools read through, and over eng, whose fast model
-// answers web_fetch's prompt, and joins them in one dispatcher that
+// ix, which the file tools read through, with search, which search_files
+// searches through, and over eng, whose fast model answers web_fetch's
+// prompt, and joins them in one dispatcher that
 // writes its rows to st. It then rebuilds the tool_calls table from the
 // transcripts if the table is empty, so a deleted meru.db loses no history.
 //
@@ -65,7 +66,7 @@ type toolService struct {
 // when a command, server or agent entry is wrong; merud then refuses to
 // start, so a bad entry shows at once. A command's program missing from
 // PATH is only a warning in the log.
-func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, eng builtin.Generator, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
+func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, search builtin.FileSearcher, eng builtin.Generator, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
@@ -105,13 +106,16 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		ix.ReadAlso(filepath.Join(outputDir, "downloads"))
 	}
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
+	// web_fetch's prompt runs on the fast model, the router's.
+	bt.UseModel(eng, cfg.Models.Fast)
+	// search_files runs the same hybrid search a turn runs before the
+	// answer, through the same store and embedding model.
+	bt.UseSearch(search)
 	// A tool [builtin] tools lists but whose setting is missing stays off;
 	// say why, so the user isn't left guessing.
 	for _, off := range bt.Off() {
 		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
 	}
-	// web_fetch's prompt runs on the fast model, the router's.
-	bt.UseModel(eng, cfg.Models.Fast)
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure, then the
 	// commands, so an MCP server named "cmd" can't shadow one.

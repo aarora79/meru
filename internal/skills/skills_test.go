@@ -177,8 +177,8 @@ func repoSkill(t *testing.T, name string) []byte {
 }
 
 // fromAssets lists the built-in skills copied from the owner's
-// my-ai-assets repo, which .claude/skills also holds. web-research is
-// Meru's own and lives only under internal/skills/builtin.
+// my-ai-assets repo, which .claude/skills also holds. web-research and
+// file-research are Meru's own and live only under internal/skills/builtin.
 var fromAssets = []string{"explainer", "writing"}
 
 // TestBuiltinsMatchRepo checks the list of built-in skills, and that each
@@ -187,8 +187,8 @@ var fromAssets = []string{"explainer", "writing"}
 // catches drift in either direction.
 func TestBuiltinsMatchRepo(t *testing.T) {
 	names := Builtins()
-	if !slices.Equal(names, []string{"explainer", "web-research", "writing"}) {
-		t.Fatalf("Builtins = %v, want [explainer web-research writing]", names)
+	if !slices.Equal(names, []string{"explainer", "file-research", "web-research", "writing"}) {
+		t.Fatalf("Builtins = %v, want [explainer file-research web-research writing]", names)
 	}
 	for _, name := range fromAssets {
 		t.Run(name, func(t *testing.T) {
@@ -203,7 +203,7 @@ func TestBuiltinsMatchRepo(t *testing.T) {
 	}
 }
 
-// TestInstallBuiltins checks the first-run install: all three skills land
+// TestInstallBuiltins checks the first-run install: all four skills land
 // and load cleanly with private permissions, and a second run changes
 // nothing.
 func TestInstallBuiltins(t *testing.T) {
@@ -212,7 +212,7 @@ func TestInstallBuiltins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallBuiltins: %v", err)
 	}
-	if !slices.Equal(installed, []string{"explainer", "web-research", "writing"}) {
+	if !slices.Equal(installed, []string{"explainer", "file-research", "web-research", "writing"}) {
 		t.Errorf("installed = %v", installed)
 	}
 
@@ -238,8 +238,8 @@ func TestInstallBuiltins(t *testing.T) {
 	if err != nil || len(again) != 0 {
 		t.Errorf("second InstallBuiltins = %v, %v; want nothing installed", again, err)
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 3 {
-		t.Errorf("skills dir holds %d entries, want 3 (no temp folders left)", len(entries))
+	if entries, _ := os.ReadDir(dir); len(entries) != 4 {
+		t.Errorf("skills dir holds %d entries, want 4 (no temp folders left)", len(entries))
 	}
 }
 
@@ -258,11 +258,12 @@ func TestInstallKeepsEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Only the skill with no folder yet goes in. This is also how a user
-	// who installed Meru before web-research shipped gets it.
+	// Only the skills with no folder yet go in. This is also how a user
+	// who installed Meru before web-research and file-research shipped
+	// gets them.
 	installed, err := InstallBuiltins(dir, nil)
-	if err != nil || !slices.Equal(installed, []string{"web-research"}) {
-		t.Fatalf("InstallBuiltins = %v, %v; want [web-research] alone", installed, err)
+	if err != nil || !slices.Equal(installed, []string{"file-research", "web-research"}) {
+		t.Fatalf("InstallBuiltins = %v, %v; want [file-research web-research]", installed, err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "writing", fileName)) // #nosec G304 -- a test temp dir
 	if err != nil || string(got) != edited {
@@ -346,8 +347,8 @@ func TestDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallBuiltins: %v", err)
 	}
-	if !slices.Equal(installed, []string{"web-research", "writing"}) {
-		t.Errorf("installed = %v, want web-research and writing", installed)
+	if !slices.Equal(installed, []string{"file-research", "web-research", "writing"}) {
+		t.Errorf("installed = %v, want file-research, web-research and writing", installed)
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "explainer")); !os.IsNotExist(err) {
 		t.Errorf("the disabled explainer was installed: %v", err)
@@ -363,8 +364,8 @@ func TestDisabled(t *testing.T) {
 	for _, s := range r.List() {
 		names = append(names, s.Name)
 	}
-	if !slices.Equal(names, []string{"mine", "web-research", "writing"}) {
-		t.Errorf("loaded %v, want mine, web-research and writing", names)
+	if !slices.Equal(names, []string{"file-research", "mine", "web-research", "writing"}) {
+		t.Errorf("loaded %v, want file-research, mine, web-research and writing", names)
 	}
 	if len(r.Warnings()) != 0 {
 		t.Errorf("a disabled skill gave warnings: %v", r.Warnings())

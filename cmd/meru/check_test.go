@@ -101,7 +101,7 @@ func TestGrade(t *testing.T) {
 		Route:   "search+tools",
 		Tools:   []string{"obsidian.obsidian_search_vault", "read_file", "cmd.git-log", "write_file"},
 		Ran:     []string{"obsidian.obsidian_search_vault", "read_file", "cmd.git-log"},
-		Sources: []string{"~/notes/Coase-Firm.md", "~/vault/ams-visa.md"},
+		Sources: []string{"~/notes/Coase-Firm.md", "~/vault/lisbon-trip.md"},
 		Answer:  "Transaction COSTS explain the firm. See go.dev.",
 		Seconds: 12.5,
 	}
@@ -133,7 +133,7 @@ func TestGrade(t *testing.T) {
 		{"sources any fail", checkWant{SourcesAny: []string{"naur", "theory"}}, rec, []string{"no source matches any of: naur, theory"}},
 		{"sources any, no sources", checkWant{SourcesAny: []string{"x"}}, turnRecord{}, []string{"no source matches any of: x"}},
 		{"sources none pass", checkWant{SourcesNone: []string{"naur"}}, rec, nil},
-		{"sources none fail", checkWant{SourcesNone: []string{"AMS-visa"}}, rec, []string{"source ~/vault/ams-visa.md matches AMS-visa"}},
+		{"sources none fail", checkWant{SourcesNone: []string{"Lisbon-trip"}}, rec, []string{"source ~/vault/lisbon-trip.md matches Lisbon-trip"}},
 		{"time pass", checkWant{MaxSeconds: 13}, rec, nil},
 		{"time fail", checkWant{MaxSeconds: 10}, rec, []string{"took 12.5s, want under 10s"}},
 		{"merud error", checkWant{}, turnRecord{Error: "model not found"}, []string{"merud error: model not found"}},
@@ -314,6 +314,48 @@ Results saved to ` + saved + "\n"
 	}
 	if !slices.Equal(coase.Sources, []string{"~/notes/coase.md"}) || coase.Run != r.Run {
 		t.Errorf("coase record = %+v, want one source and the same run", coase)
+	}
+}
+
+// TestCheckReadsToolSources checks that sources_any and sources_none read
+// every "sources" event of a turn: the prompt's, and the later one merud
+// sends after search_files returns excerpts, as an agentic turn does.
+func TestCheckReadsToolSources(t *testing.T) {
+	found := []rpc.Citation{{N: 3, Path: "~/notes/naur.md"}, {N: 4, Path: "~/notes/lisbon.md"}}
+	f := &fakeTurns{answers: map[string][]rpc.Event{
+		"Naur?": {
+			{Type: rpc.EventRoute, Route: "search"},
+			{Type: rpc.EventSources, Sources: []rpc.Citation{{N: 1, Path: "~/a.md"}, {N: 2, Path: "~/b.md"}}},
+			{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: "1", Name: "search_files", Kind: "builtin"}},
+			{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: "1", Name: "search_files", Kind: "builtin", Outcome: "ok", Sources: found}},
+			{Type: rpc.EventSources, Sources: append([]rpc.Citation{{N: 1, Path: "~/a.md"}, {N: 2, Path: "~/b.md"}}, found...)},
+			{Type: rpc.EventToken, Text: "A theory [3]."},
+			{Type: rpc.EventDone, DurationMillis: 5000},
+		},
+	}}
+	sock := startServer(t, f.handle)
+	path := writeChecks(t,
+		`{"id": "naur", "category": "retrieval", "question": "Naur?", "want": {"sources_any": ["naur"]}}`,
+		`{"id": "naur-no-lisbon", "category": "retrieval", "question": "Naur?", "want": {"sources_none": ["lisbon"]}}`,
+	)
+	var out, errOut bytes.Buffer
+	run(context.Background(), []string{"-socket", sock, "check", "--json", path}, &out, &errOut)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d results, want 2:\n%s", len(lines), out.String())
+	}
+	var any, none checkResult
+	if err := json.Unmarshal([]byte(lines[0]), &any); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &none); err != nil {
+		t.Fatal(err)
+	}
+	if !any.Pass || !slices.Equal(any.Sources, []string{"~/a.md", "~/b.md", "~/notes/naur.md", "~/notes/lisbon.md"}) {
+		t.Errorf("sources_any result = %+v, want a pass with all four paths", any)
+	}
+	if none.Pass {
+		t.Errorf("sources_none result passed, want a fail on ~/notes/lisbon.md from the tool's excerpts")
 	}
 }
 

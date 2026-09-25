@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/retrieve"
 	"github.com/aarora79/meru/internal/rpc"
@@ -167,6 +168,84 @@ func TestToolsRouteSearches(t *testing.T) {
 	}
 	if !slices.ContainsFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventSources }) {
 		t.Errorf("route tools sent no sources event")
+	}
+}
+
+// TestToolQuestionSkipsSearch covers the rule in aboutFiles: a "tools"
+// turn whose question points at a connected tool runs no search before the
+// answer and gets no note on the file tools, yet still offers them. Every
+// other file turn searches and gets the note; "search" and "search+tools"
+// do whatever the question says. With agentic retrieval nothing searches
+// first, and the explore note follows the same rule.
+func TestToolQuestionSkipsSearch(t *testing.T) {
+	const (
+		web      = "Search the web for the latest Go release"
+		calendar = "what's on my calendar tomorrow?"
+		server   = "ask the almanac when to sow tomatoes"
+		memory   = "remember that my favourite tea is jasmine"
+		files    = "what does my garden plan say about tomatoes?"
+	)
+	tests := []struct {
+		name       string
+		route      string // what the router picks
+		question   string
+		agentic    bool
+		wantRoute  string // after the override rules
+		wantSearch bool
+		wantNote   string // the file-tools note; "" for none
+	}{
+		{"web question on tools", "tools", web, false, "tools", false, ""},
+		{"calendar question on tools", "tools", calendar, false, "tools", false, ""},
+		{"server question on tools", "tools", server, false, "tools", false, ""},
+		{"remember on tools", "tools", memory, false, "tools", false, ""},
+		{"web question sent direct", "direct", web, false, "tools", false, ""},
+		{"file question on tools", "tools", files, false, "tools", true, fileToolsNote},
+		{"server question on search", "search", server, false, "search+tools", true, fileToolsNote},
+		{"web question on search+tools", "search+tools", web, false, "search+tools", true, fileToolsNote},
+		{"file question on search", "search", files, false, "search", true, fileToolsNote},
+		{"direct question", "direct", "what is the capital of France?", false, "direct", false, ""},
+		{"agentic web question", "tools", web, true, "tools", false, ""},
+		{"agentic file question", "tools", files, true, "tools", false, exploreNote},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := testConfig(t)
+			if tt.agentic {
+				cfg.Index.Retrieval = config.RetrievalAgentic
+			}
+			tools := &fakeTools{specs: []engine.ToolSpec{
+				spec("datetime"), spec("remember"), spec("web_search"),
+				spec("read_file"), spec("list_folder"), spec("grep"), spec("search_files"),
+				spec("google.list_calendars"), spec("almanac.search"),
+			}}
+			search := &fakeSearcher{results: []retrieve.Result{result("/n/garden.md", "", "Sow tomatoes in May.", 1, 1, 0.02)}}
+			eng := &fakeEngine{pieces: []string{"ok"}}
+			a := New(cfg, eng, &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}}, search, tools, nil, nil, quietLog())
+			evs, err := run(context.Background(), a, rpc.Request{Text: tt.question})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			for _, ev := range evs {
+				if ev.Type == rpc.EventRoute && ev.Route != tt.wantRoute {
+					t.Errorf("route = %q, want %q", ev.Route, tt.wantRoute)
+				}
+			}
+			if got := len(search.queries) > 0; got != tt.wantSearch {
+				t.Errorf("searched first = %v, want %v", got, tt.wantSearch)
+			}
+			c := eng.lastCall()
+			system := c.msgs[0].Content
+			for _, note := range []string{fileToolsNote, exploreNote} {
+				if has, want := strings.Contains(system, note), note == tt.wantNote; has != want {
+					t.Errorf("system prompt holds %.30q... = %v, want %v", note, has, want)
+				}
+			}
+			// The file tools stay on offer wherever the route gives tools,
+			// so the model can still look at files when it has to.
+			if tt.wantRoute != "direct" && !slices.ContainsFunc(c.tools, func(s engine.ToolSpec) bool { return s.Name == "grep" }) {
+				t.Errorf("grep not offered on %s", tt.wantRoute)
+			}
+		})
 	}
 }
 

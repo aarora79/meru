@@ -1,13 +1,14 @@
 // Package builtin holds the tools built into merud, as one dispatch.Backend.
-// There are nine: configure, which adds an MCP server to config.toml when
+// There are ten: configure, which adds an MCP server to config.toml when
 // you ask in chat ("connect my Gmail"); datetime, which reads the clock;
 // remember, which saves one fact about you as a memory file; write_file,
 // which saves a file the model made inside [skills] output_dir; read_file,
-// list_folder and grep, which read the [index] folders; and web_search and
-// web_fetch, which search the web through the user's SearXNG and read,
-// answer from or download one public page.
+// list_folder and grep, which read the [index] folders; search_files, which
+// runs Meru's hybrid search over them; and web_search and web_fetch, which
+// search the web through the user's SearXNG and read, answer from or
+// download one public page.
 //
-// [builtin] tools in config.toml lists the ones the model may use; all nine
+// [builtin] tools in config.toml lists the ones the model may use; all ten
 // by default. A tool it leaves out isn't offered, listed or run. A listed
 // tool whose setting is missing, such as the file tools with no [index]
 // folders, stays off too, and Off says why so merud can log it. See
@@ -37,6 +38,14 @@
 // the indexer's own Check, Walk and ReadText, so they skip what the indexer
 // skips: symlinks, secrets, hidden, ignored, binary and oversized files. The
 // model can read no file that search couldn't already put in its prompt.
+//
+// search_files runs retrieve.Search, the search a turn runs before the
+// answer, through the FileSearcher merud hands UseSearch, and returns
+// numbered excerpts with their citations in Result.Sources. It takes its
+// numbers from dispatch.CiteNumbers, so they follow the excerpts already in
+// the turn. It only reads the index, and runs without asking unless
+// [builtin] confirm lists it. With [index] retrieval = "agentic" it is how
+// a turn finds text by meaning, since no search runs before the answer.
 //
 // web_search talks only to [web] searxng_url, which config holds to
 // loopback, with no proxy and no redirects. It runs without asking unless

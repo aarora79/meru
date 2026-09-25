@@ -34,10 +34,11 @@ const (
 	Grep       = "grep"
 )
 
-// IsFileTool reports whether name is one of the three file tools. The agent
-// offers these alone on the "search" route.
+// IsFileTool reports whether name is one of the four file tools: the three
+// here and search_files. The agent offers these alone on the "search"
+// route.
 func IsFileTool(name string) bool {
-	return name == ReadFile || name == ListFolder || name == Grep
+	return name == ReadFile || name == ListFolder || name == Grep || name == SearchFiles
 }
 
 // Limits on what one call returns. dispatch cuts any result at 16,000

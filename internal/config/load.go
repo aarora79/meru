@@ -32,10 +32,10 @@ const MaxWebResults = 20
 // each name here is a tool it serves.
 var builtinTools = []string{
 	"configure", "datetime", "remember", "write_file",
-	"read_file", "list_folder", "grep", "web_search", "web_fetch",
+	"read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch",
 }
 
-// BuiltinTools returns the names of all nine built-in tools, the default
+// BuiltinTools returns the names of all ten built-in tools, the default
 // for [builtin] tools. It returns a copy, so a caller can't change the
 // list the defaults use.
 func BuiltinTools() []string { return slices.Clone(builtinTools) }
@@ -122,6 +122,7 @@ func defaults() Config {
 			ChunkTokens:   500,
 			OverlapTokens: 50,
 			Watch:         true,
+			Retrieval:     RetrievalAuto,
 		},
 		// Every built-in tool is on. web_fetch, which fetches public pages
 		// off this machine, is on too: a small model needs the page itself
@@ -291,6 +292,12 @@ func validate(cfg Config) error {
 	for _, err := range checkBuiltin(cfg.Builtin) {
 		add("%w", err)
 	}
+	// Agentic retrieval runs no search before the answer, so without
+	// search_files the model could only grep: it would lose search by
+	// meaning altogether.
+	if cfg.Index.Retrieval == RetrievalAgentic && !slices.Contains(cfg.Builtin.Tools, "search_files") {
+		add("index.retrieval is \"agentic\", but builtin.tools doesn't list search_files; add it, or use retrieval = \"auto\"")
+	}
 
 	// errors.Join returns nil when errs is empty.
 	return errors.Join(errs...)
@@ -337,6 +344,9 @@ func checkIndex(ix Index) []error {
 	// from. Above 8192 it outgrows what small embedding models read.
 	if ix.ChunkTokens < 50 || ix.ChunkTokens > 8192 {
 		errs = append(errs, fmt.Errorf("index.chunk_tokens is %d; it must be between 50 and 8192", ix.ChunkTokens))
+	}
+	if ix.Retrieval != RetrievalAuto && ix.Retrieval != RetrievalAgentic {
+		errs = append(errs, fmt.Errorf("index.retrieval %q is unknown; use %q or %q", ix.Retrieval, RetrievalAuto, RetrievalAgentic))
 	}
 	// Overlap past half a chunk would make each chunk mostly a copy of the
 	// one before it.

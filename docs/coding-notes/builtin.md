@@ -1,16 +1,19 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
-`writefile.go`, `files.go`, `web.go`, `webguard.go`, `webdownload.go`, and the
-tests `builtin_test.go`, `writefile_test.go`, `files_test.go`, `web_test.go` and
-`webfetch_test.go`, with the PDF in `testdata/`)
+`writefile.go`, `files.go`, `search.go`, `web.go`, `webguard.go`,
+`webdownload.go`, and the tests `builtin_test.go`, `writefile_test.go`,
+`files_test.go`, `search_test.go`, `web_test.go` and `webfetch_test.go`, with
+the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
-(`remember`, `write_file`, `read_file`, `list_folder`, `grep`)
+(`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
+`search_files`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
 [Memory](../../ARCHITECTURE.md#memory),
 [Built-in skills](../../ARCHITECTURE.md#built-in-skills),
-[Web search](../../ARCHITECTURE.md#web-search)
+[Web search](../../ARCHITECTURE.md#web-search),
+[Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
 
@@ -18,8 +21,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are nine built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all nine by default. When you say "connect my Gmail" in chat, the model calls
+There are ten built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all ten by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -39,6 +42,13 @@ Search hands the model ten excerpts, which can't cover a folder. When you ask
 see what the folder holds, `read_file` to read each file whole, and `grep` to
 find every file that names a customer. These three only read, and only inside
 the `[index] folders`, with the indexer's own skip rules.
+
+`search_files` is the fourth file tool. It runs the same search a turn runs
+before the answer, by meaning and by keyword, for whatever query the model
+writes, and hands back numbered excerpts. With `[index] retrieval = "agentic"`
+no search runs before the answer, so this is how the model finds text by
+meaning: `{"query": "why do firms exist"}` finds a note on Coase that never uses
+those words. With `"auto"` it lets the model search again in other words.
 
 When you ask "search the web for the latest Go release", the model calls
 `web_search` with `{"query": "latest Go release"}`. The tool sends one GET to the
@@ -99,9 +109,10 @@ tools out; the tests of `configure` use all three. `merud` expands the `~` in
 `[skills] output_dir` before it calls `New`, so this package gets an absolute
 path, and it passes a `nil` indexer when `[index] folders` is empty. An empty
 `searxng_url` leaves `web_search` out. After `New`, `merud` calls `UseModel(eng,
-cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model. It is
-a method, not one more parameter of `New`, so the many tests that build `Tools`
-without a model stay as they are.
+cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model, and
+`UseSearch(search)`, so `search_files` can search. Both are methods, not more
+parameters of `New`, so the many tests that build `Tools` without a model or a
+store stay as they are.
 
 `[builtin] tools` decides which built-ins exist at all. `New` keeps the list in
 `t.on`, and `enabled(name)` asks `slices.Contains(t.on, name)`. Three places use
@@ -119,8 +130,8 @@ in `Call` is a second lock on the same door. `ConfirmCall` asks `enabled` too, s
 the URL guard stays quiet when `web_fetch` is off.
 
 A listed tool can still lack what it works on: `remember` needs the memory store,
-`write_file` the output folder, the file tools the indexer, and `web_search` a
-SearXNG URL. `missing(name)` returns the reason, or `""`, and `Off()` returns one
+`write_file` the output folder, the file tools the indexer, `search_files` the
+indexer and a searcher, and `web_search` a SearXNG URL. `missing(name)` returns the reason, or `""`, and `Off()` returns one
 `Off{Tool, Reason}` per listed tool with a reason, in list order. `merud` logs
 each as "built-in tool off" at startup, so a user who listed `grep` with no
 `[index] folders` can read why the model doesn't get it. `web_fetch`,
@@ -312,6 +323,51 @@ seconds of that. That fits inside the 5-second limit, so `grep` reads PDFs.
 
 All three run without asking unless `[builtin] confirm` lists them. They only
 read, and only what search could already put in the prompt.
+
+`IsFileTool` names the four file tools, these three and `search_files`. The
+agent offers them, with `datetime` and the commands that don't ask, on the
+`search` route. It also uses `IsFileTool` to decide when the prompt gets the
+note on using them: only on a turn about the user's files that offers one.
+
+### search.go
+
+`search_files` needs the store and the embedding model, which live in `merud`.
+The package doesn't import them. It defines the one method it calls:
+
+```go
+type FileSearcher interface {
+    SearchFiles(ctx context.Context, query string, limit int) ([]retrieve.Result, error)
+}
+```
+
+`merud` passes its `searchAdapter`, whose `SearchFiles` calls `retrieve.Search`
+with `TopN` set to `limit`: the same search, list sizes and merge a turn runs
+before the answer (see [retrieve](retrieve.md)). Tests pass a fake that returns
+fixed results.
+
+The model sends `query` and, if it likes, `limit`: 8 by default, 1 to 20. The
+tool refuses a blank query, a limit out of range and an unknown key, with text
+the model can read. A search that finds nothing says so and suggests other
+words or `grep`.
+
+The results come back best first. The tool keeps as many as fit in 14,000
+characters, counting 200 for each citation line, and drops the rest from the
+bottom. `dispatch` cuts every result at 16,000 characters; staying under that
+means no excerpt arrives with its number and half its text.
+
+Each excerpt needs a number the model can cite, and the number must not clash
+with the excerpts already in the prompt or those another call returned in the
+same turn. `dispatch.CiteNumbers(ctx, n)` reserves `n` numbers and returns the
+first. The agent put the counter on `ctx` (see [dispatch](dispatch.md) and
+[agent](agent.md)); outside a turn, as in most tests, it returns 1. The tool
+then writes each excerpt under `retrieve.Cite`'s line, such as `[11]
+~/notes/coase.md, "Theory of the firm", lines 3–9`, the same line the prompt's
+excerpts carry, with the path shortened to `~/…`. The same numbers go into
+`dispatch.Result.Sources` as `rpc.Citation` values, which the agent adds to the
+turn's sources.
+
+`search_files` only reads the index and runs without asking unless
+`[builtin] confirm` lists it.
 
 ### web.go
 
@@ -521,7 +577,8 @@ scans it, so a downloaded page can't reach a later turn through search.
   `dispatch.CallConfirmer`. The test lines
   `var _ dispatch.Backend = (*Tools)(nil)` and its `CallConfirmer` twin fail to
   compile if a method goes missing. `Generator` is an interface with the one
-  engine method `web_fetch` calls, defined here, where it is used. More in
+  engine method `web_fetch` calls, and `FileSearcher` one with the one search
+  `search_files` runs, each defined here, where it is used. More in
   [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Struct tags and `encoding/json`** — `configureArgs` maps the JSON keys to
   fields. More in [go-basics/json.md](go-basics/json.md) and
@@ -579,11 +636,11 @@ and greps a downloaded file through `index.ReadAlso`, and refuses a link in the
 folder.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the nine names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the ten names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `remember`,
-`write_file`, the file tools and `web_search`, each with a reason.
+`write_file`, the four file tools and `web_search`, each with a reason.
 `TestWebToolsOffered` crosses `[web] searxng_url` with `[builtin] tools` for the
 two web tools.
 
@@ -615,10 +672,19 @@ pages join back into the file. `TestListFolder`, `TestListFolderEntryCap` and
 one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 `grepRun`, and `TestGrepCancelled` passes a cancelled `ctx`.
 
+`search_test.go` runs `search_files` over a fake searcher.
+`TestSearchFilesReturnsNumberedExcerpts` puts a counter on `ctx` that has
+already handed out six numbers, and checks that the excerpts come back as `[7]`
+and `[8]`, with `~` paths, heading, lines or page, and matching `Sources`.
+`TestSearchFilesArguments` covers the limit range, a blank query and an unknown
+key. `TestSearchFilesCap` feeds five 5,000-character excerpts and checks that
+two come back and only two numbers were taken. `TestSearchFilesOff` checks the
+tool stays off without a searcher or without `[index] folders`.
+
 ## Why it's built this way
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all nine. `web_fetch` had its own key under `[web]` before; two
+  same way for all ten. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **One writer for config.** `configure` and `meru mcp add` both call
@@ -629,6 +695,13 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
   scheme for hiding a key the model has already read.
 - **The session on the context.** Only `remember` needs the session, so putting
   it on `ctx` beats adding a parameter to every backend's `Call`.
+- **One search, two doors.** `search_files` calls `retrieve.Search`, the
+  search a turn runs before the answer, through a one-method interface. A
+  turn's up-front excerpts and the tool's excerpts come from the same code, so
+  a measurement of one holds for the other.
+- **Citation numbers on the context.** Only `search_files` numbers its result,
+  so, as with the session, a counter on `ctx` beats a new parameter on every
+  backend's `Call`.
 - **The indexer's rules, not a copy.** The file tools call `index.Check`,
   `Walk` and `ReadText`, so a new skip rule reaches search and the tools at
   once, and the model can never read a file search would refuse.
@@ -644,7 +717,7 @@ one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 - **The address check at dial time.** Checking the URL's host before the request
   would miss a name that resolves inside the network, and a redirect. `Control`
   sees the one address that matters, the one the socket connects to.
-- **No bash tool.** Meru runs without a sandbox, so it offers three narrow
+- **No bash tool.** Meru runs without a sandbox, so it offers four narrow
   read-only tools instead of a shell. A program you want the model to run goes
   in `[[commands]]`, whole, with the model filling only typed parameters; see
   [commands](commands.md).

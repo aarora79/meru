@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -16,9 +16,13 @@ your files first and whether the model may call tools:
 | Route | Searches your files? | Offers tools? |
 | --- | --- | --- |
 | `direct` | no, unless the question names an indexed folder | no |
-| `search` | yes | only the three file tools and the local commands that don't ask |
+| `search` | yes | only the four file tools, `datetime` and the local commands that don't ask |
 | `tools` | yes (the router sends some file questions here, see below) | yes |
 | `search+tools` | yes | yes |
+
+With `[index] retrieval = "agentic"` no route searches first. The routes keep
+the tools the table gives them, and the model finds text in your files with the
+file tools: `search_files`, `grep`, `list_folder` and `read_file`.
 
 A turn with no tools makes one model call. A turn with tools runs in
 **rounds**: each round is one model call, and a round in which the model calls
@@ -178,15 +182,20 @@ without the section.
 
 ### New and filesNote
 
-`New` builds the system prompt once and adds `filesNote(cfg.Index.Folders)` to
-the end of it, so every turn tells the model which folders Meru searches:
+`New` builds the system prompt once and adds `filesNote(cfg.Index.Folders,
+agentic)` to the end of it, so every turn tells the model which folders Meru
+searches:
 
 ```text
-Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. You can't open or list files yourself.
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below.
 ```
 
-With no folders, the note says instead that Meru hasn't indexed any files yet
-and that the user lists folders under `[index] folders` in
+With `[index] retrieval = "agentic"`, `New` sets `a.agentic`, and the note
+leaves out the second sentence, since Meru searches nothing first. The note
+says nothing about the file tools: that goes in a note of its own, which only
+file turns get (see `fileToolsNoteFor` below). So the note every turn carries
+stays the same, and Ollama can reuse its work on it. With no folders, the note says that Meru hasn't indexed any
+files yet and that the user lists folders under `[index] folders` in
 `~/.meru/config.toml`. Without the note a small model answered "I don't have
 access to your files" while it read excerpts from them, and couldn't say what
 Meru had indexed.
@@ -194,7 +203,7 @@ Meru had indexed.
 Before the files note comes `whoIsWho`: the person asking is the user, the files
 are theirs, and "I", "me" and "my" in a question mean the user, never the model.
 It joins every system prompt, a custom one from config too. Without it, the 2B
-model read "did I visit Amsterdam?" as a question about Meru, and answered that
+model read "did I visit Lisbon?" as a question about Meru, and answered that
 Meru had no record of a visit while the excerpts named the user as the
 traveller.
 
@@ -222,11 +231,12 @@ What you know about the user:
 
 The profile follows `whoIsWho`, so the rule that "I" means the user and the
 facts about who the user is sit side by side. Without them, the 2B model read a
-visa letter and guessed that you were the co-applicant it named.
+hotel booking and guessed that you were the other guest it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
 date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
-skills; then the recalled memories, the picked skills' instructions, and last
+skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
+file tools; then the recalled memories, the picked skills' instructions, and last
 the files section, which holds the numbered excerpts and then the earlier
 conversations. `prompt` takes the changing parts in one `sections` struct and
 leaves out each empty part.
@@ -310,7 +320,8 @@ tools, and the model then says it will remember and saves nothing. So when the
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
-count. A wrong guess, such as "do you remember the trip?", costs a prompt
+count. It is one of the four signs `toolTarget` checks, so a `tools` turn that
+asks Meru to remember also skips the search of your files. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
 ### Skills (skills.go)
@@ -443,10 +454,12 @@ show up twice in the prompt.
 
 ### searchFiles
 
-On every route but `direct`, `Handle` calls `searchFiles` between routing and
-the prompt. `searches(route)` is `route != "direct"`. `tools` searches too:
-the router sends some questions about your files to `tools`, and an answer
-from the files beats one from the model alone.
+On a file turn, `Handle` calls `searchFiles` between routing and the prompt.
+`aboutFiles(route, target)` says which turns those are: `search` and
+`search+tools` always, `tools` unless the question points at a connected tool
+(see the tool rule below), and `direct` never. `tools` searches because the
+router sends some questions about your files there, and an answer from the
+files beats one from the model alone.
 
 One rule runs first. When the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
@@ -468,21 +481,49 @@ its name with the folder. The `route` event, the turn's log line and its span
 show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
-A second rule does the same for tools. When a question names a connected tool
-server, such as "search my obsidian vault", and the route is `direct` or
-`search`, `withTools` adds the rest: `direct` becomes `tools` and `search` becomes
-`search+tools`. `toolServers` reads the server names from the tool names:
-`obsidian` from `obsidian.obsidian_simple_search`, `research` from
-`a2a.research.summarize`. It leaves out the built-in tools, whose owner,
-`meru`, is also the assistant's name. It reads them on each turn, because the
+A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
+four signs that a question points at a connected tool, and returns the first
+it finds as words for the log line, or `""` for none:
+
+| Sign | Example | Found by |
+| --- | --- | --- |
+| names a tool server | "search my obsidian vault" | `namesFolder` over `toolServers` |
+| asks Meru to remember | "remember that my name is Dana" | `asksToRemember` |
+| asks for the web | "search the web: what is SearXNG?" | `asksForWeb` |
+| names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
+
+When it finds one and the route is `direct` or `search`, `withTools` adds the
+rest: `direct` becomes `tools` and `search` becomes `search+tools`.
+`toolServers` reads the server names from the tool names: `obsidian` from
+`obsidian.obsidian_simple_search`, `research` from `a2a.research.summarize`.
+It leaves out the built-in tools, whose owner, `meru`, is also the
+assistant's name. `Handle` reads the tools on each turn, because the
 configure tool can add a server while `merud` runs. In testing, the router
 sent "Search my Obsidian vault for notes mentioning 'AI'" to `search`, and
 the model, offered no tools, said it couldn't search the vault.
 
+`Handle` keeps what `toolTarget` found in `target` and uses it a second time,
+in `aboutFiles`: a `tools` turn with a target isn't a file turn, so it skips
+the search.
+
+```go
+fileTurn := aboutFiles(dec.Route, target)
+```
+
+Before this rule, "search the web for the latest Go release" searched your
+folders too. The excerpts crowded the prompt and cost time, and `web_search`
+numbers its results from `[1]` as the excerpts are, so a `[1]` meant for a web
+page also named the first excerpt, and the Sources list under a web answer
+showed one of your files. The file tools stay
+on offer on such a turn, so the model can still look at your files when it
+has to. `search` and `search+tools` keep their search whatever the question
+says: the router, or the folder rule, saw files in it. So "search my obsidian
+vault", sent to `search` and moved to `search+tools`, still searches.
+
 Then the search:
 
 ```go
-if searches(dec.Route) && a.search != nil {
+if a.searchesFirst(fileTurn) {
     var sources []rpc.Citation
     files, sources, docs, err = a.searchFiles(ctx, searchQuery(question, history))
     ...
@@ -537,10 +578,25 @@ msgs := a.prompt(ctx, history, question, memories, files, a.skillsSection(ctx, p
   and `meru chat` show the ones the answer cites (see `rpc.Cited`).
 - **The metric.** `meru.context.tokens` with `section = "chunks"` records the
   section's size, estimated as characters divided by four.
+- **The numbers go on.** `Handle` keeps the sources in `t.sources` and their
+  count in `t.cites`, so excerpts that `search_files` returns later in the turn
+  number from 11 after ten up-front ones (see the tool rounds below).
+
+**Agentic retrieval.** `searchesFirst(fileTurn)` is `fileTurn`, a
+Searcher, and `!a.agentic`. With `[index] retrieval = "agentic"` it is false
+on every route, so the turn has no file excerpts, no `noResults` note, no
+up-front `sources` event and no earlier conversations, which hang off the same
+`if`. The profile and the recalled memories stay: they cost one embedding, and
+they are about you, which no file tool can find. The routes still offer what
+they offered, so `search` gets the four file tools, and on a file turn
+`exploreNote` tells the model to use them (see `fileToolsNoteFor` below). The folder rule still turns a
+`direct` question that names an indexed folder into `search`, which is now how
+that question gets the file tools. `ARCHITECTURE.md`, "Retrieval", has the
+numbers that compare the two modes.
 
 ### Earlier conversations (earlier.go)
 
-On the same routes, right after the file search, one line in `Handle` adds past
+On the same turns, right after the file search, one line in `Handle` adds past
 sessions to the prompt (v0.4):
 
 ```go
@@ -632,7 +688,7 @@ answer := transcript.Line{
 }
 ```
 
-`Route` is the route after both override rules, the one the `route` event
+`Route` is the route after the override rules, the one the `route` event
 showed. `Ms` counts from `start`, when `merud` received the question. `Sources`
 is the `docs` list from `searchFiles`, empty on a turn that didn't search. The
 user line carries `start` as its time too, so a row rebuilt from the file gets
@@ -684,38 +740,57 @@ turn with only file tools included, and a `direct` turn never does.
 rounds.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
-ToolRunner offers on `tools` and `search+tools`. On `search` it keeps the
-three read-only file tools, `read_file`, `list_folder` and `grep`, which
-`builtin.IsFileTool` names, and the local commands (`cmd.<name>`) for which
-`Asks` says no:
+ToolRunner offers on `tools` and `search+tools`. On `search` it keeps
+`datetime`, the four read-only file tools, `read_file`, `list_folder`, `grep`
+and `search_files`, which `builtin.IsFileTool` names, and the local commands
+(`cmd.<name>`) for which `Asks` says no:
 
 ```go
 case "search":
     var specs []engine.ToolSpec
     for _, s := range a.tools.Tools() {
-        if builtin.IsFileTool(s.Name) || (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
+        if s.Name == builtin.DateTime || builtin.IsFileTool(s.Name) ||
+            (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
             specs = append(specs, s)
         }
     }
     return specs
 ```
 
-Ten excerpts can't cover "everything in my work folder", and the three file
-tools read nothing search couldn't. The commands are there because "what
+Ten excerpts can't cover "everything in my work folder", and the file tools
+read nothing search couldn't. The commands are there because "what
 changed in the meru repo this week?" lands on `search` when `meru` is an
 indexed folder, and a declared `git log` answers it. A command with
 `confirm = true` changes something, so it waits for a tools route. On
 `direct`, or when the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model
 can't call a tool it hasn't seen, and the prompt stays shorter.
 
-`noteFor(specs)` picks the note `prompt` adds to the system prompt. A turn
-whose tools are all file tools or commands, the "search" kinds, gets
-`fileToolsNote` when it has file tools (when the excerpts aren't enough, the
-model may read whole files, list folders and grep) and `commandsNote` when it
-has commands (it may run the `cmd.` tools). Any other turn with tools gets
-`toolsNote`: the model may call the tools, and some calls ask you first. A
-turn with no tools gets none. `Handle` also records the schemas' size,
-characters divided by four, as `meru.context.tokens` with `section = "tools"`.
+Two functions pick the notes `prompt` adds to the system prompt.
+`noteFor(specs)` gives `toolsNote` to a turn that offers any tool but the file
+tools and commands, `datetime` included: the model may call the tools, and
+some calls ask you first. A turn whose tools are only file tools and
+commands gets `commandsNote` when it has commands (it may run the `cmd.`
+tools). A turn with no tools gets none.
+
+`a.fileToolsNoteFor(specs, fileTurn)` gives the note on the file tools, and
+only to a file turn that offers them. In `auto` mode that is `fileToolsNote`:
+when the excerpts aren't enough, the model may read whole files, list
+folders, grep and search again. With agentic retrieval it is `exploreNote`:
+look first with `search_files` or `grep`, then `read_file` what matters, stop
+after two or three rounds, and cite `search_files`' excerpts by number. It
+carries the citing rule that `citeRule` carries when excerpts sit in the
+prompt. A web or mail question gets neither, even though its turn offers the
+file tools: its prompt stays shorter, and the model isn't told to go looking
+in your folders for an answer that lives elsewhere. `prompt` puts this note
+after the list of skills, so a file turn and any other turn share the whole
+opening of the prompt up to it.
+
+A Go `switch` runs only the first case that matches and never falls through
+to the next, so `noteFor` has a case for the file tools with no body: it
+keeps them out of the `default` case, which returns `toolsNote`.
+
+`Handle` also records the schemas' size, characters divided by four, as
+`meru.context.tokens` with `section = "tools"`.
 
 **The loop.** `converse` runs the rounds:
 
@@ -753,8 +828,9 @@ for {
   counts. `reply.add` has a pointer receiver (`r *reply`), so it changes the
   caller's `reply` in place.
 - **`turn`** is a small struct that carries what the rounds need: the
-  session, source, trace ID, `emit`, `approve`, and two counters, `rounds`
-  and `calls`. `Handle` reads `t.rounds` in its deferred function, so a
+  session, source, trace ID, `emit`, `approve`, two counters, `rounds`
+  and `calls`, and the turn's sources with `cites`, the count of citation
+  numbers handed out. `Handle` reads `t.rounds` in its deferred function, so a
   failed turn still reports how many rounds it ran.
 
 **Running the calls.** `runTools` does one round's calls:
@@ -776,11 +852,17 @@ for {
    URLs in it (see [builtin](builtin.md)).
 3. Each goroutine writes its result into its own slot of a slice, so the
    results come out in call order with no lock, and emits its `tool_result`
-   event (outcome and milliseconds) as soon as it ends. A quick call reports
-   before a slow one.
+   event (outcome, milliseconds and any `Sources`) as soon as it ends. A
+   quick call reports before a slow one.
+4. Once every call has ended, `addSources` adds the excerpts the calls
+   returned to `t.sources`, sorts them by number, and emits a `sources` event
+   with all of them. The clients keep the last `sources` event, so their
+   `Sources:` list and `rpc.Cited` cover what the model found through
+   `search_files`, and `meru check`'s `sources_any` sees those paths.
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
+gctx = dispatch.WithCiteNumbers(gctx, t.nextCites)
 for i, c := range calls {
     g.Go(func() error {
         res, outcome := a.tools.Dispatch(gctx, dispatch.Call{...})
@@ -796,6 +878,26 @@ if err := g.Wait(); err != nil {
 `g.Wait` waits for every goroutine, so none outlives the turn. When one
 returns an error (only `emit` can fail, when the client has gone), `gctx`
 ends and the other calls stop.
+
+**Citation numbers.** `search_files` numbers its excerpts, and those numbers
+must follow the prompt's and not clash with another call's in the same round.
+The agent puts `t.nextCites` on `gctx` with `dispatch.WithCiteNumbers`, and the
+tool calls `dispatch.CiteNumbers(ctx, n)`, which runs it:
+
+```go
+func (t *turn) nextCites(n int) int {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    first := t.cites + 1
+    t.cites += n
+    return first
+}
+```
+
+Two searches in one round run in two goroutines, so the counter takes a lock.
+Each gets a block of numbers that doesn't overlap the other's, in the order
+they asked. The model reads those numbers in the tool results and cites them;
+`addSources` then sorts the list by number for the client.
 
 **Events from several goroutines.** While calls run, `emit` runs from
 several goroutines at once, and dispatch may call `approve` from them too.
@@ -895,6 +997,18 @@ the new tool in the same turn, and a `direct` turn never calls it.
 `dispatch.Dispatcher`: the fake engine calls `read_file`, and the next round
 must read the file's whole text.
 
+`agentic_test.go` runs turns over the real built-in tools, with a fake
+searcher behind `search_files`. `TestAgenticTurnSkipsSearchFirst` sets
+`[index] retrieval = "agentic"` and, on `search`, `search+tools` and `tools`,
+checks that the turn searched neither files nor past sessions, that the prompt
+holds `exploreNote` and the recalled memory but no excerpts, that the four file
+tools are on offer, and that the one `sources` event comes from the tool,
+numbered from 1. `TestToolSourcesNumberAfterThePrompts` runs an `auto` turn
+with two up-front excerpts whose model calls `search_files` twice in one round:
+the tools' excerpts must be `[3]` to `[6]` with no overlap, the last `sources`
+event must hold all six in order, and `rpc.Cited` must find `[3]` in the
+answer. `TestNoteFor` pins which note each mix of tools gets in each mode.
+
 `TestEndToEnd` starts the real socket server with this agent over a fake
 engine, asks a question with the real client and checks the streamed answer and
 the transcript file. `TestEndToEndToolRound` does the same with the real
@@ -970,7 +1084,13 @@ hold the question or answer until `capture_content` is on.
 - **Recall on every route.** It costs one embedding of the question and three
   small queries, about 10 ms against the local Ollama, well under a model call.
 - **Sources before the answer.** The client learns what the model read while
-  the answer streams, and picks which to show once it has the whole text.
+  the answer streams, and picks which to show once it has the whole text. A
+  tool's excerpts come in a later `sources` event that repeats the whole list,
+  so a client needs no new logic: it keeps the last list it saw.
+- **Both retrieval modes, one default.** `auto` searches before the answer and
+  offers `search_files` too; `agentic` leaves the search to the model. The
+  owner's check set favoured `auto` on the 2B model (see ARCHITECTURE.md,
+  "Retrieval"), so `auto` stays the default and `agentic` is a setting.
 - **The agent never runs a tool itself.** It hands every call to the
   ToolRunner, so dispatch stays the one path that checks allowlists, asks
   you, and logs each call.

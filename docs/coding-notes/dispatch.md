@@ -170,6 +170,26 @@ overwrite the value by mistake. `ctx.Value` returns `any`, and the `, ok` form o
 the type assertion gives `""` instead of a panic when there is no session, as
 outside a call.
 
+**Result.Sources and CiteNumbers.** A `Result` holds `Text`, `IsError`, and
+`Sources`: the excerpts from your files that `Text` holds, as `rpc.Citation`
+values. `search_files` fills it; every other tool leaves it `nil`. `Dispatch`
+passes it through untouched, and the agent adds it to the turn's sources.
+
+Each excerpt needs a number that no other excerpt in the turn has, and only the
+agent knows how many it has handed out. So the agent puts a counter on the
+context, the same way the session rides there, and a backend reserves numbers
+from it:
+
+```go
+ctx = dispatch.WithCiteNumbers(ctx, t.nextCites) // the agent, before Dispatch
+first := dispatch.CiteNumbers(ctx, len(results)) // search_files, in Call
+```
+
+`CiteNumbers(ctx, n)` reserves `n` numbers and returns the first. Outside a
+turn, or for `n` of 0, it reserves nothing and returns 1. The value on the
+context is a plain function, `func(int) int`; the agent's version takes a lock,
+so two calls that run at once get ranges that don't overlap.
+
 ### dispatcher.go: the Dispatcher
 
 ```go
@@ -307,7 +327,10 @@ go test -race -run MCP ./cmd/merud/
 a series of calls through the approval rules. `TestRedaction` plants a secret in
 the arguments and the error text and checks it reaches no line, row or prompt.
 `TestSessionOnContext` checks that a backend reads the call's session with
-`SessionFrom`. `TestAuditor` checks that an Auditor's arguments reach the line,
+`SessionFrom`. `TestCiteNumbersAndSources` puts a counter that has handed out
+ten numbers on the context, has a backend reserve two, and checks that the
+backend's `Sources` come back through `Dispatch` as `[11]` and `[12]`.
+`TestAuditor` checks that an Auditor's arguments reach the line,
 the prompt and the row, redacted. `TestCallConfirmer` checks that a per-call
 answer wins, that `Confirm` decides when there is none, that the question
 reaches the backend, and that a job's asking call is declined. `TestMCPBackend` runs the backend against a real
