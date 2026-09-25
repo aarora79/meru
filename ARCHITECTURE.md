@@ -15,7 +15,8 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 
 1. **Nothing leaves the machine by accident.** Meru connects only to loopback, except
    to A2A agents and MCP servers you mark as remote in config, and to the public web
-   pages the model fetches with `web_fetch`, which `[web] fetch = false` turns off.
+   pages the model fetches with `web_fetch`, which you turn off by taking it out of
+   `[builtin] tools`.
    A page URL that no search result or question of yours gave asks you first, so
    the model can't send your data out in a URL. Meru measures itself, but no telemetry
    leaves the machine, and the codebase has no path that sends a prompt to a cloud
@@ -368,17 +369,29 @@ and arguments and offers the choices `merud` sends, at most these three:
   {"ts":"2026-09-23T10:17:21Z","type":"approval","call_id":"call-1","server":"google","tool":"send_gmail_message","choice":"once","trace_id":"9c2e…"}
   ```
 
-- **Built-in tools have their own confirm list.** Built-ins belong to no server
-  entry, so `config.toml` gives them one section:
+- **Built-in tools have their own section.** Built-ins belong to no server
+  entry, so `config.toml` gives them one section with two lists:
 
   ```toml
   [builtin]
+  tools   = ["configure", "datetime", "remember", "write_file", "read_file",
+             "list_folder", "grep", "web_search", "web_fetch"]   # all nine, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
-  The built-in tools are `configure`, which always asks, whatever this list says
+  `tools` lists the built-ins the model may use. Take a name out and `merud`
+  doesn't register that tool with `dispatch`: the model never sees it, and
+  `meru tools` doesn't list it. `configure` can go too; `meru mcp add` still
+  works without it. An unknown name stops `merud` at load, with the valid names
+  in the message, and so does a `confirm` entry that `tools` doesn't list. A
+  listed tool still needs what it works on: the file tools need `[index]
+  folders`, `write_file` needs `[skills] output_dir`, and `web_search` needs
+  `[web] searxng_url`. Without it the tool stays off, and `merud` logs one info
+  line at startup that names the tool and the missing setting.
+
+  The built-in tools are `configure`, which always asks, whatever `confirm` says
   (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
-  memory without asking unless you list it here; `write_file`, which asks
+  memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
   clock tool, `datetime`; and three read-only file tools. `web_search`,
@@ -392,7 +405,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
-  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered unless `[web] fetch = false`. |
+  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
 
   The file tools reach only the `[index] folders` and the downloads folder
   `web_fetch` saves in, and they skip what the indexer skips (see
@@ -1210,6 +1223,19 @@ the other skills still load.
 Skills are plain files, so any other agent that reads this format can use the same
 directory.
 
+To turn a skill off, name it in `[skills] disabled`:
+
+```toml
+[skills]
+disabled = ["explainer"]   # the default is [], every skill on
+```
+
+`merud` doesn't load a disabled skill, so the model never sees it. For a built-in
+skill, `merud` also doesn't install it: delete its folder and disable it, and it
+stays gone. A name that matches no skill isn't an error, since you may add that
+skill later; `merud` logs it at info and moves on. A skill folder you add loads
+with no change to config.
+
 ### Built-in skills
 
 Meru ships with three skills. `writing` and `explainer` come from the owner's
@@ -1223,11 +1249,14 @@ Meru ships with three skills. `writing` and `explainer` come from the owner's
 
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
-  `~/.meru/skills/<name>/` unless that folder already exists.
+  `~/.meru/skills/<name>/` unless that folder already exists or `[skills]
+  disabled` names it.
 - **Your copy wins.** `merud` never overwrites a skill you've edited. To get the
   shipped version back, run `meru skills reset <name>`.
 - **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
   counts, whether you wrote it or copied it from elsewhere.
+- **You turn one off in config.** `[skills] disabled` names the skills `merud`
+  skips, built-in or yours (see [Skills](#skills)).
 - **Skills that make files need somewhere to put them.** The built-in `write_file`
   tool (v0.4) writes only inside `~/meru-output/` (configurable). It can't touch any other
   path, and it goes through `dispatch` like every tool.
@@ -1248,9 +1277,14 @@ own the first time you run `meru`.
    Meru names the profile's models and, after a yes, downloads each with
    `ollama pull`, which draws its own progress bar.
 3. **Your files.** Meru asks which folders to index (for example `~/notes`) and
-   writes a short `config.toml` with the profile and the folders. It writes the
-   file only when none exists: rewriting yours would drop your comments, so for an
-   existing file setup says what to edit instead. `merud` creates the rest of
+   writes `config.toml` from the config template, with two lines filled in: the
+   profile and `[index] folders`. The template holds every key. What is on by
+   default stays uncommented, with its default value, so you see it and can change
+   it; what is off, such as the catalog's MCP servers, sits there commented, ready
+   to uncomment. Setup writes the file only when none exists: rewriting yours would
+   drop your comments, so for an existing file setup says what to edit instead.
+   `meru config template` prints the template, to compare with your file or to
+   start over. `merud` creates the rest of
    `~/.meru/` when it starts; setup doesn't write `prompt.md` or the built-in
    skills yet.
 4. **Web search.** Meru checks that SearXNG answers JSON at `[web] searxng_url`.
@@ -1681,15 +1715,19 @@ route:
 
 | Tool | Offered when | What it does |
 | --- | --- | --- |
-| `web_search` | `[web] searxng_url` is set, as it is by default | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
-| `web_fetch` | `[web] fetch = true`, the default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. |
+| `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
+| `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. |
 
 ```toml
 [web]
 searxng_url = "http://127.0.0.1:8888"   # loopback only; "" turns web_search off
 max_results = 8                         # 1 to 20
-fetch       = true                      # false leaves web_fetch out
 ```
+
+`web_fetch` has no key under `[web]`: `[builtin] tools` is its one switch. A
+config that still says `fetch` or the older `read_pages` under `[web]` stops
+`merud` with a message that says to list `web_fetch` in `[builtin] tools`, or
+leave it out to turn page fetching off.
 
 `web_fetch` takes `{"url", "prompt"?, "offset"?, "save"?}`:
 
@@ -1756,7 +1794,8 @@ words, so they can hold words from your question.
 **Fetching pages is on by default.** Asked for the latest Go release, the
 `lite` model trusted months-old snippets and answered 1.26; the answer sat on
 go.dev's release page, which it couldn't read. So `merud` fetches public pages
-when the model asks, under the URL guard, and `fetch = false` turns that off. It is the one case where `merud` connects off
+when the model asks, under the URL guard, and taking `web_fetch` out of
+`[builtin] tools` turns that off. It is the one case where `merud` connects off
 this machine with no `remote = true` entry. The site sees your IP address and a
 User-Agent that names Meru. `web_fetch` keeps no cookies and uses no proxy. It
 checks each address as it connects, after DNS, and refuses loopback, private
@@ -2073,7 +2112,7 @@ transcript lines hold. No level writes question or answer text. With
   to the search engines it asks. That is the one part of a question that leaves
   the machine when the model searches.
 - `web_fetch` makes `merud` fetch public pages off this machine, by default,
-  when the model asks; `[web] fetch = false` turns it off. It refuses any address
+  when the model asks; taking it out of `[builtin] tools` turns it off. It refuses any address
   on this machine or your network. It runs without asking only for a URL that a
   search result or your own question gave in the same session, or for a page
   with no query string on the same site, so the model can't carry your data out

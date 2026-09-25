@@ -113,7 +113,7 @@ is Meru's own; its only copy lives in `internal/skills/builtin/web-research/`.
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, and
    to public web pages through `web_fetch`, which is on by default and fetches only
-   when the model asks; `[web] fetch = false` turns it off. That tool refuses
+   when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
    loopback and private addresses at connect time, and asks the user before it
    fetches a URL that no search result or question of the user's gave in the same
    session, and before any download.
@@ -177,7 +177,7 @@ test/e2e/            end-to-end tests: real binaries against the fake Ollama and
 deploy/              launchd and systemd files, the local Grafana stack, dashboards
 docs/                architecture levels, coding notes, CI, running guide, posters
 .github/             CI, security scans, Dependabot
-config.example.toml  every config key with its default
+config.example.toml  every config key with its default; a copy of internal/config/template.toml
 Makefile             `make check` runs everything CI runs
 ```
 
