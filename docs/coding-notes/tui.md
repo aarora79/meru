@@ -449,11 +449,19 @@ style and one wrap width:
 
 ```go
 r, err := glamour.NewTermRenderer(
-	glamour.WithStandardStyle(m.look.markdownStyle),
+	glamour.WithStyles(chatStyle(m.look.markdownStyle)),
 	glamour.WithColorProfile(m.look.renderer.ColorProfile()),
 	glamour.WithWordWrap(m.width),
 )
 ```
+
+`chatStyle` starts from one of Glamour's built-in styles, "dark", "light" or
+"notty". The colour styles print "## " and "### " in front of each heading, which in
+the chat looked like Markdown that failed to render, so `chatStyle` clears those
+marks and leaves the colour and bold to show the heading. "notty" has no colour or
+bold, so it keeps its marks. `glamourstyles.DefaultStyles` holds pointers to styles
+Glamour shares, so `chatStyle` copies the struct (`c := *s`) and changes only the
+copy.
 
 Building one parses the style, so the model keeps it and builds a new one only when
 the width changes. Each finished answer keeps its rendered text and the width it was
@@ -880,6 +888,9 @@ Run the tests. They need no terminal and no `merud`:
 ```sh
 go test -race ./internal/tui/...
 ```
+
+`TestHeadingMarks` renders two headings in each style and checks that "##" shows
+only in "notty". The golden tests use "notty", so they can't catch that change.
 
 The golden tests in `view_test.go` draw the screen at a fixed size with colour off and
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
