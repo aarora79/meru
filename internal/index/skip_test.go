@@ -94,8 +94,8 @@ func TestNewFolders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(home, "notes"); ix.folders[0] != want {
-		t.Errorf("folder = %q, want %q", ix.folders[0], want)
+	if want := filepath.Join(home, "notes"); ix.configured()[0] != want {
+		t.Errorf("folder = %q, want %q", ix.configured()[0], want)
 	}
 	cfg.Folders = []string{"relative/notes"}
 	if _, err := New(cfg, newFakeSink(), &fakeEngine{}, nil); err == nil {

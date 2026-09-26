@@ -287,6 +287,32 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 		t.Errorf("status DBBytes = %d, want the size of meru.db", size)
 	}
 
+	// The session ops read the question back from its transcript.
+	var sessions []rpc.SessionInfo
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpSessions}, nil) {
+		if err != nil {
+			t.Fatalf("sessions: %v", err)
+		}
+		if ev.Type == rpc.EventSessions {
+			sessions = ev.Sessions
+		}
+	}
+	if len(sessions) != 1 || sessions[0].Title != "ping?" || sessions[0].Turns != 1 {
+		t.Fatalf("sessions = %+v, want the one session with ping?", sessions)
+	}
+	var turns []rpc.TurnInfo
+	for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpSessionTurns, Session: sessions[0].ID}, nil) {
+		if err != nil {
+			t.Fatalf("session turns: %v", err)
+		}
+		if ev.Type == rpc.EventTurns {
+			turns = ev.Turns
+		}
+	}
+	if len(turns) != 1 || turns[0].Question != "ping?" || turns[0].Answer != "pong" {
+		t.Errorf("turns = %+v, want ping? answered pong", turns)
+	}
+
 	cancel()
 	select {
 	case err := <-done:
@@ -442,7 +468,7 @@ func TestRouterNamesConnectedTools(t *testing.T) {
 				t.Fatal(err)
 			}
 			connected := agent.ConnectedTools(cfg)
-			rt, err := newRouter(cfg, eng, func() []string { return connected }, nil)
+			rt, err := newRouter(cfg, eng, func() []string { return connected }, func() []string { return cfg.Index.Folders }, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

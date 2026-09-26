@@ -206,6 +206,37 @@ Line-based editing can misread a file, so `writeChecked` checks the result:
 it must load, and hold the same servers in the same order, minus the one
 removed. If not, nothing changes and the error says to edit the file by hand.
 
+### edit.go
+
+The desktop app's settings change one list at a time, and `merud` writes each
+change with the two functions here.
+
+`SetEntryLists(path, table, name, lists)` sets keys such as `allow` and `confirm`
+in one `[[mcp.servers]]` or `[[a2a.agents]]` entry. `entrySpan` finds the entry
+the way `cutServer` does, parsing each block alone to read its name.
+`SetTableLists(path, table, lists, check)` does the same for a plain table, such
+as `[index]` with `folders` or `[builtin]` with `tools` and `confirm`, and adds the
+table at the end when the file has none. Two keys of one table change in one
+write, so nobody reads one changed without the other.
+
+`setKeys` does the line work. For each key, in sorted order:
+
+1. Find the table's own lines: from its header to the next header of any kind,
+   so a key never lands in `[mcp.servers.env]`.
+2. `keySpan` finds the key's line, skipping comment lines, and follows a list
+   over as many lines as it runs: `bracketDepth` counts `[` and `]` outside
+   strings and before a `#`, until the brackets close.
+3. Replace those lines with one: whatever came before the `=`, so `allow   =`
+   keeps its spacing, then the new list, then any comment the value's last line
+   had (`trailingComment`).
+4. A key the table lacks goes in after its last key line, before trailing
+   comments and blank lines.
+
+`writeChecked` then loads the result. `SetEntryLists` checks that the entry holds
+exactly the lists asked for and that the servers and agents are the same ones, in
+the same order, and runs `CheckServers`; `SetTableLists` runs the caller's
+`check`. On any failure the file stays as it was.
+
 ### searxng.go
 
 `CheckSearXNG(ctx, baseURL)` answers one question: does SearXNG answer JSON at

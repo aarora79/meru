@@ -56,7 +56,7 @@ const (
 // path line and the reason, and no text. With no output folder, or no
 // [index] folders (the file tools are off then), it returns "".
 func (t *Tools) AttachmentText(text string, since time.Time) string {
-	if t.outputDir == "" || t.files == nil {
+	if t.outputDir == "" || !t.hasFiles() {
 		return ""
 	}
 	dir := filepath.Join(t.outputDir, attachmentsFolder)

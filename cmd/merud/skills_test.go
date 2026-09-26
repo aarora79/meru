@@ -144,7 +144,8 @@ func TestExpandHome(t *testing.T) {
 }
 
 // TestSkillServiceDisabled checks that a skill [skills] disabled names is
-// neither installed nor listed, and that a name matching no skill is fine.
+// neither installed nor loaded, and that a name matching no skill is fine.
+// The list names the disabled skills last, marked as such.
 func TestSkillServiceDisabled(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "skills")
@@ -161,9 +162,13 @@ func TestSkillServiceDisabled(t *testing.T) {
 	}
 	var names []string
 	for _, sk := range evs[0].Skills {
-		names = append(names, sk.Name)
+		name := sk.Name
+		if sk.Disabled {
+			name += "(off)"
+		}
+		names = append(names, name)
 	}
-	if strings.Join(names, ",") != "file-research,web-research,writing" {
-		t.Errorf("skills = %v, want file-research, web-research and writing", names)
+	if want := "file-research,web-research,writing,explainer(off),not-yet(off)"; strings.Join(names, ",") != want {
+		t.Errorf("skills = %v, want %s", names, want)
 	}
 }

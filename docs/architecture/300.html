@@ -305,14 +305,14 @@
 <div class="figbox">
 <svg viewBox="0 0 960 632" role="img" aria-labelledby="f1t f1d">
   <title id="f1t">System overview</title>
-  <desc id="f1d">Short-lived clients talk to the merud daemon over a Unix socket. Inside merud, the socket server and scheduler feed the agent loop, which uses the skill registry, the dispatch function and the Engine interface. The engine reaches Ollama on loopback. Dispatch reaches MCP servers and A2A agents. The loop reads and writes files under ~/.meru: session transcripts, memory files, skills, config.toml and the rebuildable meru.db index. The OTel SDK exports to an optional local observability stack.</desc>
+  <desc id="f1d">Short-lived clients (meru, meru chat and meru-desktop) talk to the merud daemon over a Unix socket. Inside merud, the socket server and scheduler feed the agent loop, which uses the skill registry, the dispatch function and the Engine interface. The engine reaches Ollama on loopback. Dispatch reaches MCP servers and A2A agents. The loop reads and writes files under ~/.meru: session transcripts, memory files, skills, config.toml and the rebuildable meru.db index. The OTel SDK exports to an optional local observability stack.</desc>
   <defs>
     <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
 
   <!-- clients -->
-  <rect x="16" y="36" width="170" height="164" rx="10" class="bg"/>
+  <rect x="16" y="36" width="170" height="228" rx="10" class="bg"/>
   <text x="30" y="58" class="t3" font-size="12" font-weight="600">CLIENTS · short-lived</text>
   <rect x="30" y="70" width="142" height="52" rx="7" class="b"/>
   <text x="44" y="92" class="t1 mono" font-size="13">meru "…"</text>
@@ -320,6 +320,9 @@
   <rect x="30" y="134" width="142" height="52" rx="7" class="b"/>
   <text x="44" y="156" class="t1 mono" font-size="13">meru chat</text>
   <text x="44" y="174" class="t3" font-size="11.5">terminal UI</text>
+  <rect x="30" y="198" width="142" height="52" rx="7" class="b"/>
+  <text x="44" y="220" class="t1 mono" font-size="13">meru-desktop</text>
+  <text x="44" y="238" class="t3" font-size="11.5">desktop app</text>
   <path d="M186 81 L248 81" class="lna" marker-end="url(#f1b)"/>
   <text x="208" y="64" class="t3" font-size="10.5" text-anchor="middle">Unix</text><text x="208" y="100" class="t3" font-size="10.5" text-anchor="middle">socket</text>
 
@@ -458,6 +461,143 @@
 <p>Answers always stream: <code>meru chat</code> and one-shot <code>meru</code> both show text as the model writes it. When <code>merud</code> warns that an answer claims an action no tool took, <code>meru chat</code> shows the warning in amber under the answer and one-shot <code>meru</code> prints it on stderr as a <code>note:</code> line (see <a href="#claims">Claims no tool backs</a>). Each tool call shows as a dim line inside the answer, <code>→ notes.search</code> while it runs and <code>✓</code> or <code>✗</code> with its time or outcome when it ends. When a tool call needs your approval, <code>meru chat</code> opens a box under that line with the tool's name and arguments and three choices: approve once, approve for this session, or deny. The box opens with deny selected, so a stray Enter runs nothing (see <a href="#approving">Approving a tool call</a>).</p>
 
 <p>The UI code holds no model or store logic; it draws what <code>merud</code> sends. One-shot <code>meru "..."</code> doesn't use Bubble Tea at all. It prints the stream as plain text, which also keeps it usable in scripts and pipes.</p>
+
+<h3 id="desktop-app">The desktop app</h3>
+
+<p><code>meru-desktop</code> is a third client: a native window for people who don't live in a terminal. It is as thin as <code>meru chat</code>. It talks to <code>merud</code> over the same socket with the same protocol, holds no model, store or tool logic, and never runs a tool itself; <code>merud</code> runs every call through <code>dispatch</code>, and the app only answers its approval questions.</p>
+
+<p><b>Wails v3 draws the window.</b> <a href="https://wails.io">Wails</a> pairs a Go program with the system's own WebView (WebKit on macOS, WebKitGTK on Linux, WebView2 on Windows), so the app is one native binary with no browser engine inside it, and the page is plain HTML, CSS and JavaScript. We pin a v3 beta: v3 has no final release yet, and its beta notes call the API stable. Wails needs cgo and the platform's WebView headers, so the app sits apart from the cgo-free build:</p>
+<ul>
+  <li><code>cmd/meru-desktop</code> holds only the window code, behind the build tag <code>desktop</code>. Without the tag the go command skips it, so <code>go build ./...</code>, the five-platform <code>make build</code> and CI's cross-compiles never touch cgo. <code>make desktop</code> builds it on the machine that runs it, with the tags <code>desktop production</code>; <code>production</code> turns off Wails' web inspector and its probe for a development server.</li>
+  <li><code>internal/desktop</code> holds everything else: the Bridge the page calls, the views it sends, and the page itself, embedded with <code>go:embed</code>. It doesn't import Wails, so its tests run everywhere.</li>
+  <li>CI builds the app on macOS. Linux and Windows builds come later.</li>
+</ul>
+
+<p><b>The Bridge.</b> The window binds one Go value, the Bridge, whose methods the page calls by name. <code>Send</code> opens an <code>ask</code> request with source <code>desktop</code> and the scope the composer's switch sets, and a goroutine reads the events and hands each one to the page as an <code>Update</code>, through one Wails event, <code>meru:update</code>. The Bridge keeps the running turn and the queue, with the chat's rules: one turn at a time, five questions waiting at most, and Stop drops the queue with a notice. For each tool call it adds a friendly label ("Searched mail", "Read lisbon.md"), and when a turn ends it lists who the turn's tool calls reached: each MCP server and A2A agent by name, "web search" for <code>web_search</code> and the site for <code>web_fetch</code>. The other methods each send one request for the Library and Setup screens, save a chat or an answer, show the system's file and folder dialogs, and close the app.</p>
+
+<p><b>One line says what Meru is</b>: "A personal AI assistant that runs entirely on your own computer". The title bar shows "Meru · " and that line, and never changes; the chat's own title sits in the page's header. The rail's logo carries the line as its tooltip.</p>
+
+<p><b>The chat screen</b> has three columns:</p>
+
+<ul>
+
+  <li><b>The rail</b> holds the logo and wordmark, one button that opens the Library's About, then New chat, a search box that filters the list, past chats grouped Today, Yesterday and Earlier, a status block, and two buttons at its foot, Library and Setup. The status block shows the answer model, the file count and the connected MCP servers, or, when <code>merud</code> doesn't answer, that it isn't running and the command that starts it. A button folds the rail to a column of icons: the logo, New chat, chats, Library and a status dot.</li>
+
+  <li><b>The conversation</b> shows each question as a bubble and each answer as a card. The header holds the chat's title, <b>Share as file</b> and a button that shows or hides the side panel. A one-line work strip says what the route did and lists each tool call by its label; "Show steps" opens the raw tool names, outcomes and times, and an amber "Waiting for you" chip marks an open approval. The answer streams as plain text and renders as Markdown when it ends, as in <code>meru chat</code>; each code block gets its number in the chat and a Copy button, and each answer <b>Copy</b>, <b>Save to a note</b>, <b>Try again</b> (the same question, in the same session and scope) and a dim stats line. Under the answer, one closed line, "3 sources", opens to a chip for each source the answer cites, and a chip opens its file. The Bridge picks those sources with <code>rpc.Cited</code>, as <code>meru</code> and <code>meru chat</code> do; an answer that cites none shows no line. When <code>merud</code> sends a <code>notice</code>, because the answer claims an action no tool performed, an amber note with a warning icon sits under the answer, and again when the chat reopens from history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on Shift+Enter; while a turn runs, Enter queues, and the queue shows above the composer with a remove button on each question. Under the text box sit the <b>Where Meru looks</b> switch and the attach button.</li>
+
+  <li><b>The side panel</b> starts closed; the header's button opens it, and the choice lasts until the window closes. "What this answer used" lists the selected answer's sources, every file the prompt held, its tool calls, and under <b>Remembered</b> the memories recall put in its prompt, each with a <b>Forget</b> button that sends <code>memory_forget</code>. It ends with a privacy line: "The model ran on this Mac. Only google was contacted." While an approval card is open, the panel turns into <b>Why Meru is asking</b>: why this call waits, the server's tools that are on with their policies, a link, "Change what google may do", that opens the Library at that connection, and a note that every call goes in the tool log under Library, Activity. The panel doesn't open for a card: the card says why Meru asks, with a link to the panel. In the Library the panel is <b>On this Mac</b>: the answer and router models, what the search index holds, and a line that says there is no account and no cloud, with the path of <code>config.toml</code>. Below 1180 pixels the panel slides over the conversation on demand.</li>
+
+</ul>
+
+<p><b>Where Meru looks.</b> The composer's switch sets the request's <code>scope</code>: Auto, My files, Mail and calendar, Web or Just talk. Auto runs the router as every other client does. Any other scope skips the router, the route rules that widen a route and a picked skill's tools, because a scope is a promise about what the turn may touch:</p>
+
+<div class="tbl"><table>
+
+  <thead><tr><th>Scope</th><th>Route</th><th>Searches first</th><th>Tools offered</th></tr></thead>
+
+  <tbody>
+
+    <tr><td><code>files</code></td><td><code>search</code></td><td>yes</td><td>what the search route offers: the file tools, <code>datetime</code>, commands that don't ask</td></tr>
+
+    <tr><td><code>mail</code></td><td><code>tools</code></td><td>no</td><td>every tool of each mail and calendar server, and <code>datetime</code></td></tr>
+
+    <tr><td><code>web</code></td><td><code>tools</code></td><td>no</td><td><code>web_search</code>, <code>web_fetch</code> and <code>datetime</code></td></tr>
+
+    <tr><td><code>talk</code></td><td><code>direct</code></td><td>no</td><td>none</td></tr>
+
+  </tbody>
+
+</table></div>
+
+<p>A mail and calendar server is an MCP server or A2A agent whose tool names hold a noun that ends in "mail" (gmail, email), or "calendar" or "event": the nouns the router's prompt already reads (see <a href="#routing">Routing</a>). So Meru needs no list of mail providers, and the google server brings Drive and Docs along with Gmail, while obsidian stays out. Deny-by-default still holds: a scope only narrows what config allows. <code>merud</code> logs the scope in the turn's info line and on its span; the value is one of five.</p>
+
+<p><b>Attaching a file.</b> The attach button opens the system's file dialog. Meru reads an attached file with <code>read_file</code>, so the file must sit where <code>read_file</code> may read: in an <code>[index]</code> folder or in <code>[skills] output_dir</code>. The Bridge checks that before the file goes; for any other file it says to add the folder in the Library or move the file. The question then ends with "Read this file: ~/Notes/lisbon.md", and a scope other than Auto or My files switches to My files, the scope that offers <code>read_file</code>. Copying the file into Meru's own folder would need a write from the app, and a way to clean up; asking <code>read_file</code> to read it where it is keeps its rules, and its audit line, in one place.</p>
+
+<p><b>Slash commands.</b> The composer understands the six commands <code>meru chat</code> has: <code>/new</code> (as New chat: it stops a running turn and drops the queue, with the chat's notice), <code>/usage</code> (Library, Usage), <code>/me</code> (Library, About you), <code>/mcp</code> (Library, Connections), <code>/copy N</code> (code block N of this chat, numbered as the chat numbers them; <code>/copy</code> alone the newest answer's last block) and <code>/exit</code> (close the app, asking first while a turn runs). Typing "/" at the start of the box opens a menu of them, a listbox the arrow keys move through, filtered as you type; Enter or Tab picks one and Esc closes it. A line that starts with "/" runs in the page and never reaches the model; an unknown one leaves the text in the box and lists the commands, as the chat does. The Bridge holds the list, and a test fails when it differs from <code>meru chat</code>'s.</p>
+
+<p><b>The Library</b> is the settings screen, with a back link and eight sections:</p>
+
+<ul>
+
+  <li><b>Connections</b> has a card per tool source: the built-in web tools, merud's other built-in tools, each MCP server and A2A agent, and the local commands. Each card shows whether the source is connected, the last error when it isn't, "N of M tools on", and a switch per tool with three positions that map onto config: <b>Off</b>, the tool isn't in <code>allow</code>; <b>Ask</b>, it is in <code>allow</code> and in <code>confirm</code>; <b>Allow</b>, it is in <code>allow</code> and not in <code>confirm</code>. A tool in <code>always_confirm</code>, and <code>configure</code>, shows <b>Always asks</b> and has no Allow: the one runs commands, and the other changes config, so the model could grant itself a tool. The local commands show their policy without a switch: each is a <code>[[commands]]</code> entry you edit in <code>config.toml</code>. <b>Add a connection</b> lists the catalog servers not added yet, with what each needs, its start command, and the tools it turns on; an API key goes into a password field. Under them, <b>Add your own MCP server</b> opens a form for a server outside the catalog, with the rules of <code>meru mcp add stdio</code> and <code>meru mcp add http</code>: a name of letters, digits, <code>-</code> and <code>_</code>; either a program with its arguments, one field for each, and environment variables, or a URL. A URL off this machine needs the tick "This server is on another computer", which writes <code>remote = true</code>. A variable ticked Secret goes to <code>secrets.toml</code> and <code>config.toml</code> holds <code>secret:&lt;name&gt;</code>. The server's tools all start Off; once it connects, its card lists them.</li>
+
+  <li><b>Folders</b> lists the <code>[index]</code> folders with how many files the index holds from each, a button that opens the folder dialog, the usual folders not indexed yet, and the skip rules.</li>
+
+  <li><b>About you</b> lists the profile memories, <code>me</code> and <code>preferences</code>, with Edit (a forget and an add) and Forget, and a form to add one, as <code>meru setup user</code> does.</li>
+
+  <li><b>Skills</b> lists every skill with an on and off switch, which edits <code>[skills] disabled</code>.</li>
+
+  <li><b>Models</b> shows the profile, the three models, the Ollama version and which models it holds in memory, and how to change them: in <code>config.toml</code>, then a restart. The app changes no model.</li>
+
+  <li><b>Activity</b> lists the <code>tool_calls</code> log, the data <code>meru log</code> prints: time, tool, outcome and duration, with the arguments and result behind a button.</li>
+
+  <li><b>Usage</b> shows the usage windows the chat's <code>/usage</code> box shows.</li>
+
+  <li><b>About</b> says what Meru is and where its name comes from, what it does and why it runs on your computer, the app's version, where <code>config.toml</code> and Meru's folder are, and three links: the source code, the design and a new issue on GitHub. The Bridge hands the page the links, so the page's own files name no host, and each opens in the browser through <code>OpenURL</code>.</li>
+
+</ul>
+
+<p><b>Setup</b> has four steps, and opens on its own when <code>merud</code> reports no folders and no profile memory; the rail's Setup button opens it any time. <b>The models</b> lists the three models; with <code>merud</code> down it shows the <code>ollama pull</code> each one needs and the command that starts <code>merud</code>. Meru pulls nothing on its own: a model is gigabytes, and <code>merud</code> doesn't start until its models are there. <b>Your folders</b> offers checkboxes for <code>~/Documents</code>, <code>~/Notes</code> and <code>~/Desktop</code> where they exist, each with a file count from <code>merud</code>, and "Choose another folder". <b>Connections</b> shows the catalog cards. <b>About you</b> asks your name, your email and how you like answers, and saves each as a memory, as <code>meru setup user</code> does.</p>
+
+<p>**Settings change in <code>merud</code>.** The app writes no file of Meru's. Each change goes to <code>merud</code> as an op, and <code>merud</code> checks it, writes it with the same code <code>meru mcp add</code> and <code>configure</code> use, and applies it at once:</p>
+
+<div class="tbl"><table>
+
+  <thead><tr><th>Op</th><th>What <code>merud</code> does</th></tr></thead>
+
+  <tbody>
+
+    <tr><td><code>connections</code></td><td>lists every source with each tool's policy, and the catalog</td></tr>
+
+    <tr><td><code>tool_policy</code></td><td>sets one tool's <code>allow</code>, <code>confirm</code> or <code>[builtin]</code> lists, then reloads that kind of source</td></tr>
+
+    <tr><td><code>secret_set</code></td><td>saves one key to <code>secrets.toml</code>, for a name config or the catalog uses, then reloads the MCP servers</td></tr>
+
+    <tr><td><code>mcp_add</code></td><td>appends a catalog server's block, once its key is saved, or a server of the user's own with no tools allowed and its secrets saved first, then reloads the MCP servers</td></tr>
+
+    <tr><td><code>mcp_remove</code></td><td>takes a server's block out, then reloads</td></tr>
+
+    <tr><td><code>folders</code></td><td>lists the <code>[index]</code> folders with file counts, and the usual folders not indexed yet</td></tr>
+
+    <tr><td><code>folder_add</code>, <code>folder_remove</code></td><td>edits <code>[index] folders</code>, hands the indexer the new list, restarts the watcher and scans</td></tr>
+
+    <tr><td><code>skill_enable</code>, <code>skill_disable</code></td><td>edits <code>[skills] disabled</code> and loads the skills again</td></tr>
+
+    <tr><td><code>save_file</code></td><td>saves the chat or an answer as Markdown through <code>write_file</code></td></tr>
+
+    <tr><td><code>models</code></td><td>names the models and asks Ollama which it holds</td></tr>
+
+  </tbody>
+
+</table></div>
+
+<p>A change to a list edits only that list's lines in <code>config.toml</code>: every comment and every other key stays. <code>merud</code> writes a temporary file, loads it, checks that the list came out as asked, and renames it over the old one, so a change that would break config leaves the file as it was. One lock covers every write to <code>config.toml</code> in <code>merud</code>, the <code>configure</code> tool's included. A tool policy checks the tool against what the source offers or config already names, and refuses anything else; a new tool a server starts to offer shows Off. The key a user pastes goes to <code>merud</code> over the socket, which only that user can open, and never comes back in any reply.</p>
+
+<p>A folder change takes effect without a restart. The indexer takes the new list, the watcher starts again over it, and a scan adds the new folder's files or drops the removed folder's. The file tools, the prompt's note on the user's folders and the router's prompt read the list on every turn, so the first folder added turns the file tools on. A folder op refuses the whole disk, the home folder itself, Meru's own home, and a folder inside or around one already indexed.</p>
+
+<p><b>Saving a file.</b> Share as file saves the whole chat, and Save to a note one answer, as Markdown under <code>[skills] output_dir</code>, in <code>chats/</code> or <code>notes/</code>, named by the date and the first words of the title. <code>merud</code> makes the file with one <code>write_file</code> call through <code>dispatch</code>, in the chat's session, so the save lands in <code>tool_calls</code> and the transcript, and asks first as <code>write_file</code> does. The card shows above the composer; after a yes, the notice names the file and offers "Show in folder", which opens the folder in the file manager. A name already taken gets <code>-2</code>, since <code>write_file</code> never replaces a file.</p>
+
+<p><b>Approvals sit in the answer.</b> An <code>approval</code> event becomes a card inside the answer, amber like everything that asks. It shows the tool and its arguments, with <code>to</code>, <code>cc</code>, <code>bcc</code>, <code>subject</code> and <code>body</code> laid out as a mail when the arguments hold <code>to</code> or <code>subject</code>, and the rest as indented JSON. Focus lands on the answer that runs nothing, so a stray Enter runs nothing. The answer goes back on the socket as a <code>Reply</code>, as in <code>meru chat</code>. The Bridge gives each card an ID of its own, since <code>merud</code> numbers approvals per connection and a save runs on a connection of its own.</p>
+
+<p><b>Edit first.</b> The approval card has Send, Edit first and Don't send (Allow once and Don't allow for a call that isn't mail, and Allow for this chat when <code>merud</code> offers it). Edit first answers Don't send, then puts the call as a draft in the composer: "Send this mail instead:" with its To, Subject and Body, for the user to change and send as a new question. The model makes the call again with the new text, and <code>merud</code> asks again. We chose this over approving with edited arguments: <code>dispatch</code> would then run a call the model never made, and the audit line, the approval and the call would need to agree on which arguments ran. The second card shows exactly what will run, so nothing runs that the user didn't see.</p>
+
+<p><b>Past chats come from the transcripts.</b> Two ops serve the rail: <code>sessions</code> lists the sessions that hold a question, newest change first, with the first question as the title; <code>session_turns</code> returns one session's turns, each with its question, answer, route, sources, tool calls, time and token count. <code>merud</code> reads both from the JSONL files, never from <code>meru.db</code>, so they stay right after the database is deleted. Opening a past chat and asking again sends its session ID, so the conversation continues.</p>
+
+<p><b>Model output is untrusted.</b> A bad answer, or a page the model fetched, could hold HTML meant to run in the window. Three layers stop it:</p>
+
+<ol>
+
+  <li><code>marked</code> renders the Markdown with raw HTML escaped, and DOMPurify keeps a short list of tags, no <code>data-*</code> or <code>style</code> attributes, no class but a code block's language, and only <code>http</code>, <code>https</code> and <code>file</code> links. It returns DOM nodes; no code puts a string into <code>innerHTML</code>. Everything else reaches the page as <code>textContent</code>. A code block that holds an SVG drawing also shows as a picture, with a Preview / Code switch: the page draws it as an <code>&lt;img&gt;</code> with a <code>data:</code> URL, where the browser runs no script and fetches nothing, so a drawing can only draw.</li>
+
+  <li>Every file goes out with a strict Content-Security-Policy: <code>default-src 'none'</code>, and scripts, styles, fonts and connections from the app only. No inline script runs, and no image or font loads from the network, so an answer can't report that it was read.</li>
+
+  <li>The page never navigates. A click on a link calls <code>OpenURL</code>, which hands only an <code>http</code>, <code>https</code> or <code>file</code> URL to the system opener, with no shell and the URL as one argument, the same code (<code>internal/opener</code>) that <code>meru chat</code> uses.</li>
+
+</ol>
+
+<p><b>Everything ships inside.</b> The page loads nothing from the network: the fonts (Newsreader, IBM Plex Sans and IBM Plex Mono, under the SIL Open Font License) and the two libraries (marked and DOMPurify) sit in <code>internal/desktop/web/</code> with their licenses. There is no Node, npm or bundler: the page is ES modules the WebView loads as they are, and the Bridge's methods are called by name through Wails' runtime, so no generated bindings are needed.</p>
+
+<p><b>Not yet.</b> Dropping files on the window, an "Earlier" line for turns scrolled out of view, pulling a model from the app, and Linux and Windows builds come in later versions.</p>
 
 <h3>Built in Go</h3>
 
@@ -732,13 +872,14 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <li><b>Local commands ask per entry.</b> A <code>[[commands]]</code> entry with <code>confirm = true</code> asks before each run and offers all three choices; one without runs without asking. Read-only commands run freely, and anything that changes something should ask. A command call has <code>kind = "command"</code>, <code>server = "meru"</code> and <code>tool = "cmd.&lt;name&gt;"</code>, and its <code>tool_call</code> line, prompt and row show the argv it runs (see <a href="#local-commands">Local commands</a>).</li>
   <li><b>Session approvals stay inside the running <code>merud</code>.</b> <code>dispatch</code> keeps them in memory, per session and tool. They end with the session or with <code>merud</code>, and never reach <code>config.toml</code>. To stop Meru asking about a tool for good, remove it from the <code>confirm</code> list yourself. Lasting trust then comes from one place, a file you edit and can read back.</li>
   <li><b>One-shot <code>meru "..."</code></b> asks on standard error with the same choices, as <code>[o]nce [s]ession [d]eny</code>, so the answer on standard output stays clean. Its session ends with the answer, so "for this session" covers only this question. When standard input isn't a terminal (a script or a pipe), nobody can answer, so the client denies without asking and says so.</li>
+  <li><b>The desktop app</b> shows the choices as a card inside the answer, with the arguments laid out to read, focus on the answer that runs nothing, and Edit first, which says no and puts the call in the composer as a draft (see <a href="#desktop-app">The desktop app</a>).</li>
   <li><b>Nobody to ask means no.</b> A scheduled job, or a client that passed no way to ask, can't say yes, so <code>dispatch</code> ends every call that needs a yes as <code>declined</code> without a prompt. A job's output says which calls it skipped.</li>
 </ul>
 
 <h3>How a conversation continues</h3>
 
 <ul>
-  <li><b>A session is one transcript file.</b> <code>meru chat</code> keeps one session open until you quit. Each one-shot <code>meru "..."</code> starts a new session.</li>
+  <li><b>A session is one transcript file.</b> <code>meru chat</code> keeps one session open until you quit. Each one-shot <code>meru "..."</code> starts a new session. The desktop app can reopen a past session and continue it.</li>
   <li><b>Each turn starts with the session's history.</b> <code>merud</code> loads your earlier questions and Meru's earlier answers from this session, newest first, until the history budget, its fixed share of the context, is full. Older turns drop out of the prompt but stay in the transcript. From v0.4, search can find them there.</li>
   <li><b>Earlier tool results stay out of the history.</b> The answer that used a result already carries what mattered from it, and raw results can run to thousands of tokens. The transcript keeps the full results.</li>
   <li><b>The router sees the history too</b>, so it can tell that a follow-up like "reply to that thread and confirm I can make it" needs tools. It picks a route and nothing else; no model rewrites the follow-up.</li>
@@ -1025,7 +1166,7 @@ watch          = true</code></pre>
 <ul>
   <li><b>Changed files only.</b> At startup <code>merud</code> scans every folder and compares each file's mtime and SHA-256 hash with the store's copy. It re-chunks and re-embeds a file only when either differs. It hashes every file, because some sync tools and editors keep the mtime when the content changes.</li>
   <li><b>Removals.</b> After a folder's scan, the indexer deletes the store's entries for files the scan didn't keep: deleted files, and files a new ignore rule now covers.</li>
-  <li><b>Folders you drop leave the index.</b> Before it walks the folders, the startup scan deletes every stored file that sits in none of them. Take <code>~/notes-old</code> out of <code>[index] folders</code>, restart <code>merud</code>, and search stops finding its files. The test works on whole folder names, so <code>~/notes</code> keeps nothing from <code>~/notes-old</code>. An empty list empties the index.</li>
+  <li><b>Folders you drop leave the index.</b> Before it walks the folders, a full scan deletes every stored file that sits in none of them. Take <code>~/notes-old</code> out of <code>[index] folders</code> and restart <code>merud</code>, or remove it in the desktop app's Library, which rescans at once, and search stops finding its files. The test works on whole folder names, so <code>~/notes</code> keeps nothing from <code>~/notes-old</code>. An empty list empties the index.</li>
   <li><b>Missing folders keep their entries.</b> A folder that doesn't exist, such as one on an unplugged drive, and a folder the scan can't read both keep what the store holds for them.</li>
   <li><b>Watching.</b> With <code>watch = true</code>, <code>merud</code> asks the operating system to report changes in every folder the skip rules keep. It indexes a changed path once the path has been quiet for 500 ms, so an editor can finish a save that takes several writes. When the operating system refuses another watch (Linux's <code>fs.inotify.max_user_watches</code>, or the open-file limit on macOS), <code>merud</code> logs one warning and keeps the watches it has; the next startup scan catches the rest.</li>
   <li><b>On demand.</b> <code>meru index</code> rescans every configured folder, <code>meru index &lt;path&gt;</code> rescans one folder or file inside them, and <code>meru index -status</code> prints counts.</li>
@@ -1318,9 +1459,9 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <ol>
   <li><b>Indexing.</b> The indexer treats <code>~/.meru/memory/</code> like any folder you index: each file gets a vector and a keyword entry. It picks up hand edits through the same mtime and content-hash check it runs on your notes.</li>
-  <li><b>Recall.</b> Each turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges all three with <code>rrf</code>. The top results go into the context, up to the memory budget. Recall runs on every route, including turns that only call tools, because a preference such as "always ask before sending mail" has to reach the model on the turns that send mail.</li>
+  <li><b>Recall.</b> Each turn searches memories by meaning and by keyword, adds a third list ranked by recency, and merges all three with <code>rrf</code>. The top results go into the context, up to the memory budget. Recall runs on every route, including turns that only call tools, because a preference such as "always ask before sending mail" has to reach the model on the turns that send mail. Before the answer, <code>merud</code> sends a <code>memories</code> event that lists what recall put in the prompt, so the desktop app can show each memory under Remembered, with a button that forgets it.</li>
   <li><b>Saving.</b> The model saves a memory by calling the built-in <code>remember</code> tool with a folder and the text. The call goes through <code>dispatch</code> like any other tool, so it lands in <code>tool_calls</code> and the transcript. Memories save without asking; add <code>remember</code> to <code>builtin.confirm</code> in <code>config.toml</code> if you want to approve each one.</li>
-  <li><b>Your commands.</b> <code>meru memory list | add | forget</code> work on the files.</li>
+  <li><b>Your commands.</b> <code>meru memory list | add | forget</code>, and the desktop app's About you, work on the files through <code>merud</code>, which owns the memory folder.</li>
 </ol>
 
 <p>If Meru believes something wrong about you, you can find the file and fix or delete it. A vector blob you can't read would leave you no way to audit or correct it.</p>
@@ -1447,7 +1588,7 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
 <p>A small model asked to write its route as JSON (JavaScript Object Notation) fails in three ways: it writes broken JSON, invents a fifth route, or answers wrong with no sign that it was unsure. So the router doesn't ask for text. It treats the route as a classification and reads the answer from the model's probabilities:</p>
 
 <ol>
-  <li>The prompt opens with four lettered options (A = answer directly, B = search, C = tools, D = search and tools) and two examples per route. Each option's description names the questions that belong to it and the ones that don't. Option B also names the folders in <code>[index] folders</code> and says that questions about projects kept there, by name, are B. Without that line the model can't tell that "meru" in "what database does meru use" is your own project. Option C names what you have connected, and says that questions about these, by name, are C, or D when they also need your notes. Each MCP server and A2A agent that allows a tool shows as its name with up to five nouns from its allowed tool names, such as <code>google (gmail, message, thread, event, drive)</code>; each <code>[[commands]]</code> entry shows by name, such as <code>git-log</code>; and web search shows as <code>web search</code>. <code>merud</code> builds the list from config at startup and again on each MCP reload, not per turn. The session history and the question come last, and the prompt ends with <code>Answer: </code>. The fixed part, folders and connected tools included, stays the same from turn to turn, so Ollama reuses its work on it from the previous turn.</li>
+  <li>The prompt opens with four lettered options (A = answer directly, B = search, C = tools, D = search and tools) and two examples per route. Each option's description names the questions that belong to it and the ones that don't. Option B also names the folders in <code>[index] folders</code> and says that questions about projects kept there, by name, are B. Without that line the model can't tell that "meru" in "what database does meru use" is your own project. Option C names what you have connected, and says that questions about these, by name, are C, or D when they also need your notes. Each MCP server and A2A agent that allows a tool shows as its name with up to five nouns from its allowed tool names, such as <code>google (gmail, message, thread, event, drive)</code>; each <code>[[commands]]</code> entry shows by name, such as <code>git-log</code>; and web search shows as <code>web search</code>. <code>merud</code> builds the list from config at startup and again on each reload, not per turn. The folders come from the list the indexer holds, which the desktop app can change while <code>merud</code> runs. The session history and the question come last, and the prompt ends with <code>Answer: </code>. The fixed part, folders and connected tools included, stays the same from turn to turn, so Ollama reuses its work on it from the previous turn.</li>
   <li><code>merud</code> asks Ollama's <code>/api/chat</code> for one token with log probabilities (<code>num_predict = 1</code>, <code>logprobs = true</code>, <code>top_logprobs = 20</code>) and with thinking off (<code>think = false</code>). A thinking model such as MiniCPM5 otherwise spends its one token starting its hidden reasoning, and no letter comes back.</li>
   <li>The router keeps the alternatives whose text is one of the four letters, turns each log probability back into a probability, divides by a fitted temperature, and normalizes the four so they sum to 1.</li>
   <li>The most likely letter is the route, and its probability is the confidence.</li>
@@ -1515,6 +1656,8 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
 </div>
 <figcaption><b>Figure 5.</b> The router reads a route instead of asking for one. It never parses text the model wrote, and when the four probabilities don't point clearly at one letter, it takes the route that can't leave a turn short of context.</figcaption>
 </figure>
+
+<p>A question sent with a scope other than <code>auto</code>, from the desktop app's "Where Meru looks" switch, skips the router: the scope sets the route and the tools (see <a href="#desktop-app">The desktop app</a>).</p>
 
 <p>The model decodes one token, so routing costs a prompt evaluation and nothing more, and it can't name a route that doesn't exist. When the confidence falls below <code>min_confidence</code>, or fewer than two letters appear at all, the router takes the fallback route, <code>search+tools</code>. That's the one route that can't fail a turn for lack of context: an unsure router spends tokens rather than guesses.</p>
 
@@ -1739,6 +1882,8 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
   <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your email, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
   <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new <code>config.toml</code> takes a restart of <code>merud</code>; a new server doesn't (see <a href="#mcp">MCP</a>).</li>
 </ol>
+
+<p>The desktop app has its own Setup screen, which needs <code>merud</code> running: its four steps cover the models, your folders, connections and about you, and every change goes through <code>merud</code> (see <a href="#desktop-app">The desktop app</a>). Writing the first <code>config.toml</code> and pulling models stay with <code>meru setup</code>.</p>
 
 <h3>Adding an MCP server</h3>
 
@@ -2142,6 +2287,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
   <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code>, apply the same rules through the indexer's own code, so the model can read no file that search couldn't reach.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
+  <li>The desktop app loads nothing from the network. Its page, fonts and libraries ship inside the binary, its Content-Security-Policy blocks remote scripts, images and connections, and its Wails updater stays unconfigured, so it never checks for updates.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -2230,6 +2376,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OTel GenAI semantic conventions</a> — model span and metric names</li>
   <li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/mcp/">OTel MCP semantic conventions</a> — tool span names</li>
   <li><a href="https://github.com/charmbracelet/bubbletea">charmbracelet/bubbletea</a> — the terminal UI library behind <code>meru chat</code></li>
+  <li><a href="https://wails.io">Wails</a> — the Go and WebView toolkit behind <code>meru-desktop</code></li>
   <li><a href="https://github.com/grafana/docker-otel-lgtm">grafana/docker-otel-lgtm</a> — the one-container observability stack</li>
 </ul>
 

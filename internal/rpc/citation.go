@@ -1,7 +1,8 @@
 // This file holds the helpers both clients use to show a turn's sources:
 // String, which writes one citation as a line of text; Cited, which picks
-// the sources an answer refers to; and FileURL and Hyperlink, which make a
-// source line a link to its file.
+// the sources an answer refers to; FileURL and Hyperlink, which make a
+// source line a link to its file; and ShortPath, which merud uses to show a
+// path under the home folder as ~/...
 
 package rpc
 
@@ -92,6 +93,20 @@ func FileURL(path, home string) string {
 	}
 	u := url.URL{Scheme: "file", Path: p}
 	return u.String()
+}
+
+// ShortPath writes p under the home folder as ~/..., using the OS's path
+// separator, the way merud shows a source's path. Any other path, or any
+// path when home is "", stays as it is. FileURL undoes it.
+func ShortPath(home, p string) string {
+	if home == "" {
+		return p
+	}
+	rel, err := filepath.Rel(home, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return p
+	}
+	return "~" + string(filepath.Separator) + rel
 }
 
 // Hyperlink wraps text in the OSC 8 escape codes that make it a link in

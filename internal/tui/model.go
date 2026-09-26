@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/aarora79/meru/internal/opener"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -264,7 +265,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		spin:         spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(st.spinner)),
 		help:         h,
 		copy:         systemClipboard().copy,
-		open:         systemOpen,
+		open:         opener.Open,
 	}
 	// The viewport's own keys would scroll on j, k, space and the arrows,
 	// which the user types into the input. Update scrolls it on PgUp and

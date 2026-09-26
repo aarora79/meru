@@ -1,6 +1,7 @@
 // This file tests opening a clicked link: the hit test on a screen line,
-// the URL checks, the opener each system runs, and a click through the
-// whole model with a fake opener, so no test starts a browser.
+// the notice, and a click through the whole model with a fake opener, so
+// no test starts a browser. internal/opener tests the URL checks and the
+// program each system runs.
 
 package tui
 
@@ -84,56 +85,6 @@ func TestLinkAtBroken(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := linkAt(tt.line, tt.col); got != tt.want {
 				t.Errorf("linkAt = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestCheckOpenable checks which URLs the chat opens: http, https and
-// file, and nothing that starts with "-" or holds a space.
-func TestCheckOpenable(t *testing.T) {
-	tests := []struct {
-		url string
-		ok  bool
-	}{
-		{"https://example.com/notes/garden-plan", true},
-		{"http://example.com/", true},
-		{"file:///Users/sam/notes/garden.md", true},
-		{"javascript:alert(1)", false},
-		{"mailto:sam@example.com", false},
-		{"ftp://example.com/seeds.txt", false},
-		{"-https://example.com/", false},
-		{"--help", false},
-		{"https://example.com/a b", false},
-		{"", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.url, func(t *testing.T) {
-			err := checkOpenable(tt.url)
-			if (err == nil) != tt.ok {
-				t.Errorf("checkOpenable(%q) = %v, want ok %v", tt.url, err, tt.ok)
-			}
-		})
-	}
-}
-
-// TestOpenCommand checks the program each system runs, with the URL as
-// one argument of its own.
-func TestOpenCommand(t *testing.T) {
-	const u = "https://example.com/notes/garden-plan?a=1&b=2"
-	tests := []struct {
-		goos string
-		want []string
-	}{
-		{"darwin", []string{"open", u}},
-		{"linux", []string{"xdg-open", u}},
-		{"freebsd", []string{"xdg-open", u}},
-		{"windows", []string{"rundll32", "url.dll,FileProtocolHandler", u}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.goos, func(t *testing.T) {
-			if got := openCommand(tt.goos, u); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("openCommand(%s) = %q, want %q", tt.goos, got, tt.want)
 			}
 		})
 	}

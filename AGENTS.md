@@ -43,7 +43,10 @@ the built-in `remember` tool saves memories from chat, `meru setup user` and
 question. Quiet sessions get a summary, and search turns recall past
 conversations. Skills load with progressive disclosure, `meru skills` manages
 them, and the built-in `write_file` tool writes to `~/meru-output/`. The context
-budget across skills, memories and chunks is still to come. Work goes milestone
+budget across skills, memories and chunks is still to come. The desktop app,
+`meru-desktop` (Wails v3, macOS first), has its chat screen, a Library for
+settings and a Setup screen, each change made by `merud`; the owner asked for it
+ahead of v0.5. Work goes milestone
 by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
 features (the scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
@@ -146,6 +149,7 @@ cmd/
   merud/             the daemon: config, engine, router, store, indexer, tools, socket, agent loop
   meru/              the thin client: one question, `meru chat`, `ping`, `index`, `tools`, `log`,
                      `setup`, `mcp add`/`list`/`remove`, and the approval prompt
+  meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo)
   fakeollama/        a fake Ollama server for end-to-end tests
   fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/
@@ -160,7 +164,7 @@ internal/
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
   builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
-  catalog/           the starter MCP servers and the safe append to config.toml
+  catalog/           the starter MCP servers, the safe append to config.toml, and one-list edits in it
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
@@ -171,6 +175,8 @@ internal/
   obs/               OpenTelemetry metrics and traces, loopback only
   loopback/          the one rule for "this address is on this machine"
   tui/               the Bubble Tea UI behind `meru chat`
+  desktop/           the desktop app minus the window: the Bridge, its views, the page in web/
+  opener/            opens a clicked http, https or file link with the system opener, no shell
   policy/            tests that enforce the non-negotiables and the thin client
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
@@ -187,7 +193,10 @@ use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `mcp`, `dispatch`,
 `a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
 or runs a program.
-`internal/policy` fails the build if that changes, directly or through another
+The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
+may import `rpc`, `config`, `loopback` and `opener`, plus Wails in the command,
+and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
+`internal/policy` fails the build if either changes, directly or through another
 package. `loopback` imports only the standard library, so any package can use it.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
@@ -267,6 +276,8 @@ parser, `golang.org/x/sync` (for `errgroup`, which runs `merud`'s server, startu
 scan and watcher side by side), Bubble Tea with Bubbles for the `meru chat`
 terminal UI, `golang.org/x/term` so `meru setup` reads an API key without echo,
 and for the indexer `fsnotify`, `golang.org/x/net/html` and `ledongthuc/pdf`.
+The desktop app adds Wails v3 (`wailsapp/wails/v3`, pinned to a beta), and its
+page vendors marked and DOMPurify as files, with no Node or npm.
 
 ## Writing comments
 
@@ -322,6 +333,7 @@ make lint             # staticcheck
 make vuln             # govulncheck
 make sec              # gosec
 make build            # binaries for five platforms in bin/
+make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama
 go run ./cmd/merud    # run the daemon from source

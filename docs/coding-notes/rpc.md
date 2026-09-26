@@ -1,6 +1,6 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
+**Code:** `internal/rpc/` (`protocol.go`, `sessions.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
 **Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
@@ -44,7 +44,7 @@ sequenceDiagram
 ### protocol.go
 
 The message types. `Request` has an `Op` (`ask` or `ping`), an optional
-`Session` to continue, the question `Text`, and a `Source` (`cli`, `tui` or
+`Session` to continue, the question `Text`, and a `Source` (`cli`, `tui`, `desktop` or
 `job`). `Event` has a `Type` and only the fields that type needs. A `route`
 event sets `Fallback` when the router wasn't sure and used its fallback route.
 The `done` that ends an ask carries the turn's stats: time to first token
@@ -128,12 +128,44 @@ since it has no tool list to count; the clients draw it as `—`. `Tools` has no
 `always_confirm` together), so they show either way. `Err` says in one line why a
 server isn't connected.
 
+The desktop app added `SourceDesktop` (`desktop`) to the sources, and two ops
+for its list of past chats, with their types in `sessions.go`:
+
+| Op | Reply | What it carries |
+| --- | --- | --- |
+| `sessions` (`OpSessions`) | one `sessions` event | `Sessions`, a `SessionInfo` per session that holds a question, newest change first, at most `Limit` (200 when zero): the ID, the first question as a one-line `Title`, `Started`, `Updated` and the number of `Turns`. |
+| `session_turns` (`OpSessionTurns`) | one `turns` event | `Turns`, a `TurnInfo` per question of the session in `Request.Session`: the question, the answer, the route, how it ended, the notice under the answer if any, the source files, the tool calls as `ToolStep`s (full name, kind, arguments, outcome, time), the duration and the token counts. |
+
+`merud` answers both from the transcripts, so they need no `meru.db`.
+`ToolName(kind, server, tool)` joins a transcript line's three fields back into
+the name the model saw, such as `google.search_gmail_messages` or `cmd.backup`.
+
 `Report` and `Status` are pointers. `omitempty` leaves out a nil pointer but
 never a struct value, so without the pointer every event would carry an empty
 report.
 
 Adding a slice field (`Sources`) made `Event` a type Go can't compare with
 `==`, so tests compare events with `reflect.DeepEqual`.
+
+### settings.go
+
+The types of the desktop app's settings ops. `Scope` values name where a question
+may look (`auto`, `files`, `mail`, `web`, `talk`), and `Scopes` lists them in the
+order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
+`Policy` constants (`off`, `ask`, `allow`, and `always`, which only `merud`
+reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
+tool source tool by tool, `CatalogEntry` and `CatalogNeed` a catalog server and
+what it needs, `FolderInfo` one folder with its file count, and `ModelsInfo` the
+models. `CustomServer` is a server of the user's own for `mcp_add`, with its
+`EnvVar` list; a variable marked `Secret` carries a value `merud` saves to
+`secrets.toml` and never sends back.
+
+`Request.Policy` and `Request.Custom` are pointers, as `Request.Server` is. A
+struct holding a map or a slice can't be compared with `==`, and tests compare
+requests; a pointer keeps `Request` comparable. For the same reason `mcp_add` for
+a catalog server takes no keys: the app saves a key with `secret_set` first. A
+server of the user's own can't work that way, because `secret_set` accepts only a
+name config already uses, so its secrets travel inside `Custom`.
 
 ### citation.go
 
@@ -148,6 +180,9 @@ way:
   marks means no sources: the model decides when a source matters.
 - **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
   `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
+- **`ShortPath(home, path)`** does the reverse: it writes a path under `home` as
+  `~/...`. `merud` uses it for the sources of a live turn and of a past one, so
+  both read the same.
 - **`Hyperlink(url, text)`** wraps text in the OSC 8 escape codes, `ESC ] 8 ; ;
   URL ESC \` before and the same with no URL after. Terminals that know them
   (iTerm2, Ghostty, WezTerm, kitty, VS Code's terminal, Windows Terminal) make

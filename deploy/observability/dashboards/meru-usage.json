@@ -27,7 +27,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Sessions per day",
-      "description": "meru.sessions: new sessions each day, by source (cli, tui or job).",
+      "description": "meru.sessions: new sessions each day, by source (cli, tui, job or desktop).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

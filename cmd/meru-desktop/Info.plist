@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The bundle description `make desktop-app` puts in bin/Meru.app. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Meru</string>
+  <key>CFBundleDisplayName</key>
+  <string>Meru</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.meru.desktop</string>
+  <key>CFBundleExecutable</key>
+  <string>meru-desktop</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.4</string>
+  <key>CFBundleVersion</key>
+  <string>0.4</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
+</dict>
+</plist>

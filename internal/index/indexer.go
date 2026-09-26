@@ -87,7 +87,12 @@ func (r *Report) skip(reason string) {
 // one with New. Its methods are safe to call from several goroutines: Watch
 // can run while Scan does.
 type Indexer struct {
-	folders  []string      // the configured folders, "~" expanded, cleaned
+	// foldersMu guards folders, which SetFolders replaces while merud
+	// runs. RWMutex lets many readers hold it at once; only SetFolders
+	// takes it to write.
+	foldersMu sync.RWMutex
+	folders   []string // the configured folders, "~" expanded, cleaned
+
 	readOnly []string      // folders the file tools may read but Scan never indexes; see ReadAlso
 	ignore   []pattern     // [index] ignore, compiled
 	maxBytes int64         // max_file_mb in bytes
@@ -128,19 +133,65 @@ func New(cfg config.Index, sink Sink, eng engine.Engine, log *slog.Logger) (*Ind
 	if ix.log == nil {
 		ix.log = obs.Discard()
 	}
-	for _, f := range cfg.Folders {
-		abs, err := expandHome(f)
-		if err != nil {
-			return nil, fmt.Errorf("index folder %q: %w", f, err)
-		}
-		ix.folders = append(ix.folders, abs)
+	folders, err := expandAll(cfg.Folders)
+	if err != nil {
+		return nil, err
 	}
+	ix.folders = folders
 	ps, errs := parsePatterns(cfg.Ignore)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("index.ignore: %w", errors.Join(errs...))
 	}
 	ix.ignore = ps
 	return ix, nil
+}
+
+// expandAll expands each folder with expandHome. It fails on the first
+// folder that can't be expanded, and names it.
+func expandAll(folders []string) ([]string, error) {
+	var out []string
+	for _, f := range folders {
+		abs, err := expandHome(f)
+		if err != nil {
+			return nil, fmt.Errorf("index folder %q: %w", f, err)
+		}
+		out = append(out, abs)
+	}
+	return out, nil
+}
+
+// SetFolders replaces the configured folders with folders, written as
+// config.toml writes them ("~/Notes"). merud calls it after the desktop
+// app adds or removes a folder, then scans: the scan indexes a new folder
+// and drops the files of a removed one (see pruneOutside). A running
+// Watch keeps the folders it started with; merud starts it again. It
+// fails, leaving the folders as they were, when a folder can't be
+// expanded.
+func (ix *Indexer) SetFolders(folders []string) error {
+	abs, err := expandAll(folders)
+	if err != nil {
+		return err
+	}
+	ix.foldersMu.Lock()
+	defer ix.foldersMu.Unlock()
+	ix.folders = abs
+	return nil
+}
+
+// configured returns a copy of the configured folders, "~" expanded, so a
+// caller can walk them while SetFolders replaces the list.
+func (ix *Indexer) configured() []string {
+	ix.foldersMu.RLock()
+	defer ix.foldersMu.RUnlock()
+	return slices.Clone(ix.folders)
+}
+
+// HasFolders reports whether config names any [index] folder, whether or
+// not it exists now. The file tools stay off without one.
+func (ix *Indexer) HasFolders() bool {
+	ix.foldersMu.RLock()
+	defer ix.foldersMu.RUnlock()
+	return len(ix.folders) > 0
 }
 
 // expandHome turns "~" or "~/x" into an absolute path under the home
@@ -166,7 +217,7 @@ func expandHome(p string) (string, error) {
 // as ~/notes that links to ~/Dropbox/notes is walked at its real path, and
 // the store keys files by that path.
 func (ix *Indexer) roots() (resolved []string, missing []error) {
-	for _, f := range ix.folders {
+	for _, f := range ix.configured() {
 		r, err := filepath.EvalSymlinks(f)
 		if err != nil {
 			missing = append(missing, err)
@@ -204,7 +255,7 @@ func (ix *Indexer) scan(ctx context.Context, force bool) (Report, error) {
 	start := time.Now()
 	ctx, span := obs.Tracer().Start(ctx, "meru.index.scan",
 		trace.WithAttributes(
-			attribute.Int("meru.index.folders", len(ix.folders)),
+			attribute.Int("meru.index.folders", len(ix.configured())),
 			attribute.Bool("meru.index.reembed", force),
 		))
 	defer span.End()
@@ -409,8 +460,8 @@ func (ix *Indexer) pruneOutside(ctx context.Context, roots []string, rep *Report
 		return fmt.Errorf("list indexed paths: %w", err)
 	}
 	// slices.Concat builds a new slice, so appending never writes into
-	// the backing array of roots or ix.folders.
-	keep := slices.Concat(roots, ix.folders)
+	// the backing array of roots or the folder list.
+	keep := slices.Concat(roots, ix.configured())
 	dropped := 0
 	for _, p := range stored {
 		if underAny(keep, p) {

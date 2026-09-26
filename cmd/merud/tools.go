@@ -45,17 +45,19 @@ type toolService struct {
 	dir        string // the Meru home, which holds secrets.toml
 	st         *store.Store
 	log        *slog.Logger
-	a2a        *a2a.Client
+	bt         *builtin.Tools // the built-in tools; their lock guards every config.toml write
 	dispatcher *dispatch.Dispatcher
 
-	// started is config as merud read it at startup. A reload takes only
-	// [mcp] from config.toml; the commands, agents and built-ins keep what
-	// merud started with, and so does the router's list of them.
+	// started is config as merud last loaded each part of it. A reload
+	// takes only the part it reloads, [mcp], [a2a] or [builtin], from
+	// config.toml; the commands keep what merud started with. The router's
+	// list of what is connected comes from it. mu guards it.
 	started config.Config
 
-	mu        sync.Mutex       // guards secrets, pool and connected
+	mu        sync.Mutex       // guards secrets, pool, a2a and connected
 	secrets   *secrets.Secrets // swapped on reload
 	pool      *mcp.Pool        // swapped on reload
+	a2a       *a2a.Client      // swapped when the desktop app changes an agent's skills
 	connected []string         // what the router's prompt names; rebuilt on reload
 	reload    sync.Mutex       // lets one reload run at a time
 }
@@ -110,6 +112,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// [index] needs a restart anyway. builtin.New also lets them read the
 	// output folder, which the indexer never indexes; see index.ReadAlso.
 	bt := builtin.New(configPath, cfg.Builtin, cfg.Web, mem, outputDir, ix, s.reloadMCP, onRemember)
+	s.bt = bt
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)
 	// search_files runs the same hybrid search a turn runs before the
@@ -251,19 +254,72 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 		return err
 	}
 
-	// The router's list takes the new [mcp] servers and keeps the rest as
-	// merud started, because only the MCP pool reloads.
-	names := s.started
-	names.MCP = cfg.MCP
-
 	s.mu.Lock()
 	old := s.pool
 	s.pool, s.secrets = pool, sec
-	s.connected = agent.ConnectedTools(names)
+	s.started.MCP = cfg.MCP
+	// The router's list takes the new [mcp] servers and keeps the rest as
+	// merud last loaded them.
+	s.connected = agent.ConnectedTools(s.started)
 	s.mu.Unlock()
 	s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
 	old.Close()
 	s.log.Info("mcp servers reloaded", "servers", len(cfg.MCP.Servers), "tools", len(s.dispatcher.Tools()))
+	return nil
+}
+
+// reloadA2A reads config.toml and secrets.toml again and swaps in a new A2A
+// client for the [[a2a.agents]] entries, as reloadMCP does for the MCP
+// servers. The desktop app calls it, through OpToolPolicy, after it
+// changes an agent's allow or confirm list. It fails, leaving the old
+// client in place, when config or secrets don't load or an entry is wrong.
+func (s *toolService) reloadA2A(ctx context.Context) error {
+	s.reload.Lock()
+	defer s.reload.Unlock()
+
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		return err
+	}
+	sec, err := secrets.Load(secrets.Path(cfg.Dir))
+	if err != nil {
+		return err
+	}
+	agents, err := a2aAgents(cfg.A2A.Agents, sec.Resolve)
+	if err != nil {
+		return err
+	}
+	ac, err := a2a.New(ctx, agents, s.log)
+	if err != nil {
+		return fmt.Errorf("a2a: %w", err)
+	}
+	s.mu.Lock()
+	old := s.a2a
+	s.a2a = ac
+	s.started.A2A = cfg.A2A
+	s.connected = agent.ConnectedTools(s.started)
+	s.mu.Unlock()
+	s.dispatcher.Replace(dispatch.KindA2A, ac)
+	old.Close()
+	s.log.Info("a2a agents reloaded", "agents", len(agents), "tools", len(s.dispatcher.Tools()))
+	return nil
+}
+
+// reloadBuiltin reads config.toml again and hands the built-in tools their
+// new [builtin] lists, so a policy the desktop app changed works on the
+// next call. The router's list follows, since it names the web tools. It
+// fails when config doesn't load, and the old lists stay.
+func (s *toolService) reloadBuiltin() error {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		return err
+	}
+	s.bt.SetLists(cfg.Builtin)
+	s.mu.Lock()
+	s.started.Builtin = cfg.Builtin
+	s.connected = agent.ConnectedTools(s.started)
+	s.mu.Unlock()
+	s.log.Info("built-in tools reloaded", "tools", len(cfg.Builtin.Tools), "confirm", len(cfg.Builtin.Confirm))
 	return nil
 }
 
@@ -280,10 +336,10 @@ func (s *toolService) connectedTools() []string {
 // Close stops the MCP servers merud started and the A2A client.
 func (s *toolService) Close() {
 	s.mu.Lock()
-	pool := s.pool
+	pool, ac := s.pool, s.a2a
 	s.mu.Unlock()
 	pool.Close()
-	s.a2a.Close()
+	ac.Close()
 }
 
 // handleTools answers OpTools with one "tools" event listing every source.

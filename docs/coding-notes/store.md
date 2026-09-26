@@ -169,6 +169,9 @@ or `_` in a folder name has no special meaning. An empty prefix lists every
 path; the indexer's startup scan uses that to find files whose folder left
 `[index] folders` and deletes them with `DeleteDocument`.
 
+`CountPaths(ctx, prefix)` counts the documents under a folder with the same
+`substr` rule as `Paths`, for the desktop app's Folders section.
+
 ### search.go: the two searches
 
 `SearchVector` computes the distance from the query to every stored vector
@@ -250,7 +253,7 @@ second, as the transcript does, so a replayed row matches the row written live;
 ### turns.go: usage
 
 Migration step 3 creates `turns`: one row per answered question, with its
-session, the time the question arrived, the source (`cli`, `tui` or `job`), the
+session, the time the question arrived, the source (`cli`, `tui`, `job` or `desktop`), the
 route, the main model's tokens in and out, how long the turn took, how many tool
 calls it made, the files it read, and the trace ID. `docs` holds the files as a
 JSON array of absolute paths, such as `["/Users/me/notes/garden.md"]`, and `[]`

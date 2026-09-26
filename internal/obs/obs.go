@@ -139,7 +139,7 @@ func RecordModelCall(ctx context.Context, c ModelCall) {
 // Turn describes one finished turn, for RecordTurn.
 type Turn struct {
 	Route      string // one of the four routes
-	Source     string // "cli", "tui" or "job"
+	Source     string // "cli", "tui", "job" or "desktop"
 	Outcome    string // "ok", "error", "cancelled", "timeout", "cut_off" or "gave_up"
 	Duration   time.Duration
 	Iterations int
@@ -239,8 +239,8 @@ func RecordToolCall(ctx context.Context, c ToolCallMetric) {
 }
 
 // RecordSession adds one to meru.sessions when a turn starts a new
-// session. source is "cli", "tui" or "job"; any other value becomes
-// "other".
+// session. source is "cli", "tui", "job" or "desktop"; any other value
+// becomes "other".
 func RecordSession(ctx context.Context, source string) {
 	in := load()
 	if in == nil {
@@ -252,7 +252,7 @@ func RecordSession(ctx context.Context, source string) {
 // TurnUsage describes what one answered turn used, for RecordTurnUsage.
 type TurnUsage struct {
 	Route  string // one of the four routes
-	Source string // "cli", "tui" or "job"
+	Source string // "cli", "tui", "job" or "desktop"
 	// TokensIn and TokensOut sum the main model's tokens over the turn's
 	// model calls.
 	TokensIn  int

@@ -152,8 +152,11 @@ type ToolRunner interface {
 // turn holds what the rounds need to know about the turn they run in.
 // Handle fills it in as the turn goes.
 type turn struct {
-	sess    *transcript.Session
-	source  rpc.Source
+	sess   *transcript.Session
+	source rpc.Source
+	// scope is where the user let the turn look, one of the rpc.Scope
+	// constants; see scope.go.
+	scope   string
 	traceID string
 	emit    func(rpc.Event) error
 	approve rpc.ApproveFunc

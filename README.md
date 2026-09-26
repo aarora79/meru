@@ -112,6 +112,9 @@ $ meru chat
 `go install` prints nothing when it works. Add `-v` to list each package as it
 compiles, or `-a -x` to rebuild everything and print each command.
 
+On a Mac, `make desktop && ./bin/meru-desktop` builds and opens the desktop app, a
+window onto the same `merud`. It needs the Xcode command line tools.
+
 [docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,
 `meru chat`, running `merud` as a service, the local dashboard, troubleshooting and
 uninstalling.

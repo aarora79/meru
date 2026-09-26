@@ -90,6 +90,7 @@ type server struct {
 	// set, so a server that died drops out of the next turn's tool list.
 	tools   []engine.ToolSpec
 	offered int      // how many tools the server offered at the last listing
+	all     []Tool   // every tool it offered then, allowed or not, sorted by name
 	unknown []string // allow entries the server didn't offer
 	lastErr string   // why the last start or call failed, for Status
 	closed  bool     // set by Close; no connects after it
@@ -104,9 +105,11 @@ type ServerStatus struct {
 	URL       string // the endpoint of an HTTP server; "" for stdio
 	Connected bool
 	// Offered counts the tools the server lists; Allowed counts the ones
-	// the model sees. Both come from the last successful listing.
-	Offered int
-	Allowed int
+	// the model sees. Both come from the last successful listing, and so
+	// does OfferedTools, which names every tool the server lists.
+	Offered      int
+	Allowed      int
+	OfferedTools []Tool
 	// Unknown holds allow entries the server doesn't offer, usually typos.
 	Unknown []string
 	// LastError says why the last start or call failed. A successful start
@@ -117,6 +120,13 @@ type ServerStatus struct {
 	// config, so they show while the server is down.
 	Listed   int
 	Confirms int
+}
+
+// Tool is one tool a server offers, by its own name, such as
+// "search_gmail_messages", with its description.
+type Tool struct {
+	Name        string
+	Description string
 }
 
 // NewPool validates servers, then starts or connects to each one, lists its
@@ -334,6 +344,11 @@ func (p *Pool) watch(s *server, cs *mcp.ClientSession) {
 // The caller holds s.mu.
 func (s *server) setToolsLocked(tools []*mcp.Tool) {
 	s.offered = len(tools)
+	s.all = make([]Tool, 0, len(tools))
+	for _, t := range tools {
+		s.all = append(s.all, Tool{Name: t.Name, Description: t.Description})
+	}
+	slices.SortFunc(s.all, func(a, b Tool) int { return strings.Compare(a.Name, b.Name) })
 	s.tools, s.unknown = allowedTools(s.cfg.Name, s.allow, tools)
 }
 
@@ -566,10 +581,12 @@ func (p *Pool) Status() []ServerStatus {
 			Connected: s.session != nil,
 			Offered:   s.offered,
 			Allowed:   len(s.tools),
-			Unknown:   slices.Clone(s.unknown),
-			LastError: s.lastErr,
-			Listed:    len(s.allow),
-			Confirms:  asks,
+
+			OfferedTools: slices.Clone(s.all),
+			Unknown:      slices.Clone(s.unknown),
+			LastError:    s.lastErr,
+			Listed:       len(s.allow),
+			Confirms:     asks,
 		})
 		s.mu.Unlock()
 	}
