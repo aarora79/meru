@@ -18,6 +18,9 @@ easier to review.
   [200.md](docs/architecture/200.md) explain the same design at gentler levels.
   **Change ARCHITECTURE.md first**, then carry the change into 200, 100 and their
   HTML pages (`docs/architecture/*.html`) in the same PR.
+  The figures in 100.md and 200.md are PNG files in `docs/architecture/img/`,
+  drawn from the SVG in the HTML pages. After you change a figure's SVG, run
+  `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
 - [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
@@ -336,6 +339,7 @@ make build            # binaries for five platforms in bin/
 make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama
+make figures          # redraw the 100.md and 200.md figures from the HTML (needs Chrome)
 go run ./cmd/merud    # run the daemon from source
 go run ./cmd/meru "..."
 ```
