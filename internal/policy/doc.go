@@ -12,9 +12,11 @@
 //   - No shipped Go file holds a string literal naming a cloud-model API
 //     host, or an http(s) URL whose host isn't loopback, unless
 //     allowed_urls.txt lists it with a reason (non-negotiables 1 and 2).
-//   - cmd/meru stays a thin client: it never reaches the engine, the
-//     transcript store or the agent loop, and never sets up the OpenTelemetry
-//     SDK (AGENTS.md "Shape").
+//   - The clients stay thin (AGENTS.md "Shape"). cmd/meru and the desktop
+//     app (cmd/meru-desktop with internal/desktop) never reach the engine,
+//     the store, the agent loop or any other package that runs in merud,
+//     and never set up the OpenTelemetry SDK. The desktop app also leaves
+//     out catalog, secrets and tui, and never uses Wails' updater.
 //
 // The deny-lists live in testdata/*.txt, one entry per line, so that no Go
 // string literal in this package names a provider host. The URL check reads

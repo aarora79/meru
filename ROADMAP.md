@@ -114,9 +114,10 @@ from a later milestone.
 - [x] Approvals as a card inside the answer, with a mail's fields laid out
 - [x] "What this answer used": sources, tool calls and who they contacted
 - [x] `sessions` and `session_turns` ops, read from the transcripts
-- [ ] The Library screen: each connection with Off, Ask and Allow
-- [ ] First run in the app
-- [ ] A switch for where Meru looks (needs a route override in `merud`)
+- [x] The Library screen: each connection with Off, Ask and Allow
+- [x] First run in the app: the Setup screen
+- [x] A switch for where Meru looks, sent to `merud` as the turn's scope
+- [x] Attachments through the attach button
 - [ ] Attachments by drag and drop
 - [ ] Linux (WebKitGTK) and Windows (WebView2) builds in CI
 

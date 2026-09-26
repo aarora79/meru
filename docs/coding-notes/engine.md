@@ -1,7 +1,7 @@
 # engine
 
-**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `loopback.go`, `version.go`,
-`observe_test.go`, `images_test.go`)
+**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `version.go`,
+`observe_test.go`, `images_test.go`), and the loopback check in `internal/loopback/loopback.go`
 **Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
 `Capabilities` with the desktop app's image attachments
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
@@ -39,9 +39,11 @@ constant `Vision` names the capability a model needs to read them. A
 Go *interface* is a list of method signatures; any type with those methods counts
 as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 
-### loopback.go
+### The loopback check
 
-`loopback.CheckURL` (in `internal/loopback`, shared with config and obs) decides whether a URL points at this machine:
+`NewOllama` calls `loopback.CheckURL`, which lives in its own package,
+`internal/loopback/loopback.go`, so config, obs and the clients can share it. It
+decides whether a URL points at this machine:
 
 ```go
 if strings.EqualFold(host, "localhost") {
