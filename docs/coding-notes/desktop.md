@@ -326,6 +326,16 @@ Wails app with the Bridge as a service and `Assets` as its file server, and open
 1440 by 900 window that shrinks to 1000 by 640. The title bar reads
 `WindowTitle` and never changes; the chat's title shows in the page's header.
 
+`make desktop-app` builds `bin/Meru.app` from three files: the binary,
+`Info.plist`, and `Meru.icns`, the icon macOS shows in the Dock and Finder.
+`CFBundleIconFile` in `Info.plist` names it. The icon is the logo from
+`docs/img/meru-logo.svg` on a light rounded square, in the size and shape macOS
+icons use: an 824-pixel tile with 185-pixel corners inside a 1024-pixel canvas.
+To remake it after the logo changes, draw that 1024-pixel PNG (any tool that
+renders SVG will do), scale it with `sips` to the ten sizes an `.iconset` folder
+holds (16 to 512 pixels, each also at double size), and run
+`iconutil -c icns Meru.iconset -o cmd/meru-desktop/Meru.icns`.
+
 ## Go ideas used here
 
 - **Goroutines** — each turn reads its events in its own. More in

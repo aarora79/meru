@@ -119,8 +119,9 @@ desktop-check: ## Vet, lint and vuln-check cmd/meru-desktop with its tags (needs
 
 desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 	rm -rf bin/Meru.app
-	mkdir -p bin/Meru.app/Contents/MacOS
+	mkdir -p bin/Meru.app/Contents/MacOS bin/Meru.app/Contents/Resources
 	cp cmd/meru-desktop/Info.plist bin/Meru.app/Contents/Info.plist
+	cp cmd/meru-desktop/Meru.icns bin/Meru.app/Contents/Resources/Meru.icns
 	cp bin/meru-desktop bin/Meru.app/Contents/MacOS/meru-desktop
 
 check: fmt-check vet lint tidy-check test e2e build vuln sec secrets actionlint ## Run every check CI runs, in CI's order

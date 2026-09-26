@@ -224,8 +224,8 @@ make desktop            # writes bin/meru-desktop
 ./bin/meru-desktop      # opens the window
 ```
 
-`make desktop-app` wraps the same binary in `bin/Meru.app`, which you can drag to
-`/Applications` and open like any app. The app finds `merud` at
+`make desktop-app` wraps the same binary in `bin/Meru.app`, with the Meru icon,
+which you can drag to `/Applications` and open like any app. The app finds `merud` at
 `~/.meru/merud.sock`; `-socket path` points it elsewhere. The usual `go install`,
 `go build ./...` and `make build` skip the app, so they still need no C compiler.
 
