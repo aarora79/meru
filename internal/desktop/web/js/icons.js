@@ -21,6 +21,16 @@ const PATHS = {
   check: ["M5 12.5 L10 17 L19 7"],
   alert: ["M12 3 L22 20 H2 Z", "M12 10 V14", "M12 17 V17.5"],
   lock: ["M6 11 H18 V20 H6 Z", "M8.5 11 V8 A3.5 3.5 0 0 1 15.5 8 V11"],
+  clip: ["M15.5 7 L8.5 14 A2.1 2.1 0 0 0 11.5 17 L18.5 10 A3.5 3.5 0 0 0 13.5 5 L6.5 12 A4.9 4.9 0 0 0 13.5 19 L19 13.5"],
+  book: ["M5 4 H11 A2 2 0 0 1 13 6 V20 A2 2 0 0 0 11 18 H5 Z", "M19 4 H13 V20 A2 2 0 0 1 15 18 H19 Z"],
+  sliders: ["M4 7 H14", "M18 7 H20", "M16 5 V9", "M4 17 H8", "M12 17 H20", "M10 15 V19"],
+  chats: ["M4 6 H20", "M4 12 H20", "M4 18 H14"],
+  sidebar: ["M4 5 H20 V19 H4 Z", "M9 5 V19"],
+  folder: ["M3 7 V18 H21 V8 H11 L9 6 H3 Z"],
+  share: ["M12 15 V4", "M8 8 L12 4 L16 8", "M5 13 V20 H19 V13"],
+  note: ["M6 3 H18 V21 H6 Z", "M9 8 H15", "M9 12 H15", "M9 16 H13"],
+  back: ["M15 6 L9 12 L15 18"],
+  edit: ["M5 19 L6 14 L15.5 4.5 L19.5 8.5 L10 18 Z", "M13.5 6.5 L17.5 10.5"],
 };
 
 // icon returns an <svg> element for the named icon. It is hidden from

@@ -468,7 +468,7 @@ func TestRouterNamesConnectedTools(t *testing.T) {
 				t.Fatal(err)
 			}
 			connected := agent.ConnectedTools(cfg)
-			rt, err := newRouter(cfg, eng, func() []string { return connected }, nil)
+			rt, err := newRouter(cfg, eng, func() []string { return connected }, func() []string { return cfg.Index.Folders }, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

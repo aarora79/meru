@@ -164,6 +164,27 @@ pre {
   height: 100vh;
 }
 
+/* The rail folds to a column of icons; the side panel can be hidden, and
+   Setup has none. */
+.app.rail-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr) 320px;
+}
+
+.app.panel-hidden,
+.app.no-panel {
+  grid-template-columns: 264px minmax(0, 1fr);
+}
+
+.app.rail-collapsed.panel-hidden,
+.app.rail-collapsed.no-panel {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.app.panel-hidden .panel,
+.app.no-panel .panel {
+  display: none;
+}
+
 /* ---- Buttons ---- */
 
 .button {
@@ -258,6 +279,27 @@ pre {
   gap: 8px;
   padding: 2px 6px 6px;
   color: var(--pine);
+}
+
+/* The logo and the name are one button that opens the Library's About. */
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.brand-link:hover {
+  background: var(--user);
+}
+
+.rail-toggle {
+  margin-left: auto;
 }
 
 /* The logo is docs/img/meru-logo.svg, copied beside the page. */
@@ -453,8 +495,11 @@ pre {
   text-overflow: ellipsis;
 }
 
-.toggle-panel {
-  display: none;
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
 .messages {
@@ -476,8 +521,24 @@ pre {
   color: var(--ink-3);
 }
 
+/* The logo sits to the left of "Ask Meru", centred on the heading's line,
+   at every width: the pair is short enough to fit a narrow window. */
+.empty-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.empty-logo {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+
 .empty h2 {
-  margin: 0 0 6px;
+  margin: 0;
   font-family: var(--display);
   font-size: 32px;
   font-weight: 500;
@@ -724,7 +785,7 @@ pre {
 
 .code-head {
   display: flex;
-  justify-content: space-between;
+  gap: 8px;
   align-items: center;
   padding: 3px 6px 3px 12px;
   border-bottom: 1px solid var(--border);
@@ -763,6 +824,26 @@ pre {
   margin-left: 4px;
 }
 
+/* The block's number in the chat, for /copy N. */
+.code-n {
+  min-width: 1.4em;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.code-n:empty {
+  display: none;
+}
+
+.code-lang {
+  flex: 1;
+}
+
 .note {
   color: var(--caption);
   font-style: italic;
@@ -773,11 +854,45 @@ pre {
 }
 
 /* Source chips. */
+/* merud's warning under an answer that claims an action no tool
+   performed, in the colours of an approval. */
+.answer-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ask-border);
+  border-radius: 8px;
+  background: var(--ask-fill);
+  color: var(--ask-ink);
+  font-size: 13px;
+}
+
+.answer-notice .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* The cited sources: one closed line under the answer, "3 sources", whose
+   chevron turns down when it opens. */
+.sources-line {
+  margin-top: 10px;
+}
+
+.sources-toggle .icon {
+  transition: transform 0.15s;
+}
+
+.sources-toggle[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -856,6 +971,12 @@ pre {
   margin: 2px 0 8px;
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.approval-why {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .fields {
@@ -1056,6 +1177,10 @@ pre {
   color: var(--caption);
 }
 
+.panel-note + .panel-note {
+  margin-top: 8px;
+}
+
 .panel-list {
   margin: 0;
   padding: 0;
@@ -1101,11 +1226,22 @@ pre {
 /* ---- Narrow windows: the side panel slides over the conversation ---- */
 
 @media (max-width: 1180px) {
-  .app {
+  .app,
+  .app.panel-hidden,
+  .app.no-panel {
     grid-template-columns: 240px minmax(0, 1fr);
   }
 
-  .toggle-panel,
+  .app.rail-collapsed,
+  .app.rail-collapsed.panel-hidden,
+  .app.rail-collapsed.no-panel {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .app.panel-hidden .panel {
+    display: flex;
+  }
+
   .close-panel {
     display: inline-flex;
   }
@@ -1129,7 +1265,8 @@ pre {
 
   .messages,
   .composer-area,
-  .chat-head {
+  .chat-head,
+  .page {
     padding-left: 24px;
     padding-right: 24px;
   }
@@ -1139,4 +1276,716 @@ pre {
   .panel {
     transition: none;
   }
+}
+
+/* ---- The rail's foot and the folded rail ---- */
+
+.rail-foot {
+  display: flex;
+  gap: 4px;
+}
+
+.rail-link {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.rail-link:hover {
+  background: rgba(29, 35, 32, 0.06);
+}
+
+.rail-link[aria-current="true"] {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+.mini-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0 16px;
+  background: var(--rail);
+  border-right: 1px solid var(--border);
+}
+
+.mini-rail .icon-button {
+  width: 36px;
+  height: 36px;
+}
+
+.mini-status {
+  width: 10px;
+  height: 10px;
+  margin-top: auto;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.mini-status.down {
+  background: var(--ask-ink);
+}
+
+/* ---- The composer: scope, attachments, commands, save cards ---- */
+
+.composer-bar {
+  flex-wrap: wrap;
+}
+
+.scope {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.scope-option {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.scope-option:hover {
+  color: var(--ink);
+}
+
+.scope-option[aria-checked="true"] {
+  background: var(--card);
+  color: var(--pine-dark);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.icon-button.small {
+  width: 22px;
+  height: 22px;
+}
+
+.command-menu {
+  margin: 0 0 6px;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 6px 18px rgba(29, 35, 32, 0.1);
+}
+
+.command-option {
+  display: flex;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.command-option.active {
+  background: var(--user);
+}
+
+.command-name {
+  min-width: 90px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.command-desc {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.task-slot .approval {
+  margin-bottom: 8px;
+}
+
+.notice .text-button {
+  display: inline;
+  padding: 0 4px;
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* An approval card waiting on the user, in the work strip. */
+.waiting {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ask-fill);
+  border: 1px solid var(--ask-border);
+  color: var(--ask-ink);
+}
+
+/* ---- The side panel's extra rows ---- */
+
+.memory-row {
+  flex-direction: row !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.policy-row {
+  flex-direction: row !important;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.policy-row.current {
+  font-weight: 600;
+}
+
+.policy-badge {
+  flex: none;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.policy-badge.ask,
+.policy-badge.always {
+  background: var(--ask-fill);
+  border-color: var(--ask-border);
+  color: var(--ask-ink);
+}
+
+.policy-badge.allow {
+  background: var(--user);
+  color: var(--pine-dark);
+}
+
+.text-button.link {
+  padding: 0;
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- Library and Setup ---- */
+
+.page {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 32px 40px;
+}
+
+.page > * {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.page-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.back {
+  margin-left: -6px;
+}
+
+.setup-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 8px auto 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--pine);
+  color: var(--ink);
+}
+
+.section-intro {
+  color: var(--ink-3);
+}
+
+.section-head {
+  margin: 26px 0 10px;
+  font-family: var(--display);
+  font-size: 21px;
+  font-weight: 500;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.card.focused {
+  border-color: var(--pine);
+  box-shadow: 0 0 0 2px var(--user);
+}
+
+.card.catalog {
+  margin-bottom: 12px;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.card p {
+  margin: 4px 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-sub,
+.card-count {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.card-note {
+  font-size: 13px;
+  color: var(--caption);
+}
+
+.card-error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.pill {
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pill.ok {
+  background: var(--user);
+  color: var(--pine-dark);
+}
+
+.pill.down {
+  background: var(--ask-fill);
+  color: var(--ask-ink);
+}
+
+.tool-list {
+  margin: 8px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+
+.tool-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tool-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.tool-desc {
+  font-size: 12px;
+  color: var(--caption);
+}
+
+.tool-why {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--ask-ink);
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.segment {
+  padding: 2px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segment.on {
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.segment.on:first-child {
+  color: var(--ink-3);
+}
+
+.row-list {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.switch {
+  min-width: 52px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch.on {
+  background: var(--pine);
+  border-color: var(--pine);
+  color: #ffffff;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0 0 12px;
+}
+
+.facts dt {
+  color: var(--caption);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.log th,
+.log td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.log thead th {
+  color: var(--caption);
+  font-weight: 600;
+}
+
+.log .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.outcome.denied,
+.outcome.declined,
+.outcome.error,
+.outcome.timeout {
+  color: var(--danger);
+}
+
+.copy-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.copy-line code {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.field-label {
+  display: block;
+  margin: 12px 0 4px;
+  font-weight: 500;
+}
+
+.text-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+textarea.text-input {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.add-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.add-form select {
+  width: auto;
+}
+
+/* "Add your own MCP server" and its form. */
+.custom-server {
+  margin-top: 8px;
+}
+
+.custom-form {
+  max-width: 640px;
+  margin-top: 10px;
+}
+
+.choice-row {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 16px 4px 0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.rows {
+  display: grid;
+  gap: 6px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row .text-input:not(.grow) {
+  width: 12em;
+}
+
+/* The About section. */
+.about-tagline {
+  font-family: var(--display);
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.about-list {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.about-list li {
+  margin: 4px 0;
+}
+
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.grow {
+  flex: 1;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 14px auto 6px;
+  padding: 0;
+  list-style: none;
+  color: var(--caption);
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+}
+
+.steps .current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.steps .current .step-n,
+.steps .done .step-n {
+  background: var(--pine);
+  border-color: var(--pine);
+  color: #ffffff;
+}
+
+.setup-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.checks {
+  margin: 10px 0 14px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.check label {
+  flex: 1;
 }

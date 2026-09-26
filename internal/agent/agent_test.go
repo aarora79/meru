@@ -131,12 +131,14 @@ type fakeRouter struct {
 	dec Decision
 	err error
 
-	mu      sync.Mutex // guards history
+	mu      sync.Mutex // guards history and calls
 	history []engine.Message
+	calls   int
 }
 
 func (r *fakeRouter) Decide(ctx context.Context, question string, history []engine.Message) (Decision, error) {
 	r.mu.Lock()
+	r.calls++
 	r.history = slices.Clone(history)
 	r.mu.Unlock()
 	return r.dec, r.err

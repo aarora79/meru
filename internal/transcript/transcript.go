@@ -70,6 +70,12 @@ type Line struct {
 	// answer: "timeout", "cut_off" or "gave_up"; it is empty otherwise.
 	Outcome string `json:"outcome,omitempty"`
 	OK      bool   `json:"ok,omitempty"`
+	// Notice is the warning the user read under the answer, on an
+	// assistant line: set when the answer claimed an action and no tool
+	// call in the turn succeeded, and empty otherwise. History hands it to
+	// the model with the answer, so a later turn doesn't build on the
+	// claim.
+	Notice string `json:"notice,omitempty"`
 	// Ms is how long the call took, in milliseconds.
 	Ms int64 `json:"ms,omitempty"`
 	// Result is what the tool returned, as text, secrets redacted.

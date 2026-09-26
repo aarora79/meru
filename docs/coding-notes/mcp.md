@@ -348,6 +348,10 @@ copy. It adds them only for the server's own host: a server marked
 `remote = true` may redirect elsewhere, and the key must not follow. More on
 clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md).
 
+`setToolsLocked` also keeps `all`: every tool the server listed, allowed or not,
+by name, with its description. `Status` hands it out as `OfferedTools`, so the
+desktop app can show a tool that config leaves off, with a switch to turn it on.
+
 ### probe.go
 
 `Probe(ctx, cfg, log)` answers "what does this server offer?" before the server

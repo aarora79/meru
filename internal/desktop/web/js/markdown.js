@@ -88,6 +88,8 @@ export function renderMarkdown(text, onCopy) {
 
 // wrapCode puts a code block in a box with a header that names its
 // language, from marked's "language-go" class, and holds a Copy button.
+// The header starts with an empty number, which app.js fills in: the
+// block's number in the chat, for /copy N, as `meru chat` numbers them.
 function wrapCode(pre, onCopy) {
   const code = pre.querySelector("code");
   const lang = code ? [...code.classList].find((c) => c.startsWith("language-")) : null;
@@ -95,7 +97,10 @@ function wrapCode(pre, onCopy) {
   box.className = "code-block";
   const head = document.createElement("div");
   head.className = "code-head";
+  const num = document.createElement("span");
+  num.className = "code-n";
   const name = document.createElement("span");
+  name.className = "code-lang";
   name.textContent = lang ? lang.slice("language-".length) : "code";
   const button = document.createElement("button");
   button.type = "button";
@@ -103,7 +108,7 @@ function wrapCode(pre, onCopy) {
   button.append(icon("copy", 14), document.createTextNode(" Copy"));
   button.setAttribute("aria-label", "Copy code");
   button.addEventListener("click", () => onCopy((code || pre).textContent, button));
-  head.append(name, button);
+  head.append(num, name, button);
   pre.replaceWith(box);
   box.append(head, pre);
   const text = (code || pre).textContent;

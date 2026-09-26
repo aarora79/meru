@@ -8,11 +8,16 @@
   <script type="module" src="/js/app.js"></script>
 </head>
 <body>
-  <div class="app">
-    <nav class="rail" aria-label="Chats">
+  <div class="app" id="app">
+    <nav class="rail" id="rail" aria-label="Chats">
       <div class="brand">
-        <img class="brand-logo" src="img/meru-logo.svg" alt="" width="30" height="30">
-        <span class="wordmark">Meru</span>
+        <button type="button" class="brand-link" id="open-about" aria-label="About Meru" aria-describedby="tagline"
+          title="A personal AI assistant that runs entirely on your own computer">
+          <img class="brand-logo" src="img/meru-logo.svg" alt="" width="30" height="30">
+          <span class="wordmark">Meru</span>
+        </button>
+        <span class="visually-hidden" id="tagline">A personal AI assistant that runs entirely on your own computer</span>
+        <button type="button" class="icon-button rail-toggle" id="rail-toggle" aria-label="Collapse the sidebar" aria-expanded="true"></button>
       </div>
       <button type="button" class="button new-chat" id="new-chat">New chat</button>
       <div class="search">
@@ -22,21 +27,44 @@
       </div>
       <div class="sessions" id="sessions"></div>
       <section class="status" id="status" aria-label="merud status" aria-live="polite"></section>
+      <div class="rail-foot">
+        <button type="button" class="rail-link" id="open-library">Library</button>
+        <button type="button" class="rail-link" id="open-setup">Setup</button>
+      </div>
     </nav>
 
-    <main class="chat">
+    <nav class="mini-rail" id="mini-rail" aria-label="Meru" hidden>
+      <img class="brand-logo" src="img/meru-logo.svg" alt="Meru" width="30" height="30"
+        title="A personal AI assistant that runs entirely on your own computer">
+      <button type="button" class="icon-button" id="mini-expand" aria-label="Show the sidebar"></button>
+      <button type="button" class="icon-button" id="mini-new" aria-label="New chat"></button>
+      <button type="button" class="icon-button" id="mini-chats" aria-label="Chats"></button>
+      <button type="button" class="icon-button" id="mini-library" aria-label="Library"></button>
+      <span class="mini-status" id="mini-status" role="img" aria-label="merud status"></span>
+    </nav>
+
+    <main class="chat" id="chat-view">
       <header class="chat-head">
         <h1 id="chat-title">New chat</h1>
-        <button type="button" class="text-button toggle-panel" id="toggle-panel" aria-controls="panel" aria-expanded="false">What it used</button>
+        <div class="head-actions">
+          <button type="button" class="text-button" id="share" hidden>Share as file</button>
+          <button type="button" class="icon-button" id="toggle-panel" aria-controls="panel" aria-expanded="true" aria-label="Hide the side panel"></button>
+        </div>
       </header>
       <div class="messages" id="messages"></div>
       <div class="composer-area">
+        <div class="task-slot" id="task-slot"></div>
         <p class="notice" id="notice" role="status" aria-live="polite"></p>
         <ol class="queue" id="queue" aria-label="Queued questions" hidden></ol>
+        <ul class="command-menu" id="command-menu" role="listbox" aria-label="Commands" hidden></ul>
         <form class="composer" id="composer">
+          <div class="attachments" id="attachments" hidden></div>
           <label for="question" class="visually-hidden">Ask Meru</label>
-          <textarea id="question" rows="1" placeholder="Ask about your files, mail, notes or the web"></textarea>
+          <textarea id="question" rows="1" placeholder="Ask about your files, mail, notes or the web · / for commands"
+            role="combobox" aria-autocomplete="list" aria-controls="command-menu" aria-expanded="false"></textarea>
           <div class="composer-bar">
+            <div class="scope" id="scope" role="radiogroup" aria-label="Where Meru looks"></div>
+            <button type="button" class="icon-button" id="attach" aria-label="Attach a file"></button>
             <span class="hint">Enter sends · Shift+Enter adds a line</span>
             <button type="button" class="button secondary" id="stop" hidden>Stop</button>
             <button type="submit" class="button primary" id="send">Send</button>
@@ -44,6 +72,9 @@
         </form>
       </div>
     </main>
+
+    <main class="page" id="library-view" hidden aria-labelledby="library-title"></main>
+    <main class="page" id="setup-view" hidden aria-labelledby="setup-title"></main>
 
     <aside class="panel" id="panel" aria-labelledby="panel-title">
       <div class="panel-head">

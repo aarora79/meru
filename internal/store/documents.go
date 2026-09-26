@@ -181,6 +181,22 @@ func (s *Store) Paths(ctx context.Context, prefix string) ([]string, error) {
 	return paths, nil
 }
 
+// CountPaths counts the indexed paths under prefix, a folder, with the
+// same rule as Paths: "/notes" counts "/notes/a.md" but not "/notes2/b.md".
+// The desktop app shows the count beside each [index] folder.
+func (s *Store) CountPaths(ctx context.Context, prefix string) (int, error) {
+	if prefix != "" && !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM documents WHERE substr(path, 1, length(?1)) = ?1`, prefix).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count paths under %q: %w", prefix, err)
+	}
+	return n, nil
+}
+
 // Stats counts documents, chunks and vectors.
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	var st Stats

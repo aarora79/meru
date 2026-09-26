@@ -70,6 +70,33 @@ func (a *Agent) UseMachine(line string) {
 	a.machine = line
 }
 
+// UseFolders makes every later turn read the [index] folders from folders,
+// so a folder the desktop app adds or removes shows in the next prompt's
+// note on the user's files, and in the rule for a question that names a
+// folder. Call it once, before the first Handle. Without it, turns use the
+// folders config held when New ran.
+func (a *Agent) UseFolders(folders func() []string) {
+	a.folders = folders
+}
+
+// currentFolderNames returns folderNames for the folders as they are now.
+func (a *Agent) currentFolderNames() []string {
+	if a.folders == nil {
+		return a.folderNames
+	}
+	return folderNames(a.folders())
+}
+
+// currentFilesNote returns filesNote for the folders as they are now. The
+// text changes only when the folders do, so Ollama can still reuse its
+// work on the prompt's opening from one turn to the next.
+func (a *Agent) currentFilesNote() string {
+	if a.folders == nil {
+		return a.filesNote
+	}
+	return filesNote(a.folders(), a.agentic)
+}
+
 // pickedSkills is what a turn knows about skills: the registry it read,
 // and the names the pick call chose from it, in the model's order.
 type pickedSkills struct {

@@ -39,8 +39,14 @@ type TurnView struct {
 	// Outcome says how a turn ended without a full answer; see
 	// rpc.TurnInfo.
 	Outcome string `json:"outcome,omitempty"`
-	// Sources are the files the turn's prompt held, numbered from 1.
+	// Notice is the amber note under an answer that claimed an action no
+	// tool performed, as the transcript keeps it.
+	Notice string `json:"notice,omitempty"`
+	// Sources are the files the turn's prompt held, numbered from 1, for
+	// the side panel; Cited are the ones the answer cites, for the line
+	// under the answer.
 	Sources   []rpc.Citation `json:"sources,omitempty"`
+	Cited     []rpc.Citation `json:"cited,omitempty"`
 	Steps     []Step         `json:"steps,omitempty"`
 	Contacted []string       `json:"contacted,omitempty"`
 	// DurationMillis and TokensOut come from the transcript. The time to
@@ -81,12 +87,13 @@ func (b *Bridge) SessionTurns(ctx context.Context, id string) ([]TurnView, error
 	out := make([]TurnView, 0, len(ev.Turns))
 	for _, t := range ev.Turns {
 		v := TurnView{
-			Question: t.Question, Answer: t.Answer, Route: t.Route, Outcome: t.Outcome,
+			Question: t.Question, Answer: t.Answer, Route: t.Route, Outcome: t.Outcome, Notice: t.Notice,
 			DurationMillis: t.DurationMillis, TokensOut: t.TokensOut,
 		}
 		for i, p := range t.Sources {
 			v.Sources = append(v.Sources, rpc.Citation{N: i + 1, Path: p})
 		}
+		v.Cited = rpc.Cited(v.Answer, v.Sources)
 		for _, s := range t.Tools {
 			step := stepOf("", s.Kind, s.Name, s.Args)
 			step.Outcome, step.DurationMillis = s.Outcome, s.DurationMillis
@@ -117,11 +124,21 @@ func groupOf(t, now time.Time) string {
 // so a slow answer means something is wrong.
 const requestTimeout = 5 * time.Second
 
-// one sends req and returns the reply event of type want. It fails when
-// merud can't be reached, answers with an error event, or sends no event
-// of that type.
+// changeTimeout bounds a request that changes a setting. merud may start
+// or reconnect every MCP server after the change, and each may take a
+// while to start.
+const changeTimeout = 90 * time.Second
+
+// one sends req and returns the reply event of type want, waiting at most
+// requestTimeout, or changeTimeout for an op that changes a setting. It
+// fails when merud can't be reached, answers with an error event, or sends
+// no event of that type.
 func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (rpc.Event, error) {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	timeout := requestTimeout
+	if changes(req.Op) {
+		timeout = changeTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var got *rpc.Event
 	// These requests run no tools, so a nil ApproveFunc is right: it would
@@ -141,4 +158,20 @@ func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (
 		return rpc.Event{}, errors.New("merud sent no " + string(want) + " reply")
 	}
 	return *got, nil
+}
+
+// done sends req, which merud answers with "done" alone, such as
+// memory_forget or secret_set, and fails as one does.
+func (b *Bridge) done(ctx context.Context, req rpc.Request) (rpc.Event, error) {
+	return b.one(ctx, req, rpc.EventDone)
+}
+
+// changes reports whether op changes a setting, and so may take longer.
+func changes(op rpc.Op) bool {
+	switch op {
+	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
+		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders:
+		return true
+	}
+	return false
 }

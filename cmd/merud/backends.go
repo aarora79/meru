@@ -90,6 +90,9 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 			Unknown:   st.Unknown,
 			Tools:     []rpc.ToolInfo{}, // an empty list, not null, in the JSON
 		}
+		for _, t := range st.OfferedTools {
+			info.OfferedTools = append(info.OfferedTools, rpc.ToolInfo{Name: st.Name + "." + t.Name, Description: t.Description})
+		}
 		prefix := st.Name + "."
 		for _, t := range tools {
 			if strings.HasPrefix(t.Name, prefix) {

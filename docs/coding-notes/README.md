@@ -35,7 +35,7 @@ Read them in this order; each builds on the ones before it.
 14. [dispatch](dispatch.md): the one path every tool call takes, with approvals and the audit log
 15. [a2a](a2a.md): the A2A client, which turns other agents' skills into tools
 16. [secrets](secrets.md): `secrets.toml`, where API keys live, and redacting them
-17. [catalog](catalog.md): the starter MCP servers, the safe way to add one to `config.toml`, and the SearXNG check
+17. [catalog](catalog.md): the starter MCP servers, the safe way to add one to `config.toml` or change one list in it, and the SearXNG check
 18. [builtin](builtin.md): merud's built-in tools, from `configure` and `remember` to the file and web tools
 19. [commands](commands.md): local programs you declare in `[[commands]]`, run with no shell
 20. [skills](skills.md): `SKILL.md` folders and the built-in skills, groundwork for v0.4

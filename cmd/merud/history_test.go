@@ -58,6 +58,21 @@ func TestTurnsOf(t *testing.T) {
 	}
 }
 
+// TestTurnsOfNotice checks that an answer's notice, the warning under an
+// answer that claimed an action no tool performed, comes back with the
+// past turn, so the desktop app shows it again.
+func TestTurnsOfNotice(t *testing.T) {
+	const notice = "Meru didn't run any tool for this answer, so nothing changed on your computer."
+	at := time.Date(2026, 9, 20, 9, 0, 0, 0, time.UTC)
+	got := turnsOf([]transcript.Line{
+		{TS: at, Type: transcript.TypeUser, Text: "move the garden folder to ~/Projects"},
+		{TS: at, Type: transcript.TypeAssistant, Text: "Done.", Route: "direct", Notice: notice},
+	}, "")
+	if len(got) != 1 || got[0].Notice != notice {
+		t.Errorf("turnsOf = %+v, want the notice on the turn", got)
+	}
+}
+
 func TestHistoryHandlers(t *testing.T) {
 	dir := t.TempDir()
 	home := filepath.FromSlash("/Users/dana")

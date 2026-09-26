@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/retrieve"
@@ -29,9 +31,20 @@ type indexService struct {
 	ix         *index.Indexer
 	st         *store.Store
 	memories   memoryService // counts the memory files for the status op
-	folders    []string      // [index] folders as config.toml writes them
-	configPath string        // config.toml, named in messages that ask for a change
+	cfg        config.Index  // [index] as merud started with it, for the skip rules CountFiles applies
+	configPath string        // config.toml, which the folder ops change
 	log        *slog.Logger
+	// editConfig runs a change to config.toml under the one lock every
+	// writer in merud shares; see builtin.Tools.EditConfig.
+	editConfig func(func() error) error
+
+	// changed tells watchAndRescan that the folders changed. It holds at
+	// most one signal: two changes before the loop wakes need one rescan.
+	changed chan struct{}
+
+	// foldersMu guards folders, which the folder ops replace.
+	foldersMu sync.Mutex
+	folders   []string // [index] folders as config.toml writes them
 
 	// turn holds one token while a scan runs. A channel with room for one
 	// value works as a lock that a waiter can give up on when its ctx ends,
@@ -47,13 +60,28 @@ type indexService struct {
 	lastErr  string           // why it stopped early, if it did
 }
 
-// newIndexService returns an indexService over ix and st. memories, folders
-// and configPath only appear in status replies and messages.
-func newIndexService(ix *index.Indexer, st *store.Store, memories memoryService, folders []string, configPath string, log *slog.Logger) *indexService {
-	return &indexService{
-		ix: ix, st: st, memories: memories, folders: folders, configPath: configPath, log: log,
-		turn: make(chan struct{}, 1),
+// newIndexService returns an indexService over ix and st. cfg is the
+// [index] section merud started with; its folders are the first list the
+// folder ops change. editConfig runs each change to config.toml under
+// merud's one config lock; nil runs it with no lock, for tests.
+func newIndexService(ix *index.Indexer, st *store.Store, memories memoryService, cfg config.Index, configPath string,
+	editConfig func(func() error) error, log *slog.Logger) *indexService {
+	if editConfig == nil {
+		editConfig = func(f func() error) error { return f() }
 	}
+	return &indexService{
+		ix: ix, st: st, memories: memories, cfg: cfg, folders: slices.Clone(cfg.Folders), configPath: configPath,
+		editConfig: editConfig, log: log,
+		turn: make(chan struct{}, 1), changed: make(chan struct{}, 1),
+	}
+}
+
+// currentFolders returns the [index] folders as config.toml writes them
+// now. The agent and the router read it on every turn.
+func (s *indexService) currentFolders() []string {
+	s.foldersMu.Lock()
+	defer s.foldersMu.Unlock()
+	return slices.Clone(s.folders)
 }
 
 // startupScan brings the index up to date when merud starts: a Reembed when
@@ -62,7 +90,7 @@ func newIndexService(ix *index.Indexer, st *store.Store, memories memoryService,
 // the scan ends or ctx does. A failed scan is logged, not returned: merud
 // still answers questions from whatever the index holds.
 func (s *indexService) startupScan(ctx context.Context) {
-	if len(s.folders) == 0 {
+	if len(s.currentFolders()) == 0 {
 		s.log.Info("index: no [index] folders in config; nothing to index")
 		return
 	}
@@ -75,7 +103,7 @@ func (s *indexService) startupScan(ctx context.Context) {
 // watch at all, it logs why and returns; `meru index` and the next start
 // still catch changes.
 func (s *indexService) watch(ctx context.Context) {
-	if len(s.folders) == 0 {
+	if len(s.currentFolders()) == 0 {
 		return
 	}
 	if err := s.ix.Watch(ctx); err != nil {
@@ -143,12 +171,12 @@ func (s *indexService) scanAll(ctx context.Context, say func(string) error) (ind
 	}
 	if reembed {
 		s.log.InfoContext(ctx, "index: the embedding model changed; embedding every file again")
-		if err := say(fmt.Sprintf("embedding every file in %s again for the new embedding model", folderCount(len(s.folders)))); err != nil {
+		if err := say(fmt.Sprintf("embedding every file in %s again for the new embedding model", folderCount(len(s.currentFolders())))); err != nil {
 			return index.Report{}, err
 		}
 		return s.ix.Reembed(ctx)
 	}
-	if err := say("scanning " + folderCount(len(s.folders))); err != nil {
+	if err := say("scanning " + folderCount(len(s.currentFolders()))); err != nil {
 		return index.Report{}, err
 	}
 	return s.ix.Scan(ctx)
@@ -186,8 +214,8 @@ func (s *indexService) finish(rep *index.Report, err error) {
 // folder, and when the scan fails. The messages say what to change, because
 // the client prints them as they are.
 func (s *indexService) handleIndex(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
-	if len(s.folders) == 0 {
-		return fmt.Errorf("no folders to index; list them under [index] folders in %s and restart merud", s.configPath)
+	if len(s.currentFolders()) == 0 {
+		return fmt.Errorf("no folders to index; add one in the desktop app's Library, or list them under [index] folders in %s and restart merud", s.configPath)
 	}
 	if req.Path != "" && !filepath.IsAbs(req.Path) {
 		return fmt.Errorf("index %q: need an absolute path", req.Path)
@@ -220,7 +248,7 @@ func (s *indexService) handleStatus(ctx context.Context, emit func(rpc.Event) er
 		return err
 	}
 	st := rpc.IndexStatus{
-		Folders:   s.folders,
+		Folders:   s.currentFolders(),
 		Documents: stats.Documents,
 		Chunks:    stats.Chunks,
 		Vectors:   stats.Vectors,

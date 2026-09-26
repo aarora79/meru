@@ -168,3 +168,61 @@ func TestReadText(t *testing.T) {
 		t.Errorf("ReadText of a PDF with no text = %v, want errNoText", err)
 	}
 }
+
+// TestSetFolders checks that a folder added while merud runs is scanned
+// and one taken out has its files dropped at the next scan, and that
+// HasFolders follows the list.
+func TestSetFolders(t *testing.T) {
+	a, b := tempRoot(t), tempRoot(t)
+	writeFiles(t, a, map[string]string{"a.md": "# A\n\nalpha"})
+	writeFiles(t, b, map[string]string{"b.md": "# B\n\nbeta"})
+	sink := newFakeSink()
+	ix, err := New(testConfig(a), sink, &fakeEngine{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := ix.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := ix.SetFolders([]string{b}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ix.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	paths, _ := sink.Paths(ctx, "")
+	if len(paths) != 1 || filepath.Base(paths[0]) != "b.md" {
+		t.Errorf("paths after the swap = %v, want b.md alone", paths)
+	}
+	if !ix.HasFolders() {
+		t.Error("HasFolders = false with one folder")
+	}
+	if err := ix.SetFolders(nil); err != nil || ix.HasFolders() {
+		t.Errorf("SetFolders(nil) = %v, HasFolders = %v", err, ix.HasFolders())
+	}
+	if err := ix.SetFolders([]string{"relative"}); err == nil {
+		t.Error("SetFolders accepted a relative folder")
+	}
+}
+
+// TestCountFiles checks the count applies the skip rules and stops at the
+// limit.
+func TestCountFiles(t *testing.T) {
+	root := tempRoot(t)
+	writeFiles(t, root, map[string]string{
+		"a.md": "a", "b.md": "b", "c.txt": "c", ".hidden.md": "h", "node_modules/x.js": "x",
+	})
+	ctx := context.Background()
+	n, more, err := CountFiles(ctx, testConfig(root), root, 100)
+	if err != nil || n != 3 || more {
+		t.Errorf("CountFiles = %d, %v, %v; want 3 files, no more", n, more, err)
+	}
+	n, more, err = CountFiles(ctx, testConfig(root), root, 2)
+	if err != nil || n != 2 || !more {
+		t.Errorf("CountFiles with limit 2 = %d, %v, %v; want 2 and more", n, more, err)
+	}
+	if _, _, err := CountFiles(ctx, testConfig(root), filepath.Join(root, "missing"), 10); err == nil {
+		t.Error("CountFiles of a missing folder succeeded")
+	}
+}

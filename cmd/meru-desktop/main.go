@@ -51,16 +51,27 @@ func run(args []string) error {
 		return err
 	}
 
-	// app is declared before it is set, so the Emit function below can
-	// refer to it. The Bridge calls Emit only once a question is on its
-	// way, long after application.New has returned.
+	// app is declared before it is set, so the functions below can refer
+	// to it. The Bridge calls them only when the page asks, long after
+	// application.New has returned.
 	var app *application.App
 	opts.Emit = func(name string, data any) { app.Event.Emit(name, data) }
+	// The system's own dialogs choose a file to attach and a folder to
+	// index. PromptForSingleSelection returns "" when the user cancels.
+	opts.PickFile = func() (string, error) {
+		return app.Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).
+			SetTitle("Attach a file").PromptForSingleSelection()
+	}
+	opts.PickFolder = func() (string, error) {
+		return app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).
+			SetTitle("Choose a folder for Meru to index").SetButtonText("Choose").PromptForSingleSelection()
+	}
+	opts.Quit = func() { app.Quit() }
 	bridge := desktop.New(opts)
 
 	app = application.New(application.Options{
 		Name:        "Meru",
-		Description: "A personal assistant that runs on this computer",
+		Description: desktop.Tagline,
 		// NewService binds every exported method of the Bridge, so the
 		// page can call it by name, and calls its ServiceShutdown when
 		// the app quits.
@@ -78,7 +89,9 @@ func run(args []string) error {
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Meru",
+		// The title bar says what Meru is. The chat's own title shows in
+		// the page's header, so the title bar never changes.
+		Title:     desktop.WindowTitle,
 		URL:       "/",
 		Width:     1440,
 		Height:    900,

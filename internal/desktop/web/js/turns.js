@@ -69,12 +69,13 @@ export function createTurn(t, h) {
   detail.id = "steps-" + t.key;
   const approval = el("div", "approval-slot");
   const body = el("div", "body");
-  const sources = el("ul", "chips");
-  sources.setAttribute("aria-label", "Sources");
+  const notice = el("p", "answer-notice");
+  notice.setAttribute("role", "note");
+  const sources = el("div", "sources-line");
   const footer = el("div", "answer-foot");
-  answer.append(strip, detail, approval, body, sources, footer);
+  answer.append(strip, detail, approval, body, notice, sources, footer);
   root.append(q, answer);
-  t.el = { root, answer, strip, detail, approval, body, sources, footer };
+  t.el = { root, answer, strip, detail, approval, body, notice, sources, footer };
   drawAll(t, h);
   return root;
 }
@@ -84,6 +85,7 @@ export function drawAll(t, h) {
   drawStrip(t, h);
   drawApproval(t, h);
   drawBody(t, h);
+  drawNotice(t);
   drawSources(t, h);
   drawFooter(t, h);
 }
@@ -101,7 +103,11 @@ export function drawStrip(t, h) {
     step.append(icon(failed ? "alert" : "tool", 13), document.createTextNode(" " + s.label));
     strip.append(step);
   }
-  if (t.state === "active" && !t.answer && !t.approval) {
+  if (t.approval && !t.approval.answered) {
+    const chip = el("span", "waiting");
+    chip.append(icon("ask", 13), document.createTextNode(" Waiting for you"));
+    strip.append(chip);
+  } else if (t.state === "active" && !t.answer) {
     strip.append(el("span", "working", "Working…"));
   }
   if (t.route || t.steps.length > 0) {
@@ -150,21 +156,35 @@ export function drawApproval(t, h) {
   slot.replaceChildren();
   const a = t.approval;
   if (!a) return;
-  const v = a.view;
   if (a.answered) {
     const line = el("p", "approval-done");
-    line.append(icon(a.answered === "deny" ? "close" : "check", 14),
-      document.createTextNode(" " + answeredText(a.answered, v.label)));
+    line.append(icon(a.answered === "deny" || a.answered === "edit" ? "close" : "check", 14),
+      document.createTextNode(" " + answeredText(a.answered, a.view.label)));
     slot.append(line);
     return;
   }
+  const card = approvalCard(a.view, "approval-" + t.key, (choice) => h.onApprove(t, choice));
+  // The side panel starts closed, so the card itself says why Meru asks,
+  // with a link to the panel's longer answer.
+  const why = el("p", "approval-why", h.whyText(a.view) + " ");
+  why.append(button("More in the side panel", { className: "text-button link", onClick: () => h.onSelect(t, true) }));
+  card.insertBefore(why, card.querySelector(".choices"));
+  slot.append(card);
+}
+
+// approvalCard builds the card for view v: what the call would do, its
+// arguments laid out to read, and the answers. A mail card offers Send,
+// Edit first and Don't send; any other card Allow once and Don't allow,
+// with Edit first between. Allow for this chat comes when merud offers
+// it. onChoice gets "once", "session", "deny" or "edit". A save's card,
+// which sits above the composer, uses it too.
+export function approvalCard(v, titleId, onChoice) {
   const card = el("div", "approval");
   card.setAttribute("role", "group");
-  const titleId = "approval-" + t.key;
   card.setAttribute("aria-labelledby", titleId);
   const title = el("p", "approval-title");
   title.id = titleId;
-  title.append(icon("ask", 16), document.createTextNode(" Meru asks before it runs this: "));
+  title.append(icon("ask", 16), document.createTextNode(" Meru asks before it does this: "));
   title.append(el("strong", "", v.label));
   card.append(title, el("p", "approval-tool", v.name + " · " + v.kind));
 
@@ -177,15 +197,20 @@ export function drawApproval(t, h) {
   }
   if (v.json) card.append(el("pre", "args", v.json));
 
+  const mail = !!(v.fields && v.fields.length);
+  const offered = new Set(v.choices.map((c) => c.choice));
   const choices = el("div", "choices");
-  for (const c of v.choices) {
-    const cls = c.choice === "deny" ? "button secondary" : "button ask";
-    const b = button(c.label, { className: cls, onClick: () => h.onApprove(t, c.choice) });
-    b.dataset.choice = c.choice;
+  const add = (label, choice, cls) => {
+    const b = button(label, { className: cls, onClick: () => onChoice(choice) });
+    b.dataset.choice = choice;
     choices.append(b);
-  }
+  };
+  if (offered.has("once")) add(mail ? "Send" : "Allow once", "once", "button ask");
+  if (offered.has("session")) add("Allow for this chat", "session", "button secondary");
+  if (v.draft) add("Edit first", "edit", "button secondary");
+  add(mail ? "Don't send" : "Don't allow", "deny", "button secondary");
   card.append(choices);
-  slot.append(card);
+  return card;
 }
 
 // answeredText says what the user chose on an approval card.
@@ -197,6 +222,8 @@ function answeredText(choice, label) {
       return "You allowed this for the rest of this chat: " + label + ".";
     case "ended":
       return "The question ended before you answered: " + label + ".";
+    case "edit":
+      return "Not done yet. The draft is in the box below to change and send: " + label + ".";
   }
   return "You didn't allow this: " + label + ".";
 }
@@ -251,11 +278,40 @@ function outcomeText(outcome) {
   return "";
 }
 
-// drawSources draws a chip for each source; a click opens the file.
+// drawNotice draws merud's warning under the answer, as an amber note
+// with a warning icon: the answer claimed an action, such as moving a
+// folder, and no tool did it. It shows for a live turn and for a past one
+// reopened from history, and hides when there is none.
+export function drawNotice(t) {
+  const p = t.el.notice;
+  p.replaceChildren();
+  p.hidden = !t.notice;
+  if (t.notice) p.append(icon("alert", 14), document.createTextNode(" " + t.notice));
+}
+
+// drawSources draws the sources the finished answer cites: one closed
+// line, "3 sources", whose button opens a chip for each; a chip's click
+// opens the file. An answer that cites nothing gets no line. The side
+// panel still lists every file the prompt held.
 export function drawSources(t, h) {
-  const list = t.el.sources;
-  list.replaceChildren();
-  for (const s of t.sources) {
+  const line = t.el.sources;
+  line.replaceChildren();
+  line.hidden = t.cited.length === 0;
+  if (line.hidden) return;
+  const list = el("ul", "chips");
+  list.id = "sources-" + t.key;
+  list.setAttribute("aria-label", "Sources");
+  list.hidden = !t.showSources;
+  const n = t.cited.length;
+  const toggle = button(n + (n === 1 ? " source" : " sources"), { className: "text-button toggle sources-toggle", iconName: "chevron" });
+  toggle.setAttribute("aria-expanded", String(t.showSources));
+  toggle.setAttribute("aria-controls", list.id);
+  toggle.addEventListener("click", () => {
+    t.showSources = !t.showSources;
+    drawSources(t, h);
+  });
+  line.append(toggle, list);
+  for (const s of t.cited) {
     const li = el("li");
     const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
     chip.append(icon("file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
@@ -264,7 +320,6 @@ export function drawSources(t, h) {
     li.append(chip);
     list.append(li);
   }
-  list.hidden = t.sources.length === 0;
 }
 
 // drawFooter draws Copy, Try again and Details, and the dim stats line.
@@ -275,6 +330,7 @@ export function drawFooter(t, h) {
   const actions = el("div", "actions");
   if (t.answer) {
     actions.append(button("Copy", { iconName: "copy", onClick: (e) => h.onCopyAnswer(t, e.currentTarget) }));
+    actions.append(button("Save to a note", { iconName: "note", onClick: () => h.onSaveNote(t) }));
   }
   actions.append(button("Try again", { iconName: "retry", onClick: () => h.onRetry(t) }));
   actions.append(button("Details", { iconName: "panel", onClick: () => h.onSelect(t, true) }));

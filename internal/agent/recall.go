@@ -13,6 +13,7 @@ import (
 
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // memoryHeader opens the recalled-memories section.
@@ -24,12 +25,16 @@ const memoryHeader = "Things you remember that may matter here:"
 // tools, and a fact about a person matters on a direct question about
 // them. It costs one embedding of the query.
 //
-// It returns "" when the agent has no profile, nothing comes back, or
-// recall fails. A failure is a warning, not the turn's error: the answer
-// can still come from the rest of the prompt.
-func (a *Agent) memorySection(ctx context.Context, query string) string {
+// It also returns the memories the section holds, in the protocol's shape,
+// for the "memories" event that tells the client what this answer
+// remembered, so the user can see each one and forget it.
+//
+// It returns "" and no memories when the agent has no profile, nothing
+// comes back, or recall fails. A failure is a warning, not the turn's
+// error: the answer can still come from the rest of the prompt.
+func (a *Agent) memorySection(ctx context.Context, query string) (string, []rpc.MemoryInfo) {
 	if a.profile == nil {
-		return ""
+		return "", nil
 	}
 	start := time.Now()
 	mems, err := a.profile.Recall(ctx, query)
@@ -37,12 +42,20 @@ func (a *Agent) memorySection(ctx context.Context, query string) string {
 		if ctx.Err() == nil {
 			a.log.WarnContext(ctx, "recall failed; answering without recalled memories", "err", err)
 		}
-		return ""
+		return "", nil
 	}
-	section, dropped := formatMemories(mems, maxMemoryChars)
+	section, dropped, kept := formatMemories(mems, maxMemoryChars)
 	a.log.DebugContext(ctx, "memories recalled", "memories", len(mems)-dropped, "left_out", dropped,
 		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
-	return section
+	infos := make([]rpc.MemoryInfo, 0, len(kept))
+	for _, m := range kept {
+		info := rpc.MemoryInfo{ID: m.MemID, Kind: m.Kind, Text: m.Text, Source: m.Source}
+		if !m.Created.IsZero() {
+			info.Created = m.Created.Format("2006-01-02")
+		}
+		infos = append(infos, info)
+	}
+	return section, infos
 }
 
 // formatMemories turns mems into the recalled-memories section:
@@ -52,8 +65,9 @@ func (a *Agent) memorySection(ctx context.Context, query string) string {
 //
 // The section stays within limit characters. A memory whose line doesn't
 // fit is left out and counted in dropped, and a shorter one after it may
-// still fit. It returns "" when no memory fits or has any text.
-func formatMemories(mems []retrieve.Memory, limit int) (section string, dropped int) {
+// still fit. kept lists the memories the section holds, in its order. It
+// returns "" when no memory fits or has any text.
+func formatMemories(mems []retrieve.Memory, limit int) (section string, dropped int, kept []retrieve.Memory) {
 	lines := []string{memoryHeader}
 	used := utf8.RuneCountInString(memoryHeader)
 	for _, m := range mems {
@@ -70,11 +84,12 @@ func formatMemories(mems []retrieve.Memory, limit int) (section string, dropped 
 		}
 		used += n
 		lines = append(lines, line)
+		kept = append(kept, m)
 	}
 	if len(lines) == 1 {
-		return "", dropped
+		return "", dropped, nil
 	}
-	return strings.Join(lines, "\n"), dropped
+	return strings.Join(lines, "\n"), dropped, kept
 }
 
 // recordMemoryTokens records the two memory sections, the profile and the

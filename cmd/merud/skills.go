@@ -12,9 +12,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
+	"github.com/aarora79/meru/internal/catalog"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/skills"
 )
@@ -28,13 +31,13 @@ import (
 // the folder and on every skill folder in it, kept in step as folders come
 // and go, plus a goroutine to own it; the stamp needs none of that.
 type skillService struct {
-	dir      string   // usually ~/.meru/skills
-	disabled []string // [skills] disabled: skills merud neither installs nor loads
-	log      *slog.Logger
+	dir string // usually ~/.meru/skills
+	log *slog.Logger
 
-	mu    sync.Mutex       // guards reg and stamp; turns ask from many goroutines
-	reg   *skills.Registry // the last load
-	stamp string           // skills.Stamp(dir) just before that load
+	mu       sync.Mutex       // guards the fields below; turns ask from many goroutines
+	disabled []string         // [skills] disabled: skills merud neither installs nor loads
+	reg      *skills.Registry // the last load
+	stamp    string           // skills.Stamp(dir) just before that load
 }
 
 // newSkillService copies the built-in skills into dir where no folder of
@@ -57,7 +60,7 @@ func newSkillService(dir string, disabled []string, log *slog.Logger) (*skillSer
 			log.Info("disabled skill not found; nothing to turn off", "skill", name)
 		}
 	}
-	s := &skillService{dir: dir, disabled: disabled, log: log}
+	s := &skillService{dir: dir, disabled: slices.Clone(disabled), log: log}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadLocked(context.Background()); err != nil {
@@ -131,11 +134,64 @@ func (s *skillService) handleList(ctx context.Context, emit func(rpc.Event) erro
 			Builtin: skills.IsBuiltin(sum.Name), Edited: edited,
 		}
 	}
+	s.mu.Lock()
+	for _, name := range s.disabled {
+		infos = append(infos, rpc.SkillInfo{Name: name, Builtin: skills.IsBuiltin(name), Disabled: true})
+	}
+	s.mu.Unlock()
 	var warnings []string
 	for _, w := range reg.Warnings() {
 		warnings = append(warnings, w.Error())
 	}
 	return emit(rpc.Event{Type: rpc.EventSkills, Skills: infos, Text: strings.Join(warnings, "\n")})
+}
+
+// handleSetDisabled answers OpSkillEnable (off false) and OpSkillDisable
+// (off true): it takes the skill named req.ID out of [skills] disabled or
+// puts it in, writing config.toml through editConfig, which holds merud's
+// one config lock. Enabling a built-in installs it again when its folder
+// is gone. The skills load again at once, and the reply is the "skills"
+// event OpSkills sends.
+//
+// It fails for a name that is neither a loaded skill, a built-in, nor in
+// [skills] disabled, and when config.toml can't be written.
+func (s *skillService) handleSetDisabled(ctx context.Context, req rpc.Request, off bool, configPath string,
+	editConfig func(func() error) error, emit func(rpc.Event) error) error {
+	name := req.ID
+	reg := s.Registry(ctx)
+	s.mu.Lock()
+	known := reg.Has(name) || skills.IsBuiltin(name) || slices.Contains(s.disabled, name)
+	s.mu.Unlock()
+	if !known {
+		return fmt.Errorf("no skill %q; meru skills list shows them", name)
+	}
+	err := editConfig(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		next := slices.DeleteFunc(slices.Clone(s.disabled), func(n string) bool { return n == name })
+		if off {
+			next = append(next, name)
+		}
+		check := func(c config.Config) error {
+			if !slices.Equal(c.Skills.Disabled, next) {
+				return errors.New("[skills] disabled didn't come out as asked; edit config.toml by hand")
+			}
+			return nil
+		}
+		if err := catalog.SetTableLists(configPath, "skills", map[string][]string{"disabled": next}, check); err != nil {
+			return err
+		}
+		s.disabled = next
+		if _, err := skills.InstallBuiltins(s.dir, next); err != nil {
+			return err
+		}
+		return s.loadLocked(ctx)
+	})
+	if err != nil {
+		return err
+	}
+	s.log.InfoContext(ctx, "skill set", "skill", name, "disabled", off)
+	return s.handleList(ctx, emit)
 }
 
 // handleShow answers OpSkillShow with one "skills" event holding the skill

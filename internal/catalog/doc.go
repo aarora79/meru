@@ -10,8 +10,11 @@
 // read are allowed, and tools that send, write, run or change anything also
 // sit in confirm, so each call asks first. Block renders an entry as the
 // [[mcp.servers]] text for config.toml. AppendServer adds that text to the
-// file, and RemoveServer takes a server's block out again; both check that
-// config still loads before they replace the file.
+// file, and RemoveServer takes a server's block out again. SetEntryLists and
+// SetTableLists change one list, such as a server's allow list or [index]
+// folders, for the desktop app's settings, which merud writes. All four
+// keep every other line and check that config still loads before they
+// replace the file.
 //
 // Both `meru setup` / `meru mcp` (in the thin client) and the built-in
 // configure tool (in merud) use this package, so it imports only config,

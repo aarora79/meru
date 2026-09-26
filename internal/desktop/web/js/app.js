@@ -1,7 +1,9 @@
 // The page's state and wiring: the rail (new chat, search, the list of
-// past chats, merud's status), the conversation, the composer with its
-// queue, and the side panel that shows what an answer used. turns.js draws
-// each turn; api.js reaches Go.
+// past chats, merud's status, Library and Setup), the conversation, the
+// composer with its scope switch, attachments, slash commands and queue,
+// and the side panel. turns.js draws each turn, library.js the Library,
+// setup.js the Setup screen, commands.js the slash commands; api.js
+// reaches Go.
 //
 // The Bridge in Go owns the running turn and the queue. The page keeps
 // only what it draws, and redraws from each Update the Bridge sends.
@@ -9,9 +11,12 @@
 import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
-  el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval,
-  drawBody, drawSources, drawFooter, appendToken,
+  el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
+  appendToken, approvalCard,
 } from "./turns.js";
+import { setupCommands, menuKey, runCommand } from "./commands.js";
+import { openLibrary, libraryPanel, policyWords } from "./library.js";
+import { openSetup } from "./setup.js";
 
 // How often the rail asks merud for its status, in milliseconds.
 const STATUS_EVERY = 15000;
@@ -19,19 +24,36 @@ const STATUS_EVERY = 15000;
 const MAX_QUEUE = 5;
 // The groups of the rail's list, in the order they show.
 const GROUPS = ["Today", "Yesterday", "Earlier"];
+// The composer's "Where Meru looks" switch, in the order it shows. The
+// values are merud's scopes (internal/rpc/settings.go).
+const SCOPES = [
+  { value: "auto", label: "Auto", hint: "Meru decides where to look" },
+  { value: "files", label: "My files", hint: "Search the folders Meru indexes" },
+  { value: "mail", label: "Mail and calendar", hint: "Use your mail and calendar connections only" },
+  { value: "web", label: "Web", hint: "Search the web only" },
+  { value: "talk", label: "Just talk", hint: "No search and no tools" },
+];
 
 const state = {
+  view: "chat", // "chat", "library" or "setup"
   session: "", // the open conversation's ID; "" for a new one
   title: "New chat",
   turns: [], // the open conversation's turns, oldest first
   running: 0, // the running turn's number, or 0
   queue: [], // questions waiting behind it
+  quietDrop: false, // the next queue notice is part of /new's own notice
   sessions: [], // the rail's list
   sessionsError: "",
   filter: "",
   selected: null, // the turn the side panel shows
+  asking: null, // the turn whose approval card is open, for the panel
+  askingTools: null, // that server's connection, once the Bridge sends it
   status: null,
+  setupShown: false, // Setup opened on its own once already
   machine: "this Mac",
+  scope: "auto",
+  attached: null, // the file attached to the next question
+  saves: {}, // open save approval cards, by card ID
   nextKey: 1, // numbers turn elements, for ids
 };
 
@@ -47,12 +69,25 @@ const handlers = {
   onApprove(t, choice) {
     const a = t.approval;
     if (!a || a.answered) return;
-    bridge.approve(t.n, a.view.id, choice).then(
+    // Edit first answers "Don't send", then puts the draft in the box:
+    // merud runs a call with the arguments it asked about or not at all.
+    const answer = choice === "edit" ? "deny" : choice;
+    bridge.approve(a.view.id, answer).then(
       () => {
         a.answered = choice;
         drawApproval(t, handlers);
         drawStrip(t, handlers);
-        $("question").focus();
+        if (state.asking === t) {
+          state.asking = null;
+          drawPanel();
+        }
+        const box = $("question");
+        if (choice === "edit") {
+          box.value = a.view.draft;
+          fit(box);
+          notice("Change the draft, then send it. Meru asks again before it does anything.");
+        }
+        box.focus();
       },
       (err) => notice(errorText(err)),
     );
@@ -66,9 +101,13 @@ const handlers = {
   onCopyAnswer(t, b) {
     copy(t.answer, b);
   },
-  onRetry(t) {
-    send(t.question);
+  onSaveNote(t) {
+    save(() => bridge.saveNote(state.session, t.answer), "note");
   },
+  onRetry(t) {
+    send(t.question, t.scope || state.scope);
+  },
+  whyText: (v) => whyText(v),
 };
 
 // copy puts text on the clipboard and says so on the button for a moment.
@@ -84,9 +123,53 @@ function copy(text, b) {
   );
 }
 
-// notice shows one line above the composer; screen readers hear it.
-function notice(text) {
-  $("notice").textContent = text || "";
+// notice shows one line above the composer; screen readers hear it. An
+// action, { label, onClick }, adds a button after the text.
+function notice(text, action) {
+  const p = $("notice");
+  p.replaceChildren(document.createTextNode(text || ""));
+  if (action) p.append(" ", button(action.label, { className: "text-button", onClick: action.onClick }));
+}
+
+// ---- Views: the chat, the Library and Setup ----
+
+// showView shows one of the three screens in the middle column. The side
+// panel follows: what an answer used in the chat, "On this Mac" in the
+// Library, and nothing during Setup.
+function showView(view) {
+  state.view = view;
+  $("chat-view").hidden = view !== "chat";
+  $("library-view").hidden = view !== "library";
+  $("setup-view").hidden = view !== "setup";
+  $("app").classList.toggle("no-panel", view === "setup");
+  $("open-library").setAttribute("aria-current", String(view === "library"));
+  $("open-setup").setAttribute("aria-current", String(view === "setup"));
+  drawPanel();
+  if (view === "chat") $("question").focus();
+}
+
+// pages is what library.js and setup.js call back into.
+const pages = {
+  back: () => {
+    showView("chat");
+    loadStatus();
+  },
+  notice,
+  status: () => state.status,
+  openLibrary: (section, focus) => goLibrary(section, focus),
+};
+
+// goLibrary opens the Library at section, and at the connection focus
+// when given.
+function goLibrary(section, focus) {
+  showView("library");
+  openLibrary($("library-view"), section || "connections", focus, pages);
+}
+
+// goSetup opens the Setup screen.
+function goSetup() {
+  showView("setup");
+  openSetup($("setup-view"), pages);
 }
 
 // ---- The conversation ----
@@ -97,17 +180,22 @@ function newTurn(fields) {
     key: state.nextKey++,
     n: 0,
     question: "",
+    scope: "",
     state: "active",
     route: "",
     confidence: 0,
     fallback: false,
     skills: [],
     steps: [],
-    sources: [],
+    sources: [], // every file the prompt held, for the side panel
+    cited: [], // the ones the finished answer cites, for the line under it
+    showSources: false, // whether that line is open
+    memories: [],
     answer: "",
     stats: null,
     error: "",
     outcome: "",
+    notice: "", // merud's warning under an answer that claims an action no tool performed
     approval: null,
     contacted: [],
     showSteps: false,
@@ -118,6 +206,7 @@ function newTurn(fields) {
 // drawConversation redraws the title, every turn, or the empty state.
 function drawConversation() {
   $("chat-title").textContent = state.title;
+  $("share").hidden = !state.session;
   const list = $("messages");
   list.replaceChildren();
   if (state.turns.length === 0) {
@@ -126,15 +215,24 @@ function drawConversation() {
   for (const t of state.turns) {
     list.append(createTurn(t, handlers));
   }
+  numberBlocks();
   drawPanel();
   scrollDown(true);
 }
 
-// emptyState is what a new chat shows: a line on what Meru does, and a
-// few questions to start with.
+// emptyState is what a new chat shows: the logo beside "Ask Meru", a line
+// on what Meru does, and a few questions to start with. The logo's alt
+// text is empty, because the heading beside it already says Meru.
 function emptyState() {
   const box = el("div", "empty");
-  box.append(el("h2", "", "Ask Meru"));
+  const head = el("div", "empty-head");
+  const logo = el("img", "empty-logo");
+  logo.src = "img/meru-logo.svg";
+  logo.alt = "";
+  logo.width = 48;
+  logo.height = 48;
+  head.append(logo, el("h2", "", "Ask Meru"));
+  box.append(head);
   box.append(el("p", "", "Answers come from the model on " + state.machine +
     " and from the folders, mail and notes you connected."));
   const ideas = el("div", "ideas");
@@ -155,6 +253,40 @@ function emptyState() {
   }
   box.append(ideas);
   return box;
+}
+
+// numberBlocks numbers every code block in the chat's finished answers,
+// oldest first, from 1, as `meru chat` does, so /copy N names one.
+function numberBlocks() {
+  blocks().forEach((b, i) => {
+    const n = b.querySelector(".code-n");
+    if (n) n.textContent = String(i + 1);
+    const copyButton = b.querySelector(".code-head button:last-child");
+    if (copyButton) copyButton.setAttribute("aria-label", "Copy code block " + (i + 1));
+  });
+}
+
+// blocks returns every code block in the chat, oldest first. A streaming
+// answer shows plain text, so only finished answers have blocks.
+function blocks() {
+  return [...$("messages").querySelectorAll(".code-block")];
+}
+
+// newestBlocks returns the code blocks of the newest finished answer, or
+// null when no answer has finished.
+function newestBlocks() {
+  for (let i = state.turns.length - 1; i >= 0; i--) {
+    const t = state.turns[i];
+    if (t.state !== "active" && t.el) return [...t.el.body.querySelectorAll(".code-block")];
+  }
+  return null;
+}
+
+// codeText returns a code block's text, without the line break a code
+// block ends with.
+function codeText(block) {
+  const code = block.querySelector("pre code") || block.querySelector("pre");
+  return (code ? code.textContent : "").replace(/\n$/, "");
 }
 
 // scrollDown keeps the newest text in view, unless the user has scrolled
@@ -190,7 +322,8 @@ onUpdate((u) => {
       onEvent(u);
       break;
     case "approval":
-      onApproval(u);
+      if (u.approval.task === "save") onSaveApproval(u);
+      else onApproval(u);
       break;
     case "end":
       onEnd(u);
@@ -198,7 +331,8 @@ onUpdate((u) => {
     case "queue":
       state.queue = u.queue || [];
       drawQueue();
-      if (u.notice) notice(u.notice);
+      if (u.notice && !state.quietDrop) notice(u.notice);
+      state.quietDrop = false;
       break;
   }
 });
@@ -210,7 +344,7 @@ function onStart(u) {
     $("messages").replaceChildren();
     $("chat-title").textContent = state.title;
   }
-  const t = newTurn({ n: u.turn, question: u.question });
+  const t = newTurn({ n: u.turn, question: u.question, scope: state.scope });
   state.turns.push(t);
   state.running = u.turn;
   $("messages").append(createTurn(t, handlers));
@@ -225,6 +359,7 @@ function onEvent(u) {
   const ev = u.event;
   if (ev.type === "session" && u.session) {
     state.session = u.session;
+    $("share").hidden = false;
     drawSessions();
   }
   if (!t) return;
@@ -237,8 +372,12 @@ function onEvent(u) {
       drawStrip(t, handlers);
       break;
     case "sources":
+      // The line under the answer waits for the end, when the Bridge
+      // says which of these the answer cites.
       t.sources = ev.sources || [];
-      drawSources(t, handlers);
+      break;
+    case "memories":
+      t.memories = ev.memories || [];
       break;
     case "token":
       if (!t.answer) drawStrip(t, handlers); // drop "Working…"
@@ -254,6 +393,16 @@ function onEvent(u) {
       }
       drawStrip(t, handlers);
       break;
+    // "notice" is rpc.EventNotice, which #29 (branch honest-actions) adds:
+    // merud sends it after the last token when the answer claims an action,
+    // such as moving a folder, and no tool call in the turn succeeded. The
+    // page names it here, in one place, so it works once #29 merges; until
+    // then merud never sends it. Any other type the page doesn't know, it
+    // skips.
+    case "notice":
+      t.notice = ev.text || "";
+      drawNotice(t);
+      break;
     case "done":
       t.stats = ev;
       break;
@@ -264,17 +413,36 @@ function onEvent(u) {
   if (state.selected === t) drawPanel();
 }
 
-// onApproval shows the approval card and moves focus to "Don't allow", so
-// a stray Enter can't approve a call.
+// onApproval shows the approval card, turns the side panel to "Why Meru
+// is asking", and moves focus to the answer that does nothing, so a stray
+// Enter can't approve a call.
 function onApproval(u) {
   const t = findTurn(u.turn);
   if (!t) return;
   t.approval = { view: u.approval, answered: null };
   drawApproval(t, handlers);
   drawStrip(t, handlers);
+  state.asking = t;
+  state.askingTools = null;
+  drawPanel();
+  loadAskingTools(u.approval);
   const deny = t.el.approval.querySelector('[data-choice="deny"]');
   if (deny) deny.focus();
   scrollDown(true);
+}
+
+// loadAskingTools fetches the connection the open card's call goes to, so
+// the panel can list its tools and their policies.
+function loadAskingTools(v) {
+  bridge.connections().then(
+    (cv) => {
+      const kind = v.kind === "builtin" ? "builtin" : v.kind;
+      const name = v.kind === "builtin" ? "meru" : v.server;
+      state.askingTools = (cv.connections || []).find((c) => c.kind === kind && c.name === name) || null;
+      drawPanel();
+    },
+    () => {},
+  );
 }
 
 // onEnd finishes a turn: the answer renders as Markdown, and the actions
@@ -286,8 +454,11 @@ function onEnd(u) {
     t.state = u.stopped ? "stopped" : u.error || t.error ? "failed" : "done";
     if (!u.stopped && u.error) t.error = u.error;
     t.contacted = u.contacted || [];
+    t.cited = u.cited || [];
     if (t.approval && !t.approval.answered) t.approval.answered = "ended";
+    if (state.asking === t) state.asking = null;
     drawAll(t, handlers);
+    numberBlocks();
     if (state.selected === t) drawPanel();
   }
   drawComposer();
@@ -295,20 +466,77 @@ function onEnd(u) {
   loadStatus();
 }
 
+// ---- Saving: Share as file and Save to a note ----
+
+// save runs a save through merud, which asks first as write_file does.
+// The card shows above the composer; the notice says where the file went
+// and offers to show it in its folder.
+function save(run, what) {
+  if (!state.session) {
+    notice("Ask something first; there is nothing to save yet.");
+    return;
+  }
+  notice("Saving the " + what + "…");
+  run().then(
+    (path) => {
+      clearSaveCards();
+      notice("Saved the " + what + " to " + path + ".", {
+        label: "Show in folder",
+        onClick: () => bridge.reveal(path).catch((err) => notice(errorText(err))),
+      });
+    },
+    (err) => {
+      clearSaveCards();
+      notice(errorText(err));
+    },
+  );
+}
+
+// onSaveApproval shows a save's approval card above the composer.
+function onSaveApproval(u) {
+  const v = u.approval;
+  const slot = $("task-slot");
+  const card = approvalCard(v, "save-" + v.id, (choice) => {
+    if (choice === "edit") choice = "deny";
+    bridge.approve(v.id, choice).catch((err) => notice(errorText(err)));
+    card.remove();
+  });
+  // A save's content is the chat or the answer; the card needn't repeat
+  // it, and Edit first has nothing to edit.
+  for (const extra of card.querySelectorAll(".args, [data-choice='edit']")) extra.remove();
+  state.saves[v.id] = card;
+  slot.append(card);
+  const deny = card.querySelector('[data-choice="deny"]');
+  if (deny) deny.focus();
+}
+
+// clearSaveCards takes down any save card left open.
+function clearSaveCards() {
+  for (const id of Object.keys(state.saves)) {
+    state.saves[id].remove();
+    delete state.saves[id];
+  }
+}
+
 // ---- The composer and the queue ----
 
 // send asks question, or queues it while a turn runs. The text stays in
 // the box when the Bridge refuses it, so nothing typed is lost.
-function send(question) {
-  const text = question.trim();
+function send(question, scope) {
+  let text = question.trim();
   if (!text) return Promise.resolve(false);
   if (state.running && state.queue.length >= MAX_QUEUE) {
     notice(MAX_QUEUE + " questions already wait. Send this one when the next starts.");
     return Promise.resolve(false);
   }
+  if (state.attached) text += "\n\nRead this file: " + state.attached.path;
   notice("");
-  return bridge.send(state.session, text).then(
-    () => true,
+  return bridge.send(state.session, text, scope === "auto" ? "" : scope).then(
+    () => {
+      state.attached = null;
+      drawAttachment();
+      return true;
+    },
     (err) => {
       notice(errorText(err));
       return false;
@@ -320,6 +548,82 @@ function send(question) {
 function drawComposer() {
   $("stop").hidden = !state.running;
   $("send").setAttribute("aria-label", state.running ? "Queue question" : "Send question");
+}
+
+// drawScope draws the "Where Meru looks" switch: one radio button per
+// scope, the arrow keys moving between them as in any radio group.
+function drawScope() {
+  const box = $("scope");
+  box.replaceChildren();
+  SCOPES.forEach((s, i) => {
+    const on = s.value === state.scope;
+    const b = button(s.label, { className: "scope-option" });
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(on));
+    b.tabIndex = on ? 0 : -1;
+    b.title = s.hint;
+    b.addEventListener("click", () => setScope(s.value));
+    b.addEventListener("keydown", (e) => {
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = SCOPES[(i + step + SCOPES.length) % SCOPES.length];
+      setScope(next.value);
+      box.querySelector('[aria-checked="true"]').focus();
+    });
+    box.append(b);
+  });
+}
+
+// setScope picks where the next questions look.
+function setScope(value) {
+  state.scope = value;
+  drawScope();
+}
+
+// attach asks the Bridge for a file to go with the next question. Meru
+// reads it with read_file, so only a file in an indexed folder or the
+// output folder can go; the Bridge checks, and says what to do otherwise.
+function attach() {
+  bridge.attachFile().then(
+    (a) => {
+      if (!a || !a.path) return;
+      if (!a.readable) {
+        notice(a.note);
+        return;
+      }
+      state.attached = a;
+      if (state.scope !== "auto" && state.scope !== "files") {
+        setScope("files");
+        notice("Switched to My files, so Meru can read " + a.name + ".");
+      }
+      drawAttachment();
+      $("question").focus();
+    },
+    (err) => notice(errorText(err)),
+  );
+}
+
+// drawAttachment shows the attached file as a chip in the composer.
+function drawAttachment() {
+  const box = $("attachments");
+  box.replaceChildren();
+  const a = state.attached;
+  box.hidden = !a;
+  if (!a) return;
+  const chip = el("span", "attachment");
+  chip.append(icon("file", 14), el("span", "", a.name));
+  chip.title = a.path;
+  chip.append(button("", {
+    className: "icon-button small",
+    iconName: "close",
+    ariaLabel: "Remove " + a.name,
+    onClick: () => {
+      state.attached = null;
+      drawAttachment();
+    },
+  }));
+  box.append(chip);
 }
 
 // drawQueue draws the questions waiting behind the running turn, each with
@@ -345,6 +649,19 @@ function drawQueue() {
 function fit(box) {
   box.style.height = "auto";
   box.style.height = box.scrollHeight + "px";
+}
+
+// askQuit runs /exit: it closes the app at once, or, while a turn runs,
+// asks first in the notice line.
+function askQuit() {
+  if (!state.running) {
+    bridge.quit().catch((err) => notice(errorText(err)));
+    return;
+  }
+  notice("A question is still running. Close Meru anyway?", {
+    label: "Close Meru",
+    onClick: () => bridge.quit().catch((err) => notice(errorText(err))),
+  });
 }
 
 // ---- The rail ----
@@ -401,16 +718,29 @@ function drawSessions() {
   }
 }
 
-// newChat clears the conversation. A running turn stops first, and its
-// queue goes with it: those questions belonged to the old chat.
+// newChat clears the conversation, from the New chat button or /new. A
+// running turn stops first, and its queue goes with it: those questions
+// belonged to the old chat. The notice matches `meru chat`'s.
 function newChat() {
-  if (state.running) bridge.stop();
+  const dropped = state.queue.length;
+  if (state.running) {
+    state.quietDrop = true;
+    bridge.stop();
+  }
   state.session = "";
   state.title = "New chat";
   state.turns = [];
   state.selected = null;
+  state.asking = null;
+  state.attached = null;
+  drawAttachment();
+  showView("chat");
   drawConversation();
   drawSessions();
+  let text = "new session: the next question starts fresh";
+  if (dropped === 1) text += " · dropped 1 queued question";
+  if (dropped > 1) text += " · dropped " + dropped + " queued questions";
+  notice(text);
   $("question").focus();
 }
 
@@ -421,6 +751,7 @@ function openSession(s) {
     (turns) => {
       state.session = s.id;
       state.title = s.title;
+      state.asking = null;
       state.turns = (turns || []).map((v) =>
         newTurn({
           question: v.question,
@@ -428,13 +759,16 @@ function openSession(s) {
           state: "done",
           route: v.route || "",
           outcome: v.outcome || "",
+          notice: v.notice || "",
           sources: v.sources || [],
+          cited: v.cited || [],
           steps: v.steps || [],
           contacted: v.contacted || [],
           stats: { duration_ms: v.duration_ms, tokens_out: v.tokens_out },
         }),
       );
       state.selected = state.turns[state.turns.length - 1] || null;
+      showView("chat");
       drawConversation();
       if (state.selected) select(state.selected);
       drawSessions();
@@ -444,12 +778,18 @@ function openSession(s) {
   );
 }
 
-// loadStatus asks the Bridge for merud's status and draws it.
+// loadStatus asks the Bridge for merud's status and draws it. The first
+// time merud reports no folders and no profile, Setup opens on its own.
 function loadStatus() {
   bridge.status().then((s) => {
     state.status = s;
     if (s.machine) state.machine = s.machine;
     drawStatus();
+    if (s.up && s.folders === 0 && s.profile === 0 && !state.setupShown && state.turns.length === 0) {
+      state.setupShown = true;
+      goSetup();
+    }
+    if (state.view === "library") drawPanel();
   });
 }
 
@@ -461,6 +801,8 @@ function drawStatus() {
   box.replaceChildren();
   const s = state.status;
   if (!s) return;
+  $("mini-status").classList.toggle("down", !s.up);
+  $("mini-status").setAttribute("aria-label", s.up ? "merud is running" : "merud isn't running");
   if (!s.up) {
     box.classList.add("down");
     const head = el("p", "status-head");
@@ -488,13 +830,34 @@ function row(label, value) {
   return p;
 }
 
+// setRail collapses the rail to a column of icons, or opens it again.
+function setRail(open) {
+  $("app").classList.toggle("rail-collapsed", !open);
+  $("rail").hidden = !open;
+  $("mini-rail").hidden = open;
+  $("rail-toggle").setAttribute("aria-expanded", String(open));
+  (open ? $("rail-toggle") : $("mini-expand")).focus();
+}
+
 // ---- The side panel ----
 
-// drawPanel shows what the selected answer used: its sources, its tool
-// calls and who they contacted.
+// drawPanel draws the side panel for the screen and the moment: "On this
+// Mac" in the Library, "Why Meru is asking" while an approval card is
+// open, and otherwise what the selected answer used.
 function drawPanel() {
   const body = $("panel-body");
   body.replaceChildren();
+  if (state.view === "library") {
+    $("panel-title").textContent = "On this Mac";
+    libraryPanel(body, state.status);
+    return;
+  }
+  if (state.asking && state.asking.approval && !state.asking.approval.answered) {
+    $("panel-title").textContent = "Why Meru is asking";
+    drawAsking(body, state.asking.approval.view);
+    return;
+  }
+  $("panel-title").textContent = "What this answer used";
   const t = state.selected;
   if (!t) {
     body.append(el("p", "panel-note", "Pick an answer to see what it used."));
@@ -533,9 +896,91 @@ function drawPanel() {
     body.append(ul);
   }
 
+  body.append(el("h3", "", "Remembered"));
+  if (t.memories.length === 0) {
+    body.append(el("p", "panel-note", t.state === "active" || t.n ? "Nothing Meru remembered came up." :
+      "Past chats don't record what was remembered."));
+  } else {
+    const ul = el("ul", "panel-list");
+    for (const m of t.memories) {
+      const li = el("li", "memory-row");
+      li.append(el("span", "", m.text));
+      li.append(button("Forget", {
+        className: "text-button",
+        ariaLabel: "Forget: " + m.text,
+        onClick: () => forget(t, m),
+      }));
+      ul.append(li);
+    }
+    body.append(ul);
+  }
+  const profile = el("p", "panel-note");
+  profile.append(document.createTextNode("What you told Meru about yourself goes into every answer. "));
+  profile.append(button("About you", { className: "text-button link", onClick: () => goLibrary("you") }));
+  body.append(profile);
+
   const privacy = el("p", "privacy");
   privacy.append(icon("lock", 14), document.createTextNode(" " + privacyLine(t)));
   body.append(privacy);
+}
+
+// forget deletes memory m through merud and takes it off the panel.
+function forget(t, m) {
+  bridge.forgetMemory(m.id).then(
+    () => {
+      t.memories = t.memories.filter((x) => x.id !== m.id);
+      notice("Forgot: " + m.text);
+      drawPanel();
+    },
+    (err) => notice(errorText(err)),
+  );
+}
+
+// drawAsking fills the panel while an approval card is open: why Meru
+// asks, what else the server may do, and where the call is logged.
+function drawAsking(body, v) {
+  body.append(el("p", "", whyText(v)));
+  const c = state.askingTools;
+  body.append(el("h3", "", v.server ? "What " + v.server + " may do" : "Meru's own tools"));
+  if (!c) {
+    body.append(el("p", "panel-note", "Loading…"));
+  } else {
+    const ul = el("ul", "panel-list");
+    const on = c.tools.filter((p) => p.policy !== "off");
+    for (const p of on) {
+      const li = el("li", "policy-row" + (p.name === v.tool ? " current" : ""));
+      li.append(el("span", "", p.name), el("span", "policy-badge " + p.policy, policyWords(p.policy)));
+      ul.append(li);
+    }
+    body.append(ul);
+    const off = c.tools.length - on.length;
+    if (off > 0) body.append(el("p", "panel-note", off + " more " + (off === 1 ? "tool is" : "tools are") + " off."));
+  }
+  const name = v.server || "Meru";
+  body.append(button("Change what " + name + " may do", {
+    className: "text-button link",
+    // The built-in web tools have a card of their own in the Library.
+    onClick: () => goLibrary("connections", v.server || (["web_search", "web_fetch"].includes(v.tool) ? "web" : "meru")),
+  }));
+  const log = el("p", "privacy");
+  log.append(icon("lock", 14), document.createTextNode(" Every call, allowed or not, goes in the tool log. "));
+  log.append(button("Library › Activity", { className: "text-button link", onClick: () => goLibrary("activity") }));
+  body.append(log);
+}
+
+// whyText says why the call on approval card v waits for the user. The
+// card and the side panel both show it.
+function whyText(v) {
+  const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
+  const policy = state.askingTools && (state.askingTools.tools.find((p) => p.name === v.tool) || {}).policy;
+  if (v.tool === "configure" || policy === "always") {
+    return v.tool + " asks every time. It can change Meru's settings or run commands, so no approval lasts beyond one call.";
+  }
+  if (v.tool === "web_fetch") {
+    return "Meru asks before it reads a web address that no search or question of yours gave, and before any download.";
+  }
+  return "This call goes to " + where + " and can change something there. " + v.tool +
+    " is set to Ask, so Meru waits for you before each call.";
 }
 
 // privacyLine says where the answer's work happened.
@@ -548,11 +993,18 @@ function privacyLine(t) {
   return start + " Only " + list + (names.length === 1 ? " was" : " were") + " contacted.";
 }
 
-// setPanel opens or closes the side panel on a narrow window, where it
-// sits over the conversation.
+// setPanel shows or hides the side panel. On a wide window it takes its
+// column back; on a narrow one it slides over the conversation.
 function setPanel(open) {
+  $("app").classList.toggle("panel-hidden", !open);
   $("panel").classList.toggle("open", open);
   $("toggle-panel").setAttribute("aria-expanded", String(open));
+  $("toggle-panel").setAttribute("aria-label", open ? "Hide the side panel" : "Show the side panel");
+}
+
+// panelOpen reports whether the side panel shows.
+function panelOpen() {
+  return $("toggle-panel").getAttribute("aria-expanded") === "true";
 }
 
 // ---- Wiring ----
@@ -562,21 +1014,56 @@ function wire() {
   $("search-icon").append(icon("search", 15));
   $("stop").prepend(icon("stop", 14));
   $("send").prepend(icon("send", 16));
-  $("toggle-panel").prepend(icon("panel", 16));
+  $("toggle-panel").append(icon("panel", 18));
   $("close-panel").append(icon("close", 16));
+  $("rail-toggle").append(icon("sidebar", 17));
+  $("mini-expand").append(icon("sidebar", 18));
+  $("mini-new").append(icon("plus", 18));
+  $("mini-chats").append(icon("chats", 18));
+  $("mini-library").append(icon("book", 18));
+  $("open-library").prepend(icon("book", 16), document.createTextNode(" "));
+  $("open-setup").prepend(icon("sliders", 16), document.createTextNode(" "));
+  $("share").prepend(icon("share", 15), document.createTextNode(" "));
+  $("attach").append(icon("clip", 17));
 
   $("new-chat").addEventListener("click", newChat);
+  $("mini-new").addEventListener("click", newChat);
+  $("rail-toggle").addEventListener("click", () => setRail(false));
+  $("mini-expand").addEventListener("click", () => setRail(true));
+  $("mini-chats").addEventListener("click", () => {
+    setRail(true);
+    $("search").focus();
+  });
+  $("mini-library").addEventListener("click", () => goLibrary("connections"));
+  $("open-library").addEventListener("click", () => goLibrary("connections"));
+  $("open-setup").addEventListener("click", goSetup);
+  // The logo and the name at the top of the rail open the Library's About.
+  $("open-about").addEventListener("click", () => goLibrary("about"));
+  $("share").addEventListener("click", () => save(() => bridge.saveChat(state.session), "chat"));
+  $("attach").addEventListener("click", attach);
   $("search").addEventListener("input", (e) => {
     state.filter = e.target.value;
     drawSessions();
   });
-  $("toggle-panel").addEventListener("click", () => setPanel(!$("panel").classList.contains("open")));
+  $("toggle-panel").addEventListener("click", () => setPanel(!panelOpen()));
   $("close-panel").addEventListener("click", () => setPanel(false));
   $("stop").addEventListener("click", () => bridge.stop());
 
   const box = $("question");
+  setupCommands(box, $("command-menu"), {
+    newChat,
+    openLibrary: (section) => goLibrary(section),
+    blocks,
+    newestBlocks,
+    textOf: codeText,
+    copy: copyText,
+    notice,
+    askQuit,
+    fit: () => fit(box),
+  });
   box.addEventListener("input", () => fit(box));
   box.addEventListener("keydown", (e) => {
+    if (menuKey(e)) return;
     // Enter sends; Shift+Enter adds a line. isComposing is true while an
     // input method builds a character, when Enter belongs to it.
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
@@ -586,7 +1073,16 @@ function wire() {
   });
   $("composer").addEventListener("submit", (e) => {
     e.preventDefault();
-    send(box.value).then((ok) => {
+    // A line that starts with "/" is a command: it runs here, at once,
+    // and never reaches the model.
+    if (box.value.trim().startsWith("/")) {
+      if (runCommand(box.value)) {
+        box.value = "";
+        fit(box);
+      }
+      return;
+    }
+    send(box.value, state.scope).then((ok) => {
       if (ok) {
         box.value = "";
         fit(box);
@@ -595,7 +1091,7 @@ function wire() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && $("panel").classList.contains("open")) setPanel(false);
+    if (e.key === "Escape" && $("panel").classList.contains("open") && window.innerWidth <= 1180) setPanel(false);
   });
 
   // Links in answers open through Go, which allows only http, https and
@@ -611,11 +1107,17 @@ function wire() {
     if (e.target.closest("a")) e.preventDefault();
   });
   // A file dropped on the window would make the WebView open it in place
-  // of the page. Dropping files arrives in a later version.
+  // of the page. The attach button is the way to add a file.
   for (const name of ["dragover", "drop"]) {
     window.addEventListener(name, (e) => e.preventDefault());
   }
 
+  // The side panel starts closed, and the header's button opens it. The
+  // choice lasts while the window stays open; nothing stores it, so the
+  // next start opens closed again. An approval card doesn't open it: the
+  // card says why Meru asks.
+  setPanel(false);
+  drawScope();
   drawConversation();
   drawComposer();
   drawQueue();
