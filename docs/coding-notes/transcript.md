@@ -30,6 +30,12 @@ answer: `timeout`, `cut_off` or `gave_up`. The text then holds the apology,
 or the text so far and a note that Meru stopped it. A full answer leaves the
 field out (`omitempty`).
 
+An assistant line carries `notice` when the answer claimed an action, such as
+"Done. It's now at ~/Projects/garden", and no tool call in the turn succeeded.
+It holds the warning the user read under the answer: "Meru didn't run any tool
+for this answer, so nothing changed on your computer." A client that reopens
+the session can show it again.
+
 From v0.3 the assistant line also records the turn's facts: `route` is the
 route the turn took, `ms` how long it took from question to answer, and
 `sources` the full paths of the files whose excerpts went into the prompt, each
@@ -102,7 +108,9 @@ if err := f.Close(); err != nil { ... }
 `History(n)` reads every line and pairs each `user` line with the `assistant`
 line that answered it. A question with no answer, from a turn that failed or
 was cancelled, drops out, so the model never sees two questions in a row. It
-keeps the last `n` pairs.
+keeps the last `n` pairs. An answer with a `notice` gets it after its text, in
+square brackets, so on the next turn the model reads that its claim didn't
+happen instead of building on it.
 
 A crash in the middle of `Append` can leave half a line. The next `Append` then
 writes on the end of it, so a damaged line can turn up anywhere in the file.

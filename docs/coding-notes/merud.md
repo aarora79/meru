@@ -496,6 +496,11 @@ default:
   standard output, so `meru "..." > answer.txt` saves only the answer. When the
   answer stopped mid-line, `breakLine` starts a new line on standard error
   first, so the tool line doesn't run into the text.
+- When `merud` sends a `notice`, because the answer claimed an action and no
+  tool call in the turn succeeded, `ask` prints it after the answer as a dim
+  line on standard error: `note: Meru didn't run any tool for this answer, so
+  nothing changed on your computer.` `TestAskNotice` checks that it stays out
+  of standard output.
 - `meru chat` is the Bubble Tea terminal UI in `internal/tui`.
 - Exit status: 0 on success, 1 on any error, 130 after Ctrl-C (the shell's
   convention: 128 plus signal number 2).

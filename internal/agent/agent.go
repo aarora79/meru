@@ -145,7 +145,8 @@ type Agent struct {
 	models      config.Models
 	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
 	historyN    int          // earlier turns to put in the prompt
-	system      string       // system prompt, with whoIsWho; the profile follows it
+	system      string       // system prompt, with whoIsWho and honestyRule; the profile follows it
+	outputDir   string       // [skills] output_dir as the model reads it, such as ~/meru-output
 	filesNote   string       // filesNote for the [index] folders; follows the profile
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
 	home        string       // the home folder, for showing paths as ~/...; "" if unknown
@@ -178,7 +179,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 	if system == "" {
 		system = DefaultSystemPrompt
 	}
-	system += "\n\n" + whoIsWho
+	system += "\n\n" + whoIsWho + "\n\n" + honestyRule
 	agentic := cfg.Index.Retrieval == config.RetrievalAgentic
 	// config.Load has checked turn_timeout already. A zero Config, as some
 	// tests build, has none, so it falls back to the default.
@@ -203,6 +204,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
+		outputDir:   displayDir(home, cfg.Skills.OutputDir),
 		filesNote:   filesNote(cfg.Index.Folders, agentic),
 		sessionsDir: filepath.Join(cfg.Dir, "sessions"),
 		home:        home,
@@ -261,6 +263,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// ended is how a turn without a full answer ended: endTimeout,
 	// endCutOff or endGaveUp; "" for a full answer.
 	var ended string
+	// unbacked is true when the answer claims an action no tool took.
+	var unbacked bool
 	// t carries what the rounds need; its rounds field counts model calls.
 	t := &turn{emit: emit, approve: approve}
 	defer func() {
@@ -275,6 +279,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.Int("meru.turn.repeated_calls", t.repeats),
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
+			attribute.Bool("meru.turn.unbacked_claim", unbacked),
 			attribute.String("meru.turn.outcome", outcome),
 		)
 		obs.EndSpanErr(ctx, span, err)
@@ -285,7 +290,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			Route: route, Source: source, Outcome: outcome,
 			Duration: time.Since(start), Iterations: t.rounds,
 		})
-		a.logTurn(ctx, start, sessionID, route, source, outcome, rep, err)
+		a.logTurn(ctx, start, sessionID, route, source, outcome, unbacked, rep, err)
 	}()
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.question", question))
@@ -341,6 +346,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.answer", rep.text))
 	}
+	// A full answer from a turn in which no tool call succeeded can't have
+	// changed anything, so a claim that it did is false. The "notice"
+	// event warns the user under the answer, and the assistant line keeps
+	// the warning. See honest.go.
+	var notice string
+	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
+		notice = unbackedNotice
+		unbacked = true
+		if err := emit(rpc.Event{Type: rpc.EventNotice, Text: notice}); err != nil {
+			return err
+		}
+	}
 
 	// The assistant line holds the turn's facts, so `meru usage` can
 	// rebuild from the files: the route after the override rules, how long
@@ -355,6 +372,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		Ms:        time.Since(start).Milliseconds(),
 		Sources:   res.docs,
 		Outcome:   ended,
+		Notice:    notice,
 		TraceID:   traceID,
 	}
 	if err := a.appendLine(ctx, sess, answer); err != nil {
@@ -600,8 +618,10 @@ func (a *Agent) logStart(ctx context.Context, session, source, question string) 
 
 // logTurn writes the one info line each turn gets. ttft_ms counts from when
 // Handle started to the first token of the answer, so it includes routing;
-// it is 0 when no text arrived. err joins the line only when the turn failed.
-func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, outcome string, rep reply, err error) {
+// it is 0 when no text arrived. unbacked_claim joins the line, set to true,
+// only when the answer claimed an action no tool took (see claimsAction).
+// err joins the line only when the turn failed.
+func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, outcome string, unbacked bool, rep reply, err error) {
 	var ttft int64
 	if !rep.firstToken.IsZero() {
 		ttft = rep.firstToken.Sub(start).Milliseconds()
@@ -609,6 +629,9 @@ func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, 
 	args := []any{"session", sessionID, "route", route, "source", source,
 		"outcome", outcome, "ms", time.Since(start).Milliseconds(), "ttft_ms", ttft,
 		"tokens_in", rep.usage.PromptTokens, "tokens_out", rep.usage.OutputTokens}
+	if unbacked {
+		args = append(args, "unbacked_claim", true)
+	}
 	if err != nil {
 		args = append(args, "err", err)
 	}
@@ -967,6 +990,26 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	return section, sources, docs, nil
 }
 
+// displayDir returns dir, a folder from config such as "~/meru-output", as
+// the model should read it: as config wrote it when it starts with "~",
+// and otherwise shortened by shortPath. It returns "" for "".
+func displayDir(home, dir string) string {
+	if dir == "" || strings.HasPrefix(dir, "~") {
+		return dir
+	}
+	return shortPath(home, filepath.Clean(dir))
+}
+
+// canDo returns canDoNote for every tool config allows, or for none when
+// tools are off.
+func (a *Agent) canDo() string {
+	var all []engine.ToolSpec
+	if a.tools != nil {
+		all = a.tools.Tools()
+	}
+	return canDoNote(all, a.outputDir)
+}
+
 // shortPath writes p under the home folder as ~/..., using the OS's path
 // separator. Any other path, or any path when home is "", stays as it is.
 func shortPath(home, p string) string {
@@ -985,8 +1028,9 @@ func shortPath(home, p string) string {
 // explains why):
 //
 //   - the parts that stay the same from turn to turn: the configured prompt
-//     with whoIsWho, the user's profile, filesNote, the tools note on a
-//     turn that offers tools, and the list of skills;
+//     with whoIsWho and honestyRule, the user's profile, filesNote, the
+//     line on what Meru can do (canDoNote), the tools note on a turn that
+//     offers tools, and the list of skills;
 //   - the note on the file tools, on a file turn that offers them. It
 //     changes only with the kind of turn, so it comes after the parts every
 //     turn shares and before the parts each question changes;
@@ -1017,6 +1061,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	profile := a.profileSection(ctx)
 	add(profile)
 	add(a.filesNote)
+	add(a.canDo())
 	add(sec.toolsNote)
 	add(sec.skillList)
 	add(sec.fileTools)

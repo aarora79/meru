@@ -98,6 +98,7 @@ type exchange struct {
 	tools []toolCall
 
 	answer string    // the answer's raw text, grown token by token
+	notice string    // merud's warning about the answer, from a "notice" event; "" for none
 	err    string    // why the turn failed, for stateFailed
 	stats  rpc.Event // the closing "done" event and its stats; zero if none came
 
@@ -504,6 +505,8 @@ func (m *Model) handleEvent(msg eventMsg) {
 		}
 	case rpc.EventToken:
 		cur.answer += ev.Text
+	case rpc.EventNotice:
+		cur.notice = ev.Text
 	case rpc.EventDone:
 		// The turnDoneMsg right behind this event ends the turn; keep the
 		// stats for the line under the answer.

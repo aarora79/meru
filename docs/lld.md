@@ -186,7 +186,7 @@ type Event struct {
 
 | Op | Events, in order |
 | --- | --- |
-| `ask` | `session`; `route` (with `Fallback` set when the router wasn't sure); `sources` when the turn searched your files and found something; `token` events for each piece of text; on a tool round, a `tool_call` per call, an `approval` for each call that needs your yes, and a `tool_result` per call as it ends; `done` with the turn's stats |
+| `ask` | `session`; `route` (with `Fallback` set when the router wasn't sure); `sources` when the turn searched your files and found something; `token` events for each piece of text; on a tool round, a `tool_call` per call, an `approval` for each call that needs your yes, and a `tool_result` per call as it ends; `notice` when the answer claims an action and no tool call succeeded; `done` with the turn's stats |
 | `ping` | `done` |
 | `index` | zero or more `progress` lines; one `report`; `done` |
 | `index_status` | one `status`; `done` |

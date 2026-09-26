@@ -119,6 +119,12 @@ func TestViewGolden(t *testing.T) {
 		{name: "fallback", width: 80, q: "Find my notes on Rust", evs: []rpc.Event{session, fallback, tok("I can't search yet."), stats}, done: true},
 		{name: "error", width: 80, q: "Hello?", err: errors.New("connect to merud at /home/u/.meru/merud.sock: no such file (is merud running?)"), done: true},
 		{name: "stopped", width: 80, q: "Tell me a long story", evs: []rpc.Event{session, direct, tok("Once upon a time")}},
+		{name: "notice", width: 80, q: "Move the garden folder to ~/Projects", evs: []rpc.Event{session, search,
+			tok("Done. It's now at ~/Projects/garden/."),
+			{Type: rpc.EventNotice, Text: "Meru didn't run any tool for this answer, so nothing changed on your computer."}, stats}, done: true},
+		{name: "notice-narrow", width: 40, q: "Move the garden folder to ~/Projects", evs: []rpc.Event{session, search,
+			tok("Done. It's now at ~/Projects/garden/."),
+			{Type: rpc.EventNotice, Text: "Meru didn't run any tool for this answer, so nothing changed on your computer."}, stats}, done: true},
 		{name: "sources", width: 80, q: "When does the garden project sow tomatoes?", evs: []rpc.Event{session, search, sources, tok("The garden project sows tomatoes on 12 April [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 		// The header at three widths: everything; the usage dropped; then

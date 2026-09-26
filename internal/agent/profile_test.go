@@ -139,7 +139,7 @@ func TestProfileInPrompt(t *testing.T) {
 			}
 			system := eng.lastCall().msgs[0].Content
 			if tt.want == "" {
-				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false)
+				want := DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + honestyRule + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false) + "\n\n" + canDoNote(nil, "")
 				if system != want {
 					t.Errorf("system prompt = %q\nwant %q", system, want)
 				}

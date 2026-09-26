@@ -215,8 +215,12 @@ func (m *Model) renderQueued(q string) string {
 
 // renderTurn draws one turn: the "You" label and the question, then the
 // "Meru" label with the route badge, the answer, and closing lines that
-// depend on how the turn ended: for a finished answer, the files it cites
-// and its stats.
+// depend on how the turn ended: for a finished answer, merud's notice if it
+// sent one, the files the answer cites and its stats.
+//
+// The notice reads "note: " and merud's words, in amber, the colour that
+// asks for a second look. The "note:" prefix keeps it apart from the
+// answer when colour is off.
 func (m *Model) renderTurn(t *exchange) string {
 	// Text inside the turn wraps to the width left after the indent.
 	width := max(m.width-answerIndent, 10)
@@ -254,6 +258,9 @@ func (m *Model) renderTurn(t *exchange) string {
 
 	switch t.state {
 	case stateDone:
+		if t.notice != "" {
+			lines = append(lines, m.style.raw.Render(m.style.notice.Render(ansi.Wrap("note: "+t.notice, width, ""))))
+		}
 		if src := m.sourcesBlock(t, width); src != "" {
 			lines = append(lines, src)
 		}

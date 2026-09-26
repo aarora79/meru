@@ -57,7 +57,7 @@ func TestPromptOrder(t *testing.T) {
 		fileTools:   fileToolsNote,
 	})
 	system := msgs[0].Content
-	order := []string{whoIsWho, "Today is ", a.filesNote, toolsNote, "SKILL-LIST", fileToolsNote, "MEMORIES", "SKILL-BODIES", "FILES"}
+	order := []string{whoIsWho, honestyRule, "Today is ", a.filesNote, "Meru's own tools", toolsNote, "SKILL-LIST", fileToolsNote, "MEMORIES", "SKILL-BODIES", "FILES"}
 	last := -1
 	for _, part := range order {
 		i := strings.Index(system, part)
