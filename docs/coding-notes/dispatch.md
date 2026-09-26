@@ -197,6 +197,7 @@ type Dispatcher struct {
     rec    Recorder
     redact func(string) string
     log    *slog.Logger
+    attach func(text string, since time.Time) string
 
     mu       sync.Mutex
     backends []Backend
@@ -223,11 +224,22 @@ commands that don't ask. A tool no backend offers counts as asking. `Replace` sw
 in a new backend of one kind; merud calls it after the `configure` tool changes the
 MCP servers.
 
-**Dispatch.** The function runs eight steps, commented in the code. Four details
+**Dispatch.** The function runs eight steps, commented in the code. Five details
 matter:
 
 - **The call must reach the transcript before it runs.** If the `tool_call` line
   can't be written, the call ends with outcome `error` and doesn't run.
+- **A saved attachment joins the result.** `Options.Attachments`, which merud
+  fills with the built-in tools' `AttachmentText`, gets the text of each MCP or
+  A2A call that ended `ok` and the time the call began. It returns a mail
+  attachment's path and text when the result names a file the call saved, and
+  `Dispatch` adds that to the result. dispatch can't import `builtin`, because
+  `builtin` imports dispatch for its types, and Go refuses an import loop; a
+  function passed in at startup keeps the arrow pointing one way. The text goes
+  in before the redaction and the cuts, so the transcript and the row show the
+  result as the model read it, and a secret in the attachment goes too.
+  `MaxModelResult` is exported, capital M, so `AttachmentText` can size its text
+  to fit under the cut. See [builtin.md](builtin.md).
 - **Redact, then cut.** `Redact` removes secret values from the arguments, the
   result and any error text. It runs before the cut, so a secret split by the cut
   still goes. The model gets up to 16,000 characters, with a note when the result

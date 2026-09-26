@@ -430,7 +430,9 @@ checks what `meru tools` shows and that the log says why `grep` is off.
 offers `web_search` when `searxng_url` is set. `web_fetch` needs no `[web]`
 key. `builtin.New` calls `ix.ReadAlso` on the output folder, so the file tools
 can read what `web_fetch` downloads and the mail attachments the `google`
-server saves; after `New`, `newToolService` calls
+server saves. `newToolService` passes `bt.AttachmentText` to `dispatch.New`
+as `Options.Attachments`, so a result that names an attachment the call just saved
+gets its text (see [dispatch](dispatch.md)). After `New`, it calls
 `bt.UseModel(eng, cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the
 fast model. `newToolService` takes the engine as a `builtin.Generator`, the one
 method that needs. Right after, `run` calls `logWebSearch`, which runs

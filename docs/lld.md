@@ -609,7 +609,8 @@ The same path as a reading list, in order:
    (`endTurn`).
 9. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
    offers the tool, or ends the call as `denied`. It writes the `tool_call` line,
-   asks through `approve` when the tool needs a yes, runs `Backend.Call`, redacts
+   asks through `approve` when the tool needs a yes, runs `Backend.Call`, adds the text of a mail
+   attachment an MCP or A2A call saved (`Options.Attachments`), redacts
    secrets, cuts the result (16,000 characters for the model, 4,000 for the log),
    and writes the `tool_result` line, the `tool_calls` row, the metrics and the
    `meru.dispatch` span.

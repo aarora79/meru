@@ -1058,9 +1058,22 @@ Ask for a file a mail carries, such as "find the hotel folio Dana Reyes sent and
 read the PDF". The model finds the mail, then calls
 `get_gmail_attachment_content`. The server saves the attachment in the folder
 `WORKSPACE_ATTACHMENT_DIR` names, `~/meru-output/attachments`, and reports a
-name such as `folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf`. The model passes
-that name to `read_file`, which reads the PDF page by page. The server deletes
-each saved file after an hour. `read_file` needs at least one `[index]` folder,
+name such as `folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf`. `merud` sees that
+name in the result, reads the PDF page by page with `read_file`'s rules, and adds
+its path and text to the same result:
+
+```text
+Saved at ~/meru-output/attachments/folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf. Meru read all of it; the text is below.
+--- Meru read folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf (2140 of 2140 characters) ---
+--- page 1 ---
+Dana Reyes, room 214 ...
+```
+
+So the model answers from the text in its next round. A file longer than
+12,000 characters ends with the offset to pass `read_file` for the rest. Only a
+file the call saved counts, and at most two per result. `meru log` shows the
+first 4,000 characters of the result, the added text included. The server
+deletes each saved file after an hour. This needs at least one `[index]` folder,
 which turns the file tools on. If you changed `[skills] output_dir`, point
 `WORKSPACE_ATTACHMENT_DIR` at the `attachments` folder inside it.
 

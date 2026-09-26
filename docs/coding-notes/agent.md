@@ -1169,6 +1169,11 @@ the transcript file. `TestEndToEndToolRound` does the same with the real
 `OllamaEngine` against the fake Ollama, which answers the first chat request
 with a tool call and the second with text. It checks the events and what the
 second request sent Ollama: the call, its result and the tool schema.
+`TestTurnReadsASavedAttachment` runs the same kind of turn through a real
+`dispatch.Dispatcher` and the built-in tools. A fake `google` tool saves a PDF
+in the attachments folder and names it; the test checks that the model called
+that one tool, never `read_file`, and that the second request's tool message
+held the PDF's pages (see [builtin](builtin.md), attachments.go).
 
 `profile_test.go` checks `formatProfile` (order, one line per fact, the cap
 keeping the newest, empty), where the section sits in the system prompt, that
