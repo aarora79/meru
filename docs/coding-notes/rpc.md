@@ -137,6 +137,13 @@ for its list of past chats, with their types in `sessions.go`:
 | `session_turns` (`OpSessionTurns`) | one `turns` event | `Turns`, a `TurnInfo` per question of the session in `Request.Session`: the question, the answer, the route, how it ended, the notice under the answer if any, the source files, the tool calls as `ToolStep`s (full name, kind, arguments, outcome, time), the duration and the token counts. |
 
 `merud` answers both from the transcripts, so they need no `meru.db`.
+
+`attach_file` (`OpAttachFile`) carries, in `Request.Path`, a file the user picked
+or dropped in the desktop app. `merud` copies it into `<output_dir>/uploads/` and
+answers with one `saved` event whose `Text` names the copy, the same event
+`save_file` answers with. Reusing `Path` and `saved` keeps the wire as it was:
+the op adds a name and no field.
+
 `ToolName(kind, server, tool)` joins a transcript line's three fields back into
 the name the model saw, such as `google.search_gmail_messages` or `cmd.backup`.
 

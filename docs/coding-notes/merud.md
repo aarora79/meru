@@ -544,6 +544,16 @@ request's `approve`, so the save lands in `tool_calls` and the transcript and as
 first as `write_file` does. The outcome decides the reply: a `saved` event with the
 path, or an error that says whether the user said no or `write_file` is off.
 
+### merud: attach.go
+
+`toolService.handleAttach` answers `attach_file`, which the desktop app sends for
+each file the user picks or drops. It hands the path to the built-in tools'
+`Upload` (see [builtin](builtin.md)), which copies the file into
+`<output_dir>/uploads/`, and replies with a `saved` event that names the copy.
+`Upload`'s error goes back as it stands, because the app shows it to the user.
+The copy is the user's act, not the model's, so it skips `dispatch`; the
+`read_file` call that later reads the copy goes through it.
+
 ### merud: models.go
 
 `modelService.handleModels` answers `models` with the profile and the three models
@@ -1066,6 +1076,12 @@ in the index status, the profile and the recalled project in the next
 question's system prompt, each refusal, and forget, after which recall drops
 the project. `TestMemoryHandEdit` writes a memory file by hand while `merud`
 runs and waits for it to reach the prompt.
+
+`settings_test.go` drives the desktop app's ops over the socket. Its
+`TestAttachFileOp` attaches a file from a folder `merud` doesn't index, then the
+same file again, which gets `-2`, and checks that a symbolic link, a folder, a
+file over 50 MiB, a `.env` file and a missing file each come back as an error
+that says why.
 
 `skills_test.go` checks the skill service: the first-run install, a skill added
 by hand and an edited built-in picked up on the next call, a broken folder in

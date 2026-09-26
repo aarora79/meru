@@ -1,7 +1,8 @@
 // This file tests the desktop app's settings ops over the socket, against a
 // whole merud on a fake engine: tool policies, catalog servers, secrets,
-// folders, skills, saving a file and the models. Each change is checked in
-// config.toml, where comments and unrelated keys must survive.
+// folders, skills, saving a file, attaching one and the models. Each
+// change is checked in config.toml, where comments and unrelated keys must
+// survive.
 
 package main
 
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -478,5 +480,69 @@ func TestAskScope(t *testing.T) {
 	}
 	if _, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "hi", Scope: "everywhere"}, rpc.ChoiceOnce); !strings.Contains(msg, "unknown scope") {
 		t.Errorf("a bad scope: %q", msg)
+	}
+}
+
+// TestAttachFileOp checks attach_file end to end: a file from outside
+// every folder lands in the uploads folder, a second copy gets a new
+// name, and each file merud must refuse leaves an error that says why.
+func TestAttachFileOp(t *testing.T) {
+	dir, home := meruHome(t)
+	notes := filepath.Join(home, "Notes")
+	away := filepath.Join(home, "Downloads")
+	for _, d := range []string{notes, away} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, body := range map[string]string{"garden-plan.md": "Plant tomatoes in May.\n", ".env": "TOKEN=x\n", "big.md": ""} {
+		if err := os.WriteFile(filepath.Join(away, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A sparse file one byte over the 50 MiB cap takes no disk space.
+	if err := os.Truncate(filepath.Join(away, "big.md"), 50<<20+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(away, "garden-plan.md"), filepath.Join(away, "link.md")); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+	header := settingsHeader + "folders = [" + strconv.Quote(notes) + "]\n"
+	d := startDaemon(t, dir, header, &fakeEngine{version: "0.13.0"})
+	uploads := filepath.Join(home, "meru-output", "uploads")
+
+	tests := []struct {
+		name    string
+		path    string
+		want    string // the copy's path; "" when merud must refuse
+		refusal string
+	}{
+		{"a file outside every folder", filepath.Join(away, "garden-plan.md"), filepath.Join(uploads, "garden-plan.md"), ""},
+		{"the same file again", filepath.Join(away, "garden-plan.md"), filepath.Join(uploads, "garden-plan-2.md"), ""},
+		{"symlink", filepath.Join(away, "link.md"), "", "symbolic link"},
+		{"folder", away, "", "is a folder"},
+		{"too big", filepath.Join(away, "big.md"), "", "up to 50.0 MB"},
+		{"secret", filepath.Join(away, ".env"), "", "keys, passwords or tokens"},
+		{"missing", filepath.Join(away, "gone.md"), "", "isn't there any more"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evs, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpAttachFile, Path: tt.path}, rpc.ChoiceDeny)
+			if tt.refusal != "" {
+				if !strings.Contains(msg, tt.refusal) {
+					t.Errorf("attach %s: error %q, want %q", tt.path, msg, tt.refusal)
+				}
+				return
+			}
+			if msg != "" {
+				t.Fatalf("attach %s: %s", tt.path, msg)
+			}
+			if got := eventOf(t, evs, rpc.EventSaved).Text; got != tt.want {
+				t.Errorf("copied to %s, want %s", got, tt.want)
+			}
+			if raw, err := os.ReadFile(tt.want); err != nil || string(raw) != "Plant tomatoes in May.\n" {
+				t.Errorf("copy = %q, %v", raw, err)
+			}
+		})
 	}
 }

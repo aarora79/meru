@@ -2,9 +2,9 @@
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
 `writefile.go`, `files.go`, `search.go`, `web.go`, `webguard.go`,
-`webdownload.go`, and the tests `builtin_test.go`, `writefile_test.go`,
-`files_test.go`, `search_test.go`, `web_test.go` and `webfetch_test.go`, with
-the PDF in `testdata/`)
+`webdownload.go`, `upload.go`, and the tests `builtin_test.go`,
+`writefile_test.go`, `files_test.go`, `search_test.go`, `web_test.go`,
+`webfetch_test.go` and `upload_test.go`, with the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
 `search_files`)
@@ -60,6 +60,11 @@ question, and the model gets back one line that starts `From
 https://go.dev/doc/devel/release (fetched 2026-09-24):`. Without a prompt it gets
 the page's text; with `save` the file lands in `~/meru-output/downloads/`. A URL
 that neither a search result nor your own question showed asks you first.
+
+One function here is no tool. When you drop `~/Downloads/garden-plan.pdf` on the
+desktop app, `merud` calls `Upload`, which copies the file to
+`~/meru-output/uploads/garden-plan.pdf`, and the question then asks the model to
+read that copy with `read_file`.
 
 ## The picture
 
@@ -612,19 +617,20 @@ and the no-cookie rule hold, with a 50 MiB cap and a 2-minute deadline instead
 of 5 MiB and 20 seconds:
 
 1. `downloadName` picks the name: the `filename` in `Content-Disposition`, parsed
-   with `mime.ParseMediaType`, or the URL's last path part. It keeps only the part
-   after the last `/` or `\`, so `../../.ssh/authorized_keys` becomes
-   `authorized_keys`; turns anything but ASCII letters, digits, `.`, `-` and `_`
-   into `_`; drops leading dots, so no download is hidden; and cuts the name to
-   100 characters. An empty result becomes `download`.
-2. `openDownloads` creates the output folder and `downloads` inside it with mode
+   with `mime.ParseMediaType`, or the URL's last path part. `safeName` then keeps
+   only the part after the last `/` or `\`, so `../../.ssh/authorized_keys`
+   becomes `authorized_keys`; turns anything but ASCII letters, digits, `.`, `-`
+   and `_` into `_`; drops leading dots, so no download is hidden; and cuts the
+   name to 100 characters. An empty result becomes `download`.
+2. `openFolder` creates the output folder and `downloads` inside it with mode
    `0700`, refuses a `downloads` that is a symbolic link or a file, and returns an
    `os.Root` on it.
 3. `saveNew` opens `report.pdf`, then `report-2.pdf`, `report-3.pdf` and so on,
    each with `O_CREATE|O_EXCL`. That flag makes the open fail when anything has
    the name, a symbolic link included, so the write never goes through a link or
-   over a file. It copies at most 50 MiB plus one byte; one byte over means the
-   file is too large, and a deferred function removes it.
+   over a file. It copies at most the limit it gets, 50 MiB here, plus one byte;
+   one byte over means the file is too large, and a deferred function removes
+   it.
 4. `previewText` reads back an HTML, PDF or text file of 5 MiB or less and returns
    its first 2,000 characters for the result.
 
@@ -632,6 +638,32 @@ of 5 MiB and 20 seconds:
 folder, so `read_file` and `grep` reach downloads under the indexer's own rules
 (see [index](index.md)). The indexer never scans it, so a downloaded page can't
 reach a later turn through search.
+
+### upload.go
+
+`Upload` copies a file the user attached in the desktop app into
+`<output_dir>/uploads/`. `merud` calls it for the `attach_file` op; the model
+can't, because no tool spec names it. The user picked the file, so it may sit
+anywhere, and `Upload` checks it in this order:
+
+1. The output folder is set, `[index] folders` isn't empty and `[builtin] tools`
+   lists `read_file`. Without those the model couldn't read the copy.
+2. `os.Lstat` looks at the path itself without following a link. A missing file,
+   a symbolic link, a folder or anything but a regular file stops here.
+3. `index.IsSecret`, the indexer's own test, refuses `.env`, `server.pem`,
+   `id_ed25519` and the rest by name, before any copy exists.
+4. A file over 50 MiB, `web_fetch`'s download cap, stops here too.
+5. After `os.Open`, `os.SameFile` compares the file it opened with the one
+   `Lstat` saw, so a path swapped for a link in between fails.
+6. `openFolder` and `saveNew` copy the file, as a download is saved, under
+   `safeName` of its name, with `-2` and up for a name in use.
+7. `files.Check`, the test `read_file` runs on every path, checks the copy. A
+   copy it refuses, such as a `.zip`, a file with a NUL byte or one over
+   `[index] max_file_mb`, gets deleted, and the error gives the indexer's reason.
+
+The copies go in `uploads`, not `attachments`: the `google` server deletes every
+file in its attachments folder an hour after it was written, by modified time,
+whoever wrote it.
 
 ## Go ideas used here
 
@@ -668,6 +700,9 @@ reach a later turn through search.
 - **Named results and deferred cleanup** — `writeAtomic` names its `err` result,
   and a deferred function removes the temporary file only when `err` is set. More
   in [go-basics/defer.md](go-basics/defer.md).
+- **`os.SameFile`** — reports whether two `os.FileInfo` values describe the same
+  file on disk. `Upload` uses it to check that the file it opened is the one
+  `os.Lstat` looked at a moment before.
 - **`os.Root`** — a handle on one folder that refuses any path leading out of it.
   `internal/memory` uses the same guard, and so does `index.ReadText`.
 - **Runes** — a `string` holds bytes; `[]rune(s)` holds characters. `read_file`
@@ -770,6 +805,16 @@ pages join back into the file. `TestListFolder`, `TestListFolderEntryCap` and
 `TestGrep` cover depth, the 300-entry cap, substring, case, regex, one-file and
 one-folder searches, and PDF pages. `TestGrepLimits` sets tiny limits on a
 `grepRun`, and `TestGrepCancelled` passes a cancelled `ctx`.
+
+`upload_test.go` runs `Upload` on files in a folder outside the `[index]`
+folders. `TestUpload` checks a copy lands in `uploads/` with the same bytes and
+mode `0600`, a second copy of the same file gets `-2`, a name with spaces gets
+underscores, and each refusal: missing, a relative path, a folder, a symbolic
+link, three secret names, a sparse file one byte over 50 MiB, a `.zip`, a file
+with a NUL byte and one over `max_file_mb`. Afterwards the folder holds only the
+three copies, and `read_file` reads one of them. `TestUploadNeedsReadFile`
+checks the refusals with no `[index]` folders, with `read_file` off and with no
+output folder.
 
 `search_test.go` runs `search_files` over a fake searcher.
 `TestSearchFilesReturnsNumberedExcerpts` puts a counter on `ctx` that has

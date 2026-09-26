@@ -40,9 +40,12 @@
 // so they skip what the indexer skips: symlinks, secrets, hidden, ignored,
 // binary and oversized files. Outside the output folder, the model can read
 // no file that search couldn't already put in its prompt. The output folder
-// holds what write_file wrote, what web_fetch downloaded, and the mail
-// attachments the google server saves in its attachments folder; read_file
-// takes an attachment's bare saved filename.
+// holds what write_file wrote, what web_fetch downloaded, the mail
+// attachments the google server saves in its attachments folder, and the
+// files the user attaches in the desktop app, which Upload copies into its
+// uploads folder; read_file takes a mail attachment's bare saved filename.
+// Upload is no tool: merud calls it for the attach_file op, and the model
+// can't.
 //
 // search_files runs retrieve.Search, the search a turn runs before the
 // answer, through the FileSearcher merud hands UseSearch, and returns

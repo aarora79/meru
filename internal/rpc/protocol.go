@@ -131,6 +131,14 @@ const (
 	// session). The reply is one "saved" event, whose Text is the path
 	// written, and "done".
 	OpSaveFile Op = "save_file"
+	// OpAttachFile copies the file at Request.Path, which the user picked
+	// in the app's file dialog or dropped on its window, into the uploads
+	// folder under [skills] output_dir, where read_file may read it. merud
+	// refuses a folder, a symbolic link, a file whose name looks like a
+	// secret's, a file over 50 MiB, and one read_file couldn't read. The
+	// reply is one "saved" event, whose Text is the copy's path, and
+	// "done".
+	OpAttachFile Op = "attach_file"
 	// OpSkillEnable and OpSkillDisable take the skill named Request.ID out
 	// of [skills] disabled or put it in. The reply is one "skills" event,
 	// as OpSkills sends, and "done".
@@ -163,7 +171,7 @@ type Request struct {
 	Text   string `json:"text,omitempty"`
 	Source Source `json:"source,omitempty"`
 	// Path is the absolute folder or file to index, for OpIndex. Empty
-	// means every [index] folder.
+	// means every [index] folder. For OpAttachFile it is the file to copy.
 	Path string `json:"path,omitempty"`
 	// Limit caps how many rows OpLog returns, or how many sessions
 	// OpSessions lists. Zero means merud's default.
@@ -250,7 +258,8 @@ const (
 	EventConnections EventType = "connections"
 	// EventFolders answers the folder ops, in Folders and Suggested.
 	EventFolders EventType = "folders"
-	// EventSaved answers OpSaveFile; Text holds the path written.
+	// EventSaved answers OpSaveFile and OpAttachFile; Text holds the
+	// path written.
 	EventSaved EventType = "saved"
 	// EventModels answers OpModels, in Models.
 	EventModels EventType = "models"

@@ -69,12 +69,12 @@ func (t *Tools) download(ctx context.Context, rawURL string) (string, error) {
 	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	name := downloadName(resp.Header.Get("Content-Disposition"), resp.Request.URL)
 
-	root, err := openDownloads(t.outputDir)
+	root, err := openFolder(t.outputDir, downloadsFolder)
 	if err != nil {
 		return "", fmt.Errorf("web_fetch: %w. Nothing was saved", err)
 	}
 	defer root.Close()
-	saved, n, err := saveNew(root, name, resp.Body)
+	saved, n, err := saveNew(root, name, resp.Body, downloadCap)
 	if err != nil {
 		if isTimeout(err) {
 			return "", fmt.Errorf("web_fetch: %s took longer than %v. Nothing was saved", final, downloadTimeout)
@@ -98,12 +98,13 @@ func (t *Tools) download(ctx context.Context, rawURL string) (string, error) {
 	return b.String(), nil
 }
 
-// openDownloads returns an os.Root on the downloads folder inside dir,
+// openFolder returns an os.Root on the folder named folder inside dir,
 // creating both with mode 0700 when they don't exist. An os.Root refuses
 // any path that would leave its folder, even through a symbolic link. It
-// fails when downloads is a symbolic link or a file, so a link planted
-// there can't send a download somewhere else.
-func openDownloads(dir string) (*os.Root, error) {
+// fails when folder is a symbolic link or a file, so a link planted there
+// can't send a file somewhere else. download opens the downloads folder
+// with it, and Upload the uploads folder.
+func openFolder(dir, folder string) (*os.Root, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create %s: %w", dir, err)
 	}
@@ -112,20 +113,20 @@ func openDownloads(dir string) (*os.Root, error) {
 		return nil, fmt.Errorf("open %s: %w", dir, err)
 	}
 	defer out.Close()
-	info, err := out.Lstat(downloadsFolder)
+	info, err := out.Lstat(folder)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		if err := out.Mkdir(downloadsFolder, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-			return nil, fmt.Errorf("create %s: %w", filepath.Join(dir, downloadsFolder), err)
+		if err := out.Mkdir(folder, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("create %s: %w", filepath.Join(dir, folder), err)
 		}
 	case err != nil:
 		return nil, err
 	case info.Mode()&fs.ModeSymlink != 0:
-		return nil, fmt.Errorf("%s is a symbolic link, and Meru never saves through one", filepath.Join(dir, downloadsFolder))
+		return nil, fmt.Errorf("%s is a symbolic link, and Meru never saves through one", filepath.Join(dir, folder))
 	case !info.IsDir():
-		return nil, fmt.Errorf("%s is a file, not a folder", filepath.Join(dir, downloadsFolder))
+		return nil, fmt.Errorf("%s is a file, not a folder", filepath.Join(dir, folder))
 	}
-	return out.OpenRoot(downloadsFolder)
+	return out.OpenRoot(folder)
 }
 
 // saveNew copies body into a new file in root, named name or, when that
@@ -134,8 +135,8 @@ func openDownloads(dir string) (*os.Root, error) {
 // symbolic link included, already has that name, so it never writes
 // through a link or over a file. The file gets mode 0600. It returns the
 // name it used and the bytes written, and removes the file when the copy
-// fails or passes downloadCap.
-func saveNew(root *os.Root, name string, body io.Reader) (saved string, n int64, err error) {
+// fails or passes limit bytes.
+func saveNew(root *os.Root, name string, body io.Reader, limit int64) (saved string, n int64, err error) {
 	var f *os.File
 	var file string
 	for i := 1; i <= maxNameTries; i++ {
@@ -160,11 +161,11 @@ func saveNew(root *os.Root, name string, body io.Reader) (saved string, n int64,
 			_ = root.Remove(file)
 		}
 	}()
-	// io.Copy stops at downloadCap+1 bytes; one byte past the cap means
-	// the file is too large, and it goes.
-	n, err = io.Copy(f, io.LimitReader(body, downloadCap+1))
-	if err == nil && n > downloadCap {
-		err = fmt.Errorf("the file is larger than %s, which is as much as Meru downloads", size(downloadCap))
+	// io.Copy stops at limit+1 bytes; one byte past the limit means the
+	// file is too large, and it goes.
+	n, err = io.Copy(f, io.LimitReader(body, limit+1))
+	if err == nil && n > limit {
+		err = fmt.Errorf("the file is larger than %s, which is as much as Meru saves", size(limit))
 	}
 	if err != nil {
 		_ = f.Close()
@@ -192,10 +193,7 @@ func numbered(name string, i int) string {
 
 // downloadName picks the file name for a download: the filename in the
 // Content-Disposition header when the site sends one, or else the last
-// part of the URL's path. It keeps only the part after the last "/" or
-// "\", turns every character but ASCII letters, digits, ".", "-" and "_"
-// into "_", drops leading dots so the file is never hidden, and cuts the
-// name to maxNameChars. A name that ends up empty becomes "download".
+// part of the URL's path, made safe by safeName.
 func downloadName(disposition string, u *url.URL) string {
 	var name string
 	if _, params, err := mime.ParseMediaType(disposition); err == nil {
@@ -204,6 +202,15 @@ func downloadName(disposition string, u *url.URL) string {
 	if name == "" && u != nil {
 		name = path.Base(u.Path)
 	}
+	return safeName(name, "download")
+}
+
+// safeName turns name into a file name Meru can save under: it keeps only
+// the part after the last "/" or "\", turns every character but ASCII
+// letters, digits, ".", "-" and "_" into "_", drops leading dots so the
+// file is never hidden, and cuts the name to maxNameChars. A name that
+// ends up empty becomes fallback.
+func safeName(name, fallback string) string {
 	name = name[strings.LastIndexAny(name, `/\`)+1:]
 	// strings.Map calls the function on each character and builds a new
 	// string from what it returns.
@@ -220,7 +227,7 @@ func downloadName(disposition string, u *url.URL) string {
 		name = name[:maxNameChars]
 	}
 	if strings.Trim(name, "_.-") == "" {
-		return "download"
+		return fallback
 	}
 	return name
 }

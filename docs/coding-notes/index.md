@@ -143,7 +143,9 @@ that applies:
 | 6 | `media`, `binary`, `unsupported` | by extension |
 
 Secrets come first and nothing can re-include them: a key in the index would
-end up in a prompt. Config patterns come next and a `.gitignore` can't undo
+end up in a prompt. `IsSecret` holds that name test, exported so `merud` can
+refuse a secret the user attaches in the desktop app by the same rule (see
+[builtin](builtin.md)). Config patterns come next and a `.gitignore` can't undo
 them either. Within the ignore files, git's rule holds: the last matching line
 wins, and a deeper folder's file beats a shallower one's. `.meruignore` is read
 after `.gitignore` in the same folder, so it can re-include with `!name`.
