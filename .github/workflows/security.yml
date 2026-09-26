@@ -48,8 +48,13 @@ jobs:
       - name: gosec (SARIF)
         run: make sec-sarif
       - uses: github/codeql-action/upload-sarif@v4
-        # Forked pull requests get a read-only token and can't upload.
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        # Forked pull requests get a read-only token and can't upload. Code
+        # scanning on a private repository needs GitHub Advanced Security,
+        # so the upload runs only while the repository is public; the gosec
+        # step below still fails the job on any finding.
+        if: >-
+          github.event.repository.private == false &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:
           sarif_file: gosec.sarif
           category: gosec
@@ -73,6 +78,11 @@ jobs:
 
   codeql:
     name: codeql
+    # CodeQL reports to code scanning, which a private repository has only
+    # with GitHub Advanced Security. A scheduled run carries no repository
+    # in its event, so it skips too; govulncheck, gosec and gitleaks still
+    # run everywhere.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -94,7 +104,8 @@ jobs:
 
   dependency-review:
     name: dependency review
-    if: github.event_name == 'pull_request'
+    # Dependency review on a private repository also needs Advanced Security.
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
