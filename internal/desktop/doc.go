@@ -9,7 +9,8 @@
 // Bridge hands each one to the page. Every tool call still runs in merud,
 // through dispatch; the app only answers merud's approval questions. A
 // setting changes the same way: the Bridge sends an op, and merud writes
-// config.toml, secrets.toml or the memory folder. See
+// config.toml, secrets.toml or the memory folder. An attached file too:
+// merud, not the app, copies it where read_file may read it. See
 // ARCHITECTURE.md, "Desktop app".
 //
 // The package doesn't import Wails. cmd/meru-desktop binds a *Bridge to

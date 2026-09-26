@@ -43,7 +43,7 @@
       <span class="mini-status" id="mini-status" role="img" aria-label="merud status"></span>
     </nav>
 
-    <main class="chat" id="chat-view">
+    <main class="chat" id="chat-view" data-file-drop-target>
       <header class="chat-head">
         <h1 id="chat-title">New chat</h1>
         <div class="head-actions">
@@ -52,6 +52,10 @@
         </div>
       </header>
       <div class="messages" id="messages"></div>
+      <div class="drop-overlay" aria-hidden="true">
+        <p class="drop-title">Drop to attach</p>
+        <p class="drop-note">Meru keeps a copy in its output folder, and reads only the files you drop.</p>
+      </div>
       <div class="composer-area">
         <div class="task-slot" id="task-slot"></div>
         <p class="notice" id="notice" role="status" aria-live="polite"></p>
@@ -64,7 +68,7 @@
             role="combobox" aria-autocomplete="list" aria-controls="command-menu" aria-expanded="false"></textarea>
           <div class="composer-bar">
             <div class="scope" id="scope" role="radiogroup" aria-label="Where Meru looks"></div>
-            <button type="button" class="icon-button" id="attach" aria-label="Attach a file"></button>
+            <button type="button" class="icon-button" id="attach" aria-label="Attach files" title="Attach files, or drop them on the chat"></button>
             <span class="hint">Enter sends · Shift+Enter adds a line</span>
             <button type="button" class="button secondary" id="stop" hidden>Stop</button>
             <button type="submit" class="button primary" id="send">Send</button>

@@ -30,6 +30,8 @@ export const bridge = {
   reveal: (path) => call("Reveal", path),
   chooseFolder: () => call("ChooseFolder"),
   attachFile: () => call("AttachFile"),
+  detach: (index) => call("Detach", index),
+  detachAll: () => call("DetachAll"),
   // The Library and Setup (settings.go).
   connections: () => call("Connections"),
   setPolicy: (kind, server, tool, policy) => call("SetPolicy", kind, server, tool, policy),

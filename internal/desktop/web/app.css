@@ -469,10 +469,49 @@ pre {
 /* ---- The conversation ---- */
 
 .chat {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* The chat screen is the window's drop target (data-file-drop-target).
+   Wails adds file-drop-target-active to it while files hover over it,
+   and takes it off when they leave or drop, so the overlay needs no
+   script. It lets the pointer through, so the drop lands on the screen. */
+.drop-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 2px dashed var(--pine);
+  border-radius: var(--radius);
+  background: rgba(246, 244, 239, 0.94);
+  pointer-events: none;
+  text-align: center;
+}
+
+.chat.file-drop-target-active .drop-overlay {
+  display: flex;
+}
+
+.drop-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 26px;
+  color: var(--pine-dark);
+}
+
+.drop-note {
+  margin: 0;
+  max-width: 36em;
+  font-size: 14px;
+  color: var(--ink-3);
 }
 
 .chat-head {
@@ -1391,6 +1430,11 @@ pre {
   background: var(--surface);
   font-size: 13px;
   color: var(--ink-2);
+}
+
+.attachment-size {
+  color: var(--caption);
+  font-size: 12px;
 }
 
 .icon-button.small {

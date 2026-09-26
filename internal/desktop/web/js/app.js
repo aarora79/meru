@@ -52,7 +52,7 @@ const state = {
   setupShown: false, // Setup opened on its own once already
   machine: "this Mac",
   scope: "auto",
-  attached: null, // the file attached to the next question
+  attachments: [], // the files attached to the next question, as the Bridge last sent them
   saves: {}, // open save approval cards, by card ID
   nextKey: 1, // numbers turn elements, for ids
 };
@@ -334,6 +334,9 @@ onUpdate((u) => {
       if (u.notice && !state.quietDrop) notice(u.notice);
       state.quietDrop = false;
       break;
+    case "attachments":
+      onAttachments(u);
+      break;
   }
 });
 
@@ -529,14 +532,11 @@ function send(question, scope) {
     notice(MAX_QUEUE + " questions already wait. Send this one when the next starts.");
     return Promise.resolve(false);
   }
-  if (state.attached) text += "\n\nRead this file: " + state.attached.path;
   notice("");
+  // The Bridge adds a "Read this file" line for each attachment and
+  // clears the chips.
   return bridge.send(state.session, text, scope === "auto" ? "" : scope).then(
-    () => {
-      state.attached = null;
-      drawAttachment();
-      return true;
-    },
+    () => true,
     (err) => {
       notice(errorText(err));
       return false;
@@ -581,49 +581,50 @@ function setScope(value) {
   drawScope();
 }
 
-// attach asks the Bridge for a file to go with the next question. Meru
-// reads it with read_file, so only a file in an indexed folder or the
-// output folder can go; the Bridge checks, and says what to do otherwise.
+// attach shows the system's file dialog. merud copies each file picked
+// into its output folder, where read_file may read it, and the Bridge
+// sends the chips back as an "attachments" update. A file dropped on the
+// chat takes the same path, from Go.
 function attach() {
-  bridge.attachFile().then(
-    (a) => {
-      if (!a || !a.path) return;
-      if (!a.readable) {
-        notice(a.note);
-        return;
-      }
-      state.attached = a;
-      if (state.scope !== "auto" && state.scope !== "files") {
-        setScope("files");
-        notice("Switched to My files, so Meru can read " + a.name + ".");
-      }
-      drawAttachment();
-      $("question").focus();
-    },
-    (err) => notice(errorText(err)),
-  );
+  bridge.attachFile().catch((err) => notice(errorText(err)));
 }
 
-// drawAttachment shows the attached file as a chip in the composer.
-function drawAttachment() {
+// onAttachments draws the chips the Bridge sent, and says which files
+// stayed out and why. A new file switches a scope other than Auto or My
+// files to My files, the scope that offers read_file.
+function onAttachments(u) {
+  const before = state.attachments.length;
+  state.attachments = u.attachments || [];
+  drawAttachments();
+  let text = u.notice || "";
+  const added = state.attachments.length > before;
+  if (added && state.scope !== "auto" && state.scope !== "files") {
+    setScope("files");
+    text = (text + " Switched to My files, so Meru can read the files.").trim();
+  }
+  if (text) notice(text);
+  if (added) $("question").focus();
+}
+
+// drawAttachments shows each attached file as a chip in the composer, with
+// its size and a button that takes it off.
+function drawAttachments() {
   const box = $("attachments");
   box.replaceChildren();
-  const a = state.attached;
-  box.hidden = !a;
-  if (!a) return;
-  const chip = el("span", "attachment");
-  chip.append(icon("file", 14), el("span", "", a.name));
-  chip.title = a.path;
-  chip.append(button("", {
-    className: "icon-button small",
-    iconName: "close",
-    ariaLabel: "Remove " + a.name,
-    onClick: () => {
-      state.attached = null;
-      drawAttachment();
-    },
-  }));
-  box.append(chip);
+  box.hidden = state.attachments.length === 0;
+  state.attachments.forEach((a, i) => {
+    const chip = el("span", "attachment");
+    chip.append(icon("file", 14), el("span", "", a.name));
+    if (a.size) chip.append(el("span", "attachment-size", a.size));
+    chip.title = "Meru reads its copy, " + a.path;
+    chip.append(button("", {
+      className: "icon-button small",
+      iconName: "close",
+      ariaLabel: "Remove " + a.name,
+      onClick: () => bridge.detach(i).catch((err) => notice(errorText(err))),
+    }));
+    box.append(chip);
+  });
 }
 
 // drawQueue draws the questions waiting behind the running turn, each with
@@ -732,8 +733,7 @@ function newChat() {
   state.turns = [];
   state.selected = null;
   state.asking = null;
-  state.attached = null;
-  drawAttachment();
+  bridge.detachAll().catch((err) => notice(errorText(err)));
   showView("chat");
   drawConversation();
   drawSessions();
@@ -1107,7 +1107,9 @@ function wire() {
     if (e.target.closest("a")) e.preventDefault();
   });
   // A file dropped on the window would make the WebView open it in place
-  // of the page. The attach button is the way to add a file.
+  // of the page. Wails reports a drop on the chat screen to Go, which
+  // attaches the files; the overlay that says so is CSS on the class Wails
+  // puts on the screen while files hover over it.
   for (const name of ["dragover", "drop"]) {
     window.addEventListener(name, (e) => e.preventDefault());
   }

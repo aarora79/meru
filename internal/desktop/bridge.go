@@ -49,15 +49,15 @@ type Options struct {
 	// Open opens a URL in the browser or the file's app. nil means
 	// opener.Open; tests pass a fake that opens nothing.
 	Open func(url string) error
-	// OutputDir is [skills] output_dir with "~" expanded, the other
-	// folder read_file may read, for checking an attached file. "" when
-	// config doesn't load.
+	// OutputDir is [skills] output_dir with "~" expanded, where merud
+	// saves chats and notes, for Reveal. "" when config doesn't load.
 	OutputDir string
-	// PickFile and PickFolder show the system's dialog for choosing a
-	// file or a folder and return the path, or "" when the user cancels.
-	// Quit closes the app. The window supplies all three; nil leaves the
-	// feature off, as in tests that don't need it.
-	PickFile   func() (string, error)
+	// PickFiles shows the system's file dialog and returns the files
+	// picked, none when the user cancels. PickFolder shows its folder
+	// dialog and returns the folder, or "" on a cancel. Quit closes the
+	// app. The window supplies all three; nil leaves the feature off, as
+	// in tests that don't need it.
+	PickFiles  func() ([]string, error)
 	PickFolder func() (string, error)
 	Quit       func()
 }
@@ -78,11 +78,12 @@ type Bridge struct {
 	outputDir  string
 	emit       EmitFunc
 	open       func(url string) error
-	pickFile   func() (string, error)
+	pickFiles  func() ([]string, error)
 	pickFolder func() (string, error)
 	quit       func()
 
-	// wg counts the turn goroutines, so ServiceShutdown can wait for them.
+	// wg counts the turn goroutines and the ones that copy dropped files,
+	// so ServiceShutdown can wait for them.
 	wg sync.WaitGroup
 
 	mu      sync.Mutex // guards the fields below
@@ -91,6 +92,9 @@ type Bridge struct {
 	session string     // the session the running and queued questions go to
 	scope   string     // where the running and queued questions may look
 	queue   []string   // questions waiting behind the running turn, oldest first
+	// attached holds the files the next question carries, at most
+	// maxAttachments; files.go adds and removes them.
+	attached []Attachment
 	// approvals holds the channel each open approval card waits on, by the
 	// card's ID, which the Bridge makes unique across turns and saves:
 	// merud numbers approvals per connection, so two connections can each
@@ -125,13 +129,14 @@ func New(o Options) *Bridge {
 	}
 	return &Bridge{
 		socket: o.Socket, model: o.Model, fast: o.Fast, embed: o.Embed, home: o.Home, dir: o.Dir, outputDir: o.OutputDir, emit: o.Emit, open: open,
-		pickFile: o.PickFile, pickFolder: o.PickFolder, quit: o.Quit,
+		pickFiles: o.PickFiles, pickFolder: o.PickFolder, quit: o.Quit,
 		approvals: map[string]chan rpc.Choice{},
 	}
 }
 
 // Send asks question in session: "" starts a new session, and an ID
-// continues that one. scope says where Meru may look, one of the
+// continues that one. The files attached so far go with it, one "Read
+// this file" line each, and come off the composer. scope says where Meru may look, one of the
 // rpc.Scope constants, from the composer's "Where Meru looks" switch; ""
 // means auto. While a turn runs, the question waits in the queue instead
 // and goes to the running turn's session with its scope, so session and
@@ -153,10 +158,15 @@ func (b *Bridge) Send(session, question, scope string) error {
 	b.mu.Lock()
 	// defer runs b.mu.Unlock() when Send returns, on every path.
 	defer b.mu.Unlock()
+	if b.turn != nil && len(b.queue) >= maxQueue {
+		return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
+	}
+	q = b.withAttachments(q)
+	if len(b.attached) > 0 {
+		b.attached = nil
+		b.emitAttachments("")
+	}
 	if b.turn != nil {
-		if len(b.queue) >= maxQueue {
-			return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
-		}
 		b.queue = append(b.queue, q)
 		b.emitQueue("")
 		return nil

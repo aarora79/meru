@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -63,6 +63,7 @@ type Bridge struct {
     session   string
     scope     string
     queue     []string
+    attached  []Attachment
     approvals map[string]chan rpc.Choice
     saves     int
 }
@@ -76,8 +77,9 @@ for its turn and `defer mu.Unlock()` gives it back when the function returns.
 
 `Send` trims the question and checks the scope, which the composer's "Where Meru
 looks" switch sets: `""` or `auto` lets the router pick, and `files`, `mail`,
-`web` or `talk` go to `merud` as `Request.Scope`. While a turn runs, it adds the
-question to the queue,
+`web` or `talk` go to `merud` as `Request.Scope`. It adds a "Read this file"
+line for each attached file and clears the attachments. While a turn runs, it
+adds the question to the queue,
 five at most, as `meru chat` does. Otherwise `start` opens a turn: it makes a
 context with its own cancel function, emits a `start` update, and runs `run` in a
 new goroutine with `wg.Go`, which counts it so `ServiceShutdown` can wait for it.
@@ -227,9 +229,22 @@ system's browser does.
 the write_file card through `approver`. `Reveal` opens the folder that holds a
 saved file, and only a file inside the output folder. `ChooseFolder` and
 `AttachFile` show the system's dialogs through the functions `main.go` passes in.
-`AttachFile` then checks the file against the folders `read_file` may read, the
-`[index]` folders from `index_status` and the output folder, with symlinks
-resolved, so a link can't pass for a file inside.
+
+The Bridge keeps the files attached to the next question in `attached`, as it
+keeps the queue. `AttachFile` takes the files the dialog returns, and `Drop` the
+files dropped on the window; both call `attach`. For each path, `attach` sends
+`attach_file` and waits for the `saved` event that names `merud`'s copy, since
+the app writes no file itself. It stops at five files, the `maxAttachments` cap,
+and emits a `KindAttachments` update with the chips and a notice that names each
+file that stayed out, with `merud`'s reason. A chip shows the name of the user's
+file, the copy's path in the `~` form `read_file` takes, and the size from
+`sizeText`. `Detach` takes one chip off and `DetachAll`, for New chat, takes all.
+
+`Drop` is a plain function, `desktop.Drop(b, paths)`, not a method. Wails binds
+every exported method of the Bridge, so the page could call `Drop` with any path
+it liked; the page can't reach a plain function. Only a real drop, which Wails
+reports to Go, gets there. `Drop` runs `attach` in a goroutine that `wg` counts,
+so the window's event loop never waits on `merud`.
 
 ### commands.go
 
@@ -271,7 +286,15 @@ bundler.
   asking" while a card is open, or "On this Mac" in the Library. The approval card
   says why Meru asks on its own, with a link to the panel, because the panel may be
   closed. The composer holds the "Where Meru looks" switch, a radio group the
-  arrow keys move through, and the attach button.
+  arrow keys move through, and the attach button. `onAttachments` draws the
+  chips from each `attachments` update, each with its remove button, shows the
+  update's notice, and switches a scope other than Auto or My files to My files
+  when a file arrives.
+- The chat screen, `<main id="chat-view">`, carries `data-file-drop-target`. While
+  files hover over it, Wails' runtime adds the class `file-drop-target-active`,
+  and `app.css` shows the "Drop to attach" overlay for that class, so the overlay
+  needs no script. The overlay has `pointer-events: none`, so the drop lands on
+  the screen beneath it.
 - `js/commands.js` runs the slash commands and draws their menu: a listbox under
   the question box, which is its combobox, with `aria-activedescendant` naming the
   option the arrow keys point at. `/copy N` counts the code blocks in the chat's
@@ -326,6 +349,16 @@ Wails app with the Bridge as a service and `Assets` as its file server, and open
 1440 by 900 window that shrinks to 1000 by 640. The title bar reads
 `WindowTitle` and never changes; the chat's title shows in the page's header.
 
+The window sets `EnableFileDrop`. On macOS a view that Wails lays over the
+WebView takes the drop, reads the files' full paths, and asks the page's runtime
+which element sits under the pointer. When that element, or one around it,
+carries `data-file-drop-target`, Wails fires `events.Common.WindowFilesDropped`
+on the window. `main.go` listens with `window.OnWindowEvent` and hands
+`e.Context().DroppedFiles()` to `desktop.Drop`. The page never sees the paths,
+since a WebView hides them from JavaScript. The file dialog uses
+`PromptForMultipleSelection` and sets no starting folder, so the user can pick
+several files from anywhere.
+
 `make desktop-app` builds `bin/Meru.app` from three files: the binary,
 `Info.plist`, and `Meru.icns`, the icon macOS shows in the Dock and Finder.
 `CFBundleIconFile` in `Info.plist` names it. The icon is the logo from
@@ -374,8 +407,14 @@ stopped handler still waits too and could take the release meant for the next
 turn, which made `TestStopDropsQueue` fail on a slow CI runner.
 `settings_test.go` checks that each settings method sends
 the request `merud` expects, that a save shows its card and returns the path,
-which attached files may go, which saved files `Reveal` opens, the scope, and the
-slash commands against `meru chat`'s. `draft_test.go` checks Edit first's drafts.
+which saved files `Reveal` opens, the scope, and the slash commands against
+`meru chat`'s. `attach_test.go` runs the attachments against a fake `merud` that
+copies files and refuses one with "secret" in its name: a cancelled dialog sends
+nothing, two picked files become two chips with `~` paths and sizes, the refused
+file's reason shows in the notice, `Detach` and `DetachAll` take chips off, a
+drop of seven files attaches up to the cap of five and says how many stayed out,
+and `Send` puts a "Read this file" line per file in the question and clears the
+chips. `draft_test.go` checks Edit first's drafts.
 `about_test.go` checks the About data, the version read from build information,
 and the tagline in the page and the window. `assets_test.go` checks the security headers, and fails when
 the page's own code uses `innerHTML`, `eval`, inline scripts or styles, or names a

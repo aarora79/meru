@@ -1,7 +1,8 @@
 // This file tests the Bridge methods behind the Library, Setup and the new
 // chat actions against an in-process rpc server: each sends the request
 // merud expects and hands the reply back, saves show their approval card,
-// attachments are checked, and the slash commands match `meru chat`'s.
+// and the slash commands match `meru chat`'s. attach_test.go covers the
+// attachments.
 
 package desktop
 
@@ -222,52 +223,6 @@ func TestSaveShowsApproval(t *testing.T) {
 	b, _ := newBridge("/nonexistent/merud.sock")
 	if _, err := b.SaveNote(context.Background(), "", "text"); err == nil {
 		t.Error("a save with no session went ahead")
-	}
-}
-
-func TestAttachment(t *testing.T) {
-	home := t.TempDir()
-	notes := filepath.Join(home, "Notes")
-	out := filepath.Join(home, "meru-output")
-	elsewhere := filepath.Join(home, "Downloads")
-	for _, d := range []string{notes, out, elsewhere} {
-		if err := os.MkdirAll(d, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	files := map[string]string{"in": filepath.Join(notes, "lisbon.md"), "out": filepath.Join(out, "draft.md"), "away": filepath.Join(elsewhere, "x.pdf")}
-	for _, p := range files {
-		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	b := New(Options{Socket: "/nonexistent", Home: home, OutputDir: out})
-	tests := []struct {
-		path     string
-		readable bool
-		shown    string
-	}{
-		{files["in"], true, "~/Notes/lisbon.md"},
-		{files["out"], true, "~/meru-output/draft.md"},
-		{files["away"], false, "~/Downloads/x.pdf"},
-	}
-	for _, tt := range tests {
-		a := b.attachment(tt.path, []string{"~/Notes"})
-		if a.Readable != tt.readable || a.Path != tt.shown || (tt.readable == (a.Note != "")) {
-			t.Errorf("attachment(%s) = %+v", tt.path, a)
-		}
-	}
-
-	// The dialog: a cancel gives nothing, a pick gives the checked file.
-	picked := ""
-	b = New(Options{Socket: startServer(t, (&fakeMerud{}).handler), Home: home, OutputDir: out,
-		PickFile: func() (string, error) { return picked, nil }})
-	if a, err := b.AttachFile(context.Background()); err != nil || a.Path != "" {
-		t.Errorf("cancelled pick = %+v, %v", a, err)
-	}
-	picked = files["in"]
-	if a, err := b.AttachFile(context.Background()); err != nil || !a.Readable {
-		t.Errorf("pick = %+v, %v", a, err)
 	}
 }
 

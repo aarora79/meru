@@ -166,11 +166,12 @@ func (b *Bridge) done(ctx context.Context, req rpc.Request) (rpc.Event, error) {
 	return b.one(ctx, req, rpc.EventDone)
 }
 
-// changes reports whether op changes a setting, and so may take longer.
+// changes reports whether op changes a setting or copies a file, and so
+// may take longer.
 func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
-		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders:
+		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile:
 		return true
 	}
 	return false

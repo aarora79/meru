@@ -42,6 +42,10 @@ const (
 	// oldest first, in Queue. Notice says what just happened to the
 	// queue, such as "Dropped 2 queued questions."
 	KindQueue = "queue"
+	// KindAttachments carries the files attached to the next question,
+	// in Attachments. Notice names any file a pick or drop couldn't
+	// attach, and why.
+	KindAttachments = "attachments"
 )
 
 // Update is one message from the Bridge to the page. Only the fields its
@@ -68,6 +72,8 @@ type Update struct {
 	Error   string         `json:"error,omitempty"`
 	Stopped bool           `json:"stopped,omitempty"`
 	Notice  string         `json:"notice,omitempty"`
+	// Attachments is set on a KindAttachments Update.
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // Step is one tool call as the work strip shows it: a friendly Label, and

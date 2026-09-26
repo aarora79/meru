@@ -275,10 +275,20 @@ looks:
 | Web | uses only web search and web pages |
 | Just talk | answers from the model alone: no search, no tools |
 
-**Attach a file.** The paperclip opens a file dialog. Meru reads the file with its
-file tools, so the file must sit in a folder it indexes or in its output folder,
-`~/meru-output`; for any other file, the app says to add its folder in the
-Library. The question then ends with "Read this file: ~/Notes/lisbon.md".
+**Attach files.** The paperclip opens a file dialog where you can pick one or more
+files from any folder. You can also drop files from Finder anywhere on the chat;
+"Drop to attach" covers the chat while they hover. `merud` copies each file into
+`~/meru-output/uploads/`, where Meru's file tools read, and each one shows as a
+chip above the text box with its name and size; the x takes it off. The question
+then ends with a line per file, such as "Read this file:
+~/meru-output/uploads/garden-plan.pdf". A question takes five files at most.
+
+`merud` won't take a folder, a shortcut (a symbolic link), a file over 50 MiB, a
+file Meru can't read, such as an image or an archive, or a file whose name looks
+like it holds a key or a password, such as `.env`, `server.pem` or `id_ed25519`.
+The line under the text box names each file that stayed out, and why. Attaching
+needs `read_file`, which stays off until Meru indexes at least one folder. A
+removed chip keeps its copy; clear `~/meru-output/uploads/` whenever you like.
 
 **Approvals.** When Meru wants to run a tool that asks first, an amber card shows
 up inside the answer with the tool and its arguments, a mail's To, Subject and Body
