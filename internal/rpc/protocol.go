@@ -99,10 +99,12 @@ const (
 	// config.toml, then reloads the tools. The reply is one "connections"
 	// event and "done".
 	OpToolPolicy Op = "tool_policy"
-	// OpMCPAdd adds the catalog server named Request.ID to config.toml and
-	// reloads the MCP servers. Any API key the server needs must be in
-	// secrets.toml first; OpSecretSet saves it. The reply is one
-	// "connections" event and "done".
+	// OpMCPAdd adds an MCP server to config.toml and reloads the MCP
+	// servers. Request.ID names a catalog server, whose API key, if it
+	// needs one, must be in secrets.toml first; OpSecretSet saves it. Or
+	// Request.Custom describes a server of the user's own, which gets no
+	// tools until the user turns them on. The reply is one "connections"
+	// event and "done".
 	OpMCPAdd Op = "mcp_add"
 	// OpMCPRemove takes the MCP server named Request.ID out of config.toml
 	// and reloads the MCP servers. The reply is one "connections" event
@@ -178,6 +180,9 @@ type Request struct {
 	// Policy is the change OpToolPolicy makes. It is a pointer, as Server
 	// is, so a Request stays comparable with ==, which tests rely on.
 	Policy *PolicyChange `json:"policy,omitempty"`
+	// Custom is the server of the user's own that OpMCPAdd adds, when ID
+	// is empty. A pointer, for the same reason.
+	Custom *CustomServer `json:"custom,omitempty"`
 }
 
 // EventType names what an Event carries.

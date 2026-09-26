@@ -149,12 +149,16 @@ order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
 reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
 tool source tool by tool, `CatalogEntry` and `CatalogNeed` a catalog server and
 what it needs, `FolderInfo` one folder with its file count, and `ModelsInfo` the
-models.
+models. `CustomServer` is a server of the user's own for `mcp_add`, with its
+`EnvVar` list; a variable marked `Secret` carries a value `merud` saves to
+`secrets.toml` and never sends back.
 
-`Request.Policy` is a pointer, as `Request.Server` is. A struct holding a map or a
-slice can't be compared with `==`, and tests compare requests; a pointer keeps
-`Request` comparable. For the same reason `mcp_add` takes no keys: the app saves a
-key with `secret_set` first.
+`Request.Policy` and `Request.Custom` are pointers, as `Request.Server` is. A
+struct holding a map or a slice can't be compared with `==`, and tests compare
+requests; a pointer keeps `Request` comparable. For the same reason `mcp_add` for
+a catalog server takes no keys: the app saves a key with `secret_set` first. A
+server of the user's own can't work that way, because `secret_set` accepts only a
+name config already uses, so its secrets travel inside `Custom`.
 
 ### citation.go
 

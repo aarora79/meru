@@ -488,6 +488,19 @@ marking what config has and which keys `secrets.toml` holds.
   `reloadBuiltin`, which hands `bt.SetLists` the new `[builtin]` lists.
 - `handleMCPAdd` appends a catalog server's block once `secrets.toml` holds its
   key, and reloads. `handleMCPRemove` takes a block out and reloads.
+- When the request carries `Custom`, `handleMCPAdd` hands it to
+  `handleCustomAdd`, the app's form for a server of the user's own. `customEntry`
+  checks it with the rules `meru mcp add stdio` and `meru mcp add http` follow:
+  `catalog.CheckName` for the name, a command or a URL but not both, a URL off
+  this machine only with the "on another computer" tick, and environment
+  variables only for a program `merud` starts. Any program may be the command,
+  `npx` and `uvx` included; only `[[commands]]` entries refuse interpreters. A
+  variable ticked Secret becomes `secret:<server>_<name>` in `config.toml`, and
+  its value goes to `secrets.toml` before the block does, because a reload with a
+  missing secret fails for every server. The block comes from `catalog.Custom`
+  with an empty `allow`, so every tool the server offers shows Off until the user
+  turns it on. `custom_test.go` checks each refusal, that comments survive, and
+  that the secret's value lands in `secrets.toml` and nowhere else.
 - `handleSecretSet` saves a key under a name config or the catalog uses, then
   reloads, and replies with `done` alone, so no key ever comes back.
 

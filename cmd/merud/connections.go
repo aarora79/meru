@@ -1,11 +1,12 @@
 // This file answers the desktop app's connection ops: the list of tool
 // sources with each tool's policy (OpConnections), a policy change
-// (OpToolPolicy), adding and removing a catalog server (OpMCPAdd,
-// OpMCPRemove) and saving an API key (OpSecretSet). Every change is
-// written by merud, to config.toml or secrets.toml, with the same safe
-// edits `meru mcp add` and the configure tool use (internal/catalog and
-// internal/secrets), and then the tools reload. ARCHITECTURE.md, "Desktop
-// app", says why the app never writes these files itself.
+// (OpToolPolicy), adding a catalog server or one of the user's own and
+// removing a server (OpMCPAdd, OpMCPRemove) and saving an API key
+// (OpSecretSet). merud writes every change, to config.toml or
+// secrets.toml, with the same safe edits `meru mcp add` and the configure
+// tool use (internal/catalog and internal/secrets), and then the tools
+// reload. ARCHITECTURE.md, "Desktop app", says why the app never writes
+// these files itself.
 
 package main
 
@@ -364,6 +365,9 @@ func (s *toolService) offers(kind, server, full string) bool {
 // and a url server may not be running yet; the Library shows the server's
 // state after the reload.
 func (s *toolService) handleMCPAdd(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	if req.Custom != nil {
+		return s.handleCustomAdd(ctx, *req.Custom, emit)
+	}
 	e, ok := catalog.Find(req.ID)
 	if !ok {
 		return fmt.Errorf("%q isn't in the catalog; it has %s", req.ID, strings.Join(catalog.Names(), ", "))
@@ -397,6 +401,150 @@ func (s *toolService) handleMCPAdd(ctx context.Context, req rpc.Request, emit fu
 	}
 	s.log.InfoContext(ctx, "mcp server added from the catalog", "server", e.Name)
 	return s.handleConnections(emit)
+}
+
+// handleCustomAdd answers OpMCPAdd for a server of the user's own: the
+// flow `meru mcp add stdio` and `meru mcp add http` run, without the probe.
+// It checks c with customEntry, saves each secret environment variable in
+// secrets.toml, appends the server's block to config.toml with an empty
+// allow list, reloads the MCP servers and replies with the new
+// "connections" event. Deny-by-default holds: every tool the server offers
+// starts off, and the Library lists them after the reload so the user can
+// turn each one on.
+//
+// It refuses what customEntry refuses and a name config already has. The
+// secrets go in before the block, because a reload with a "secret:<name>"
+// that secrets.toml lacks fails for every server.
+func (s *toolService) handleCustomAdd(ctx context.Context, c rpc.CustomServer, emit func(rpc.Event) error) error {
+	err := s.bt.EditConfig(func() error {
+		sec, err := secrets.Load(secrets.Path(s.dir))
+		if err != nil {
+			return err
+		}
+		e, keys, err := customEntry(c, sec)
+		if err != nil {
+			return err
+		}
+		cfg, err := config.Load(s.configPath)
+		if err != nil {
+			return err
+		}
+		for _, srv := range cfg.MCP.Servers {
+			if srv.Name == e.Name {
+				return fmt.Errorf("config already has a server named %q; pick another name", e.Name)
+			}
+		}
+		// slices.Sorted(maps.Keys(keys)) lists the names in order, so the
+		// secrets go in the same order each time.
+		for _, name := range slices.Sorted(maps.Keys(keys)) {
+			if err := secrets.Set(secrets.Path(s.dir), name, keys[name]); err != nil {
+				return err
+			}
+		}
+		if err := catalog.AppendServer(s.configPath, catalog.Block(e)); err != nil {
+			return err
+		}
+		return s.reloadMCP(context.WithoutCancel(ctx))
+	})
+	if err != nil {
+		return err
+	}
+	s.log.InfoContext(ctx, "mcp server of the user's own added", "server", c.Name)
+	return s.handleConnections(emit)
+}
+
+// customEntry turns c into the catalog entry to write, with catalog.Custom,
+// and returns the secrets to save, by name. The secret variable TOKEN of
+// the server notes becomes the secret notes_token, and the entry's env
+// holds "secret:notes_token" in its place. sec says which secrets exist
+// already, for a plain value the user wrote as "secret:<name>".
+//
+// It fails, naming the problem, on a bad server name, on both or neither
+// of command and url, on a command that is a URL, on a url that isn't
+// http or https, on a url off this machine without c.Remote, on
+// environment variables for a url server, on a bad or repeated variable
+// name, on an empty value, and on a "secret:<name>" that secrets.toml
+// lacks. Programs such as npx, uvx and python are fine as the command:
+// `meru mcp add stdio` takes any program, and only [[commands]] entries
+// refuse interpreters (internal/commands).
+func customEntry(c rpc.CustomServer, sec *secrets.Secrets) (catalog.Entry, map[string]string, error) {
+	var none catalog.Entry
+	if err := catalog.CheckName(c.Name); err != nil {
+		return none, nil, err
+	}
+	command, url := strings.TrimSpace(c.Command), strings.TrimSpace(c.URL)
+	switch {
+	case command == "" && url == "":
+		return none, nil, errors.New("give the command that starts the server, or its URL")
+	case command != "" && url != "":
+		return none, nil, errors.New("give a command or a URL, not both")
+	case isWebURL(command):
+		return none, nil, fmt.Errorf("%s is a URL; put it in the URL field", command)
+	case url != "" && !isWebURL(url):
+		return none, nil, fmt.Errorf("the URL %q must start with http:// or https://", url)
+	case url != "" && len(c.Env) > 0:
+		return none, nil, errors.New("environment variables apply only to a server merud starts, not to one at a URL")
+	}
+	target := command
+	if url != "" {
+		target = url
+	}
+	e := catalog.Custom(c.Name, target, c.Args)
+	if e.Remote && !c.Remote {
+		return none, nil, fmt.Errorf("%s isn't on this computer, and each tool call would send your data there; "+
+			"if you mean that, tick %q", url, "This server is on another computer")
+	}
+
+	keys := map[string]string{}
+	for _, v := range c.Env {
+		if !validEnvName(v.Name) {
+			return none, nil, fmt.Errorf("%q isn't a variable name: use letters, digits and _, and don't start with a digit", v.Name)
+		}
+		if _, dup := e.Env[v.Name]; dup {
+			return none, nil, fmt.Errorf("the variable %s appears twice", v.Name)
+		}
+		value := strings.TrimSpace(v.Value)
+		if value == "" {
+			return none, nil, fmt.Errorf("the variable %s has no value", v.Name)
+		}
+		if e.Env == nil {
+			e.Env = map[string]string{}
+		}
+		if v.Secret {
+			name := strings.ToLower(c.Name + "_" + v.Name)
+			if len(name) > 64 {
+				return none, nil, fmt.Errorf("the secret for %s would be named %s, over 64 characters; pick a shorter server name", v.Name, name)
+			}
+			keys[name] = value
+			e.Env[v.Name] = secrets.Prefix + name
+			continue
+		}
+		if ref, ok := secrets.Name(value); ok && !sec.Has(ref) {
+			return none, nil, fmt.Errorf("%s names %s, which secrets.toml doesn't hold; tick Secret and paste the value instead", v.Name, value)
+		}
+		e.Env[v.Name] = value
+	}
+	return e, keys, nil
+}
+
+// isWebURL reports whether s starts with http:// or https://, the test
+// catalog.Custom uses to tell a URL from a program.
+func isWebURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// validEnvName reports whether name is an environment variable name:
+// ASCII letters, digits and '_', not starting with a digit.
+func validEnvName(name string) bool {
+	if name == "" || (name[0] >= '0' && name[0] <= '9') {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // handleMCPRemove answers OpMCPRemove: it takes the server named req.ID

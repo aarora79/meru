@@ -1,8 +1,9 @@
 // This file holds the types of the settings ops the desktop app sends:
 // where a question may look (Scope), each tool's policy and the change
 // OpToolPolicy makes, the tool sources and catalog servers OpConnections
-// lists, the folders OpFolders lists, the two kinds of file OpSaveFile
-// saves, and the models OpModels reports. merud makes every change these
+// lists, the server of the user's own that OpMCPAdd adds, the folders
+// OpFolders lists, the two kinds of file OpSaveFile saves, and the models
+// OpModels reports. merud makes every change these
 // ops ask for; a client only sends the request.
 
 package rpc
@@ -55,6 +56,32 @@ type PolicyChange struct {
 	Server string `json:"server"`
 	Tool   string `json:"tool"`
 	Policy string `json:"policy"`
+}
+
+// CustomServer is an MCP server outside the catalog, as the Library's "Add
+// your own MCP server" form describes it for OpMCPAdd. Exactly one of
+// Command and URL is set: Command, with Args, is a program merud starts
+// (a stdio server), and URL is a Streamable HTTP server the user runs.
+// Remote says the user means a URL on another computer; merud refuses
+// such a URL without it, as `meru mcp add http` refuses one without
+// --remote. Env applies only to a stdio server.
+type CustomServer struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command,omitempty"`
+	Args    []string `json:"args,omitempty"`
+	URL     string   `json:"url,omitempty"`
+	Remote  bool     `json:"remote,omitempty"`
+	Env     []EnvVar `json:"env,omitempty"`
+}
+
+// EnvVar is one environment variable for a custom server. When Secret is
+// true, Value is a secret, such as an API key: merud saves it in
+// secrets.toml and config.toml holds only "secret:<name>". merud never
+// sends a secret back.
+type EnvVar struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Secret bool   `json:"secret,omitempty"`
 }
 
 // Connection is one tool source as the app's Library shows it: an MCP
