@@ -1,7 +1,8 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
-// search_files in search.go, and web_search and web_fetch in web.go, webguard.go and webdownload.go.
+// AttachmentText in attachments.go, search_files in search.go, and
+// web_search and web_fetch in web.go, webguard.go and webdownload.go.
 
 package builtin
 

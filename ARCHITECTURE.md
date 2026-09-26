@@ -700,12 +700,14 @@ order.
       the outcome is `declined`.
    4. **Call.** The MCP server, A2A agent, built-in tool or local command runs,
       under its own timeout. The outcome is `ok`, `error`, `timeout` or
-      `cancelled`.
+      `cancelled`. When an MCP or A2A call ends `ok` and its result names a mail
+      attachment the call saved, `dispatch` adds the file's path and text to the
+      result (see [Adding an MCP server](#adding-an-mcp-server)).
    5. **Record.** `dispatch` removes secret values from the arguments, the result
       and any error text, then writes the `tool_result` line, the `tool_calls` row,
       the metrics and the `meru.dispatch` span. The model reads up to 16,000
       characters of the result, with a note when `dispatch` cut it; the transcript
-      and the row keep 4,000.
+      and the row keep 4,000 of the same text, attachment included.
 
    No other code path reaches a server, agent, built-in tool or local command. The calls of one
    round run at the same time (`errgroup`), and each sends its `tool_result` event
@@ -1677,9 +1679,18 @@ keeps the local one.
 
 `get_gmail_attachment_content` saves the attachment as a file and returns its
 name, not its text. `WORKSPACE_ATTACHMENT_DIR` points the server at
-`~/meru-output/attachments`, inside the output folder the file tools read, so the
-model calls `read_file` with the saved filename next, and a PDF comes back page
-by page. The server deletes each saved file after an hour. The model reaches the
+`~/meru-output/attachments`, inside the output folder the file tools read. In
+testing, a model left to open the file itself failed: it downloaded one PDF four
+times, guessed the wrong folder and ran out of rounds. So `dispatch` reads it.
+When an MCP or A2A result names, word for word, a file in the attachments folder
+that changed after the call began, `dispatch` adds to that result a line with the
+file's path, then its text. It reads with `read_file`'s rules, a PDF page by
+page, up to `read_file`'s 12,000 characters or the room the result leaves under
+16,000. A longer file ends with the offset for `read_file`. A file Meru won't
+read, such as a symlink, gets the path line and the reason. One result gets at
+most two files. The time rule keeps out an older attachment that a result
+happens to name. With no `[index]` folder the file tools are off, and so is
+this. The server deletes each saved file after an hour. The model reaches the
 file on disk, with no network call: the server's download URL is on loopback,
 and `web_fetch` refuses loopback.
 

@@ -356,6 +356,46 @@ agent offers them, with `datetime` and the commands that don't ask, on the
 `search` route. It also uses `IsFileTool` to decide when the prompt gets the
 note on using them: only on a turn about the user's files that offers one.
 
+### attachments.go
+
+`get_gmail_attachment_content` saves a mail's attachment and reports its name.
+In a real turn the model then failed to open it: it downloaded the same PDF four
+times, looked in `~/meru-output/downloads`, made up a tool and an attachment ID,
+found the file with `list_folder` in its last round and ran out of rounds.
+
+`AttachmentText` takes that step off the model. `dispatch` calls it, through
+`Options.Attachments`, for every MCP or A2A call that ends `ok`, with the
+result's text and the time the call began. It lists `<output_dir>/attachments/`
+with `os.ReadDir` and keeps a file when two things hold:
+
+- its name appears in the result word for word (`strings.Index`). The rule knows
+  nothing of Google's wording, so another server that saves there works too;
+- its modified time is no earlier than the call's start, less two seconds.
+  Only a file the call wrote counts, so an old attachment that some later
+  result names stays out. The two seconds cover file systems that keep
+  modified times in whole seconds. A window of "the last few minutes" would
+  need a number to tune and would let a second, unrelated call pick up the
+  same file.
+
+It keeps at most two files, in the order the result names them. For each,
+`attachment` writes a line with the path in the `~` form `read_file` takes,
+such as `Saved at ~/meru-output/attachments/folio_3f2a.pdf.`, then a
+`--- Meru read <name> (N of M characters) ---` line and the text. A longer
+file ends with the offset to pass `read_file`. The path line comes first and
+comes always: for a file Meru won't read, such as a symbolic link or a zip, the
+block is that line and the reason, so the model can still name or open the file.
+
+The reading goes through `index.Indexer.Check` and `ReadText`, the calls
+`read_file` makes, so every rule holds: no symlinks, the size cap, PDFs page by
+page. `joinPages` numbers the pages as `read_file` does. The text is at most
+12,000 characters, `read_file`'s page, and less when the result is long: the
+files share what the result leaves under `dispatch.MaxModelResult`, less 600
+characters each for their lines, so `dispatch`'s cut never drops the line that
+says how to read on.
+
+With no `[index] folders`, `merud` passes no indexer, the file tools are off,
+and `AttachmentText` returns "".
+
 ### search.go
 
 `search_files` needs the store and the embedding model, which live in `merud`.
@@ -673,6 +713,16 @@ still refuses an absolute path and `..` and still asks first, that
 `search_files` doesn't name the output folder, and that `read_file`'s
 description mentions the saved filename.
 
+`TestAttachmentText` sends a fake MCP tool's call through a real
+`dispatch.Dispatcher` with `AttachmentText` wired in. The tool saves files in
+the attachments folder during the call and names them in its result. The table
+covers a fresh PDF (path line and both pages), an old one (nothing), a name the
+folder lacks (nothing), a symbolic link and a zip (the path line and the
+reason), a long file cut at 12,000 characters with the offset line, a long
+result that leaves less room, and three names of which only two get read. For
+the cases with one readable file it also calls `read_file` on the same file
+and checks that a built-in's result gets nothing added.
+
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
 the ten names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
@@ -749,6 +799,11 @@ tool stays off without a searcher or without `[index] folders`.
 - **Ask about URLs, not pages.** Blocking bad pages would need a list nobody can
   keep. A URL the user or a search showed can't carry anything the model
   learned, so those run freely, and everything else asks.
+- **Attachment text through dispatch, not around it.** `AttachmentText` reads
+  the file inside the call the model made, so the text lands in that call's
+  `tool_result` line and row, with secrets redacted, and no extra call appears
+  that the model never asked for. The other choice, a prompt line telling the
+  model to call `read_file` next, had already failed in testing.
 - **A per-call hook in dispatch, not a second path.** `ConfirmCall` changes only
   the answer to "does this call ask?". The call still goes through `Dispatch`,
   with its transcript lines, row, metrics and span.

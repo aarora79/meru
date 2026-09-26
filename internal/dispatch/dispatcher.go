@@ -29,11 +29,16 @@ import (
 	"github.com/aarora79/meru/internal/transcript"
 )
 
-// maxModelResult caps, in characters, the result text the model reads. A
+// MaxModelResult caps, in characters, the result text the model reads. A
 // tool can return a whole web page or a long file; 16,000 characters is
 // about 4,000 tokens, which leaves room in the prompt for the rest of the
 // turn.
-const maxModelResult = 16000
+const MaxModelResult = 16000
+
+// Exported names start with a capital letter; other packages can use
+// MaxModelResult. The built-in tools size the attachment text they add to
+// a result by it, so the cut below never drops the line that tells the
+// model how to read on.
 
 // maxLoggedResult caps the result text in the transcript and the
 // tool_calls row. The full text goes to the model; the log keeps enough to
@@ -58,6 +63,13 @@ type Options struct {
 	// Log gets a warning when a write fails and a debug line per call.
 	// nil discards them.
 	Log *slog.Logger
+	// Attachments returns text to add to the result of an MCP or A2A call
+	// that ran and succeeded, given the result's text and the time the call
+	// began; "" adds nothing. The built-in tools supply it: it reads a mail
+	// attachment that the call saved and the result names, so the model
+	// gets the text without a second call (ARCHITECTURE.md, "Adding an MCP
+	// server"). nil adds nothing.
+	Attachments func(text string, since time.Time) string
 }
 
 // Dispatcher runs tool calls on the backends that own them and records each
@@ -67,6 +79,7 @@ type Dispatcher struct {
 	rec    Recorder
 	redact func(string) string
 	log    *slog.Logger
+	attach func(text string, since time.Time) string // Options.Attachments; may be nil
 
 	// mu guards the two fields below it.
 	mu       sync.Mutex
@@ -93,6 +106,7 @@ func New(backends []Backend, rec Recorder, opts Options) *Dispatcher {
 		rec:      rec,
 		redact:   opts.Redact,
 		log:      opts.Log,
+		attach:   opts.Attachments,
 		backends: slices.Clone(backends),
 		approved: map[approvalKey]bool{},
 	}
@@ -206,7 +220,9 @@ func (d *Dispatcher) find(name string) Backend {
 //  3. asks the user when the tool, or this one call, needs a yes (see
 //     confirmFor and approve);
 //  4. runs the call on the backend, which enforces its own timeout, with
-//     the call's session on ctx (see SessionFrom);
+//     the call's session on ctx (see SessionFrom), and, for an MCP or A2A
+//     call that succeeded, adds the text of any attachment it saved (see
+//     Options.Attachments);
 //  5. cuts the result for the model and removes secrets from it;
 //  6. writes the tool_result line, for every call, whatever its outcome;
 //  7. writes the tool_calls row;
@@ -261,6 +277,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		res = Result{IsError: true, Text: "Meru couldn't record this call in the session transcript, so it didn't run."}
 	default:
 		res, outcome, approval, ran = d.run(ctx, c, b, kind, server, tool, args)
+	}
+
+	// Step 4, the attachment. It comes before the redaction and the cuts,
+	// so the transcript and the row record the result as the model reads
+	// it, and a secret in the attachment goes too. Built-in tools and
+	// local commands are left out: they don't save mail attachments, and
+	// read_file must return only the page it was asked for.
+	if d.attach != nil && outcome == OutcomeOK && (kind == KindMCP || kind == KindA2A) {
+		res.Text += d.attach(res.Text, start)
 	}
 
 	// Step 5. Redact first, so a secret that straddles the cut still goes.
@@ -509,15 +534,15 @@ func guessLocation(name string) (kind, server, tool string) {
 	return KindBuiltin, "meru", capRunes(name, maxDeniedName)
 }
 
-// capForModel cuts text to maxModelResult characters and, when it cut
+// capForModel cuts text to MaxModelResult characters and, when it cut
 // anything, adds a line saying so, so the model knows the result goes on.
 func capForModel(text string) string {
 	n := utf8.RuneCountInString(text)
-	if n <= maxModelResult {
+	if n <= MaxModelResult {
 		return text
 	}
-	return capRunes(text, maxModelResult) +
-		fmt.Sprintf("\n[Meru cut this result: it showed the first %d of %d characters.]", maxModelResult, n)
+	return capRunes(text, MaxModelResult) +
+		fmt.Sprintf("\n[Meru cut this result: it showed the first %d of %d characters.]", MaxModelResult, n)
 }
 
 // capRunes cuts s to at most n characters. It counts runes, Go's name for

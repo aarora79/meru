@@ -126,7 +126,9 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	s.dispatcher = dispatch.New(
 		[]dispatch.Backend{bt, cmds, mcpBackend{pool: pool}, ac},
 		st,
-		dispatch.Options{Redact: s.redact, Log: log},
+		// Attachments hands dispatch the text of a mail attachment that an
+		// MCP or A2A call saved, read by read_file's rules.
+		dispatch.Options{Redact: s.redact, Log: log, Attachments: bt.AttachmentText},
 	)
 
 	n, err := st.ReplayToolCalls(ctx, filepath.Join(cfg.Dir, "sessions"))

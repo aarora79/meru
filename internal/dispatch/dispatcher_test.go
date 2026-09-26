@@ -466,7 +466,7 @@ func TestBadArgsStillEncode(t *testing.T) {
 }
 
 func TestResultCaps(t *testing.T) {
-	long := strings.Repeat("ü", maxModelResult+500)
+	long := strings.Repeat("ü", MaxModelResult+500)
 	b := &fakeBackend{kind: KindMCP, tools: []string{"web.fetch"},
 		call: func(context.Context) (Result, error) { return Result{Text: long}, nil }}
 	rec := &fakeRecorder{}
@@ -475,8 +475,8 @@ func TestResultCaps(t *testing.T) {
 
 	res, _ := d.Dispatch(context.Background(), newCall("web.fetch", tr, nil))
 
-	if !strings.HasPrefix(res.Text, strings.Repeat("ü", maxModelResult)+"\n[Meru cut") {
-		t.Errorf("model result isn't cut at %d characters with a note", maxModelResult)
+	if !strings.HasPrefix(res.Text, strings.Repeat("ü", MaxModelResult)+"\n[Meru cut") {
+		t.Errorf("model result isn't cut at %d characters with a note", MaxModelResult)
 	}
 	if !strings.Contains(res.Text, "16000 of 16500") {
 		t.Errorf("cut note = %q, want it to give both lengths", res.Text[len(res.Text)-80:])
@@ -492,6 +492,60 @@ func TestResultCaps(t *testing.T) {
 	b.call = func(context.Context) (Result, error) { return Result{Text: "short"}, nil }
 	if res, _ := d.Dispatch(context.Background(), newCall("web.fetch", &sink{}, nil)); res.Text != "short" {
 		t.Errorf("short result = %q", res.Text)
+	}
+}
+
+// TestAttachments checks that Options.Attachments adds its text to MCP and
+// A2A results that succeed, and to nothing else, and that the transcript
+// and the row record the result with the text added and secrets removed.
+func TestAttachments(t *testing.T) {
+	tests := []struct {
+		name  string
+		kind  string
+		tool  string
+		fail  bool // the tool reports an error
+		added bool
+	}{
+		{"mcp", KindMCP, "google.get_gmail_attachment_content", false, true},
+		{"a2a", KindA2A, "a2a.mail.fetch", false, true},
+		{"built-in", KindBuiltin, "read_file", false, false},
+		{"command", KindCommand, "cmd.git_log", false, false},
+		{"mcp error", KindMCP, "google.get_gmail_attachment_content", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBackend{kind: tt.kind, tools: []string{tt.tool},
+				call: func(context.Context) (Result, error) {
+					return Result{Text: "Saved filename: folio.pdf", IsError: tt.fail}, nil
+				}}
+			var got time.Time
+			attach := func(text string, since time.Time) string {
+				got = since
+				return "\n\nSaved at ~/meru-output/attachments/folio.pdf. Room 214, key hunter2."
+			}
+			redact := func(s string) string { return strings.ReplaceAll(s, "hunter2", "[secret]") }
+			rec := &fakeRecorder{}
+			d := New([]Backend{b}, rec, Options{Attachments: attach, Redact: redact})
+			tr := &sink{}
+			before := time.Now()
+			res, _ := d.Dispatch(context.Background(), newCall(tt.tool, tr, nil))
+
+			has := strings.Contains(res.Text, "Room 214")
+			if has != tt.added {
+				t.Fatalf("result = %q; attachment added = %v, want %v", res.Text, has, tt.added)
+			}
+			if !tt.added {
+				return
+			}
+			if got.Before(before.Add(-time.Second)) || got.After(time.Now()) {
+				t.Errorf("since = %v, want the time the call began", got)
+			}
+			for where, text := range map[string]string{"model": res.Text, "transcript": tr.lines[1].Result, "row": rec.rows[0].Result} {
+				if !strings.Contains(text, "Room 214, key [secret].") {
+					t.Errorf("%s result = %q, want the attachment text with the secret removed", where, text)
+				}
+			}
+		})
 	}
 }
 
