@@ -866,21 +866,17 @@ columns since the link opened form its span. A click inside the span returns the
 That works for answer links (links.go) and for Sources lines (view.go) alike, since
 both use `rpc.Hyperlink`.
 
-`openLink` checks the URL with `checkOpenable`: `http`, `https` or `file`, by the
-same `linkable` rule links.go uses, and nothing that starts with `-`. The opener
-gets the URL as an argument, and a program reads an argument that starts with `-` as
-an option. A refused URL gets a notice and no command. Otherwise `openLink` returns
-a command, as `copyBlock` does, so the program starts off the loop that draws the
-screen. The command reports back with an `openedMsg`, whose `notice` reads
-`opened mail.google.com/…`, shortened by `shortURL`, or the error.
+`openLink` checks the URL with `opener.Check`: `http`, `https` or `file`, and
+nothing that starts with `-`. The opener gets the URL as an argument, and a program
+reads an argument that starts with `-` as an option. A refused URL gets a notice
+and no command. Otherwise `openLink` returns a command, as `copyBlock` does, so the
+program starts off the loop that draws the screen. The command reports back with
+an `openedMsg`, whose `notice` reads `opened mail.google.com/…`, shortened by
+`shortURL`, or the error.
 
-`systemOpen` runs what `openCommand` picks for `runtime.GOOS`: `open URL` on macOS,
-`xdg-open URL` on Linux and the rest, and `rundll32 url.dll,FileProtocolHandler URL`
-on Windows. `openCommand` takes the system's name as a parameter, so one test checks
-all three on any machine. `exec.CommandContext` starts the program with no shell and
-the URL as one argument, so nothing in the URL can run as a command. Its output
-stays unset, so `Run` doesn't wait on a browser the opener leaves running, and a
-ten-second timeout stops an opener stuck without a display.
+The opening itself lives in `internal/opener`, which the desktop app shares:
+`opener.Open` starts `open`, `xdg-open` or `rundll32` with no shell and the URL as
+one argument ([opener](opener.md) explains it).
 
 The model holds the opener as `m.open`. `testModel` sets one that fails, and
 open_test.go swaps in `fakeOpener`, which records the URL, so no test starts a
@@ -1116,9 +1112,8 @@ with links on, that links off writes none and shows the URL, and that both hold
 after a resize.
 
 `open_test.go` checks `linkAt` column by column on a line with two links, colour
-codes and a wide rune, and on broken lines. It checks which URLs `checkOpenable`
-lets through, the command `openCommand` builds for macOS, Linux, FreeBSD and
-Windows, and both notices. Through the whole model, with `fakeOpener`, it clicks
+codes and a wide rune, and on broken lines, and both notices; `internal/opener`
+tests which URLs open and the command each system runs. Through the whole model, with `fakeOpener`, it clicks
 the mail link in an answer with `mouse_copy` on and off, clicks plain text, and
 clicks a Sources line, which opens its `file://` URL.
 
