@@ -236,6 +236,12 @@ reusing its work on the prompt's opening.
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.
 
+The desktop app can add or remove a folder while `merud` runs, so `merud` calls
+`UseFolders` with a function that returns the folders as they are now. Each turn
+then builds the note and the names from it, through `currentFilesNote` and
+`currentFolderNames`. The note's text changes only when the folders do, so Ollama
+still reuses its work on the prompt's opening.
+
 ### The profile section (profile.go)
 
 `New` keeps the configured prompt with `whoIsWho` in `a.system`, and the files
@@ -330,6 +336,11 @@ Things you remember that may matter here:
   apart from the numbered excerpts, so the model never cites a memory as a file.
 - **A failure is a warning.** When recall fails, the turn goes on without the
   section.
+- **The client hears which.** `memorySection` also returns the memories the
+  section holds, from `formatMemories`' third result, `kept`. `finishPrompt` sends
+  them as a `memories` event before the prompt goes to the model, so the desktop
+  app can list them under Remembered with a Forget button. A turn that recalled
+  nothing sends no event.
 
 **One metric for both sections.** `prompt` records the profile and the recalled
 memories together as `meru.context.tokens` with section `memories`, through
@@ -491,6 +502,37 @@ Widening from `direct` to `tools` would normally make the turn a file turn
 tools shouldn't do that, so `fileTurn` changes only when the added tools
 include a file tool. `slices.ContainsFunc` reports whether any item passes the
 function.
+
+### Scopes (scope.go)
+
+The desktop app's "Where Meru looks" switch sends `Request.Scope`. `Handle` checks
+it with `scopeOf`, which turns `""` into `auto` and refuses any value outside
+`rpc.Scopes()`: the scope goes into the turn's log line and span, and those take
+only a small fixed set of values.
+
+`respond` hands a turn whose scope isn't `auto` to `respondScoped`, which skips
+the router:
+
+| Scope | Route (`scopeRoute`) | Searches first | Tools (`scopeSpecs`) |
+| --- | --- | --- | --- |
+| `files` | `search` | yes | `toolSpecs("search")` |
+| `mail` | `tools` | no | every tool of the servers `mailServers` picks, and `datetime` |
+| `web` | `tools` | no | `web_search`, `web_fetch`, `datetime` |
+| `talk` | `direct` | no | none |
+
+The route rules that widen a route stay out, and so do a picked skill's tools: a
+scope promises what the turn may touch. Skills are still picked, since the
+writing skill shapes an answer without a tool. The `route` event carries
+confidence 1, because nothing guessed.
+
+`mailServers` groups the tools by server (`serverOf`) and keeps a server when one
+of its tool names holds a noun ending in "mail", or "calendar" or "event", read
+with `toolNouns`, the same nouns the router's prompt lists. The google server
+qualifies through `search_gmail_messages`, and its Drive tools come along;
+obsidian doesn't.
+
+Both paths end in `finishPrompt`: recall, the `memories` event, the prompt, and
+the rounds.
 
 ### Handle
 

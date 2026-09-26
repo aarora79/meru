@@ -1,7 +1,7 @@
 # CI: format, vet, lint, module hygiene, tests with coverage on Linux and
-# macOS, a cross-compile for every release platform, and the end-to-end
-# tests. docs/ci.md explains each check and how to run it locally; most steps
-# call a Makefile target so local runs and CI stay the same.
+# macOS, a cross-compile for every release platform, the desktop app on macOS,
+# and the end-to-end tests. docs/ci.md explains each check and how to run it
+# locally; most steps call a Makefile target so local runs and CI stay the same.
 
 name: ci
 
@@ -94,6 +94,24 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: go build -trimpath -o "bin/${GOOS}-${GOARCH}/" ./cmd/...
+
+  # The desktop app uses Wails v3, which needs cgo and the system WebView,
+  # so it builds on the machine that runs it, and only on macOS for now.
+  # Linux (WebKitGTK) and Windows (WebView2) get jobs of their own later.
+  desktop:
+    name: desktop app (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: make desktop
+        run: make desktop
+      - name: vet, staticcheck and govulncheck with the desktop tags
+        run: make desktop-check
 
   e2e:
     name: end-to-end

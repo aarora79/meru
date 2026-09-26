@@ -103,6 +103,10 @@ func TestToolsAreNamespacedAndFiltered(t *testing.T) {
 			if !slices.Equal(s.Unknown, []string{"missing"}) {
 				t.Errorf("Status().Unknown = %v, want [missing]", s.Unknown)
 			}
+			// OfferedTools names every tool, allowed or not, by name.
+			if len(s.OfferedTools) != 8 || !slices.IsSortedFunc(s.OfferedTools, func(a, b Tool) int { return strings.Compare(a.Name, b.Name) }) {
+				t.Errorf("Status().OfferedTools = %+v, want 8 tools by name", s.OfferedTools)
+			}
 		})
 	}
 }

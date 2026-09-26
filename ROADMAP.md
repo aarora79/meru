@@ -101,6 +101,28 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 
 **Done when:** it recalls something from last week without a reminder.
 
+## Desktop app
+
+The owner asked for this now, ahead of v0.5. It is a client, so it needs nothing
+from a later milestone.
+
+- [x] `meru-desktop`: a Wails v3 window over the same socket, built with
+  `make desktop`, outside the cgo-free build; CI builds it on macOS
+- [x] The chat screen: past chats grouped by day with search, `merud`'s status,
+  a work strip per answer, streamed answers rendered as sanitized Markdown,
+  source chips, Copy and Try again, the stats line, the queue and Stop
+- [x] Approvals as a card inside the answer, with a mail's fields laid out
+- [x] "What this answer used": sources, tool calls and who they contacted
+- [x] `sessions` and `session_turns` ops, read from the transcripts
+- [ ] The Library screen: each connection with Off, Ask and Allow
+- [ ] First run in the app
+- [ ] A switch for where Meru looks (needs a route override in `merud`)
+- [ ] Attachments by drag and drop
+- [ ] Linux (WebKitGTK) and Windows (WebView2) builds in CI
+
+**Done when:** you open the app, ask a question that uses a tool, approve it in
+the answer, and reopen the chat the next day to carry on.
+
 ## v0.5 — It acts unprompted
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
@@ -110,7 +132,7 @@ three rounds, the turn took 8.3 s, and `meru log` showed both rows.
 
 ## Later, maybe
 - Voice: local speech-to-text, text-to-speech and a wake word
-- Menu-bar companion app
+- Menu-bar companion app, next to the desktop app
 - A larger escalation model loaded on demand, with clean eviction
 - `LlamaCppEngine`: llama.cpp embedded via cgo, no Ollama needed
 - `MLXEngine`, if Go bindings become practical

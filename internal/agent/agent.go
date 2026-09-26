@@ -143,7 +143,10 @@ type Agent struct {
 	turnTimeout time.Duration // how long one turn may run; see Handle
 	agentic     bool          // [index] retrieval = "agentic": no search before the answer
 	models      config.Models
-	folderNames []string     // last part of each [index] folder, lower case; see namesFolder
+	folderNames []string // last part of each [index] folder, lower case; see namesFolder
+	// folders, when set by UseFolders, returns the [index] folders as they
+	// are now, and a turn builds folderNames and filesNote from it.
+	folders     func() []string
 	historyN    int          // earlier turns to put in the prompt
 	system      string       // system prompt, with whoIsWho and honestyRule; the profile follows it
 	outputDir   string       // [skills] output_dir as the model reads it, such as ~/meru-output
@@ -256,6 +259,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err != nil {
 		return err
 	}
+	scope, err := scopeOf(req.Scope)
+	if err != nil {
+		return err
+	}
 
 	ctx, span := obs.Tracer().Start(ctx, "meru.turn")
 	var route, sessionID string
@@ -266,7 +273,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// unbacked is true when the answer claims an action no tool took.
 	var unbacked bool
 	// t carries what the rounds need; its rounds field counts model calls.
-	t := &turn{emit: emit, approve: approve}
+	t := &turn{emit: emit, approve: approve, scope: scope}
 	defer func() {
 		outcome := outcomeOf(ctx, err)
 		if err == nil && ended != "" {
@@ -275,6 +282,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		span.SetAttributes(
 			attribute.String("meru.route", route),
 			attribute.String("meru.source", source),
+			attribute.String("meru.scope", scope),
 			attribute.String("meru.session.id", sessionID),
 			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.Int("meru.turn.repeated_calls", t.repeats),
@@ -291,7 +299,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			Route: route, Source: source, Outcome: outcome,
 			Duration: time.Since(start), Iterations: t.rounds,
 		})
-		a.logTurn(ctx, start, sessionID, route, source, outcome, unbacked, rep, err)
+		a.logTurn(ctx, start, sessionID, route, source, scope, outcome, unbacked, rep, err)
 	}()
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.question", question))
@@ -410,6 +418,9 @@ type response struct {
 // user already read.
 func (a *Agent) respond(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
+	if t.scope != rpc.ScopeAuto {
+		return a.respondScoped(ctx, t, question, history)
+	}
 	dec, picked, err := a.routeAndPick(ctx, question, history)
 	if err != nil {
 		return res, err
@@ -418,7 +429,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// own projects: "what database does meru use" can look like general
 	// knowledge. When a direct question names an indexed folder, search
 	// anyway. A wrong guess costs one search of about 50 ms.
-	if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+	if dec.Route == "direct" && a.search != nil && namesFolder(question, a.currentFolderNames()) {
 		a.log.DebugContext(ctx, "route changed to search: the question names an indexed folder",
 			"confidence", dec.Confidence)
 		dec.Route = "search"
@@ -514,7 +525,21 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 		a.tools.Refresh(ctx)
 		specs = a.toolSpecs(dec.Route)
 	}
-	memories := a.memorySection(ctx, searchQuery(question, history))
+	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, specs, fileTurn)
+	return res, err
+}
+
+// finishPrompt does the end of a turn that respond and respondScoped
+// share: recall the memories that fit the question and tell the client
+// which ones, build the prompt, and run the rounds.
+func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
+	picked pickedSkills, files string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
+	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
+	if len(recalled) > 0 {
+		if err := t.emit(rpc.Event{Type: rpc.EventMemories, Memories: recalled}); err != nil {
+			return reply{}, err
+		}
+	}
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
@@ -523,8 +548,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
-	res.rep, err = a.converse(ctx, t, msgs, specs)
-	return res, err
+	return a.converse(ctx, t, msgs, specs)
 }
 
 // How a turn can end without a full answer. Each is a value of the turn's
@@ -656,17 +680,18 @@ func (a *Agent) logStart(ctx context.Context, session, source, question string) 
 	a.log.DebugContext(ctx, "turn started", args...)
 }
 
-// logTurn writes the one info line each turn gets. ttft_ms counts from when
-// Handle started to the first token of the answer, so it includes routing;
-// it is 0 when no text arrived. unbacked_claim joins the line, set to true,
-// only when the answer claimed an action no tool took (see claimsAction).
-// err joins the line only when the turn failed.
-func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, outcome string, unbacked bool, rep reply, err error) {
+// logTurn writes the one info line each turn gets. scope is where the
+// user let the turn look, one of the rpc.Scope constants. ttft_ms counts
+// from when Handle started to the first token of the answer, so it
+// includes routing; it is 0 when no text arrived. unbacked_claim joins the
+// line, set to true, only when the answer claimed an action no tool took
+// (see claimsAction). err joins the line only when the turn failed.
+func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, scope, outcome string, unbacked bool, rep reply, err error) {
 	var ttft int64
 	if !rep.firstToken.IsZero() {
 		ttft = rep.firstToken.Sub(start).Milliseconds()
 	}
-	args := []any{"session", sessionID, "route", route, "source", source,
+	args := []any{"session", sessionID, "route", route, "source", source, "scope", scope,
 		"outcome", outcome, "ms", time.Since(start).Milliseconds(), "ttft_ms", ttft,
 		"tokens_in", rep.usage.PromptTokens, "tokens_out", rep.usage.OutputTokens}
 	if unbacked {
@@ -1006,7 +1031,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	// Show each path as ~/... to the model and to the client: it is shorter,
 	// and the model has no use for the full path.
 	for i := range results {
-		results[i].Path = shortPath(a.home, results[i].Path)
+		results[i].Path = rpc.ShortPath(a.home, results[i].Path)
 	}
 	section := noResults
 	if web {
@@ -1032,12 +1057,12 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 
 // displayDir returns dir, a folder from config such as "~/meru-output", as
 // the model should read it: as config wrote it when it starts with "~",
-// and otherwise shortened by shortPath. It returns "" for "".
+// and otherwise shortened by rpc.ShortPath. It returns "" for "".
 func displayDir(home, dir string) string {
 	if dir == "" || strings.HasPrefix(dir, "~") {
 		return dir
 	}
-	return shortPath(home, filepath.Clean(dir))
+	return rpc.ShortPath(home, filepath.Clean(dir))
 }
 
 // canDo returns canDoNote for every tool config allows, or for none when
@@ -1048,19 +1073,6 @@ func (a *Agent) canDo() string {
 		all = a.tools.Tools()
 	}
 	return canDoNote(all, a.outputDir)
-}
-
-// shortPath writes p under the home folder as ~/..., using the OS's path
-// separator. Any other path, or any path when home is "", stays as it is.
-func shortPath(home, p string) string {
-	if home == "" {
-		return p
-	}
-	rel, err := filepath.Rel(home, p)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return p
-	}
-	return "~" + string(filepath.Separator) + rel
 }
 
 // prompt builds the messages for the main model inside a meru.prompt span,
@@ -1100,7 +1112,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	add(a.machine)
 	profile := a.profileSection(ctx)
 	add(profile)
-	add(a.filesNote)
+	add(a.currentFilesNote())
 	add(a.canDo())
 	add(sec.toolsNote)
 	add(sec.skillList)
@@ -1237,11 +1249,24 @@ func sourceOf(s rpc.Source) (string, error) {
 	switch s {
 	case "":
 		return string(rpc.SourceCLI), nil
-	case rpc.SourceCLI, rpc.SourceTUI, rpc.SourceJob:
+	case rpc.SourceCLI, rpc.SourceTUI, rpc.SourceJob, rpc.SourceDesktop:
 		return string(s), nil
 	default:
 		return "", fmt.Errorf("unknown source %q", s)
 	}
+}
+
+// scopeOf checks the request's scope and returns it. An empty scope means
+// rpc.ScopeAuto. Any other value is refused, because the scope goes in the
+// turn's log line and span, which must hold a small fixed set.
+func scopeOf(s string) (string, error) {
+	if s == "" {
+		return rpc.ScopeAuto, nil
+	}
+	if slices.Contains(rpc.Scopes(), s) {
+		return s, nil
+	}
+	return "", fmt.Errorf("unknown scope %q; use one of %s", s, strings.Join(rpc.Scopes(), ", "))
 }
 
 // outcomeOf turns a turn's error into the outcome metric value.

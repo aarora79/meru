@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -213,6 +213,26 @@ their indexes) in step with the transcripts, at three moments:
 errgroup's fourth job: a pass at once, then one a minute, until `merud` stops.
 See [summarize](summarize.md).
 
+### merud: history.go
+
+This file answers the two ops the desktop app uses for past chats. The handler
+sends `sessions` and `session_turns` to a `historyService`, which holds the
+sessions folder and the home folder.
+
+- `handleSessions` calls `transcript.List`, 200 sessions at most by default, and
+  writes each time in RFC 3339.
+- `handleTurns` opens the session with `transcript.Open`, which checks the ID's
+  shape, so a client can't name a file outside the folder. `turnsOf` then walks
+  the lines once: a user line starts a turn, a `tool_call` line adds a step and
+  remembers its index by call ID in a map, the matching `tool_result` line fills in
+  the outcome and time, and the assistant line adds the answer, the route, the
+  notice the user read under it, if any, and the sources, shortened to `~/...`
+  with `rpc.ShortPath`. The line's `Notice` field comes with #29; this branch
+  adds the same field, word for word, so the desktop app can show the note again
+  when a chat reopens.
+
+Both read the files, never `meru.db`, so deleting the database loses no chat.
+
 ### merud: memory.go
 
 `memoryService` answers the three ops that `meru memory` and `meru setup user`
@@ -292,6 +312,11 @@ The service answers three ops:
 | `skills` | every loaded skill, with `Builtin` from `skills.IsBuiltin` and `Edited` from `skills.Edited` | one `skills` event; its `Text` holds the skipped folders' reasons, one per line |
 | `skill_show` | `Registry.File(req.ID)`, the whole `SKILL.md` | one `skills` event with `Body` set |
 | `skill_reset` | `skills.Reset(dir, req.ID)`, then a reload | `done` |
+| `skill_enable`, `skill_disable` | `handleSetDisabled`: edits `[skills] disabled` with `catalog.SetTableLists`, installs a built-in that comes back on, and reloads | one `skills` event |
+
+The `skills` list ends with the disabled skills, each with `Disabled` set, so the
+desktop app can show a switch that turns one back on. `disabled` now sits behind
+the service's mutex, since `handleSetDisabled` changes it while turns read it.
 
 `Edited` compares your file's bytes with the copy inside the binary, so saving
 the file unchanged doesn't mark it. A reset of a skill Meru doesn't ship fails
@@ -446,6 +471,90 @@ it asks any search engine, so starting `merud` sends nothing off the machine.
 `TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with nothing on the
 SearXNG port, checks the log line, and runs a turn in which the model calls
 `web_search` and still answers.
+
+### merud: connections.go
+
+The desktop app's Library changes tools through four ops, and lists them through
+a fifth. `connectionsEvent` loads `config.toml` fresh and joins it with
+`dispatcher.Servers()`: a `Connection` for the built-in tools, each MCP server,
+each A2A agent and the local commands. `fillPolicies` lists every tool a source
+offers (from `OfferedTools`) plus any config allows, each with `policyOf`'s
+answer: `off` when `allow` leaves it out, `always` when `always_confirm` names it,
+`ask` when `confirm` does, `allow` otherwise. `catalogEntries` adds the catalog,
+marking what config has and which keys `secrets.toml` holds.
+
+- `handleToolPolicy` checks the change, then `setEntryPolicy` or
+  `setBuiltinPolicy` computes the new lists with `newLists` and writes them with
+  `catalog.SetEntryLists` or `catalog.SetTableLists`. A tool must be one the
+  source offers or config names. `allow` is refused for an `always_confirm` tool
+  and for `configure`. Then the matching reload runs: `reloadMCP`, `reloadA2A`, or
+  `reloadBuiltin`, which hands `bt.SetLists` the new `[builtin]` lists.
+- `handleMCPAdd` appends a catalog server's block once `secrets.toml` holds its
+  key, and reloads. `handleMCPRemove` takes a block out and reloads.
+- When the request carries `Custom`, `handleMCPAdd` hands it to
+  `handleCustomAdd`, the app's form for a server of the user's own. `customEntry`
+  checks it with the rules `meru mcp add stdio` and `meru mcp add http` follow:
+  `catalog.CheckName` for the name, a command or a URL but not both, a URL off
+  this machine only with the "on another computer" tick, and environment
+  variables only for a program `merud` starts. Any program may be the command,
+  `npx` and `uvx` included; only `[[commands]]` entries refuse interpreters. A
+  variable ticked Secret becomes `secret:<server>_<name>` in `config.toml`, and
+  its value goes to `secrets.toml` before the block does, because a reload with a
+  missing secret fails for every server. The block comes from `catalog.Custom`
+  with an empty `allow`, so every tool the server offers shows Off until the user
+  turns it on. `custom_test.go` checks each refusal, that comments survive, and
+  that the secret's value lands in `secrets.toml` and nowhere else.
+- `handleSecretSet` saves a key under a name config or the catalog uses, then
+  reloads, and replies with `done` alone, so no key ever comes back.
+
+Each write runs inside `s.bt.EditConfig`, the lock `configure` holds, so two
+writers never read the same file and each replace it with their own change.
+`reloadA2A` builds a new A2A client and swaps it in with `dispatcher.Replace`, as
+`reloadMCP` does for the pool; `started` now holds config as `merud` last loaded
+each part, and the router's list of what is connected follows every reload.
+
+### merud: folders.go
+
+`handleFolders` lists the `[index]` folders with `store.CountPaths` for each, and
+the suggested folders (`~/Documents`, `~/Notes`, `~/Desktop`) that exist and
+overlap no indexed folder, each counted by `index.CountFiles` up to 2,000 files
+and 3 seconds in all. `handleFolderAdd` refuses a path that isn't full, doesn't
+exist, isn't a folder, is the disk's root, the home folder or Meru's own home, or
+overlaps an indexed folder. Both it and `handleFolderRemove` go through
+`changeFolders`, which runs the change under the config lock, writes `[index]
+folders` with a check that the list came out as asked, calls
+`index.Indexer.SetFolders`, and stores the list that `currentFolders` hands the
+agent and the router every turn.
+
+`changeFolders` then sends on `changed`, a channel with room for one value, inside
+a `select` with a `default`: a second change before the loop wakes needs no second
+signal. `watchAndRescan`, which `serve` runs in place of the plain watcher, waits
+on that channel. On a signal it stops the watcher, starts a new one over the new
+folders, and scans. The watcher runs in a goroutine the loop owns: `stop` cancels
+it and waits on its `done` channel, which the goroutine closes as it returns.
+
+### merud: save.go
+
+`saveService.handleSave` answers `save_file`. It reads the session's turns with
+`turnsOf`, writes the Markdown (`chatMarkdown` for the whole chat, or the note as
+sent), picks `chats/` or `notes/` and a name from the date and `slug` of the title,
+and with `freeName` adds `-2` and up when a file has the name already. Then it
+makes one `dispatch.Call` to `write_file`, with the session's `Append` and the
+request's `approve`, so the save lands in `tool_calls` and the transcript and asks
+first as `write_file` does. The outcome decides the reply: a `saved` event with the
+path, or an error that says whether the user said no or `write_file` is off.
+
+### merud: models.go
+
+`modelService.handleModels` answers `models` with the profile and the three models
+from config, and asks the engine's `Info` for the Ollama version and the models it
+holds, waiting at most 3 seconds. A runtime that doesn't answer leaves the list
+empty and says why in `Err`.
+
+### merud: handler
+
+`handler` takes one `services` value, which holds each service, in place of a
+long list of parameters, and sends each op to its service.
 
 ### meru: main.go
 
@@ -846,7 +955,8 @@ Reset writing to the shipped copy.
 ```
 
 `list` pads each name to one width, folds each description onto one line and
-cuts it to 72 characters, and dims the `[built-in]` and `[edited]` marks. Folders
+cuts it to 72 characters, and dims the `[built-in]`, `[edited]` and `[disabled]`
+marks; a skill `[skills] disabled` names comes last, with no description. Folders
 `merud` skipped follow under `Skipped:`, so a typo in a `SKILL.md` doesn't go
 unseen. `show` prints the file as `merud` sent it.
 

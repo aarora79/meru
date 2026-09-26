@@ -97,7 +97,7 @@ func TestFormatMemories(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, dropped := formatMemories(tt.mems, tt.limit)
+			got, dropped, _ := formatMemories(tt.mems, tt.limit)
 			if got != tt.want || dropped != tt.wantDropped {
 				t.Errorf("formatMemories = %q, %d\nwant %q, %d", got, dropped, tt.want, tt.wantDropped)
 			}
@@ -115,7 +115,7 @@ func TestFormatMemoriesCap(t *testing.T) {
 	for range 5 {
 		mems = append(mems, recalled("other", strings.Repeat("word ", 200)))
 	}
-	got, dropped := formatMemories(mems, maxMemoryChars)
+	got, dropped, _ := formatMemories(mems, maxMemoryChars)
 	if n := len([]rune(got)); n > maxMemoryChars || n == 0 {
 		t.Errorf("section is %d characters, want 1 to %d", n, maxMemoryChars)
 	}

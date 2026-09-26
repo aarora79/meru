@@ -48,6 +48,10 @@ func main() {
 - `internal/skills/builtin.go` — `//go:embed builtin` puts the `writing` and
   `explainer` skills inside `merud`. `InstallBuiltins` copies them to
   `~/.meru/skills/` on first run, and `Reset` copies one back.
+- `internal/desktop/assets.go` — `//go:embed web` puts the desktop app's page,
+  its fonts and its two libraries inside the binary, so the app loads nothing from
+  disk or the network. `fs.Sub` makes `web/` the root, and `http.FileServerFS`
+  serves it.
 
 ## Mistakes to avoid
 

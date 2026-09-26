@@ -210,6 +210,138 @@ mouse_copy = false
 One-shot `meru "..."` prints no labels: its output stays plain for pipes and
 scripts.
 
+### The desktop app
+
+`meru-desktop` shows the same conversations in a window. It runs on macOS for now,
+and it talks to the `merud` you already run, so start `merud` first.
+
+It builds on its own, because its window library, Wails, needs a C compiler and
+the system's WebView. On a Mac, the Xcode command line tools bring both
+(`xcode-select --install`). From the repository:
+
+```sh
+make desktop            # writes bin/meru-desktop
+./bin/meru-desktop      # opens the window
+```
+
+`make desktop-app` wraps the same binary in `bin/Meru.app`, which you can drag to
+`/Applications` and open like any app. The app finds `merud` at
+`~/.meru/merud.sock`; `-socket path` points it elsewhere. The usual `go install`,
+`go build ./...` and `make build` skip the app, so they still need no C compiler.
+
+The first time the app finds `merud` with no folders and nothing about you, it
+opens **Setup**: four steps for the models, your folders, your connections and a
+few facts about you. Skip any step; the Setup button at the foot of the rail opens
+it again.
+
+The title bar reads "Meru · A personal AI assistant that runs entirely on your own
+computer". What you see:
+
+- **On the left**, the logo and name, which open Library, About, then New chat, a search box that filters your chats, and your past
+  chats grouped Today, Yesterday and Earlier. A click reopens one, and your next
+  question carries it on. Below them, a block says whether `merud` runs, which
+  model writes the answers, how many files Meru can search and which tools are
+  connected; when `merud` isn't running, it says so and shows the command that
+  starts it. **Library** and **Setup** sit at the foot. The button beside the
+  logo folds the rail to a column of icons.
+- **In the middle**, the conversation. Each answer opens with one line of what Meru
+  did, such as "Searched mail · Read lisbon.md"; "Show steps" shows the raw tool
+  names and times. The answer streams as plain text and turns into formatted text
+  when it ends. Each code block has its number and a Copy button, and each answer
+  **Copy**, **Save to a note**, **Try again** and a dim line of timings. Under an
+  answer that cites your files, a line such as "3 sources" opens to a chip for
+  each cited file, and a chip opens its file. An answer that cites nothing shows
+  no line. When an answer claims an action, such as moving a folder, and no tool
+  ran, an amber note under it says nothing changed on your computer. **Share as
+  file**, at the top, saves the whole chat.
+- **On the right**, "What this answer used": the sources, the tools with their
+  server and time, what Meru **remembered**, each with a Forget button, and a line
+  such as "The model ran on this Mac. Only google was contacted." The panel
+  starts closed; the button at the top right shows or hides it, and the app keeps
+  your choice until you close the window.
+
+Enter sends and Shift+Enter starts a new line. While an answer runs, Enter queues
+your next question, five at most; each shows above the box with a button that
+removes it, and Stop ends the answer and drops the queue.
+
+**Where Meru looks.** The switch under the box picks where the next question
+looks:
+
+| Choice | What Meru does |
+| --- | --- |
+| Auto | decides for itself, as `meru` and `meru chat` do |
+| My files | searches the folders it indexes, and may read files there |
+| Mail and calendar | uses only your mail and calendar connections, such as google |
+| Web | uses only web search and web pages |
+| Just talk | answers from the model alone: no search, no tools |
+
+**Attach a file.** The paperclip opens a file dialog. Meru reads the file with its
+file tools, so the file must sit in a folder it indexes or in its output folder,
+`~/meru-output`; for any other file, the app says to add its folder in the
+Library. The question then ends with "Read this file: ~/Notes/lisbon.md".
+
+**Approvals.** When Meru wants to run a tool that asks first, an amber card shows
+up inside the answer with the tool and its arguments, a mail's To, Subject and Body
+laid out to read, and the choices **Send**, **Edit first** and **Don't send**
+(Allow once and Don't allow for a tool that isn't mail). The card starts on the
+choice that runs nothing, so Enter alone runs nothing. **Edit first** puts the mail
+in the box as a draft: change it and send it, and Meru asks again before it does
+anything. The card says why Meru asks; "More in the side panel" opens the panel,
+which adds what else that server may do and links to the Library.
+
+**Saving.** Share as file and Save to a note write Markdown to `~/meru-output/chats/`
+or `~/meru-output/notes/`. Meru saves with its `write_file` tool, so it asks first,
+and the save shows in Library, Activity. After a yes, "Show in folder" opens the
+folder.
+
+**Slash commands.** The box understands the commands `meru chat` has. Type "/" at
+the start to see them; the arrow keys pick one, Enter or Tab runs it, Esc closes
+the list. They run at once, even while an answer runs, and never reach the model:
+
+| Command | What it does |
+| --- | --- |
+| `/new` | starts a new chat, like New chat; a running answer stops and the queue goes |
+| `/usage` | opens Library, Usage |
+| `/me` | opens Library, About you |
+| `/mcp` | opens Library, Connections |
+| `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block |
+| `/exit` | closes the app, asking first while an answer runs |
+
+**The Library** holds the settings. Each change goes to `merud`, which writes
+`~/.meru/config.toml`, keeps your comments, and applies it at once:
+
+- **Connections**: a card per tool source, with an Off, Ask or Allow switch per
+  tool. Off hides the tool from the model; Ask makes Meru ask before each call;
+  Allow runs it without asking. A tool that runs commands, and `configure`, always
+  ask. **Add a connection** adds a catalog server, as `meru mcp add` does; paste
+  its API key there if it needs one. **Add your own MCP server**, under the
+  catalog, adds any other server, as `meru mcp add stdio` and `meru mcp add http`
+  do: a name, then either the program and its arguments, one in each field, or
+  the server's URL. Tick "This server is on another computer" for an address off
+  this machine; without it Meru refuses one. Tick Secret beside an environment
+  variable that holds a key: Meru saves it in `~/.meru/secrets.toml` and never
+  shows it again. Every tool starts Off; once the server connects, its card lists
+  the tools to turn on.
+- **Folders**: the folders Meru indexes, with file counts. Add one with the folder
+  dialog, or remove one; Meru indexes or drops its files right away.
+- **About you**: what Meru knows about you, to add, edit or forget.
+- **Skills**: each skill, on or off.
+- **Models**: the models and what Ollama holds now. To change a model, edit
+  `config.toml`, run `ollama pull`, and restart `merud`.
+- **Activity**: every tool call, with its arguments and result behind Details.
+- **Usage**: the numbers `meru usage` prints.
+- **About**: what Meru is and where its name comes from, what it does, the app's
+  version, where its files live, and buttons that open the source code, the
+  design and a new issue on GitHub in your browser. To ask for a feature or
+  report a problem, open an issue: say what you tried, what you expected and what
+  happened, and leave out anything private.
+
+Links in answers open in your browser; Meru opens only `http`, `https` and `file`
+links. The app loads nothing from the internet: its fonts and code ship inside it.
+
+Not in the app yet: dropping files on the window, and pulling a model. Use
+`ollama pull` for that.
+
 ### Tell Meru about you
 
 Meru puts what it knows about you into every prompt: your name, your work, where
@@ -1505,6 +1637,8 @@ disk space the models use, run `ollama rm` with each model's name.
 ## For developers
 
 `make check` runs every check CI runs, `make e2e` runs the end-to-end tests against
-a fake Ollama, and [docs/ci.md](ci.md) explains each one. [AGENTS.md](../AGENTS.md)
+a fake Ollama, and [docs/ci.md](ci.md) explains each one. The desktop app has its
+own targets, since it needs cgo: `make desktop` builds it and `make desktop-check`
+vets, lints and vuln-checks it with its build tags. [AGENTS.md](../AGENTS.md)
 holds the rules for changing the code, and [docs/coding-notes/](coding-notes/)
 explains each package for readers new to Go.

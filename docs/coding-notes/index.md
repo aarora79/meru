@@ -117,6 +117,17 @@ Each embedded text starts with the chunk's heading path. The third chunk of a
 long "Garden > Spring" section doesn't repeat the heading line, and the path keeps
 its vector about spring planting.
 
+### The folder list can change
+
+`merud` used to fix the folders at startup. The desktop app adds and removes them
+while it runs, so `folders` sits behind `foldersMu`, a `sync.RWMutex`: many
+readers may hold it at once, and only `SetFolders` takes it to write.
+`configured` hands readers a copy. `SetFolders` expands `~` in each folder with
+`expandAll`, as `New` does, and swaps the list in; the scan that `merud` runs next
+indexes a new folder and prunes a removed one. A running `Watch` keeps its folders,
+so `merud` stops it and starts another. `HasFolders` says whether config names
+any folder, which decides whether the file tools are on.
+
 ### skip.go and ignore.go
 
 `skipReason` checks one entry in a fixed order and returns the first reason
@@ -270,6 +281,14 @@ ix.readOnly)`, a new slice that holds both lists.
 `.meruignore` you edited a moment ago counts even with `[index] watch = false`.
 The four methods need no store and no engine, so a test can build the
 `Indexer` with `New(cfg, nil, nil, nil)`.
+
+### CountFiles
+
+`CountFiles(ctx, cfg, dir, limit)` counts the files the indexer would read in a
+folder that isn't indexed yet, for the desktop app's suggested folders. It builds
+a throwaway `Indexer` over `dir` with `cfg`'s skip rules and no store, and runs
+`Walk`, counting files with no skip reason. It stops at `limit` with `more` set,
+by returning `fs.SkipAll`, which `Walk` treats as a clean stop.
 
 ### memories.go
 

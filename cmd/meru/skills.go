@@ -120,7 +120,8 @@ func confirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
 
 // skillsText writes one line per skill: the name padded to one width, the
 // description on one line and cut to maxDescription characters, and the
-// [built-in] and [edited] marks, dim:
+// [built-in], [edited] and [disabled] marks, dim. merud lists a skill
+// [skills] disabled names last, with no description:
 //
 //	explainer  Build a self-contained HTML explainer for a technical topic…  [built-in]
 //	writing    Write prose people will actually read. Use for any prose y…  [built-in] [edited]
@@ -146,6 +147,9 @@ func skillsText(list []rpc.SkillInfo, warnings string, lk look) string {
 		}
 		if s.Edited {
 			marks = append(marks, "[edited]")
+		}
+		if s.Disabled {
+			marks = append(marks, "[disabled]")
 		}
 		if len(marks) == 0 {
 			// %-*s pads to a width taken from the argument before the text.

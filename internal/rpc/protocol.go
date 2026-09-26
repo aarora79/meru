@@ -52,9 +52,9 @@ const (
 	// OpMemoryForget deletes the memory whose ID is Request.ID, such as
 	// "me/name-dana-reyes.md". The reply is "done".
 	OpMemoryForget Op = "memory_forget"
-	// OpSkills lists the skills. The reply is one "skills" event and "done".
-	// The event's Text holds the reasons merud skipped any skill folders,
-	// one per line.
+	// OpSkills lists the skills, the disabled ones last. The reply is one
+	// "skills" event and "done". The event's Text holds the reasons merud
+	// skipped any skill folders, one per line.
 	OpSkills Op = "skills"
 	// OpSkillShow asks for the SKILL.md of the skill named Request.ID. The
 	// reply is one "skills" event holding that skill, with its Body, and
@@ -77,6 +77,68 @@ const (
 	// sends nothing to any server, so the reply comes at once while a
 	// server is down. The reply is one "mcp_status" event and "done".
 	OpMCPStatus Op = "mcp_status"
+	// OpSessions lists the past conversations, the most recent first, at
+	// most Request.Limit of them. merud reads them from the session
+	// transcripts. The reply is one "sessions" event and "done".
+	OpSessions Op = "sessions"
+	// OpSessionTurns asks for the turns of the session named
+	// Request.Session: each question with its answer, route, sources and
+	// tool calls, read from the transcript. The reply is one "turns" event
+	// and "done".
+	OpSessionTurns Op = "session_turns"
+
+	// The ops below are the desktop app's settings. Each one changes
+	// config.toml, secrets.toml or the output folder in merud, never in
+	// the client, and settings.go describes what they carry.
+
+	// OpConnections lists every tool source with each tool's policy (off,
+	// ask or allow), and the catalog servers that could be added. The
+	// reply is one "connections" event and "done".
+	OpConnections Op = "connections"
+	// OpToolPolicy sets one tool's policy, as Request.Policy says, in
+	// config.toml, then reloads the tools. The reply is one "connections"
+	// event and "done".
+	OpToolPolicy Op = "tool_policy"
+	// OpMCPAdd adds an MCP server to config.toml and reloads the MCP
+	// servers. Request.ID names a catalog server, whose API key, if it
+	// needs one, must be in secrets.toml first; OpSecretSet saves it. Or
+	// Request.Custom describes a server of the user's own, which gets no
+	// tools until the user turns them on. The reply is one "connections"
+	// event and "done".
+	OpMCPAdd Op = "mcp_add"
+	// OpMCPRemove takes the MCP server named Request.ID out of config.toml
+	// and reloads the MCP servers. The reply is one "connections" event
+	// and "done".
+	OpMCPRemove Op = "mcp_remove"
+	// OpSecretSet saves Request.Text as the secret named Request.ID in
+	// secrets.toml. Only a name that config.toml or the catalog refers to
+	// is accepted. The reply is "done"; merud never sends a secret back.
+	OpSecretSet Op = "secret_set"
+	// OpFolders lists the [index] folders with how many files the index
+	// holds from each, and the usual folders that exist on this machine
+	// and aren't indexed yet. The reply is one "folders" event and "done".
+	OpFolders Op = "folders"
+	// OpFolderAdd adds the folder Request.Path to [index] folders and
+	// starts a scan; OpFolderRemove takes it out, and the next scan drops
+	// its files from the index. The reply is one "folders" event and
+	// "done".
+	OpFolderAdd    Op = "folder_add"
+	OpFolderRemove Op = "folder_remove"
+	// OpSaveFile saves a Markdown file in [skills] output_dir through the
+	// write_file tool, so it goes through dispatch and asks first as
+	// write_file does. Request.Kind is SaveChat (the whole session named
+	// Request.Session) or SaveNote (Request.Text, an answer from that
+	// session). The reply is one "saved" event, whose Text is the path
+	// written, and "done".
+	OpSaveFile Op = "save_file"
+	// OpSkillEnable and OpSkillDisable take the skill named Request.ID out
+	// of [skills] disabled or put it in. The reply is one "skills" event,
+	// as OpSkills sends, and "done".
+	OpSkillEnable  Op = "skill_enable"
+	OpSkillDisable Op = "skill_disable"
+	// OpModels asks which models config names and which ones Ollama holds
+	// in memory now. The reply is one "models" event and "done".
+	OpModels Op = "models"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -87,6 +149,8 @@ const (
 	SourceCLI Source = "cli" // one-shot `meru "..."`
 	SourceTUI Source = "tui" // `meru chat`
 	SourceJob Source = "job" // the scheduler (v0.5)
+	// SourceDesktop is the desktop app, cmd/meru-desktop.
+	SourceDesktop Source = "desktop"
 )
 
 // Request is the one message a client sends on a connection.
@@ -101,7 +165,8 @@ type Request struct {
 	// Path is the absolute folder or file to index, for OpIndex. Empty
 	// means every [index] folder.
 	Path string `json:"path,omitempty"`
-	// Limit caps how many rows OpLog returns. Zero means merud's default.
+	// Limit caps how many rows OpLog returns, or how many sessions
+	// OpSessions lists. Zero means merud's default.
 	Limit int `json:"limit,omitempty"`
 	// Kind is the memory's folder for OpMemoryAdd, and ID names the memory
 	// for OpMemoryForget.
@@ -109,6 +174,15 @@ type Request struct {
 	ID   string `json:"id,omitempty"`
 	// Server describes the server to probe, for OpMCPProbe.
 	Server *ProbeServer `json:"server,omitempty"`
+	// Scope says where an OpAsk turn may look; see the Scope constants.
+	// Empty means ScopeAuto: the router decides.
+	Scope string `json:"scope,omitempty"`
+	// Policy is the change OpToolPolicy makes. It is a pointer, as Server
+	// is, so a Request stays comparable with ==, which tests rely on.
+	Policy *PolicyChange `json:"policy,omitempty"`
+	// Custom is the server of the user's own that OpMCPAdd adds, when ID
+	// is empty. A pointer, for the same reason.
+	Custom *CustomServer `json:"custom,omitempty"`
 }
 
 // EventType names what an Event carries.
@@ -156,7 +230,10 @@ const (
 	EventLog EventType = "log"
 	// EventUsage answers OpUsage, in Usage.
 	EventUsage EventType = "usage"
-	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories.
+	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories. On
+	// an OpAsk reply it lists the memories recall put in this turn's
+	// prompt, before the first "token"; a turn that recalled none sends
+	// none.
 	EventMemories EventType = "memories"
 	// EventSkills answers OpSkills and OpSkillShow, in Skills.
 	EventSkills EventType = "skills"
@@ -164,6 +241,19 @@ const (
 	EventProbe EventType = "probe"
 	// EventMCPStatus answers OpMCPStatus, in MCP.
 	EventMCPStatus EventType = "mcp_status"
+	// EventSessions answers OpSessions, in Sessions.
+	EventSessions EventType = "sessions"
+	// EventTurns answers OpSessionTurns, in Turns.
+	EventTurns EventType = "turns"
+	// EventConnections answers the connection ops, in Connections and
+	// Catalog.
+	EventConnections EventType = "connections"
+	// EventFolders answers the folder ops, in Folders and Suggested.
+	EventFolders EventType = "folders"
+	// EventSaved answers OpSaveFile; Text holds the path written.
+	EventSaved EventType = "saved"
+	// EventModels answers OpModels, in Models.
+	EventModels EventType = "models"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -217,6 +307,16 @@ type Event struct {
 	Probe *ProbeResult `json:"probe,omitempty"`
 	// MCP is set on an "mcp_status" event.
 	MCP []MCPStatus `json:"mcp,omitempty"`
+	// Sessions is set on a "sessions" event and Turns on a "turns" event.
+	Sessions []SessionInfo `json:"sessions,omitempty"`
+	Turns    []TurnInfo    `json:"turns,omitempty"`
+	// Connections and Catalog are set on a "connections" event, Folders
+	// and Suggested on a "folders" event, and Models on a "models" event.
+	Connections []Connection   `json:"connections,omitempty"`
+	Catalog     []CatalogEntry `json:"catalog,omitempty"`
+	Folders     []FolderInfo   `json:"folders,omitempty"`
+	Suggested   []FolderInfo   `json:"suggested,omitempty"`
+	Models      *ModelsInfo    `json:"models,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -374,8 +474,12 @@ type ServerInfo struct {
 	LastError string `json:"last_error,omitempty"`
 	// Tools lists the tools the model may use from this source.
 	Tools []ToolInfo `json:"tools"`
-	// Offered counts every tool the source offers, allowed or not.
-	Offered int `json:"offered"`
+	// Offered counts every tool the source offers, allowed or not, and
+	// OfferedTools lists them, by full name, from the source's last
+	// listing: the desktop app shows the ones config leaves off, so the
+	// user can turn one on. Only the tool's name and description are set.
+	Offered      int        `json:"offered"`
+	OfferedTools []ToolInfo `json:"offered_tools,omitempty"`
 	// Unknown lists allow entries the source doesn't offer, usually typos.
 	Unknown []string `json:"unknown,omitempty"`
 }
@@ -482,6 +586,9 @@ type SkillInfo struct {
 	Edited  bool `json:"edited,omitempty"`
 	// Body is the SKILL.md text, on OpSkillShow only.
 	Body string `json:"body,omitempty"`
+	// Disabled is true for a skill [skills] disabled names. merud loads
+	// no disabled skill, so its Description is empty.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // MCP server states, for MCPStatus.State. Config has no key that turns a

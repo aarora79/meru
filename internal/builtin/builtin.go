@@ -41,8 +41,13 @@ const actionAddServer = "add_mcp_server"
 // Tools is merud's set of built-in tools. Build it with New.
 type Tools struct {
 	configPath string
-	on         []string       // [builtin] tools: the built-ins the model may use
-	confirm    []string       // [builtin] confirm from config.toml
+
+	// lists guards on and confirm, which SetLists replaces while merud
+	// runs, when the desktop app changes a built-in tool's policy.
+	lists   sync.RWMutex
+	on      []string // [builtin] tools: the built-ins the model may use
+	confirm []string // [builtin] confirm from config.toml
+
 	memory     *memory.Store  // where remember saves; nil leaves remember out
 	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
 	files      *index.Indexer // what the file tools read through; nil leaves them out
@@ -69,7 +74,8 @@ type Tools struct {
 // the next turn can recall the new fact. A nil onChange or onRemember does
 // nothing. files is merud's indexer, which read_file, list_folder and grep
 // read through, so they see the [index] folders with the indexer's skip
-// rules; a nil files leaves the three out. New also lets them read
+// rules; a nil files, or one whose [index] folders list is empty, leaves
+// them out. New also lets them read
 // outputDir, through files.ReadAlso: what write_file wrote, what web_fetch
 // downloaded, and the mail attachments the google server saves in its
 // attachments folder. web is the [web] section:
@@ -100,7 +106,35 @@ func New(configPath string, cfg config.Builtin, web config.Web, mem *memory.Stor
 func (t *Tools) Kind() string { return dispatch.KindBuiltin }
 
 // enabled reports whether [builtin] tools lists name.
-func (t *Tools) enabled(name string) bool { return slices.Contains(t.on, name) }
+func (t *Tools) enabled(name string) bool {
+	t.lists.RLock()
+	defer t.lists.RUnlock()
+	return slices.Contains(t.on, name)
+}
+
+// asks reports whether [builtin] confirm lists name.
+func (t *Tools) asks(name string) bool {
+	t.lists.RLock()
+	defer t.lists.RUnlock()
+	return slices.Contains(t.confirm, name)
+}
+
+// SetLists replaces the [builtin] tools and confirm lists with cfg's, so a
+// policy the desktop app changed in config.toml takes effect on the next
+// call without a restart. merud has written and checked config first.
+func (t *Tools) SetLists(cfg config.Builtin) {
+	t.lists.Lock()
+	defer t.lists.Unlock()
+	t.on = slices.Clone(cfg.Tools)
+	t.confirm = slices.Clone(cfg.Confirm)
+}
+
+// hasFiles reports whether the file tools may run: merud gave the tools
+// its indexer, and config names at least one [index] folder. The folders
+// can change while merud runs, so this asks the indexer each time.
+func (t *Tools) hasFiles() bool {
+	return t.files != nil && t.files.HasFolders()
+}
 
 // Off is one tool that [builtin] tools lists but merud can't offer,
 // because the setting it works on is missing, and the reason, for the log.
@@ -114,7 +148,10 @@ type Off struct {
 // so a user who listed a tool can see why the model doesn't get it.
 func (t *Tools) Off() []Off {
 	var off []Off
-	for _, name := range t.on {
+	t.lists.RLock()
+	on := slices.Clone(t.on)
+	t.lists.RUnlock()
+	for _, name := range on {
 		if reason := t.missing(name); reason != "" {
 			off = append(off, Off{Tool: name, Reason: reason})
 		}
@@ -135,11 +172,11 @@ func (t *Tools) missing(name string) string {
 			return "[skills] output_dir is empty"
 		}
 	case ReadFile, ListFolder, Grep:
-		if t.files == nil {
+		if !t.hasFiles() {
 			return "[index] folders is empty"
 		}
 	case SearchFiles:
-		if t.files == nil {
+		if !t.hasFiles() {
 			return "[index] folders is empty"
 		}
 		if t.search == nil {
@@ -177,7 +214,7 @@ func (t *Tools) Tools() []engine.ToolSpec {
 			Parameters:  writeFileSchema(),
 		})
 	}
-	if t.files != nil {
+	if t.hasFiles() {
 		specs = append(specs, t.fileToolSpecs()...)
 		if t.search != nil {
 			specs = append(specs, t.searchSpec())
@@ -199,7 +236,7 @@ func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case name == Configure:
 		return dispatch.ConfirmAlways
-	case slices.Contains(t.confirm, name):
+	case t.asks(name):
 		return dispatch.ConfirmAsk
 	default:
 		return dispatch.ConfirmNever
@@ -248,7 +285,7 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Confirm:     t.Confirm(WriteFile) != dispatch.ConfirmNever,
 		})
 	}
-	if t.files != nil {
+	if t.hasFiles() {
 		for _, f := range []struct{ name, desc string }{
 			{ReadFile, "Reads a whole file in the indexed folders or the output folder."},
 			{ListFolder, "Lists a folder in the indexed folders or the output folder."},
@@ -312,13 +349,13 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.remember(ctx, args)
 	case name == WriteFile && t.outputDir != "":
 		text, err = t.writeFile(args)
-	case name == ReadFile && t.files != nil:
+	case name == ReadFile && t.hasFiles():
 		text, err = t.readFile(args)
-	case name == ListFolder && t.files != nil:
+	case name == ListFolder && t.hasFiles():
 		text, err = t.listFolder(ctx, args)
-	case name == Grep && t.files != nil:
+	case name == Grep && t.hasFiles():
 		text, err = t.grep(ctx, args)
-	case name == SearchFiles && t.files != nil && t.search != nil:
+	case name == SearchFiles && t.hasFiles() && t.search != nil:
 		text, sources, err = t.searchFiles(ctx, args)
 	case name == WebSearch && t.web.searxngURL != "":
 		text, err = t.webSearch(ctx, args)
@@ -523,4 +560,44 @@ func schema() json.RawMessage {
 	}
 	b, _ := json.Marshal(s)
 	return b
+}
+
+// EditConfig runs edit while holding the lock configure holds when it
+// writes config.toml. merud's settings ops write config.toml too, for the
+// desktop app; sharing one lock means two writers never read the same
+// file and each replace it with their own change, losing the other's. It
+// returns edit's error.
+func (t *Tools) EditConfig(edit func() error) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return edit()
+}
+
+// Summary says in one line what the built-in tool name does, for the
+// desktop app's list of tools, which shows the tools [builtin] tools
+// leaves out too. It returns "" for a name that isn't a built-in.
+func Summary(name string) string {
+	switch name {
+	case Configure:
+		return "Adds an MCP server to config.toml. It asks every time."
+	case DateTime:
+		return "Reads the clock: the date, the time, a date's weekday, another time zone."
+	case Remember:
+		return "Saves one fact about you to ~/.meru/memory."
+	case WriteFile:
+		return "Saves a file in the output folder, [skills] output_dir."
+	case ReadFile:
+		return "Reads a whole file in the indexed folders or the output folder."
+	case ListFolder:
+		return "Lists a folder in the indexed folders or the output folder."
+	case Grep:
+		return "Finds matching lines in the indexed folders or the output folder."
+	case SearchFiles:
+		return "Searches the indexed folders by meaning and by words."
+	case WebSearch:
+		return "Searches the web through the SearXNG instance [web] searxng_url names."
+	case WebFetch:
+		return "Reads a public web page. It asks first for a URL no search or question of yours gave."
+	}
+	return ""
 }

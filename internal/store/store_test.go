@@ -346,6 +346,11 @@ func TestPaths(t *testing.T) {
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("Paths(%q) = %q, want %q", tt.prefix, got, tt.want)
 			}
+			// CountPaths counts by the same rule.
+			n, err := s.CountPaths(context.Background(), tt.prefix)
+			if err != nil || n != len(tt.want) {
+				t.Errorf("CountPaths(%q) = %d, %v; want %d", tt.prefix, n, err, len(tt.want))
+			}
 		})
 	}
 }
