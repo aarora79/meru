@@ -5,7 +5,6 @@
 const SVG = "http://www.w3.org/2000/svg";
 
 const PATHS = {
-  mountain: ["M3 19 L9.5 8 L13 14 L15.5 10 L21 19 Z"],
   plus: ["M12 5 V19", "M5 12 H19"],
   search: ["M10.5 17 A6.5 6.5 0 1 0 10.5 4 A6.5 6.5 0 1 0 10.5 17 Z", "M15.5 15.5 L20 20"],
   copy: ["M9 9 H19 V19 H9 Z", "M5 15 V5 H15"],

@@ -558,7 +558,6 @@ function setPanel(open) {
 // ---- Wiring ----
 
 function wire() {
-  $("brand-mark").append(icon("mountain", 22));
   $("new-chat").prepend(icon("plus", 16));
   $("search-icon").append(icon("search", 15));
   $("stop").prepend(icon("stop", 14));

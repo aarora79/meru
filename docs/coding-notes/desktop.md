@@ -178,6 +178,8 @@ bundler.
   browser can't read, stays as code.
 - `vendor/` and `fonts/` hold the two libraries and the three fonts, with their
   licenses; `THIRD-PARTY.md` lists versions and checksums.
+- `img/meru-logo.svg` is a copy of the project logo in `docs/img/`. The rail shows
+  it with an `<img>` tag, which the page's policy allows for its own files.
 
 ### cmd/meru-desktop/main.go
 
