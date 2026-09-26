@@ -55,6 +55,12 @@ GitHub keeps them next to the lines they point at. A pull request from a fork
 can't upload them, because GitHub gives forks a read-only token; the gosec job
 still fails on a finding.
 
+Code scanning and dependency review on a private repository need GitHub Advanced
+Security. While the repository is private, the workflow skips the CodeQL job, the
+dependency review and gosec's upload, and they come back on their own when the
+repository turns public again. `govulncheck`, `gosec` and `gitleaks` still run on
+every push and pull request, and `make check` runs all three locally.
+
 ## Policy tests
 
 The package `internal/policy` holds tests and nothing else. They read Meru's

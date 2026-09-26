@@ -282,9 +282,14 @@ func TestParallelCallsKeepCallOrder(t *testing.T) {
 	if want := []string{"call-1", "engine-7"}; !slices.Equal(callIDs, want) {
 		t.Errorf("tool_call IDs = %v, want %v", callIDs, want)
 	}
-	// Results arrive as calls finish: fast first.
-	if want := []string{"engine-7", "call-1"}; !slices.Equal(results, want) {
-		t.Errorf("tool_result order = %v, want %v", results, want)
+	// Each call reports one result. Which arrives first isn't fixed: "fast"
+	// frees "slow" from inside its own call, so "slow" can finish and report
+	// before the loop reports "fast". That both ran at once is shown by the
+	// turn finishing at all. The model still gets the results in call
+	// order, checked below.
+	slices.Sort(results)
+	if want := []string{"call-1", "engine-7"}; !slices.Equal(results, want) {
+		t.Errorf("tool_result IDs = %v, want one result for each of %v", results, want)
 	}
 	msgs := eng.lastCall().msgs
 	tail := msgs[len(msgs)-2:]

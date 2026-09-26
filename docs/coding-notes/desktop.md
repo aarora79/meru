@@ -206,8 +206,9 @@ from the end. `index.html` repeats the line as the logo's tooltip, and
 `TestTaglineEverywhere` fails when the page or `main.go` drifts from it.
 
 `About` returns what the Library's About section needs from Go: the tagline, the
-version, where `config.toml` and Meru's folder are, written with `~`, and the
-project's three links on GitHub. `merud` reports no version over the socket, so
+version, the license (`License`, the AGPL-3.0 as `LICENSE` gives it), where
+`config.toml` and Meru's folder are, written with `~`, and the project's four links
+on GitHub: the source, the design, a new issue and the license. `merud` reports no version over the socket, so
 `buildVersion` reads the app's own: `debug.ReadBuildInfo` returns what the Go
 toolchain wrote into the binary, a tag such as `v0.3.0` for a release, or
 `(devel)` plus the git commit for a local build. The app and `merud` build from

@@ -1329,7 +1329,9 @@ the old answer.
 that scripts one reply per round: which routes offer tools, the event order
 (`session`, `route`, `sources`, `tool_call`, `tool_result`, tokens, `done`),
 two calls that must run at the same time (one waits on a channel the other
-closes) with results in call order, the round cap, denied and declined calls
+closes), each with one result and both handed to the model in call order (the
+order the results reach the client isn't fixed, since the waiting call can
+finish before the loop reports the other), the round cap, denied and declined calls
 reaching the model, `approve` and a job's source reaching dispatch, a hang-up
 during a call, one `gen_ai.chat` span per round, and a transcript and
 history that hold only the question and the answer. `TestToolsOfferedByRoute`
