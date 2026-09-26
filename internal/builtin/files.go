@@ -522,6 +522,32 @@ func (t *Tools) resolve(tool, p string) (index.Checked, error) {
 	return c, nil
 }
 
+// savedAttachment returns the file in the attachments folder that has the
+// same name as abs, when abs doesn't exist, sits inside Meru's output
+// folder, and that file does. Otherwise it returns abs unchanged.
+//
+// A mail tool reports only the saved file's name, so the model guesses the
+// folder. In testing it asked for ~/meru-output/downloads/<name> when the
+// server had saved ~/meru-output/attachments/<name>. Only the output folder
+// gets this second look, and Check still applies every rule to the result.
+func (t *Tools) savedAttachment(abs string) string {
+	if t.outputDir == "" {
+		return abs
+	}
+	if _, err := os.Lstat(abs); err == nil {
+		return abs
+	}
+	rel, err := filepath.Rel(t.outputDir, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return abs
+	}
+	cand := filepath.Join(t.outputDir, attachmentsFolder, filepath.Base(abs))
+	if _, err := os.Lstat(cand); err == nil {
+		return cand
+	}
+	return abs
+}
+
 // absPath expands "~" and turns a relative path into an absolute one inside
 // the one folder that holds it, trying the attachments folder last. It
 // fails when no folder holds the relative path, or more than one does.
@@ -532,9 +558,9 @@ func (t *Tools) absPath(tool, p string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s: find the home folder: %w", tool, err)
 		}
-		return filepath.Join(home, p[1:]), nil
+		return t.savedAttachment(filepath.Join(home, p[1:])), nil
 	case filepath.IsAbs(p):
-		return p, nil
+		return t.savedAttachment(p), nil
 	}
 	var found []string
 	for _, r := range t.files.Roots() {
