@@ -140,6 +140,7 @@ flowchart TB
     subgraph client["client processes (short-lived)"]
         CLI["meru — one-shot"]
         TUI["meru chat — terminal UI"]
+        DESK["meru-desktop — desktop app"]
     end
 
     subgraph daemon["merud — always running"]
@@ -186,6 +187,7 @@ flowchart TB
 
     CLI --> RPC
     TUI --> RPC
+    DESK --> RPC
     RPC --> LOOP
     SCHED --> LOOP
     LOOP --> EP
@@ -290,6 +292,105 @@ The box opens with deny selected, so a stray Enter runs nothing (see
 The UI code holds no model or store logic; it draws what `merud` sends. One-shot
 `meru "..."` doesn't use Bubble Tea at all: it prints the stream as plain text, which
 also keeps it usable in scripts and pipes.
+
+### Desktop app
+
+`meru-desktop` is a third client: a native window for people who don't live in a
+terminal. It is as thin as `meru chat`. It talks to `merud` over the same socket
+with the same protocol, holds no model, store or tool logic, and never runs a tool
+itself; `merud` runs every call through `dispatch`, and the app only answers its
+approval questions.
+
+**Wails v3 draws the window.** [Wails](https://wails.io) pairs a Go program with
+the system's own WebView (WebKit on macOS, WebKitGTK on Linux, WebView2 on
+Windows), so the app is one native binary with no browser engine inside it, and
+the page is plain HTML, CSS and JavaScript. We pin a v3 beta: v3 has no final
+release yet, and its beta notes call the API stable. Wails needs cgo and the
+platform's WebView headers, so the app sits apart from the cgo-free build:
+
+- `cmd/meru-desktop` holds only the window code, behind the build tag `desktop`.
+  Without the tag the go command skips it, so `go build ./...`, the five-platform
+  `make build` and CI's cross-compiles never touch cgo. `make desktop` builds it
+  on the machine that runs it, with the tags `desktop production`; `production`
+  turns off Wails' web inspector and its probe for a development server.
+- `internal/desktop` holds everything else: the Bridge the page calls, the views
+  it sends, and the page itself, embedded with `go:embed`. It doesn't import
+  Wails, so its tests run everywhere.
+- CI builds the app on macOS. Linux and Windows builds come later.
+
+**The Bridge.** The window binds one Go value, the Bridge, whose methods the page
+calls by name: `Send`, `Stop`, `Unqueue`, `Approve`, `Sessions`, `SessionTurns`,
+`Status`, `OpenURL` and `OpenSource`. `Send` opens an `ask` request with source
+`desktop`, and a goroutine reads the events and hands each one to the page as an
+`Update`, through one Wails event, `meru:update`. The Bridge keeps the running
+turn and the queue, with the chat's rules: one turn at a time, five questions
+waiting at most, and Stop drops the queue with a notice. For each tool call it
+adds a friendly label ("Searched mail", "Read lisbon.md"), and when a turn ends it
+lists who the turn's tool calls reached: each MCP server and A2A agent by name,
+"web search" for `web_search` and the site for `web_fetch`.
+
+**The chat screen** has three columns:
+
+- **The rail** holds the wordmark, New chat, a search box that filters the list,
+  past chats grouped Today, Yesterday and Earlier, and a status block: the answer
+  model, the file count and the connected MCP servers, or, when `merud` doesn't
+  answer, that it isn't running and the command that starts it.
+- **The conversation** shows each question as a bubble and each answer as a card.
+  A one-line work strip says what the route did and lists each tool call by its
+  label; "Show steps" opens the raw tool names, outcomes and times. The answer
+  streams as plain text and renders as Markdown when it ends, as in `meru chat`;
+  each code block gets a Copy button, each source a chip that opens its file, and
+  each answer Copy, Try again and a dim stats line. The composer sends on Enter
+  and adds a line on Shift+Enter; while a turn runs, Enter queues, and the queue
+  shows above the composer with a remove button on each question.
+- **The side panel**, "What this answer used", lists the selected answer's
+  sources and tool calls, and ends with a privacy line: "The model ran on this
+  Mac. Only google was contacted." Below 1180 pixels it slides over the
+  conversation on demand. The panel leaves out the memories a turn recalled,
+  because no event says which ones.
+
+**Approvals sit in the answer.** An `approval` event becomes a card inside the
+answer, amber like everything that asks. It shows the tool and its arguments, with
+`to`, `cc`, `bcc`, `subject` and `body` laid out as a mail when the arguments hold
+`to` or `subject`, and the rest as indented JSON. Its buttons are the choices
+`merud` offered: Allow once, Allow for this chat, Don't allow. Focus lands on
+Don't allow, so a stray Enter runs nothing. The answer goes back on the socket as
+a `Reply`, as in `meru chat`.
+
+**Past chats come from the transcripts.** Two ops serve the rail: `sessions` lists
+the sessions that hold a question, newest change first, with the first question as
+the title; `session_turns` returns one session's turns, each with its question,
+answer, route, sources, tool calls, time and token count. `merud` reads both from
+the JSONL files, never from `meru.db`, so they stay right after the database is
+deleted. Opening a past chat and asking again sends its session ID, so the
+conversation continues.
+
+**Model output is untrusted.** A bad answer, or a page the model fetched, could
+hold HTML meant to run in the window. Three layers stop it:
+
+1. `marked` renders the Markdown with raw HTML escaped, and DOMPurify keeps a short
+   list of tags, no `data-*` or `style` attributes, no class but a code block's
+   language, and only `http`, `https` and `file` links. It returns DOM nodes; no
+   code puts a string into `innerHTML`. Everything else reaches the page as
+   `textContent`.
+2. Every file goes out with a strict Content-Security-Policy: `default-src 'none'`,
+   and scripts, styles, fonts and connections from the app only. No inline
+   script runs, and no image or font loads from the network, so an answer can't
+   report that it was read.
+3. The page never navigates. A click on a link calls `OpenURL`, which hands only
+   an `http`, `https` or `file` URL to the system opener, with no shell and the URL
+   as one argument, the same code (`internal/opener`) that `meru chat` uses.
+
+**Everything ships inside.** The page loads nothing from the network: the fonts
+(Newsreader, IBM Plex Sans and IBM Plex Mono, under the SIL Open Font License) and
+the two libraries (marked and DOMPurify) sit in `internal/desktop/web/` with their
+licenses. There is no Node, npm or bundler: the page is ES modules the WebView
+loads as they are, and the Bridge's methods are called by name through Wails'
+runtime, so no generated bindings are needed.
+
+**Not yet.** The Library screen (each connection with Off, Ask and Allow), first
+run, a switch for where Meru looks (needs a route override in `merud`), and
+dropping files on the window come in later versions.
 
 ---
 
@@ -479,6 +580,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   session ends with the answer, so "for this session" covers only this question.
   When standard input isn't a terminal (a script or a pipe), nobody can answer, so
   the client denies without asking and says so.
+- **The desktop app** shows the choices as a card inside the answer, with the
+  arguments laid out to read and focus on Don't allow (see
+  [Desktop app](#desktop-app)).
 - **Nobody to ask means no.** A scheduled job, or a client that passed no way to
   ask, can't say yes, so `dispatch` ends every call that needs a yes as `declined`
   without a prompt. A job's output says which calls it skipped.
@@ -486,7 +590,8 @@ and arguments and offers the choices `merud` sends, at most these three:
 ### How a conversation continues
 
 - **A session is one transcript file.** `meru chat` keeps one session open until you
-  quit. Each `meru "..."` one-shot starts a new session.
+  quit. Each `meru "..."` one-shot starts a new session. The desktop app can reopen
+  a past session and continue it.
 - **Each turn starts with the session's history.** `merud` loads your earlier
   questions and Meru's earlier answers from this session, newest first, until the
   history budget is full. Older turns drop out of the prompt but stay in the
@@ -2534,6 +2639,10 @@ transcript lines hold. No level writes question or answer text. With
   `list_folder`, `grep` and `search_files`, apply the same rules through the
   indexer's own code, so the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
+- The desktop app loads nothing from the network. Its page, fonts and libraries
+  ship inside the binary, its Content-Security-Policy blocks remote scripts,
+  images and connections, and its Wails updater stays unconfigured, so it never
+  checks for updates.
 
 ---
 
