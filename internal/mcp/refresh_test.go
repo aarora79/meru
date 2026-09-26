@@ -10,6 +10,8 @@ package mcp
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -103,6 +105,14 @@ func (r *restartable) listen(addr string) {
 		r.t.Fatalf("listen on %s: %v", addr, err)
 	}
 	srv := &http.Server{Handler: r}
+	// Each request gets its own connection. With keep-alive, the client
+	// may send its first request after a restart on a pooled connection
+	// that the stop just closed, before it notices the close, and get a
+	// bare EOF instead of the refused dial or 404 a test checks for. Which
+	// one it gets depends on timing, so the test would flake. A real
+	// server's restart can end that way too; the next Refresh then finds
+	// the session gone (TestRefreshFollowsARestartedServer).
+	srv.SetKeepAlivesEnabled(false)
 	r.mu.Lock()
 	r.addr, r.srv = ln.Addr().String(), srv
 	r.mu.Unlock()
@@ -267,7 +277,9 @@ func TestCallOnADeadSession(t *testing.T) {
 			}
 			// The JSON-RPC error body is a plain protocol error to the SDK,
 			// so the call can't tell the session is gone; the next
-			// Refresh finds out when its tools/list fails.
+			// Refresh finds out when its tools/list fails. A bare EOF on a
+			// pooled connection is the same kind of case, which listen
+			// rules out by turning keep-alive off.
 			wantDown := tc.name != "JSON-RPC error body"
 			if st := p.Status()[0]; st.Connected == wantDown {
 				t.Errorf("Connected after the failed call = %v, want %v", st.Connected, !wantDown)
@@ -295,6 +307,7 @@ func TestSessionGone(t *testing.T) {
 		{"session not found", mcp.ErrSessionMissing, true},
 		{"refused dial", &net.OpError{Op: "dial", Err: errors.New("connection refused")}, true},
 		{"read error", &net.OpError{Op: "read", Err: errors.New("reset")}, false},
+		{"EOF on a pooled connection", fmt.Errorf("rejected by transport: %w", io.EOF), false},
 		{"timeout", context.DeadlineExceeded, false},
 		{"tool error", errors.New("invalid params"), false},
 	}

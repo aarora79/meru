@@ -680,8 +680,11 @@ func (s *server) dropLocked() {
 // cases: the connection closed (a stdio child exited), the server answered
 // "session not found" (a Streamable HTTP server that restarted), and
 // nothing listens at the server's address (one that stopped). The last
-// shows up as a failed dial. errors.As looks through the chain of wrapped
-// errors for a *net.OpError and, when it finds one, stores it in opErr.
+// shows up as a failed dial. A bare EOF doesn't count: the server may only
+// have closed an idle keep-alive connection, which a running server does
+// too. If the session did go, the next Refresh finds out when its listing
+// fails. errors.As looks through the chain of wrapped errors for a
+// *net.OpError and, when it finds one, stores it in opErr.
 func sessionGone(err error) bool {
 	if errors.Is(err, mcp.ErrConnectionClosed) || errors.Is(err, mcp.ErrSessionMissing) {
 		return true

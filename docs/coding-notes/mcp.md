@@ -302,7 +302,12 @@ func sessionGone(err error) bool {
 `opErr`, so the code can read its `Op` field: `"dial"` means nothing listened at
 the address. A call on a session the Python server forgot comes back as a plain
 JSON-RPC error, which `sessionGone` can't tell from a tool's own error; the next
-`Refresh` finds the session gone when its listing fails.
+`Refresh` finds the session gone when its listing fails. A bare EOF gets the same
+treatment. The client sees one when it sends a request on a pooled keep-alive
+connection that the server closed, which happens after a restart and also when a
+running server drops an idle connection, so it doesn't prove the session is gone.
+The `restartable` test server turns keep-alive off, so each test sees the refused
+dial or the 404 it checks for, not an EOF that depends on timing.
 
 **Status.** `Status` reports each server in config order from what the Pool
 holds, and sends nothing to any server. `ServerStatus` carries the name, the
