@@ -355,13 +355,13 @@ the line as its tooltip.
   streams as plain text and renders as Markdown when it ends, as in `meru chat`;
   each code block gets its number in the chat and a Copy button, and each answer
   **Copy**, **Save to a note**, **Try again** (the same question, in the same
-  session and scope) and a dim stats line. Under the answer, one closed line,
-  "3 sources", opens to a chip for each source the answer cites, and a chip opens
-  its file. The Bridge picks those sources with `rpc.Cited`, as `meru` and `meru
-  chat` do; an answer that cites none shows no line. When `merud` sends a
-  `notice`, because the answer claims an action no tool performed, an amber note
-  with a warning icon sits under the answer, and again when the chat reopens from
-  history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on
+  session and scope, with the same images) and a dim stats line. Under the
+  answer, one closed line, "3 sources", opens to a chip for each source the
+  answer cites, and a chip opens its file. The Bridge picks those sources with
+  `rpc.Cited`, as `meru` and `meru chat` do; an answer that cites none shows no
+  line. When `merud` sends a `notice`, because the answer claims an action no
+  tool performed, an amber note with a warning icon sits under the answer, and
+  again when the chat reopens from history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on
   Shift+Enter; while a turn
   runs, Enter queues, and the queue shows above the composer with a remove button
   on each question. Under the text box sit the **Where Meru looks** switch and
@@ -418,7 +418,7 @@ copy under their usual rules and reach nothing new.
 over 50 MiB (the cap `web_fetch` puts on a download), a name the indexer treats
 as a secret (`.env`, `*.pem`, `id_ed25519` and the rest; see
 [What stays out](#what-stays-out)), and a copy `read_file` couldn't read, such as
-an image or an archive, which it deletes. A user who drops a folder of files may
+an archive, which it deletes. A user who drops a folder of files may
 not know a key file sits among them, so the notice under the text box names each
 file that stayed out, and why. `merud` also refuses while `read_file` is off,
 since the model couldn't open the copy. A question takes five files at most:
@@ -427,6 +427,37 @@ file shows as a chip above the text box with its name, its size and a remove
 button. Send adds one line per file, "Read this file:
 ~/meru-output/uploads/garden-plan.pdf", and a scope other than Auto or My files
 switches to My files, the scope that offers `read_file`.
+
+**Attaching images.** An image takes the same button, the same drop and the same
+`attach_file` request, and lands in the same uploads folder, but the model looks
+at it rather than reading it with `read_file`. `merud` treats a file as an image
+when its name ends in `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp` and its first
+bytes, read with Go's `http.DetectContentType`, are a PNG, JPEG, GIF or WebP
+file's; a text file renamed `garden-bed.png` fails the second test and stays out.
+The secret-name, symbolic-link and regular-file rules still apply. The cap is
+20 MiB, which covers a phone photo of 2 to 12 MB with room to spare and keeps a
+question of five images to about 133 MB of base64 on its way to Ollama. An image
+skips `read_file`'s test for readable text and needs no `read_file` at all.
+`attach_file` answers with the copy's `kind`, `image` or `file`.
+
+The chip shows a small preview in place of the file icon. The Bridge builds it in
+Go from the copy, and only from a file inside the uploads folder: an image up to
+64 KiB goes to the page as it stands, and the Bridge shrinks a larger PNG, JPEG
+or GIF to 160 pixels on its longest side and sends it as a JPEG, both as
+`data:` URLs, which the page's policy allows for images. A large WebP gets an
+image icon, since Go's standard library has no WebP decoder and a preview
+doesn't justify a new module.
+Send puts the images in the `ask` request's `images` field, by the copies' full
+paths, and adds no "Read this file" line for them; the question's bubble shows
+the previews above its text. An image switches no scope: it goes with the
+question in each one. Images and files share the cap of five per question.
+
+`merud` trusts none of the paths an `ask` request names. It takes five at most,
+and each must be a full path right inside `<output_dir>/uploads/`, a regular
+file and no symbolic link, opened through an `os.Root` on that folder, under the
+cap, with an image's first bytes. It refuses anything else with a message the
+user reads, before the turn starts. [Agent loop](#agent-loop) says what the
+turn does with them.
 
 - **Always a copy.** A file inside an `[index]` folder could be read where it is,
   but one rule for every file is simpler, and the question's line keeps working
@@ -442,6 +473,9 @@ switches to My files, the scope that offers `read_file`.
   `tool_calls` as any other.
 - **Removing a chip keeps the copy.** The app deletes nothing, and the uploads
   folder is the user's to clear.
+- **Images by path.** The request names the copies, and `merud` reads the bytes
+  itself, so an image never passes through the socket, and the transcript can
+  name what the question carried.
 
 **Slash commands.** The composer understands the six commands `meru chat` has:
 `/new` (as New chat: it stops a running turn and drops the queue, with the chat's
@@ -914,6 +948,18 @@ and `Completion` gains `LogProbs`: for each generated position, the chosen token
 the alternatives the model weighed, each with its log probability. Both default to
 off, so other callers see no change, and the interface keeps its four methods.
 
+For images, `Message` gains `Images`, the raw bytes of each image on a user
+message. `OllamaEngine` sends them as the message's `images` array in
+`/api/chat`, which Ollama documents as base64 strings; Go's `encoding/json`
+writes a `[]byte` that way with no code of ours. Only a model with the `vision`
+capability can read them, and Ollama's `POST /api/show` lists a model's
+capabilities, such as `["completion", "vision", "tools", "thinking"]`.
+`OllamaEngine.Capabilities` asks it and keeps each model's answer for the life of
+the engine; a failed call keeps nothing. `Capabilities` sits outside the
+interface, which keeps its four methods: only image turns need it, and `merud`
+hands the agent that one method. The "ollama http" debug line counts a request's
+images; no log line or span holds their bytes.
+
 Two engines may come later, behind the same interface:
 
 - **`LlamaCppEngine`** would compile llama.cpp into `merud` through cgo, using the
@@ -1096,6 +1142,7 @@ ends without a full answer still answers, with an outcome of its own:
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
+| `no_vision` | the question carried images and the main model lacks the `vision` capability | "<model> can't look at images, so Meru didn't send it this question. Pick a model with vision for [models] main in config.toml. To check a model, run `ollama show <model>` and look for "vision" under Capabilities." |
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
@@ -1110,6 +1157,36 @@ first keeps it, so no MCP server can shadow `configure` or a `cmd.` tool.
 A `context.Context` runs through the whole turn. If the client disconnects or you
 press Ctrl-C, `merud` cancels the turn, with no sorry: generation stops, in-flight tool calls are
 dropped, and their `tool_calls` rows record the cancellation.
+
+### Questions with images
+
+A question from the desktop app can carry up to five images (see
+[Desktop app](#desktop-app)). `merud` reads each one from the uploads folder
+before the turn starts, then asks `OllamaEngine.Capabilities` whether the `main`
+model lists `vision`. When it doesn't, the turn calls no model and answers with
+the `no_vision` message above; the message names the model from config and says
+how to check another, and names none of its own, since the list of models with
+vision changes with each release. When it does:
+
+- **No router.** The `fast` model reads text alone, so its guess would ignore
+  what the question is about. The turn takes the route its scope gives, as a
+  scoped turn does, and `direct` in Auto, with the tools `direct` offers. A
+  scope still holds: My files searches first, and Mail and calendar and Web
+  offer their tools, with the images on the question all the same. Skills are
+  still picked from the question's text.
+- **This turn only.** The images go on the question's user message, and on no
+  other. The transcript's user line keeps their full paths in an `images`
+  field, never their bytes, and a later turn's history carries a text note per
+  image, `[image: receipt.jpg]`, after that question. Each image costs the model
+  hundreds of tokens and seconds of work, and the answer that looked at it sits
+  in the history already, so sending it again would spend the context for
+  little.
+- **Counts, not content.** The `meru.turn` span gets `meru.turn.images`, the
+  turn's info line an `images` count, and a debug line the count and total
+  bytes. No span or log line holds an image.
+
+`meru` and `meru chat` send no images: a terminal has no picker or drop, and
+the one-shot client would need a second request to copy the file first.
 
 ### Claims no tool backs
 
@@ -1359,8 +1436,10 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 {"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Found the launch date agreed in email: 14 October, in the thread with Sam."}
 ```
 
-An assistant line gets an `outcome` field only when the turn ended without a
-full answer: `timeout`, `cut_off`, `gave_up` or `bad_output` (see
+A user line gets an `images` field, the full paths of the copies in the uploads
+folder, only when the question carried images; the bytes stay in the files. An
+assistant line gets an `outcome` field only when the turn ended without a
+full answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when the answer
 claimed an action and no tool call in the turn succeeded (see
 [Claims no tool backs](#claims-no-tool-backs)).
@@ -2956,7 +3035,9 @@ transcript lines hold. No level writes question or answer text. With
   delete it; it's yours.
 - A file outside those folders reaches the model only when you attach it in the
   desktop app. `merud` copies that one file into `~/meru-output/uploads/`, and
-  refuses a link, a folder and a file whose name looks like a secret's.
+  refuses a link, a folder and a file whose name looks like a secret's. An
+  attached image goes to Ollama on loopback with that one question, like its
+  text, and nowhere else.
 - The indexer reads only the folders you list, never follows a symlink, and never
   indexes a file that looks like a secret. The file tools, `read_file`,
   `list_folder`, `grep` and `search_files`, apply the same rules through the
