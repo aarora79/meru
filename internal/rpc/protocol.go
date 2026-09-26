@@ -207,6 +207,12 @@ const (
 	EventSources EventType = "sources"
 	// EventToken carries the next piece of the answer text.
 	EventToken EventType = "token"
+	// EventNotice carries a warning about the answer, in Text, for the
+	// client to show under it. merud sends it after the last "token" and
+	// before "done", when the answer claims an action, such as "I've moved
+	// the folder", and no tool call in the turn succeeded. A client that
+	// doesn't know the type skips it, as it does any unknown type.
+	EventNotice EventType = "notice"
 	// EventToolCall says the model asked for a tool, in Tool, before
 	// dispatch decides whether it runs.
 	EventToolCall EventType = "tool_call"

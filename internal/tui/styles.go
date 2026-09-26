@@ -31,6 +31,7 @@ type styles struct {
 	question   lipgloss.Style // the question text, with a bar on its left
 	badge      lipgloss.Style // the route badge, normal case
 	badgeAmber lipgloss.Style // the route badge when the router fell back
+	notice     lipgloss.Style // merud's warning under an answer, such as a claim no tool backs
 	raw        lipgloss.Style // a streaming answer, indented like Glamour's output
 	cursor     lipgloss.Style // the ▍ at the end of a streaming answer
 	spinner    lipgloss.Style // the "thinking" spinner
@@ -66,7 +67,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 	// the question.
 	blue := lipgloss.AdaptiveColor{Light: "#3558C2", Dark: "#8AB4F8"}
 	// amber marks a route the router fell back to because it wasn't sure,
-	// and the approval box.
+	// the approval box, and a warning under an answer.
 	amber := lipgloss.AdaptiveColor{Light: "#B26B00", Dark: "#E5A445"}
 	// green colours the "Meru" label and the connection status; red
 	// colours the error box.
@@ -85,6 +86,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 		meru:       r.NewStyle().Foreground(green).Bold(true),
 		badge:      r.NewStyle().Foreground(grey),
 		badgeAmber: r.NewStyle().Foreground(amber),
+		notice:     r.NewStyle().Foreground(amber),
 		// A border on the left side only draws a thin bar next to the
 		// question. The four booleans are top, right, bottom and left.
 		question: r.NewStyle().

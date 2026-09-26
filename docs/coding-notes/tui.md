@@ -154,7 +154,8 @@ esc/q close · ctrl+c stop/quit
 In colour, the header's name and the input border are Meru's teal. The "You" label and
 the bar beside your question are blue, and the "Meru" label is green, so a glance tells
 you who wrote what. "● connected" is green and "● merud not running" red; a route the
-router fell back to is amber; errors sit in a red box.
+router fell back to is amber, and so is a warning `merud` sends about an answer;
+errors sit in a red box.
 
 Bubble Tea, the library we build on, runs one loop. A message arrives, `Update` turns
 the old state into a new one, `View` draws the new state, and Bubble Tea repaints the
@@ -369,6 +370,7 @@ never to store a context in a struct.
 - `tool_call`: add a tool line. `tool_result`: `finishTool` finds the line with the
   same ID and fills in the outcome and the time.
 - `token`: add the text to the answer.
+- `notice`: keep `merud`'s warning about the answer, for the line under it.
 - `done`: keep the stats for the line under the answer.
 - `error`: mark the turn failed and keep the message.
 
@@ -462,8 +464,8 @@ approval box follows them while it is open. What comes next depends on the state
 - streaming: the raw text, wrapped, with a teal `▍` at the end;
 - finished or stopped: the answer rendered as Markdown;
 
-and then, on lines of their own: for a finished answer, the files it cites and the
-stats; "stopped"; or the error box.
+and then, on lines of their own: for a finished answer, `merud`'s notice if it
+sent one, the files it cites and the stats; "stopped"; or the error box.
 
 `sourcesBlock` draws the files, dim, like the stats line under them:
 
@@ -473,6 +475,19 @@ stats; "stopped"; or the error box.
   [1] ~/notes/garden.md, "Planting", lines 3–5
   0.8s to first token · 40.0 tok/s · 2.4s
 ```
+
+When `merud` sent a `notice`, because the answer claimed an action and no tool
+call in the turn succeeded, an amber line sits between the answer and the
+sources:
+
+```text
+  Done. It's now at ~/Projects/garden/.
+  note: Meru didn't run any tool for this answer, so nothing changed on your
+  computer.
+  0.8s to first token · 40.0 tok/s · 2.4s
+```
+
+The `note:` prefix keeps the line apart from the answer when colour is off.
 
 The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
 turn's `sources` field. It waits until the answer is finished, because
@@ -1038,7 +1053,7 @@ The golden tests in `view_test.go` draw the screen at a fixed size with colour o
 compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
 streaming, two questions queued behind a streaming answer at 80 and 40 columns, a
 finished Markdown answer, a fallback route, a route badge with a
-skill, an answer with sources, an
+skill, an answer with sources, an answer with a notice at 80 and 40 columns, an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
 usage box and the `/me` box at 80 and 40 columns, an answer with links at 80

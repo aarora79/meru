@@ -282,7 +282,9 @@ The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
 
 Answers always stream: `meru chat` and one-shot `meru` both show text as the model
-writes it. Each tool call shows as a dim line inside the answer, `→ notes.search`
+writes it. When `merud` warns that an answer claims an action no tool took, `meru
+chat` shows the warning in amber under the answer and one-shot `meru` prints it
+on stderr as a `note:` line (see [Claims no tool backs](#claims-no-tool-backs)). Each tool call shows as a dim line inside the answer, `→ notes.search`
 while it runs and `✓` or `✗` with its time or outcome when it ends. When `dispatch`
 needs your approval, `meru chat` opens a box under that line with the tool's name
 and arguments and three choices: approve once, approve for this session, or deny.
@@ -924,14 +926,15 @@ order.
    unsearched; one that adds the file tools makes it a file turn.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
-   user, today's date with a pointer to the `datetime` tool (a model knows only its
+   user, the rule that the model never claims an action no tool took (see
+   [Claims no tool backs](#claims-no-tool-backs)), today's date with a pointer to the `datetime` tool (a model knows only its
    training data, so without the date a trip that ended last week reads as one
    still to come; the time of day goes through the tool, since it changes every
    minute and would cost Ollama's reuse), one line on your computer that `merud`
    reads at startup (the OS and version, the processor, memory, the shell and the
    time zone, and no host or user name; without it the model answered a GPU
-   question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, the tools note, and the list of
-   skills. The parts each question changes come after: recalled memories, the
+   question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, a line on what
+   Meru's own tools can change, the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
@@ -1054,6 +1057,68 @@ first keeps it, so no MCP server can shadow `configure` or a `cmd.` tool.
 A `context.Context` runs through the whole turn. If the client disconnects or you
 press Ctrl-C, `merud` cancels the turn, with no sorry: generation stops, in-flight tool calls are
 dropped, and their `tool_calls` rows record the cancellation.
+
+### Claims no tool backs
+
+A model can say it did something that no tool did. In a real session a user
+asked Meru to save a Go program, and `write_file` saved it under
+`~/meru-output/hello-go/`. The user then asked Meru to move that folder to
+another folder. The router picked `search`, which offers only the file tools; the
+model called no tool and answered "Done. It's now at …/repos/hello-go/". Meru has
+no tool that moves a file, and nothing moved. The user learned it only on finding
+the folder missing.
+
+Two parts guard against this. The first is in the prompt. Every turn carries
+this rule after the one on who "I" is:
+
+> Never say you did something, such as saved, moved, sent, deleted, changed or
+> scheduled, unless a tool call in this turn did it and succeeded. When none of
+> your tools can do what the user asks, say so first, then offer what you can do.
+
+and, after the note on your folders, a line built from the tools config allows:
+
+> You can write files only inside ~/meru-output, with write_file. Meru's own
+> tools can't move, rename or delete files, or run programs other than
+> cmd.git-log.
+
+The folder comes from `[skills] output_dir`, and the line says "You can't write
+files" when `write_file` is off. The `cmd.` names are the `[[commands]]` entries,
+sorted. The line lists what config allows, not what one route offers, so it
+stays the same from turn to turn and Ollama reuses its work on it. It speaks only
+of Meru's own tools: an MCP tool such as a mail server's send tool says what it
+changes in its own description.
+
+The second part checks the answer. When a turn ends with a full answer and no
+tool call in it ended `ok`, `merud` reads the answer sentence by sentence,
+leaving out code blocks, and looks for a claim of a finished action:
+
+| Rule | Matches |
+| --- | --- |
+| a sentence that opens with "Done" and a stop | "Done.", "**All done!**" |
+| it, they, or a file, folder, note, email or event "is now at/in" | "It's now at ~/Projects/garden" |
+| "has/have been" and an action | "The file has been saved to ~/Projects" |
+| "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
+| the same with created, updated, wrote or written, when the sentence names a file, folder, note, email, event, reminder, calendar or a path | "I've created the file ~/notes/plan.md" |
+
+A sentence that ends in "?", or that holds "if", "want me", "I can", "I'll", "let
+me", "not", "never" or any "n't", counts as a question, an offer or a denial, and
+never as a claim. Case doesn't matter, and every pattern matches whole words.
+
+When a claim turns up, `merud` sends a `notice` event after the last `token` and
+before `done`, with the text "Meru didn't run any tool for this answer, so
+nothing changed on your computer." `meru` prints it on stderr as a dim `note:`
+line after the answer; `meru chat` draws it in amber under the answer. The
+assistant line keeps it in a `notice` field, and the session's history hands it
+to the model in square brackets after that answer, so the next turn doesn't
+build on the claim. The turn span gets `meru.turn.unbacked_claim = true` and the
+`turn` log line `unbacked_claim=true`; neither carries the text.
+
+The check reads plain English patterns, so it is easy to test and to explain,
+and it gets some cases wrong. It misses a claim in words no rule lists, such as
+"your folder lives in ~/Projects now", and any claim in another language. It
+flags a "Done." at the top of a poem you asked for, where the note is true but
+not needed. It stays quiet on a turn where any tool call succeeded, even one that
+only read a file, because it can't tell which call backs which claim.
 
 ### Routing
 
@@ -1242,6 +1307,8 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 
 An assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off` or `gave_up` (see [Agent loop](#agent-loop)).
+It gets a `notice` field only when the answer claimed an action and no tool
+call in the turn succeeded (see [Claims no tool backs](#claims-no-tool-backs)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
 same time and their lines can interleave. An `approval` line sits between the two

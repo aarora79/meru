@@ -195,7 +195,8 @@ func (s *Session) Append(l Line) error {
 
 // History returns the last maxTurns turns of the session as model messages,
 // oldest first. A turn is a user line and the assistant line that answered
-// it. A user line with no answer (the turn failed or was cancelled) is left
+// it. An answer that carries a notice gets it after its text, in square
+// brackets, so the model reads that its claim didn't happen. A user line with no answer (the turn failed or was cancelled) is left
 // out, so the model never sees two questions in a row. maxTurns of zero or
 // less returns nothing.
 //
@@ -219,9 +220,13 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 			question = l // a later user line replaces an unanswered one
 		case TypeAssistant:
 			if question != nil {
+				answer := l.Text
+				if l.Notice != "" {
+					answer += "\n\n[" + l.Notice + "]"
+				}
 				turns = append(turns, [2]engine.Message{
 					{Role: engine.RoleUser, Content: question.Text},
-					{Role: engine.RoleAssistant, Content: l.Text},
+					{Role: engine.RoleAssistant, Content: answer},
 				})
 				question = nil
 			}

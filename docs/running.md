@@ -579,6 +579,25 @@ call ended, what you chose when asked (`-` when nobody was asked), how long it t
 and its arguments, cut to fit one line. For a local command the last column is the
 program and arguments it ran, such as `git -C /Users/you/repos/meru log --oneline`.
 
+### When an answer claims something no tool did
+
+Meru's own tools write files only inside `~/meru-output` (`[skills] output_dir`)
+and run only your `[[commands]]`. None of them moves, renames or deletes a file.
+The model knows this, but a small one can still answer "Done." to a request no
+tool can carry out. When an answer claims an action and no tool call in the
+turn succeeded, Meru says so under the answer:
+
+```text
+$ meru "move the garden folder to ~/Projects"
+Done. It's now at ~/Projects/garden/.
+note: Meru didn't run any tool for this answer, so nothing changed on your computer.
+```
+
+`meru chat` shows the same note in amber. Believe the note: nothing moved. `meru
+log` lists every tool call, so it shows what did run. The check reads a short list
+of English patterns, so now and then it misses a claim, or notes a "Done." that
+changed nothing and claimed nothing.
+
 ### See how much you use Meru
 
 ```sh
@@ -1592,6 +1611,7 @@ later.
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools, or wrote nothing twice; ask again in other words). |
+| An answer says "Done." and a `note:` line says nothing changed | No tool ran, so the model's claim is wrong. Meru can't move, rename or delete files; it writes only inside `~/meru-output`. See [When an answer claims something no tool did](#when-an-answer-claims-something-no-tool-did). |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
 ## 13. Uninstall

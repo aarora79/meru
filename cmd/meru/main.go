@@ -216,12 +216,15 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 // cites them. It fails when merud can't be reached or replies with an error.
 //
 // Tool calls show on stderr as dim lines, and approve answers merud's
-// approval questions. Keeping both off stdout means `meru "..." > file`
+// approval questions. When merud sends a notice about the answer, such as
+// a claim of an action no tool took, a dim "note:" line on stderr follows
+// the answer. Keeping all of these off stdout means `meru "..." > file`
 // saves only the answer.
 func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
 	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
+	var notice string // merud's warning about the answer; "" for none
 	endsInNewline := false
 	dim := newLook(stderr).dim
 	// breakLine starts a new line on the terminal before a tool line or a
@@ -258,6 +261,8 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 			answer.WriteString(ev.Text)
 			endsInNewline = strings.HasSuffix(ev.Text, "\n")
 			midLine = !endsInNewline
+		case rpc.EventNotice:
+			notice = ev.Text
 		case rpc.EventError:
 			if answer.Len() > 0 && !endsInNewline {
 				fmt.Fprintln(stdout)
@@ -267,6 +272,9 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 	}
 	if answer.Len() > 0 && !endsInNewline {
 		fmt.Fprintln(stdout)
+	}
+	if notice != "" {
+		fmt.Fprintln(stderr, dim.Render("note: "+notice))
 	}
 	if cited := rpc.Cited(answer.String(), sources); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")

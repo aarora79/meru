@@ -83,6 +83,13 @@ and `Cited` cover what the model found through the tool, with no client change.
 `meru check` adds up the paths of every `sources` event, which gives the same
 set.
 
+The `notice` event (`EventNotice`) carries, in `Text`, a warning about the
+answer for the client to show under it. `merud` sends it after the last
+`token` and before `done`, when the answer claims an action, such as "I've
+moved the folder", and no tool call in the turn succeeded (see
+[agent.md](agent.md)). It adds a type and no field, so an older client passes
+over it, as `meru chat` passes over any type it doesn't know.
+
 Two MCP ops back `meru mcp add`. `mcp_probe` carries the server to try in
 `Server`, a `ProbeServer` with the fields of an `[[mcp.servers]]` entry minus the
 allow lists, and answers with one `probe` event. Its `Probe`, a `ProbeResult`,

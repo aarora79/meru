@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -208,6 +208,30 @@ model read "did I visit Lisbon?" as a question about Meru, and answered that
 Meru had no record of a visit while the excerpts named the user as the
 traveller.
 
+After `whoIsWho` comes `honestyRule` (in `honest.go`): never say you saved,
+moved, sent, deleted, changed or scheduled something unless a tool call in
+this turn did it and succeeded, and when no tool can do what the user asks,
+say so first and then offer what you can. A real turn drove it. Asked to move
+a folder that `write_file` had saved under `~/meru-output`, the model called no
+tool and answered "Done. It's now at …/repos/hello-go/". Meru has no tool that
+moves files, so nothing moved.
+
+`New` also keeps `displayDir(home, cfg.Skills.OutputDir)` in `a.outputDir`:
+the folder `write_file` writes in, as the model should read it, such as
+`~/meru-output`. `prompt` hands it to `canDoNote` with every tool config
+allows, and puts the line after the files note:
+
+```text
+You can write files only inside ~/meru-output, with write_file. Meru's own
+tools can't move, rename or delete files, or run programs other than cmd.du,
+cmd.git-log.
+```
+
+The line reads "You can't write files" when `write_file` is off, and drops
+"other than …" when there are no `[[commands]]`. It lists what config allows,
+not what the route offers, so it stays the same on every turn and Ollama keeps
+reusing its work on the prompt's opening.
+
 `New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.
@@ -240,9 +264,9 @@ The profile follows `whoIsWho`, so the rule that "I" means the user and the
 facts about who the user is sit side by side. Without them, the 2B model read a
 hotel booking and guessed that you were the other guest it named.
 
-The whole system prompt, in order: the configured prompt, `whoIsWho`, today's
-date (`today`), the profile, `filesNote`, `toolsNote` on a turn that offers tools, and the list of
-skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
+The whole system prompt, in order: the configured prompt, `whoIsWho`,
+`honestyRule`, today's date (`today`), the profile, `filesNote`, the line from
+`canDoNote`, `toolsNote` on a turn that offers tools, and the list of skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
 file tools; then the recalled memories, the picked skills' instructions, and last
 the files section, which holds the numbered excerpts and then the earlier
 conversations. `prompt` takes the changing parts in one `sections` struct and
@@ -587,6 +611,51 @@ three values come from a fixed list, so the metric stays bounded.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
+
+### Claims no tool backs (honest.go)
+
+After the rounds, `Handle` checks the answer:
+
+```go
+if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
+    notice = unbackedNotice
+    unbacked = true
+    if err := emit(rpc.Event{Type: rpc.EventNotice, Text: notice}); err != nil {
+        return err
+    }
+}
+```
+
+`t.succeeded` counts the tool calls that ended `ok`; `runTools` adds them up
+after each round. A turn where it stays 0 changed nothing, so an answer that
+says "Done." or "I've moved the folder" is wrong. `claimsAction` looks for
+such a sentence. It takes the code blocks out (`withoutCode`), splits the rest
+into sentences (`sentences`), and tests each one against a few regular
+expressions:
+
+| Pattern | Catches |
+| --- | --- |
+| `claimDone` | a sentence that opens with "Done" and a stop: "Done.", "**All done!**" |
+| `claimNowAt` | "It's now at ~/Projects/garden", "The folder is now in ~/Projects" |
+| `claimPassive` | "The file has been saved to ~/Projects" |
+| `claimFirst` | "I've moved the folder", "I just sent the email" |
+| `claimMade` with `namesThing` | "I've created the file ~/notes/plan.md", but not "I've created a short plan:" |
+
+A sentence that ends in `?`, or that `notClaim` matches ("if", "want me", "I
+can", "I'll", "not", any "n't"), is a question, an offer or a denial, and
+never counts. `claimMade` needs `namesThing` because a model also creates,
+updates and writes text in the chat itself: "I've updated the function below"
+changes nothing on the computer and says so.
+
+The warning goes out as a `notice` event, after the last token and before
+`done`, and into the assistant line's `Notice` field. The turn span gets
+`meru.turn.unbacked_claim` and the `turn` log line `unbacked_claim=true`, never
+the text.
+
+The rules will miss a claim in words they don't list, and flag a "Done." at
+the top of a poem you asked for. They are plain enough to read in a minute and
+test in a table, which matters more here than catching every phrasing: a
+warning that fires by surprise would teach you to ignore it.
 
 ### searchFiles
 
@@ -1134,7 +1203,8 @@ once every call has returned. The model isn't called again.
 ### The transcript
 
 The agent writes two lines per turn: the question and the final answer. The
-answer line carries `outcome` only on a turn that ended without a full answer.
+answer line carries `outcome` only on a turn that ended without a full answer,
+and `notice` only on one whose answer claimed an action no tool took.
 Dispatch writes the tool lines (`tool_call`, `approval`, `tool_result`)
 between them. `transcript.History` reads only user and assistant lines, so
 earlier tool results stay out of later prompts: the answer already holds
@@ -1143,8 +1213,9 @@ what mattered from them.
 ### What it logs
 
 At info level, one `turn` line per turn in `merud.log`: session ID, route,
-source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID, and
-the error when there is one. At debug level each stage adds a line: `turn
+source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID,
+`unbacked_claim=true` when the answer claimed an action no tool took, and the
+error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
 `transcript appended` (once per line, dispatch's tool lines included),
 `route` (from the router), `skills picked` (with the names and the time),
@@ -1183,6 +1254,11 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   or a hyphen, so "personal-knowledge-base" stays one word.
 - **`switch` with a list of cases** — `isFiller` lists its words in one `case`,
   and the switch returns true when `w` matches any of them.
+- **Regular expressions** — `regexp.MustCompile` turns a pattern into a
+  `*regexp.Regexp` once, when the program starts, and panics on a bad pattern,
+  which a test catches at once. `(?i)` in a pattern ignores case and `\b`
+  marks a word boundary. `honest.go` keeps its patterns in package-level
+  variables, which nothing changes after start-up.
 
 ## Try it
 
@@ -1196,6 +1272,19 @@ unless the question names an indexed folder, an empty or failed search still
 answers, and `TestSearchQuery` checks which earlier question joins the query.
 `TestFilesNote` checks the folders reach the system prompt, and
 `TestFolderNames` checks the names the folder rule matches.
+
+`honest_test.go` checks the claim check: `TestClaimsAction` is a table of
+sentences that are claims ("Done. It's now at ~/Projects/garden", "I've moved
+the folder", "The file has been saved to ~/Projects") and ones that aren't
+("I can move it if you like", "Want me to save it?", "I couldn't move it
+because…", "Done is better than perfect"). `TestCanDoNote` checks the line on
+what Meru can do, and `TestPromptSaysWhatMeruCanDo` that a search turn's prompt
+holds it with the folder and the command names. `TestUnbackedClaim` runs whole
+turns: a claim with no tool call sends the `notice` between the last token and
+`done` and writes it to the assistant line; a claim after a `write_file` that
+ended `ok` sends none; a claim after a declined call sends it.
+`TestNoticeInHistory` checks that the next turn's model reads the notice after
+the old answer.
 
 `tools_test.go` checks the tool rounds with `fakeTools` and a `fakeEngine`
 that scripts one reply per round: which routes offer tools, the event order

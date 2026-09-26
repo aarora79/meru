@@ -251,7 +251,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 		t.Errorf("model = %q, want the main tier %q", call.opts.Model, cfg.Models.Main)
 	}
 	wantMsgs := []engine.Message{
-		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false)},
+		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + honestyRule + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false) + "\n\n" + canDoNote(nil, "")},
 		{Role: engine.RoleUser, Content: "hi"},
 	}
 	if !slices.EqualFunc(call.msgs, wantMsgs, sameMessage) {
@@ -291,7 +291,7 @@ func TestTurnContinuesSession(t *testing.T) {
 	if !slices.EqualFunc(router.history, history, sameMessage) {
 		t.Errorf("router saw history %+v, want %+v", router.history, history)
 	}
-	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief.\n\n" + whoIsWho + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false)}}, history...)
+	wantMsgs := append([]engine.Message{{Role: engine.RoleSystem, Content: "Be brief.\n\n" + whoIsWho + "\n\n" + honestyRule + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false) + "\n\n" + canDoNote(nil, "")}}, history...)
 	wantMsgs = append(wantMsgs, engine.Message{Role: engine.RoleUser, Content: "second"})
 	if got := eng.lastCall().msgs; !slices.EqualFunc(got, wantMsgs, sameMessage) {
 		t.Errorf("prompt = %+v\nwant %+v", got, wantMsgs)

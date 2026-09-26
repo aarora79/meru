@@ -165,6 +165,10 @@ type turn struct {
 	rounds int
 	// calls counts the tool calls so far, to number their IDs.
 	calls int
+	// succeeded counts the calls that ended "ok". A turn where it stays 0
+	// changed nothing, so Handle checks its answer for a claim that it
+	// did; see claimsAction.
+	succeeded int
 	// question is what the user typed, for dispatch.Call.Question: see
 	// userWords.
 	question string
@@ -549,6 +553,7 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	// need no lock.
 	out := make([]engine.Message, len(calls))
 	found := make([][]rpc.Citation, len(calls))
+	outcomes := make([]string, len(calls))
 	// errgroup.WithContext returns a group and a ctx that ends when any of
 	// the group's functions returns an error. g.Go starts a function in a
 	// new goroutine; g.Wait waits for all of them and returns the first
@@ -570,6 +575,7 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			found[i] = res.Sources
+			outcomes[i] = outcome.Outcome
 			return t.emit(rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{
 				ID: ids[i], Name: c.Name, Kind: toolKind(c.Name),
 				Outcome: outcome.Outcome, DurationMillis: outcome.Duration.Milliseconds(),
@@ -579,6 +585,11 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	}
 	if err := g.Wait(); err != nil {
 		return nil, err
+	}
+	for _, o := range outcomes {
+		if o == dispatch.OutcomeOK {
+			t.succeeded++
+		}
 	}
 	// A call cut short by a cancelled turn still returns, with the
 	// "cancelled" outcome; the turn stops here instead of asking the model

@@ -109,6 +109,25 @@ func TestAskToolLinesAfterText(t *testing.T) {
 	}
 }
 
+// TestAskNotice checks that merud's notice prints on stderr after the
+// answer, as a "note:" line, and stays out of stdout.
+func TestAskNotice(t *testing.T) {
+	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		emit(rpc.Event{Type: rpc.EventToken, Text: "Done. It's now at ~/Projects/garden/."})
+		return emit(rpc.Event{Type: rpc.EventNotice, Text: "Meru didn't run any tool for this answer, so nothing changed on your computer."})
+	})
+	var out, errOut bytes.Buffer
+	if code := run(context.Background(), []string{"-socket", sock, "move the garden folder to ~/Projects"}, &out, &errOut); code != 0 {
+		t.Fatalf("exit code %d, stderr %q", code, errOut.String())
+	}
+	if want := "Done. It's now at ~/Projects/garden/.\n"; out.String() != want {
+		t.Errorf("stdout = %q, want %q", out.String(), want)
+	}
+	if want := "note: Meru didn't run any tool for this answer, so nothing changed on your computer.\n"; errOut.String() != want {
+		t.Errorf("stderr = %q, want %q", errOut.String(), want)
+	}
+}
+
 func TestToolLine(t *testing.T) {
 	tests := []struct {
 		name string
