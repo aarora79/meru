@@ -216,10 +216,21 @@ call.
 - [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to report a problem or send a change, and the contributor agreement
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Meru is free software under the GNU Affero General Public License, version 3
+(AGPL-3.0). [LICENSE](LICENSE) holds the full text. You may use, study, change and
+share Meru. If you share a changed copy, or let people use a changed copy over a
+network, you must offer them its source code under the same license.
+
+A company that wants to ship Meru inside a closed product, or change it without
+publishing the changes, can buy a commercial license instead. Ask through the
+author's GitHub profile, [@aarora79](https://github.com/aarora79).
+
+Copies of Meru taken before 26 September 2026 came under the MIT license, and they
+keep it. Contributions need the agreement in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## The name
 

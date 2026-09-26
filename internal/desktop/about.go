@@ -27,7 +27,12 @@ const (
 	sourceURL  = "https://github.com/aarora79/meru"
 	designURL  = sourceURL + "/blob/main/ARCHITECTURE.md"
 	featureURL = sourceURL + "/issues/new"
+	licenseURL = sourceURL + "/blob/main/LICENSE"
 )
+
+// License names the license Meru's code is under, as the LICENSE file at
+// the top of the repository gives it.
+const License = "GNU Affero General Public License v3.0 (AGPL-3.0)"
 
 // About is what the Library's About section shows beside its own prose.
 type About struct {
@@ -37,6 +42,8 @@ type About struct {
 	// merud reports no version over the socket, and the app and merud
 	// come from the same source tree, so the app's own build stands in.
 	Version string `json:"version"`
+	// License is the License constant.
+	License string `json:"license"`
 	// ConfigPath is config.toml, and DataDir the folder that holds it,
 	// the transcripts, the memories and the index, both written with ~
 	// for the home folder.
@@ -66,12 +73,14 @@ func (b *Bridge) About() About {
 	return About{
 		Tagline:    Tagline,
 		Version:    buildVersion(debug.ReadBuildInfo()),
+		License:    License,
 		ConfigPath: tilde(filepath.Join(dir, "config.toml"), b.home),
 		DataDir:    tilde(dir, b.home),
 		Links: []Link{
 			{ID: "source", Label: "Source code on GitHub", URL: sourceURL},
 			{ID: "design", Label: "Read the design", URL: designURL},
 			{ID: "feature", Label: "Request a feature", URL: featureURL},
+			{ID: "license", Label: "Read the license", URL: licenseURL},
 		},
 	}
 }

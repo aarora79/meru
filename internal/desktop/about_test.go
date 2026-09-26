@@ -39,7 +39,7 @@ func TestAbout(t *testing.T) {
 	// Each link opens through OpenURL, so each must pass its check, and
 	// each goes to the project on GitHub.
 	a := New(Options{Socket: "merud.sock"}).About()
-	if len(a.Links) != 3 {
+	if len(a.Links) != 4 || a.License != License {
 		t.Fatalf("links = %+v", a.Links)
 	}
 	for _, l := range a.Links {

@@ -933,6 +933,7 @@ function about(body) {
       body.append(el("h2", "section-head", "This copy"));
       const dl = el("dl", "facts");
       dl.append(el("dt", "", "Version"), el("dd", "", a.version));
+      dl.append(el("dt", "", "License"), el("dd", "", a.license));
       dl.append(el("dt", "", "Settings"), el("dd", "mono", a.config_path));
       dl.append(el("dt", "", "Meru's folder"), el("dd", "mono", a.data_dir));
       body.append(dl);
