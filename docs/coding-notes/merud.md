@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -212,6 +212,23 @@ their indexes) in step with the transcripts, at three moments:
 `summarize.Summarizer` on the `fast` model. `serve` runs its `Run` as the
 errgroup's fourth job: a pass at once, then one a minute, until `merud` stops.
 See [summarize](summarize.md).
+
+### merud: history.go
+
+This file answers the two ops the desktop app uses for past chats. The handler
+sends `sessions` and `session_turns` to a `historyService`, which holds the
+sessions folder and the home folder.
+
+- `handleSessions` calls `transcript.List`, 200 sessions at most by default, and
+  writes each time in RFC 3339.
+- `handleTurns` opens the session with `transcript.Open`, which checks the ID's
+  shape, so a client can't name a file outside the folder. `turnsOf` then walks
+  the lines once: a user line starts a turn, a `tool_call` line adds a step and
+  remembers its index by call ID in a map, the matching `tool_result` line fills in
+  the outcome and time, and the assistant line adds the answer, the route and the
+  sources, shortened to `~/...` with `rpc.ShortPath`.
+
+Both read the files, never `meru.db`, so deleting the database loses no chat.
 
 ### merud: memory.go
 

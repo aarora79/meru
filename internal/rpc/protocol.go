@@ -77,6 +77,15 @@ const (
 	// sends nothing to any server, so the reply comes at once while a
 	// server is down. The reply is one "mcp_status" event and "done".
 	OpMCPStatus Op = "mcp_status"
+	// OpSessions lists the past conversations, the most recent first, at
+	// most Request.Limit of them. merud reads them from the session
+	// transcripts. The reply is one "sessions" event and "done".
+	OpSessions Op = "sessions"
+	// OpSessionTurns asks for the turns of the session named
+	// Request.Session: each question with its answer, route, sources and
+	// tool calls, read from the transcript. The reply is one "turns" event
+	// and "done".
+	OpSessionTurns Op = "session_turns"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -87,6 +96,8 @@ const (
 	SourceCLI Source = "cli" // one-shot `meru "..."`
 	SourceTUI Source = "tui" // `meru chat`
 	SourceJob Source = "job" // the scheduler (v0.5)
+	// SourceDesktop is the desktop app, cmd/meru-desktop.
+	SourceDesktop Source = "desktop"
 )
 
 // Request is the one message a client sends on a connection.
@@ -101,7 +112,8 @@ type Request struct {
 	// Path is the absolute folder or file to index, for OpIndex. Empty
 	// means every [index] folder.
 	Path string `json:"path,omitempty"`
-	// Limit caps how many rows OpLog returns. Zero means merud's default.
+	// Limit caps how many rows OpLog returns, or how many sessions
+	// OpSessions lists. Zero means merud's default.
 	Limit int `json:"limit,omitempty"`
 	// Kind is the memory's folder for OpMemoryAdd, and ID names the memory
 	// for OpMemoryForget.
@@ -158,6 +170,10 @@ const (
 	EventProbe EventType = "probe"
 	// EventMCPStatus answers OpMCPStatus, in MCP.
 	EventMCPStatus EventType = "mcp_status"
+	// EventSessions answers OpSessions, in Sessions.
+	EventSessions EventType = "sessions"
+	// EventTurns answers OpSessionTurns, in Turns.
+	EventTurns EventType = "turns"
 	// EventProgress carries one line of news from a running OpIndex, such
 	// as "scanning 2 folders", in Text.
 	EventProgress EventType = "progress"
@@ -211,6 +227,9 @@ type Event struct {
 	Probe *ProbeResult `json:"probe,omitempty"`
 	// MCP is set on an "mcp_status" event.
 	MCP []MCPStatus `json:"mcp,omitempty"`
+	// Sessions is set on a "sessions" event and Turns on a "turns" event.
+	Sessions []SessionInfo `json:"sessions,omitempty"`
+	Turns    []TurnInfo    `json:"turns,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 

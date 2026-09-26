@@ -27,9 +27,9 @@ type Turn struct {
 	Session string
 	// Time is when the question arrived.
 	Time time.Time
-	// Source is "cli", "tui" or "job", and "" on a row rebuilt from a
-	// transcript, which doesn't record it. Route is the route the turn
-	// took, "" on a row from a transcript older than the field.
+	// Source is "cli", "tui", "job" or "desktop", and "" on a row rebuilt
+	// from a transcript, which doesn't record it. Route is the route the
+	// turn took, "" on a row from a transcript older than the field.
 	Source string
 	Route  string
 	// TokensIn and TokensOut sum the main model's tokens over the turn's

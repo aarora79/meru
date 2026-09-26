@@ -23,7 +23,7 @@ import (
 // memorySource is the source merud writes on a memory the user adds
 // through the client. Request.Source can't tell `meru setup user` from
 // `meru memory add`: it is a metric attribute with a fixed set of values
-// (cli, tui, job). "meru" still marks the memory as one the user typed,
+// (cli, tui, job, desktop). "meru" still marks the memory as one the user typed,
 // against "session <id>" for one the model saved with remember.
 const memorySource = "meru"
 

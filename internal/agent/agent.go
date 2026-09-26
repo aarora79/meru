@@ -943,7 +943,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	// Show each path as ~/... to the model and to the client: it is shorter,
 	// and the model has no use for the full path.
 	for i := range results {
-		results[i].Path = shortPath(a.home, results[i].Path)
+		results[i].Path = rpc.ShortPath(a.home, results[i].Path)
 	}
 	section := noResults
 	if web {
@@ -965,19 +965,6 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	a.log.DebugContext(ctx, "search done", "results", len(results),
 		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
 	return section, sources, docs, nil
-}
-
-// shortPath writes p under the home folder as ~/..., using the OS's path
-// separator. Any other path, or any path when home is "", stays as it is.
-func shortPath(home, p string) string {
-	if home == "" {
-		return p
-	}
-	rel, err := filepath.Rel(home, p)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return p
-	}
-	return "~" + string(filepath.Separator) + rel
 }
 
 // prompt builds the messages for the main model inside a meru.prompt span,
@@ -1152,7 +1139,7 @@ func sourceOf(s rpc.Source) (string, error) {
 	switch s {
 	case "":
 		return string(rpc.SourceCLI), nil
-	case rpc.SourceCLI, rpc.SourceTUI, rpc.SourceJob:
+	case rpc.SourceCLI, rpc.SourceTUI, rpc.SourceJob, rpc.SourceDesktop:
 		return string(s), nil
 	default:
 		return "", fmt.Errorf("unknown source %q", s)

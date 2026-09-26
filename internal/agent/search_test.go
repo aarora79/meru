@@ -395,24 +395,6 @@ func TestSearchQuery(t *testing.T) {
 	}
 }
 
-func TestShortPath(t *testing.T) {
-	home := filepath.FromSlash("/home/u")
-	tests := []struct {
-		home, path, want string
-	}{
-		{home, filepath.FromSlash("/home/u/notes/a.md"), filepath.FromSlash("~/notes/a.md")},
-		{home, filepath.FromSlash("/home/u2/a.md"), filepath.FromSlash("/home/u2/a.md")},
-		{home, filepath.FromSlash("/srv/a.md"), filepath.FromSlash("/srv/a.md")},
-		{home, home, home},
-		{"", filepath.FromSlash("/home/u/a.md"), filepath.FromSlash("/home/u/a.md")},
-	}
-	for _, tt := range tests {
-		if got := shortPath(tt.home, tt.path); got != tt.want {
-			t.Errorf("shortPath(%q, %q) = %q, want %q", tt.home, tt.path, got, tt.want)
-		}
-	}
-}
-
 // TestDirectQuestionNamingAFolderSearches covers the override: a question
 // the router sends direct still searches when it names an indexed folder.
 func TestDirectQuestionNamingAFolderSearches(t *testing.T) {

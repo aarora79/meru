@@ -250,7 +250,7 @@ second, as the transcript does, so a replayed row matches the row written live;
 ### turns.go: usage
 
 Migration step 3 creates `turns`: one row per answered question, with its
-session, the time the question arrived, the source (`cli`, `tui` or `job`), the
+session, the time the question arrived, the source (`cli`, `tui`, `job` or `desktop`), the
 route, the main model's tokens in and out, how long the turn took, how many tool
 calls it made, the files it read, and the trace ID. `docs` holds the files as a
 JSON array of absolute paths, such as `["/Users/me/notes/garden.md"]`, and `[]`
