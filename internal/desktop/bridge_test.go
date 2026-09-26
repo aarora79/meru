@@ -143,7 +143,7 @@ func TestTurnUpdatesInOrder(t *testing.T) {
 			{Type: rpc.EventRoute, Route: "search+tools", Confidence: 0.8},
 			{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: "c1", Name: "google.search_gmail_messages", Kind: "mcp"}},
 			{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: "c1", Name: "google.search_gmail_messages", Kind: "mcp", Outcome: "ok", DurationMillis: 800}},
-			{Type: rpc.EventSources, Sources: []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}}},
+			{Type: rpc.EventSources, Sources: []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}, {N: 2, Path: "~/Notes/garden.md"}}},
 			{Type: rpc.EventToken, Text: "The Casa "},
 			{Type: rpc.EventToken, Text: "do Rio [1]."},
 			{Type: rpc.EventDone, TTFTMillis: 420, TokensOut: 8, EvalMillis: 200},
@@ -166,6 +166,11 @@ func TestTurnUpdatesInOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(end.Contacted, []string{"google"}) {
 		t.Errorf("Contacted = %v, want [google]", end.Contacted)
+	}
+	// The search found two files and the answer cites one: only that one
+	// shows under the answer.
+	if !reflect.DeepEqual(end.Cited, []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}}) {
+		t.Errorf("Cited = %+v, want lisbon.md alone", end.Cited)
 	}
 	if gotReq.Text != "Which hotel did I book in Lisbon?" || gotReq.Source != rpc.SourceDesktop || gotReq.Session != "" {
 		t.Errorf("request = %+v, want the trimmed question, from desktop, in a new session", gotReq)

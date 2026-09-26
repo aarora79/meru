@@ -1,5 +1,6 @@
 // This file fills in the Bridge's options from the user's Meru home: where
-// merud's socket is, which model writes the answers, and the home folder.
+// merud's socket is, which model writes the answers, the home folder and
+// Meru's own folder.
 
 package desktop
 
@@ -24,8 +25,11 @@ func DefaultOptions(socket string) (Options, error) {
 	// A home folder the app can't find leaves source paths that start
 	// with ~ unopenable, but nothing else.
 	o.Home, _ = os.UserHomeDir()
+	dir, err := config.DefaultDir()
+	if err == nil {
+		o.Dir = dir
+	}
 	if o.Socket == "" {
-		dir, err := config.DefaultDir()
 		if err != nil {
 			return Options{}, err
 		}

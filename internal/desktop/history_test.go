@@ -31,7 +31,7 @@ func historyServer(t *testing.T, updated string) string {
 			}
 			return emit(rpc.Event{Type: rpc.EventTurns, Turns: []rpc.TurnInfo{{
 				Question: "Which hotel did I book in Lisbon?", Answer: "The Casa do Rio [1].", Route: "search+tools",
-				Sources:        []string{"~/Notes/lisbon.md"},
+				Sources:        []string{"~/Notes/lisbon.md", "~/Notes/garden.md"},
 				Tools:          []rpc.ToolStep{{Name: "google.search_gmail_messages", Kind: "mcp", Args: json.RawMessage(`{}`), Outcome: "ok", DurationMillis: 840}},
 				DurationMillis: 5100, TokensOut: 14,
 			}}})
@@ -75,8 +75,11 @@ func TestSessionTurns(t *testing.T) {
 	if v.Answer != "The Casa do Rio [1]." || v.DurationMillis != 5100 || v.TokensOut != 14 {
 		t.Errorf("turn = %+v", v)
 	}
-	if !reflect.DeepEqual(v.Sources, []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}}) {
-		t.Errorf("sources = %+v, want lisbon.md as [1]", v.Sources)
+	if !reflect.DeepEqual(v.Sources, []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}, {N: 2, Path: "~/Notes/garden.md"}}) {
+		t.Errorf("sources = %+v, want lisbon.md as [1] and garden.md as [2]", v.Sources)
+	}
+	if !reflect.DeepEqual(v.Cited, []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}}) {
+		t.Errorf("cited = %+v, want lisbon.md alone, the one the answer cites", v.Cited)
 	}
 	wantStep := Step{Name: "google.search_gmail_messages", Kind: "mcp", Server: "google", Label: "Searched mail", Outcome: "ok", DurationMillis: 840}
 	if !reflect.DeepEqual(v.Steps, []Step{wantStep}) {

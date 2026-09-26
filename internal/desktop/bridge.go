@@ -41,6 +41,9 @@ type Options struct {
 	Fast  string
 	Embed string
 	Home  string
+	// Dir is Meru's home folder, ~/.meru, for the About section. ""
+	// means the folder that holds Socket.
+	Dir string
 	// Emit sends each Update to the page.
 	Emit EmitFunc
 	// Open opens a URL in the browser or the file's app. nil means
@@ -71,6 +74,7 @@ type Bridge struct {
 	fast       string
 	embed      string
 	home       string
+	dir        string
 	outputDir  string
 	emit       EmitFunc
 	open       func(url string) error
@@ -101,6 +105,16 @@ type turn struct {
 	cancel context.CancelFunc
 	// steps are the turn's tool calls so far, for the privacy line.
 	steps []Step
+	// answer collects the answer's text and sources holds the latest
+	// "sources" event's list, so the turn's end can say which sources
+	// the answer cites.
+	answer  strings.Builder
+	sources []rpc.Citation
+}
+
+// cited returns the sources t's answer cites so far.
+func (t *turn) cited() []rpc.Citation {
+	return rpc.Cited(t.answer.String(), t.sources)
 }
 
 // New returns a Bridge for the merud at o.Socket.
@@ -110,7 +124,7 @@ func New(o Options) *Bridge {
 		open = opener.Open
 	}
 	return &Bridge{
-		socket: o.Socket, model: o.Model, fast: o.Fast, embed: o.Embed, home: o.Home, outputDir: o.OutputDir, emit: o.Emit, open: open,
+		socket: o.Socket, model: o.Model, fast: o.Fast, embed: o.Embed, home: o.Home, dir: o.Dir, outputDir: o.OutputDir, emit: o.Emit, open: open,
 		pickFile: o.PickFile, pickFolder: o.PickFolder, quit: o.Quit,
 		approvals: map[string]chan rpc.Choice{},
 	}
@@ -162,7 +176,7 @@ func (b *Bridge) Stop() {
 	if t := b.turn; t != nil {
 		t.cancel()
 		b.turn = nil
-		b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindEnd, Stopped: true, Contacted: contacted(t.steps)})
+		b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindEnd, Stopped: true, Contacted: contacted(t.steps), Cited: t.cited()})
 	}
 	dropped := len(b.queue)
 	b.queue = nil
@@ -269,6 +283,11 @@ func (b *Bridge) event(t *turn, ev rpc.Event) {
 	case rpc.EventSession:
 		b.session = ev.Session
 		u.Session = ev.Session
+	case rpc.EventToken:
+		t.answer.WriteString(ev.Text)
+	case rpc.EventSources:
+		// Each "sources" event replaces the one before it.
+		t.sources = ev.Sources
 	case rpc.EventToolCall:
 		if ev.Tool != nil {
 			s := stepOf(ev.Tool.ID, ev.Tool.Kind, ev.Tool.Name, ev.Tool.Args)
@@ -303,7 +322,7 @@ func (b *Bridge) finish(t *turn, failure string) {
 		return
 	}
 	b.turn = nil
-	b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindEnd, Error: failure, Contacted: contacted(t.steps)})
+	b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindEnd, Error: failure, Contacted: contacted(t.steps), Cited: t.cited()})
 	if len(b.queue) == 0 {
 		return
 	}

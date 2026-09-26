@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `files.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -86,7 +86,9 @@ new goroutine with `wg.Go`, which counts it so `ServiceShutdown` can wait for it
 to `event`. `event` checks that the turn is still the running one, since `Stop` may
 have ended it, and emits an `Update`. For a `session` event it keeps the ID, so the
 queued questions continue the same chat. For a tool event it adds a `Step` with a
-friendly label from views.go.
+friendly label from views.go. It also collects the answer's tokens in a
+`strings.Builder` and keeps the latest `sources` list, so the turn's end can say
+which sources the answer cites.
 
 Approvals take a channel. `approver` returns the `rpc.ApproveFunc` that `rpc.Do`
 calls when `merud` asks about a tool call:
@@ -113,8 +115,11 @@ the first save: `merud` numbers approvals per connection, and a save runs on a
 connection of its own. A deferred function takes the card out of the map however
 the wait ends.
 
-`finish` ends a turn, emits `end` with the servers it contacted, and starts the
-oldest queued question. `Stop` cancels the running turn, which closes the
+`finish` ends a turn, emits `end` with the servers it contacted and the sources
+the answer cites, and starts the oldest queued question. `rpc.Cited` picks those
+sources, as it does for `meru` and `meru chat`: the ones whose number the answer
+writes as `[1]` or `[1, 3]`. A search can return ten files for an answer that
+cites none, and the page shows only the cited ones under the answer. `Stop` cancels the running turn, which closes the
 connection and so tells `merud` to stop, and drops the queue with a notice.
 
 `ServiceShutdown` has that name because Wails calls a method by that name when the
@@ -155,7 +160,8 @@ new question, and the model's new call brings a new card.
 `Sessions` sends the new `sessions` op and files each session under Today,
 Yesterday or Earlier with `groupOf`, which compares against local midnight.
 `SessionTurns` sends `session_turns` and shapes each past turn like a live one, so
-the page draws both with the same code. Both go through `one`, which sends a
+the page draws both with the same code; each past turn carries its `Cited`
+sources too. Both go through `one`, which sends a
 request and waits, at most five seconds, for the one event that answers it.
 
 `Status` asks for `index_status` and `mcp_status`. It never fails: a `merud` that
@@ -173,7 +179,7 @@ opens Setup on its own.
 ### settings.go
 
 One method per thing the Library and Setup show or change, each a single request:
-`Connections`, `SetPolicy`, `AddConnection`, `RemoveConnection`, `SetSecret`,
+`Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SetSecret`,
 `Folders`, `AddFolder`, `RemoveFolder`, `Memories`, `AddMemory`, `ForgetMemory`,
 `Skills`, `SetSkill`, `Models`, `Activity` and `Usage`. Each hands back what
 `merud` sent, shaped for the page: a view struct such as `ConnectionsView`, with
@@ -181,6 +187,38 @@ an empty list in place of `nil`, since `nil` reaches JavaScript as `null`.
 
 `AddConnection` saves the key first, with `secret_set`, then adds the server with
 `mcp_add`: `merud` refuses to add a catalog server whose key it lacks.
+
+`AddCustomServer` adds a server of the user's own, from the "Add your own MCP
+server" form. It takes an `rpc.CustomServer`: a name, then a program with its
+arguments and environment variables, or a URL with the "on another computer"
+tick. Wails decodes the object the page passes into that struct by its JSON tags.
+The method sends it as `mcp_add` with `Request.Custom` set, and `merud` checks
+every field. A secret variable's value travels in the same request: `merud` must
+save it before it writes the entry, or the reload that follows would fail on a
+`secret:` reference with nothing behind it.
+
+### about.go
+
+`Tagline` holds the one line that says what Meru is: "A personal AI assistant
+that runs entirely on your own computer". `WindowTitle` puts "Meru · " in front
+of it for the title bar; the name comes first, because macOS cuts a long title
+from the end. `index.html` repeats the line as the logo's tooltip, and
+`TestTaglineEverywhere` fails when the page or `main.go` drifts from it.
+
+`About` returns what the Library's About section needs from Go: the tagline, the
+version, where `config.toml` and Meru's folder are, written with `~`, and the
+project's three links on GitHub. `merud` reports no version over the socket, so
+`buildVersion` reads the app's own: `debug.ReadBuildInfo` returns what the Go
+toolchain wrote into the binary, a tag such as `v0.3.0` for a release, or
+`(devel)` plus the git commit for a local build. The app and `merud` build from
+the same tree, so the app's version stands in.
+
+The links live in Go on purpose. `assets_test.go` fails when the page's own files
+name any host, so the page asks `About` for the links and opens each through
+`OpenURL`, whose check allows `https`. `internal/policy/allowed_urls.txt` lists the
+project's GitHub address, because the policy test reads every string literal in
+Go for hosts off this machine; the app never fetches the page itself, the
+system's browser does.
 
 ### files.go
 
@@ -223,23 +261,38 @@ bundler.
   name needs no generated bindings, so no Wails command-line tool either.
 - `js/app.js` keeps the page's state and wires the rail, the composer, the queue and
   the side panel to the updates. It shows one of three screens in the middle
-  column: the chat, the Library or Setup. The rail folds to a column of icons. The
-  side panel shows what the selected answer used, Remembered included, or "Why
-  Meru is asking" while a card is open, or "On this Mac" in the Library. The
-  composer holds the "Where Meru looks" switch, a radio group the arrow keys move
-  through, and the attach button.
+  column: the chat, the Library or Setup. The rail folds to a column of icons; its
+  logo and name are one button that opens the Library's About. A new chat shows
+  the logo beside "Ask Meru", as an `<img>` with empty alt text, since the heading
+  already says Meru. The side panel starts closed, and the header's button opens
+  it; the page stores nothing, so the choice lasts until the window closes. It
+  shows what the selected answer used, Remembered included, or "Why Meru is
+  asking" while a card is open, or "On this Mac" in the Library. The approval card
+  says why Meru asks on its own, with a link to the panel, because the panel may be
+  closed. The composer holds the "Where Meru looks" switch, a radio group the
+  arrow keys move through, and the attach button.
 - `js/commands.js` runs the slash commands and draws their menu: a listbox under
   the question box, which is its combobox, with `aria-activedescendant` naming the
   option the arrow keys point at. `/copy N` counts the code blocks in the chat's
   finished answers in order, as `meru chat` does, and each block's header shows its
   number.
-- `js/library.js` draws the Library's seven sections: Connections, with an Off /
-  Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity and
-  Usage.
+- `js/library.js` draws the Library's eight sections: Connections, with an Off /
+  Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity, Usage
+  and About. Under the catalog cards, "Add your own MCP server" opens a form: a
+  name, then a program with its arguments and environment variables, or a URL with
+  a tick for a server on another computer. Each argument gets a field of its own,
+  so an argument with a space in it needs no quotes, and no quoting rule can cut
+  one in the wrong place. A variable ticked Secret shows as a password field. The form checks the
+  name's pattern to answer sooner; `merud` checks everything again. About shows
+  the tagline, the name, what Meru does and why it runs on your computer, the
+  version and folders, and the three links the Bridge hands it.
 - `js/setup.js` draws the four Setup steps.
-- `js/turns.js` draws one turn. Each part (work strip, approval card, body, source
-  chips, footer) has its own draw function, so a token redraws only the body. All
-  text goes in with `textContent`, which the browser never reads as HTML.
+- `js/turns.js` draws one turn. Each part (work strip, approval card, body,
+  sources line, footer) has its own draw function, so a token redraws only the
+  body. The sources line shows only the cited sources, closed, as "3 sources"
+  with a chevron; the button, with `aria-expanded`, opens a chip per source. An
+  answer that cites nothing shows no line. All text goes in with `textContent`,
+  which the browser never reads as HTML.
 - `js/markdown.js` renders a finished answer: `marked` turns Markdown into HTML with
   raw HTML escaped, and DOMPurify keeps a short list of tags and only `http`,
   `https` and `file` links, and returns DOM nodes. While an answer streams, the page
@@ -255,15 +308,17 @@ bundler.
   browser can't read, stays as code.
 - `vendor/` and `fonts/` hold the two libraries and the three fonts, with their
   licenses; `THIRD-PARTY.md` lists versions and checksums.
-- `img/meru-logo.svg` is a copy of the project logo in `docs/img/`. The rail shows
-  it with an `<img>` tag, which the page's policy allows for its own files.
+- `img/meru-logo.svg` is a copy of the project logo in `docs/img/`. The rail and
+  the new chat show it with an `<img>` tag, which the page's policy allows for its
+  own files.
 
 ### cmd/meru-desktop/main.go
 
 `//go:build desktop` at the top keeps the go command away from this file unless you
 pass `-tags desktop`. `run` builds the Bridge with `DefaultOptions`, creates the
 Wails app with the Bridge as a service and `Assets` as its file server, and opens a
-1440 by 900 window that shrinks to 1000 by 640.
+1440 by 900 window that shrinks to 1000 by 640. The title bar reads
+`WindowTitle` and never changes; the chat's title shows in the page's header.
 
 ## Go ideas used here
 
@@ -299,7 +354,9 @@ order, Stop, the session list and past turns, the status with and without `merud
 and which links open. `settings_test.go` checks that each settings method sends
 the request `merud` expects, that a save shows its card and returns the path,
 which attached files may go, which saved files `Reveal` opens, the scope, and the
-slash commands against `meru chat`'s. `draft_test.go` checks Edit first's drafts. `assets_test.go` checks the security headers, and fails when
+slash commands against `meru chat`'s. `draft_test.go` checks Edit first's drafts.
+`about_test.go` checks the About data, the version read from build information,
+and the tagline in the page and the window. `assets_test.go` checks the security headers, and fails when
 the page's own code uses `innerHTML`, `eval`, inline scripts or styles, or names a
 host on the network.
 

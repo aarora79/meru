@@ -89,6 +89,11 @@ func TestSettingsCalls(t *testing.T) {
 		{"policy", func() (any, error) { return b.SetPolicy(ctx, "mcp", "google", "send_gmail_message", "ask") },
 			rpc.Request{Op: rpc.OpToolPolicy, Policy: &rpc.PolicyChange{Kind: "mcp", Server: "google", Tool: "send_gmail_message", Policy: "ask"}}},
 		{"add", func() (any, error) { return b.AddConnection(ctx, "obsidian", "obsidian_api_key", "k-1") }, rpc.Request{Op: rpc.OpMCPAdd, ID: "obsidian"}},
+		{"add custom", func() (any, error) {
+			return b.AddCustomServer(ctx, rpc.CustomServer{Name: "notes", Command: "npx", Args: []string{"-y", "notes-mcp"},
+				Env: []rpc.EnvVar{{Name: "NOTES_TOKEN", Value: "t-1", Secret: true}}})
+		}, rpc.Request{Op: rpc.OpMCPAdd, Custom: &rpc.CustomServer{Name: "notes", Command: "npx", Args: []string{"-y", "notes-mcp"},
+			Env: []rpc.EnvVar{{Name: "NOTES_TOKEN", Value: "t-1", Secret: true}}}}},
 		{"remove", func() (any, error) { return b.RemoveConnection(ctx, "google") }, rpc.Request{Op: rpc.OpMCPRemove, ID: "google"}},
 		{"folders", func() (any, error) { return b.Folders(ctx) }, rpc.Request{Op: rpc.OpFolders}},
 		{"add folder", func() (any, error) { return b.AddFolder(ctx, "/Users/dana/Notes") }, rpc.Request{Op: rpc.OpFolderAdd, Path: "/Users/dana/Notes"}},
@@ -115,10 +120,11 @@ func TestSettingsCalls(t *testing.T) {
 		})
 	}
 
-	// The key goes first, in its own request, and the add after it.
+	// A catalog server's key goes first, in its own request, and the add
+	// after it. A server of the user's own carries its secrets in the add.
 	reqs := f.requests()
 	for i, r := range reqs {
-		if r.Op == rpc.OpMCPAdd && (i == 0 || reqs[i-1].Op != rpc.OpSecretSet || reqs[i-1].ID != "obsidian_api_key" || reqs[i-1].Text != "k-1") {
+		if r.Op == rpc.OpMCPAdd && r.Custom == nil && (i == 0 || reqs[i-1].Op != rpc.OpSecretSet || reqs[i-1].ID != "obsidian_api_key" || reqs[i-1].Text != "k-1") {
 			t.Errorf("the request before mcp_add is %+v, want the key", reqs[i-1])
 		}
 	}
@@ -137,6 +143,29 @@ func TestSettingsCalls(t *testing.T) {
 	}
 	if _, err := b.AddMemory(ctx, "me", " "); err == nil {
 		t.Error("an empty memory went to merud")
+	}
+	if _, err := b.AddCustomServer(ctx, rpc.CustomServer{Command: "npx"}); err == nil {
+		t.Error("a server with no name went to merud")
+	}
+}
+
+// TestConnectionsNeverNull checks that a server with no tools reaches the
+// page as [] rather than null, which the page's code can't filter: a
+// server the user just added, not connected yet, lists none.
+func TestConnectionsNeverNull(t *testing.T) {
+	b, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		return emit(rpc.Event{Type: rpc.EventConnections, Connections: []rpc.Connection{{Name: "far", Kind: "mcp", State: rpc.MCPNotConnected}}})
+	}))
+	cv, err := b.Connections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(cv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "null") {
+		t.Errorf("the view holds null: %s", raw)
 	}
 }
 

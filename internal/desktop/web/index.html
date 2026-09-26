@@ -11,8 +11,12 @@
   <div class="app" id="app">
     <nav class="rail" id="rail" aria-label="Chats">
       <div class="brand">
-        <img class="brand-logo" src="img/meru-logo.svg" alt="" width="30" height="30">
-        <span class="wordmark">Meru</span>
+        <button type="button" class="brand-link" id="open-about" aria-label="About Meru" aria-describedby="tagline"
+          title="A personal AI assistant that runs entirely on your own computer">
+          <img class="brand-logo" src="img/meru-logo.svg" alt="" width="30" height="30">
+          <span class="wordmark">Meru</span>
+        </button>
+        <span class="visually-hidden" id="tagline">A personal AI assistant that runs entirely on your own computer</span>
         <button type="button" class="icon-button rail-toggle" id="rail-toggle" aria-label="Collapse the sidebar" aria-expanded="true"></button>
       </div>
       <button type="button" class="button new-chat" id="new-chat">New chat</button>
@@ -30,7 +34,8 @@
     </nav>
 
     <nav class="mini-rail" id="mini-rail" aria-label="Meru" hidden>
-      <img class="brand-logo" src="img/meru-logo.svg" alt="Meru" width="30" height="30">
+      <img class="brand-logo" src="img/meru-logo.svg" alt="Meru" width="30" height="30"
+        title="A personal AI assistant that runs entirely on your own computer">
       <button type="button" class="icon-button" id="mini-expand" aria-label="Show the sidebar"></button>
       <button type="button" class="icon-button" id="mini-new" aria-label="New chat"></button>
       <button type="button" class="icon-button" id="mini-chats" aria-label="Chats"></button>

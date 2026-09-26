@@ -1,8 +1,10 @@
-// The Library: the settings screen, with a back link and seven sections.
+// The Library: the settings screen, with a back link and eight sections.
 // Connections, Folders, About you, Skills, Models, Activity and Usage each
 // ask the Bridge for their data when they open, and every change goes to
-// merud, which writes config.toml or the memory folder and reloads. The
-// page keeps nothing it can't fetch again.
+// merud, which writes config.toml or the memory folder and reloads. About,
+// the last, says what Meru is and links to the project; the Bridge hands
+// it the links, so this file names no web address. The page keeps nothing
+// it can't fetch again.
 
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
@@ -17,6 +19,7 @@ const SECTIONS = [
   { id: "models", label: "Models" },
   { id: "activity", label: "Activity" },
   { id: "usage", label: "Usage" },
+  { id: "about", label: "About" },
 ];
 
 // TOOLS_SHOWN is how many tools a connection card lists before "Show all".
@@ -101,7 +104,7 @@ function draw() {
   body.setAttribute("aria-labelledby", "tab-" + lib.section);
   root.append(body);
   body.append(el("p", "panel-note", "Loading…"));
-  const drawers = { connections, folders, you, skills, models, activity, usage };
+  const drawers = { connections, folders, you, skills, models, activity, usage, about };
   drawers[lib.section](body);
 }
 
@@ -145,10 +148,9 @@ function drawConnections(body, cv) {
 
   const add = cv.catalog.filter((e) => !e.added);
   body.append(el("h2", "section-head", "Add a connection"));
-  if (add.length === 0) {
-    body.append(el("p", "panel-note", "Every server in Meru's catalog is added. To add another, run meru mcp add in a terminal."));
-  }
+  if (add.length === 0) body.append(el("p", "panel-note", "You have added every server in Meru's catalog."));
   for (const e of add) body.append(catalogCard(e, () => connections(body)));
+  body.append(customServer(body));
 
   const focused = lib.focus && body.querySelector('[data-connection="' + CSS.escape(lib.focus) + '"]');
   if (focused) {
@@ -344,6 +346,201 @@ export function catalogCard(e, done) {
   });
   card.append(add);
   return card;
+}
+
+// SERVER_NAME is the rule merud and `meru mcp add` apply to a server's
+// name: 1 to 64 letters, digits, - and _. The page checks it first only to
+// say so sooner; merud checks it again.
+const SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+// customServer draws the "Add your own MCP server" link and the form it
+// opens: a name, then either a program merud starts, with its arguments
+// and environment variables, or the URL of a server the user runs. Each
+// argument has a field of its own, so an argument with a space in it
+// needs no quotes and nothing splits it. merud checks everything and
+// writes the server with every tool Off; the card then lists its tools.
+function customServer(body) {
+  const box = el("div", "custom-server");
+  const form = el("form", "card custom-form");
+  form.id = "custom-server-form";
+  form.hidden = true;
+  form.setAttribute("aria-label", "Your own MCP server");
+  const open = button("Add your own MCP server", { className: "text-button link", iconName: "plus" });
+  open.setAttribute("aria-expanded", "false");
+  open.setAttribute("aria-controls", form.id);
+  open.addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    open.setAttribute("aria-expanded", String(!form.hidden));
+    if (!form.hidden) name.focus();
+  });
+  box.append(open, form);
+
+  form.append(el("h3", "", "Your own MCP server"));
+  form.append(el("p", "card-note", "For a server outside the catalog. Meru adds it with every tool Off; " +
+    "once it connects, its card lists the tools and you turn on the ones you want."));
+
+  const name = field(form, "custom-name", "Name", "notes");
+  name.autocomplete = "off";
+  form.append(el("p", "card-note", "Letters, digits, - and _. Meru puts it before each tool's name, as in notes.search."));
+
+  // The two kinds of server, as radio buttons: a program merud starts
+  // (stdio) or a server at a URL (Streamable HTTP).
+  const kinds = el("fieldset", "choice-row");
+  kinds.append(el("legend", "field-label", "How Meru reaches it"));
+  const stdio = radio(kinds, "custom-kind", "stdio", "A program merud starts", true);
+  radio(kinds, "custom-kind", "http", "A server at a URL", false);
+  form.append(kinds);
+
+  // The program, its arguments and its environment.
+  const prog = el("div", "custom-part");
+  const command = field(prog, "custom-command", "Program", "npx");
+  command.spellcheck = false;
+  prog.append(el("p", "field-label", "Arguments"));
+  const args = el("div", "rows");
+  prog.append(args, el("p", "card-note", "One argument in each field, as the program should get it. " +
+    "A space stays inside its field, so nothing needs quotes."));
+  prog.append(button("Add an argument", { className: "text-button", iconName: "plus", onClick: () => argRow(args).focus() }));
+  argRow(args);
+  prog.append(el("p", "field-label", "Environment variables"));
+  const env = el("div", "rows");
+  prog.append(env, el("p", "card-note", "Tick Secret for a key or a token: merud saves it in secrets.toml, " +
+    "config.toml holds only a reference to it, and Meru never shows it again."));
+  prog.append(button("Add a variable", { className: "text-button", iconName: "plus", onClick: () => envRow(env).focus() }));
+  form.append(prog);
+
+  // The URL, and the tick for a server on another computer.
+  const web = el("div", "custom-part");
+  web.hidden = true;
+  const url = field(web, "custom-url", "URL", "The address the server prints when it starts");
+  url.type = "url";
+  url.spellcheck = false;
+  const remoteLabel = el("label", "check-row");
+  const remote = el("input");
+  remote.type = "checkbox";
+  remoteLabel.append(remote, document.createTextNode(" This server is on another computer"));
+  const warning = el("p", "card-error", "Each tool call sends its data to that computer. Tick this only for a server you trust.");
+  warning.hidden = true;
+  remote.addEventListener("change", () => (warning.hidden = !remote.checked));
+  web.append(remoteLabel, warning);
+  web.append(el("p", "card-note", "Without the tick, Meru accepts only an address on this computer."));
+  form.append(web);
+
+  kinds.addEventListener("change", () => {
+    prog.hidden = !stdio.checked;
+    web.hidden = stdio.checked;
+  });
+
+  const add = button("Add server", { className: "button primary" });
+  add.type = "submit";
+  const cancel = button("Cancel", {
+    className: "text-button",
+    onClick: () => {
+      form.hidden = true;
+      open.setAttribute("aria-expanded", "false");
+      open.focus();
+    },
+  });
+  const actions = el("div", "card-actions");
+  actions.append(add, cancel);
+  form.append(actions);
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const n = name.value.trim();
+    if (!SERVER_NAME.test(n)) {
+      lib.pages.notice("Give the server a name of letters, digits, - and _.");
+      name.focus();
+      return;
+    }
+    const server = { name: n, command: "", args: [], url: "", remote: false, env: [] };
+    if (stdio.checked) {
+      server.command = command.value.trim();
+      // A blank argument field is one the user added and left empty.
+      server.args = [...args.querySelectorAll("input")].map((i) => i.value).filter((v) => v !== "");
+      for (const row of env.children) {
+        const [key, value, secret] = row.querySelectorAll("input");
+        if (!key.value.trim() && !value.value) continue;
+        server.env.push({ name: key.value.trim(), value: value.value, secret: secret.checked });
+      }
+    } else {
+      server.url = url.value.trim();
+      server.remote = remote.checked;
+    }
+    add.disabled = true;
+    bridge.addCustomServer(server).then(
+      () => {
+        lib.focus = n;
+        lib.expanded.add(n);
+        lib.pages.notice("Added " + n + ". Its tools start Off; turn on the ones you want.");
+        connections(body);
+      },
+      (err) => {
+        add.disabled = false;
+        lib.pages.notice(errorText(err));
+      },
+    );
+  });
+  return box;
+}
+
+// field adds a labelled text field to parent and returns the input.
+function field(parent, id, label, placeholder) {
+  const l = el("label", "field-label", label);
+  l.htmlFor = id;
+  const input = el("input", "text-input");
+  input.id = id;
+  input.placeholder = placeholder;
+  parent.append(l, input);
+  return input;
+}
+
+// radio adds a radio button with its label to parent and returns it.
+function radio(parent, group, value, label, checked) {
+  const l = el("label", "check-row");
+  const r = el("input");
+  r.type = "radio";
+  r.name = group;
+  r.value = value;
+  r.checked = checked;
+  l.append(r, document.createTextNode(" " + label));
+  parent.append(l);
+  return r;
+}
+
+// argRow adds one argument field, with a button that takes it away, to
+// rows and returns the field.
+function argRow(rows) {
+  const row = el("div", "field-row");
+  const input = el("input", "text-input grow");
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "Argument " + (rows.children.length + 1));
+  row.append(input, button("", { className: "icon-button", iconName: "close", ariaLabel: "Remove this argument", onClick: () => row.remove() }));
+  rows.append(row);
+  return input;
+}
+
+// envRow adds one environment variable, a name, a value and a Secret
+// tick, to rows and returns the name field. A ticked value hides as a
+// password field does.
+function envRow(rows) {
+  const row = el("div", "field-row");
+  const key = el("input", "text-input");
+  key.placeholder = "NAME";
+  key.spellcheck = false;
+  key.setAttribute("aria-label", "Variable name");
+  const value = el("input", "text-input grow");
+  value.placeholder = "value";
+  value.autocomplete = "off";
+  value.setAttribute("aria-label", "Value");
+  const tick = el("label", "check-row");
+  const secret = el("input");
+  secret.type = "checkbox";
+  secret.addEventListener("change", () => (value.type = secret.checked ? "password" : "text"));
+  tick.append(secret, document.createTextNode(" Secret"));
+  row.append(key, value, tick,
+    button("", { className: "icon-button", iconName: "close", ariaLabel: "Remove this variable", onClick: () => row.remove() }));
+  rows.append(row);
+  return key;
 }
 
 // copyBlock shows a command with a Copy button.
@@ -692,6 +889,78 @@ function usage(body) {
     },
     (err) => fail(body, err),
   );
+}
+
+// ---- About ----
+
+// DOES lists what Meru does, as README.md and ARCHITECTURE.md say it.
+const DOES = [
+  "Answers your questions with open-weight models that Ollama runs on your computer.",
+  "Searches the folders you choose, and names the files each answer came from.",
+  "Uses the tools you allow, such as mail, calendar, notes and web search, and asks you before a call that changes anything.",
+  "Remembers what you tell it about yourself.",
+  "Keeps every chat as a file on your computer.",
+];
+
+// WHY lists why Meru runs on your own computer, from README.md's "Why
+// your own machine".
+const WHY = [
+  "Your files, mail and questions stay on your computer, so none of it ends up in anyone's training set.",
+  "Meru needs no account, calls no cloud model and sends no usage reports.",
+  "You can read every setting in one file, and each memory and skill is a Markdown file you can edit or delete.",
+];
+
+// about draws the About section: the tagline, the name, what Meru does and
+// why, this copy's version and folders, and the project's links. The
+// Bridge supplies the tagline, the version, the paths and the links, so it
+// works while merud is down.
+function about(body) {
+  bridge.about().then(
+    (a) => {
+      body.replaceChildren();
+      body.append(el("p", "about-tagline", a.tagline + "."));
+
+      body.append(el("h2", "section-head", "The name"));
+      body.append(el("p", "", "Meru (मेरु) is the cosmic mountain that the sun, moon and stars turn around. " +
+        "The assistant takes the name because it works the same way: it stays in one place, on your computer, " +
+        "and your notes, tools and daily routine turn around it."));
+
+      body.append(el("h2", "section-head", "What it does"));
+      body.append(list(DOES));
+      body.append(el("h2", "section-head", "Why it runs on your computer"));
+      body.append(list(WHY));
+
+      body.append(el("h2", "section-head", "This copy"));
+      const dl = el("dl", "facts");
+      dl.append(el("dt", "", "Version"), el("dd", "", a.version));
+      dl.append(el("dt", "", "Settings"), el("dd", "mono", a.config_path));
+      dl.append(el("dt", "", "Meru's folder"), el("dd", "mono", a.data_dir));
+      body.append(dl);
+      body.append(el("p", "card-note", "Meru's folder holds the settings, your keys in secrets.toml, " +
+        "every chat, what Meru remembers and the search index."));
+
+      body.append(el("h2", "section-head", "The project"));
+      const links = el("div", "about-links");
+      for (const l of a.links) {
+        links.append(button(l.label, {
+          className: "button secondary",
+          iconName: "globe",
+          onClick: () => bridge.openURL(l.url).catch((err) => lib.pages.notice(errorText(err))),
+        }));
+      }
+      body.append(links);
+      body.append(el("p", "card-note", "To ask for a feature or report a problem, open an issue on GitHub. " +
+        "Say what you tried, what you expected and what happened, and leave out anything private."));
+    },
+    (err) => fail(body, err),
+  );
+}
+
+// list makes a bulleted list of lines.
+function list(lines) {
+  const ul = el("ul", "about-list");
+  for (const line of lines) ul.append(el("li", "", line));
+  return ul;
 }
 
 // ---- The side panel: On this Mac ----

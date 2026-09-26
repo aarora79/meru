@@ -34,6 +34,7 @@ export const bridge = {
   connections: () => call("Connections"),
   setPolicy: (kind, server, tool, policy) => call("SetPolicy", kind, server, tool, policy),
   addConnection: (name, secret, key) => call("AddConnection", name, secret, key),
+  addCustomServer: (server) => call("AddCustomServer", server),
   removeConnection: (name) => call("RemoveConnection", name),
   setSecret: (name, value) => call("SetSecret", name, value),
   folders: () => call("Folders"),
@@ -47,6 +48,8 @@ export const bridge = {
   models: () => call("Models"),
   activity: () => call("Activity"),
   usage: () => call("Usage"),
+  // The Library's About section (about.go).
+  about: () => call("About"),
   // Slash commands (commands.go).
   commands: () => call("Commands"),
   quit: () => call("Quit"),

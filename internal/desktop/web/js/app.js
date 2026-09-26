@@ -12,7 +12,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
   el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval,
-  drawSources, appendToken, approvalCard,
+  appendToken, approvalCard,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openLibrary, libraryPanel, policyWords } from "./library.js";
@@ -107,6 +107,7 @@ const handlers = {
   onRetry(t) {
     send(t.question, t.scope || state.scope);
   },
+  whyText: (v) => whyText(v),
 };
 
 // copy puts text on the clipboard and says so on the button for a moment.
@@ -186,7 +187,9 @@ function newTurn(fields) {
     fallback: false,
     skills: [],
     steps: [],
-    sources: [],
+    sources: [], // every file the prompt held, for the side panel
+    cited: [], // the ones the finished answer cites, for the line under it
+    showSources: false, // whether that line is open
     memories: [],
     answer: "",
     stats: null,
@@ -216,11 +219,19 @@ function drawConversation() {
   scrollDown(true);
 }
 
-// emptyState is what a new chat shows: a line on what Meru does, and a
-// few questions to start with.
+// emptyState is what a new chat shows: the logo beside "Ask Meru", a line
+// on what Meru does, and a few questions to start with. The logo's alt
+// text is empty, because the heading beside it already says Meru.
 function emptyState() {
   const box = el("div", "empty");
-  box.append(el("h2", "", "Ask Meru"));
+  const head = el("div", "empty-head");
+  const logo = el("img", "empty-logo");
+  logo.src = "img/meru-logo.svg";
+  logo.alt = "";
+  logo.width = 48;
+  logo.height = 48;
+  head.append(logo, el("h2", "", "Ask Meru"));
+  box.append(head);
   box.append(el("p", "", "Answers come from the model on " + state.machine +
     " and from the folders, mail and notes you connected."));
   const ideas = el("div", "ideas");
@@ -360,8 +371,9 @@ function onEvent(u) {
       drawStrip(t, handlers);
       break;
     case "sources":
+      // The line under the answer waits for the end, when the Bridge
+      // says which of these the answer cites.
       t.sources = ev.sources || [];
-      drawSources(t, handlers);
       break;
     case "memories":
       t.memories = ev.memories || [];
@@ -431,6 +443,7 @@ function onEnd(u) {
     t.state = u.stopped ? "stopped" : u.error || t.error ? "failed" : "done";
     if (!u.stopped && u.error) t.error = u.error;
     t.contacted = u.contacted || [];
+    t.cited = u.cited || [];
     if (t.approval && !t.approval.answered) t.approval.answered = "ended";
     if (state.asking === t) state.asking = null;
     drawAll(t, handlers);
@@ -736,6 +749,7 @@ function openSession(s) {
           route: v.route || "",
           outcome: v.outcome || "",
           sources: v.sources || [],
+          cited: v.cited || [],
           steps: v.steps || [],
           contacted: v.contacted || [],
           stats: { duration_ms: v.duration_ms, tokens_out: v.tokens_out },
@@ -913,8 +927,7 @@ function forget(t, m) {
 // drawAsking fills the panel while an approval card is open: why Meru
 // asks, what else the server may do, and where the call is logged.
 function drawAsking(body, v) {
-  const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
-  body.append(el("p", "", whyText(v, where)));
+  body.append(el("p", "", whyText(v)));
   const c = state.askingTools;
   body.append(el("h3", "", v.server ? "What " + v.server + " may do" : "Meru's own tools"));
   if (!c) {
@@ -943,8 +956,10 @@ function drawAsking(body, v) {
   body.append(log);
 }
 
-// whyText says why this call waits for the user.
-function whyText(v, where) {
+// whyText says why the call on approval card v waits for the user. The
+// card and the side panel both show it.
+function whyText(v) {
+  const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
   const policy = state.askingTools && (state.askingTools.tools.find((p) => p.name === v.tool) || {}).policy;
   if (v.tool === "configure" || policy === "always") {
     return v.tool + " asks every time. It can change Meru's settings or run commands, so no approval lasts beyond one call.";
@@ -1010,6 +1025,8 @@ function wire() {
   $("mini-library").addEventListener("click", () => goLibrary("connections"));
   $("open-library").addEventListener("click", () => goLibrary("connections"));
   $("open-setup").addEventListener("click", goSetup);
+  // The logo and the name at the top of the rail open the Library's About.
+  $("open-about").addEventListener("click", () => goLibrary("about"));
   $("share").addEventListener("click", () => save(() => bridge.saveChat(state.session), "chat"));
   $("attach").addEventListener("click", attach);
   $("search").addEventListener("input", (e) => {
@@ -1083,8 +1100,11 @@ function wire() {
     window.addEventListener(name, (e) => e.preventDefault());
   }
 
-  // On a narrow window the panel starts closed, over the conversation.
-  setPanel(window.innerWidth > 1180);
+  // The side panel starts closed, and the header's button opens it. The
+  // choice lasts while the window stays open; nothing stores it, so the
+  // next start opens closed again. An approval card doesn't open it: the
+  // card says why Meru asks.
+  setPanel(false);
   drawScope();
   drawConversation();
   drawComposer();

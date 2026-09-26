@@ -35,8 +35,8 @@ const (
 	// KindApproval asks the page to show an approval card, in Approval.
 	KindApproval = "approval"
 	// KindEnd says the turn is over. Error says why it failed, Stopped is
-	// true when the user stopped it, and Contacted lists who the turn's
-	// tool calls reached.
+	// true when the user stopped it, Contacted lists who the turn's tool
+	// calls reached, and Cited lists the sources the answer cites.
 	KindEnd = "end"
 	// KindQueue carries the questions waiting behind the running turn,
 	// oldest first, in Queue. Notice says what just happened to the
@@ -61,9 +61,13 @@ type Update struct {
 	Approval  *ApprovalView `json:"approval,omitempty"`
 	Queue     []string      `json:"queue,omitempty"`
 	Contacted []string      `json:"contacted,omitempty"`
-	Error     string        `json:"error,omitempty"`
-	Stopped   bool          `json:"stopped,omitempty"`
-	Notice    string        `json:"notice,omitempty"`
+	// Cited holds the sources the finished answer cites by number, picked
+	// with rpc.Cited as `meru` and `meru chat` pick them. The page shows
+	// only these under the answer.
+	Cited   []rpc.Citation `json:"cited,omitempty"`
+	Error   string         `json:"error,omitempty"`
+	Stopped bool           `json:"stopped,omitempty"`
+	Notice  string         `json:"notice,omitempty"`
 }
 
 // Step is one tool call as the work strip shows it: a friendly Label, and

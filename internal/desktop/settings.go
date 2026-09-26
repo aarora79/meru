@@ -68,6 +68,20 @@ func (b *Bridge) AddConnection(ctx context.Context, name, secret, key string) (C
 	return b.connections(ctx, rpc.Request{Op: rpc.OpMCPAdd, ID: name})
 }
 
+// AddCustomServer adds an MCP server of the user's own, from the Library's
+// "Add your own MCP server" form, as `meru mcp add stdio` or `meru mcp add
+// http` would. merud checks everything, saves each secret variable in
+// secrets.toml, writes the entry with no tools allowed and reloads, so the
+// reply lists the new server with every tool off. A secret's value goes
+// to merud over the socket and never comes back. It fails when the name
+// is blank, or with merud's reason when merud refuses.
+func (b *Bridge) AddCustomServer(ctx context.Context, s rpc.CustomServer) (ConnectionsView, error) {
+	if strings.TrimSpace(s.Name) == "" {
+		return ConnectionsView{}, errors.New("give the server a name first")
+	}
+	return b.connections(ctx, rpc.Request{Op: rpc.OpMCPAdd, Custom: &s})
+}
+
 // RemoveConnection takes the MCP server name out of config.toml. Its key
 // stays in secrets.toml, as after `meru mcp remove`.
 func (b *Bridge) RemoveConnection(ctx context.Context, name string) (ConnectionsView, error) {
@@ -93,6 +107,13 @@ func (b *Bridge) connections(ctx context.Context, req rpc.Request) (ConnectionsV
 	v := ConnectionsView{Connections: ev.Connections, Catalog: ev.Catalog}
 	if v.Connections == nil {
 		v.Connections = []rpc.Connection{}
+	}
+	// A server that isn't connected and has no tool allowed, such as one
+	// the user just added by hand, lists no tools; the page wants [].
+	for i := range v.Connections {
+		if v.Connections[i].Tools == nil {
+			v.Connections[i].Tools = []rpc.ToolPolicy{}
+		}
 	}
 	if v.Catalog == nil {
 		v.Catalog = []rpc.CatalogEntry{}

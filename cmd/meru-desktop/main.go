@@ -71,7 +71,7 @@ func run(args []string) error {
 
 	app = application.New(application.Options{
 		Name:        "Meru",
-		Description: "A personal assistant that runs on this computer",
+		Description: desktop.Tagline,
 		// NewService binds every exported method of the Bridge, so the
 		// page can call it by name, and calls its ServiceShutdown when
 		// the app quits.
@@ -89,7 +89,9 @@ func run(args []string) error {
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Meru",
+		// The title bar says what Meru is. The chat's own title shows in
+		// the page's header, so the title bar never changes.
+		Title:     desktop.WindowTitle,
 		URL:       "/",
 		Width:     1440,
 		Height:    900,

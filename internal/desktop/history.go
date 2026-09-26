@@ -39,8 +39,11 @@ type TurnView struct {
 	// Outcome says how a turn ended without a full answer; see
 	// rpc.TurnInfo.
 	Outcome string `json:"outcome,omitempty"`
-	// Sources are the files the turn's prompt held, numbered from 1.
+	// Sources are the files the turn's prompt held, numbered from 1, for
+	// the side panel; Cited are the ones the answer cites, for the line
+	// under the answer.
 	Sources   []rpc.Citation `json:"sources,omitempty"`
+	Cited     []rpc.Citation `json:"cited,omitempty"`
 	Steps     []Step         `json:"steps,omitempty"`
 	Contacted []string       `json:"contacted,omitempty"`
 	// DurationMillis and TokensOut come from the transcript. The time to
@@ -87,6 +90,7 @@ func (b *Bridge) SessionTurns(ctx context.Context, id string) ([]TurnView, error
 		for i, p := range t.Sources {
 			v.Sources = append(v.Sources, rpc.Citation{N: i + 1, Path: p})
 		}
+		v.Cited = rpc.Cited(v.Answer, v.Sources)
 		for _, s := range t.Tools {
 			step := stepOf("", s.Kind, s.Name, s.Args)
 			step.Outcome, step.DurationMillis = s.Outcome, s.DurationMillis

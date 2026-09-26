@@ -69,8 +69,7 @@ export function createTurn(t, h) {
   detail.id = "steps-" + t.key;
   const approval = el("div", "approval-slot");
   const body = el("div", "body");
-  const sources = el("ul", "chips");
-  sources.setAttribute("aria-label", "Sources");
+  const sources = el("div", "sources-line");
   const footer = el("div", "answer-foot");
   answer.append(strip, detail, approval, body, sources, footer);
   root.append(q, answer);
@@ -161,7 +160,13 @@ export function drawApproval(t, h) {
     slot.append(line);
     return;
   }
-  slot.append(approvalCard(a.view, "approval-" + t.key, (choice) => h.onApprove(t, choice)));
+  const card = approvalCard(a.view, "approval-" + t.key, (choice) => h.onApprove(t, choice));
+  // The side panel starts closed, so the card itself says why Meru asks,
+  // with a link to the panel's longer answer.
+  const why = el("p", "approval-why", h.whyText(a.view) + " ");
+  why.append(button("More in the side panel", { className: "text-button link", onClick: () => h.onSelect(t, true) }));
+  card.insertBefore(why, card.querySelector(".choices"));
+  slot.append(card);
 }
 
 // approvalCard builds the card for view v: what the call would do, its
@@ -270,11 +275,29 @@ function outcomeText(outcome) {
   return "";
 }
 
-// drawSources draws a chip for each source; a click opens the file.
+// drawSources draws the sources the finished answer cites: one closed
+// line, "3 sources", whose button opens a chip for each; a chip's click
+// opens the file. An answer that cites nothing gets no line. The side
+// panel still lists every file the prompt held.
 export function drawSources(t, h) {
-  const list = t.el.sources;
-  list.replaceChildren();
-  for (const s of t.sources) {
+  const line = t.el.sources;
+  line.replaceChildren();
+  line.hidden = t.cited.length === 0;
+  if (line.hidden) return;
+  const list = el("ul", "chips");
+  list.id = "sources-" + t.key;
+  list.setAttribute("aria-label", "Sources");
+  list.hidden = !t.showSources;
+  const n = t.cited.length;
+  const toggle = button(n + (n === 1 ? " source" : " sources"), { className: "text-button toggle sources-toggle", iconName: "chevron" });
+  toggle.setAttribute("aria-expanded", String(t.showSources));
+  toggle.setAttribute("aria-controls", list.id);
+  toggle.addEventListener("click", () => {
+    t.showSources = !t.showSources;
+    drawSources(t, h);
+  });
+  line.append(toggle, list);
+  for (const s of t.cited) {
     const li = el("li");
     const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
     chip.append(icon("file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
@@ -283,7 +306,6 @@ export function drawSources(t, h) {
     li.append(chip);
     list.append(li);
   }
-  list.hidden = t.sources.length === 0;
 }
 
 // drawFooter draws Copy, Try again and Details, and the dim stats line.
