@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meru</title>
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <nav class="rail" aria-label="Chats">
+      <div class="brand">
+        <span class="brand-mark" id="brand-mark"></span>
+        <span class="wordmark">Meru</span>
+      </div>
+      <button type="button" class="button new-chat" id="new-chat">New chat</button>
+      <div class="search">
+        <label for="search" class="visually-hidden">Search chats</label>
+        <span class="search-icon" id="search-icon"></span>
+        <input id="search" type="search" placeholder="Search chats" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="sessions" id="sessions"></div>
+      <section class="status" id="status" aria-label="merud status" aria-live="polite"></section>
+    </nav>
+
+    <main class="chat">
+      <header class="chat-head">
+        <h1 id="chat-title">New chat</h1>
+        <button type="button" class="text-button toggle-panel" id="toggle-panel" aria-controls="panel" aria-expanded="false">What it used</button>
+      </header>
+      <div class="messages" id="messages"></div>
+      <div class="composer-area">
+        <p class="notice" id="notice" role="status" aria-live="polite"></p>
+        <ol class="queue" id="queue" aria-label="Queued questions" hidden></ol>
+        <form class="composer" id="composer">
+          <label for="question" class="visually-hidden">Ask Meru</label>
+          <textarea id="question" rows="1" placeholder="Ask about your files, mail, notes or the web"></textarea>
+          <div class="composer-bar">
+            <span class="hint">Enter sends · Shift+Enter adds a line</span>
+            <button type="button" class="button secondary" id="stop" hidden>Stop</button>
+            <button type="submit" class="button primary" id="send">Send</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <aside class="panel" id="panel" aria-labelledby="panel-title">
+      <div class="panel-head">
+        <h2 id="panel-title">What this answer used</h2>
+        <button type="button" class="icon-button close-panel" id="close-panel" aria-label="Close"></button>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </div>
+</body>
+</html>

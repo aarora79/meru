@@ -1,0 +1,298 @@
+// Draws one turn of the conversation: the question bubble, and the answer
+// with its work strip, approval card, body, source chips, actions and
+// stats line. Each part has its own draw function, so a streamed token or
+// a tool result redraws only the part it changes.
+//
+// All text goes in with textContent, which the browser never reads as
+// HTML. The one exception is a finished answer, which markdown.js renders
+// and sanitizes.
+
+import { icon } from "./icons.js";
+import { renderMarkdown } from "./markdown.js";
+
+// ROUTES says in words what each route did.
+const ROUTES = {
+  direct: "Answered from the model",
+  search: "Searched your files",
+  tools: "Used tools",
+  "search+tools": "Searched your files and used tools",
+};
+
+// el makes an element with a class and, optionally, text.
+export function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// button makes a real <button> with an optional icon and a label.
+export function button(label, { iconName, className = "text-button", onClick, ariaLabel } = {}) {
+  const b = el("button", className);
+  b.type = "button";
+  if (iconName) b.append(icon(iconName, 15));
+  if (label) b.append(document.createTextNode(iconName ? " " + label : label));
+  if (ariaLabel) b.setAttribute("aria-label", ariaLabel);
+  if (onClick) b.addEventListener("click", onClick);
+  return b;
+}
+
+// seconds writes a time in milliseconds as seconds: "0.42 s", "5.1 s".
+export function seconds(ms) {
+  const s = ms / 1000;
+  return (s < 1 ? s.toFixed(2) : s.toFixed(1)) + " s";
+}
+
+// baseName returns the last part of a path such as "~/Notes/lisbon.md".
+export function baseName(path) {
+  const parts = String(path).split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+// createTurn builds the elements for turn t and keeps them on t.el. h holds
+// the handlers the buttons call.
+export function createTurn(t, h) {
+  const root = el("article", "turn");
+  const q = el("div", "question");
+  q.append(el("p", "bubble", t.question));
+
+  const answer = el("section", "answer");
+  answer.setAttribute("aria-label", "Meru's answer");
+  answer.addEventListener("click", (e) => {
+    // A click on the answer's text shows what it used in the side panel;
+    // a click on a button or link does its own thing.
+    if (!e.target.closest("button, a")) h.onSelect(t);
+  });
+  const strip = el("div", "work");
+  const detail = el("ol", "steps-detail");
+  detail.hidden = true;
+  detail.id = "steps-" + t.key;
+  const approval = el("div", "approval-slot");
+  const body = el("div", "body");
+  const sources = el("ul", "chips");
+  sources.setAttribute("aria-label", "Sources");
+  const footer = el("div", "answer-foot");
+  answer.append(strip, detail, approval, body, sources, footer);
+  root.append(q, answer);
+  t.el = { root, answer, strip, detail, approval, body, sources, footer };
+  drawAll(t, h);
+  return root;
+}
+
+// drawAll redraws every part of t.
+export function drawAll(t, h) {
+  drawStrip(t, h);
+  drawApproval(t, h);
+  drawBody(t, h);
+  drawSources(t, h);
+  drawFooter(t, h);
+}
+
+// drawStrip draws the one-line work strip: what the route did, each tool
+// call's friendly label, and the Show steps toggle over the raw detail.
+export function drawStrip(t, h) {
+  const strip = t.el.strip;
+  strip.replaceChildren();
+  const route = el("span", "route" + (t.fallback ? " fallback" : ""), ROUTES[t.route] || (t.route ? t.route : "Working"));
+  strip.append(route);
+  for (const s of t.steps) {
+    const failed = s.outcome && s.outcome !== "ok";
+    const step = el("span", "step" + (failed ? " failed" : ""));
+    step.append(icon(failed ? "alert" : "tool", 13), document.createTextNode(" " + s.label));
+    strip.append(step);
+  }
+  if (t.state === "active" && !t.answer && !t.approval) {
+    strip.append(el("span", "working", "Working…"));
+  }
+  if (t.route || t.steps.length > 0) {
+    const toggle = button(t.showSteps ? "Hide steps" : "Show steps", { className: "text-button toggle" });
+    toggle.setAttribute("aria-expanded", String(t.showSteps));
+    toggle.setAttribute("aria-controls", t.el.detail.id);
+    toggle.addEventListener("click", () => {
+      t.showSteps = !t.showSteps;
+      drawStrip(t, h);
+    });
+    strip.append(toggle);
+  }
+  drawDetail(t);
+}
+
+// drawDetail fills the raw step list behind Show steps: the route with the
+// router's confidence, then each call's full tool name, where it ran, its
+// outcome and its time.
+function drawDetail(t) {
+  const d = t.el.detail;
+  d.hidden = !t.showSteps;
+  d.replaceChildren();
+  if (t.route) {
+    const li = el("li");
+    let text = "route " + t.route;
+    if (t.confidence) text += " · confidence " + t.confidence.toFixed(2);
+    if (t.fallback) text += " · the router wasn't sure and used its fallback";
+    if (t.skills && t.skills.length) text += " · skills " + t.skills.join(", ");
+    li.append(el("code", "", text));
+    d.append(li);
+  }
+  for (const s of t.steps) {
+    const li = el("li");
+    li.append(el("code", "", s.name));
+    const where = s.server ? s.kind + " · " + s.server : s.kind;
+    const how = s.outcome ? s.outcome + (s.duration_ms ? " in " + seconds(s.duration_ms) : "") : "running";
+    li.append(el("span", "dim", " " + where + " · " + how));
+    d.append(li);
+  }
+}
+
+// drawApproval draws the approval card merud asked for, or, once
+// answered, one line that says what the user chose.
+export function drawApproval(t, h) {
+  const slot = t.el.approval;
+  slot.replaceChildren();
+  const a = t.approval;
+  if (!a) return;
+  const v = a.view;
+  if (a.answered) {
+    const line = el("p", "approval-done");
+    line.append(icon(a.answered === "deny" ? "close" : "check", 14),
+      document.createTextNode(" " + answeredText(a.answered, v.label)));
+    slot.append(line);
+    return;
+  }
+  const card = el("div", "approval");
+  card.setAttribute("role", "group");
+  const titleId = "approval-" + t.key;
+  card.setAttribute("aria-labelledby", titleId);
+  const title = el("p", "approval-title");
+  title.id = titleId;
+  title.append(icon("ask", 16), document.createTextNode(" Meru asks before it runs this: "));
+  title.append(el("strong", "", v.label));
+  card.append(title, el("p", "approval-tool", v.name + " · " + v.kind));
+
+  if (v.fields && v.fields.length) {
+    const dl = el("dl", "fields");
+    for (const f of v.fields) {
+      dl.append(el("dt", "", f.label), el("dd", f.label === "Body" ? "field-body" : "", f.value));
+    }
+    card.append(dl);
+  }
+  if (v.json) card.append(el("pre", "args", v.json));
+
+  const choices = el("div", "choices");
+  for (const c of v.choices) {
+    const cls = c.choice === "deny" ? "button secondary" : "button ask";
+    const b = button(c.label, { className: cls, onClick: () => h.onApprove(t, c.choice) });
+    b.dataset.choice = c.choice;
+    choices.append(b);
+  }
+  card.append(choices);
+  slot.append(card);
+}
+
+// answeredText says what the user chose on an approval card.
+function answeredText(choice, label) {
+  switch (choice) {
+    case "once":
+      return "You allowed this once: " + label + ".";
+    case "session":
+      return "You allowed this for the rest of this chat: " + label + ".";
+    case "ended":
+      return "The question ended before you answered: " + label + ".";
+  }
+  return "You didn't allow this: " + label + ".";
+}
+
+// drawBody draws the answer: plain text while it streams, because
+// half-written Markdown renders wrong, and sanitized Markdown once it ends.
+export function drawBody(t, h) {
+  const body = t.el.body;
+  body.replaceChildren();
+  body.classList.toggle("streaming", t.state === "active");
+  if (t.state === "active") {
+    t.el.stream = el("p", "stream-text", t.answer);
+    body.append(t.el.stream);
+    return;
+  }
+  if (t.answer) {
+    body.append(renderMarkdown(t.answer, h.onCopyCode));
+  }
+  if (t.outcome) {
+    body.append(el("p", "note", outcomeText(t.outcome)));
+  }
+  if (t.state === "stopped") {
+    body.append(el("p", "note", "You stopped this answer."));
+  } else if (t.error) {
+    const p = el("p", "error");
+    p.append(icon("alert", 14), document.createTextNode(" " + t.error));
+    body.append(p);
+  } else if (!t.answer && t.state === "done") {
+    body.append(el("p", "note", "No answer came back."));
+  }
+}
+
+// appendToken adds streamed text to t's answer without redrawing the rest.
+export function appendToken(t, text) {
+  t.answer += text;
+  if (t.el.stream) {
+    t.el.stream.textContent = t.answer;
+  }
+}
+
+// outcomeText says how a turn ended without a full answer, as the
+// transcript records it.
+function outcomeText(outcome) {
+  switch (outcome) {
+    case "timeout":
+      return "This answer ran out of time.";
+    case "cut_off":
+      return "This answer hit the length limit and stops short.";
+    case "gave_up":
+      return "Meru stopped after too many tool rounds.";
+  }
+  return "";
+}
+
+// drawSources draws a chip for each source; a click opens the file.
+export function drawSources(t, h) {
+  const list = t.el.sources;
+  list.replaceChildren();
+  for (const s of t.sources) {
+    const li = el("li");
+    const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
+    chip.append(icon("file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
+    chip.title = "Open " + s.path;
+    chip.setAttribute("aria-label", "Open source " + s.n + ", " + s.path);
+    li.append(chip);
+    list.append(li);
+  }
+  list.hidden = t.sources.length === 0;
+}
+
+// drawFooter draws Copy, Try again and Details, and the dim stats line.
+export function drawFooter(t, h) {
+  const f = t.el.footer;
+  f.replaceChildren();
+  if (t.state === "active") return;
+  const actions = el("div", "actions");
+  if (t.answer) {
+    actions.append(button("Copy", { iconName: "copy", onClick: (e) => h.onCopyAnswer(t, e.currentTarget) }));
+  }
+  actions.append(button("Try again", { iconName: "retry", onClick: () => h.onRetry(t) }));
+  actions.append(button("Details", { iconName: "panel", onClick: () => h.onSelect(t, true) }));
+  f.append(actions);
+  const stats = statsText(t);
+  if (stats) f.append(el("p", "stats", stats));
+}
+
+// statsText writes the stats line: time to first token, the model's speed
+// in tokens a second, and the total time. A past turn has only its total
+// time and token count.
+function statsText(t) {
+  const s = t.stats;
+  if (!s) return "";
+  const parts = [];
+  if (s.ttft_ms) parts.push("First token " + seconds(s.ttft_ms));
+  if (s.tokens_out && s.eval_ms) parts.push(Math.round(s.tokens_out / (s.eval_ms / 1000)) + " tokens/s");
+  else if (s.tokens_out) parts.push(s.tokens_out + " tokens");
+  if (s.duration_ms) parts.push(seconds(s.duration_ms) + " total");
+  return parts.join(" · ");
+}
