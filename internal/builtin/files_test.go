@@ -541,6 +541,11 @@ func TestOutputFolder(t *testing.T) {
 		{"pdf attachment by full path", ReadFile, `{"path":` + jsonPath(filepath.Join(att, saved)) + `}`, pages, ""},
 		{"pdf attachment by saved filename", ReadFile, `{"path":"` + saved + `"}`, pages, ""},
 		{"pdf attachment relative to the output folder", ReadFile, `{"path":"attachments/` + saved + `"}`, pages, ""},
+		// The model guessed the folder: the server saved the file in
+		// attachments/, and the model asked for downloads/.
+		{"pdf attachment under a guessed folder", ReadFile, `{"path":` + jsonPath(filepath.Join(out, "downloads", saved)) + `}`, pages, ""},
+		{"a guessed folder outside the output folder", ReadFile, `{"path":` + jsonPath(filepath.Join(outside, saved)) + `}`,
+			nil, "outside the folders the file tools read"},
 		{"a file write_file wrote", ReadFile, `{"path":` + jsonPath(filepath.Join(out, "letter.md")) + `}`,
 			[]string{"Dear Dana"}, ""},
 		{"list the attachments", ListFolder, `{"path":` + jsonPath(att) + `}`,

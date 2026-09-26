@@ -289,6 +289,13 @@ choice was a line in the prompt telling the model to prefix the name with the
 folder; the fallback needs no prompt text and works whatever the model passes.
 `read_file`'s description adds one sentence: pass the saved filename as path.
 
+The model still writes full paths, and guesses the folder: in testing it asked
+for `~/meru-output/downloads/<name>` when the server had saved the file in
+`attachments/`. So for a full path that doesn't exist, `savedAttachment` looks
+for a file with the same name in `attachments/`, but only when the path points
+inside the output folder. A guessed path anywhere else stays a missing file,
+and `Check` applies every rule to what the lookup finds.
+
 Then `resolve` asks the indexer, through `index.Indexer.Check`, whether the
 indexer would read that path (see [index](index.md)). A path found in the
 attachments folder goes through the same check, so a symbolic link there is
@@ -656,10 +663,11 @@ nothing left behind, and both kinds of planted link. `TestReadDownloads` reads
 and greps a downloaded file through `index.ReadAlso`, and refuses a link in the
 folder. `TestOutputFolder` builds tools with an output folder and one `[index]`
 folder, and runs a table of calls: `read_file` of a PDF in `attachments/` by
-full path, by bare saved filename and by `attachments/<name>`, page by page;
+full path, by bare saved filename, by `attachments/<name>` and under a guessed
+`downloads/` folder, page by page;
 `read_file` of a file `write_file` wrote; `list_folder` and `grep` in the
 attachments folder and with no path; and refusals for a path outside both
-folders, a symbolic link in the attachments folder by path and by name, a
+folders (a guessed folder there included), a symbolic link in the attachments folder by path and by name, a
 missing name, and `..` out of the folder. It also checks that `write_file`
 still refuses an absolute path and `..` and still asks first, that
 `search_files` doesn't name the output folder, and that `read_file`'s
