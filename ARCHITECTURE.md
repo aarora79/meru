@@ -330,11 +330,17 @@ name, "web search" for `web_search` and the site for `web_fetch`. The other
 methods each send one request for the Library and Setup screens, save a chat or
 an answer, show the system's file and folder dialogs, and close the app.
 
+**One line says what Meru is**: "A personal AI assistant that runs entirely on
+your own computer". The title bar shows "Meru · " and that line, and never
+changes; the chat's own title sits in the page's header. The rail's logo carries
+the line as its tooltip.
+
 **The chat screen** has three columns:
 
-- **The rail** holds the logo and wordmark, New chat, a search box that filters
-  the list, past chats grouped Today, Yesterday and Earlier, a status block, and
-  two buttons at its foot, Library and Setup. The status block shows the answer
+- **The rail** holds the logo and wordmark, one button that opens the Library's
+  About, then New chat, a search box that filters the list, past chats grouped
+  Today, Yesterday and Earlier, a status block, and two buttons at its foot,
+  Library and Setup. The status block shows the answer
   model, the file count and the connected MCP servers, or, when `merud` doesn't
   answer, that it isn't running and the command that starts it. A button folds
   the rail to a column of icons: the logo, New chat, chats, Library and a status
@@ -345,22 +351,30 @@ an answer, show the system's file and folder dialogs, and close the app.
   each tool call by its label; "Show steps" opens the raw tool names, outcomes and
   times, and an amber "Waiting for you" chip marks an open approval. The answer
   streams as plain text and renders as Markdown when it ends, as in `meru chat`;
-  each code block gets its number in the chat and a Copy button, each source a
-  chip that opens its file, and each answer **Copy**, **Save to a note**, **Try
-  again** (the same question, in the same session and scope) and a dim stats
-  line. The composer sends on Enter and adds a line on Shift+Enter; while a turn
+  each code block gets its number in the chat and a Copy button, and each answer
+  **Copy**, **Save to a note**, **Try again** (the same question, in the same
+  session and scope) and a dim stats line. Under the answer, one closed line,
+  "3 sources", opens to a chip for each source the answer cites, and a chip opens
+  its file. The Bridge picks those sources with `rpc.Cited`, as `meru` and `meru
+  chat` do; an answer that cites none shows no line. A new chat shows the logo
+  beside "Ask Meru". The composer sends on Enter and adds a line on
+  Shift+Enter; while a turn
   runs, Enter queues, and the queue shows above the composer with a remove button
   on each question. Under the text box sit the **Where Meru looks** switch and
   the attach button.
-- **The side panel**, "What this answer used", lists the selected answer's
-  sources, its tool calls, and under **Remembered** the memories recall put in
+- **The side panel** starts closed; the header's button opens it, and the choice
+  lasts until the window closes. "What this answer used" lists the selected
+  answer's sources, every file the prompt held, its tool calls, and under
+  **Remembered** the memories recall put in
   its prompt, each with a **Forget** button that sends `memory_forget`. It ends
   with a privacy line: "The model ran on this Mac. Only google was contacted."
   While an approval card is open, the panel turns into **Why Meru is asking**:
   why this call waits, the server's tools that are on with their policies, a
   link, "Change what google may do", that opens the Library at that connection,
-  and a note that every call goes in the tool log under Library, Activity. In
-  the Library the panel is **On this Mac**: the answer and router models, what
+  and a note that every call goes in the tool log under Library, Activity. The
+  panel doesn't open for a card: the card says why Meru asks, with a link to the
+  panel. In the Library the panel is **On this Mac**: the answer and router
+  models, what
   the search index holds, and a line that says there is no account and no cloud,
   with the path of `config.toml`. Below 1180 pixels the panel slides over the
   conversation on demand.
@@ -408,7 +422,7 @@ never reaches the model; an unknown one leaves the text in the box and lists the
 commands, as the chat does. The Bridge holds the list, and a test fails when it
 differs from `meru chat`'s.
 
-**The Library** is the settings screen, with a back link and seven sections:
+**The Library** is the settings screen, with a back link and eight sections:
 
 - **Connections** has a card per tool source: the built-in web tools, merud's
   other built-in tools, each MCP server and A2A agent, and the local commands.
@@ -421,7 +435,14 @@ differs from `meru chat`'s.
   itself a tool. The local commands show their policy without a switch: each is a
   `[[commands]]` entry you edit in `config.toml`. **Add a connection** lists the
   catalog servers not added yet, with what each needs, its start command, and the
-  tools it turns on; an API key goes into a password field.
+  tools it turns on; an API key goes into a password field. Under them, **Add
+  your own MCP server** opens a form for a server outside the catalog, with the
+  rules of `meru mcp add stdio` and `meru mcp add http`: a name of letters,
+  digits, `-` and `_`; either a program with its arguments, one field for each,
+  and environment variables, or a URL. A URL off this machine needs the tick
+  "This server is on another computer", which writes `remote = true`. A variable
+  ticked Secret goes to `secrets.toml` and `config.toml` holds `secret:<name>`.
+  The server's tools all start Off; once it connects, its card lists them.
 - **Folders** lists the `[index]` folders with how many files the index holds
   from each, a button that opens the folder dialog, the usual folders not indexed
   yet, and the skip rules.
@@ -436,6 +457,11 @@ differs from `meru chat`'s.
 - **Activity** lists the `tool_calls` log, the data `meru log` prints: time,
   tool, outcome and duration, with the arguments and result behind a button.
 - **Usage** shows the usage windows the chat's `/usage` box shows.
+- **About** says what Meru is and where its name comes from, what it does and
+  why it runs on your computer, the app's version, where `config.toml` and
+  Meru's folder are, and three links: the source code, the design and a new
+  issue on GitHub. The Bridge hands the page the links, so the page's own files
+  name no host, and each opens in the browser through `OpenURL`.
 
 **Setup** has four steps, and opens on its own when `merud` reports no folders
 and no profile memory; the rail's Setup button opens it any time. **The models**
@@ -456,7 +482,7 @@ add` and `configure` use, and applies it at once:
 | `connections` | lists every source with each tool's policy, and the catalog |
 | `tool_policy` | sets one tool's `allow`, `confirm` or `[builtin]` lists, then reloads that kind of source |
 | `secret_set` | saves one key to `secrets.toml`, for a name config or the catalog uses, then reloads the MCP servers |
-| `mcp_add` | appends a catalog server's block, once its key is saved, then reloads the MCP servers |
+| `mcp_add` | appends a catalog server's block, once its key is saved, or a server of the user's own with no tools allowed and its secrets saved first, then reloads the MCP servers |
 | `mcp_remove` | takes a server's block out, then reloads |
 | `folders` | lists the `[index]` folders with file counts, and the usual folders not indexed yet |
 | `folder_add`, `folder_remove` | edits `[index] folders`, hands the indexer the new list, restarts the watcher and scans |
