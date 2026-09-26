@@ -29,7 +29,11 @@ type TurnInfo struct {
 	// Time is when the question arrived (RFC 3339).
 	Time     string `json:"time"`
 	Question string `json:"question"`
-	Answer   string `json:"answer,omitempty"`
+	// Images are the full paths of the images the question carried, as
+	// the transcript's user line holds them. The copies sit in the
+	// uploads folder, where a client may read them to show again.
+	Images []string `json:"images,omitempty"`
+	Answer string   `json:"answer,omitempty"`
 	// Route is the route the turn took, and Outcome says how a turn ended
 	// without a full answer ("timeout", "cut_off" or "gave_up"), as the
 	// transcript's assistant line holds them.

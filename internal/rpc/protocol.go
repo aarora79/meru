@@ -20,7 +20,8 @@ import (
 type Op string
 
 const (
-	// OpAsk sends a question and streams the answer back.
+	// OpAsk sends a question and streams the answer back. The question may
+	// carry up to MaxImages images, in Request.Images.
 	OpAsk Op = "ask"
 	// OpPing checks that merud is up. The reply is a single "done" event.
 	OpPing Op = "ping"
@@ -131,6 +132,16 @@ const (
 	// session). The reply is one "saved" event, whose Text is the path
 	// written, and "done".
 	OpSaveFile Op = "save_file"
+	// OpAttachFile copies the file at Request.Path, which the user picked
+	// in the app's file dialog or dropped on its window, into the uploads
+	// folder under [skills] output_dir. merud refuses a folder, a symbolic
+	// link, and a file whose name looks like a secret's. An image (PNG,
+	// JPEG, GIF or WebP, by name and by content) may be up to 20 MiB, and
+	// goes to the model with a question, in Request.Images. Any other file
+	// may be up to 50 MiB and must be one read_file can read. The reply is
+	// one "saved" event, whose Text is the copy's path and Kind is
+	// AttachImage or AttachFile, and "done".
+	OpAttachFile Op = "attach_file"
 	// OpSkillEnable and OpSkillDisable take the skill named Request.ID out
 	// of [skills] disabled or put it in. The reply is one "skills" event,
 	// as OpSkills sends, and "done".
@@ -163,7 +174,7 @@ type Request struct {
 	Text   string `json:"text,omitempty"`
 	Source Source `json:"source,omitempty"`
 	// Path is the absolute folder or file to index, for OpIndex. Empty
-	// means every [index] folder.
+	// means every [index] folder. For OpAttachFile it is the file to copy.
 	Path string `json:"path,omitempty"`
 	// Limit caps how many rows OpLog returns, or how many sessions
 	// OpSessions lists. Zero means merud's default.
@@ -183,7 +194,34 @@ type Request struct {
 	// Custom is the server of the user's own that OpMCPAdd adds, when ID
 	// is empty. A pointer, for the same reason.
 	Custom *CustomServer `json:"custom,omitempty"`
+	// Images lists the images an OpAsk question carries. A pointer, for
+	// the same reason: a slice field would make Request impossible to
+	// compare with ==.
+	Images *Images `json:"images,omitempty"`
 }
+
+// Images names the images a question carries, at most MaxImages. Each
+// path is the full path of a copy OpAttachFile made, in the uploads
+// folder under [skills] output_dir; merud refuses any other path, a
+// symbolic link, and a file whose content isn't an image. The images go
+// to the main model with the question, so they need a model with vision.
+type Images struct {
+	Paths []string `json:"paths"`
+}
+
+// MaxImages caps the images one question carries. Each image costs the
+// model hundreds of tokens and seconds of work, and the desktop app caps
+// its attachments at five as well.
+const MaxImages = 5
+
+// The kinds of file OpAttachFile copies, in the "saved" event's Kind.
+const (
+	// AttachImage is an image, which goes with the question in
+	// Request.Images.
+	AttachImage = "image"
+	// AttachFile is any other file, which the model reads with read_file.
+	AttachFile = "file"
+)
 
 // EventType names what an Event carries.
 type EventType string
@@ -250,7 +288,9 @@ const (
 	EventConnections EventType = "connections"
 	// EventFolders answers the folder ops, in Folders and Suggested.
 	EventFolders EventType = "folders"
-	// EventSaved answers OpSaveFile; Text holds the path written.
+	// EventSaved answers OpSaveFile and OpAttachFile; Text holds the
+	// path written, and on an OpAttachFile reply Kind says whether it is
+	// an image or a file.
 	EventSaved EventType = "saved"
 	// EventModels answers OpModels, in Models.
 	EventModels EventType = "models"
@@ -280,6 +320,9 @@ type Event struct {
 	Confidence float64   `json:"confidence,omitempty"`
 	Fallback   bool      `json:"fallback,omitempty"` // route event: the router fell back
 	Error      string    `json:"error,omitempty"`
+	// Kind is AttachImage or AttachFile on the "saved" event that answers
+	// OpAttachFile.
+	Kind string `json:"kind,omitempty"`
 
 	// Sources is set on a "sources" event.
 	Sources []Citation `json:"sources,omitempty"`

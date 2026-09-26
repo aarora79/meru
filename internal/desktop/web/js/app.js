@@ -12,7 +12,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
   el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
-  appendToken, approvalCard,
+  appendToken, approvalCard, thumb,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openLibrary, libraryPanel, policyWords } from "./library.js";
@@ -52,7 +52,7 @@ const state = {
   setupShown: false, // Setup opened on its own once already
   machine: "this Mac",
   scope: "auto",
-  attached: null, // the file attached to the next question
+  attachments: [], // the files and images attached to the next question, as the Bridge last sent them
   saves: {}, // open save approval cards, by card ID
   nextKey: 1, // numbers turn elements, for ids
 };
@@ -105,7 +105,7 @@ const handlers = {
     save(() => bridge.saveNote(state.session, t.answer), "note");
   },
   onRetry(t) {
-    send(t.question, t.scope || state.scope);
+    send(t.question, t.scope || state.scope, (t.images || []).map((i) => i.path));
   },
   whyText: (v) => whyText(v),
 };
@@ -180,6 +180,7 @@ function newTurn(fields) {
     key: state.nextKey++,
     n: 0,
     question: "",
+    images: [], // the images the question carried, each with its preview
     scope: "",
     state: "active",
     route: "",
@@ -334,6 +335,9 @@ onUpdate((u) => {
       if (u.notice && !state.quietDrop) notice(u.notice);
       state.quietDrop = false;
       break;
+    case "attachments":
+      onAttachments(u);
+      break;
   }
 });
 
@@ -344,7 +348,7 @@ function onStart(u) {
     $("messages").replaceChildren();
     $("chat-title").textContent = state.title;
   }
-  const t = newTurn({ n: u.turn, question: u.question, scope: state.scope });
+  const t = newTurn({ n: u.turn, question: u.question, images: u.images || [], scope: state.scope });
   state.turns.push(t);
   state.running = u.turn;
   $("messages").append(createTurn(t, handlers));
@@ -521,22 +525,24 @@ function clearSaveCards() {
 // ---- The composer and the queue ----
 
 // send asks question, or queues it while a turn runs. The text stays in
-// the box when the Bridge refuses it, so nothing typed is lost.
-function send(question, scope) {
+// the box when the Bridge refuses it, so nothing typed is lost. images,
+// for Try again, are the paths of the images the first asking carried.
+function send(question, scope, images) {
   let text = question.trim();
   if (!text) return Promise.resolve(false);
   if (state.running && state.queue.length >= MAX_QUEUE) {
     notice(MAX_QUEUE + " questions already wait. Send this one when the next starts.");
     return Promise.resolve(false);
   }
-  if (state.attached) text += "\n\nRead this file: " + state.attached.path;
   notice("");
-  return bridge.send(state.session, text, scope === "auto" ? "" : scope).then(
-    () => {
-      state.attached = null;
-      drawAttachment();
-      return true;
-    },
+  // The Bridge adds a "Read this file" line for each attached file,
+  // sends the images with the question, and clears the chips.
+  const where = scope === "auto" ? "" : scope;
+  const call = images && images.length > 0
+    ? bridge.retry(state.session, text, where, images)
+    : bridge.send(state.session, text, where);
+  return call.then(
+    () => true,
     (err) => {
       notice(errorText(err));
       return false;
@@ -581,49 +587,57 @@ function setScope(value) {
   drawScope();
 }
 
-// attach asks the Bridge for a file to go with the next question. Meru
-// reads it with read_file, so only a file in an indexed folder or the
-// output folder can go; the Bridge checks, and says what to do otherwise.
+// attach shows the system's file dialog. merud copies each file picked
+// into its output folder, where read_file may read a file and a question
+// may carry an image, and the Bridge sends the chips back as an
+// "attachments" update. A file dropped on the chat takes the same path,
+// from Go.
 function attach() {
-  bridge.attachFile().then(
-    (a) => {
-      if (!a || !a.path) return;
-      if (!a.readable) {
-        notice(a.note);
-        return;
-      }
-      state.attached = a;
-      if (state.scope !== "auto" && state.scope !== "files") {
-        setScope("files");
-        notice("Switched to My files, so Meru can read " + a.name + ".");
-      }
-      drawAttachment();
-      $("question").focus();
-    },
-    (err) => notice(errorText(err)),
-  );
+  bridge.attachFile().catch((err) => notice(errorText(err)));
 }
 
-// drawAttachment shows the attached file as a chip in the composer.
-function drawAttachment() {
+// onAttachments draws the chips the Bridge sent, and says which files
+// stayed out and why. A new file switches a scope other than Auto or My
+// files to My files, the scope that offers read_file. A new image
+// switches nothing: it goes with the question in every scope.
+function onAttachments(u) {
+  const files = (list) => list.filter((a) => a.kind !== "image").length;
+  const before = state.attachments.length;
+  const filesBefore = files(state.attachments);
+  state.attachments = u.attachments || [];
+  drawAttachments();
+  let text = u.notice || "";
+  const added = state.attachments.length > before;
+  const addedFile = files(state.attachments) > filesBefore;
+  if (addedFile && state.scope !== "auto" && state.scope !== "files") {
+    setScope("files");
+    text = (text + " Switched to My files, so Meru can read the files.").trim();
+  }
+  if (text) notice(text);
+  if (added) $("question").focus();
+}
+
+// drawAttachments shows each attachment as a chip in the composer, with
+// its size and a button that takes it off. An image's chip shows its
+// preview in place of the file icon.
+function drawAttachments() {
   const box = $("attachments");
   box.replaceChildren();
-  const a = state.attached;
-  box.hidden = !a;
-  if (!a) return;
-  const chip = el("span", "attachment");
-  chip.append(icon("file", 14), el("span", "", a.name));
-  chip.title = a.path;
-  chip.append(button("", {
-    className: "icon-button small",
-    iconName: "close",
-    ariaLabel: "Remove " + a.name,
-    onClick: () => {
-      state.attached = null;
-      drawAttachment();
-    },
-  }));
-  box.append(chip);
+  box.hidden = state.attachments.length === 0;
+  state.attachments.forEach((a, i) => {
+    const image = a.kind === "image";
+    const chip = el("span", "attachment" + (image ? " image" : ""));
+    chip.append(image ? thumb(a, "attachment-thumb") : icon("file", 14), el("span", "", a.name));
+    if (a.size) chip.append(el("span", "attachment-size", a.size));
+    chip.title = image ? "Meru sends this image with your question" : "Meru reads its copy, " + a.path;
+    chip.append(button("", {
+      className: "icon-button small",
+      iconName: "close",
+      ariaLabel: "Remove " + a.name,
+      onClick: () => bridge.detach(i).catch((err) => notice(errorText(err))),
+    }));
+    box.append(chip);
+  });
 }
 
 // drawQueue draws the questions waiting behind the running turn, each with
@@ -732,8 +746,7 @@ function newChat() {
   state.turns = [];
   state.selected = null;
   state.asking = null;
-  state.attached = null;
-  drawAttachment();
+  bridge.detachAll().catch((err) => notice(errorText(err)));
   showView("chat");
   drawConversation();
   drawSessions();
@@ -755,6 +768,7 @@ function openSession(s) {
       state.turns = (turns || []).map((v) =>
         newTurn({
           question: v.question,
+          images: v.images || [],
           answer: v.answer || "",
           state: "done",
           route: v.route || "",
@@ -1107,7 +1121,9 @@ function wire() {
     if (e.target.closest("a")) e.preventDefault();
   });
   // A file dropped on the window would make the WebView open it in place
-  // of the page. The attach button is the way to add a file.
+  // of the page. Wails reports a drop on the chat screen to Go, which
+  // attaches the files; the overlay that says so is CSS on the class Wails
+  // puts on the screen while files hover over it.
   for (const name of ["dragover", "drop"]) {
     window.addEventListener(name, (e) => e.preventDefault());
   }

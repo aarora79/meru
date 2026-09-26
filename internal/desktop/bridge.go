@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -49,15 +50,15 @@ type Options struct {
 	// Open opens a URL in the browser or the file's app. nil means
 	// opener.Open; tests pass a fake that opens nothing.
 	Open func(url string) error
-	// OutputDir is [skills] output_dir with "~" expanded, the other
-	// folder read_file may read, for checking an attached file. "" when
-	// config doesn't load.
+	// OutputDir is [skills] output_dir with "~" expanded, where merud
+	// saves chats and notes, for Reveal. "" when config doesn't load.
 	OutputDir string
-	// PickFile and PickFolder show the system's dialog for choosing a
-	// file or a folder and return the path, or "" when the user cancels.
-	// Quit closes the app. The window supplies all three; nil leaves the
-	// feature off, as in tests that don't need it.
-	PickFile   func() (string, error)
+	// PickFiles shows the system's file dialog and returns the files
+	// picked, none when the user cancels. PickFolder shows its folder
+	// dialog and returns the folder, or "" on a cancel. Quit closes the
+	// app. The window supplies all three; nil leaves the feature off, as
+	// in tests that don't need it.
+	PickFiles  func() ([]string, error)
 	PickFolder func() (string, error)
 	Quit       func()
 }
@@ -78,11 +79,12 @@ type Bridge struct {
 	outputDir  string
 	emit       EmitFunc
 	open       func(url string) error
-	pickFile   func() (string, error)
+	pickFiles  func() ([]string, error)
 	pickFolder func() (string, error)
 	quit       func()
 
-	// wg counts the turn goroutines, so ServiceShutdown can wait for them.
+	// wg counts the turn goroutines and the ones that copy dropped files,
+	// so ServiceShutdown can wait for them.
 	wg sync.WaitGroup
 
 	mu      sync.Mutex // guards the fields below
@@ -90,13 +92,23 @@ type Bridge struct {
 	last    int        // the number of the latest turn
 	session string     // the session the running and queued questions go to
 	scope   string     // where the running and queued questions may look
-	queue   []string   // questions waiting behind the running turn, oldest first
+	queue   []outgoing // questions waiting behind the running turn, oldest first
+	// attached holds the files the next question carries, at most
+	// maxAttachments; files.go adds and removes them.
+	attached []Attachment
 	// approvals holds the channel each open approval card waits on, by the
 	// card's ID, which the Bridge makes unique across turns and saves:
 	// merud numbers approvals per connection, so two connections can each
 	// have an approval "1".
 	approvals map[string]chan rpc.Choice
 	saves     int // numbers the saves, for their approval IDs
+}
+
+// outgoing is one question the Bridge sends or queues: its text, with a
+// "Read this file" line per attached file, and the images it carries.
+type outgoing struct {
+	text   string
+	images []Attachment
 }
 
 // turn is one question on its way through merud.
@@ -125,13 +137,15 @@ func New(o Options) *Bridge {
 	}
 	return &Bridge{
 		socket: o.Socket, model: o.Model, fast: o.Fast, embed: o.Embed, home: o.Home, dir: o.Dir, outputDir: o.OutputDir, emit: o.Emit, open: open,
-		pickFile: o.PickFile, pickFolder: o.PickFolder, quit: o.Quit,
+		pickFiles: o.PickFiles, pickFolder: o.PickFolder, quit: o.Quit,
 		approvals: map[string]chan rpc.Choice{},
 	}
 }
 
 // Send asks question in session: "" starts a new session, and an ID
-// continues that one. scope says where Meru may look, one of the
+// continues that one. The files attached so far go with it, one "Read
+// this file" line each, and so do the images, in the request's Images;
+// all of them come off the composer. scope says where Meru may look, one of the
 // rpc.Scope constants, from the composer's "Where Meru looks" switch; ""
 // means auto. While a turn runs, the question waits in the queue instead
 // and goes to the running turn's session with its scope, so session and
@@ -143,6 +157,33 @@ func New(o Options) *Bridge {
 //
 // It fails when question is blank, scope is unknown, or the queue is full.
 func (b *Bridge) Send(session, question, scope string) error {
+	return b.send(session, question, scope, nil)
+}
+
+// Retry is Send for Try again: it asks question once more, with the
+// images the first asking carried. images are the paths the page got on
+// that turn's images, "~/meru-output/uploads/garden-bed.png"; each must
+// sit in the uploads folder, and merud checks them again. Without Retry,
+// Try again on a question about an image would ask it blind. It fails as
+// Send does, and when a path isn't in the uploads folder.
+func (b *Bridge) Retry(session, question, scope string, images []string) error {
+	var extra []Attachment
+	for _, p := range images {
+		full := expandTilde(p, b.home)
+		if b.outputDir == "" || !inside(filepath.Join(b.outputDir, "uploads"), full) {
+			return fmt.Errorf("%s isn't an image you attached", p)
+		}
+		extra = append(extra, Attachment{
+			Path: rpc.ShortPath(b.home, full), Name: filepath.Base(full), Kind: rpc.AttachImage,
+			Thumb: b.thumbnail(full), full: full,
+		})
+	}
+	return b.send(session, question, scope, extra)
+}
+
+// send does the work of Send and Retry. extra holds images to send beside
+// the ones attached in the composer.
+func (b *Bridge) send(session, question, scope string, extra []Attachment) error {
 	q := strings.TrimSpace(question)
 	if q == "" {
 		return errors.New("type a question first")
@@ -153,16 +194,21 @@ func (b *Bridge) Send(session, question, scope string) error {
 	b.mu.Lock()
 	// defer runs b.mu.Unlock() when Send returns, on every path.
 	defer b.mu.Unlock()
+	if b.turn != nil && len(b.queue) >= maxQueue {
+		return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
+	}
+	next := outgoing{text: b.withAttachments(q), images: append(extra, imagesOf(b.attached)...)}
+	if len(b.attached) > 0 {
+		b.attached = nil
+		b.emitAttachments("")
+	}
 	if b.turn != nil {
-		if len(b.queue) >= maxQueue {
-			return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
-		}
-		b.queue = append(b.queue, q)
+		b.queue = append(b.queue, next)
 		b.emitQueue("")
 		return nil
 	}
 	b.session, b.scope = session, scope
-	b.start(q)
+	b.start(next)
 	return nil
 }
 
@@ -234,16 +280,24 @@ func (b *Bridge) ServiceShutdown() error {
 	return nil
 }
 
-// start sends q to merud as a new turn in b.session. The caller holds b.mu.
-func (b *Bridge) start(q string) {
+// start sends q to merud as a new turn in b.session, with the full paths
+// of its images. The page gets the images, previews included, to show in
+// the question's bubble. The caller holds b.mu.
+func (b *Bridge) start(q outgoing) {
 	b.last++
 	// Each turn gets its own context, so Stop can cancel it without
 	// touching anything else. The Bridge keeps the cancel function.
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &turn{n: b.last, cancel: cancel}
 	b.turn = t
-	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q, Source: rpc.SourceDesktop, Scope: b.scope}
-	b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindStart, Question: q, Session: b.session})
+	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q.text, Source: rpc.SourceDesktop, Scope: b.scope}
+	if len(q.images) > 0 {
+		req.Images = &rpc.Images{}
+		for _, a := range q.images {
+			req.Images.Paths = append(req.Images.Paths, a.full)
+		}
+	}
+	b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindStart, Question: q.text, Session: b.session, Images: q.images})
 	// wg.Go starts the function in a new goroutine and counts it, so
 	// ServiceShutdown can wait for it.
 	b.wg.Go(func() { b.run(ctx, t, req) })
@@ -374,10 +428,14 @@ func (b *Bridge) approver(n int, task string, live func() bool) rpc.ApproveFunc 
 	}
 }
 
-// emitQueue sends the page the queue as it stands, with notice. The
-// caller holds b.mu.
+// emitQueue sends the page the queue as it stands, the text of each
+// question, with notice. The caller holds b.mu.
 func (b *Bridge) emitQueue(notice string) {
-	b.emit(UpdateEvent, Update{Kind: KindQueue, Queue: slices.Clone(b.queue), Notice: notice})
+	texts := make([]string, len(b.queue))
+	for i, q := range b.queue {
+		texts[i] = q.text
+	}
+	b.emit(UpdateEvent, Update{Kind: KindQueue, Queue: texts, Notice: notice})
 }
 
 // dropNotice says how many queued questions Stop dropped, or "" for none.

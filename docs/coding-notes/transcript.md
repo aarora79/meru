@@ -25,8 +25,12 @@ them for search and can always be rebuilt from them.
 {"ts":"2026-09-23T10:15:03Z","type":"assistant","text":"Hi!","tokens_in":31,"tokens_out":2,"route":"search","ms":1480,"sources":["/Users/me/notes/hello.md"],"trace_id":"4bf9…"}
 ```
 
+A user line carries `images` when the question carried images from the desktop
+app: the full paths of the copies in `~/meru-output/uploads/`. The line names
+them and never holds their bytes.
+
 An assistant line also carries `outcome` when the turn ended without a full
-answer: `timeout`, `cut_off`, `gave_up` or `bad_output`. The text then holds
+answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision`. The text then holds
 the apology, or the text so far and a note that Meru stopped it. A full answer leaves the
 field out (`omitempty`).
 
@@ -112,6 +116,21 @@ keeps the last `n` pairs. An answer with a `notice` gets it after its text, in
 square brackets, so on the next turn the model reads that its claim didn't
 happen instead of building on it.
 
+A question with `images` gets one note per image after its text, from
+`imageNotes`:
+
+```text
+which plant is this?
+
+[image: garden-bed.jpg]
+```
+
+So a later turn knows the user shared an image, and the prompt doesn't carry
+it again. An image costs the model hundreds of tokens, and the answer that
+looked at it already sits in the history. `imageNotes` builds the text with a
+`strings.Builder`, which grows one buffer instead of making a new string for
+each `+`.
+
 A crash in the middle of `Append` can leave half a line. The next `Append` then
 writes on the end of it, so a damaged line can turn up anywhere in the file.
 `read` skips any line that isn't valid JSON, which loses that one event and
@@ -191,7 +210,9 @@ go test ./internal/transcript/...
 ```
 
 `TestOpenRejectsBadIDs` tries path-traversal IDs; `TestHistorySkipsTornLines`
-simulates a crash mid-write. `TestReadFromReadsOnlyNewCompleteLines` checks
+simulates a crash mid-write. `TestHistory`'s "images become notes" case checks
+that a user line with two images comes back with two `[image: ...]` notes and
+no image bytes. `TestReadFromReadsOnlyNewCompleteLines` checks
 that a half-written line waits and a torn one is skipped.
 
 ## Why it's built this way

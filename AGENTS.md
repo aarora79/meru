@@ -17,7 +17,11 @@ easier to review.
   of the code. [docs/architecture/100.md](docs/architecture/100.md) and
   [200.md](docs/architecture/200.md) explain the same design at gentler levels.
   **Change ARCHITECTURE.md first**, then carry the change into 200, 100 and their
-  HTML pages (`docs/architecture/*.html`) in the same PR.
+  HTML pages in the same PR: `docs/architecture/300.html` mirrors ARCHITECTURE.md,
+  `200.html` mirrors 200.md, and `index.html` mirrors 100.md.
+  The figures in 100.md and 200.md are PNG files in `docs/architecture/img/`,
+  drawn from the SVG in the HTML pages. After you change a figure's SVG, run
+  `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
 - [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
@@ -36,14 +40,18 @@ and `meru index`, hybrid retrieval on every route but `direct`, and citations: a
 as the one path for every call, the MCP client pool and the A2A client behind it,
 the `tool_calls` audit log, approvals over the socket in both clients, `meru tools`,
 `meru log`, `meru setup`, `meru mcp add` with its server catalog, the built-in
-`configure` tool, and secrets in `~/.meru/secrets.toml`. v0.4 is most of the way
-there: your profile (the `me` and `preferences` memories) goes into every prompt,
-the built-in `remember` tool saves memories from chat, `meru setup user` and
-`meru memory` manage them, and each turn recalls the memories that fit the
+`configure` tool, secrets in `~/.meru/secrets.toml`, `web_search` and `web_fetch`
+through a SearXNG the user runs, and `[[commands]]` entries that run local
+programs as tools. ROADMAP.md ticks every
+v0.4 item: your profile (the `me` and `preferences` memories) goes into every
+prompt, the built-in `remember` tool saves memories from chat, `meru setup user`
+and `meru memory` manage them, and each turn recalls the memories that fit the
 question. Quiet sessions get a summary, and search turns recall past
 conversations. Skills load with progressive disclosure, `meru skills` manages
-them, and the built-in `write_file` tool writes to `~/meru-output/`. The context
-budget across skills, memories and chunks is still to come. The desktop app,
+them, and the built-in `write_file` tool writes to `~/meru-output/`. A context
+budget in `internal/agent/budget.go` caps each section of the prompt. Outside the
+roadmap, `meru usage` counts sessions and questions, and `meru check` grades
+answers against a file of expected ones. The desktop app,
 `meru-desktop` (Wails v3, macOS first), has its chat screen, a Library for
 settings and a Setup screen, each change made by `merud`; the owner asked for it
 ahead of v0.5. Work goes milestone
@@ -99,8 +107,9 @@ The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
 `explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
 repo tool only and doesn't ship. Update those two built-ins by copying from
-`my-ai-assets`, never by editing them in place. The third built-in, `web-research`,
-is Meru's own; its only copy lives in `internal/skills/builtin/web-research/`.
+`my-ai-assets`, never by editing them in place. The other two built-ins,
+`web-research` and `file-research`, are Meru's own; their only copies live in
+`internal/skills/builtin/`.
 
 ## Non-negotiables
 
@@ -141,57 +150,108 @@ is Meru's own; its only copy lives in `internal/skills/builtin/web-research/`.
 
 ## Layout
 
-The repo as it stands. Each package has a `doc.go` and a note in
-`docs/coding-notes/`. Add a package only when its milestone needs it.
+The repo as it stands. Each `internal/` package has a `doc.go`; each command puts
+its package comment at the top of `main.go` instead. Each package has a note in
+`docs/coding-notes/`, with a few sharing one: `merud.md` covers `cmd/merud`,
+`testing.md` covers `policy`, `testutil` and `cmd/fakeollama`, `e2e.md` covers
+`test/e2e` and `cmd/fakemcp`, and `engine.md` covers `loopback`. Add a package
+only when its milestone needs it.
 
 ```text
+AGENTS.md            this guide; CLAUDE.md only points here
+ARCHITECTURE.md      the design contract, level 300
+ROADMAP.md           milestones and their "Done when" lines
+README.md            what Meru is, how to try it, the status line
+CONTRIBUTING.md      how to contribute, and the contributor agreement
+LICENSE              GNU Affero General Public License (AGPL)
+config.example.toml  every config key with its default; a copy of internal/config/template.toml
+Makefile             `make check` runs everything CI runs
+go.mod, go.sum       one module, github.com/aarora79/meru
+
 cmd/
-  merud/             the daemon: config, engine, router, store, indexer, tools, socket, agent loop
-  meru/              the thin client: one question, `meru chat`, `ping`, `index`, `tools`, `log`,
-                     `setup`, `mcp add`/`list`/`remove`, and the approval prompt
-  meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo)
+  merud/             the daemon: main.go wires config, engine, router, store, indexer, tools,
+                     socket and agent loop; one file per group of socket ops (history, memory,
+                     skills, tools, connections, folders, models, save, index); sessions.go
+                     replays transcripts and runs the summarizer;
+                     backends.go joins the MCP pool to dispatch; runtime.go checks Ollama and
+                     warms the models; machine.go describes the computer for the system prompt
+  meru/              the thin client, one file per subcommand: one question and `chat`
+                     (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
+                     `setup user` (user.go), `config template`, `memory list|add|forget`,
+                     `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
+                     `check` (check.go, checkfile.go), the approval prompt (approve.go) and
+                     the terminal styles (look.go)
+  meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
+                     Info.plist and Meru.icns for Meru.app
   fakeollama/        a fake Ollama server for end-to-end tests
   fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/
-  config/            config.toml: defaults, profiles, validation
+  config/            config.toml: defaults, profiles, validation; template.toml is the source of
+                     config.example.toml and `meru config template`
   engine/            the Engine interface and OllamaEngine (chat, stream, embed, info)
-  router/            the one-token route classifier (docs/fast-router.md)
-  store/             meru.db: documents, chunks, vectors, the keyword index, tool_calls
-  retrieve/          hybrid search: vector + keyword, merged by reciprocal-rank fusion
-  index/             reads [index] folders into the store: skip rules, chunking, watching
+  router/            the one-token route classifier (docs/fast-router.md); labelled questions in testdata/
+  store/             meru.db: documents, chunks, vectors, the keyword index, memories, messages
+                     and session turns, tool_calls
+  retrieve/          hybrid search over files, memories and past sessions: vector + keyword,
+                     merged by reciprocal-rank fusion
+  index/             reads [index] folders and the memory folder into the store: skip rules,
+                     .gitignore, Markdown, HTML, PDF and code, chunking, watching
   dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
-  mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists
+  mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
+                     `meru mcp add` runs before it saves a server
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
+  builtin/           the ten tools inside merud: `configure`, `datetime`, `remember`,
+                     `write_file`, the read-only `read_file`, `list_folder`, `grep` and
+                     `search_files`, and `web_search` and `web_fetch` (web.go, webguard.go,
+                     webdownload.go)
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
-  catalog/           the starter MCP servers, the safe append to config.toml, and one-list edits in it
+  catalog/           the starter MCP servers and SearXNG, the safe append to config.toml, and
+                     one-list edits and removals in it
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
-  skills/            loads SKILL.md folders; ships writing and explainer
+  skills/            loads SKILL.md folders; builtin/ ships writing, explainer, web-research and
+                     file-research
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
   summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
-  agent/             one turn: route, build the prompt, run tool rounds, stream the answer
-  transcript/        append-only JSONL session files
-  rpc/               newline-delimited JSON over the Unix socket: client and server
-  obs/               OpenTelemetry metrics and traces, loopback only
+  agent/             one turn: route, build the prompt within the budget (budget.go), pick a
+                     skill, recall memories and earlier chats, run tool rounds, stream the answer
+  transcript/        append-only JSONL session files, and listing them
+  rpc/               newline-delimited JSON over the Unix socket: client, server, and the types
+                     of every op and event
+  obs/               OpenTelemetry metrics and traces, loopback only, and the slog handler
   loopback/          the one rule for "this address is on this machine"
   tui/               the Bubble Tea UI behind `meru chat`
-  desktop/           the desktop app minus the window: the Bridge, its views, the page in web/
+  desktop/           the desktop app minus the window: the Bridge, its views, and the page in
+                     web/ (index.html, app.css, js/, vendored marked and DOMPurify in vendor/,
+                     fonts/)
   opener/            opens a clicked http, https or file link with the system opener, no shell
-  policy/            tests that enforce the non-negotiables and the thin client
+  policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
+                     testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
-deploy/              launchd and systemd files, the local Grafana stack, dashboards
-docs/                architecture levels, coding notes, CI, running guide, posters
-.github/             CI, security scans, Dependabot
-config.example.toml  every config key with its default; a copy of internal/config/template.toml
-Makefile             `make check` runs everything CI runs
+deploy/              launchd/ and systemd/ service files; observability/ holds the local
+                     Grafana stack (compose.yaml), its provisioning and the dashboards
+docs/
+  architecture/      100.md, 200.md and the HTML pages for levels 100 (index.html), 200 and 300
+  coding-notes/      one note per package, and go-basics/ for Go concepts
+  lld.md             the low-level design
+  running.md         how to build and run Meru
+  ci.md              what each check in CI does
+  fast-router.md     how the one-token router works
+  google-setup.md    setting up Gmail, Calendar and Drive for the `google` server
+  examples/          a starter check file for `meru check`
+  img/               the logo and the social preview image
+  posters/           the one-page poster: HTML, PNGs and PDF
+  index.html         the project's landing page
+.claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review
+.github/             CI and security workflows, Dependabot, the pull-request template
+.scratchpad/         git-ignored; the design and review skills write here
 ```
 
 **Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`
 and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
-`transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `mcp`, `dispatch`,
-`a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
+`transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
+`dispatch`, `a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback` and `opener`, plus Wails in the command,
@@ -274,18 +334,21 @@ description. Expected ones: `modelcontextprotocol/go-sdk`, the A2A Go SDK
 `ncruces/go-sqlite3` (with its bundled vec1 and FTS5), OpenTelemetry Go, a TOML
 parser, `golang.org/x/sync` (for `errgroup`, which runs `merud`'s server, startup
 scan and watcher side by side), Bubble Tea with Bubbles for the `meru chat`
-terminal UI, `golang.org/x/term` so `meru setup` reads an API key without echo,
+terminal UI, with Glamour to render an answer's Markdown, goldmark to find its
+links and code blocks, and Lip Gloss, termenv and `charmbracelet/x/ansi` for
+styles and widths, `golang.org/x/term` so `meru setup` reads an API key without echo,
 and for the indexer `fsnotify`, `golang.org/x/net/html` and `ledongthuc/pdf`.
 The desktop app adds Wails v3 (`wailsapp/wails/v3`, pinned to a beta), and its
-page vendors marked and DOMPurify as files, with no Node or npm.
+page vendors marked, DOMPurify and its fonts as files, with no Node or npm.
 
 ## Writing comments
 
 Comments are for a reader who knows programming but not Go. They should be able to
 read a file top to bottom and understand what it does and why.
 
-- **Every package** has a `doc.go` with a package comment: what the package is for,
-  where it sits in ARCHITECTURE.md, and what it chooses not to do.
+- **Every package** has a package comment: what the package is for, where it sits
+  in ARCHITECTURE.md, and what it chooses not to do. An `internal/` package keeps
+  it in `doc.go`; a command keeps it at the top of `main.go`.
 - **Every file** opens with a short comment on what lives in it.
 - **Every function and type**, exported or not, gets a doc comment starting with its
   name: what it does, what it returns, and when it fails.
@@ -332,10 +395,15 @@ make e2e              # end-to-end tests: real binaries against the fake Ollama
 make lint             # staticcheck
 make vuln             # govulncheck
 make sec              # gosec
+make secrets          # scan the working tree for committed secrets
+make fmt              # rewrite Go files in gofmt style
+make cover            # tests with coverage, and the total
 make build            # binaries for five platforms in bin/
 make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
+make desktop-app      # wrap the desktop app in bin/Meru.app (macOS)
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama
+make figures          # redraw the 100.md and 200.md figures from the HTML (needs Chrome)
 go run ./cmd/merud    # run the daemon from source
 go run ./cmd/meru "..."
 ```

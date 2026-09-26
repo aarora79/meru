@@ -224,8 +224,8 @@ make desktop            # writes bin/meru-desktop
 ./bin/meru-desktop      # opens the window
 ```
 
-`make desktop-app` wraps the same binary in `bin/Meru.app`, which you can drag to
-`/Applications` and open like any app. The app finds `merud` at
+`make desktop-app` wraps the same binary in `bin/Meru.app`, with the Meru icon,
+which you can drag to `/Applications` and open like any app. The app finds `merud` at
 `~/.meru/merud.sock`; `-socket path` points it elsewhere. The usual `go install`,
 `go build ./...` and `make build` skip the app, so they still need no C compiler.
 
@@ -275,10 +275,42 @@ looks:
 | Web | uses only web search and web pages |
 | Just talk | answers from the model alone: no search, no tools |
 
-**Attach a file.** The paperclip opens a file dialog. Meru reads the file with its
-file tools, so the file must sit in a folder it indexes or in its output folder,
-`~/meru-output`; for any other file, the app says to add its folder in the
-Library. The question then ends with "Read this file: ~/Notes/lisbon.md".
+**Attach files.** The paperclip opens a file dialog where you can pick one or more
+files from any folder. You can also drop files from Finder anywhere on the chat;
+"Drop to attach" covers the chat while they hover. `merud` copies each file into
+`~/meru-output/uploads/`, where Meru's file tools read, and each one shows as a
+chip above the text box with its name and size; the x takes it off. The question
+then ends with a line per file, such as "Read this file:
+~/meru-output/uploads/garden-plan.pdf". A question takes five files at most.
+
+`merud` won't take a folder, a shortcut (a symbolic link), a file over 50 MiB, a
+file Meru can't read, such as an archive, or a file whose name looks
+like it holds a key or a password, such as `.env`, `server.pem` or `id_ed25519`.
+The line under the text box names each file that stayed out, and why. Attaching
+a file needs `read_file`, which stays off until Meru indexes at least one
+folder. A removed chip keeps its copy; clear `~/meru-output/uploads/` whenever
+you like.
+
+**Attach images.** The same paperclip and the same drop take a PNG, JPEG, GIF or
+WebP image up to 20 MiB, such as a photo of a garden bed. Its chip shows a small
+preview, and so does your question once you send it. The image goes to the
+answer model with that one question, through Ollama on this machine; the question
+gets no "Read this file" line, and an image needs no indexed folder. `merud`
+checks the content as well as the name, so a text file renamed `photo.png`
+stays out.
+
+The answer model must be able to look at images. Check yours with:
+
+```sh
+ollama show <model>
+```
+
+and look for `vision` under Capabilities. When `[models] main` names a model
+without it, Meru sends nothing and says so in the answer; pick a model with
+vision in `config.toml` and restart `merud`. Later questions in the chat don't
+send the image again: the model reads a note, such as `[image: garden-bed.jpg]`,
+and its own earlier answer about it. `meru` and `meru chat` can't attach
+images.
 
 **Approvals.** When Meru wants to run a tool that asks first, an amber card shows
 up inside the answer with the tool and its arguments, a mail's To, Subject and Body

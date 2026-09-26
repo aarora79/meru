@@ -43,6 +43,19 @@ export function seconds(ms) {
   return (s < 1 ? s.toFixed(2) : s.toFixed(1)) + " s";
 }
 
+// thumb returns an <img> for an image's preview, or an image icon when it
+// has none. Only a data: URL of an image type goes in src: the Bridge
+// builds each one in Go, and the check keeps anything else out.
+export function thumb(image, className) {
+  const src = String(image.thumb || "");
+  if (!/^data:image\/(png|jpeg|gif|webp);base64,/.test(src)) return icon("image", 16);
+  const img = document.createElement("img");
+  img.className = className;
+  img.src = src;
+  img.alt = image.name || "";
+  return img;
+}
+
 // baseName returns the last part of a path such as "~/Notes/lisbon.md".
 export function baseName(path) {
   const parts = String(path).split(/[\\/]/);
@@ -54,7 +67,19 @@ export function baseName(path) {
 export function createTurn(t, h) {
   const root = el("article", "turn");
   const q = el("div", "question");
-  q.append(el("p", "bubble", t.question));
+  const bubble = el("div", "bubble");
+  if (t.images && t.images.length > 0) {
+    // The images the question carried sit above its text.
+    const row = el("div", "bubble-images");
+    for (const image of t.images) {
+      const item = thumb(image, "bubble-image");
+      item.title = image.name || "";
+      row.append(item);
+    }
+    bubble.append(row);
+  }
+  bubble.append(el("p", "bubble-text", t.question));
+  q.append(bubble);
 
   const answer = el("section", "answer");
   answer.setAttribute("aria-label", "Meru's answer");

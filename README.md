@@ -24,9 +24,10 @@ first for any address that no search or question of yours gave.
 > every call, `meru setup`, and a catalog of starter servers. In the v0.3 acceptance
 > test, Meru on the 2B `lite` model answered a question from an Obsidian vault by
 > calling the vault's own MCP server twice over three rounds, in 8.3 s, and
-> `meru log` showed both calls. Memory and scheduled jobs come in later milestones;
-> the code for memory files and skills exists as groundwork, but no turn uses it
-> yet. [ROADMAP.md](ROADMAP.md) lists the milestones in order.
+> `meru log` showed both calls. Every v0.4 item has landed too: Meru keeps what you
+> tell it about yourself as memory files, recalls them and past conversations when
+> a question needs them, and loads skills when a turn calls for one. Scheduled jobs
+> come in v0.5. [ROADMAP.md](ROADMAP.md) lists the milestones in order.
 
 ---
 
@@ -38,7 +39,7 @@ jobs. `meru` is the command-line client; it connects to the daemon over a local
 socket and starts in milliseconds. Go builds each program into one file that runs on
 macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
 
-Working in v0.3:
+Working now:
 
 ```
 $ meru setup                               # Ollama, models, folders, web search, MCP servers
@@ -60,7 +61,13 @@ $ meru mcp remove notes                    # take a server out of config.toml
 $ meru tools                               # each server, its allowed tools, which ask first
 $ meru log -n 20 -v                        # the latest tool calls, with results
 $ meru check --save                        # rerun your own questions from ~/.meru/checks.jsonl, grade them
+$ meru usage                               # sessions and questions, from the last hour to all time
 $ meru config template                     # every config key with its default, as setup writes it
+$ meru setup user                          # a few questions about you, saved as memories
+$ meru memory list                         # what it knows about you, in plain text
+$ meru memory forget <id>                  # delete one memory file
+$ meru skills list                         # what it knows how to do
+$ meru skills reset writing                # put a built-in skill back as shipped
 ```
 
 `meru setup` writes `~/.meru/config.toml` from the config template: every key,
@@ -71,16 +78,15 @@ reads the file when it starts, so restart it after a change. API keys go in
 `~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
 `[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
 a pipe. Quote a question that starts with the word `ping`, `chat`, `index`,
-`tools`, `log`, `setup`, `mcp` or `check`, or `meru` reads that word as a command.
+`tools`, `log`, `usage`, `setup`, `config`, `memory`, `skills`, `mcp` or `check`,
+or `meru` may read that word as a command.
 [docs/running.md](docs/running.md#7-index-your-files) shows the setup and the
 `Sources:` output.
 
-Planned for later milestones:
+Planned for v0.5:
 
 ```
-$ meru memory list                 # what it knows about you, in plain text (v0.4)
-$ meru skills list                 # what it knows how to do (v0.4)
-$ meru brief                       # today's digest, prepared in advance (v0.5)
+$ meru brief                       # today's digest, prepared in advance
 ```
 
 ## Quick start

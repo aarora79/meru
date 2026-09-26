@@ -156,7 +156,8 @@ curl -s 127.0.0.1:11500/api/chat -d '{"model":"m","messages":[]}'
 make e2e                                        # end-to-end: real binaries, fake Ollama
 ```
 
-The `curl` call prints five NDJSON lines: four words, then the `done` line.
+The `curl` call prints five NDJSON lines: four words, then the `done` line. Add `-vision m` to make `/api/show` list the `vision` capability for model
+`m`, for a turn with images.
 
 ## Why it's built this way
 

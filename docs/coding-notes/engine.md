@@ -1,8 +1,9 @@
 # engine
 
-**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `loopback.go`, `version.go`,
-`observe_test.go`)
-**Milestone:** v0.1; `Options.NoThink` in v0.4
+**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `version.go`,
+`observe_test.go`, `images_test.go`), and the loopback check in `internal/loopback/loopback.go`
+**Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
+`Capabilities` with the desktop app's image attachments
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -24,6 +25,7 @@ flowchart LR
     E["OllamaEngine"] -->|POST /api/chat| O["Ollama on 127.0.0.1:11434"]
     E -->|POST /api/embed| O
     E -->|GET /api/version, /api/ps| O
+    E -->|POST /api/show| O
 ```
 
 ## Walk through the code
@@ -31,13 +33,17 @@ flowchart LR
 ### engine.go
 
 The interface and the types that pass through it: `Message`, `Options`,
-`Completion`, `Delta`, `Usage`, and the log-probability types the router reads. A
+`Completion`, `Delta`, `Usage`, and the log-probability types the router reads.
+`Message.Images` holds the raw bytes of each image on a user message, and the
+constant `Vision` names the capability a model needs to read them. A
 Go *interface* is a list of method signatures; any type with those methods counts
 as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 
-### loopback.go
+### The loopback check
 
-`loopback.CheckURL` (in `internal/loopback`, shared with config and obs) decides whether a URL points at this machine:
+`NewOllama` calls `loopback.CheckURL`, which lives in its own package,
+`internal/loopback/loopback.go`, so config, obs and the clients can share it. It
+decides whether a URL points at this machine:
 
 ```go
 if strings.EqualFold(host, "localhost") {
@@ -127,6 +133,16 @@ status outside 200–299 it reads Ollama's `{"error": "..."}` body and returns a
 `*APIError`. Callers can find that error with `errors.As`, for example to spot a
 404 for a model that isn't pulled. See [go-basics/http-clients.md](go-basics/http-clients.md).
 
+`Capabilities(ctx, model)` sends `POST /api/show` with `{"model": ...}` and
+returns the `capabilities` list from the reply, such as
+`["completion", "vision", "tools", "thinking"]`. It isn't one of the four
+`Engine` methods: only a question with images asks it, and `merud` hands the
+agent this one method. The answer for each model goes in a map, `caps`, so a
+second question about the same model doesn't wait on Ollama; a failed call
+stores nothing. Several turns can ask at once, so a `sync.Mutex`, `mu`, sits
+next to the map and every read and write takes it. `slices.Clone` hands the
+caller a copy, so no caller can change the cached list.
+
 ### What each call logs and traces
 
 Each HTTP call gets a client span from `startSpan`, named like `POST /api/chat`,
@@ -135,7 +151,7 @@ caller's span: the router's or the agent's `gen_ai.chat`. `do` adds
 `http.response.status_code` and writes one debug line:
 
 ```text
-msg="ollama http" method=POST path=/api/chat status=200 headers_ms=29 model=… stream=true num_predict=0 logprobs=false
+msg="ollama http" method=POST path=/api/chat status=200 headers_ms=29 model=… stream=true num_predict=0 logprobs=false images=0
 ```
 
 `headers_ms` is the time until Ollama's response headers arrived. A streaming
@@ -154,7 +170,7 @@ still decides what the user sees; the debug line adds only the timing.
 
 The stream's span stays open while the caller reads the stream, and the
 iterator ends it when the stream ends. No span or log line holds a message's
-text.
+text, and none holds an image: the `images` field counts them.
 
 ### ollama_wire.go
 
@@ -165,6 +181,11 @@ name and arguments inside a `function` object, and a tool spec inside
 
 Ollama reports durations in nanoseconds. `time.Duration` also counts
 nanoseconds, so `time.Duration(r.LoadDuration)` converts one to the other.
+
+`chatMessage.Images` is a `[][]byte` with the JSON key `images`. Ollama wants
+each image as a base64 string, and `encoding/json` writes any `[]byte` as
+base64, so the conversion needs no code. `showRequest` and `showResponse` are
+the two shapes of `/api/show`; Meru reads only `capabilities` from the reply.
 
 ### version.go
 
@@ -186,6 +207,10 @@ user knows what they have and what to install.
   and `keep_alive` use it.
 - **Arrays** — `[3]int` has a fixed length that is part of its type;
   `parseVersion` returns one, and two arrays compare with `==`.
+- **`[]byte` in JSON** — `encoding/json` writes a byte slice as a base64
+  string and reads one back the same way. `Message.Images` relies on it.
+- **`sync.Mutex`** — `mu.Lock()` lets one goroutine at a time into the
+  capabilities map. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 
 ## Try it
 
@@ -199,7 +224,11 @@ and that no message text reaches either. `TestStreamErrors` checks that an
 error line, Ollama's XML error among them, satisfies
 `errors.Is(err, ErrModelOutput)` and that a bad JSON line or a stream with no
 done line doesn't. `TestStreamHTTPErrorIsNotModelOutput` checks that an HTTP
-500 stays an `*APIError`. To run against the real Ollama:
+500 stays an `*APIError`. `images_test.go` checks that a user message's images
+reach `/api/chat` as base64 strings and the system message carries none, and
+`TestCapabilities` feeds `/api/show` replies for a model with vision, one
+without, an older reply with no `capabilities` key and a 404; a good answer is
+asked for once, a failure twice. To run against the real Ollama:
 
 ```sh
 go test -tags integration -v -run Integration ./internal/engine/
@@ -223,5 +252,10 @@ You should see the one-token call pick `B` with a log probability near 0.
   probabilities, so `Options` gained `NoThink`. It is a field on `Options`, not a new
   method: the `Engine` interface keeps its four methods. Every other call leaves
   the model's default alone.
+- **Images as a field, capabilities as one method outside the interface.** A
+  question with images still goes through `Stream`, so the images ride on the
+  `Message`. Asking what a model can do is Ollama's business, and only the
+  agent's image turns need it, so it stays off the interface, which keeps its
+  four methods.
 - **No overall client timeout.** A long answer can stream for minutes. The caller's
   context decides when to give up.

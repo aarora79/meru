@@ -72,11 +72,12 @@ func (h historyService) handleTurns(id string, emit func(rpc.Event) error) error
 	return emit(rpc.Event{Type: rpc.EventTurns, Session: id, Turns: turnsOf(lines, h.home)})
 }
 
-// turnsOf groups a session's lines into turns. A user line starts a turn;
-// the tool_call and tool_result lines after it become its tool steps, paired
-// by call ID; the assistant line fills in the answer. Lines before the
-// first question, approval lines and summary lines add nothing a reader of
-// the conversation needs, so turnsOf skips them.
+// turnsOf groups a session's lines into turns. A user line starts a turn,
+// with the paths of any images its question carried; the tool_call and
+// tool_result lines after it become its tool steps, paired by call ID; the
+// assistant line fills in the answer. Lines before the first question,
+// approval lines and summary lines add nothing a reader of the
+// conversation needs, so turnsOf skips them.
 func turnsOf(lines []transcript.Line, home string) []rpc.TurnInfo {
 	var turns []rpc.TurnInfo
 	// calls maps a call ID to its step's index in the current turn, so a
@@ -84,7 +85,7 @@ func turnsOf(lines []transcript.Line, home string) []rpc.TurnInfo {
 	calls := map[string]int{}
 	for _, l := range lines {
 		if l.Type == transcript.TypeUser {
-			turns = append(turns, rpc.TurnInfo{Time: l.TS.UTC().Format(time.RFC3339), Question: l.Text})
+			turns = append(turns, rpc.TurnInfo{Time: l.TS.UTC().Format(time.RFC3339), Question: l.Text, Images: l.Images})
 			clear(calls) // clear empties the map, ready for the new turn
 			continue
 		}

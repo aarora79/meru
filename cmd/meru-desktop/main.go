@@ -25,6 +25,7 @@ import (
 	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/aarora79/meru/internal/desktop"
 )
@@ -56,11 +57,13 @@ func run(args []string) error {
 	// application.New has returned.
 	var app *application.App
 	opts.Emit = func(name string, data any) { app.Event.Emit(name, data) }
-	// The system's own dialogs choose a file to attach and a folder to
-	// index. PromptForSingleSelection returns "" when the user cancels.
-	opts.PickFile = func() (string, error) {
+	// The system's own dialogs choose files to attach and a folder to
+	// index. The file dialog sets no starting folder, so the user may
+	// pick files anywhere. PromptForMultipleSelection returns no paths,
+	// and PromptForSingleSelection "", when the user cancels.
+	opts.PickFiles = func() ([]string, error) {
 		return app.Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).
-			SetTitle("Attach a file").PromptForSingleSelection()
+			SetTitle("Attach files or images").PromptForMultipleSelection()
 	}
 	opts.PickFolder = func() (string, error) {
 		return app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).
@@ -88,7 +91,7 @@ func run(args []string) error {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		// The title bar says what Meru is. The chat's own title shows in
 		// the page's header, so the title bar never changes.
 		Title:     desktop.WindowTitle,
@@ -100,6 +103,19 @@ func run(args []string) error {
 		// The page's own background, so the window shows no white flash
 		// before the page draws.
 		BackgroundColour: application.NewRGB(0xF6, 0xF4, 0xEF),
+		// EnableFileDrop lets the user drop files from Finder on the
+		// page's elements marked data-file-drop-target: the chat screen.
+		// Wails gives that element the class file-drop-target-active
+		// while files hover over it, which shows the "Drop to attach"
+		// overlay, and reports the drop to Go with the files' full paths,
+		// which the page itself never sees.
+		EnableFileDrop: true,
+	})
+	// OnWindowEvent runs the function each time Wails reports a drop.
+	// desktop.Drop copies the files in the background, so the window's
+	// event loop never waits for merud.
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		desktop.Drop(bridge, e.Context().DroppedFiles())
 	})
 	return app.Run()
 }

@@ -16,6 +16,7 @@ function call(method, ...args) {
 export const bridge = {
   // The chat (bridge.go, history.go, status.go).
   send: (session, question, scope) => call("Send", session, question, scope),
+  retry: (session, question, scope, images) => call("Retry", session, question, scope, images),
   stop: () => call("Stop"),
   unqueue: (index) => call("Unqueue", index),
   approve: (id, choice) => call("Approve", id, choice),
@@ -30,6 +31,8 @@ export const bridge = {
   reveal: (path) => call("Reveal", path),
   chooseFolder: () => call("ChooseFolder"),
   attachFile: () => call("AttachFile"),
+  detach: (index) => call("Detach", index),
+  detachAll: () => call("DetachAll"),
   // The Library and Setup (settings.go).
   connections: () => call("Connections"),
   setPolicy: (kind, server, tool, policy) => call("SetPolicy", kind, server, tool, policy),

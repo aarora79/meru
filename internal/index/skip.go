@@ -101,8 +101,10 @@ var binaryExts = map[string]bool{
 // the same 8 KB to decide whether a file is binary.
 const binarySniffBytes = 8 << 10
 
-// isSecret reports whether name looks like a file that holds a secret.
-func isSecret(name string) bool {
+// IsSecret reports whether name, a file name without its folder, looks
+// like a file that holds a secret. merud also asks it before it copies a
+// file the user attaches in the desktop app, so the two rules can't drift.
+func IsSecret(name string) bool {
 	lower := strings.ToLower(name)
 	for _, glob := range secretNames {
 		// path.Match fails only on a malformed glob, and these are fixed.
@@ -154,7 +156,7 @@ func (ix *Indexer) skipReason(root, p string, mode fs.FileMode) string {
 	if mode&fs.ModeSymlink != 0 {
 		return ReasonSymlink
 	}
-	if !isDir && isSecret(name) {
+	if !isDir && IsSecret(name) {
 		return ReasonSecret
 	}
 	if strings.HasPrefix(name, ".") {

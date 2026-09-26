@@ -8,6 +8,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/aarora79/meru/internal/rpc"
@@ -34,8 +35,12 @@ type SessionView struct {
 // TurnView is one past turn, in the shape the page draws a live one.
 type TurnView struct {
 	Question string `json:"question"`
-	Answer   string `json:"answer"`
-	Route    string `json:"route,omitempty"`
+	// Images are the images the question carried, with previews made
+	// from the copies in the uploads folder; an image whose copy is gone
+	// keeps its name and loses its preview.
+	Images []Attachment `json:"images,omitempty"`
+	Answer string       `json:"answer"`
+	Route  string       `json:"route,omitempty"`
 	// Outcome says how a turn ended without a full answer; see
 	// rpc.TurnInfo.
 	Outcome string `json:"outcome,omitempty"`
@@ -89,6 +94,11 @@ func (b *Bridge) SessionTurns(ctx context.Context, id string) ([]TurnView, error
 		v := TurnView{
 			Question: t.Question, Answer: t.Answer, Route: t.Route, Outcome: t.Outcome, Notice: t.Notice,
 			DurationMillis: t.DurationMillis, TokensOut: t.TokensOut,
+		}
+		for _, p := range t.Images {
+			v.Images = append(v.Images, Attachment{
+				Path: rpc.ShortPath(b.home, p), Name: filepath.Base(p), Kind: rpc.AttachImage, Thumb: b.thumbnail(p), full: p,
+			})
 		}
 		for i, p := range t.Sources {
 			v.Sources = append(v.Sources, rpc.Citation{N: i + 1, Path: p})
@@ -166,11 +176,12 @@ func (b *Bridge) done(ctx context.Context, req rpc.Request) (rpc.Event, error) {
 	return b.one(ctx, req, rpc.EventDone)
 }
 
-// changes reports whether op changes a setting, and so may take longer.
+// changes reports whether op changes a setting or copies a file, and so
+// may take longer.
 func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
-		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders:
+		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile:
 		return true
 	}
 	return false

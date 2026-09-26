@@ -9,6 +9,8 @@
   <string>Meru</string>
   <key>CFBundleIdentifier</key>
   <string>com.meru.desktop</string>
+  <key>CFBundleIconFile</key>
+  <string>Meru</string>
   <key>CFBundleExecutable</key>
   <string>meru-desktop</string>
   <key>CFBundlePackageType</key>

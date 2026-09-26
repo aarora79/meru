@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -229,7 +229,8 @@ sessions folder and the home folder.
   notice the user read under it, if any, and the sources, shortened to `~/...`
   with `rpc.ShortPath`. The line's `Notice` field comes with #29; this branch
   adds the same field, word for word, so the desktop app can show the note again
-  when a chat reopens.
+  when a chat reopens. A user line's `Images` go on the turn as they stand, full
+  paths, since the app reads the copies to show their previews.
 
 Both read the files, never `meru.db`, so deleting the database loses no chat.
 
@@ -543,6 +544,28 @@ makes one `dispatch.Call` to `write_file`, with the session's `Append` and the
 request's `approve`, so the save lands in `tool_calls` and the transcript and asks
 first as `write_file` does. The outcome decides the reply: a `saved` event with the
 path, or an error that says whether the user said no or `write_file` is off.
+
+### merud: attach.go
+
+`toolService.handleAttach` answers `attach_file`, which the desktop app sends for
+each file the user picks or drops. It hands the path to the built-in tools'
+`Upload` (see [builtin](builtin.md)), which copies the file into
+`<output_dir>/uploads/`, and replies with a `saved` event that names the copy.
+`Upload`'s error goes back as it stands, because the app shows it to the user.
+The event's `Kind` passes on what `Upload` found, `image` or `file`. The copy is
+the user's act, not the model's, so it skips `dispatch`; the `read_file` call
+that later reads a file's copy goes through it.
+
+The same file holds `visionCheck`, which `run` hands the agent with
+`a.UseImages(tools.bt.Image, visionCheck(eng))`. The agent reads a question's
+images through the built-in tools' `Image`, which refuses any path outside the
+uploads folder, and asks `visionCheck` whether the main model can look at them.
+`visionCheck` needs `OllamaEngine.Capabilities`, which sits outside the
+`Engine` interface, so it asks with a *type assertion*:
+`oe, ok := eng.(*engine.OllamaEngine)` gives the concrete engine and `ok`
+true when `eng` holds one. The tests' fake engine isn't one, so `visionCheck`
+returns nil, and the agent then refuses questions with images rather than
+send them to a model that might not see them.
 
 ### merud: models.go
 
@@ -1066,6 +1089,19 @@ in the index status, the profile and the recalled project in the next
 question's system prompt, each refusal, and forget, after which recall drops
 the project. `TestMemoryHandEdit` writes a memory file by hand while `merud`
 runs and waits for it to reach the prompt.
+
+`settings_test.go` drives the desktop app's ops over the socket. Its
+`TestAttachFileOp` attaches a file from a folder `merud` doesn't index, then the
+same file again, which gets `-2`, and checks that a symbolic link, a folder, a
+file over 50 MiB, a `.env` file and a missing file each come back as an error
+that says why.
+
+`images_test.go` attaches a PNG with no `[index]` folders and gets kind
+`image` back, then sends `ask` requests that name the original outside
+uploads, a symbolic link inside it, six images, and the good copy on a merud
+whose fake engine can't check for vision. Each fails with its reason, and none
+starts a session. `TestVisionCheck` runs `visionCheck` against the fake
+Ollama's `/api/show`.
 
 `skills_test.go` checks the skill service: the first-run install, a skill added
 by hand and an edited built-in picked up on the next call, a broken folder in

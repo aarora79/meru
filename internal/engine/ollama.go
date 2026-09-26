@@ -1,6 +1,7 @@
 // This file holds OllamaEngine, the one Engine Meru ships. It talks to
 // Ollama's native HTTP API on loopback: /api/chat for answers, /api/embed for
-// vectors, and /api/version plus /api/ps for Info.
+// vectors, /api/version plus /api/ps for Info, and /api/show for what a
+// model can do.
 //
 // Each HTTP call gets its own client span (named like "POST /api/chat") and,
 // at debug level, log lines with its status, timings and the runtime's
@@ -20,8 +21,10 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -43,14 +46,17 @@ const maxErrorBody = 64 << 10
 // OllamaEngine is the Engine backed by a local Ollama server. Build one with
 // NewOllama; the zero value isn't usable.
 //
-// It holds no mutable state after NewOllama returns, so several goroutines
-// may call it at once.
+// Its one piece of mutable state is the capabilities cache, which a mutex
+// guards, so several goroutines may call it at once.
 type OllamaEngine struct {
 	baseURL    string          // for example "http://127.0.0.1:11434", no trailing slash
 	keepAlive  json.RawMessage // keep_alive as Ollama wants it, or nil to leave it out
 	embedModel string          // model Embed uses; empty makes Embed fail
 	client     *http.Client
 	log        *slog.Logger // debug lines for each call; never message text
+
+	mu   sync.Mutex          // guards caps
+	caps map[string][]string // what /api/show said each model can do, by model name
 }
 
 // This line checks at compile time that *OllamaEngine has every Engine
@@ -100,6 +106,7 @@ func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client, log *
 		embedModel: embedModel,
 		client:     c,
 		log:        log,
+		caps:       map[string][]string{},
 	}, nil
 }
 
@@ -174,7 +181,7 @@ func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []Too
 	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/chat", body)
 	// defer runs span.End() when Generate returns, on every path.
 	defer span.End()
-	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(opts, false))
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(msgs, opts, false))
 	if err != nil {
 		return Completion{}, err
 	}
@@ -221,7 +228,7 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 	// The span stays open while the caller reads the stream; the sequence
 	// below ends it when the stream ends.
 	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/chat", body)
-	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(opts, true))
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/chat", body, chatLogArgs(msgs, opts, true))
 	if err != nil {
 		span.End()
 		return nil, err
@@ -362,6 +369,57 @@ func (e *OllamaEngine) Info(ctx context.Context) (ModelInfo, error) {
 	return info, nil
 }
 
+// Capabilities returns what model can do, as POST /api/show lists it, such
+// as ["completion", "vision", "tools", "thinking"]. A model can look at
+// pictures when the list holds Vision.
+//
+// It keeps each model's answer for the life of the engine, so only a
+// turn's first question about a model waits on Ollama. A model pulled
+// again under the same name keeps the old answer until merud restarts,
+// which is rare enough to accept. A failed call keeps nothing, so the next
+// one asks again.
+//
+// It fails when model is empty, the request fails, or Ollama answers with
+// a non-2xx status, as it does (404) for a model that isn't pulled.
+//
+// Capabilities isn't part of the Engine interface. Only the agent's
+// picture turns ask it, and merud hands the agent this method on its own
+// (ARCHITECTURE.md, "Engine layer").
+func (e *OllamaEngine) Capabilities(ctx context.Context, model string) ([]string, error) {
+	if model == "" {
+		return nil, errors.New("ollama /api/show: no model given")
+	}
+	e.mu.Lock()
+	// v, ok := m[k] reads a map entry; ok is false when k isn't there.
+	cached, ok := e.caps[model]
+	e.mu.Unlock()
+	if ok {
+		return slices.Clone(cached), nil
+	}
+	body, err := json.Marshal(showRequest{Model: model})
+	if err != nil {
+		return nil, fmt.Errorf("ollama /api/show: encode request: %w", err)
+	}
+	start := time.Now()
+	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/show", body)
+	defer span.End()
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/show", body, []any{"model", model})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var r showResponse
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, e.fail(ctx, span, start, "/api/show",
+			fmt.Errorf("ollama /api/show: decode reply: %w", ctxErr(ctx, err)))
+	}
+	e.log.DebugContext(ctx, "ollama capabilities", "model", model, "capabilities", strings.Join(r.Capabilities, ","))
+	e.mu.Lock()
+	e.caps[model] = r.Capabilities
+	e.mu.Unlock()
+	return slices.Clone(r.Capabilities), nil
+}
+
 // version returns the version string from GET /api/version.
 func (e *OllamaEngine) version(ctx context.Context) (string, error) {
 	var v versionResponse
@@ -492,11 +550,16 @@ func (e *OllamaEngine) fail(ctx context.Context, span trace.Span, start time.Tim
 }
 
 // chatLogArgs returns the request settings the "ollama http" line shows for
-// a chat call: the model, whether it streams, the token cap and whether it
-// asked for log probabilities.
-func chatLogArgs(opts Options, stream bool) []any {
+// a chat call: the model, whether it streams, the token cap, whether it
+// asked for log probabilities, and how many pictures msgs carry. It counts
+// the pictures and never logs their bytes.
+func chatLogArgs(msgs []Message, opts Options, stream bool) []any {
+	images := 0
+	for _, m := range msgs {
+		images += len(m.Images)
+	}
 	return []any{"model", opts.Model, "stream", stream,
-		"num_predict", opts.MaxTokens, "logprobs", opts.LogProbs}
+		"num_predict", opts.MaxTokens, "logprobs", opts.LogProbs, "images", images}
 }
 
 // logDone writes the debug line that closes a chat call: its whole time and

@@ -3,8 +3,9 @@
 // Meru's unit tests never need a real model (AGENTS.md, "Tests"). Tests that
 // exercise OllamaEngine, the router or merud start a Fake instead: an HTTP
 // handler that speaks the parts of Ollama's API Meru uses (/api/version,
-// /api/ps, /api/chat, /api/generate and /api/embed), answers with scripted
-// replies, and records every request so the test can check what Meru sent.
+// /api/ps, /api/show, /api/chat, /api/generate and /api/embed), answers
+// with scripted replies, and records every request so the test can check
+// what Meru sent.
 //
 // A test can script a reply's text, tool calls, log probabilities and usage
 // counters, and can inject an HTTP error, a mid-stream error or a delay. The

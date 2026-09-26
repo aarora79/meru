@@ -229,6 +229,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
 	a.UseFolders(idx.currentFolders)
+	// A question's images come from the uploads folder through the
+	// built-in tools' Image, which refuses any other path.
+	a.UseImages(tools.bt.Image, visionCheck(eng))
 	machine := machineLine(ctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)
@@ -333,7 +336,8 @@ type services struct {
 // the index and folder ops to the index service, the tools, log, MCP and
 // connection ops to the tool service, the memory ops to the memory
 // service, the skill ops to the skill service, the session ops to the
-// history service, save_file to the save service, the models op to the
+// history service, save_file to the save service, attach_file to the
+// tool service, which holds the built-in tools, the models op to the
 // model service, and the usage op to the store. The rpc server answers
 // pings itself.
 func handler(svc services) rpc.Handler {
@@ -392,6 +396,8 @@ func handler(svc services) rpc.Handler {
 			return idx.handleFolderRemove(ctx, req, emit)
 		case rpc.OpSaveFile:
 			return svc.save.handleSave(ctx, req, emit, approve)
+		case rpc.OpAttachFile:
+			return tools.handleAttach(ctx, req, emit)
 		case rpc.OpSkillEnable, rpc.OpSkillDisable:
 			return sk.handleSetDisabled(ctx, req, req.Op == rpc.OpSkillDisable, svc.configPath, tools.bt.EditConfig, emit)
 		case rpc.OpModels:

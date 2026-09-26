@@ -1,5 +1,5 @@
-// This file holds the fake's Ollama endpoints: version, ps, chat, generate
-// and embed. Chat and generate share one reply writer, because the two differ
+// This file holds the fake's Ollama endpoints: version, ps, show, chat,
+// generate and embed. Chat and generate share one reply writer, because the two differ
 // only in where the text goes ("message.content" or "response").
 
 package fakeollama
@@ -40,6 +40,27 @@ func (f *Fake) servePS(w http.ResponseWriter, _ *http.Request, _ []byte, _ int) 
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
+// serveShow answers POST /api/show with the model's capabilities, and
+// with a 404, as Ollama does, for a model the fake doesn't accept.
+func (f *Fake) serveShow(w http.ResponseWriter, _ *http.Request, body []byte, _ int) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Model == "" {
+		writeError(w, http.StatusBadRequest, "model is required")
+		return
+	}
+	if !f.accepts(req.Model) {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("model '%s' not found", req.Model))
+		return
+	}
+	caps, ok := f.cfg.Capabilities[req.Model]
+	if !ok {
+		caps = defaultCapabilities
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"capabilities": caps})
 }
 
 // digest makes up a stable digest for a model name, standing in for the
