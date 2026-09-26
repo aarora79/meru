@@ -321,10 +321,19 @@ func TestApproveRefusesBadAnswers(t *testing.T) {
 type gate struct {
 	asked   chan string
 	release chan struct{}
+	// done, when set, gets each question's text as its handler returns.
+	// A test that stops a turn waits on it before it sends release again:
+	// until the server notices the stop, the stopped turn's handler still
+	// waits on release and could take the release meant for the next turn.
+	done chan string
 }
 
 // handler is the rpc.Handler for g.
 func (g gate) handler(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+	if g.done != nil {
+		// defer runs this when the handler returns, however it returns.
+		defer func() { g.done <- req.Text }()
+	}
 	g.asked <- req.Text
 	select {
 	case <-g.release:
@@ -351,7 +360,7 @@ func lastQueue(r *recorder) ([]string, string) {
 // wait, at most five, in order; Unqueue takes one out; each goes when the
 // turn before it ends.
 func TestQueue(t *testing.T) {
-	g := gate{asked: make(chan string, 10), release: make(chan struct{})}
+	g := gate{asked: make(chan string, 10), release: make(chan struct{}), done: make(chan string, 10)}
 	b, r := newBridge(startServer(t, g.handler))
 	defer b.ServiceShutdown()
 
@@ -396,7 +405,7 @@ func TestQueue(t *testing.T) {
 // TestStopDropsQueue checks that Stop ends the running turn and drops the
 // queue with a notice, and that the stopped turn sends nothing after.
 func TestStopDropsQueue(t *testing.T) {
-	g := gate{asked: make(chan string, 10), release: make(chan struct{})}
+	g := gate{asked: make(chan string, 10), release: make(chan struct{}), done: make(chan string, 10)}
 	b, r := newBridge(startServer(t, g.handler))
 	defer b.ServiceShutdown()
 
@@ -426,6 +435,16 @@ func TestStopDropsQueue(t *testing.T) {
 	}
 	if got := <-g.asked; got != "again" {
 		t.Fatalf("merud got %q, want again", got)
+	}
+	// Wait for the stopped turn's handler to return, so the release below
+	// can only reach turn 2's handler.
+	select {
+	case got := <-g.done:
+		if got != "first" {
+			t.Fatalf("handler for %q returned first, want the stopped one", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stopped turn's handler never returned")
 	}
 	g.release <- struct{}{}
 	r.waitFor(t, "end", isEnd(2))

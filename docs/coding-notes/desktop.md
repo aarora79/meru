@@ -356,7 +356,12 @@ make desktop                        # builds bin/meru-desktop (macOS, needs Xcod
 The tests run the Bridge against an rpc server in the same process, over a real
 Unix socket: a turn's updates in order, each approval answer, the queue's limit and
 order, Stop, the session list and past turns, the status with and without `merud`,
-and which links open. `settings_test.go` checks that each settings method sends
+and which links open. The fake server's `gate` holds each question until the
+test releases it. A test that stops a turn waits for that turn's handler to
+return before it releases the next one: until the server notices the stop, the
+stopped handler still waits too and could take the release meant for the next
+turn, which made `TestStopDropsQueue` fail on a slow CI runner.
+`settings_test.go` checks that each settings method sends
 the request `merud` expects, that a save shows its card and returns the path,
 which attached files may go, which saved files `Reveal` opens, the scope, and the
 slash commands against `meru chat`'s. `draft_test.go` checks Edit first's drafts.
