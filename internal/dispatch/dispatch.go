@@ -106,14 +106,16 @@ type CallConfirmer interface {
 	ConfirmCall(c Call) (confirm Confirm, ok bool)
 }
 
-// Connector is an extra method a Backend may have. ConnectMissing tries
-// once to reach each of the backend's servers that isn't connected, and
-// returns when every try has ended. The agent loop calls it, through
-// Dispatcher.ConnectMissing, at the start of a turn that offers tools and
-// before it lists them. The MCP backend is the one Connector: merud never
-// retries an MCP server in the background (ARCHITECTURE.md, "MCP").
-type Connector interface {
-	ConnectMissing(ctx context.Context)
+// Refresher is an extra method a Backend may have. Refresh brings the
+// backend's tool list up to date: it asks each connected server for its
+// tools again, tries once to reach each server that isn't connected, and
+// returns when every server has answered or failed. The agent loop calls
+// it, through Dispatcher.Refresh, at the start of a turn that offers tools
+// and before it lists them. The MCP backend is the one Refresher: merud
+// never lists or retries an MCP server in the background (ARCHITECTURE.md,
+// "MCP").
+type Refresher interface {
+	Refresh(ctx context.Context)
 }
 
 // Result is what a tool call hands back to the model.

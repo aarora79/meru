@@ -48,14 +48,14 @@ type fakeTools struct {
 	results map[string]fakeResult
 	asks    map[string]bool // tools that ask first; missing means no
 	// late holds the tools of a server that isn't connected yet; the
-	// first ConnectMissing adds them to specs, as a server the user just
+	// first Refresh adds them to specs, as a server the user just
 	// started would.
 	late []engine.ToolSpec
 
 	mu       sync.Mutex // guards calls, choices and connects
 	calls    []dispatch.Call
 	choices  []rpc.Choice
-	connects int // how many times ConnectMissing ran
+	connects int // how many times Refresh ran
 }
 
 func (f *fakeTools) Tools() []engine.ToolSpec {
@@ -64,8 +64,8 @@ func (f *fakeTools) Tools() []engine.ToolSpec {
 	return slices.Clone(f.specs)
 }
 
-// ConnectMissing counts the call and brings in the late tools.
-func (f *fakeTools) ConnectMissing(context.Context) {
+// Refresh counts the call and brings in the late tools.
+func (f *fakeTools) Refresh(context.Context) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.connects++
@@ -610,7 +610,7 @@ func TestTurnConnectsMissingServersOnce(t *testing.T) {
 				t.Fatalf("Handle: %v", err)
 			}
 			if tools.connects != tt.wantConnects {
-				t.Errorf("ConnectMissing ran %d times, want %d", tools.connects, tt.wantConnects)
+				t.Errorf("Refresh ran %d times, want %d", tools.connects, tt.wantConnects)
 			}
 			var offered []string
 			for _, s := range eng.lastCall().tools {

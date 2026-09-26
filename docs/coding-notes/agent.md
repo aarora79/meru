@@ -56,7 +56,7 @@ sequenceDiagram
         A-->>S: emit sources (when it found some)
     end
     opt the route offers tools
-        A->>D: ConnectMissing (one try per server that isn't connected)
+        A->>D: Refresh (list tools again; one try per server that isn't connected)
     end
     A->>A: Profile.Recall(question), on every route
     loop each round, up to max_rounds
@@ -115,7 +115,7 @@ type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
     Asks(name string) bool
-    ConnectMissing(ctx context.Context)
+    Refresh(ctx context.Context)
 }
 ```
 
@@ -128,8 +128,9 @@ The agent only builds the `dispatch.Call` and reads what comes back.
 an outcome (`denied`, `declined`, `error`, `timeout` or `cancelled`) and a
 `Result` whose text tells the model what happened. `Asks` says whether a call
 to a tool would ask you first; `toolSpecs` uses it to pick the commands the
-"search" route may offer. `ConnectMissing` gives each tool server that isn't
-connected one try and returns when the tries have ended (see
+"search" route may offer. `Refresh` asks each connected tool server for its
+tools again, gives each server that isn't connected one try, and returns when
+all of that has ended (see
 [The tool rounds](#the-tool-rounds-toolsgo)).
 
 `merud` passes `*dispatch.Dispatcher`, which has these four methods. Tests
@@ -456,7 +457,7 @@ if missing := notOffered(skillTools, a.toolSpecs(dec.Route)); len(missing) > 0 {
 
 The `ToolRunner` is dispatch, and dispatch lists only what config allows, so a
 skill can't turn on a tool you left off. When a missing tool would come from
-an MCP server or A2A agent, `skillTools` first calls `ConnectMissing`, as a
+an MCP server or A2A agent, `skillTools` first calls `Refresh`, as a
 tools route does. A skill whose tools are all off, such as `web-research` with
 no SearXNG and no `web_fetch`, drops out of `picked.names`, so its body stays
 out of the prompt and its name off the route event. A debug line says why.
@@ -835,24 +836,25 @@ for any outcome but `ok`, and `meru chat` draws such a route in amber.
 
 ### The tool rounds (tools.go)
 
-**Connecting first.** `merud` tries each MCP server once at startup and never
-retries on a timer (ARCHITECTURE.md, "MCP"). A server the user starts later, or a
-stdio child that crashed, comes back on the next turn that offers tools. `Handle`
-does that right after it picks the tools:
+**Refreshing first.** `merud` tries each MCP server once at startup and never
+retries or re-lists on a timer (ARCHITECTURE.md, "MCP"). A server the user starts
+later, or a stdio child that crashed, comes back on the next turn that offers
+tools, and a server the user restarted with new tools offers them on that turn.
+`Handle` does that right after it picks the tools:
 
 ```go
 specs := a.toolSpecs(dec.Route)
 if len(specs) > 0 {
-    a.tools.ConnectMissing(ctx)
+    a.tools.Refresh(ctx)
     specs = a.toolSpecs(dec.Route)
 }
 ```
 
-The second `toolSpecs` call lists the tools again, so a server that answers now
-joins this turn. One that still fails is left out, and the model answers without
+The second `toolSpecs` call lists the tools again, so a server that answers now,
+or one whose tool list changed, joins this turn with its current tools. One that still fails is left out, and the model answers without
 it. `len(specs) > 0` is the whole test: any turn that offers a tool asks, a `search`
 turn with only file tools included, and a `direct` turn never does.
-`ConnectMissing` runs once per turn, before the first round, and never between
+`Refresh` runs once per turn, before the first round, and never between
 rounds.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
@@ -1144,7 +1146,7 @@ during a call, one `gen_ai.chat` span per round, and a transcript and
 history that hold only the question and the answer. `TestToolsOfferedByRoute`
 checks which tools and which note each route gets.
 `TestTurnConnectsMissingServersOnce` gives `fakeTools` a tool that appears only
-after `ConnectMissing`: a `tools` or `search+tools` turn calls it once and offers
+after `Refresh`: a `tools` or `search+tools` turn calls it once and offers
 the new tool in the same turn, and a `direct` turn never calls it.
 
 `files_test.go` runs a `search` turn over the real built-in tools behind a real

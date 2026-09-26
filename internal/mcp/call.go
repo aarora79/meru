@@ -107,6 +107,11 @@ func (p *Pool) Call(ctx context.Context, name string, args json.RawMessage) (res
 		if ctxErr := callCtx.Err(); ctxErr != nil && !errors.Is(err, ctxErr) {
 			err = fmt.Errorf("%w (%w)", ctxErr, err)
 		}
+		// A call whose session is gone marks the server not connected, so
+		// the next turn reconnects. Call doesn't reconnect and send the
+		// call again: the server may have run the tool before the session
+		// broke, and a tool such as send_gmail_message would then run
+		// twice. The model sees the error and can ask again.
 		s.markFailed(cs, err)
 		return Result{Duration: elapsed}, fmt.Errorf("call %s: %w", name, err)
 	}

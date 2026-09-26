@@ -473,16 +473,18 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 		// Past sessions join the files' section: no numbers, no sources event.
 		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
 	}
-	// A turn on a tools route first gives each tool server that isn't
-	// connected one try, then lists the tools again: a server the user
-	// started after merud, or one that crashed, is back for this turn. This
-	// is the only place merud reconnects, so nothing runs while nobody
-	// asks (ARCHITECTURE.md, "MCP"). A server that still fails is left out.
+	// A turn on a tools route first refreshes the tool servers, then lists
+	// the tools again. Refresh asks each connected server for its tools, so
+	// a server that restarted with new tools offers them now, and gives each
+	// server that isn't connected one try, so one the user started after
+	// merud, or one that crashed, is back for this turn. This is the only
+	// place merud reconnects or re-lists, so nothing runs while nobody asks
+	// (ARCHITECTURE.md, "MCP"). A server that still fails is left out.
 	// The search route offers only the file tools and commands, never a
 	// server's tools, so it doesn't wait on a server that may take 30
 	// seconds to start.
 	if len(specs) > 0 && (dec.Route == "tools" || dec.Route == "search+tools") {
-		a.tools.ConnectMissing(ctx)
+		a.tools.Refresh(ctx)
 		specs = a.toolSpecs(dec.Route)
 	}
 	memories := a.memorySection(ctx, searchQuery(question, history))

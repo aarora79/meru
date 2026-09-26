@@ -320,7 +320,7 @@ type ToolRunner interface {
     Tools() []engine.ToolSpec
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
     Asks(name string) bool // would a call ask first? picks the "search" route's commands
-    ConnectMissing(ctx context.Context) // one try at each tool server that isn't connected
+    Refresh(ctx context.Context) // list tools again; one try at each tool server that isn't connected
 }
 
 // internal/dispatch/dispatch.go
@@ -333,9 +333,10 @@ type Backend interface {
     Status() []rpc.ServerInfo                  // for `meru tools`
 }
 
-// A Backend may also be a Connector: one try at each server it can't reach.
-type Connector interface {
-    ConnectMissing(ctx context.Context)
+// A Backend may also be a Refresher: list each server's tools again, and one
+// try at each server it can't reach.
+type Refresher interface {
+    Refresh(ctx context.Context)
 }
 
 // A Backend may also be a CallConfirmer: it decides per call whether the
@@ -371,16 +372,20 @@ the row. `Dispatcher.Replace` swaps in a new MCP backend
 after `configure` changes the servers. `dispatch.Recorder`, one method,
 `InsertToolCall`, is how `dispatch` writes the row; `*store.Store` satisfies it.
 
-`mcpBackend` is the one `Connector`. `merud` tries each MCP server once, in
+`mcpBackend` is the one `Refresher`. `merud` tries each MCP server once, in
 `mcp.NewPool`, and never again on its own: no timer, no background goroutine, no
-retry loop. On a turn on a tools route, `Handle` calls
-`ToolRunner.ConnectMissing`, which `Dispatcher.ConnectMissing` passes to each
-backend that is a `Connector`, and `mcp.Pool.ConnectMissing` gives each server
-that isn't connected one try: 5 seconds for an HTTP server (`httpRetryTimeout`),
-30 for a stdio child (`connectTimeout`). `Handle` then lists the tools again, so a
-server the user started after `merud`, or a child that crashed, is back for this
-turn. `Pool.Tools` offers only connected servers' tools, and a call to a server
-that isn't connected fails at once with `mcp.ErrUnavailable`. One goroutine per
+retry loop. On a turn on a tools route, `Handle` calls `ToolRunner.Refresh`,
+which `Dispatcher.Refresh` passes to each backend that is a `Refresher`.
+`mcp.Pool.Refresh` sends `tools/list` to each connected server (2 seconds,
+`relistTimeout`) and keeps the answer; a listing that fails for any reason but
+time drops the session. It then gives each server that isn't connected one try:
+5 seconds for an HTTP server (`httpRetryTimeout`), 30 for a stdio child
+(`connectTimeout`). `Handle` then lists the tools again, so a server the user
+started after `merud`, restarted with new tools, or a child that crashed, is back
+for this turn with its current tools. `Pool.Tools` offers only connected servers'
+tools, and a call to a server that isn't connected fails at once with
+`mcp.ErrUnavailable`. A call whose session is gone marks the server not
+connected and isn't sent again, since the tool may already have run. One goroutine per
 session waits for it to end and marks the server not connected; it never starts
 the server again (ARCHITECTURE.md, "MCP").
 
@@ -516,7 +521,7 @@ sequenceDiagram
         A-->>U: emit sources event
     end
     opt the route offers tools
-        A->>D: ConnectMissing: one try at each MCP server that isn't connected
+        A->>D: Refresh: list each MCP server's tools again; one try at each one not connected
         A->>A: toolSpecs(route) again
     end
     A->>A: prompt(system prompt + toolsNote + fileToolsNote + excerpts, history, question)
@@ -592,8 +597,9 @@ The same path as a reading list, in order:
    same numbered list to the client as a `sources` event. A failed search is logged
    and the turn answers without your files.
 7. **Back in `Handle`**, when `toolSpecs(route)` isn't empty, `Handle` calls
-   `ToolRunner.ConnectMissing` once and then `toolSpecs` again, so a server that
-   answers now joins this turn's tools. A server that still fails is left out.
+   `ToolRunner.Refresh` once and then `toolSpecs` again, so a server that answers
+   now, or whose tools changed, joins this turn with its current tools. A server
+   that still fails is left out.
 8. **`internal/agent/tools.go` → `converse`** runs the rounds. Each round calls
    `answer` with the schemas from `toolSpecs(route)`, or none on the last allowed
    round (`[agent] max_rounds`, default 8) and after the model has repeated a

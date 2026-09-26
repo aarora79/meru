@@ -1,7 +1,9 @@
 // This file holds the Pool: one connection per configured server, the list
 // of allowed tools they offer, and the one rule for connecting: once at
 // startup, and once more at the start of a turn that offers tools
-// (ConnectMissing). Nothing reconnects on a timer or in the background.
+// (Refresh). The same turn asks each connected server for its tool list
+// again, so the list follows a server that restarted with new tools.
+// Nothing reconnects or re-lists on a timer or in the background.
 
 package mcp
 
@@ -11,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,9 +22,12 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/loopback"
+	"github.com/aarora79/meru/internal/obs"
 )
 
 // connectTimeout caps starting a server, the MCP handshake and the first
@@ -34,6 +40,12 @@ const connectTimeout = 30 * time.Second
 // connected. The server is somebody else's process and either answers at
 // once or isn't running, so a turn shouldn't wait longer on it.
 const httpRetryTimeout = 5 * time.Second
+
+// relistTimeout caps the tools/list a turn sends to a server that is
+// already connected. On loopback the answer takes well under a millisecond
+// (ARCHITECTURE.md, "MCP"), so two seconds only trips on a server that is
+// stuck, and a turn shouldn't wait longer on one.
+const relistTimeout = 2 * time.Second
 
 // dialFunc builds the transport for one server. procCtx bounds a stdio
 // child's life. NewPool uses dialTransport; tests swap in an in-memory
@@ -110,7 +122,7 @@ type ServerStatus struct {
 // NewPool validates servers, then starts or connects to each one, lists its
 // tools and keeps the allowed ones. A server that fails to start doesn't
 // fail the Pool: NewPool logs it, reports it in Status, and carries on with
-// the rest. ConnectMissing tries it again at the start of the next turn that
+// the rest. Refresh tries it again at the start of the next turn that
 // offers tools. NewPool fails only when the config is invalid.
 //
 // ctx bounds the startup work only. The child processes live until Close.
@@ -180,8 +192,9 @@ func dialTransport(procCtx context.Context, cfg ServerConfig, log *slog.Logger) 
 		Endpoint:   cfg.URL,
 		HTTPClient: httpClient(cfg),
 		// The standalone stream carries notifications the server sends on
-		// its own, such as "my tool list changed". Meru lists tools when it
-		// connects and ignores those, so it doesn't hold the stream open.
+		// its own, such as "my tool list changed". Meru lists tools again
+		// at the start of each turn that offers them (Refresh) and ignores
+		// those, so it doesn't hold the stream open.
 		DisableStandaloneSSE: true,
 	}, nil
 }
@@ -280,8 +293,7 @@ func (p *Pool) tryConnectLocked(ctx context.Context, s *server, limit time.Durat
 
 	s.session = cs
 	s.stop = stop
-	s.offered = len(tools)
-	s.tools, s.unknown = allowedTools(s.cfg.Name, s.allow, tools)
+	s.setToolsLocked(tools)
 
 	// A goroutine is a function running at the same time as the rest of
 	// the program; `go` starts one. This one waits for the session to end,
@@ -295,8 +307,8 @@ func (p *Pool) tryConnectLocked(ctx context.Context, s *server, limit time.Durat
 // watch waits until cs ends, from Close or because the server went away.
 // If cs is still s's current session, the server died: watch marks it not
 // connected and cleans up. It doesn't reconnect, wait or retry; the next
-// turn that offers tools tries the server once (ConnectMissing), the same
-// rule as for a server that never started.
+// turn that offers tools tries the server once (Refresh), the same rule as
+// for a server that never started.
 func (p *Pool) watch(s *server, cs *mcp.ClientSession) {
 	defer p.watchers.Done()
 	err := cs.Wait()
@@ -304,7 +316,7 @@ func (p *Pool) watch(s *server, cs *mcp.ClientSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.session != cs {
-		return // Close or ConnectMissing already replaced it
+		return // Close, Refresh or a failed call already replaced it
 	}
 	s.session = nil
 	if err == nil {
@@ -315,6 +327,14 @@ func (p *Pool) watch(s *server, cs *mcp.ClientSession) {
 	// Close reaps the child process (for stdio) so no zombie stays behind.
 	_ = cs.Close()
 	s.stop()
+}
+
+// setToolsLocked keeps the allowed tools out of a fresh listing and
+// records how many the server offered and which allow entries it lacks.
+// The caller holds s.mu.
+func (s *server) setToolsLocked(tools []*mcp.Tool) {
+	s.offered = len(tools)
+	s.tools, s.unknown = allowedTools(s.cfg.Name, s.allow, tools)
 }
 
 // listTools returns every tool the server offers. Tools is an iterator that
@@ -379,41 +399,149 @@ func (p *Pool) Tools() []engine.ToolSpec {
 	return out
 }
 
-// ConnectMissing tries once to start or connect to each server that isn't
-// connected, one after another, and returns when every try has ended. The
-// agent loop calls it at the start of a turn that offers tools, before it
-// builds the tool list, so a server the user started after merud, or a
-// stdio child that crashed, is back for this turn.
+// Refresh brings each server up to date for this turn, one server after
+// another, and returns when every server has had its turn. The agent loop
+// calls it at the start of a turn that offers tools, before it builds the
+// tool list.
+//
+// For a connected server it sends tools/list again and keeps the answer,
+// so a server that restarted with new tools offers them on this turn
+// (relistLocked). For a server that isn't connected, or one whose listing
+// failed, it makes one try to start or connect, which lists the tools
+// afresh: a server the user started after merud, or a stdio
+// child that crashed, is back for this turn.
 //
 // This is the only reconnect path, and it runs only when a turn asks. There
 // is no timer, no background goroutine and no backoff: a server that fails
 // here is tried again at the next such turn, and a server nobody needs is
-// never touched (ARCHITECTURE.md, "MCP"). Each try is bounded by
+// never touched (ARCHITECTURE.md, "MCP"). A connect try is bounded by
 // httpRetryTimeout for an HTTP server, which merud never starts, and by
 // connectTimeout for a stdio server, which it starts as a child.
 //
 // A failure is logged and recorded for Status; the turn carries on without
 // that server's tools.
-func (p *Pool) ConnectMissing(ctx context.Context) {
+func (p *Pool) Refresh(ctx context.Context) {
 	for _, s := range p.servers {
 		s.mu.Lock()
-		if s.closed || s.session != nil {
-			s.mu.Unlock()
-			continue
-		}
-		limit := connectTimeout
-		if s.cfg.URL != "" {
-			limit = httpRetryTimeout
-		}
-		err := p.connectLocked(ctx, s, limit)
-		tools := len(s.tools)
+		p.refreshLocked(ctx, s)
 		s.mu.Unlock()
-		if err != nil {
-			p.log.Warn("mcp server still not connected", "mcp_server", s.cfg.Name, "err", err)
-			continue
-		}
-		p.log.Info("mcp server connected", "mcp_server", s.cfg.Name, "tools_allowed", tools)
 	}
+}
+
+// refreshLocked does Refresh's work for one server. The caller holds s.mu,
+// so a call to this server waits until the refresh ends.
+func (p *Pool) refreshLocked(ctx context.Context, s *server) {
+	if s.closed {
+		return
+	}
+	if s.session != nil {
+		p.relistLocked(ctx, s)
+	}
+	if s.session != nil {
+		return
+	}
+	limit := connectTimeout
+	if s.cfg.URL != "" {
+		limit = httpRetryTimeout
+	}
+	if err := p.connectLocked(ctx, s, limit); err != nil {
+		p.log.Warn("mcp server still not connected", "mcp_server", s.cfg.Name, "err", err)
+		return
+	}
+	p.log.Info("mcp server connected", "mcp_server", s.cfg.Name,
+		"tools_offered", s.offered, "tools_allowed", len(s.tools))
+	if len(s.unknown) > 0 {
+		p.log.Warn("mcp server doesn't offer some allowed tools", "mcp_server", s.cfg.Name, "tools", s.unknown)
+	}
+}
+
+// relistLocked asks a connected server for its tools again and replaces
+// the Pool's list with the answer. The caller holds s.mu.
+//
+// Only this turn-start listing catches a Streamable HTTP server that
+// restarted: merud holds no stream open to it, so nothing arrives when it
+// goes away, and the old session looks alive until merud sends something.
+// A stdio server can't restart behind merud's back, since merud owns the
+// process and watch sees it exit; listing it again costs one round trip
+// over a pipe and catches a server that changes its tools while it runs.
+// One rule for both transports keeps the code short.
+//
+// When the listing fails, relistLocked drops the session, and
+// refreshLocked then makes its one connect try, which lists the tools
+// afresh. It doesn't pick through the error first: a restarted server may
+// answer "session not found" as the spec says, or put a JSON-RPC error in
+// the body, or not answer at all, and a server that can't list its tools
+// can't serve the turn either way. The one exception is a listing that ran
+// out of time or whose turn ended: that keeps the session and the old
+// list, since a slow answer doesn't prove the session is gone, and closing
+// it would cut off another turn's call in flight.
+func (p *Pool) relistLocked(ctx context.Context, s *server) {
+	// The span follows the OpenTelemetry MCP conventions, like the one Call
+	// records, so a trace shows what the listing added to the turn.
+	ctx, span := obs.Tracer().Start(ctx, "tools/list",
+		trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
+			attribute.String("mcp.method.name", "tools/list"),
+			attribute.String("meru.tool.server", s.cfg.Name)))
+	defer span.End()
+
+	lctx, cancel := context.WithTimeout(ctx, relistTimeout)
+	defer cancel()
+	tools, err := listTools(lctx, s.session)
+	if err != nil {
+		obs.EndSpanErr(ctx, span, err)
+		s.lastErr = "list tools: " + err.Error()
+		if lctx.Err() != nil {
+			p.log.Warn("mcp server slow to list its tools; keeping the old list",
+				"mcp_server", s.cfg.Name, "err", err)
+			return
+		}
+		p.log.Warn("mcp server failed to list its tools; reconnecting", "mcp_server", s.cfg.Name, "err", err)
+		s.dropLocked()
+		return
+	}
+	s.lastErr = ""
+
+	before, offeredBefore, unknownBefore := s.tools, s.offered, s.unknown
+	s.setToolsLocked(tools)
+	if s.offered == offeredBefore && sameNames(before, s.tools) {
+		return
+	}
+	p.log.Info("mcp server tool list changed", "mcp_server", s.cfg.Name,
+		"tools_offered_before", offeredBefore, "tools_offered", s.offered,
+		"tools_allowed_before", len(before), "tools_allowed", len(s.tools))
+	added, removed := diffNames(before, s.tools)
+	p.log.Debug("mcp server allowed tools changed", "mcp_server", s.cfg.Name,
+		"added", added, "removed", removed)
+	if len(s.unknown) > 0 && !slices.Equal(s.unknown, unknownBefore) {
+		p.log.Warn("mcp server doesn't offer some allowed tools", "mcp_server", s.cfg.Name, "tools", s.unknown)
+	}
+}
+
+// sameNames reports whether a and b hold the same tool names in the same
+// order. Both come from allowedTools, which sorts them.
+func sameNames(a, b []engine.ToolSpec) bool {
+	return slices.EqualFunc(a, b, func(x, y engine.ToolSpec) bool { return x.Name == y.Name })
+}
+
+// diffNames returns the tool names in after but not before (added), and
+// the ones in before but not after (removed).
+func diffNames(before, after []engine.ToolSpec) (added, removed []string) {
+	// has is a function value: a small function stored in a variable, so
+	// both loops below can use it.
+	has := func(list []engine.ToolSpec, name string) bool {
+		return slices.ContainsFunc(list, func(t engine.ToolSpec) bool { return t.Name == name })
+	}
+	for _, t := range after {
+		if !has(before, t.Name) {
+			added = append(added, t.Name)
+		}
+	}
+	for _, t := range before {
+		if !has(after, t.Name) {
+			removed = append(removed, t.Name)
+		}
+	}
+	return added, removed
 }
 
 // Status reports each server's health, in config order. It reads only what
@@ -502,8 +630,8 @@ func (p *Pool) lookup(name string) (s *server, tool string, ok bool) {
 
 // sessionFor returns s's live session. It never starts or connects to the
 // server: a call to a server that isn't connected fails at once with
-// ErrUnavailable and the last error. Only ConnectMissing, at the start of a
-// turn, tries again.
+// ErrUnavailable and the last error. Only Refresh, at the start of a turn,
+// tries again.
 func (p *Pool) sessionFor(s *server) (*mcp.ClientSession, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -523,18 +651,43 @@ func (s *server) markOK() {
 	s.lastErr = ""
 }
 
-// markFailed records a failed call on s. When the error means the
-// connection is gone, it also drops the session, so the server shows as not
-// connected and the next turn that offers tools tries it once more.
+// markFailed records a failed call on s. When the error means the session
+// is gone (sessionGone), it also drops the session, so the server shows as
+// not connected and the next turn that offers tools tries it once more.
 func (s *server) markFailed(cs *mcp.ClientSession, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastErr = err.Error()
-	if errors.Is(err, mcp.ErrConnectionClosed) && s.session == cs {
-		s.session = nil
-		_ = cs.Close()
-		s.stop()
+	if sessionGone(err) && s.session == cs {
+		s.dropLocked()
 	}
+}
+
+// dropLocked closes s's session, stops its child process if it has one,
+// and marks s not connected. watch then sees the session end, finds it no
+// longer current and leaves s alone. The caller holds s.mu.
+func (s *server) dropLocked() {
+	cs := s.session
+	s.session = nil
+	if cs != nil {
+		_ = cs.Close()
+	}
+	s.stop()
+}
+
+// sessionGone reports whether err means the server no longer has merud's
+// session, so every later request on it would fail too. It covers three
+// cases: the connection closed (a stdio child exited), the server answered
+// "session not found" (a Streamable HTTP server that restarted), and
+// nothing listens at the server's address (one that stopped). The last
+// shows up as a failed dial. errors.As looks through the chain of wrapped
+// errors for a *net.OpError and, when it finds one, stores it in opErr.
+func sessionGone(err error) bool {
+	if errors.Is(err, mcp.ErrConnectionClosed) || errors.Is(err, mcp.ErrSessionMissing) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && opErr.Op == "dial"
 }
 
 // toSet turns a list of names into a set, for fast "is it in the list?"

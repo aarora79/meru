@@ -308,12 +308,12 @@ described in [dispatch.md](dispatch.md). `probeConfig` does the same for the one
 server a probe names, and `probeResult` copies `mcp.ProbeInfo` into
 `rpc.ProbeResult`. The `mcp` package doesn't import `rpc`, so `main` joins them.
 
-`mcpBackend` also has a `ConnectMissing` method, one line that calls
-`pool.ConnectMissing`. That method makes it a `dispatch.Connector`, so the agent
-loop's one try per turn at a server that isn't connected reaches the pool (see
-[mcp.md](mcp.md)). Go has no `implements` keyword: a type satisfies an interface
-by having its methods, and `Dispatcher.ConnectMissing` checks for the method at
-run time.
+`mcpBackend` also has a `Refresh` method, one line that calls `pool.Refresh`.
+That method makes it a `dispatch.Refresher`, so the agent loop's refresh at the
+start of a tools turn reaches the pool: a fresh `tools/list` from each connected
+server, and one try at each server that isn't connected (see [mcp.md](mcp.md)).
+Go has no `implements` keyword: a type satisfies an interface by having its
+methods, and `Dispatcher.Refresh` checks for the method at run time.
 
 `mcpStatus` turns the pool's `[]mcp.ServerStatus` into the rows `meru mcp`
 prints:

@@ -321,7 +321,7 @@ sequenceDiagram
     S-->>L: top chunks, relevant memories
     L-->>C: sources: the excerpts, numbered [1], [2], …
     L->>L: build context within budgets
-    L->>L: try MCP servers that aren't connected, once
+    L->>L: list MCP tools again; try missing servers once
     L->>M: context + schemas of allowed tools
     M-->>L: tool call google.search_gmail_messages
     L->>D: dispatch
@@ -677,8 +677,9 @@ order.
    btop with some simple commands" grepped the user's folders, found only pages
    that name btop in passing, and answered with flags btop doesn't have.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
-   On a route that offers tools, the loop first gives each MCP server that isn't
-   connected one try, then lists the tools (see [MCP](#mcp)).
+   On a route that offers tools, the loop first asks each connected MCP server
+   for its tools again and gives each server that isn't connected one try, then
+   lists the tools (see [MCP](#mcp)).
 3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
    client about each call with a `tool_call` event. Each call carries
@@ -1823,19 +1824,44 @@ turn carries on without that server. A stdio child that crashed counts as not
 connected and follows the same rule. For stdio, "try" means start the child and
 run the handshake; for HTTP, connect to the URL.
 
+**Listing again: once per turn.** The same turn sends `tools/list` to each server
+that is connected, with 2 seconds to answer, and keeps the answer, so the tool list
+follows the server. An HTTP server needs this: `merud` holds no stream open to it,
+so when you restart it nothing tells `merud`, and the old session looks alive until
+`merud` sends something. Before this rule, `merud` kept a restarted
+`workspace-mcp`'s old list of 16 tools after the server came back with 33, and an
+allowed tool stayed missing until `merud` restarted. If the listing fails, because
+the server answers "session not found" or nothing listens at its address, `merud`
+marks the server not connected and makes the one connect try above, which lists
+the tools afresh. A listing that runs out of time keeps the old list and the
+session, since a slow answer doesn't prove the session is gone. A stdio server
+can't restart behind `merud`'s back, since `merud` owns the process; listing it
+again costs one round trip over a pipe, and one rule for both transports keeps the
+code short. On an Apple M4 Max, `BenchmarkRefresh` in `internal/mcp` measures the
+extra listing at 0.28 ms per turn for an HTTP server on loopback and 0.2 ms for a
+stdio child, each offering 8 tools. At that cost `merud` lists every turn and
+keeps no timer or cache age. It doesn't act on the
+`notifications/tools/list_changed` message: an HTTP server sends it on the stream
+`merud` keeps closed, and the listing each turn catches the same change, for
+either transport, before the model sees the tools.
+
 | | What happens |
 | --- | --- |
 | `merud` starts | one try per server |
-| a turn on a tools route | one try per server that isn't connected, before the tool list |
+| a turn on a tools route | `tools/list` to each connected server; one try per server that isn't connected, or whose listing failed, before the tool list |
 | a turn that offers no tools, or no turn at all | nothing |
-| a call to a server that died mid-turn | fails at once; the next turn tries again |
+| a call whose session is gone | fails, marks the server not connected, and isn't sent again; the next turn tries the server |
+
+`merud` never sends a failed call again on its own: the server may have run the
+tool before the session broke, and a tool such as `send_gmail_message` would then
+run twice. The model sees the error and can ask again on the next turn.
 
 There is no loop, timer, goroutine or backoff, and nothing runs while nobody asks: a
 server that fails and is never needed again is never touched again. The one
 goroutine per session waits for the session to end so that `/mcp` reports a dead
 server at once; it marks the server not connected and never reconnects. So you can
-start `workspace-mcp` after `merud`, and it works on your next question with no
-restart.
+start `workspace-mcp` after `merud`, or restart it with new tools, and your next
+question sees it with no restart of `merud`.
 
 ```toml
 [[mcp.servers]]
@@ -1903,7 +1929,9 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
 
 The data comes from the `mcp_status` op, which `merud` answers from config and the
 pool's own record of each server. It sends nothing to any server, so the view is
-instant and works while a server is down. `ALLOWED` and `CONFIRM` come from config
+instant and works while a server is down. `TOOLS` and the warnings in `meru tools`
+come from the last listing, which each turn on a tools route renews, so after you
+restart a server they catch up on your next such question. `ALLOWED` and `CONFIRM` come from config
 and show either way, which tells you what you would get. `meru mcp --json` prints
 the same rows for scripts. Tool names stay out of this view: `meru tools` lists each
 server, whether `merud` reached it, the tools the model may use and which of them
@@ -1923,10 +1951,10 @@ until you allow specific ones.
 - **A timeout per call.** Each server entry may set `timeout`, 60 seconds unless
   set. When it passes, or you cancel the turn, Meru tells the server to cancel the
   call.
-- **One try per turn, no retry loop.** A server that crashes, or fails to start,
-  gets one try at the start of the next turn on a tools route (see above). A call
-  to a server that isn't connected fails at once. Nothing retries on a timer, so a
-  server that crashes on start doesn't spin.
+- **One try per turn, no retry loop.** A server that crashes, restarts or fails to
+  start gets one try at the start of the next turn on a tools route (see above). A
+  call to a server that isn't connected fails at once. Nothing retries on a timer,
+  so a server that crashes on start doesn't spin.
 - **A short environment for stdio servers.** A child process gets only `PATH`,
   `HOME` and the few variables Windows programs need, plus the entry's own `env`.
   The rest of `merud`'s environment stays out, because it may hold another tool's

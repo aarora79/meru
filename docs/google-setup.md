@@ -299,7 +299,7 @@ On Linux, a `systemd --user` service that runs `start.sh` does the same job.
 | `... API has not been used in project ... or it is disabled` | one API is off | Step 2: turn it on, wait a minute, ask again |
 | `invalid_grant` or a new sign-in link after a week | the 7-day limit | Step 10 again, or publish the app |
 | `address already in use` when the server starts | something else holds port 8000 | stop the other program, or add `export WORKSPACE_MCP_PORT=8001` to `start.sh` and change the `url` in the `google` entry of `~/.meru/config.toml` to `http://127.0.0.1:8001/mcp` |
-| `meru tools` warns `google offers no such tool` | the server started without `--tool-tier extended` | fix the last line of `start.sh`, restart the server |
+| `meru tools` warns `google offers no such tool` | the server started without `--tool-tier extended` | fix the last line of `start.sh`, restart the server, and ask Meru a question that uses Google; that turn lists the tools again and the warning goes |
 | `meru tools` shows `google` as `not connected` | the server isn't running | Step 8, or check the log from Step 11 |
 | Meru finds a mail but can't read its attachment | the server saves attachments elsewhere | check `WORKSPACE_ATTACHMENT_DIR` in `start.sh`, restart the server; see [Read a mail's attachment](running.md#read-a-mails-attachment) |
 | `command not found: uvx` | uv isn't on your `PATH` | Step 6; for launchd, add uv's folder to `PATH` in the plist |
