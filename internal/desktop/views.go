@@ -275,10 +275,19 @@ func contacted(steps []Step) []string {
 // arguments laid out to read, and the choices merud offers with plain
 // labels.
 type ApprovalView struct {
-	// ID is merud's approval ID; the page sends it back with the answer.
+	// ID names the card; the page sends it back with the answer. The
+	// Bridge makes it from the turn or save and merud's approval ID.
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
+	// Server is the MCP server or A2A agent the call goes to, "" for a
+	// built-in tool or a local command, and Tool the tool's own name: the
+	// side panel lists the server's tools with their policies while the
+	// card is open. Task is "save" for a card a save asked for, and ""
+	// for one a turn asked for.
+	Server string `json:"server,omitempty"`
+	Tool   string `json:"tool"`
+	Task   string `json:"task,omitempty"`
 	// Label says what the call would do, as the work strip would say it.
 	Label string `json:"label"`
 	// Fields holds the mail fields (To, Cc, Bcc, Subject, Body) when the
@@ -288,6 +297,10 @@ type ApprovalView struct {
 	// is a mail field.
 	JSON    string       `json:"json,omitempty"`
 	Choices []ChoiceView `json:"choices"`
+	// Draft is what "Edit first" puts in the composer: the call's
+	// arguments written as a request the user can change and send, since
+	// merud runs a call with the arguments it asked about and no others.
+	Draft string `json:"draft"`
 }
 
 // Field is one labelled argument on an approval card.
@@ -306,12 +319,16 @@ type ChoiceView struct {
 // Body out of the arguments when "to" or "subject" is among them, and
 // shows the rest as indented JSON. Arguments that aren't a JSON object
 // show as they came.
-func approvalView(a rpc.Approval) ApprovalView {
+func approvalView(a rpc.Approval) (v ApprovalView) {
 	server, tool := splitName(a.Kind, a.Name)
-	v := ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Label: stepLabel(a.Kind, server, tool, a.Args)}
+	v = ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Server: server, Tool: tool, Label: stepLabel(a.Kind, server, tool, a.Args)}
 	for _, c := range a.Choices {
 		v.Choices = append(v.Choices, ChoiceView{Choice: c, Label: choiceLabel(c)})
 	}
+	// The draft is written last, from the fields and JSON the card shows.
+	// v is a named result, so this deferred function sets the Draft of
+	// the value approvalView returns, whichever return runs.
+	defer func() { v.Draft = draftOf(v) }()
 
 	m := argMap(a.Args)
 	if m == nil {
@@ -344,6 +361,42 @@ func approvalView(a rpc.Approval) ApprovalView {
 		v.JSON = indentJSON(m)
 	}
 	return v
+}
+
+// draftOf writes the text "Edit first" puts in the composer for card v:
+// one line that says what to do, then the arguments as the card showed
+// them, for the user to change and send as a new question. A mail card
+// gives "Send this mail instead:" and its To, Cc, Subject and Body; any
+// other card names the tool and its arguments as JSON.
+func draftOf(v ApprovalView) string {
+	var b strings.Builder
+	switch {
+	case len(v.Fields) > 0:
+		verb := "Send"
+		if strings.HasPrefix(v.Label, "Drafted") {
+			verb = "Draft"
+		}
+		b.WriteString(verb + " this mail instead:\n")
+		for _, f := range v.Fields {
+			if f.Label == "Body" {
+				continue
+			}
+			b.WriteString("\n" + f.Label + ": " + f.Value)
+		}
+		for _, f := range v.Fields {
+			if f.Label == "Body" {
+				b.WriteString("\n\n" + f.Value)
+			}
+		}
+		if v.JSON != "" {
+			b.WriteString("\n\nOther details: " + v.JSON)
+		}
+	case v.JSON != "":
+		fmt.Fprintf(&b, "Run %s with these arguments instead:\n\n%s", v.Name, v.JSON)
+	default:
+		fmt.Fprintf(&b, "Run %s instead.", v.Name)
+	}
+	return b.String()
 }
 
 // fieldValue writes one argument for a card: a string as it is, a list of

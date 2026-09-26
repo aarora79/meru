@@ -1,7 +1,8 @@
 // This file holds the Bridge: the methods the page calls to ask a
 // question, stop it, answer an approval and manage the queue, and the
 // goroutine that reads each turn's events from merud and hands them to the
-// page as Updates.
+// page as Updates. settings.go holds the methods behind the Library and
+// Setup screens, and files.go the ones that save, pick and open files.
 
 package desktop
 
@@ -32,16 +33,30 @@ type EmitFunc func(name string, data any)
 type Options struct {
 	// Socket is merud's Unix socket, usually ~/.meru/merud.sock.
 	Socket string
-	// Model is the main model's name from config.toml, for the status
-	// block, and Home the user's home folder, for opening a source shown
-	// as ~/...
+	// Model, Fast and Embed name the models config.toml sets for each
+	// tier, for the status block and for Setup, which lists them even
+	// while merud is down. Home is the user's home folder, for opening a
+	// source shown as ~/...
 	Model string
+	Fast  string
+	Embed string
 	Home  string
 	// Emit sends each Update to the page.
 	Emit EmitFunc
 	// Open opens a URL in the browser or the file's app. nil means
 	// opener.Open; tests pass a fake that opens nothing.
 	Open func(url string) error
+	// OutputDir is [skills] output_dir with "~" expanded, the other
+	// folder read_file may read, for checking an attached file. "" when
+	// config doesn't load.
+	OutputDir string
+	// PickFile and PickFolder show the system's dialog for choosing a
+	// file or a folder and return the path, or "" when the user cancels.
+	// Quit closes the app. The window supplies all three; nil leaves the
+	// feature off, as in tests that don't need it.
+	PickFile   func() (string, error)
+	PickFolder func() (string, error)
+	Quit       func()
 }
 
 // Bridge is what the page calls. Build one with New. The window binds
@@ -51,11 +66,17 @@ type Options struct {
 // runs waits in the queue, and the Bridge sends it, in the same session,
 // when the running turn ends.
 type Bridge struct {
-	socket string
-	model  string
-	home   string
-	emit   EmitFunc
-	open   func(url string) error
+	socket     string
+	model      string
+	fast       string
+	embed      string
+	home       string
+	outputDir  string
+	emit       EmitFunc
+	open       func(url string) error
+	pickFile   func() (string, error)
+	pickFolder func() (string, error)
+	quit       func()
 
 	// wg counts the turn goroutines, so ServiceShutdown can wait for them.
 	wg sync.WaitGroup
@@ -64,16 +85,20 @@ type Bridge struct {
 	turn    *turn      // the running turn, or nil
 	last    int        // the number of the latest turn
 	session string     // the session the running and queued questions go to
+	scope   string     // where the running and queued questions may look
 	queue   []string   // questions waiting behind the running turn, oldest first
+	// approvals holds the channel each open approval card waits on, by the
+	// card's ID, which the Bridge makes unique across turns and saves:
+	// merud numbers approvals per connection, so two connections can each
+	// have an approval "1".
+	approvals map[string]chan rpc.Choice
+	saves     int // numbers the saves, for their approval IDs
 }
 
 // turn is one question on its way through merud.
 type turn struct {
 	n      int
 	cancel context.CancelFunc
-	// pending holds the channel each open approval waits on, by merud's
-	// approval ID.
-	pending map[string]chan rpc.Choice
 	// steps are the turn's tool calls so far, for the privacy line.
 	steps []Step
 }
@@ -84,23 +109,32 @@ func New(o Options) *Bridge {
 	if open == nil {
 		open = opener.Open
 	}
-	return &Bridge{socket: o.Socket, model: o.Model, home: o.Home, emit: o.Emit, open: open}
+	return &Bridge{
+		socket: o.Socket, model: o.Model, fast: o.Fast, embed: o.Embed, home: o.Home, outputDir: o.OutputDir, emit: o.Emit, open: open,
+		pickFile: o.PickFile, pickFolder: o.PickFolder, quit: o.Quit,
+		approvals: map[string]chan rpc.Choice{},
+	}
 }
 
 // Send asks question in session: "" starts a new session, and an ID
-// continues that one. While a turn runs, the question waits in the queue
-// instead and goes to the running turn's session, so session is only read
-// when the Bridge is idle. Send returns at once; the answer arrives as
-// Updates.
+// continues that one. scope says where Meru may look, one of the
+// rpc.Scope constants, from the composer's "Where Meru looks" switch; ""
+// means auto. While a turn runs, the question waits in the queue instead
+// and goes to the running turn's session with its scope, so session and
+// scope are only read when the Bridge is idle. Send returns at once; the
+// answer arrives as Updates.
 //
 // Send takes no context, unlike the methods that only ask merud for data:
 // the turn must outlive the call that starts it. Stop ends it.
 //
-// It fails when question is blank or the queue is full.
-func (b *Bridge) Send(session, question string) error {
+// It fails when question is blank, scope is unknown, or the queue is full.
+func (b *Bridge) Send(session, question, scope string) error {
 	q := strings.TrimSpace(question)
 	if q == "" {
 		return errors.New("type a question first")
+	}
+	if scope != "" && !slices.Contains(rpc.Scopes(), scope) {
+		return fmt.Errorf("%q isn't a place Meru can look", scope)
 	}
 	b.mu.Lock()
 	// defer runs b.mu.Unlock() when Send returns, on every path.
@@ -113,7 +147,7 @@ func (b *Bridge) Send(session, question string) error {
 		b.emitQueue("")
 		return nil
 	}
-	b.session = session
+	b.session, b.scope = session, scope
 	b.start(q)
 	return nil
 }
@@ -148,26 +182,23 @@ func (b *Bridge) Unqueue(i int) error {
 	return nil
 }
 
-// Approve answers the approval id of turn n with choice: "once",
-// "session" or "deny". It fails when the turn has ended, the approval
-// isn't open, or choice isn't one of the three. merud checks the choice
-// again against the ones it offered, and treats any other as a deny.
-func (b *Bridge) Approve(n int, id, choice string) error {
+// Approve answers the approval card id, from a turn or a save, with
+// choice: "once", "session" or "deny". It fails when the card isn't open
+// any more, because its turn or save ended or it was answered, or when
+// choice isn't one of the three. merud checks the choice again against the
+// ones it offered, and treats any other as a deny.
+func (b *Bridge) Approve(id, choice string) error {
 	c := rpc.Choice(choice)
 	if c != rpc.ChoiceOnce && c != rpc.ChoiceSession && c != rpc.ChoiceDeny {
 		return fmt.Errorf("%q isn't an answer to an approval", choice)
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	t := b.turn
-	if t == nil || t.n != n {
-		return errors.New("that question has already ended")
-	}
-	ch, ok := t.pending[id]
+	ch, ok := b.approvals[id]
 	if !ok {
 		return errors.New("that approval is no longer open")
 	}
-	delete(t.pending, id)
+	delete(b.approvals, id)
 	// The channel has room for one value and gets only this one, so the
 	// send never waits.
 	ch <- c
@@ -195,9 +226,9 @@ func (b *Bridge) start(q string) {
 	// Each turn gets its own context, so Stop can cancel it without
 	// touching anything else. The Bridge keeps the cancel function.
 	ctx, cancel := context.WithCancel(context.Background())
-	t := &turn{n: b.last, cancel: cancel, pending: map[string]chan rpc.Choice{}}
+	t := &turn{n: b.last, cancel: cancel}
 	b.turn = t
-	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q, Source: rpc.SourceDesktop}
+	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q, Source: rpc.SourceDesktop, Scope: b.scope}
 	b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindStart, Question: q, Session: b.session})
 	// wg.Go starts the function in a new goroutine and counts it, so
 	// ServiceShutdown can wait for it.
@@ -211,7 +242,7 @@ func (b *Bridge) run(ctx context.Context, t *turn, req rpc.Request) {
 	failure := ""
 	// range over rpc.Do runs the loop body once per event; see
 	// docs/coding-notes/go-basics/iterators.md.
-	for ev, err := range rpc.Do(ctx, b.socket, req, b.approver(t)) {
+	for ev, err := range rpc.Do(ctx, b.socket, req, b.approver(t.n, "", func() bool { return b.turn == t })) {
 		if err != nil {
 			failure = err.Error()
 			break
@@ -282,25 +313,37 @@ func (b *Bridge) finish(t *turn, failure string) {
 	b.start(next)
 }
 
-// approver returns the ApproveFunc for t. rpc.Do calls it from t's
-// goroutine each time merud asks about a tool call. It shows the page an
-// approval card, then waits until Approve answers or the turn ends. While
-// it waits, the turn waits too: merud holds the tool call until the reply
-// arrives.
-func (b *Bridge) approver(t *turn) rpc.ApproveFunc {
+// approver returns the ApproveFunc for turn n, or, when task is "save",
+// for a save. rpc.Do calls it from the turn's or the save's goroutine each
+// time merud asks about a tool call. It shows the page an approval card,
+// then waits until Approve answers or ctx ends. While it waits, merud
+// holds the tool call. live, called with b.mu held, says whether the turn
+// or save is still the page's; a card nobody can see is a deny.
+func (b *Bridge) approver(n int, task string, live func() bool) rpc.ApproveFunc {
 	return func(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
 		// A buffer of one lets Approve deliver without waiting, even if
 		// this function has already given up.
 		ch := make(chan rpc.Choice, 1)
 		b.mu.Lock()
-		if b.turn != t {
+		if !live() {
 			b.mu.Unlock()
-			return rpc.ChoiceDeny, nil // nobody can see the card
+			return rpc.ChoiceDeny, nil
 		}
-		t.pending[a.ID] = ch
+		prefix := fmt.Sprintf("t%d-", n)
+		if task != "" {
+			prefix = fmt.Sprintf("%s%d-", task, n)
+		}
 		view := approvalView(a)
-		b.emit(UpdateEvent, Update{Turn: t.n, Kind: KindApproval, Approval: &view})
+		view.ID, view.Task = prefix+a.ID, task
+		b.approvals[view.ID] = ch
+		b.emit(UpdateEvent, Update{Turn: n, Kind: KindApproval, Approval: &view})
 		b.mu.Unlock()
+		// However this ends, the card closes with it.
+		defer func() {
+			b.mu.Lock()
+			delete(b.approvals, view.ID)
+			b.mu.Unlock()
+		}()
 		// select waits for whichever comes first: the answer or the end
 		// of the turn.
 		select {

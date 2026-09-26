@@ -101,7 +101,11 @@ export function drawStrip(t, h) {
     step.append(icon(failed ? "alert" : "tool", 13), document.createTextNode(" " + s.label));
     strip.append(step);
   }
-  if (t.state === "active" && !t.answer && !t.approval) {
+  if (t.approval && !t.approval.answered) {
+    const chip = el("span", "waiting");
+    chip.append(icon("ask", 13), document.createTextNode(" Waiting for you"));
+    strip.append(chip);
+  } else if (t.state === "active" && !t.answer) {
     strip.append(el("span", "working", "Working…"));
   }
   if (t.route || t.steps.length > 0) {
@@ -150,21 +154,29 @@ export function drawApproval(t, h) {
   slot.replaceChildren();
   const a = t.approval;
   if (!a) return;
-  const v = a.view;
   if (a.answered) {
     const line = el("p", "approval-done");
-    line.append(icon(a.answered === "deny" ? "close" : "check", 14),
-      document.createTextNode(" " + answeredText(a.answered, v.label)));
+    line.append(icon(a.answered === "deny" || a.answered === "edit" ? "close" : "check", 14),
+      document.createTextNode(" " + answeredText(a.answered, a.view.label)));
     slot.append(line);
     return;
   }
+  slot.append(approvalCard(a.view, "approval-" + t.key, (choice) => h.onApprove(t, choice)));
+}
+
+// approvalCard builds the card for view v: what the call would do, its
+// arguments laid out to read, and the answers. A mail card offers Send,
+// Edit first and Don't send; any other card Allow once and Don't allow,
+// with Edit first between. Allow for this chat comes when merud offers
+// it. onChoice gets "once", "session", "deny" or "edit". A save's card,
+// which sits above the composer, uses it too.
+export function approvalCard(v, titleId, onChoice) {
   const card = el("div", "approval");
   card.setAttribute("role", "group");
-  const titleId = "approval-" + t.key;
   card.setAttribute("aria-labelledby", titleId);
   const title = el("p", "approval-title");
   title.id = titleId;
-  title.append(icon("ask", 16), document.createTextNode(" Meru asks before it runs this: "));
+  title.append(icon("ask", 16), document.createTextNode(" Meru asks before it does this: "));
   title.append(el("strong", "", v.label));
   card.append(title, el("p", "approval-tool", v.name + " · " + v.kind));
 
@@ -177,15 +189,20 @@ export function drawApproval(t, h) {
   }
   if (v.json) card.append(el("pre", "args", v.json));
 
+  const mail = !!(v.fields && v.fields.length);
+  const offered = new Set(v.choices.map((c) => c.choice));
   const choices = el("div", "choices");
-  for (const c of v.choices) {
-    const cls = c.choice === "deny" ? "button secondary" : "button ask";
-    const b = button(c.label, { className: cls, onClick: () => h.onApprove(t, c.choice) });
-    b.dataset.choice = c.choice;
+  const add = (label, choice, cls) => {
+    const b = button(label, { className: cls, onClick: () => onChoice(choice) });
+    b.dataset.choice = choice;
     choices.append(b);
-  }
+  };
+  if (offered.has("once")) add(mail ? "Send" : "Allow once", "once", "button ask");
+  if (offered.has("session")) add("Allow for this chat", "session", "button secondary");
+  if (v.draft) add("Edit first", "edit", "button secondary");
+  add(mail ? "Don't send" : "Don't allow", "deny", "button secondary");
   card.append(choices);
-  slot.append(card);
+  return card;
 }
 
 // answeredText says what the user chose on an approval card.
@@ -197,6 +214,8 @@ function answeredText(choice, label) {
       return "You allowed this for the rest of this chat: " + label + ".";
     case "ended":
       return "The question ended before you answered: " + label + ".";
+    case "edit":
+      return "Not done yet. The draft is in the box below to change and send: " + label + ".";
   }
   return "You didn't allow this: " + label + ".";
 }
@@ -275,6 +294,7 @@ export function drawFooter(t, h) {
   const actions = el("div", "actions");
   if (t.answer) {
     actions.append(button("Copy", { iconName: "copy", onClick: (e) => h.onCopyAnswer(t, e.currentTarget) }));
+    actions.append(button("Save to a note", { iconName: "note", onClick: () => h.onSaveNote(t) }));
   }
   actions.append(button("Try again", { iconName: "retry", onClick: () => h.onRetry(t) }));
   actions.append(button("Details", { iconName: "panel", onClick: () => h.onSelect(t, true) }));

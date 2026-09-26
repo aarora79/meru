@@ -117,11 +117,21 @@ func groupOf(t, now time.Time) string {
 // so a slow answer means something is wrong.
 const requestTimeout = 5 * time.Second
 
-// one sends req and returns the reply event of type want. It fails when
-// merud can't be reached, answers with an error event, or sends no event
-// of that type.
+// changeTimeout bounds a request that changes a setting. merud may start
+// or reconnect every MCP server after the change, and each may take a
+// while to start.
+const changeTimeout = 90 * time.Second
+
+// one sends req and returns the reply event of type want, waiting at most
+// requestTimeout, or changeTimeout for an op that changes a setting. It
+// fails when merud can't be reached, answers with an error event, or sends
+// no event of that type.
 func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (rpc.Event, error) {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	timeout := requestTimeout
+	if changes(req.Op) {
+		timeout = changeTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var got *rpc.Event
 	// These requests run no tools, so a nil ApproveFunc is right: it would
@@ -141,4 +151,20 @@ func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (
 		return rpc.Event{}, errors.New("merud sent no " + string(want) + " reply")
 	}
 	return *got, nil
+}
+
+// done sends req, which merud answers with "done" alone, such as
+// memory_forget or secret_set, and fails as one does.
+func (b *Bridge) done(ctx context.Context, req rpc.Request) (rpc.Event, error) {
+	return b.one(ctx, req, rpc.EventDone)
+}
+
+// changes reports whether op changes a setting, and so may take longer.
+func changes(op rpc.Op) bool {
+	switch op {
+	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
+		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders:
+		return true
+	}
+	return false
 }

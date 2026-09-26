@@ -44,8 +44,9 @@ question. Quiet sessions get a summary, and search turns recall past
 conversations. Skills load with progressive disclosure, `meru skills` manages
 them, and the built-in `write_file` tool writes to `~/meru-output/`. The context
 budget across skills, memories and chunks is still to come. The desktop app,
-`meru-desktop` (Wails v3, macOS first), has its chat screen; the owner asked for
-it ahead of v0.5. Work goes milestone
+`meru-desktop` (Wails v3, macOS first), has its chat screen, a Library for
+settings and a Setup screen, each change made by `merud`; the owner asked for it
+ahead of v0.5. Work goes milestone
 by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
 features (the scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
@@ -163,7 +164,7 @@ internal/
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
   builtin/           tools inside merud: `configure`, `remember`, `write_file`, and the read-only `read_file`, `list_folder`, `grep`
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
-  catalog/           the starter MCP servers and the safe append to config.toml
+  catalog/           the starter MCP servers, the safe append to config.toml, and one-list edits in it
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; ships writing and explainer
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt

@@ -229,37 +229,101 @@ make desktop            # writes bin/meru-desktop
 `~/.meru/merud.sock`; `-socket path` points it elsewhere. The usual `go install`,
 `go build ./...` and `make build` skip the app, so they still need no C compiler.
 
+The first time the app finds `merud` with no folders and nothing about you, it
+opens **Setup**: four steps for the models, your folders, your connections and a
+few facts about you. Skip any step; the Setup button at the foot of the rail opens
+it again.
+
 What you see:
 
 - **On the left**, New chat, a search box that filters your chats, and your past
   chats grouped Today, Yesterday and Earlier. A click reopens one, and your next
-  question carries it on. At the bottom, a block says whether `merud` runs, which
+  question carries it on. Below them, a block says whether `merud` runs, which
   model writes the answers, how many files Meru can search and which tools are
-  connected. When `merud` isn't running, it says so and shows the command that
-  starts it.
+  connected; when `merud` isn't running, it says so and shows the command that
+  starts it. **Library** and **Setup** sit at the foot. The button beside the
+  logo folds the rail to a column of icons.
 - **In the middle**, the conversation. Each answer opens with one line of what Meru
   did, such as "Searched mail · Read lisbon.md"; "Show steps" shows the raw tool
   names and times. The answer streams as plain text and turns into formatted text
-  when it ends. Each code block has a Copy button, each source a chip that opens
-  the file, and each answer Copy, Try again and a dim line of timings.
+  when it ends. Each code block has its number and a Copy button, each source a
+  chip that opens the file, and each answer **Copy**, **Save to a note**, **Try
+  again** and a dim line of timings. **Share as file**, at the top, saves the whole
+  chat.
 - **On the right**, "What this answer used": the sources, the tools with their
-  server and time, and a line such as "The model ran on this Mac. Only google was
-  contacted." On a narrow window, "What it used" at the top opens it.
+  server and time, what Meru **remembered**, each with a Forget button, and a line
+  such as "The model ran on this Mac. Only google was contacted." The button at
+  the top right hides or shows this panel.
 
 Enter sends and Shift+Enter starts a new line. While an answer runs, Enter queues
 your next question, five at most; each shows above the box with a button that
-removes it, and Stop ends the answer and drops the queue. When Meru wants to run a
-tool that asks first, an amber card shows up inside the answer with the tool and
-its arguments, a mail's To, Subject and Body laid out to read. Choose Allow once,
-Allow for this chat or Don't allow. The card starts on Don't allow, so Enter alone
-runs nothing.
+removes it, and Stop ends the answer and drops the queue.
+
+**Where Meru looks.** The switch under the box picks where the next question
+looks:
+
+| Choice | What Meru does |
+| --- | --- |
+| Auto | decides for itself, as `meru` and `meru chat` do |
+| My files | searches the folders it indexes, and may read files there |
+| Mail and calendar | uses only your mail and calendar connections, such as google |
+| Web | uses only web search and web pages |
+| Just talk | answers from the model alone: no search, no tools |
+
+**Attach a file.** The paperclip opens a file dialog. Meru reads the file with its
+file tools, so the file must sit in a folder it indexes or in its output folder,
+`~/meru-output`; for any other file, the app says to add its folder in the
+Library. The question then ends with "Read this file: ~/Notes/lisbon.md".
+
+**Approvals.** When Meru wants to run a tool that asks first, an amber card shows
+up inside the answer with the tool and its arguments, a mail's To, Subject and Body
+laid out to read, and the choices **Send**, **Edit first** and **Don't send**
+(Allow once and Don't allow for a tool that isn't mail). The card starts on the
+choice that runs nothing, so Enter alone runs nothing. **Edit first** puts the mail
+in the box as a draft: change it and send it, and Meru asks again before it does
+anything. While the card is open, the right panel says why Meru asks, what else
+that server may do, and links to the Library.
+
+**Saving.** Share as file and Save to a note write Markdown to `~/meru-output/chats/`
+or `~/meru-output/notes/`. Meru saves with its `write_file` tool, so it asks first,
+and the save shows in Library, Activity. After a yes, "Show in folder" opens the
+folder.
+
+**Slash commands.** The box understands the commands `meru chat` has. Type "/" at
+the start to see them; the arrow keys pick one, Enter or Tab runs it, Esc closes
+the list. They run at once, even while an answer runs, and never reach the model:
+
+| Command | What it does |
+| --- | --- |
+| `/new` | starts a new chat, like New chat; a running answer stops and the queue goes |
+| `/usage` | opens Library, Usage |
+| `/me` | opens Library, About you |
+| `/mcp` | opens Library, Connections |
+| `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block |
+| `/exit` | closes the app, asking first while an answer runs |
+
+**The Library** holds the settings. Each change goes to `merud`, which writes
+`~/.meru/config.toml`, keeps your comments, and applies it at once:
+
+- **Connections**: a card per tool source, with an Off, Ask or Allow switch per
+  tool. Off hides the tool from the model; Ask makes Meru ask before each call;
+  Allow runs it without asking. A tool that runs commands, and `configure`, always
+  ask. **Add a connection** adds a catalog server, as `meru mcp add` does; paste
+  its API key there if it needs one.
+- **Folders**: the folders Meru indexes, with file counts. Add one with the folder
+  dialog, or remove one; Meru indexes or drops its files right away.
+- **About you**: what Meru knows about you, to add, edit or forget.
+- **Skills**: each skill, on or off.
+- **Models**: the models and what Ollama holds now. To change a model, edit
+  `config.toml`, run `ollama pull`, and restart `merud`.
+- **Activity**: every tool call, with its arguments and result behind Details.
+- **Usage**: the numbers `meru usage` prints.
 
 Links in answers open in your browser; Meru opens only `http`, `https` and `file`
 links. The app loads nothing from the internet: its fonts and code ship inside it.
 
-Not in the app yet: turning tools on and off, first-run setup, a switch for where
-Meru looks, and dropping files on the window. Use `meru setup` and `meru mcp add`
-for those.
+Not in the app yet: dropping files on the window, and pulling a model. Use
+`ollama pull` for that.
 
 ### Tell Meru about you
 

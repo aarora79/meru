@@ -29,12 +29,24 @@ type Status struct {
 	Socket  string `json:"socket"`
 	Machine string `json:"machine"`
 	// Model is the main model from config.toml, the one that writes the
-	// answers.
+	// answers; Fast is the router's and Embed the search index's. Setup
+	// shows all three, with the `ollama pull` each needs, when merud is
+	// down.
 	Model string `json:"model,omitempty"`
+	Fast  string `json:"fast,omitempty"`
+	Embed string `json:"embed,omitempty"`
 	// Documents counts the files the index holds, and Scanning is true
 	// while merud scans the [index] folders.
 	Documents int  `json:"documents"`
 	Scanning  bool `json:"scanning,omitempty"`
+	// Chunks counts the pieces those files were cut into, for the
+	// Library's "On this Mac" panel.
+	Chunks int `json:"chunks"`
+	// Folders counts the [index] folders, and Profile the memories that go
+	// into every prompt. With both at zero Meru knows nothing yet, and the
+	// page opens Setup on its own.
+	Folders int `json:"folders"`
+	Profile int `json:"profile"`
 	// Connections names the MCP servers merud holds a connection to.
 	Connections []string `json:"connections"`
 }
@@ -44,7 +56,8 @@ type Status struct {
 // with Up false and the reason in Problem. A merud too old to know
 // mcp_status still reports its index.
 func (b *Bridge) Status(ctx context.Context) Status {
-	s := Status{Socket: b.socket, Machine: machineName(runtime.GOOS), Model: b.model, Connections: []string{}}
+	s := Status{Socket: b.socket, Machine: machineName(runtime.GOOS), Model: b.model, Fast: b.fast, Embed: b.embed,
+		Connections: []string{}}
 	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpIndexStatus}, rpc.EventStatus)
 	if err != nil {
 		s.Problem = fmt.Sprintf("merud isn't answering at %s.", b.socket)
@@ -52,9 +65,9 @@ func (b *Bridge) Status(ctx context.Context) Status {
 		return s
 	}
 	s.Up = true
-	if ev.Status != nil {
-		s.Documents = ev.Status.Documents
-		s.Scanning = ev.Status.Scanning
+	if st := ev.Status; st != nil {
+		s.Documents, s.Chunks, s.Scanning = st.Documents, st.Chunks, st.Scanning
+		s.Folders, s.Profile = len(st.Folders), st.Profile
 	}
 	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpMCPStatus}, rpc.EventMCPStatus); err == nil {
 		for _, m := range ev.MCP {
