@@ -201,6 +201,11 @@ func TestHistory(t *testing.T) {
 			{Type: TypeToolResult, CallID: "call-1", Outcome: "ok", OK: true, Result: "raw result"},
 			a("a1"),
 		}, 10, msgs("q1", "a1")},
+		// A question with images gets a note per image, never the bytes.
+		{"images become notes", []Line{
+			{Type: TypeUser, Text: "which shop are these from?", Images: []string{"/home/u/meru-output/uploads/receipt.jpg", "/home/u/meru-output/uploads/garden.png"}},
+			a("A garden centre."),
+		}, 10, msgs("which shop are these from?\n\n[image: receipt.jpg]\n[image: garden.png]", "A garden centre.")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,9 +229,10 @@ func TestHistory(t *testing.T) {
 	}
 }
 
-// messagesEqual compares the fields History fills in.
+// messagesEqual compares the fields History fills in, and checks that
+// History never hands back image bytes.
 func messagesEqual(a, b engine.Message) bool {
-	return a.Role == b.Role && a.Content == b.Content
+	return a.Role == b.Role && a.Content == b.Content && len(a.Images) == 0 && len(b.Images) == 0
 }
 
 func TestHistorySkipsTornLines(t *testing.T) {

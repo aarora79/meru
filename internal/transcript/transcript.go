@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aarora79/meru/internal/engine"
@@ -47,6 +48,10 @@ type Line struct {
 	// tool_result line. The turns table and `meru usage` rebuild from them.
 	Route   string   `json:"route,omitempty"`
 	Sources []string `json:"sources,omitempty"`
+	// Images holds the full paths of the images a question carried, on a
+	// user line: copies in the uploads folder under [skills] output_dir.
+	// The line keeps the paths, never the bytes.
+	Images []string `json:"images,omitempty"`
 
 	// The fields below belong to the tool lines (v0.3): "tool_call",
 	// "approval" and "tool_result". CallID ties the three lines of one call
@@ -197,9 +202,12 @@ func (s *Session) Append(l Line) error {
 // History returns the last maxTurns turns of the session as model messages,
 // oldest first. A turn is a user line and the assistant line that answered
 // it. An answer that carries a notice gets it after its text, in square
-// brackets, so the model reads that its claim didn't happen. A user line with no answer (the turn failed or was cancelled) is left
-// out, so the model never sees two questions in a row. maxTurns of zero or
-// less returns nothing.
+// brackets, so the model reads that its claim didn't happen. A question
+// that carried images gets one note per image after its text, such as
+// "[image: receipt.jpg]", and never the image itself: see imageNotes. A
+// user line with no answer (the turn failed or was cancelled) is left out,
+// so the model never sees two questions in a row. maxTurns of zero or less
+// returns nothing.
 //
 // History fails only when the file can't be read.
 func (s *Session) History(maxTurns int) ([]engine.Message, error) {
@@ -226,7 +234,7 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 					answer += "\n\n[" + l.Notice + "]"
 				}
 				turns = append(turns, [2]engine.Message{
-					{Role: engine.RoleUser, Content: question.Text},
+					{Role: engine.RoleUser, Content: question.Text + imageNotes(question.Images)},
 					{Role: engine.RoleAssistant, Content: answer},
 				})
 				question = nil
@@ -242,6 +250,24 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 		msgs = append(msgs, t[0], t[1])
 	}
 	return msgs, nil
+}
+
+// imageNotes returns one line per image in paths, "[image: <name>]",
+// after a blank line, or "" for none. A later turn sends the model this
+// note in place of the image: the model knows the user shared one, and
+// the prompt doesn't carry the bytes again. Each image costs hundreds of
+// tokens and seconds of work, and a model's context fills fast; the turn
+// that carried the image has the answer about it in its history already.
+func imageNotes(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	var s strings.Builder
+	s.WriteString("\n")
+	for _, p := range paths {
+		s.WriteString("\n[image: " + filepath.Base(p) + "]")
+	}
+	return s.String()
 }
 
 // read parses every line of the session file and skips lines that aren't

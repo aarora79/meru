@@ -13,6 +13,7 @@ import (
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/index"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // uploadTools returns built-in tools over one [index] folder, notes, with
@@ -98,18 +99,18 @@ func TestUpload(t *testing.T) {
 			got, err := tools.Upload(tt.src)
 			if tt.refusal != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.refusal) {
-					t.Fatalf("Upload(%s) = %q, %v; want a refusal with %q", tt.src, got, err, tt.refusal)
+					t.Fatalf("Upload(%s) = %+v, %v; want a refusal with %q", tt.src, got, err, tt.refusal)
 				}
 				return
 			}
-			if err != nil || got != filepath.Join(uploads, tt.want) {
-				t.Fatalf("Upload(%s) = %q, %v; want %s", tt.src, got, err, filepath.Join(uploads, tt.want))
+			if err != nil || got.Path != filepath.Join(uploads, tt.want) || got.Kind != rpc.AttachFile {
+				t.Fatalf("Upload(%s) = %+v, %v; want %s, a file", tt.src, got, err, filepath.Join(uploads, tt.want))
 			}
 			src, _ := os.ReadFile(tt.src)
-			if copied, err := os.ReadFile(got); err != nil || string(copied) != string(src) {
+			if copied, err := os.ReadFile(got.Path); err != nil || string(copied) != string(src) {
 				t.Errorf("the copy holds %q, %v", copied, err)
 			}
-			if info, err := os.Stat(got); err != nil || info.Mode().Perm() != 0o600 {
+			if info, err := os.Stat(got.Path); err != nil || info.Mode().Perm() != 0o600 {
 				t.Errorf("the copy's mode = %v, %v; want 0600", info.Mode(), err)
 			}
 		})
@@ -165,7 +166,7 @@ func TestUploadNeedsReadFile(t *testing.T) {
 			src := filepath.Join(away, "garden-plan.md")
 			writeFile(t, src, "Plant tomatoes in May.\n")
 			if got, err := tools.Upload(src); err == nil || !strings.Contains(err.Error(), tt.refusal) {
-				t.Errorf("Upload = %q, %v; want a refusal with %q", got, err, tt.refusal)
+				t.Errorf("Upload = %+v, %v; want a refusal with %q", got, err, tt.refusal)
 			}
 		})
 	}

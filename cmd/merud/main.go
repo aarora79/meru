@@ -229,6 +229,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
 	a.UseFolders(idx.currentFolders)
+	// A question's images come from the uploads folder through the
+	// built-in tools' Image, which refuses any other path.
+	a.UseImages(tools.bt.Image, visionCheck(eng))
 	machine := machineLine(ctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)

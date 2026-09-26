@@ -154,6 +154,10 @@ type Agent struct {
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
 	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
+	// readImage and vision, set by UseImages, read a question's images
+	// and say whether a model can look at them; see images.go.
+	readImage func(path string) ([]byte, error)
+	vision    func(ctx context.Context, model string) (bool, error)
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -263,6 +267,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err != nil {
 		return err
 	}
+	imagePaths, images, err := a.loadImages(req)
+	if err != nil {
+		return err
+	}
 
 	ctx, span := obs.Tracer().Start(ctx, "meru.turn")
 	var route, sessionID string
@@ -273,7 +281,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// unbacked is true when the answer claims an action no tool took.
 	var unbacked bool
 	// t carries what the rounds need; its rounds field counts model calls.
-	t := &turn{emit: emit, approve: approve, scope: scope}
+	t := &turn{emit: emit, approve: approve, scope: scope, images: images}
 	defer func() {
 		outcome := outcomeOf(ctx, err)
 		if err == nil && ended != "" {
@@ -289,6 +297,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
 			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
+			attribute.Int("meru.turn.images", len(images)),
 			attribute.String("meru.turn.outcome", outcome),
 		)
 		obs.EndSpanErr(ctx, span, err)
@@ -299,12 +308,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			Route: route, Source: source, Outcome: outcome,
 			Duration: time.Since(start), Iterations: t.rounds,
 		})
-		a.logTurn(ctx, start, sessionID, route, source, scope, outcome, unbacked, rep, err)
+		a.logTurn(ctx, start, sessionID, route, source, scope, outcome, unbacked, len(images), rep, err)
 	}()
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.question", question))
 	}
 	a.logStart(ctx, req.Session, source, question)
+	if len(images) > 0 {
+		// Counts and sizes only: the bytes never reach a log or a span.
+		a.log.DebugContext(ctx, "images attached", "images", len(images), "bytes", imageBytes(images))
+	}
 
 	// The turn's deadline. tctx ends when turn_timeout runs out, and with it
 	// every model call and tool call the turn makes: Ollama sees its request
@@ -330,8 +343,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
 	t.question = userWords(question, history)
 	// The user line carries start as its time, so a turns row rebuilt from
-	// the transcript gets the same time as the row written live.
-	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, TraceID: traceID}); err != nil {
+	// the transcript gets the same time as the row written live. It names
+	// the question's images by path and never holds their bytes.
+	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, Images: imagePaths, TraceID: traceID}); err != nil {
 		return err
 	}
 
@@ -341,15 +355,19 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// read, even after the retry. The turn answers with badOutputAnswer
 	// instead of failing with Ollama's raw error.
 	badOutput := errors.Is(err, engine.ErrModelOutput) && ctx.Err() == nil
-	if err != nil && !badOutput && (tctx.Err() == nil || ctx.Err() != nil) {
-		// A failure that isn't the turn's own deadline or unreadable model
-		// output: Ollama down or refusing the request, or the user hung up.
+	// noVision is true when the question carried images the main model
+	// can't look at. The turn answers with noVisionAnswer.
+	noVision := errors.Is(err, errNoVision)
+	if err != nil && !badOutput && !noVision && (tctx.Err() == nil || ctx.Err() != nil) {
+		// A failure that isn't the turn's own deadline, unreadable model
+		// output or a model without vision: Ollama down or refusing the
+		// request, or the user hung up.
 		return err
 	}
 	ended = endOf(err, rep)
 	if ended != "" {
-		// err is only ever the deadline or unreadable output here, which
-		// endTurn answers for.
+		// err is only ever the deadline, unreadable output or no vision
+		// here, which endTurn answers for.
 		var text string
 		text, err = a.endTurn(ctx, t, ended, rep.text)
 		if err != nil {
@@ -416,9 +434,20 @@ type response struct {
 // returns the route so far and the text the last round streamed before it
 // stopped, so Handle can close a turn that ran out of time with what the
 // user already read.
+//
+// A question with images first checks that the main model can look at
+// them (see checkVision), and then skips the router, whose fast model
+// reads text alone: it takes the route its scope gives, and "direct" in
+// auto (see respondScoped).
 func (a *Agent) respond(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
-	if t.scope != rpc.ScopeAuto {
+	if len(t.images) > 0 {
+		if err := a.checkVision(ctx, t); err != nil {
+			res.route = "direct"
+			return res, err
+		}
+	}
+	if t.scope != rpc.ScopeAuto || len(t.images) > 0 {
 		return a.respondScoped(ctx, t, question, history)
 	}
 	dec, picked, err := a.routeAndPick(ctx, question, history)
@@ -531,7 +560,8 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 
 // finishPrompt does the end of a turn that respond and respondScoped
 // share: recall the memories that fit the question and tell the client
-// which ones, build the prompt, and run the rounds.
+// which ones, build the prompt, put the question's images on it, and run
+// the rounds.
 func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
 	picked pickedSkills, files string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
 	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
@@ -545,6 +575,8 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
 	})
+	// The images ride on this turn's question alone; see withImages.
+	msgs = withImages(msgs, t.images)
 	if len(specs) > 0 {
 		obs.RecordContextTokens(ctx, "tools", schemaChars(specs)/4)
 	}
@@ -584,13 +616,15 @@ const (
 	cutOffNote  = "[Meru stopped the answer here: it reached the length limit.]"
 )
 
-// endOf says how a turn ended: endBadOutput when err wraps
-// engine.ErrModelOutput, endTimeout for any other err (Handle passes only
-// those two kinds here), endCutOff when the last model call stopped at the
-// token cap, endGaveUp when the answer holds no text, and "" for a full
-// answer.
+// endOf says how a turn ended: endNoVision when err is errNoVision,
+// endBadOutput when err wraps engine.ErrModelOutput, endTimeout for any
+// other err (Handle passes only those three kinds here), endCutOff when the
+// last model call stopped at the token cap, endGaveUp when the answer holds
+// no text, and "" for a full answer.
 func endOf(err error, rep reply) string {
 	switch {
+	case errors.Is(err, errNoVision):
+		return endNoVision
 	case errors.Is(err, engine.ErrModelOutput):
 		return endBadOutput
 	case err != nil:
@@ -606,7 +640,8 @@ func endOf(err error, rep reply) string {
 // endTurn closes a turn that ended without a full answer and returns the
 // answer text for the transcript. text is what the last round streamed.
 //
-// A turn that ended endBadOutput always gets badOutputAnswer, or
+// A turn that ended endNoVision gets noVisionAnswer, and nothing else:
+// no model ran. A turn that ended endBadOutput always gets badOutputAnswer, or
 // badOutputOnce when it didn't retry, after a blank line when the round
 // streamed some text first. Otherwise, when the user has read no text yet,
 // endTurn sends sorry as the answer; when some text streamed first, that
@@ -621,6 +656,8 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	streamed := strings.TrimSpace(text) != ""
 	var add string
 	switch {
+	case ended == endNoVision:
+		add = noVisionAnswer(a.models.Main)
 	case ended == endBadOutput:
 		add = badOutputOnce
 		if t.outputRetry {
@@ -681,12 +718,14 @@ func (a *Agent) logStart(ctx context.Context, session, source, question string) 
 }
 
 // logTurn writes the one info line each turn gets. scope is where the
-// user let the turn look, one of the rpc.Scope constants. ttft_ms counts
+// user let the turn look, one of the rpc.Scope constants. images, the
+// count of images the question carried, joins the line when above zero.
+// ttft_ms counts
 // from when Handle started to the first token of the answer, so it
 // includes routing; it is 0 when no text arrived. unbacked_claim joins the
 // line, set to true, only when the answer claimed an action no tool took
 // (see claimsAction). err joins the line only when the turn failed.
-func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, scope, outcome string, unbacked bool, rep reply, err error) {
+func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, scope, outcome string, unbacked bool, images int, rep reply, err error) {
 	var ttft int64
 	if !rep.firstToken.IsZero() {
 		ttft = rep.firstToken.Sub(start).Milliseconds()
@@ -696,6 +735,9 @@ func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, 
 		"tokens_in", rep.usage.PromptTokens, "tokens_out", rep.usage.OutputTokens}
 	if unbacked {
 		args = append(args, "unbacked_claim", true)
+	}
+	if images > 0 {
+		args = append(args, "images", images)
 	}
 	if err != nil {
 		args = append(args, "err", err)

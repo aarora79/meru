@@ -45,7 +45,8 @@
 // files the user attaches in the desktop app, which Upload copies into its
 // uploads folder; read_file takes a mail attachment's bare saved filename.
 // Upload is no tool: merud calls it for the attach_file op, and the model
-// can't.
+// can't. Nor is Image, which reads back an image Upload copied, for the
+// question that carries it to the model.
 //
 // search_files runs retrieve.Search, the search a turn runs before the
 // answer, through the FileSearcher merud hands UseSearch, and returns

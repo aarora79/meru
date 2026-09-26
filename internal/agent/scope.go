@@ -1,6 +1,7 @@
 // This file holds the turn that runs with a scope the user picked, such as
 // "My files" or "Just talk" in the desktop app's composer, instead of the
-// route the router picks. ARCHITECTURE.md, "Desktop app", says why a
+// route the router picks, and the turn whose question carries images,
+// which skips the router too. ARCHITECTURE.md, "Desktop app", says why a
 // client may choose where Meru looks.
 
 package agent
@@ -26,7 +27,7 @@ func scopeRoute(scope string) string {
 	case rpc.ScopeMail, rpc.ScopeWeb:
 		return "tools"
 	}
-	return "direct" // rpc.ScopeTalk
+	return "direct" // rpc.ScopeTalk, and rpc.ScopeAuto for a turn with images
 }
 
 // respondScoped is respond for a turn whose scope isn't auto. The user
@@ -38,6 +39,10 @@ func scopeRoute(scope string) string {
 //
 // A "files" turn searches first, as a search route does. The other scopes
 // search nothing.
+//
+// A question with images comes here in auto too, since the router's fast
+// model can't see them. It takes the "direct" route and the tools that
+// route offers; see scopeSpecs.
 func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
 	var picked pickedSkills
@@ -87,7 +92,9 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 //     mailServers), with datetime, since "what's on Friday?" needs the
 //     date;
 //   - web: web_search and web_fetch, with datetime;
-//   - talk: none at all.
+//   - talk: none at all;
+//   - auto, which reaches here only for a question with images: what
+//     the direct route offers, datetime alone.
 //
 // A mail turn refreshes the tool servers first, as a tools route does, so
 // a server started after merud is there for it.
@@ -109,6 +116,8 @@ func (a *Agent) scopeSpecs(ctx context.Context, scope string) []engine.ToolSpec 
 		return slices.DeleteFunc(slices.Clone(a.tools.Tools()), func(s engine.ToolSpec) bool {
 			return s.Name != builtin.DateTime && s.Name != builtin.WebSearch && s.Name != builtin.WebFetch
 		})
+	case rpc.ScopeAuto:
+		return a.toolSpecs("direct")
 	}
 	return nil
 }

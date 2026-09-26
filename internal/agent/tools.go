@@ -157,7 +157,10 @@ type turn struct {
 	source rpc.Source
 	// scope is where the user let the turn look, one of the rpc.Scope
 	// constants; see scope.go.
-	scope   string
+	scope string
+	// images are the bytes of the images the question carried, for the
+	// question's message; nil for none. See images.go.
+	images  [][]byte
 	traceID string
 	emit    func(rpc.Event) error
 	approve rpc.ApproveFunc

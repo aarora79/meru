@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -531,8 +531,43 @@ with `toolNouns`, the same nouns the router's prompt lists. The google server
 qualifies through `search_gmail_messages`, and its Drive tools come along;
 obsidian doesn't.
 
-Both paths end in `finishPrompt`: recall, the `memories` event, the prompt, and
-the rounds.
+Both paths end in `finishPrompt`: recall, the `memories` event, the prompt,
+the question's images (see below), and the rounds.
+
+### Images (images.go)
+
+A question from the desktop app can carry images in `Request.Images`: the full
+paths of copies in `<output_dir>/uploads/`. `merud` wires two functions in
+with `UseImages`: `read`, the built-in tools' `Image`, which refuses any other
+path, and `vision`, which asks Ollama's `/api/show` whether a model lists
+`vision`. A function passed in this way needs no interface: the agent calls
+two functions, and `merud` decides where they come from.
+
+1. `Handle` calls `loadImages` before the turn span starts. It refuses more than
+   `rpc.MaxImages`, reads each path through `read`, and fails on the first bad
+   one, so a bad request writes no transcript line. With no vision check wired
+   in it refuses too: it can't tell whether the model would see them.
+2. The user line gets the paths in `Images`; the bytes go on the `turn`, in
+   `t.images`.
+3. `respond` calls `checkVision` first. When the main model lacks vision, it
+   sends a `route` event, `direct` with confidence 1, and returns
+   `errNoVision`. `Handle` treats that error as an ending, as it treats the
+   turn's deadline: `endOf` maps it to `endNoVision`, and `endTurn` sends
+   `noVisionAnswer`, which names the model and says to check another with
+   `ollama show <model>`. No model runs, and the assistant line's outcome is
+   `no_vision`.
+4. Otherwise `respond` hands the turn to `respondScoped` even in `auto`. The
+   router's fast model reads only text, so its guess about a photo would be
+   noise. `scopeRoute` gives `auto` the route `direct`, and `scopeSpecs` the
+   tools `direct` offers, `datetime` alone. A scope the user picked still
+   holds.
+5. `finishPrompt` calls `withImages`, which sets `Images` on the last message,
+   the question. Tool rounds reuse the same `msgs`, so every round of this turn
+   sees the images, and no later turn does: `transcript.History` gives a later
+   turn a `[image: garden-bed.jpg]` note in their place.
+
+Logs and spans get counts: `meru.turn.images` on the span, `images` on the info
+line, and a debug line `images attached` with the count and total bytes.
 
 ### Handle
 
@@ -1242,7 +1277,8 @@ once every call has returned. The model isn't called again.
 ### The transcript
 
 The agent writes two lines per turn: the question and the final answer. The
-answer line carries `outcome` only on a turn that ended without a full answer,
+question line carries `images`, their paths, only when the question had some.
+The answer line carries `outcome` only on a turn that ended without a full answer,
 and `notice` only on one whose answer claimed an action no tool took.
 Dispatch writes the tool lines (`tool_call`, `approval`, `tool_result`)
 between them. `transcript.History` reads only user and assistant lines, so
@@ -1253,8 +1289,8 @@ what mattered from them.
 
 At info level, one `turn` line per turn in `merud.log`: session ID, route,
 source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID,
-`unbacked_claim=true` when the answer claimed an action no tool took, and the
-error when there is one. At debug level each stage adds a line: `turn
+`unbacked_claim=true` when the answer claimed an action no tool took, `images`
+when the question carried any, and the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
 `transcript appended` (once per line, dispatch's tool lines included),
 `route` (from the router), `skills picked` (with the names and the time),
@@ -1391,6 +1427,15 @@ shows Ollama's error, the log holds it at warn with the model, the
 transcript never holds the nudge, and the turn span's
 `meru.turn.output_retry`. `TestHTTPErrorNoRetry` checks that an HTTP 500
 still fails the turn with Ollama's message, after one model call.
+
+`images_test.go` runs image turns against the fake Ollama, with a PNG copied
+through the built-in tools' `Upload`. With vision, the one chat request carries
+the PNG as base64 on the question's message and no other, the route is
+`direct`, the router never runs, and the user line names the image and holds
+no bytes; the next turn's request sends no image and its history holds the
+`[image: ...]` note. Without vision, no chat request goes out, the answer is
+`noVisionAnswer` and the outcome `no_vision`. `TestImageRequestRefused` checks
+a path outside uploads, six images, and an agent that never got `UseImages`.
 
 `profile_test.go` checks `formatProfile` (order, one line per fact, the cap
 keeping the newest, empty), where the section sits in the system prompt, that

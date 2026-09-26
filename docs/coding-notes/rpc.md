@@ -141,8 +141,23 @@ for its list of past chats, with their types in `sessions.go`:
 `attach_file` (`OpAttachFile`) carries, in `Request.Path`, a file the user picked
 or dropped in the desktop app. `merud` copies it into `<output_dir>/uploads/` and
 answers with one `saved` event whose `Text` names the copy, the same event
-`save_file` answers with. Reusing `Path` and `saved` keeps the wire as it was:
-the op adds a name and no field.
+`save_file` answers with, and whose `Kind` says what the copy is: `AttachImage`
+(`"image"`) or `AttachFile` (`"file"`). Reusing `Path` and `saved` keeps the
+wire small; `Kind` is the one field the op added, and a client that doesn't
+know it treats every copy as a file.
+
+An `ask` request can carry images in `Request.Images`, a pointer to an `Images`
+struct whose `Paths` list the full paths of copies `attach_file` made, at most
+`MaxImages` (5). In JSON that reads:
+
+```json
+{"op":"ask","text":"which plant is this?","source":"desktop","images":{"paths":["/Users/me/meru-output/uploads/garden-bed.jpg"]}}
+```
+
+The request names paths, never bytes, so an image doesn't cross the socket;
+`merud` reads it from the uploads folder and refuses any other path.
+`TurnInfo.Images` hands the same full paths back when a session reopens, so the
+app can show the images again.
 
 `ToolName(kind, server, tool)` joins a transcript line's three fields back into
 the name the model saw, such as `google.search_gmail_messages` or `cmd.backup`.
@@ -167,7 +182,8 @@ models. `CustomServer` is a server of the user's own for `mcp_add`, with its
 `EnvVar` list; a variable marked `Secret` carries a value `merud` saves to
 `secrets.toml` and never sends back.
 
-`Request.Policy` and `Request.Custom` are pointers, as `Request.Server` is. A
+`Request.Policy`, `Request.Custom` and `Request.Images` are pointers, as
+`Request.Server` is. A
 struct holding a map or a slice can't be compared with `==`, and tests compare
 requests; a pointer keeps `Request` comparable. For the same reason `mcp_add` for
 a catalog server takes no keys: the app saves a key with `secret_set` first. A

@@ -73,6 +73,19 @@ func TestTurnsOfNotice(t *testing.T) {
 	}
 }
 
+// TestTurnsOfImages checks that a question's images come back with the
+// past turn, as full paths, so the desktop app can show them again.
+func TestTurnsOfImages(t *testing.T) {
+	img := filepath.FromSlash("/Users/dana/meru-output/uploads/garden-bed.jpg")
+	got := turnsOf([]transcript.Line{
+		{Type: transcript.TypeUser, Text: "which plant is this?", Images: []string{img}},
+		{Type: transcript.TypeAssistant, Text: "Basil.", Route: "direct"},
+	}, filepath.FromSlash("/Users/dana"))
+	if len(got) != 1 || len(got[0].Images) != 1 || got[0].Images[0] != img {
+		t.Errorf("turnsOf = %+v, want the image's full path on the turn", got)
+	}
+}
+
 func TestHistoryHandlers(t *testing.T) {
 	dir := t.TempDir()
 	home := filepath.FromSlash("/Users/dana")
