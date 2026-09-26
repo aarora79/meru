@@ -404,15 +404,44 @@ while obsidian stays out. Deny-by-default still holds: a scope only narrows what
 config allows. `merud` logs the scope in the turn's info line and on its span;
 the value is one of five.
 
-**Attaching a file.** The attach button opens the system's file dialog. Meru
-reads an attached file with `read_file`, so the file must sit where `read_file`
-may read: in an `[index]` folder or in `[skills] output_dir`. The Bridge checks
-that before the file goes; for any other file it says to add the folder in the
-Library or move the file. The question then ends with "Read this file:
-~/Notes/lisbon.md", and a scope other than Auto or My files switches to My files,
-the scope that offers `read_file`. Copying the file into Meru's own folder would
-need a write from the app, and a way to clean up; asking `read_file` to read it
-where it is keeps its rules, and its audit line, in one place.
+**Attaching files.** The attach button opens the system's file dialog, which
+sets no starting folder and takes one or more files from anywhere. Dropping files
+on the chat screen does the same; while they hover, a "Drop to attach" overlay
+covers the screen. Picking or dropping a file is the user's consent to share that
+one file with Meru. The app writes nothing: the Bridge sends each path to `merud`
+in an `attach_file` request, and `merud` copies the file into
+`<output_dir>/uploads/` under its own name made safe, adding "-2", "-3" when the
+name is taken. The file tools already read the output folder, so they read the
+copy under their usual rules and reach nothing new.
+
+`merud` refuses a folder, a symbolic link, anything but a regular file, a file
+over 50 MiB (the cap `web_fetch` puts on a download), a name the indexer treats
+as a secret (`.env`, `*.pem`, `id_ed25519` and the rest; see
+[What stays out](#what-stays-out)), and a copy `read_file` couldn't read, such as
+an image or an archive, which it deletes. A user who drops a folder of files may
+not know a key file sits among them, so the notice under the text box names each
+file that stayed out, and why. `merud` also refuses while `read_file` is off,
+since the model couldn't open the copy. A question takes five files at most:
+each one costs a `read_file` call, and a small model loses track of more. Each
+file shows as a chip above the text box with its name, its size and a remove
+button. Send adds one line per file, "Read this file:
+~/meru-output/uploads/garden-plan.pdf", and a scope other than Auto or My files
+switches to My files, the scope that offers `read_file`.
+
+- **Always a copy.** A file inside an `[index]` folder could be read where it is,
+  but one rule for every file is simpler, and the question's line keeps working
+  after the user moves or deletes the original.
+- **`uploads`, not `attachments`.** The `google` server deletes every file in its
+  attachments folder an hour after it was written, and a chat can go on longer.
+- **Only a real pick or drop.** A WebView hides a dropped file's path from the
+  page, so Wails reports the drop, with full paths, to Go. The window hands them
+  to `desktop.Drop`, a plain function rather than a Bridge method, so the page
+  can't call it with a path of its own choosing.
+- **No tool call.** The copy is the user's act, so it skips `dispatch`. The
+  `read_file` call that reads it goes through `dispatch` and lands in
+  `tool_calls` as any other.
+- **Removing a chip keeps the copy.** The app deletes nothing, and the uploads
+  folder is the user's to clear.
 
 **Slash commands.** The composer understands the six commands `meru chat` has:
 `/new` (as New chat: it stops a running turn and drops the queue, with the chat's
@@ -574,9 +603,8 @@ licenses. There is no Node, npm or bundler: the page is ES modules the WebView
 loads as they are, and the Bridge's methods are called by name through Wails'
 runtime, so no generated bindings are needed.
 
-**Not yet.** Dropping files on the window, an "Earlier" line for turns scrolled
-out of view, pulling a model from the app, and Linux and Windows builds come in
-later versions.
+**Not yet.** An "Earlier" line for turns scrolled out of view, pulling a model
+from the app, and Linux and Windows builds come in later versions.
 
 ---
 
@@ -740,8 +768,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   [What stays out](#what-stays-out)): they never follow a symlink, and they
   refuse secret, hidden, ignored, binary and oversized files with the
   indexer's reason. The output folder holds what `write_file` wrote, what
-  `web_fetch` downloaded and the mail attachments the `google` server saves
-  (see [Adding an MCP server](#adding-an-mcp-server)). The file tools only
+  `web_fetch` downloaded, the mail attachments the `google` server saves
+  (see [Adding an MCP server](#adding-an-mcp-server)) and the copies of files
+  the user attaches in the desktop app (see [Desktop app](#desktop-app)). The file tools only
   read there; `write_file` keeps its own rules. Outside the output folder, they
   read nothing that search couldn't already put in the prompt. The indexer
   never indexes the output folder, so a web page or an attachment can't reach
@@ -2925,6 +2954,9 @@ transcript lines hold. No level writes question or answer text. With
   sends no crash reports and never checks for updates.
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
+- A file outside those folders reaches the model only when you attach it in the
+  desktop app. `merud` copies that one file into `~/meru-output/uploads/`, and
+  refuses a link, a folder and a file whose name looks like a secret's.
 - The indexer reads only the folders you list, never follows a symlink, and never
   indexes a file that looks like a secret. The file tools, `read_file`,
   `list_folder`, `grep` and `search_files`, apply the same rules through the
