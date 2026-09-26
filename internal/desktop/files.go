@@ -1,7 +1,9 @@
 // This file holds the Bridge methods that deal in files: saving a chat or
 // an answer through merud ("Share as file" and "Save to a note"), showing
 // a saved file in its folder, choosing a folder to index, and attaching
-// files to a question: merud copies each one where read_file may read it.
+// files and images to a question: merud copies each one into its uploads
+// folder, where read_file may read a file and a question may carry an
+// image.
 
 package desktop
 
@@ -89,21 +91,31 @@ func (b *Bridge) ChooseFolder() (string, error) {
 	return b.pickFolder()
 }
 
-// maxAttachments caps the files one question carries. Each file adds a
-// read_file call, and a small model loses track of more than a few; five
-// also keeps a slip, such as dropping a whole folder's files, from filling
-// the uploads folder with copies.
+// maxAttachments caps the files and images one question carries. Each
+// file adds a read_file call, and a small model loses track of more than
+// a few; five also keeps a slip, such as dropping a whole folder's files,
+// from filling the uploads folder with copies. merud takes at most
+// rpc.MaxImages images, also five, so the images always fit.
 const maxAttachments = 5
 
-// Attachment is a file the user attached to the next question, as the
-// composer's chip shows it. merud copied it into its uploads folder, where
-// read_file may read it. Path is the copy, written as read_file takes it,
+// Attachment is a file or image the user attached to the next question,
+// as the composer's chip shows it. merud copied it into its uploads
+// folder. Path is the copy, written as read_file takes it,
 // "~/meru-output/uploads/garden-plan.pdf"; Name is the name of the user's
 // own file, and Size its size as the chip shows it, such as "2.4 MB".
+// Kind is rpc.AttachImage or rpc.AttachFile. Thumb, on an image, is a
+// small preview as a data: URL (see thumbnail), or "" when there is none.
+//
+// full is the copy's full path, which an image's question sends to merud.
+// Its name starts with a lower-case letter, so encoding/json leaves it
+// out of what the page gets.
 type Attachment struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
-	Size string `json:"size"`
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	Size  string `json:"size"`
+	Kind  string `json:"kind"`
+	Thumb string `json:"thumb,omitempty"`
+	full  string
 }
 
 // AttachFile shows the system's file dialog, which starts wherever the
@@ -162,8 +174,9 @@ func (b *Bridge) DetachAll() {
 // dropped, into its uploads folder, and adds each copy to the next
 // question, up to maxAttachments. Picking or dropping a file is the user's
 // consent to share that one file with Meru, and merud still refuses a
-// folder, a link, a file over 50 MiB, a file whose name looks like a
-// secret's, and one read_file couldn't read. Then it sends the page the
+// folder, a link, a file whose name looks like a secret's, an image over
+// 20 MiB or one whose content isn't an image, and any other file over 50
+// MiB or one read_file couldn't read. Then it sends the page the
 // attachments with a notice that names each file that didn't go, and why.
 func (b *Bridge) attach(ctx context.Context, paths []string) {
 	b.mu.Lock()
@@ -182,7 +195,7 @@ func (b *Bridge) attach(ctx context.Context, paths []string) {
 			problems = append(problems, "Not attached: "+err.Error()+".")
 			continue
 		}
-		added = append(added, b.attachment(p, ev.Text))
+		added = append(added, b.attachment(p, ev.Text, ev.Kind))
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -198,11 +211,19 @@ func (b *Bridge) attach(ctx context.Context, paths []string) {
 }
 
 // attachment describes the copy merud saved at saved of the user's file
-// at src. It reads the copy's size; "" when it can't.
-func (b *Bridge) attachment(src, saved string) Attachment {
-	a := Attachment{Path: rpc.ShortPath(b.home, saved), Name: filepath.Base(src)}
+// at src, of kind kind. It reads the copy's size, "" when it can't, and
+// makes an image's preview. A merud older than this app sends no kind,
+// and its copies are all files.
+func (b *Bridge) attachment(src, saved, kind string) Attachment {
+	if kind != rpc.AttachImage {
+		kind = rpc.AttachFile
+	}
+	a := Attachment{Path: rpc.ShortPath(b.home, saved), Name: filepath.Base(src), Kind: kind, full: saved}
 	if info, err := os.Stat(saved); err == nil {
 		a.Size = sizeText(info.Size())
+	}
+	if kind == rpc.AttachImage {
+		a.Thumb = b.thumbnail(saved)
 	}
 	return a
 }
@@ -214,18 +235,32 @@ func (b *Bridge) emitAttachments(notice string) {
 }
 
 // withAttachments returns q with one "Read this file: <path>" line per
-// attachment, the line the model follows with a read_file call. The
+// attached file, the line the model follows with a read_file call. Images
+// get no line: they go with the question itself (see imagesOf). The
 // caller holds b.mu.
 func (b *Bridge) withAttachments(q string) string {
-	if len(b.attached) == 0 {
+	var s strings.Builder
+	for _, a := range b.attached {
+		if a.Kind != rpc.AttachImage {
+			s.WriteString("\nRead this file: " + a.Path)
+		}
+	}
+	if s.Len() == 0 {
 		return q
 	}
-	var s strings.Builder
-	s.WriteString(q + "\n")
-	for _, a := range b.attached {
-		s.WriteString("\nRead this file: " + a.Path)
+	return q + "\n" + s.String()
+}
+
+// imagesOf returns the image attachments among attached, in order, for
+// the question that carries them. The caller holds b.mu.
+func imagesOf(attached []Attachment) []Attachment {
+	var out []Attachment
+	for _, a := range attached {
+		if a.Kind == rpc.AttachImage {
+			out = append(out, a)
+		}
 	}
-	return s.String()
+	return out
 }
 
 // sizeText writes n bytes as the chip shows it: "812 bytes", "4.2 KB" or

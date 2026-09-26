@@ -16,6 +16,7 @@ function call(method, ...args) {
 export const bridge = {
   // The chat (bridge.go, history.go, status.go).
   send: (session, question, scope) => call("Send", session, question, scope),
+  retry: (session, question, scope, images) => call("Retry", session, question, scope, images),
   stop: () => call("Stop"),
   unqueue: (index) => call("Unqueue", index),
   approve: (id, choice) => call("Approve", id, choice),

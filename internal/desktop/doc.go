@@ -10,7 +10,9 @@
 // through dispatch; the app only answers merud's approval questions. A
 // setting changes the same way: the Bridge sends an op, and merud writes
 // config.toml, secrets.toml or the memory folder. An attached file too:
-// merud, not the app, copies it where read_file may read it. See
+// merud, not the app, copies it where read_file may read it, or, for an
+// image, where merud reads it to send with the question. The app reads
+// only those copies, to show an image's preview. See
 // ARCHITECTURE.md, "Desktop app".
 //
 // The package doesn't import Wails. cmd/meru-desktop binds a *Bridge to

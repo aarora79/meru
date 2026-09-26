@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `thumbs.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -62,7 +62,7 @@ type Bridge struct {
     last      int
     session   string
     scope     string
-    queue     []string
+    queue     []outgoing
     attached  []Attachment
     approvals map[string]chan rpc.Choice
     saves     int
@@ -78,8 +78,11 @@ for its turn and `defer mu.Unlock()` gives it back when the function returns.
 `Send` trims the question and checks the scope, which the composer's "Where Meru
 looks" switch sets: `""` or `auto` lets the router pick, and `files`, `mail`,
 `web` or `talk` go to `merud` as `Request.Scope`. It adds a "Read this file"
-line for each attached file and clears the attachments. While a turn runs, it
-adds the question to the queue,
+line for each attached file, keeps the attached images beside the text in an
+`outgoing` value, and clears the attachments. `start` puts the images' full
+paths in `Request.Images` and sends the page a `start` update whose `Images`
+carry their previews, for the question's bubble. While a turn runs, it adds
+the question, images and all, to the queue,
 five at most, as `meru chat` does. Otherwise `start` opens a turn: it makes a
 context with its own cancel function, emits a `start` update, and runs `run` in a
 new goroutine with `wg.Go`, which counts it so `ServiceShutdown` can wait for it.
@@ -240,11 +243,48 @@ file that stayed out, with `merud`'s reason. A chip shows the name of the user's
 file, the copy's path in the `~` form `read_file` takes, and the size from
 `sizeText`. `Detach` takes one chip off and `DetachAll`, for New chat, takes all.
 
+The `saved` event's `Kind` says whether `merud` took the file as an image.
+`attachment` copies it onto the chip's `Kind`, keeps the copy's full path in
+the unexported field `full`, and for an image asks `thumbnail` for a preview.
+`encoding/json` skips a field whose name starts with a lower-case letter, so
+the page never gets `full`; Go sends it to `merud` when the question goes.
+`withAttachments` writes "Read this file" lines for files alone, and `imagesOf`
+picks out the images.
+
+Try again calls `Retry`, which is `Send` with the images the first asking
+carried. The page passes the `~/meru-output/uploads/...` paths it got on the
+turn; `Retry` turns each back into a full path with `expandTilde`, refuses one
+outside the uploads folder, and hands them to `send` with the composer's own
+attachments. Without it, Try again on a question about a photo would ask the
+model blind.
+
 `Drop` is a plain function, `desktop.Drop(b, paths)`, not a method. Wails binds
 every exported method of the Bridge, so the page could call `Drop` with any path
 it liked; the page can't reach a plain function. Only a real drop, which Wails
 reports to Go, gets there. `Drop` runs `attach` in a goroutine that `wg` counts,
 so the window's event loop never waits on `merud`.
+
+### thumbs.go
+
+`thumbnail` makes the preview an image chip and a question bubble show, as a
+`data:` URL, which the page's Content-Security-Policy allows for images. It
+reads only a regular file inside `<output_dir>/uploads/`, the folder `merud`
+copies into; `inside` resolves symbolic links first, so a link can't pass.
+`thumbFor` then picks by the bytes, with `http.DetectContentType`:
+
+- an image up to 64 KiB (`rawThumbMax`) goes out as it stands, WebP included;
+- a larger PNG, JPEG or GIF goes through that format's own decoder. First
+  `DecodeConfig` reads the size from the header, and a picture over 50 million
+  pixels gets no preview, since a small file can claim a huge size and fill
+  memory. `shrink` scales it to fit 160 pixels (`thumbSide`) by taking the
+  nearest source pixel for each preview pixel, lays it on white with
+  `draw.Draw`, and `jpeg.Encode` writes it;
+- a larger WebP gets none, since the standard library can't decode WebP, and
+  the chip shows an image icon.
+
+`SessionTurns` does the same for a reopened chat: `TurnInfo.Images` holds the
+copies' full paths, and each becomes an `Attachment` with its preview. A copy
+the user deleted keeps its name and loses its preview.
 
 ### commands.go
 
@@ -289,7 +329,13 @@ bundler.
   arrow keys move through, and the attach button. `onAttachments` draws the
   chips from each `attachments` update, each with its remove button, shows the
   update's notice, and switches a scope other than Auto or My files to My files
-  when a file arrives.
+  when a file arrives; an image switches nothing, since it goes with the
+  question in any scope. An image's chip shows its preview in place of the
+  file icon. `thumb` in `js/turns.js` builds that `<img>`, and sets `src` only
+  to a `data:image/png`, `jpeg`, `gif` or `webp` URL with base64 data, so
+  nothing else reaches it; otherwise it draws the image icon. `createTurn`
+  shows the question's images above its text in the bubble, for a live turn
+  and a reopened one.
 - The chat screen, `<main id="chat-view">`, carries `data-file-drop-target`. While
   files hover over it, Wails' runtime adds the class `file-drop-target-active`,
   and `app.css` shows the "Drop to attach" overlay for that class, so the overlay
@@ -414,13 +460,25 @@ nothing, two picked files become two chips with `~` paths and sizes, the refused
 file's reason shows in the notice, `Detach` and `DetachAll` take chips off, a
 drop of seven files attaches up to the cap of five and says how many stayed out,
 and `Send` puts a "Read this file" line per file in the question and clears the
-chips. `draft_test.go` checks Edit first's drafts.
+chips. `thumbs_test.go` builds PNGs with `image/png`: a small one comes back as
+it stands, and a large noisy one as a 160 by 80 JPEG, while text named
+`notes.png`, a link, a file outside uploads, a missing file and a Bridge with
+no output folder get none. `TestShrinkKeepsShape` checks wide, tall and small
+pictures. `TestAttachImages` attaches a PNG and a Markdown file through a fake
+`merud` that marks `.png` copies as images: the image chip has its preview and
+the file none, `Send` writes the file's line alone and sends the image's full
+path in `Request.Images`, the `start` update carries the preview, and a
+reopened session shows the image again. `draft_test.go` checks Edit first's drafts.
 `about_test.go` checks the About data, the version read from build information,
 and the tagline in the page and the window. `assets_test.go` checks the security headers, and fails when
 the page's own code uses `innerHTML`, `eval`, inline scripts or styles, or names a
 host on the network.
 
 ## Why it's built this way
+
+- **Previews built in Go.** The page can't read files, and shouldn't: its
+  policy keeps it to `data:` images and its own files. The Bridge reads only
+  the uploads folder, and a preview of 160 pixels keeps each update small.
 
 - **Wails v3 over a local web server and a browser tab.** A tab would need a port
   on loopback, which any local program could reach, and the browser's own

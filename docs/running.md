@@ -284,11 +284,33 @@ then ends with a line per file, such as "Read this file:
 ~/meru-output/uploads/garden-plan.pdf". A question takes five files at most.
 
 `merud` won't take a folder, a shortcut (a symbolic link), a file over 50 MiB, a
-file Meru can't read, such as an image or an archive, or a file whose name looks
+file Meru can't read, such as an archive, or a file whose name looks
 like it holds a key or a password, such as `.env`, `server.pem` or `id_ed25519`.
 The line under the text box names each file that stayed out, and why. Attaching
-needs `read_file`, which stays off until Meru indexes at least one folder. A
-removed chip keeps its copy; clear `~/meru-output/uploads/` whenever you like.
+a file needs `read_file`, which stays off until Meru indexes at least one
+folder. A removed chip keeps its copy; clear `~/meru-output/uploads/` whenever
+you like.
+
+**Attach images.** The same paperclip and the same drop take a PNG, JPEG, GIF or
+WebP image up to 20 MiB, such as a photo of a garden bed. Its chip shows a small
+preview, and so does your question once you send it. The image goes to the
+answer model with that one question, through Ollama on this machine; the question
+gets no "Read this file" line, and an image needs no indexed folder. `merud`
+checks the content as well as the name, so a text file renamed `photo.png`
+stays out.
+
+The answer model must be able to look at images. Check yours with:
+
+```sh
+ollama show <model>
+```
+
+and look for `vision` under Capabilities. When `[models] main` names a model
+without it, Meru sends nothing and says so in the answer; pick a model with
+vision in `config.toml` and restart `merud`. Later questions in the chat don't
+send the image again: the model reads a note, such as `[image: garden-bed.jpg]`,
+and its own earlier answer about it. `meru` and `meru chat` can't attach
+images.
 
 **Approvals.** When Meru wants to run a tool that asks first, an amber card shows
 up inside the answer with the tool and its arguments, a mail's To, Subject and Body

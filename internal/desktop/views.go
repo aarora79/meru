@@ -72,8 +72,11 @@ type Update struct {
 	Error   string         `json:"error,omitempty"`
 	Stopped bool           `json:"stopped,omitempty"`
 	Notice  string         `json:"notice,omitempty"`
-	// Attachments is set on a KindAttachments Update.
+	// Attachments is set on a KindAttachments Update. Images, on a
+	// KindStart Update, are the images the question carries, with their
+	// previews, for its bubble.
 	Attachments []Attachment `json:"attachments,omitempty"`
+	Images      []Attachment `json:"images,omitempty"`
 }
 
 // Step is one tool call as the work strip shows it: a friendly Label, and

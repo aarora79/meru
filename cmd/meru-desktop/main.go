@@ -63,7 +63,7 @@ func run(args []string) error {
 	// and PromptForSingleSelection "", when the user cancels.
 	opts.PickFiles = func() ([]string, error) {
 		return app.Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).
-			SetTitle("Attach files").PromptForMultipleSelection()
+			SetTitle("Attach files or images").PromptForMultipleSelection()
 	}
 	opts.PickFolder = func() (string, error) {
 		return app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).

@@ -628,6 +628,27 @@ pre {
   overflow-wrap: anywhere;
 }
 
+.bubble-text {
+  margin: 0;
+}
+
+.bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.bubble-image {
+  display: block;
+  max-width: 160px;
+  max-height: 120px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+
 .answer {
   padding: 14px 18px 12px;
   border: 1px solid var(--border);
@@ -1430,6 +1451,18 @@ pre {
   background: var(--surface);
   font-size: 13px;
   color: var(--ink-2);
+}
+
+.attachment.image {
+  padding-left: 4px;
+}
+
+.attachment-thumb {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .attachment-size {
