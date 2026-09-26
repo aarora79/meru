@@ -26,8 +26,8 @@ them for search and can always be rebuilt from them.
 ```
 
 An assistant line also carries `outcome` when the turn ended without a full
-answer: `timeout`, `cut_off` or `gave_up`. The text then holds the apology,
-or the text so far and a note that Meru stopped it. A full answer leaves the
+answer: `timeout`, `cut_off`, `gave_up` or `bad_output`. The text then holds
+the apology, or the text so far and a note that Meru stopped it. A full answer leaves the
 field out (`omitempty`).
 
 An assistant line carries `notice` when the answer claimed an action, such as

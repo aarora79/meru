@@ -555,6 +555,14 @@ tools, to answer from what it has, and you see the sorry only if that reply is
 empty too. With `[log] level = "debug"`, `merud.log` shows a line that starts
 `empty reply: asking the model once more` when that happens.
 
+A model can also write a tool call that Ollama can't parse. Ollama then sends
+an error part way through the answer, and Meru asks the model once more with
+the same tools. If that fails too, you read "The model wrote a tool call that
+Ollama couldn't read, twice. Try asking again, or rephrase the question." The
+`turn` line shows `outcome=bad_output`, and a warn line that starts
+`ollama couldn't read the model's output` holds the model's name and Ollama's
+own error.
+
 If part of the answer had already appeared, it stays, followed by a note that
 Meru stopped it. The `turn` line in `merud.log` then shows `outcome=timeout`,
 `outcome=cut_off` or `outcome=gave_up`. On the `full` profile a long answer
@@ -1479,6 +1487,7 @@ later.
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools, or wrote nothing twice; ask again in other words). |
+| "The model wrote a tool call that Ollama couldn't read" | Ollama's parser rejected the model's tool call, and the one retry failed too. The `turn` line shows `outcome=bad_output`; the warn line before it holds Ollama's error, such as `XML syntax error on line 8`. Ask again, or in other words. If it keeps happening with one model, update Ollama or try another model. |
 | An answer says "Done." and a `note:` line says nothing changed | No tool ran, so the model's claim is wrong. Meru can't move, rename or delete files; it writes only inside `~/meru-output`. See [When an answer claims something no tool did](#when-an-answer-claims-something-no-tool-did). |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 

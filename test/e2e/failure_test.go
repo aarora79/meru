@@ -80,10 +80,9 @@ func TestOllamaErrors(t *testing.T) {
 	t.Parallel()
 	s := startStack(t)
 	tests := []struct {
-		name       string
-		script     func(t *testing.T) // sets up the failure on the fake
-		wantStdout string
-		wantErr    []string // pieces stderr must contain
+		name    string
+		script  func(t *testing.T) // sets up the failure on the fake
+		wantErr []string           // pieces stderr must contain
 	}{
 		{
 			name: "router call gets HTTP 500",
@@ -100,16 +99,6 @@ func TestOllamaErrors(t *testing.T) {
 			},
 			wantErr: []string{mainModel, "503", "server busy"},
 		},
-		{
-			name: "answer stream breaks part way",
-			script: func(t *testing.T) {
-				s.fake.enqueue(t, fastModel, directRoute())
-				s.fake.enqueue(t, mainModel, fakeollama.Reply{Chunks: []string{"partial ", "answer"}, StreamError: "out of memory", FailAfter: 1})
-			},
-			// meru ends the half-printed line before printing the error.
-			wantStdout: "partial \n",
-			wantErr:    []string{mainModel, "out of memory"},
-		},
 	}
 	// The subtests share one merud, so they run one after another.
 	for _, tt := range tests {
@@ -119,8 +108,8 @@ func TestOllamaErrors(t *testing.T) {
 			if res.code != 1 {
 				t.Errorf("meru exited %d, want 1", res.code)
 			}
-			if res.stdout != tt.wantStdout {
-				t.Errorf("stdout = %q, want %q", res.stdout, tt.wantStdout)
+			if res.stdout != "" {
+				t.Errorf("stdout = %q, want none", res.stdout)
 			}
 			if !strings.HasPrefix(res.stderr, "meru: ") {
 				t.Errorf("stderr = %q, want it to start with \"meru: \"", res.stderr)
@@ -150,6 +139,42 @@ func TestOllamaErrors(t *testing.T) {
 	s.fake.enqueue(t, mainModel, fakeollama.Reply{Text: "recovered"})
 	if res := runMeru(t, s.home, "one more"); res.code != 0 || res.stdout != "recovered\n" {
 		t.Errorf("after the failures: exit %d, stdout %q, stderr %q", res.code, res.stdout, res.stderr)
+	}
+}
+
+// TestBadOutput makes the answer's stream end with an error line, as Ollama
+// sends when it can't parse the model's tool call. merud must retry the
+// round once, and when that fails too, answer with a readable message:
+// meru exits 0 and prints no Ollama error, and the transcript's answer line
+// has outcome bad_output.
+func TestBadOutput(t *testing.T) {
+	t.Parallel()
+	s := startStack(t)
+	const xmlError = "XML syntax error on line 8: element <function> closed by </parameter>"
+	broken := fakeollama.Reply{Chunks: []string{"partial ", "answer"}, StreamError: xmlError, FailAfter: 1}
+	s.fake.enqueue(t, fastModel, directRoute())
+	s.fake.enqueue(t, mainModel, broken, broken)
+
+	const want = "partial \n\npartial \n\n" +
+		"The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question.\n"
+	res := runMeru(t, s.home, "a question the model fumbles")
+	if res.code != 0 || res.stdout != want || strings.Contains(res.stderr, "XML") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want exit 0 and stdout %q", res.code, res.stdout, res.stderr, want)
+	}
+
+	found := false
+	for _, path := range sessionFiles(t, s.home) {
+		for _, l := range readTranscript(t, path) {
+			if l.Type == transcript.TypeAssistant {
+				found = true
+				if l.Outcome != "bad_output" {
+					t.Errorf("answer line outcome = %q, want bad_output", l.Outcome)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no transcript holds an answer line")
 	}
 }
 

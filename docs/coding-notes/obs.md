@@ -107,9 +107,9 @@ The kind is one of `mcp`, `a2a`, `builtin` and `command`, the last for a local
 command, whose server is `meru` and whose tool is `cmd.<name>`: a name from
 config, never its arguments.
 
-A turn's outcome is one of `ok`, `error`, `cancelled`, `timeout`, `cut_off` and
-`gave_up`. The last three name a turn that ended without a full answer and
-still said something to the user (see [agent](agent.md)).
+A turn's outcome is one of `ok`, `error`, `cancelled`, `timeout`, `cut_off`,
+`gave_up` and `bad_output`. The last four name a turn that ended without a
+full answer and still said something to the user (see [agent](agent.md)).
 
 v0.4 adds `sessions` to two bounded sets: the prompt sections of
 `meru.context.tokens`, for the "From earlier conversations" section, and the

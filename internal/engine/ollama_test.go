@@ -262,14 +262,23 @@ func TestStream(t *testing.T) {
 func TestStreamErrors(t *testing.T) {
 	// Each case is a stream body that goes wrong partway; the last item of
 	// the sequence must be an error containing want.
+	// Only an error line counts as the model's output failing to parse:
+	// wantModel says whether errors.Is must find ErrModelOutput.
 	tests := []struct {
-		name   string
-		stream string
-		want   string
+		name      string
+		stream    string
+		want      string
+		wantModel bool
 	}{
-		{"error line", `{"message":{"content":"a"},"done":false}` + "\n" + `{"error":"model crashed"}` + "\n", "model crashed"},
-		{"bad json", `{"message":{"content":"a"},"done":false}` + "\n" + `{not json` + "\n", "decode line"},
-		{"no done line", `{"message":{"content":"a"},"done":false}` + "\n", "ended before done"},
+		{"error line", `{"message":{"content":"a"},"done":false}` + "\n" + `{"error":"model crashed"}` + "\n", "model crashed", true},
+		{
+			"tool call Ollama couldn't parse",
+			`{"message":{"content":"Let me look."},"done":false}` + "\n" +
+				`{"error":"XML syntax error on line 8: element <function> closed by </parameter>"}` + "\n",
+			"element <function> closed by </parameter>", true,
+		},
+		{"bad json", `{"message":{"content":"a"},"done":false}` + "\n" + `{not json` + "\n", "decode line", false},
+		{"no done line", `{"message":{"content":"a"},"done":false}` + "\n", "ended before done", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -286,7 +295,27 @@ func TestStreamErrors(t *testing.T) {
 			if last == nil || !strings.Contains(last.Error(), tt.want) {
 				t.Errorf("last error = %v, want one containing %q", last, tt.want)
 			}
+			if got := errors.Is(last, ErrModelOutput); got != tt.wantModel {
+				t.Errorf("errors.Is(%v, ErrModelOutput) = %v, want %v", last, got, tt.wantModel)
+			}
 		})
+	}
+}
+
+// TestStreamHTTPErrorIsNotModelOutput checks that a failure before the
+// stream starts, an HTTP 500, stays an *APIError and never counts as the
+// model's output failing to parse.
+func TestStreamHTTPErrorIsNotModelOutput(t *testing.T) {
+	f := newFakeOllama(t, map[string]route{"/api/chat": {500, `{"error":"model crashed"}`}})
+	e := newTestEngine(t, f, "")
+	_, err := e.Stream(context.Background(), nil, nil, Options{Model: "m"})
+	// errors.As finds an *APIError inside err and copies it into apiErr.
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != 500 {
+		t.Fatalf("Stream error = %v, want an *APIError with status 500", err)
+	}
+	if errors.Is(err, ErrModelOutput) {
+		t.Errorf("errors.Is(%v, ErrModelOutput) = true, want false", err)
 	}
 }
 

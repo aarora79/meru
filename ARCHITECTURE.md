@@ -581,7 +581,12 @@ codebase's only HTTP client for a model runtime, and it can't reach a cloud mode
 
 Each model writes tool calls in its own format; Ollama converts them to structured
 JSON, and the engine converts that JSON to Meru's own types. The agent loop never
-sees a model-specific token. Each `Completion` also carries Ollama's counters
+sees a model-specific token. When Ollama's parser rejects what the model wrote,
+it sends an `{"error": ...}` line part way through a stream it had answered
+200 OK. `Stream` wraps any such line in `ErrModelOutput`, and the agent loop
+tests for it with `errors.Is` to retry the round (see [Agent loop](#agent-loop)).
+A failure before the stream starts, such as Ollama down or a model not pulled,
+stays an `*APIError` or a transport error, and fails the turn as before. Each `Completion` also carries Ollama's counters
 (`prompt_eval_count`, `eval_count`, `load_duration`, `prompt_eval_duration`,
 `eval_duration`), which feed [Observability](#observability).
 
@@ -743,6 +748,24 @@ order.
    model got eight good `web_search` results, then wrote 205 tokens of thinking
    and nothing else, and the user read the sorry with seven rounds left.
 
+   A round can also fail part way, when Ollama can't parse what the model
+   wrote. Ollama then sends an `{"error": ...}` line in the stream after its
+   200 OK, and the engine returns `ErrModelOutput` (see
+   [Engine layer](#engine-layer)). When the turn has a round and time left,
+   `merud` runs the round once more with the same tools, plus a user message:
+   "Your last tool call didn't parse, so it didn't run. Call the tool again
+   with valid arguments, or answer in plain text." Text the failed round
+   streamed stays on screen, and a blank line separates it from the retry's
+   text. The nudge lives only in that call, never in the transcript. This
+   retry counts apart from the empty-reply one, since each fixes a different
+   slip; `max_rounds` and `turn_timeout` bound both. A second failure, or a
+   first one with no round left, ends the turn `bad_output`. Ollama's error
+   text goes to `merud.log` at warn with the model's name, never to the chat.
+   The turn span records the retry as `meru.turn.output_retry`. In a real
+   turn `qwen3.6:35b` on Ollama 0.34 wrote a malformed tool call, and the
+   user read `XML syntax error on line 8: element <function> closed by
+   </parameter>` as the answer.
+
 A turn has `[agent] turn_timeout` (default `"5m"`) from question to answer,
 waits for your approvals included. When the time runs out, `merud` cancels the
 turn's context, which stops the Ollama request and any tool calls. A turn that
@@ -753,6 +776,7 @@ ends without a full answer still answers, with an outcome of its own:
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
@@ -798,8 +822,9 @@ stays the same from turn to turn and Ollama reuses its work on it. It speaks onl
 of Meru's own tools: an MCP tool such as a mail server's send tool says what it
 changes in its own description.
 
-The second part checks the answer. When a turn ends with a full answer and no
-tool call in it ended `ok`, `merud` reads the answer sentence by sentence,
+The second part checks the answer. A turn that ended without a full answer,
+`bad_output` among them, gets no check, since it ends in Meru's own message.
+When a turn ends with a full answer and no tool call in it ended `ok`, `merud` reads the answer sentence by sentence,
 leaving out code blocks, and looks for a claim of a finished action:
 
 | Rule | Matches |
@@ -1011,9 +1036,10 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 ```
 
 An assistant line gets an `outcome` field only when the turn ended without a
-full answer: `timeout`, `cut_off` or `gave_up` (see [Agent loop](#agent-loop)).
-It gets a `notice` field only when the answer claimed an action and no tool
-call in the turn succeeded (see [Claims no tool backs](#claims-no-tool-backs)).
+full answer: `timeout`, `cut_off`, `gave_up` or `bad_output` (see
+[Agent loop](#agent-loop)). It gets a `notice` field only when the answer
+claimed an action and no tool call in the turn succeeded (see
+[Claims no tool backs](#claims-no-tool-backs)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
 same time and their lines can interleave. An `approval` line sits between the two
@@ -2498,7 +2524,7 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome (ok/error/cancelled/timeout/cut_off/gave_up) | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.turn.duration` | histogram | route, source (cli/tui/job), outcome (ok/error/cancelled/timeout/cut_off/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
 | `meru.sessions` | counter | source | sessions started |
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |

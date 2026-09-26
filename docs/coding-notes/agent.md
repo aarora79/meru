@@ -540,8 +540,9 @@ tctx, cancel := context.WithTimeout(ctx, a.turnTimeout)
 defer cancel()
 ...
 res, err := a.respond(tctx, t, question, history)
-if err != nil && (tctx.Err() == nil || ctx.Err() != nil) {
-    return err // a model error, or the user hung up
+badOutput := errors.Is(err, engine.ErrModelOutput) && ctx.Err() == nil
+if err != nil && !badOutput && (tctx.Err() == nil || ctx.Err() != nil) {
+    return err // Ollama down or refusing the request, or the user hung up
 }
 ```
 
@@ -554,18 +555,29 @@ and still answers; when `ctx` ended, you hung up and the turn fails as before.
 
 **A turn that ends without a full answer still answers.** `endOf` names how it
 ended: `timeout`, `cut_off` (the last model call stopped with
-`done_reason = "length"`) or `gave_up` (the answer holds no text, as when the
+`done_reason = "length"`), `gave_up` (the answer holds no text, as when the
 last round only called tools, or a thinking model stayed silent through the
-one retry that `converse` gives it; see the tool rounds below). `endTurn` then sends the words as ordinary
-`token` events, so `meru` and `meru chat` show them with no change:
+one retry that `converse` gives it; see the tool rounds below) or
+`bad_output` (Ollama couldn't parse what the model wrote, even after its one
+retry). `endTurn` then sends the words as ordinary `token` events, so `meru`
+and `meru chat` show them with no change:
 
+- `bad_output`: `The model wrote a tool call that Ollama couldn't read, twice.
+  Try asking again, or rephrase the question.`, after a blank line when some
+  text streamed first. A turn that had no round left to retry gets the same
+  words without "twice". `endTurn` reads `t.outputRetry` to choose.
 - no text yet: `Sorry, I couldn't answer that. Try asking again, or rephrase the question.`
 - some text already streamed: that text stays, and a note follows it, one for
   the deadline and one for the length limit.
 
+`errors.Is(err, engine.ErrModelOutput)` looks through every error that wraps
+another with `%w` (here `answer` adds `main model …:` in front) and reports
+whether `ErrModelOutput` sits anywhere in the chain. A test on the error's
+text would break when Ollama changes its wording.
+
 The outcome replaces `ok` in the turn span, the `turn` log line and
 `meru.turn.duration`, and goes in the assistant line's `Outcome` field. All
-three values come from a fixed list, so the metric stays bounded.
+four values come from a fixed list, so the metric stays bounded.
 
 **History is read before the question is written**, so the new question doesn't
 show up twice in the prompt.
@@ -584,6 +596,10 @@ if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 }
 ```
 
+`ended == ""` keeps the check to full answers. A turn that ended `bad_output`,
+`timeout`, `cut_off` or `gave_up` gave no answer, and its text ends in Meru's
+own message, so it claims nothing even when a failed round's words said
+"Done." `TestBadOutputGetsNoNotice` in `badoutput_test.go` pins this.
 `t.succeeded` counts the tool calls that ended `ok`; `runTools` adds them up
 after each round. A turn where it stays 0 changed nothing, so an answer that
 says "Done." or "I've moved the folder" is wrong. `claimsAction` looks for
@@ -1058,6 +1074,29 @@ for {
   shows only what you typed. The retry counts as a round, logs a debug line
   and sets `meru.turn.empty_retry` on the turn span. If it comes back empty
   too, `endOf` says `gave_up` and you read the sorry.
+- **Output Ollama can't read gets one retry.** A model can write a tool call
+  that Ollama's parser for that model rejects. Ollama has already answered
+  200 OK by then, so it sends an `{"error": ...}` line in the stream, and the
+  engine wraps it in `engine.ErrModelOutput`. In one real turn `qwen3.6:35b`
+  on Ollama 0.34 wrote a malformed call, and you read `XML syntax error on
+  line 8: element <function> closed by </parameter>` as the answer. Now,
+  when `answer` fails with that error, `converse` logs Ollama's words at warn
+  with the model's name and asks `retriesOutput`: has the turn not retried
+  yet, has it a round left, and has it time left? When all three hold, the
+  loop goes round again with the same tools and a flag, `nudge`, that adds
+  `outputNudge` as a user message to that one call. `msgs` never holds the
+  nudge, so later rounds and the transcript don't see it, and the failed
+  round's text and broken call stay out too. Text the failed round streamed
+  has already reached you; `converse` sends a blank line so the retry's text
+  starts a new paragraph. The transcript's answer holds only the final
+  round's text, as it does for any round before a tool call. This retry
+  counts apart from the empty-reply one: each fixes a different slip, and
+  `max_rounds` and `turn_timeout` bound both. When the retry fails too, or
+  no round was left, `converse` returns the error, `Handle` sees
+  `errors.Is(err, engine.ErrModelOutput)`, and `endOf` says `bad_output`.
+  The turn span's `meru.turn.output_retry` says whether the retry ran. An
+  error before the stream starts, such as HTTP 500 or Ollama down, isn't
+  `ErrModelOutput`, gets no retry, and fails the turn as before.
 - **What the model reads next round.** Its own message with the calls, then
   one `RoleTool` message per call, in call order, with `ToolName` set to the
   tool's full name and `Content` set to `Result.Text`. A denied or declined
@@ -1295,6 +1334,19 @@ Each case checks the transcript holds one user line and never the nudge, and
 that the turn span's `meru.turn.empty_retry` says whether the retry ran.
 `TestTurnLimits` in `limits_test.go` still holds a thinking-only reply that
 hits the token cap: it ends `cut_off` with no retry.
+
+`badoutput_test.go` runs `TestBadOutputRetry` against the fake Ollama, whose
+`StreamError` reply sends a few words and then Ollama's real error line. A
+failed round whose retry calls `web_search` and answers ends `ok`, and you
+read the failed round's words, a blank line, then the answer. The retry's
+request offers the failed round's tools and ends with `outputNudge` as a
+user message, and no later request carries it. A turn whose retry fails too
+ends `bad_output` with `badOutputAnswer`; one that fails on its last round
+gets no retry and ends with `badOutputOnce`. Each case checks the chat never
+shows Ollama's error, the log holds it at warn with the model, the
+transcript never holds the nudge, and the turn span's
+`meru.turn.output_retry`. `TestHTTPErrorNoRetry` checks that an HTTP 500
+still fails the turn with Ollama's message, after one model call.
 
 `profile_test.go` checks `formatProfile` (order, one line per fact, the cap
 keeping the newest, empty), where the section sits in the system prompt, that

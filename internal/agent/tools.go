@@ -7,6 +7,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -179,6 +180,10 @@ type turn struct {
 	// emptyRetry is true once the turn has asked the model a second time
 	// after a round with no text (see retriesEmpty). A turn does it once.
 	emptyRetry bool
+	// outputRetry is true once the turn has run a round again because
+	// Ollama couldn't read what the model wrote (see retriesOutput). A turn
+	// does it once, apart from the empty-reply retry.
+	outputRetry bool
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.
@@ -311,14 +316,21 @@ const (
 // answer with what it has. So does every round after the model has
 // repeated a call maxRepeats times. With no specs, a turn has one round.
 // A round that ends the turn with no text gets one more try when the turn
-// has a round left: see retriesEmpty.
+// has a round left: see retriesEmpty. So does a round whose output Ollama
+// couldn't read: see retriesOutput.
 //
 // It returns the final round's text and stop reason, with the usage
 // counters summed over every round and the time of the turn's first text
 // token. It fails when a model call fails, when emit fails, or when ctx
-// ends; the reply then holds the text the failed round streamed.
+// ends; the reply then holds the text the failed round streamed. A round
+// whose output Ollama couldn't read, with no retry left, fails with an
+// error that wraps engine.ErrModelOutput, and Handle ends the turn
+// endBadOutput.
 func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, specs []engine.ToolSpec) (reply, error) {
 	var total reply
+	// nudge is true for the round that retries one whose output Ollama
+	// couldn't read. That round's call alone carries outputNudge.
+	nudge := false
 	for {
 		t.rounds++
 		start := time.Now()
@@ -326,11 +338,38 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 		if t.rounds >= a.maxRounds || t.repeats >= maxRepeats {
 			offer = nil
 		}
-		rep, err := a.answer(ctx, msgs, offer, t.emit)
+		call := msgs
+		if nudge {
+			// slices.Concat builds a new slice, so msgs keeps no nudge for
+			// the rounds after this one.
+			call = slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: outputNudge}})
+			nudge = false
+		}
+		rep, err := a.answer(ctx, call, offer, t.emit)
 		total.add(rep)
 		if err != nil {
 			total.text = rep.text
-			return total, err
+			if !errors.Is(err, engine.ErrModelOutput) {
+				return total, err
+			}
+			retry := a.retriesOutput(ctx, t)
+			// Ollama's own words go to the log, never to the chat. The
+			// model name comes from config, so it is one of a few values.
+			a.log.WarnContext(ctx, "ollama couldn't read the model's output", "model", a.models.Main,
+				"round", t.rounds, "retry", retry, "err", err)
+			if !retry {
+				return total, err
+			}
+			t.outputRetry = true
+			// The user has read the failed round's text, if any. A blank
+			// line keeps the retry's text from running on from it.
+			if strings.TrimSpace(rep.text) != "" {
+				if err := t.emit(rpc.Event{Type: rpc.EventToken, Text: "\n\n"}); err != nil {
+					return total, err
+				}
+			}
+			nudge = true
+			continue
 		}
 		// A model that calls a tool it wasn't offered gets no call run: the
 		// round is its answer.
@@ -408,6 +447,30 @@ func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, 
 		"empty_retry", true, "ms", time.Since(start).Milliseconds())
 	return total, nil
 }
+
+// retriesOutput says whether converse should run a round again after
+// Ollama couldn't read what the model wrote (engine.ErrModelOutput). A real
+// turn showed why. qwen3.6:35b on Ollama 0.34 wrote a malformed tool call,
+// Ollama's tool-call parser sent "XML syntax error on line 8: element
+// <function> closed by </parameter>" in the middle of the stream, and the
+// user read that error as the answer. A model that slips once often gets
+// the call right when asked again.
+//
+// It says yes once per turn, only when the turn has a round left and time
+// to spend. This retry counts apart from the empty-reply one: each fixes a
+// different slip, and max_rounds and turn_timeout still bound the turn.
+func (a *Agent) retriesOutput(ctx context.Context, t *turn) bool {
+	return !t.outputRetry && t.rounds < a.maxRounds && ctx.Err() == nil
+}
+
+// outputNudge is the message the retry after unreadable output adds after
+// the turn's messages, for that one call. Like emptyNudge it goes in as a
+// user message and never reaches the transcript. The retry offers the same
+// tools the failed round did (none when it is the turn's last round), and
+// the failed round's text and broken call stay out: feeding them back would
+// show the model the mistake to copy.
+const outputNudge = "Your last tool call didn't parse, so it didn't run. " +
+	"Call the tool again with valid arguments, or answer in plain text."
 
 // add folds one round's reply into r: the token counts and durations sum,
 // and firstToken keeps the earliest text of the turn. It leaves r.text

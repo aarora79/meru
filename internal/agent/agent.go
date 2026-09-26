@@ -279,6 +279,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.Int("meru.turn.repeated_calls", t.repeats),
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
+			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
 			attribute.String("meru.turn.outcome", outcome),
 		)
@@ -328,16 +329,21 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	res, err := a.respond(tctx, t, question, history)
 	route, rep = res.route, res.rep
-	if err != nil && (tctx.Err() == nil || ctx.Err() != nil) {
-		// A failure that isn't the turn's own deadline: a model error, or
-		// the user hung up.
+	// badOutput is true when the rounds ended on output Ollama couldn't
+	// read, even after the retry. The turn answers with badOutputAnswer
+	// instead of failing with Ollama's raw error.
+	badOutput := errors.Is(err, engine.ErrModelOutput) && ctx.Err() == nil
+	if err != nil && !badOutput && (tctx.Err() == nil || ctx.Err() != nil) {
+		// A failure that isn't the turn's own deadline or unreadable model
+		// output: Ollama down or refusing the request, or the user hung up.
 		return err
 	}
 	ended = endOf(err, rep)
 	if ended != "" {
-		// err is only ever the deadline here, which endTurn answers for.
+		// err is only ever the deadline or unreadable output here, which
+		// endTurn answers for.
 		var text string
-		text, err = a.endTurn(ctx, ended, rep.text, emit)
+		text, err = a.endTurn(ctx, t, ended, rep.text)
 		if err != nil {
 			return err
 		}
@@ -349,7 +355,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// A full answer from a turn in which no tool call succeeded can't have
 	// changed anything, so a claim that it did is false. The "notice"
 	// event warns the user under the answer, and the assistant line keeps
-	// the warning. See honest.go.
+	// the warning. See honest.go. A turn that ended without a full answer
+	// (ended != "") gets no check: its text ends in Meru's own message,
+	// such as badOutputAnswer, and claims nothing.
 	var notice string
 	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 		notice = unbackedNotice
@@ -527,10 +535,24 @@ const (
 	endTimeout = "timeout" // [agent] turn_timeout ran out
 	endCutOff  = "cut_off" // the last model call hit [agent] max_output_tokens
 	endGaveUp  = "gave_up" // the rounds ended with no text, such as only tool calls
+	// endBadOutput: Ollama couldn't read what the model wrote, even after
+	// the one retry (see retriesOutput).
+	endBadOutput = "bad_output"
 )
 
 // sorry is the answer to a turn that ended with no text at all.
 const sorry = "Sorry, I couldn't answer that. Try asking again, or rephrase the question."
+
+// The answers to a turn that ended endBadOutput: badOutputAnswer after the
+// retry failed too, badOutputOnce when the turn had no round or time left
+// to retry. Ollama's own error text goes to the log, not here: "XML syntax
+// error on line 8" tells the user nothing they can act on.
+const (
+	badOutputAnswer = "The model wrote a tool call that Ollama couldn't read, twice. " +
+		"Try asking again, or rephrase the question."
+	badOutputOnce = "The model wrote a tool call that Ollama couldn't read. " +
+		"Try asking again, or rephrase the question."
+)
 
 // The notes that follow an answer cut off part way, by how it ended.
 const (
@@ -538,12 +560,15 @@ const (
 	cutOffNote  = "[Meru stopped the answer here: it reached the length limit.]"
 )
 
-// endOf says how a turn ended: endTimeout when err is set (Handle passes
-// only the turn's own deadline here), endCutOff when the last model call
-// stopped at the token cap, endGaveUp when the answer holds no text, and ""
-// for a full answer.
+// endOf says how a turn ended: endBadOutput when err wraps
+// engine.ErrModelOutput, endTimeout for any other err (Handle passes only
+// those two kinds here), endCutOff when the last model call stopped at the
+// token cap, endGaveUp when the answer holds no text, and "" for a full
+// answer.
 func endOf(err error, rep reply) string {
 	switch {
+	case errors.Is(err, engine.ErrModelOutput):
+		return endBadOutput
 	case err != nil:
 		return endTimeout
 	case rep.doneReason == "length":
@@ -555,24 +580,39 @@ func endOf(err error, rep reply) string {
 }
 
 // endTurn closes a turn that ended without a full answer and returns the
-// answer text for the transcript. When the user has read no text yet, it
-// sends sorry as the answer. When some text streamed first, that text stays,
-// and a note follows it saying the answer was cut off: timeoutNote after a
-// deadline, cutOffNote otherwise. Either way the text goes out as "token"
-// events, so both clients show it as the answer with no change. It logs why
-// the turn ended at debug level, and fails only when emit does.
-func (a *Agent) endTurn(ctx context.Context, ended, text string, emit func(rpc.Event) error) (string, error) {
+// answer text for the transcript. text is what the last round streamed.
+//
+// A turn that ended endBadOutput always gets badOutputAnswer, or
+// badOutputOnce when it didn't retry, after a blank line when the round
+// streamed some text first. Otherwise, when the user has read no text yet,
+// endTurn sends sorry as the answer; when some text streamed first, that
+// text stays, and a note follows it saying the answer was cut off:
+// timeoutNote after a deadline, cutOffNote otherwise. Either way the words
+// go out as "token" events through t.emit, so both clients show them as the
+// answer with no change. It logs why the turn ended at debug level, and
+// fails only when emit does.
+func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (string, error) {
 	a.log.DebugContext(ctx, "turn ended without a full answer", "outcome", ended,
 		"answer_chars", utf8.RuneCountInString(text))
-	add := sorry
-	if strings.TrimSpace(text) != "" {
-		note := cutOffNote
-		if ended == endTimeout {
-			note = timeoutNote
+	streamed := strings.TrimSpace(text) != ""
+	var add string
+	switch {
+	case ended == endBadOutput:
+		add = badOutputOnce
+		if t.outputRetry {
+			add = badOutputAnswer
 		}
-		add = "\n\n" + note
+		if streamed {
+			add = "\n\n" + add
+		}
+	case !streamed:
+		add = sorry
+	case ended == endTimeout:
+		add = "\n\n" + timeoutNote
+	default:
+		add = "\n\n" + cutOffNote
 	}
-	if err := emit(rpc.Event{Type: rpc.EventToken, Text: add}); err != nil {
+	if err := t.emit(rpc.Event{Type: rpc.EventToken, Text: add}); err != nil {
 		return "", err
 	}
 	return text + add, nil
