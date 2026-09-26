@@ -106,4 +106,63 @@ function wrapCode(pre, onCopy) {
   head.append(name, button);
   pre.replaceWith(box);
   box.append(head, pre);
+  const text = (code || pre).textContent;
+  if (isSVG(lang, text)) addPreview(box, head, pre, text);
+}
+
+// maxPreview caps the SVG source the page draws, in characters. A drawing
+// a model writes is a few kilobytes; a larger one is more likely a pasted
+// file than a picture, and stays as code.
+const maxPreview = 200000;
+
+// isSVG reports whether a code block holds an SVG drawing: marked tagged it
+// "svg", or it is tagged "xml" or "html", or untagged, and its text starts
+// with an <svg> element (an XML declaration first is fine).
+function isSVG(lang, text) {
+  if (text.length > maxPreview) return false;
+  const tag = lang ? lang.slice("language-".length).toLowerCase() : "";
+  if (tag === "svg") return true;
+  if (tag !== "" && tag !== "xml" && tag !== "html") return false;
+  return /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(text);
+}
+
+// addPreview draws the SVG in text above its code, with a Preview / Code
+// switch in the block's header. The drawing goes in an <img> with a data:
+// URL. A browser runs no script and fetches nothing for an SVG shown as an
+// image, so a drawing can only draw: an onload handler, a script element or a
+// link to an outside file inside it does nothing. The page's policy allows
+// data: images for this and for its own icons.
+function addPreview(box, head, pre, text) {
+  const view = document.createElement("div");
+  view.className = "code-preview";
+  const img = document.createElement("img");
+  img.alt = "The SVG above, drawn";
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(text);
+  view.append(img);
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "text-button";
+  head.insertBefore(toggle, head.lastChild);
+
+  // show switches between the drawing and its code.
+  const show = (drawing) => {
+    view.hidden = !drawing;
+    pre.hidden = drawing;
+    toggle.textContent = drawing ? "Code" : "Preview";
+    toggle.setAttribute("aria-label", drawing ? "Show the SVG code" : "Show the drawing");
+  };
+  toggle.addEventListener("click", () => show(!pre.hidden));
+  // A file the browser can't read as SVG shows its code, with a note, and
+  // loses the switch.
+  img.addEventListener("error", () => {
+    show(false);
+    toggle.remove();
+    const note = document.createElement("p");
+    note.className = "note code-note";
+    note.textContent = "This SVG has an error, so it can't be drawn.";
+    box.insertBefore(note, pre);
+  });
+  box.insertBefore(view, pre);
+  show(true);
 }

@@ -731,6 +731,31 @@ pre {
   overflow-x: auto;
 }
 
+/* An SVG code block drawn as a picture (markdown.js, addPreview). The
+   white ground shows a drawing with no background of its own. */
+.code-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.code-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  height: auto;
+}
+
+.code-note {
+  margin: 0;
+  padding: 8px 12px 0;
+}
+
+.code-head .text-button + .text-button {
+  margin-left: 4px;
+}
+
 .note {
   color: var(--caption);
   font-style: italic;

@@ -166,7 +166,16 @@ bundler.
 - `js/markdown.js` renders a finished answer: `marked` turns Markdown into HTML with
   raw HTML escaped, and DOMPurify keeps a short list of tags and only `http`,
   `https` and `file` links, and returns DOM nodes. While an answer streams, the page
-  shows plain text, because half-written Markdown renders wrong.
+  shows plain text, because half-written Markdown renders wrong. `wrapCode` gives
+  each code block a header with a Copy button, and `addPreview` draws a block that
+  holds an SVG (tagged `svg`, or starting with an `<svg>` element) as a picture,
+  with a Preview / Code switch. The picture is an `<img>` whose `src` is a `data:`
+  URL of the SVG. A browser treats an SVG shown as an image as a picture only: it
+  runs no script inside it and loads no file it names, so a model's drawing can't
+  do anything but draw. Parsing the SVG into the page would run its event
+  handlers, which is why `TestSVGPreviewIsAnImage` fails if the code ever uses
+  `DOMParser` or `createElementNS`. An SVG over 200,000 characters, or one the
+  browser can't read, stays as code.
 - `vendor/` and `fonts/` hold the two libraries and the three fonts, with their
   licenses; `THIRD-PARTY.md` lists versions and checksums.
 

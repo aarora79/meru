@@ -121,6 +121,28 @@ func TestPageCodeRules(t *testing.T) {
 	}
 }
 
+// TestSVGPreviewIsAnImage checks that markdown.js draws an SVG code block
+// only as an <img> with a data: URL, where the browser runs no script and
+// fetches nothing, and never parses the SVG into the page. A JavaScript
+// test runner would check the behaviour; this checks the wiring.
+func TestSVGPreviewIsAnImage(t *testing.T) {
+	src := ownFiles(t)["web/js/markdown.js"]
+	for _, want := range []string{
+		`document.createElement("img")`,
+		`"data:image/svg+xml;charset=utf-8," + encodeURIComponent(text)`,
+		"text.length > maxPreview",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("markdown.js lacks %q", want)
+		}
+	}
+	for _, banned := range []string{"DOMParser", "createElementNS", "<object", "<embed", "<iframe"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("markdown.js uses %q; an SVG preview must stay an image", banned)
+		}
+	}
+}
+
 // TestMarkdownIsSanitized checks that markdown.js sends every answer
 // through DOMPurify, with links limited to http, https and file, and that
 // raw HTML in an answer is escaped. A JavaScript test runner would check

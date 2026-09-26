@@ -372,7 +372,10 @@ hold HTML meant to run in the window. Three layers stop it:
    list of tags, no `data-*` or `style` attributes, no class but a code block's
    language, and only `http`, `https` and `file` links. It returns DOM nodes; no
    code puts a string into `innerHTML`. Everything else reaches the page as
-   `textContent`.
+   `textContent`. A code block that holds an SVG drawing also shows as a
+   picture, with a Preview / Code switch: the page draws it as an `<img>` with a
+   `data:` URL, where the browser runs no script and fetches nothing, so a
+   drawing can only draw.
 2. Every file goes out with a strict Content-Security-Policy: `default-src 'none'`,
    and scripts, styles, fonts and connections from the app only. No inline
    script runs, and no image or font loads from the network, so an answer can't
