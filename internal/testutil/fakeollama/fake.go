@@ -39,7 +39,15 @@ type Config struct {
 	// DefaultText is the answer to a chat or generate call when no scripted
 	// reply is queued. Empty means "Hello from fake Ollama."
 	DefaultText string `json:"default_text,omitempty"`
+	// Capabilities lists what /api/show says each model can do, by model
+	// name. A model missing from it gets defaultCapabilities: a text
+	// model with tools, which can't look at pictures.
+	Capabilities map[string][]string `json:"capabilities,omitempty"`
 }
+
+// defaultCapabilities is what /api/show reports for a model that
+// Config.Capabilities doesn't name.
+var defaultCapabilities = []string{"completion", "tools"}
 
 // Reply scripts one answer to /api/chat or /api/generate. Queue replies with
 // Fake.Enqueue. Durations marshal to JSON as nanoseconds, which is how
@@ -264,6 +272,7 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"/api/chat":     {http.MethodPost, f.serveChat},
 		"/api/generate": {http.MethodPost, f.serveGenerate},
 		"/api/embed":    {http.MethodPost, f.serveEmbed},
+		"/api/show":     {http.MethodPost, f.serveShow},
 	}
 	route, ok := routes[r.URL.Path]
 	if !ok {

@@ -13,7 +13,8 @@ import (
 
 // Engine is the one boundary between Meru and a model runtime (see
 // ARCHITECTURE.md, "Engine layer"). It has four methods on purpose: resist
-// growing it. Anything new should be an Options field or a Completion field.
+// growing it. Anything new should be a field on Message, Options or
+// Completion, as pictures are: see Message.Images.
 //
 // An interface in Go is a set of method signatures. Any type that has these
 // methods satisfies Engine automatically; there is no "implements" keyword.
@@ -60,7 +61,17 @@ type Message struct {
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 	// ToolName names the tool whose result this is, when Role is RoleTool.
 	ToolName string `json:"tool_name,omitempty"`
+	// Images holds pictures for the model to look at, each the raw bytes
+	// of a PNG, JPEG, GIF or WebP file, on a user message. Only a model
+	// with the "vision" capability can read them; see
+	// OllamaEngine.Capabilities. encoding/json writes a []byte as a
+	// base64 string, which is the form Ollama wants.
+	Images [][]byte `json:"images,omitempty"`
 }
+
+// Vision is the capability a model needs to look at Message.Images, as
+// Ollama's /api/show lists it.
+const Vision = "vision"
 
 // ToolSpec describes one tool the model may call: its name, what it does, and
 // a JSON Schema for its arguments. v0.1 sends no tools; the type exists so the

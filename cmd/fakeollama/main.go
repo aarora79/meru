@@ -43,6 +43,7 @@ func run() error {
 	loaded := flag.String("loaded", "", "comma-separated model names /api/ps reports at start")
 	version := flag.String("version", "", "version /api/version reports (default 0.12.11)")
 	latency := flag.Duration("latency", 0, "pause before every response")
+	vision := flag.String("vision", "", "comma-separated model names /api/show lists with the vision capability")
 	flag.Parse()
 
 	if err := checkLoopback(*addr); err != nil {
@@ -54,6 +55,9 @@ func run() error {
 		Models:  splitList(*models),
 		Loaded:  splitList(*loaded),
 		Latency: *latency,
+		// Each model -vision names can look at images; every other model
+		// gets the fake's default, a text model.
+		Capabilities: visionModels(splitList(*vision)),
 	})
 	if *scriptPath != "" {
 		if err := loadScript(fake, *scriptPath); err != nil {
@@ -140,4 +144,17 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// visionModels returns the /api/show capabilities for each model in
+// names: a model with tools that can also look at images. nil for none.
+func visionModels(names []string) map[string][]string {
+	if len(names) == 0 {
+		return nil
+	}
+	caps := map[string][]string{}
+	for _, n := range names {
+		caps[n] = []string{"completion", "vision", "tools"}
+	}
+	return caps
 }

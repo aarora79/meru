@@ -3,7 +3,7 @@
 // types, so a change in Ollama's API stays inside this file and ollama.go.
 //
 // The field names follow Ollama's API reference for /api/chat, /api/embed,
-// /api/version and /api/ps.
+// /api/show, /api/version and /api/ps.
 
 package engine
 
@@ -45,6 +45,9 @@ type chatMessage struct {
 	Thinking  string         `json:"thinking,omitempty"`
 	ToolCalls []chatToolCall `json:"tool_calls,omitempty"`
 	ToolName  string         `json:"tool_name,omitempty"`
+	// Images are pictures on a user message. Ollama wants each as a
+	// base64 string, and encoding/json writes a []byte that way.
+	Images [][]byte `json:"images,omitempty"`
 }
 
 // chatToolCall is one tool call as Ollama writes it: the name and arguments
@@ -121,6 +124,17 @@ type embedResponse struct {
 	Embeddings []Vector `json:"embeddings"`
 }
 
+// showRequest is the body of POST /api/show.
+type showRequest struct {
+	Model string `json:"model"`
+}
+
+// showResponse is the part of the reply from /api/show that Meru reads:
+// what the model can do, such as ["completion", "vision", "tools"].
+type showResponse struct {
+	Capabilities []string `json:"capabilities"`
+}
+
 // versionResponse is the reply from GET /api/version.
 type versionResponse struct {
 	Version string `json:"version"`
@@ -145,7 +159,7 @@ type errorResponse struct {
 func toChatMessages(msgs []Message) []chatMessage {
 	out := make([]chatMessage, 0, len(msgs))
 	for _, m := range msgs {
-		cm := chatMessage{Role: string(m.Role), Content: m.Content, ToolName: m.ToolName}
+		cm := chatMessage{Role: string(m.Role), Content: m.Content, ToolName: m.ToolName, Images: m.Images}
 		for _, tc := range m.ToolCalls {
 			args := tc.Arguments
 			if len(args) == 0 {
