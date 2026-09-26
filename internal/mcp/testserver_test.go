@@ -161,7 +161,7 @@ func allTestTools() []string {
 
 // stdioConfig returns a config that starts this test binary as a stdio
 // server named name.
-func stdioConfig(t *testing.T, name string) ServerConfig {
+func stdioConfig(t testing.TB, name string) ServerConfig {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -182,7 +182,7 @@ func stdioConfig(t *testing.T, name string) ServerConfig {
 
 // httpConfig starts the test server over Streamable HTTP on 127.0.0.1 and
 // returns a config that points at it. The server stops when the test ends.
-func httpConfig(t *testing.T, name string) ServerConfig {
+func httpConfig(t testing.TB, name string) ServerConfig {
 	t.Helper()
 	srv := newTestServer()
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)

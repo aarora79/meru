@@ -397,7 +397,7 @@ func TestCrashedServerComesBackOnTheNextTurn(t *testing.T) {
 	}
 
 	// The next turn that offers tools starts a new process.
-	p.ConnectMissing(context.Background())
+	p.Refresh(context.Background())
 	second := callText(t, p, "t.pid")
 	if second == first {
 		t.Errorf("pid after the turn's try = %s, same as before", second)
@@ -446,7 +446,7 @@ func TestConnectOnDemand(t *testing.T) {
 
 	// Each turn tries exactly once, and the count doesn't pile up.
 	for turn := 2; turn <= 3; turn++ {
-		p.ConnectMissing(context.Background())
+		p.Refresh(context.Background())
 		if got := dials.Load(); got != int32(turn) {
 			t.Errorf("dials after turn %d = %d, want %d", turn-1, got, turn)
 		}
@@ -457,12 +457,12 @@ func TestConnectOnDemand(t *testing.T) {
 
 	// The user starts the server; the next turn connects and gets its tools.
 	down.Store(false)
-	p.ConnectMissing(context.Background())
+	p.Refresh(context.Background())
 	if got := toolNames(p); !slices.Equal(got, []string{"g.echo"}) {
 		t.Errorf("Tools() after the server started = %v, want [g.echo]", got)
 	}
 	// A connected server isn't dialled again.
-	p.ConnectMissing(context.Background())
+	p.Refresh(context.Background())
 	if got := dials.Load(); got != 4 {
 		t.Errorf("dials after connecting = %d, want 4", got)
 	}

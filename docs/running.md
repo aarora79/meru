@@ -1024,7 +1024,9 @@ GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client 
 `--tool-tier extended` loads 45 tools from the four services. Reading a mail
 thread and saving an attachment sit in workspace-mcp's extended tier, so a server
 started with `--tool-tier core` lacks them, and `meru tools` warns that the allow
-list names a tool google doesn't offer.
+list names a tool google doesn't offer. Restart the server with the right tier and
+ask a question that uses Google: that turn lists the server's tools again, the
+warning goes, and `merud` needs no restart.
 
 Every Google tool takes your account's address. `USER_GOOGLE_EMAIL` gives the
 server a default, so the model never has to supply it. `meru setup user` also asks
@@ -1120,6 +1122,14 @@ shows `not connected`, start it, and ask your question: `merud` connects on that
 turn, with no restart. A stdio server that crashed comes back the same way. A
 server that fails the try leaves its tools out of that turn, and the model answers
 without them.
+
+The same turn asks each connected server for its tools again, so `TOOLS` and the
+warnings in `meru tools` follow the server. When you restart `google` with more
+tools, `meru mcp` still shows the old count until your next question that uses
+tools; after that turn it shows the new count, and the model can call the new
+tools. If the server lost `merud`'s session in the restart, that turn connects
+again first. The log shows `mcp server tool list changed` with the counts, or
+`mcp server failed to list its tools; reconnecting`.
 
 #### See and remove servers
 

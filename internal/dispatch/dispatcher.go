@@ -159,14 +159,14 @@ func (d *Dispatcher) Replace(kind string, b Backend) {
 	d.backends = append(d.backends, b)
 }
 
-// ConnectMissing gives every backend that is a Connector its one try at
-// the servers it can't reach, one backend after another. A backend that
-// isn't a Connector is skipped. The ", ok" form of the type assertion
-// b.(Connector) gives ok = false, not a panic, for those.
-func (d *Dispatcher) ConnectMissing(ctx context.Context) {
+// Refresh has every backend that is a Refresher bring its tool list up to
+// date, one backend after another. A backend that isn't a Refresher is
+// skipped. The ", ok" form of the type assertion
+// b.(Refresher) gives ok = false, not a panic, for those.
+func (d *Dispatcher) Refresh(ctx context.Context) {
 	for _, b := range d.snapshot() {
-		if c, ok := b.(Connector); ok {
-			c.ConnectMissing(ctx)
+		if c, ok := b.(Refresher); ok {
+			c.Refresh(ctx)
 		}
 	}
 }

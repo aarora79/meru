@@ -2,8 +2,8 @@
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
 `probe.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
-`headers_test.go`, `stdio_test.go`, `stdio_unix_test.go`, `probe_test.go`,
-`probe_unix_test.go`, `testserver_test.go`)
+`headers_test.go`, `refresh_test.go`, `stdio_test.go`, `stdio_unix_test.go`,
+`probe_test.go`, `probe_unix_test.go`, `testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
 [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4
@@ -42,9 +42,10 @@ never restarts either one on its own, checks its health or retries on a timer:
 | When | What the Pool does |
 | --- | --- |
 | `NewPool`, at `merud`'s start | one try per server |
-| a turn on a tools route (`ConnectMissing`) | one try per server that isn't connected |
+| a turn on a tools route (`Refresh`) | `tools/list` to each connected server; one try per server that isn't connected, or whose listing failed |
 | a turn that offers no tools, or no turn at all | nothing |
 | a call to a server that isn't connected | fails at once with `ErrUnavailable` |
+| a call whose session is gone | fails, marks the server not connected, and isn't sent again |
 
 ## The picture
 
@@ -78,10 +79,28 @@ sequenceDiagram
     D->>P: Call("files.read", args), later in the same turn
     P-->>D: ErrUnavailable: files: not connected
     Note over A,S: the next turn on a tools route
-    A->>D: ConnectMissing(ctx)
-    D->>P: ConnectMissing(ctx)
+    A->>D: Refresh(ctx)
+    D->>P: Refresh(ctx)
     P->>S: start a new process, handshake, list tools
     A->>P: Tools() now lists files.read again
+```
+
+An HTTP server that restarts with more tools, behind merud's back:
+
+```mermaid
+sequenceDiagram
+    participant A as agent.Handle
+    participant P as Pool
+    participant H as HTTP server
+    Note over H: you restart it; the new process<br/>knows nothing of merud's session
+    Note over A,H: the next turn on a tools route
+    A->>P: Refresh(ctx), through dispatch
+    P->>H: tools/list on the old session
+    H-->>P: 404 session not found
+    P->>P: drop the session
+    P->>H: connect, handshake, tools/list
+    H-->>P: the new, longer list
+    A->>P: Tools() lists the new tools
 ```
 
 ## Walk through the code
@@ -176,7 +195,7 @@ if err != nil {
 ```
 
 A server that fails to start doesn't stop the others. The Pool logs it, `Status`
-reports it, and `ConnectMissing` tries it again at the start of the next turn that
+reports it, and `Refresh` tries it again at the start of the next turn that
 offers tools.
 
 `tryConnectLocked` holds the details:
@@ -187,37 +206,63 @@ offers tools.
 2. It runs the MCP handshake and lists the tools, both bounded by `limit`:
    `connectTimeout` (30 s) at startup and for a stdio server, `httpRetryTimeout`
    (5 s) when a turn tries an HTTP server again.
-3. `allowedTools` keeps the tools in `allow`, renames each to `<server>.<tool>`,
+3. `setToolsLocked` records how many tools the server offered, and
+   `allowedTools` keeps the ones in `allow`, renames each to `<server>.<tool>`,
    and sorts them. A stable order keeps the prompt the same from turn to turn.
 4. It starts a goroutine, `watch`, that blocks on `cs.Wait()` until the session
    ends. When a server dies, `watch` marks it not connected at once and reaps the
    child process. It never starts the server again.
 
-**Connecting again.** `ConnectMissing` is the one path that reconnects, and only a
-turn calls it:
+**Refreshing.** `Refresh` is the one path that lists tools again or reconnects,
+and only a turn calls it. It walks the servers in config order and hands each to
+`refreshLocked`, with the server's lock held:
 
 ```go
-func (p *Pool) ConnectMissing(ctx context.Context) {
-    for _, s := range p.servers {
-        s.mu.Lock()
-        if s.closed || s.session != nil {
-            s.mu.Unlock()
-            continue
-        }
-        limit := connectTimeout
-        if s.cfg.URL != "" {
-            limit = httpRetryTimeout
-        }
-        err := p.connectLocked(ctx, s, limit)
+func (p *Pool) refreshLocked(ctx context.Context, s *server) {
+    if s.closed {
+        return
+    }
+    if s.session != nil {
+        p.relistLocked(ctx, s)
+    }
+    if s.session != nil {
+        return
+    }
+    limit := connectTimeout
+    if s.cfg.URL != "" {
+        limit = httpRetryTimeout
+    }
+    if err := p.connectLocked(ctx, s, limit); err != nil {
         ...
 ```
 
-It walks the servers in config order and tries each one that isn't connected,
-once. An HTTP server gets 5 seconds: it is somebody else's process, and it
-either answers at once or isn't running. A stdio server gets the full 30, because
-`npx -y` or `uvx` may still be downloading it. A failure goes to the log and to
-`lastErr` for `Status`, and the turn carries on without that server. The agent
-loop reaches this method through `dispatch.Connector` (see
+`relistLocked` sends `tools/list` on the live session, with 2 seconds
+(`relistTimeout`) to answer, and swaps in the new list. An HTTP server needs this
+step: merud holds no stream open to it, so when you restart it nothing tells
+merud, and the old session looks alive until merud sends a request. The case that
+led to it: merud kept a restarted `workspace-mcp`'s list of 16 tools after the
+server came back with 33, and an allowed tool stayed missing until merud
+restarted. A stdio server can't restart behind merud's back, but listing it again
+costs one round trip over a pipe and catches a server that changes its tools
+while it runs, so both transports follow one rule. `BenchmarkRefresh` puts the
+cost at about 0.3 ms per server on loopback.
+
+When the listing fails, `relistLocked` drops the session with `dropLocked`, and
+`refreshLocked` goes on to its one connect try, which lists the tools afresh. It
+doesn't sort the errors first: the Go SDK reports a restarted Go server as
+`mcp.ErrSessionMissing`, a Python server may send a JSON-RPC error in a 404 body
+instead, and a stopped server refuses the connection. The one exception is a
+listing whose context ended, because it ran out of time or you cancelled the
+turn. That keeps the session and the old list, since a slow answer doesn't
+prove the session is gone, and closing it would cut off another turn's call. When
+the list changes, merud logs `mcp server tool list changed` at info with the
+counts, and the names added and removed at debug.
+
+A connect try gives an HTTP server 5 seconds: it is somebody else's process, and
+it either answers at once or isn't running. A stdio server gets the full 30,
+because `npx -y` or `uvx` may still be downloading it. A failure goes to the log
+and to `lastErr` for `Status`, and the turn carries on without that server. The
+agent loop reaches `Refresh` through `dispatch.Refresher` (see
 [dispatch.md](dispatch.md) and [agent.md](agent.md)).
 
 `Tools` lists only the tools of servers with a live session, so a dead server's
@@ -239,8 +284,30 @@ error, so `dispatch` can find it with `errors.Is`.
 
 With no timer, no background loop and no wait, nothing runs while nobody asks. A
 server that crashes on start doesn't spin, and a server nobody needs is never
-touched again. `markFailed` drops the session when a call finds the connection
-gone, so the server shows as not connected, and the next turn tries it.
+touched again. `markFailed` drops the session when a call finds it gone, so the
+server shows as not connected, and the next turn tries it. `sessionGone` decides:
+
+```go
+func sessionGone(err error) bool {
+    if errors.Is(err, mcp.ErrConnectionClosed) || errors.Is(err, mcp.ErrSessionMissing) {
+        return true
+    }
+    var opErr *net.OpError
+    return errors.As(err, &opErr) && opErr.Op == "dial"
+}
+```
+
+`errors.Is` asks whether one of the errors wrapped inside `err` is that value.
+`errors.As` looks for one of a type, here `*net.OpError`, and stores it in
+`opErr`, so the code can read its `Op` field: `"dial"` means nothing listened at
+the address. A call on a session the Python server forgot comes back as a plain
+JSON-RPC error, which `sessionGone` can't tell from a tool's own error; the next
+`Refresh` finds the session gone when its listing fails. A bare EOF gets the same
+treatment. The client sees one when it sends a request on a pooled keep-alive
+connection that the server closed, which happens after a restart and also when a
+running server drops an idle connection, so it doesn't prove the session is gone.
+The `restartable` test server turns keep-alive off, so each test sees the refused
+dial or the 404 it checks for, not an EOF that depends on timing.
 
 **Status.** `Status` reports each server in config order from what the Pool
 holds, and sends nothing to any server. `ServerStatus` carries the name, the
@@ -359,6 +426,10 @@ if !allowed {
 2. **Arguments.** They must be a JSON object; empty means `{}`.
 3. **Session.** `sessionFor` returns the live session, or fails at once with
    `ErrUnavailable` when the server isn't connected. It never starts the server.
+   A call that fails because the session is gone marks the server not connected
+   (`markFailed`) and returns the error. `Call` doesn't reconnect and send it
+   again: the server may have run the tool before the session broke, and
+   `send_gmail_message` would then send the mail twice.
 4. **Call.** `cs.CallTool` runs under a timeout (60 s unless the entry sets
    `Timeout`). If you cancel `ctx`, or the timeout passes, the SDK sends the server
    a `notifications/cancelled` message and `Call` returns an error that wraps
@@ -402,6 +473,8 @@ failed: `tool_error` (the convention's name), or Meru's `denied`, `unavailable` 
 ```sh
 go test -race ./internal/mcp/...
 go test -race -run 'TestCrashedServerComesBackOnTheNextTurn|TestConnectOnDemand|TestNoBackgroundWork' -v ./internal/mcp/
+go test -race -run 'TestRefresh|TestCallOnADeadSession' -v ./internal/mcp/
+go test -run '^$' -bench Refresh ./internal/mcp/
 go test -race -run TestProbe -v ./internal/mcp/
 ```
 
@@ -415,13 +488,23 @@ handshake but never lists its tools. The last two drive the probe timeout tests.
 
 Four tests check the connect rule. `TestConnectOnDemand` counts dials against a
 server that is down: one at startup, none for a call between turns, exactly one
-per `ConnectMissing`, and none once the server is connected.
+per `Refresh`, and none once the server is connected.
 `TestNoBackgroundWork` points the Pool at an HTTP server that answers 503, reads
 `Status` and `Tools`, waits, and checks that the server got no request after the
 startup try. `TestCrashedServerComesBackOnTheNextTurn` crashes a stdio child and
-checks that calls fail and its tools leave the list until `ConnectMissing` starts
+checks that calls fail and its tools leave the list until `Refresh` starts
 a new process. `TestStatusCountsFromConfig` checks `URL`, `Listed` and
 `Confirms` for a server that never connected.
+
+`refresh_test.go` covers a server that restarts. Its `restartable` type is a
+Streamable HTTP server that a test can restart with other tools on the same
+address. `TestRefreshFollowsARestartedServer` replays the `workspace-mcp` case
+three ways: the Go SDK's "session not found", a 404 with a JSON-RPC error body,
+and a server that stops and starts again. Each time, the next `Refresh` offers
+the new tool and the warning about it goes. `TestCallOnADeadSession` checks that
+a call on a dead session fails, never reaches the new server, and works again
+after the next `Refresh`. `BenchmarkRefresh` measures what `Refresh` adds to a
+turn.
 
 ## Why it's built this way
 
@@ -434,6 +517,13 @@ a new process. `TestStatusCountsFromConfig` checks `URL`, `Listed` and
   per turn that offers tools needs a loop over the servers and nothing else. An
   earlier version retried on the next call, at most once every 10 seconds; the
   turn-level try replaced it, so a call never waits on a server start.
+- **List every turn, with no cache age.** The listing costs about 0.3 ms per
+  server on loopback, so a rule such as "list when the list is older than 30
+  seconds" would save nothing a person could notice and add a clock to test.
+- **No `notifications/tools/list_changed` handler.** An HTTP server sends that
+  message on the standalone stream, which merud keeps closed. For a stdio server
+  the SDK would deliver it, but the listing each turn already catches the change
+  before the model sees the tools.
 - **No wildcards.** A wildcard is one character, and the cost of one shows up later:
   a server update adds `delete_everything`, and the model can call it.
 - **Servers start one after another.** Most setups have a handful of servers, and

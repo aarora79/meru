@@ -5,7 +5,10 @@
 // keeps only the tools the server's allow list names. It renames each kept
 // tool to "<server>.<tool>", so two servers can offer a tool with the same
 // name without one hiding the other. The agent loop reads the kept tools with
-// Tools, and calls one with Call.
+// Tools, and calls one with Call. At the start of each turn that offers
+// tools, Refresh lists each connected server's tools again and gives each
+// server that isn't connected one try, so the list follows a server that
+// restarted. Nothing runs between turns.
 //
 // Probe starts a server for a moment, before it goes into config, and
 // reports every tool it offers with the server's read-only and destructive

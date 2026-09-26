@@ -38,10 +38,10 @@ func (b mcpBackend) Kind() string { return dispatch.KindMCP }
 // Tools returns the allowed tools of every server, named "<server>.<tool>".
 func (b mcpBackend) Tools() []engine.ToolSpec { return b.pool.Tools() }
 
-// ConnectMissing makes mcpBackend a dispatch.Connector: it gives each
-// server that isn't connected one try, at the start of a turn that offers
-// tools (see mcp.Pool.ConnectMissing).
-func (b mcpBackend) ConnectMissing(ctx context.Context) { b.pool.ConnectMissing(ctx) }
+// Refresh makes mcpBackend a dispatch.Refresher: at the start of a turn
+// that offers tools, it lists each connected server's tools again and gives
+// each server that isn't connected one try (see mcp.Pool.Refresh).
+func (b mcpBackend) Refresh(ctx context.Context) { b.pool.Refresh(ctx) }
 
 // Confirm returns ConfirmAlways for a tool in its server's always_confirm
 // list, ConfirmAsk for one in its confirm list, and ConfirmNever for the

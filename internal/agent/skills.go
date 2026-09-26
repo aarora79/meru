@@ -339,13 +339,14 @@ func (a *Agent) skillTools(ctx context.Context, p pickedSkills) (keep, tools []s
 			keep = append(keep, name)
 			continue
 		}
-		// A server or agent that isn't connected lists no tools; give it
-		// one try before counting its tools as off.
+		// A server or agent that isn't connected lists no tools; refresh
+		// the servers, which gives it one try, before counting its tools
+		// as off.
 		missingRemote := slices.ContainsFunc(named, func(n string) bool {
 			return !slices.Contains(offered, n) && toolKind(n) != dispatch.KindBuiltin
 		})
 		if missingRemote && !connected && a.tools != nil {
-			a.tools.ConnectMissing(ctx)
+			a.tools.Refresh(ctx)
 			offered = a.offeredNames()
 			connected = true
 		}

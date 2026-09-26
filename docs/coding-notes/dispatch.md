@@ -100,20 +100,21 @@ was a field on `Result` that `dispatch` would prefer for the `tool_result` line 
 the row. It would leave the `tool_call` line and the prompt showing the model's
 arguments, so you would approve `{"repo":"meru"}` without seeing the command.
 
-**Connector.** A backend may also have `ConnectMissing`, which makes it a
-`Connector`:
+**Refresher.** A backend may also have `Refresh`, which makes it a
+`Refresher`:
 
 ```go
-type Connector interface {
-    ConnectMissing(ctx context.Context)
+type Refresher interface {
+    Refresh(ctx context.Context)
 }
 ```
 
-`ConnectMissing` tries once to reach each of the backend's servers that isn't
-connected, and returns when every try has ended. The MCP backend is the one
-`Connector`. `merud` never retries an MCP server in the background, so the agent
-loop calls this at the start of a turn that offers tools, before it lists them
-(see [mcp.md](mcp.md)). The built-ins, the commands and the A2A client have no
+`Refresh` brings the backend's tool list up to date: it asks each connected
+server for its tools again, tries once to reach each server that isn't
+connected, and returns when every server has answered or failed. The MCP backend
+is the one `Refresher`. `merud` never lists or retries an MCP server in the
+background, so the agent loop calls this at the start of a turn that offers
+tools, before it lists them (see [mcp.md](mcp.md)). The built-ins, the commands and the A2A client have no
 servers to reach this way, so they don't need a stub method.
 
 **CallConfirmer.** `Confirm` answers per tool. `web_fetch` needs an answer per
@@ -259,22 +260,22 @@ carries `gen_ai.tool.name`, `meru.tool.kind`, `meru.tool.server`,
 `meru.tool.outcome` and `meru.tool.approval`. Arguments and results go on it only
 when `capture_content = true`; for a command the arguments are the argv.
 
-**ConnectMissing.** The agent loop reaches the backends through the Dispatcher,
-so the Dispatcher passes the call on:
+**Refresh.** The agent loop reaches the backends through the Dispatcher, so the
+Dispatcher passes the call on:
 
 ```go
-func (d *Dispatcher) ConnectMissing(ctx context.Context) {
+func (d *Dispatcher) Refresh(ctx context.Context) {
     for _, b := range d.snapshot() {
-        if c, ok := b.(Connector); ok {
-            c.ConnectMissing(ctx)
+        if c, ok := b.(Refresher); ok {
+            c.Refresh(ctx)
         }
     }
 }
 ```
 
 `snapshot` copies the backend list under the lock, so a reload can swap the MCP
-backend while the tries run. The backends go one after another; with one
-`Connector` today, running them side by side would buy nothing.
+backend while the refresh runs. The backends go one after another; with one
+`Refresher` today, running them side by side would buy nothing.
 
 **A denied name.** When no backend offers a tool, `guessLocation` splits its name
 for the row: `a2a.` names an agent, `cmd.` a command, a dot an MCP server, and no
@@ -285,8 +286,8 @@ dot a built-in.
 `mcpBackend` wraps `*mcp.Pool` so it satisfies `Backend`. Each method is a line or
 two: `Confirm` asks the pool's confirm list, `Locate` splits `server.tool` at the
 first dot, and `Call` keeps the result's text and error flag. `Status` joins the
-pool's health report with its tool list for `meru tools list`. `ConnectMissing`
-calls `pool.ConnectMissing`, which makes `mcpBackend` a `Connector`.
+pool's health report with its tool list for `meru tools list`. `Refresh` calls
+`pool.Refresh`, which makes `mcpBackend` a `Refresher`.
 
 ```go
 var _ dispatch.Backend = mcpBackend{}
@@ -303,8 +304,8 @@ be a secret.
 
 ## Go ideas used here
 
-- **Interfaces** — `Backend`, `Auditor`, `Connector` and `Recorder`, and type
-  assertions to find an `Auditor` or a `Connector`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Interfaces** — `Backend`, `Auditor`, `Refresher` and `Recorder`, and type
+  assertions to find an `Auditor` or a `Refresher`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **`sync.Mutex`** — guards the backend list and the session approvals.
 - **context** — cancellation, `context.WithoutCancel` for the row, and
   `context.WithValue` for the session. More in
