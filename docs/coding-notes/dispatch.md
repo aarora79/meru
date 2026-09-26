@@ -1,7 +1,7 @@
 # dispatch
 
 **Code:** `internal/dispatch/` (`doc.go`, `dispatch.go`, `dispatcher.go`,
-`dispatcher_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
+`dispatcher_test.go`, `base64.go`, `base64_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
 commands backend lives in [commands](commands.md).
 **Milestone:** v0.3
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
@@ -225,11 +225,26 @@ commands that don't ask. A tool no backend offers counts as asking. `Replace` sw
 in a new backend of one kind; merud calls it after the `configure` tool changes the
 MCP servers.
 
-**Dispatch.** The function runs eight steps, commented in the code. Five details
+**Dispatch.** The function runs eight steps, commented in the code. Six details
 matter:
 
 - **The call must reach the transcript before it runs.** If the `tool_call` line
   can't be written, the call ends with outcome `error` and doesn't run.
+- **Base64 leaves an MCP or A2A result.** A model can't read base64. In one real
+  turn the `google` server's `get_gmail_attachment_content`, called with
+  `return_base64=true`, sent a PDF as 109,068 characters of it, and the model
+  read 16,000 characters of noise. `stripBase64` in `base64.go` swaps each run
+  of `minBase64` (2,000) or more base64 characters for a note that gives the
+  length. The limit keeps what the model must pass back: a Gmail attachment
+  ID runs to about 400 characters, and 2,000 characters of base64 hold only
+  1,500 bytes, less than any real file. A run counts on one line, or wrapped
+  over lines of one width between 60 and 100 characters, the way MIME and PEM
+  wrap it; a list of IDs one to a line doesn't match, because the IDs are
+  wider. It walks bytes, not characters: every base64 character is plain
+  ASCII, and no byte of a multi-byte UTF-8 character looks like one, so a cut
+  never splits a character. It runs before `Attachments`, so the attachment
+  text gets the room the blob took. Built-in tools and commands keep their
+  text as it came.
 - **A saved attachment joins the result.** `Options.Attachments`, which merud
   fills with the built-in tools' `AttachmentText`, gets the text of each MCP or
   A2A call that ended `ok` and the time the call began. It returns a mail
@@ -346,7 +361,14 @@ backend's `Sources` come back through `Dispatch` as `[11]` and `[12]`.
 `TestAuditor` checks that an Auditor's arguments reach the line,
 the prompt and the row, redacted. `TestCallConfirmer` checks that a per-call
 answer wins, that `Confirm` decides when there is none, that the question
-reaches the backend, and that a job's asking call is declined. `TestMCPBackend` runs the backend against a real
+reaches the backend, and that a job's asking call is declined.
+`TestStripBase64` checks that a 109,068-character blob becomes the note with
+its length, that a run inside a line or wrapped at 76 characters goes too,
+and that 400-character attachment IDs, a run one short of the limit, short
+wrapped base64 and prose stay. `TestDispatchStripsBase64` checks that the
+model, the transcript and the row get the note, with the attachment's text
+still added after it, and that a built-in tool's result keeps its base64.
+`TestMCPBackend` runs the backend against a real
 MCP server on 127.0.0.1.
 
 ## Why it's built this way

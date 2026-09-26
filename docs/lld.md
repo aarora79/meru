@@ -609,14 +609,17 @@ The same path as a reading list, in order:
    an ID, emits `tool_call`, and runs the calls at the same time in an
    `errgroup`, each through `ToolRunner.Dispatch`. Each result goes back to the
    model as a `RoleTool` message, in call order, and each call emits
-   `tool_result` as it ends. The loop stops when a round has no tool calls. The
+   `tool_result` as it ends. The loop stops when a round has no tool calls. When
+   that round has no text either and the turn has a round left, `retryEmpty`
+   asks the model once more with no tools and a nudge to answer. The
    whole turn runs under `[agent] turn_timeout`; a turn that runs out of time,
    hits the token cap or ends with no text answers with an apology
    (`endTurn`).
 9. **`internal/dispatch/dispatcher.go` → `Dispatch`** finds the backend that
    offers the tool, or ends the call as `denied`. It writes the `tool_call` line,
-   asks through `approve` when the tool needs a yes, runs `Backend.Call`, adds the text of a mail
-   attachment an MCP or A2A call saved (`Options.Attachments`), redacts
+   asks through `approve` when the tool needs a yes, runs `Backend.Call`, swaps long base64 runs in an MCP or
+   A2A result for a note (`stripBase64`), adds the text of a mail
+   attachment such a call saved (`Options.Attachments`), redacts
    secrets, cuts the result (16,000 characters for the model, 4,000 for the log),
    and writes the `tool_result` line, the `tool_calls` row, the metrics and the
    `meru.dispatch` span.

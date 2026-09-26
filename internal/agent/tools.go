@@ -172,6 +172,9 @@ type turn struct {
 	// repeats counts the calls the model repeated this turn. At maxRepeats
 	// the turn stops offering tools.
 	repeats int
+	// emptyRetry is true once the turn has asked the model a second time
+	// after a round with no text (see retriesEmpty). A turn does it once.
+	emptyRetry bool
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.
@@ -303,6 +306,8 @@ const (
 // The last round a.maxRounds allows offers no tools, so the model has to
 // answer with what it has. So does every round after the model has
 // repeated a call maxRepeats times. With no specs, a turn has one round.
+// A round that ends the turn with no text gets one more try when the turn
+// has a round left: see retriesEmpty.
 //
 // It returns the final round's text and stop reason, with the usage
 // counters summed over every round and the time of the turn's first text
@@ -328,6 +333,9 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 		if len(rep.calls) == 0 || len(offer) == 0 {
 			a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 				"ms", time.Since(start).Milliseconds())
+			if a.retriesEmpty(t, rep) {
+				return a.retryEmpty(ctx, t, msgs, total)
+			}
 			total.text, total.doneReason = rep.text, rep.doneReason
 			return total, nil
 		}
@@ -343,6 +351,58 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 		a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", len(rep.calls),
 			"ms", time.Since(start).Milliseconds())
 	}
+}
+
+// retriesEmpty says whether converse should ask the model once more after
+// rep, a round that ended the turn with no text. A thinking model can spend
+// a whole round reasoning and then stop with nothing to show. A real turn
+// ran web_search and got eight good results; the next round held 205
+// tokens of hidden thinking and no answer, and the user read "Sorry, I
+// couldn't answer that." with seven rounds left. Asked again, the same
+// question worked.
+//
+// It says yes once per turn, only when the turn has a round left, and never
+// after a round that stopped at the token cap: a model that thought until
+// max_output_tokens ran out would likely do it again, and the user would
+// wait twice as long for the same apology. A turn out of time never gets
+// here, because its last round fails with the deadline's error.
+func (a *Agent) retriesEmpty(t *turn, rep reply) bool {
+	return strings.TrimSpace(rep.text) == "" && rep.doneReason != "length" &&
+		!t.emptyRetry && t.rounds < a.maxRounds
+}
+
+// emptyNudge is the message the empty-reply retry adds after the turn's
+// messages. It goes in as a user message, because some models' chat
+// templates accept a system message only in first place (see
+// buildMessages). It lives only in that one model call. The transcript
+// never records it, so the session's history holds only what the user typed.
+const emptyNudge = "Answer the question now in plain text, from the tool results above " +
+	"and what you know. Don't call a tool."
+
+// retryEmpty makes the one retry that retriesEmpty allows. It calls the
+// model with msgs, the turn so far, plus emptyNudge, and offers no tools,
+// so the model has to answer in text. The empty round's hidden thinking
+// stays out: feeding it back would hand the model its own dead end.
+//
+// It returns total, the turn's stats so far, with this call's usage added
+// and its text and stop reason as the turn's. When this call is empty too,
+// Handle ends the turn with the usual apology. It fails as answer does.
+func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, total reply) (reply, error) {
+	t.rounds++
+	t.emptyRetry = true
+	a.log.DebugContext(ctx, "empty reply: asking the model once more, with no tools", "round", t.rounds)
+	start := time.Now()
+	// slices.Concat builds a new slice, so msgs itself doesn't change.
+	nudged := slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: emptyNudge}})
+	rep, err := a.answer(ctx, nudged, nil, t.emit)
+	total.add(rep)
+	total.text, total.doneReason = rep.text, rep.doneReason
+	if err != nil {
+		return total, err
+	}
+	a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
+		"empty_retry", true, "ms", time.Since(start).Milliseconds())
+	return total, nil
 }
 
 // add folds one round's reply into r: the token counts and durations sum,

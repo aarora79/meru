@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -531,7 +531,8 @@ and still answers; when `ctx` ended, you hung up and the turn fails as before.
 **A turn that ends without a full answer still answers.** `endOf` names how it
 ended: `timeout`, `cut_off` (the last model call stopped with
 `done_reason = "length"`) or `gave_up` (the answer holds no text, as when the
-last round only called tools). `endTurn` then sends the words as ordinary
+last round only called tools, or a thinking model stayed silent through the
+one retry that `converse` gives it; see the tool rounds below). `endTurn` then sends the words as ordinary
 `token` events, so `meru` and `meru chat` show them with no change:
 
 - no text yet: `Sorry, I couldn't answer that. Try asking again, or rephrase the question.`
@@ -971,6 +972,23 @@ for {
   you again for a call that asks first. The transcript has no line type for a
   note, so a repeat shows up only in a debug log line (`tool call repeated`)
   and in the turn span's `meru.turn.repeated_calls` count.
+- **An empty reply gets one retry.** A thinking model such as
+  `qwen3.6:35b` can spend a whole round on hidden thinking and stop with no
+  text and no tool call. In one real turn it got eight good `web_search`
+  results, wrote 205 tokens of thinking and nothing else, and you read the
+  sorry with seven rounds left. Now, when the round that ends the turn has no
+  text, `retriesEmpty` checks three things: the turn hasn't retried yet, it
+  has a round left, and the round didn't stop at the token cap (a model that
+  thought until the cap would likely do it again). When all three hold,
+  `retryEmpty` calls `answer` once more with no tools and one extra message,
+  `emptyNudge`, as the user role: some chat templates take a system message
+  only in first place. `slices.Concat` builds that list as a new slice, so
+  `msgs` stays as it was. The empty round's thinking never goes back to the
+  model. The nudge lives only in that call: `Handle` writes the question and
+  the final answer to the transcript, never `msgs`, so the session's history
+  shows only what you typed. The retry counts as a round, logs a debug line
+  and sets `meru.turn.empty_retry` on the turn span. If it comes back empty
+  too, `endOf` says `gave_up` and you read the sorry.
 - **What the model reads next round.** Its own message with the calls, then
   one `RoleTool` message per call, in call order, with `ToolName` set to the
   tool's full name and `Content` set to `Result.Text`. A denied or declined
@@ -983,7 +1001,8 @@ for {
   caller's `reply` in place.
 - **`turn`** is a small struct that carries what the rounds need: the
   session, source, trace ID, `emit`, `approve`, three counters, `rounds`,
-  `calls` and `repeats`, the `seen` map of results by call key, and the turn's sources with `cites`, the count of citation
+  `calls` and `repeats`, the `emptyRetry` flag, the `seen` map of results by
+  call key, and the turn's sources with `cites`, the count of citation
   numbers handed out. `Handle` reads `t.rounds` in its deferred function, so a
   failed turn still reports how many rounds it ran.
 
@@ -1176,6 +1195,17 @@ second request sent Ollama: the call, its result and the tool schema.
 in the attachments folder and names it; the test checks that the model called
 that one tool, never `read_file`, and that the second request's tool message
 held the PDF's pages (see [builtin](builtin.md), attachments.go).
+
+`emptyreply_test.go` runs `TestEmptyReplyRetry` against the fake Ollama, whose
+thinking-only reply has no text. A thinking-only round after a search, and one
+on a `direct` turn, each get one retry that answers: the turn ends `ok`, and
+the retry's request offers no tools and ends with `emptyNudge` as a user
+message. A turn whose retry is empty too ends `gave_up` with the sorry, after
+one retry, not two. A thinking-only reply on the last round gets no retry.
+Each case checks the transcript holds one user line and never the nudge, and
+that the turn span's `meru.turn.empty_retry` says whether the retry ran.
+`TestTurnLimits` in `limits_test.go` still holds a thinking-only reply that
+hits the token cap: it ends `cut_off` with no retry.
 
 `profile_test.go` checks `formatProfile` (order, one line per fact, the cap
 keeping the newest, empty), where the section sits in the system prompt, that

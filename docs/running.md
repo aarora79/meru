@@ -530,6 +530,12 @@ says so instead of going quiet:
 Sorry, I couldn't answer that. Try asking again, or rephrase the question.
 ```
 
+A thinking model sometimes spends a round on hidden reasoning and writes
+nothing at all. When the turn has a round left, Meru asks it once more, with no
+tools, to answer from what it has, and you see the sorry only if that reply is
+empty too. With `[log] level = "debug"`, `merud.log` shows a line that starts
+`empty reply: asking the model once more` when that happens.
+
 If part of the answer had already appeared, it stays, followed by a note that
 Meru stopped it. The `turn` line in `merud.log` then shows `outcome=timeout`,
 `outcome=cut_off` or `outcome=gave_up`. On the `full` profile a long answer
@@ -1074,8 +1080,15 @@ Dana Reyes, room 214 ...
 So the model answers from the text in its next round. A file longer than
 12,000 characters ends with the offset to pass `read_file` for the rest. Only a
 file the call saved counts, and at most two per result. `meru log` shows the
-first 4,000 characters of the result, the added text included. The server
-deletes each saved file after an hour. This needs at least one `[index]` folder,
+first 4,000 characters of the result, the added text included. When the model
+asks for the file as base64 (`return_base64=true`), `merud` swaps the base64,
+which the model can't read, for one line, and the text still follows:
+
+```text
+[base64 data, 109068 characters, removed by Meru; the file's text is below when Meru could read it]
+```
+
+The server deletes each saved file after an hour. This needs at least one `[index]` folder,
 which turns the file tools on. If you changed `[skills] output_dir`, point
 `WORKSPACE_ATTACHMENT_DIR` at the `attachments` folder inside it.
 
@@ -1446,7 +1459,7 @@ later.
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
 | The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
-| "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools; ask again in other words). |
+| "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools, or wrote nothing twice; ask again in other words). |
 | Anything else | Run `merud -v` and read `~/.meru/merud.log`. |
 
 ## 13. Uninstall
