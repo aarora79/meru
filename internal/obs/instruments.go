@@ -68,7 +68,7 @@ var (
 	tiers         = []string{"fast", "main", "embed"}
 	routes        = []string{"direct", "search", "tools", "search+tools"}
 	sources       = []string{"cli", "tui", "job", "desktop"}
-	turnOutcomes  = []string{"ok", "error", "cancelled", "timeout", "cut_off", "gave_up"}
+	turnOutcomes  = []string{"ok", "error", "cancelled", "timeout", "cut_off", "gave_up", "bad_output"}
 	routeOutcomes = []string{"ok", "low_confidence", "degraded"}
 	sections      = []string{"system", "skills", "memories", "sessions", "chunks", "history", "tools"}
 	stages        = []string{"vector", "fts", "fusion", "memories", "sessions"}

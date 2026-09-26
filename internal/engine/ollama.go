@@ -139,6 +139,23 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("ollama %s: %d %s: %s", e.Path, e.StatusCode, http.StatusText(e.StatusCode), e.Message)
 }
 
+// ErrModelOutput marks an error line that Ollama sent part way through a
+// stream, after it had answered 200 OK. Ollama sends one when its parser for
+// the model's own format rejects what the model wrote, most often a tool
+// call. Ollama 0.34, reading a malformed tool call from a qwen model, sent
+// {"error":"XML syntax error on line 8: element <function> closed by
+// </parameter>"}. The model wrote bad output, so asking it again can work.
+//
+// Stream wraps every such line in ErrModelOutput and reads nothing more into
+// Ollama's wording. A failure before the stream starts (Ollama down, a model
+// that isn't pulled, any non-2xx status) comes back as an *APIError or a
+// transport error instead, and asking again won't help. Callers test for
+// this one with errors.Is(err, engine.ErrModelOutput).
+//
+// errors.New builds the error value once. errors.Is finds it even inside an
+// error that wraps it with fmt.Errorf's %w.
+var ErrModelOutput = errors.New("ollama couldn't read the model's output")
+
 // Generate sends msgs to opts.Model through POST /api/chat and waits for the
 // whole answer. It fails when the model is empty, the request fails, Ollama
 // answers with a non-2xx status, or the reply isn't valid JSON.
@@ -187,7 +204,8 @@ func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []Too
 //
 // Stream itself fails for the same reasons as Generate, before any text
 // arrives. Errors after that (a dropped connection, a cancelled ctx, an
-// error line from Ollama) come out of the sequence as its last item.
+// error line from Ollama) come out of the sequence as its last item. An
+// error line wraps ErrModelOutput.
 //
 // The caller must range over the sequence, once. The HTTP response stays
 // open until the loop ends or ctx is cancelled.
@@ -246,8 +264,11 @@ func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolS
 				fail(fmt.Errorf("ollama stream: decode line: %w", err))
 				return
 			}
+			// An error line after a 200 OK means Ollama couldn't read what
+			// the model wrote: see ErrModelOutput. %w wraps ErrModelOutput
+			// so errors.Is finds it; Ollama's own text follows.
 			if r.Error != "" {
-				fail(fmt.Errorf("ollama stream: %s", r.Error))
+				fail(fmt.Errorf("ollama stream: %w: %s", ErrModelOutput, r.Error))
 				return
 			}
 			d := Delta{Text: r.Message.Content, ToolCalls: fromChatToolCalls(r.Message.ToolCalls)}

@@ -97,6 +97,27 @@ for sc.Scan() {
 }
 ```
 
+A line with an `error` field ends the stream with an error. Ollama sends one
+when its parser for the model's own format rejects what the model wrote,
+most often a tool call, and by then it has already answered 200 OK. Ollama
+0.34 sent `{"error":"XML syntax error on line 8: element <function> closed
+by </parameter>"}` for a malformed call from a qwen model. `Stream` wraps
+every such line in the sentinel error `ErrModelOutput`:
+
+```go
+var ErrModelOutput = errors.New("ollama couldn't read the model's output")
+...
+fail(fmt.Errorf("ollama stream: %w: %s", ErrModelOutput, r.Error))
+```
+
+A *sentinel* is one error value made once with `errors.New` for callers to
+compare against. `%w` wraps it, so `errors.Is(err, engine.ErrModelOutput)`
+finds it under any context the callers add, and the agent retries the round
+(see [agent](agent.md)). `Stream` reads nothing more into Ollama's wording:
+any error line counts. A failure before the stream starts, such as a non-2xx
+status or Ollama down, is an `*APIError` or a transport error instead, and
+asking the model again won't fix it.
+
 `Embed` posts all texts to `/api/embed` in one request and checks that one vector
 came back per text. `Info` reads `/api/version` and `/api/ps`.
 
@@ -174,7 +195,11 @@ go test -race ./internal/engine/
 
 The unit tests start a fake Ollama with `httptest` and need no model.
 `observe_test.go` checks the span, the status attribute and each debug line,
-and that no message text reaches either. To run against the real Ollama:
+and that no message text reaches either. `TestStreamErrors` checks that an
+error line, Ollama's XML error among them, satisfies
+`errors.Is(err, ErrModelOutput)` and that a bad JSON line or a stream with no
+done line doesn't. `TestStreamHTTPErrorIsNotModelOutput` checks that an HTTP
+500 stays an `*APIError`. To run against the real Ollama:
 
 ```sh
 go test -tags integration -v -run Integration ./internal/engine/
