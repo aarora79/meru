@@ -221,8 +221,9 @@ func (d *Dispatcher) find(name string) Backend {
 //     confirmFor and approve);
 //  4. runs the call on the backend, which enforces its own timeout, with
 //     the call's session on ctx (see SessionFrom), and, for an MCP or A2A
-//     call that succeeded, adds the text of any attachment it saved (see
-//     Options.Attachments);
+//     call, replaces long runs of base64 with a short note (see
+//     stripBase64) and, when the call succeeded, adds the text of any
+//     attachment it saved (see Options.Attachments);
 //  5. cuts the result for the model and removes secrets from it;
 //  6. writes the tool_result line, for every call, whatever its outcome;
 //  7. writes the tool_calls row;
@@ -279,13 +280,19 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		res, outcome, approval, ran = d.run(ctx, c, b, kind, server, tool, args)
 	}
 
-	// Step 4, the attachment. It comes before the redaction and the cuts,
-	// so the transcript and the row record the result as the model reads
-	// it, and a secret in the attachment goes too. Built-in tools and
-	// local commands are left out: they don't save mail attachments, and
-	// read_file must return only the page it was asked for.
-	if d.attach != nil && outcome == OutcomeOK && (kind == KindMCP || kind == KindA2A) {
-		res.Text += d.attach(res.Text, start)
+	// Step 4, the base64 and the attachment. Both come before the
+	// redaction and the cuts, so the transcript and the row record the
+	// result as the model reads it, and a secret in the attachment goes
+	// too. Built-in tools and local commands are left out: they don't send
+	// files or save mail attachments, and read_file must return only the
+	// page it was asked for.
+	if kind == KindMCP || kind == KindA2A {
+		// The base64 goes first, so the attachment text gets the room the
+		// blob took (see builtin.AttachmentText).
+		res.Text = stripBase64(res.Text)
+		if d.attach != nil && outcome == OutcomeOK {
+			res.Text += d.attach(res.Text, start)
+		}
 	}
 
 	// Step 5. Redact first, so a secret that straddles the cut still goes.

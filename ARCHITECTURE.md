@@ -699,9 +699,14 @@ order.
       the outcome is `declined`.
    4. **Call.** The MCP server, A2A agent, built-in tool or local command runs,
       under its own timeout. The outcome is `ok`, `error`, `timeout` or
-      `cancelled`. When an MCP or A2A call ends `ok` and its result names a mail
-      attachment the call saved, `dispatch` adds the file's path and text to the
-      result (see [Adding an MCP server](#adding-an-mcp-server)).
+      `cancelled`. In an MCP or A2A result, `dispatch` replaces each run of
+      2,000 or more base64 characters, on one line or wrapped at one width,
+      with a note that gives its length. A model can't read base64: in a real
+      turn one PDF came back as 109,068 characters of it. A Gmail attachment
+      ID, about 400 characters, stays, because the model passes it back. When
+      the call ends `ok` and its result names a mail attachment the call
+      saved, `dispatch` then adds the file's path and text to the result (see
+      [Adding an MCP server](#adding-an-mcp-server)).
    5. **Record.** `dispatch` removes secret values from the arguments, the result
       and any error text, then writes the `tool_result` line, the `tool_calls` row,
       the metrics and the `meru.dispatch` span. The model reads up to 16,000
@@ -723,6 +728,17 @@ order.
    the second repeat, later rounds offer no tools. A 2B model offered only
    `datetime` once called it with no arguments in all eight rounds.
 
+   A round can end with no text and no tool call, when a thinking model spends
+   it all on hidden reasoning. When the turn has a round left and the round
+   didn't stop at `max_output_tokens`, `merud` asks once more: the same
+   messages plus a user message telling the model to answer now in plain text
+   from the tool results, with no tools offered. The empty round's thinking
+   stays out, and the nudge lives only in that call, never in the transcript. A
+   turn retries once; a second empty reply ends it `gave_up`. The turn span
+   records the retry as `meru.turn.empty_retry`. In a real turn a thinking
+   model got eight good `web_search` results, then wrote 205 tokens of thinking
+   and nothing else, and the user read the sorry with seven rounds left.
+
 A turn has `[agent] turn_timeout` (default `"5m"`) from question to answer,
 waits for your approvals included. When the time runs out, `merud` cancels the
 turn's context, which stops the Ollama request and any tool calls. A turn that
@@ -732,7 +748,7 @@ ends without a full answer still answers, with an outcome of its own:
 | --- | --- | --- |
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
-| `gave_up` | the rounds ended with no text, such as only tool calls | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
@@ -2598,7 +2614,8 @@ We'll settle these with working code and measurements.
   trust comes only from editing the `confirm` list. With no one to ask (scripts,
   scheduled jobs), `dispatch` declines the call.
 - **Tool results:** the model reads up to 16,000 characters of each result; the
-  transcript and `tool_calls` keep 4,000, with secrets removed.
+  transcript and `tool_calls` keep 4,000, with secrets removed. Base64 runs of
+  2,000 characters or more in an MCP or A2A result become a short note first.
 - **Secrets:** one file, `~/.meru/secrets.toml`, mode `0600`, referred to from
   config as `secret:<name>`. No system keychain: each platform has its own, and a
   file only you can read works the same everywhere.

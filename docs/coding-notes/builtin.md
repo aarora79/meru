@@ -391,7 +391,9 @@ page. `joinPages` numbers the pages as `read_file` does. The text is at most
 12,000 characters, `read_file`'s page, and less when the result is long: the
 files share what the result leaves under `dispatch.MaxModelResult`, less 600
 characters each for their lines, so `dispatch`'s cut never drops the line that
-says how to read on.
+says how to read on. `dispatch` swaps any long base64 run for a short note
+before it calls `AttachmentText`, so a result that carried the file as base64
+leaves room for its text.
 
 With no `[index] folders`, `merud` passes no indexer, the file tools are off,
 and `AttachmentText` returns "".

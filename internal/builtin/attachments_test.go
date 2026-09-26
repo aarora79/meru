@@ -93,7 +93,9 @@ func TestAttachmentText(t *testing.T) {
 			want: []string{"Read it with read_file; the text below is its first part.", "--- Meru read folio.md (12000 of 30000 characters) ---",
 				"[18000 more characters. To read on, call read_file with path ", "/attachments/folio.md\" and offset 12000.]"}},
 		{name: "a long result leaves less room", files: map[string]string{"folio.md": longText()},
-			text: result("folio.md") + strings.Repeat("x", 10000),
+			// Words, not one long run of letters: dispatch would take a
+			// run that long for base64 and swap it for a short note.
+			text: result("folio.md") + strings.Repeat("x ", 5000),
 			want: []string{"the text below is its first part.", "To read on, call read_file with path "}},
 		{name: "at most two files", files: map[string]string{"a.md": "first", "b.md": "second", "c.md": "third"},
 			text: "Saved a.md, b.md and c.md.", want: []string{"first", "second"}, count: 2},
