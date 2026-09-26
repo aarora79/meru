@@ -1,6 +1,6 @@
 # transcript
 
-**Code:** `internal/transcript/` (`doc.go`, `transcript.go`)
+**Code:** `internal/transcript/` (`doc.go`, `transcript.go`, `list.go`)
 **Milestone:** v0.1; tool lines and the assistant line's route, ms and sources in v0.3;
 summary lines and `ReadFrom` in v0.4
 **Architecture:** [Session transcripts](../../ARCHITECTURE.md#session-transcripts)
@@ -116,6 +116,21 @@ skip rule as `read`; both share `readFile`. The store's `ReplayToolCalls` uses i
 to rebuild `tool_calls` from the `tool_call`, `approval` and `tool_result` lines
 that `dispatch` writes, and `ReplayTurns` to rebuild `turns` from the user,
 `tool_call` and assistant lines.
+
+### List and Lines
+
+`list.go` serves the desktop app's list of past chats. `List(dir, limit)` walks the
+sessions folder with `filepath.WalkDir`, which never follows a symbolic link, and
+keeps each file whose name matches the session ID pattern. It sorts them by the
+time the file last changed, newest first, and reads only as many as it returns:
+each file gives its first question as the title, cut to 80 characters on one
+line, and its number of questions. A session with no question, such as one that
+failed before its first line, stays out.
+
+`Session.Lines()` returns every line of one open session, for `merud`'s
+`session_turns` op, which groups them into turns (see [merud](merud.md)).
+`testdata/sessions/` holds three small session files and one stray file for
+`List`'s tests, including a torn line.
 
 ### Summary lines
 

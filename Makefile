@@ -29,7 +29,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build router-eval pick-eval check clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app router-eval pick-eval check clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -88,12 +88,40 @@ tidy-check: ## Fail if go.mod or go.sum aren't tidy or don't verify
 actionlint: ## Lint the GitHub Actions workflows
 	go run $(ACTIONLINT)
 
+# cmd/meru-desktop builds only with -tags desktop, so ./cmd/... here skips
+# it and the cross-compile stays free of cgo. `make desktop` builds it.
 build: ## Cross-compile ./cmd/... into ./bin/GOOS-GOARCH/
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; \
 		echo "build $$os/$$arch"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o bin/$$os-$$arch/ ./cmd/... || exit 1; \
 	done
+
+# The desktop app uses Wails v3, which needs cgo and the system's WebView,
+# so it builds on, and for, the machine that runs the build. The desktop
+# tag takes in cmd/meru-desktop; the production tag turns off Wails'
+# development features, the web inspector and the dev-server probe. On
+# macOS the C flags match the macOS version the Go linker targets, which
+# keeps the linker from warning about each object file.
+DESKTOP_TAGS := desktop production
+DESKTOP_CGO  := CGO_ENABLED=1
+ifeq ($(shell go env GOOS),darwin)
+DESKTOP_CGO += CGO_CFLAGS="-O2 -g -mmacosx-version-min=11.0" CGO_LDFLAGS="-mmacosx-version-min=11.0"
+endif
+
+desktop: ## Build the desktop app for this machine into bin/meru-desktop (needs cgo)
+	$(DESKTOP_CGO) go build -trimpath -tags "$(DESKTOP_TAGS)" -o bin/meru-desktop ./cmd/meru-desktop
+
+desktop-check: ## Vet, lint and vuln-check cmd/meru-desktop with its tags (needs cgo)
+	$(DESKTOP_CGO) go vet -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
+	$(DESKTOP_CGO) go run $(STATICCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
+	$(DESKTOP_CGO) go run $(GOVULNCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
+
+desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
+	rm -rf bin/Meru.app
+	mkdir -p bin/Meru.app/Contents/MacOS
+	cp cmd/meru-desktop/Info.plist bin/Meru.app/Contents/Info.plist
+	cp bin/meru-desktop bin/Meru.app/Contents/MacOS/meru-desktop
 
 check: fmt-check vet lint tidy-check test e2e build vuln sec secrets actionlint ## Run every check CI runs, in CI's order
 

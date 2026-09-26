@@ -23,6 +23,7 @@ its top.
 | Tests with race detector | ci / test (Linux and macOS) | Failing tests, including the policy tests below; two goroutines touching the same memory without a lock | `make test` |
 | Coverage | ci / test | Nothing fails on it; the job summary shows the total and the profile is kept as an artifact for 14 days | `make cover` |
 | Cross-compile | ci / build | Code that builds on your OS but not on another; accidental cgo | `make build` |
+| Desktop app | ci / desktop (macOS) | The desktop app failing to build with cgo and the WebView, or failing vet, staticcheck or govulncheck with its build tags | `make desktop desktop-check` (needs cgo) |
 | End-to-end | ci / e2e | A real `merud` and `meru` failing together against the fake Ollama | `make e2e` |
 | actionlint | ci / actionlint | Mistakes in the workflow files themselves | `make actionlint` |
 | govulncheck | security / govulncheck | Known vulnerabilities in the Go toolchain or a module, reported only when Meru's code can reach them | `make vuln` |
@@ -35,6 +36,15 @@ The cross-compile covers darwin/arm64, darwin/amd64, linux/amd64, linux/arm64
 and windows/amd64, all with `CGO_ENABLED=0`. Meru promises plain native
 binaries, and a cgo dependency would break that promise on the first platform
 without a C compiler.
+
+The desktop app is the one exception, kept apart. Its window library, Wails v3,
+needs cgo and the system's WebView, so `cmd/meru-desktop` builds only with the
+`desktop` build tag. Every other job, and `make check`, skips it. The `desktop`
+job builds it on a macOS runner with `make desktop`, then runs `make
+desktop-check`: go vet, staticcheck and govulncheck with the same tags, since the
+usual jobs never see its code. The rest of the app, `internal/desktop`, has no
+tag and runs in the test job. Linux (WebKitGTK) and Windows (WebView2) jobs come
+later.
 
 The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. They build
 the real `merud`, `meru` and `fakeollama` binaries and drive them as separate
@@ -58,8 +68,8 @@ violation blocks a merge like any failing test.
 | `TestGoModRequiresNoDeniedModule` | `go.mod` requires one of those modules, even unused |
 | `TestNoProviderHostLiterals` | A string literal in shipped code names a cloud-model API host |
 | `TestNoNonLoopbackURLLiterals` | A string literal in shipped code holds an `http`, `https`, `ws` or `wss` URL whose host isn't loopback |
-| `TestClientImports` | `cmd/meru` imports the engine, transcript, agent or store packages, the OpenTelemetry SDK, or calls `obs.Setup` |
-| `TestClientDependencies` | `cmd/meru` reaches one of those packages through another package; the message shows the import chain |
+| `TestClientImports` | A client (`cmd/meru`, `cmd/meru-desktop` or `internal/desktop`) imports a daemon-side package such as engine, transcript, agent or store, the OpenTelemetry SDK or Wails' updater, calls `obs.Setup`, or uses an `Updater`; the desktop app may not import `catalog`, `secrets` or `tui` either |
+| `TestClientDependencies` | A client reaches one of those packages through another package; the message shows the import chain. The desktop app is listed with `-tags desktop,production` |
 
 Each failure names the file and line. A few rules decide what counts:
 

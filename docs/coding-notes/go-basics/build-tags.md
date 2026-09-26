@@ -38,6 +38,13 @@ form for platform code.
 
 ## Where Meru uses it
 
+- `cmd/meru-desktop/main.go` — `//go:build desktop`. The desktop app needs cgo
+  and the system's WebView, so the go command skips it unless you pass
+  `-tags desktop`. Because every file in the folder carries the tag, `go build
+  ./...` and the cross-compiles skip the whole command. `make desktop` passes
+  `-tags "desktop production"`; `production` is Wails' own tag, which turns off its
+  development features.
+
 - `test/e2e/` — the end-to-end tests carry `//go:build e2e`, because they build
   the real binaries and take longer. `make e2e` runs them, and so does the
   `e2e` job in CI.

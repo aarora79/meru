@@ -210,6 +210,57 @@ mouse_copy = false
 One-shot `meru "..."` prints no labels: its output stays plain for pipes and
 scripts.
 
+### The desktop app
+
+`meru-desktop` shows the same conversations in a window. It runs on macOS for now,
+and it talks to the `merud` you already run, so start `merud` first.
+
+It builds on its own, because its window library, Wails, needs a C compiler and
+the system's WebView. On a Mac, the Xcode command line tools bring both
+(`xcode-select --install`). From the repository:
+
+```sh
+make desktop            # writes bin/meru-desktop
+./bin/meru-desktop      # opens the window
+```
+
+`make desktop-app` wraps the same binary in `bin/Meru.app`, which you can drag to
+`/Applications` and open like any app. The app finds `merud` at
+`~/.meru/merud.sock`; `-socket path` points it elsewhere. The usual `go install`,
+`go build ./...` and `make build` skip the app, so they still need no C compiler.
+
+What you see:
+
+- **On the left**, New chat, a search box that filters your chats, and your past
+  chats grouped Today, Yesterday and Earlier. A click reopens one, and your next
+  question carries it on. At the bottom, a block says whether `merud` runs, which
+  model writes the answers, how many files Meru can search and which tools are
+  connected. When `merud` isn't running, it says so and shows the command that
+  starts it.
+- **In the middle**, the conversation. Each answer opens with one line of what Meru
+  did, such as "Searched mail · Read lisbon.md"; "Show steps" shows the raw tool
+  names and times. The answer streams as plain text and turns into formatted text
+  when it ends. Each code block has a Copy button, each source a chip that opens
+  the file, and each answer Copy, Try again and a dim line of timings.
+- **On the right**, "What this answer used": the sources, the tools with their
+  server and time, and a line such as "The model ran on this Mac. Only google was
+  contacted." On a narrow window, "What it used" at the top opens it.
+
+Enter sends and Shift+Enter starts a new line. While an answer runs, Enter queues
+your next question, five at most; each shows above the box with a button that
+removes it, and Stop ends the answer and drops the queue. When Meru wants to run a
+tool that asks first, an amber card shows up inside the answer with the tool and
+its arguments, a mail's To, Subject and Body laid out to read. Choose Allow once,
+Allow for this chat or Don't allow. The card starts on Don't allow, so Enter alone
+runs nothing.
+
+Links in answers open in your browser; Meru opens only `http`, `https` and `file`
+links. The app loads nothing from the internet: its fonts and code ship inside it.
+
+Not in the app yet: turning tools on and off, first-run setup, a switch for where
+Meru looks, and dropping files on the window. Use `meru setup` and `meru mcp add`
+for those.
+
 ### Tell Meru about you
 
 Meru puts what it knows about you into every prompt: your name, your work, where
@@ -1476,6 +1527,8 @@ disk space the models use, run `ollama rm` with each model's name.
 ## For developers
 
 `make check` runs every check CI runs, `make e2e` runs the end-to-end tests against
-a fake Ollama, and [docs/ci.md](ci.md) explains each one. [AGENTS.md](../AGENTS.md)
+a fake Ollama, and [docs/ci.md](ci.md) explains each one. The desktop app has its
+own targets, since it needs cgo: `make desktop` builds it and `make desktop-check`
+vets, lints and vuln-checks it with its build tags. [AGENTS.md](../AGENTS.md)
 holds the rules for changing the code, and [docs/coding-notes/](coding-notes/)
 explains each package for readers new to Go.

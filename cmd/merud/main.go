@@ -238,6 +238,10 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
+	// The session ops show source paths as ~/... like a live turn does. A
+	// home folder merud can't find leaves the paths whole.
+	home, _ := os.UserHomeDir()
+	hist := historyService{dir: sessionsDir, home: home}
 	log.Info("listening", "socket", socketPath)
 
 	// An errgroup runs each function in its own goroutine and Wait waits
@@ -247,7 +251,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// of the memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, hist, st), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watch(gctx); return nil })
 	g.Go(func() error { sum.Run(gctx); return nil })
@@ -306,10 +310,11 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index ops to the index service, the tools, log and MCP probe,
-// reload and status ops to the tool service, the memory ops to the memory service, the skill ops to the skill
-// service, and the usage op to the store. The rpc server answers pings
-// itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, st *store.Store) rpc.Handler {
+// reload and status ops to the tool service, the memory ops to the memory
+// service, the skill ops to the skill service, the session ops to the
+// history service, and the usage op to the store. The rpc server answers
+// pings itself.
+func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, hist historyService, st *store.Store) rpc.Handler {
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -342,6 +347,10 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 			return sk.handleShow(ctx, req, emit)
 		case rpc.OpSkillReset:
 			return sk.handleReset(ctx, req)
+		case rpc.OpSessions:
+			return hist.handleSessions(req.Limit, emit)
+		case rpc.OpSessionTurns:
+			return hist.handleTurns(req.Session, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

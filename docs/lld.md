@@ -8,7 +8,8 @@ page explains *where* each part lives. It describes v0.3: the v0.1 question path
 the v0.2 store, indexer and hybrid search, and v0.3's tools: `dispatch`, the MCP
 and A2A clients, the built-in `configure` tool, approvals over the socket, and
 `meru setup`. It also covers the v0.4 work built so far: the profile, memory
-recall, session summaries and past conversations, skills and `write_file`.
+recall, session summaries and past conversations, skills and `write_file`, and
+the desktop app.
 
 You need three Go ideas to follow it:
 
@@ -26,13 +27,17 @@ You need three Go ideas to follow it:
 
 ## 1. Two programs and their packages
 
-Meru builds two programs from `cmd/`. Everything else is a package under
-`internal/`, which Go allows only code inside this repo to import.
+Meru builds two programs from `cmd/`, plus the desktop app, which builds only with
+the `desktop` build tag. Everything else is a package under `internal/`, which Go
+allows only code inside this repo to import.
 
 | Package | What it does | Start reading at |
 | --- | --- | --- |
 | `cmd/merud` | the daemon: starts everything, serves questions, the index ops and the tool ops | `main.go`: `main`, `run`, `serve`, then `index.go` and `tools.go` |
 | `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go`, `mcp.go`, `probe.go` |
+| `cmd/meru-desktop` | the desktop app's window (Wails v3, build tag `desktop`): opens it, serves the page, binds the Bridge | `main.go`: `run` |
+| `internal/desktop` | everything in the desktop app that needs no window: the Bridge the page calls, the views it sends, and the page (`web/`) | `bridge.go`: `Send`, `run`, then `views.go`, `history.go`, `status.go`, `assets.go` |
+| `internal/opener` | hands an `http`, `https` or `file` URL to the system's opener, with no shell | `opener.go`: `Check`, `Open` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
@@ -46,7 +51,7 @@ Meru builds two programs from `cmd/`. Everything else is a package under
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, and the safe append to `config.toml` | `catalog.go`: `Entries`, then `block.go` and `append.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
-| `internal/transcript` | reads and writes session files (JSONL) | `transcript.go`: `New`, `Append`, `History` |
+| `internal/transcript` | reads and writes session files (JSONL), and lists them | `transcript.go`: `New`, `Append`, `History`, then `list.go`: `List` |
 | `internal/rpc` | the socket protocol between `meru` and `merud` | `protocol.go`, then `client.go` and `server.go` |
 | `internal/obs` | OpenTelemetry metrics and traces | `obs.go` |
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour) | `run.go`: `Run`, then `model.go` and `view.go` |
@@ -74,7 +79,9 @@ flowchart TD
     merud --> dispatch & mcp & a2a & builtin & commands & secrets
     merud --> memory & skills & summarize
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
-    tui --> rpc
+    desktopapp["cmd/meru-desktop"] --> desktop
+    desktop --> rpc & config & opener
+    tui --> rpc & opener
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
     builtin --> dispatch & catalog & secrets & config & memory & index
@@ -112,6 +119,11 @@ Three things to notice:
   `commands`.
   The client only moves messages; the daemon does the work. A test in
   `internal/policy` fails the build if this ever changes.
+- **The desktop app stays smaller still.** `cmd/meru-desktop` imports Wails and
+  `internal/desktop`, which reaches only `rpc`, `config` (read, to name the
+  answer model) and `opener`. The same policy test checks both, forbids them
+  `catalog`, `secrets` and `tui` as well, and fails on any use of Wails'
+  self-updater.
 - **`loopback` imports nothing of Meru's.** It sits at the bottom so every package
   that talks to an address can use the same check.
 - **`store` imports only `engine` and `transcript`,** for the `Vector` type and for
@@ -150,7 +162,7 @@ type Request struct {
     Op      Op     // "ask", "ping", "index", "index_status", "tools" or "log"
     Session string // empty starts a new conversation
     Text    string // the question
-    Source  Source // "cli", "tui" or "job"
+    Source  Source // "cli", "tui", "job" or "desktop"
     Path    string // for "index": one folder or file; empty means every folder
     Limit   int    // for "log": how many rows; zero means merud's default (20)
 }
@@ -171,6 +183,8 @@ type Event struct {
     Servers    []ServerInfo // tools event: each tool source and its allowed tools
     Log        []LogEntry   // log event: the newest tool_calls rows
     MCP        []MCPStatus  // mcp_status event: one row per MCP server
+    Sessions   []SessionInfo // sessions event: past chats, newest change first
+    Turns      []TurnInfo    // turns event: one past chat's questions and answers
 
     // Stats, on the "done" event that ends an ask:
     TTFTMillis     int64 // question received to first token, routing included
@@ -193,8 +207,12 @@ type Event struct {
 | `tools` | one `tools`; `done` |
 | `log` | one `log`; `done` |
 | `mcp_status` | one `mcp_status`; `done` |
+| `sessions` | one `sessions`; `done` |
+| `session_turns` | one `turns`, for the session in `Session`; `done` |
 
-`meru index` sends `index`, and `meru index -status` sends `index_status`.
+`meru index` sends `index`, and `meru index -status` sends `index_status`. The
+desktop app sends `sessions` for its list of past chats and `session_turns` to
+reopen one.
 `meru tools` sends `tools`, `meru mcp` sends `mcp_status`, and `meru log -n 5`
 sends `log` with `Limit` 5. A
 `Citation` holds the number the answer cites, the path (as `~/…` under your home
@@ -233,7 +251,8 @@ counts as deny; the server checks that, and `dispatch` checks it again.
 the `Reply`; a nil `approve` answers deny. One-shot `meru` passes a prompter that
 reads `o`, `s` or `d` from the terminal, or denies when standard input isn't a
 terminal; `meru chat` passes a function that opens the approval box and waits for
-your key. On the server, the rpc server builds one per connection and passes it to
+your key; the desktop app passes one that shows a card in the answer and waits
+for a button. On the server, the rpc server builds one per connection and passes it to
 the handler, which hands it to `dispatch` inside each call.
 
 ### `rpc.Handler`: what the server calls for each request
@@ -708,6 +727,34 @@ the probe and writes the catalog's lists.
 
 The indexer records a `meru.index.scan` span for a full scan and a `meru.index.file`
 span for each file, in traces of their own (ARCHITECTURE.md, "Traces").
+
+### The desktop app, function by function
+
+1. **`cmd/meru-desktop/main.go` → `run`** reads `-socket`, builds the options
+   with **`desktop.DefaultOptions`** (the socket, the answer model from
+   `config.toml`, the home folder), makes the Bridge with **`desktop.New`**, and
+   gives it Wails' `app.Event.Emit` as its emit function. It serves the page with
+   **`desktop.Assets`**, binds the Bridge as a Wails service and opens the window.
+2. **The page** (`internal/desktop/web/js/app.js`) calls the Bridge's methods by
+   name through Wails' runtime (`api.js`) and listens for one event,
+   `meru:update`.
+3. **`Bridge.Send`** trims the question. If a turn runs, it queues the question
+   (five at most) and emits a `queue` update; otherwise **`start`** numbers the
+   turn, emits `start`, and runs **`run`** in a goroutine.
+4. **`run`** ranges over **`rpc.Do`** with source `desktop`. **`event`** turns
+   each event into an `Update`: a `session` event sets the session the next
+   questions go to, and a tool event gets its `Step` from **`stepOf`**. An
+   `approval` event reaches **`approver`**, which emits the card from
+   **`approvalView`** and waits for **`Bridge.Approve`** or the turn's end.
+5. **`finish`** emits `end` with **`contacted`**'s list, then starts the oldest
+   queued question. **`Stop`** cancels the turn, which closes the connection,
+   and drops the queue.
+6. **`Sessions`** and **`SessionTurns`** send the `sessions` and
+   `session_turns` ops. In `merud`, **`historyService`**
+   (`cmd/merud/history.go`) answers them with **`transcript.List`** and
+   **`turnsOf`**, from the JSONL files alone.
+7. **`OpenURL`** and **`OpenSource`** pass links to **`opener.Open`**, which
+   refuses anything but `http`, `https` and `file`.
 
 ## 6. Where errors and cancellation go
 

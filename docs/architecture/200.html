@@ -269,20 +269,20 @@
 
 <p><b>Why Go.</b> Both programs are written in Go rather than Python, the usual language for AI tools. Each builds into one file of tens of megabytes that runs on macOS, Linux or Windows with nothing else installed; a Python app would also need an interpreter and its packages. <code>merud</code> runs all day, so its small memory use matters, and it matters more when one server runs a Meru for each of many people, sharing one Ollama. Go also runs streaming, parallel tool calls and background jobs side by side without extra machinery, and its standard library covers most of what Meru needs, so Meru depends on fewer outside packages. <a href="300.html#why-go">Level 300</a> lists all the reasons and the trade-off.</p>
 
-<p><code>meru "..."</code> asks one question and prints plain text, so it works in scripts. <code>meru chat</code> keeps a conversation open in the terminal until you quit. On a cloud server you run <code>meru</code> over SSH. After a reboot the operating system restarts <code>merud</code>: <code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service on Windows.</p>
+<p><code>meru "..."</code> asks one question and prints plain text, so it works in scripts. <code>meru chat</code> keeps a conversation open in the terminal until you quit. On a cloud server you run <code>meru</code> over SSH. The desktop app, <code>meru-desktop</code>, is a third client in a window of its own (see <a href="#desktop-app">The desktop app</a>). After a reboot the operating system restarts <code>merud</code>: <code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service on Windows.</p>
 
 <figure id="fig-overview">
 <div class="figbox">
 <svg viewBox="0 0 800 470" role="img" aria-labelledby="f1t f1d">
   <title id="f1t">System overview</title>
-  <desc id="f1d">Two short-lived clients, meru one-shot and meru chat, talk to merud over a Unix socket. Inside merud, the agent loop sends model requests over loopback HTTP to Ollama, which holds the fast, main and embed models. The scheduler feeds the agent loop. The agent loop hands tool calls to dispatch, which checks the allowlist, asks you when needed and logs every call, then reaches MCP servers and other agents over A2A. The agent loop reads and writes files under ~/.meru: transcripts, memory, skills, config and the meru.db index. Timing data goes to an optional dashboard on the same machine.</desc>
+  <desc id="f1d">Three short-lived clients, meru one-shot, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the agent loop sends model requests over loopback HTTP to Ollama, which holds the fast, main and embed models. The scheduler feeds the agent loop. The agent loop hands tool calls to dispatch, which checks the allowlist, asks you when needed and logs every call, then reaches MCP servers and other agents over A2A. The agent loop reads and writes files under ~/.meru: transcripts, memory, skills, config and the meru.db index. Timing data goes to an optional dashboard on the same machine.</desc>
   <defs>
     <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
 
   <!-- clients -->
-  <rect x="12" y="40" width="136" height="164" rx="10" class="bg"/>
+  <rect x="12" y="40" width="136" height="228" rx="10" class="bg"/>
   <text x="22" y="62" class="t3" font-size="10.5" font-weight="600">CLIENTS · short-lived</text>
   <rect x="22" y="74" width="116" height="52" rx="7" class="b"/>
   <text x="34" y="96" class="t1 mono" font-size="13">meru "…"</text>
@@ -290,6 +290,9 @@
   <rect x="22" y="138" width="116" height="52" rx="7" class="b"/>
   <text x="34" y="160" class="t1 mono" font-size="13">meru chat</text>
   <text x="34" y="178" class="t3" font-size="11.5">conversation</text>
+  <rect x="22" y="202" width="116" height="52" rx="7" class="b"/>
+  <text x="34" y="224" class="t1 mono" font-size="13">meru-desktop</text>
+  <text x="34" y="242" class="t3" font-size="11.5">desktop app</text>
   <path d="M148 96 L214 96" class="lna" marker-end="url(#f1b)"/>
   <text x="171" y="84" class="t3" font-size="10.5" text-anchor="middle">Unix</text>
   <text x="171" y="114" class="t3" font-size="10.5" text-anchor="middle">socket</text>
@@ -370,6 +373,14 @@
 </div>
 <figcaption><b>Figure 1.</b> Two arrows leave <code>merud</code> for programs it doesn't own: one to Ollama, and one from <code>dispatch</code> to tools and other agents. Each passes through one place in the code, and the privacy rules sit in those two places.</figcaption>
 </figure>
+
+<h3 id="desktop-app">The desktop app</h3>
+
+<p><code>meru-desktop</code> shows the same conversation in a native window. <a href="https://wails.io">Wails v3</a> pairs its Go code with the system's own WebView, the browser engine the operating system already ships, so the app is one binary and the page is plain HTML, CSS and JavaScript. Like <code>meru chat</code>, it holds no model or tool logic: questions go to <code>merud</code> over the socket, and events come back.</p>
+
+<p>The window has three columns. On the left, past chats grouped by day, a search box and a status block that says whether <code>merud</code> runs, which model answers and how many files it can search. In the middle, the conversation: each answer opens with one line of what Meru did ("Searched mail · Read lisbon.md"), streams as it is written, and ends with source chips that open the files. On the right, "What this answer used" lists the sources and tool calls, and says who the tools contacted: "The model ran on this Mac. Only google was contacted." An approval shows as an amber card inside the answer, with a mail's To, Subject and Body laid out to read.</p>
+
+<p>Model output could hold HTML meant to run in the window, so the app sanitizes each answer before it shows it, sets a Content-Security-Policy that blocks inline scripts and anything from the network, and opens links only through Go, which allows <code>http</code>, <code>https</code> and <code>file</code>. Wails needs a C compiler and the WebView's headers, so the app builds on its own with <code>make desktop</code>, and the usual builds skip it. For now it builds on macOS; Linux and Windows come later.</p>
 
 <!-- ============================================================ -->
 <h2 id="end-to-end">A question, end to end</h2>
@@ -987,6 +998,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
   <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
   <li>The model reads your files only through search and the three file tools, and both stop at your <code>[index] folders</code> and the indexer's skip rules.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table show every action Meru took outside itself.</li>
+  <li>The desktop app loads nothing from the network: its page, fonts and libraries ship inside it, and it never checks for updates.</li>
 </ul>
 
 <!-- ============================================================ -->

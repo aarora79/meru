@@ -1,4 +1,5 @@
-// This file tests how a citation prints and which sources count as cited.
+// This file tests how a citation prints, which sources count as cited, and
+// how a source's path turns short and back into a file URL.
 
 package rpc
 
@@ -68,6 +69,24 @@ func TestFileURL(t *testing.T) {
 	for _, tt := range tests {
 		if got := FileURL(tt.path, tt.home); got != tt.want {
 			t.Errorf("FileURL(%q, %q) = %q, want %q", tt.path, tt.home, got, tt.want)
+		}
+	}
+}
+
+func TestShortPath(t *testing.T) {
+	home := filepath.FromSlash("/home/u")
+	tests := []struct {
+		home, path, want string
+	}{
+		{home, filepath.FromSlash("/home/u/notes/a.md"), filepath.FromSlash("~/notes/a.md")},
+		{home, filepath.FromSlash("/home/u2/a.md"), filepath.FromSlash("/home/u2/a.md")},
+		{home, filepath.FromSlash("/srv/a.md"), filepath.FromSlash("/srv/a.md")},
+		{home, home, home},
+		{"", filepath.FromSlash("/home/u/a.md"), filepath.FromSlash("/home/u/a.md")},
+	}
+	for _, tt := range tests {
+		if got := ShortPath(tt.home, tt.path); got != tt.want {
+			t.Errorf("ShortPath(%q, %q) = %q, want %q", tt.home, tt.path, got, tt.want)
 		}
 	}
 }
