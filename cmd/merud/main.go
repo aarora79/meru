@@ -208,28 +208,27 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	// With no [index] folders the file tools have nothing to read, so
-	// merud leaves them out and the model never sees them.
-	files := ix
-	if len(cfg.Index.Folders) == 0 {
-		files = nil
-	}
+	// The file tools read through the indexer. With no [index] folders
+	// they have nothing to read, so merud leaves them out and the model
+	// never sees them, until the desktop app adds a folder.
 	search := searchAdapter{st: st, eng: eng}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, files, search, eng, mems.syncNow, log)
+	tools, err := newToolService(ctx, cfg, configPath, st, mem, ix, search, eng, mems.syncNow, log)
 	if err != nil {
 		return err
 	}
 	defer tools.Close()
 	logWebSearch(ctx, cfg, log)
+	idx := newIndexService(ix, st, mems, cfg.Index, configPath, tools.bt.EditConfig, log)
 	// The router comes after the tools, because its prompt names what the
 	// tool service connects.
-	rt, err := newRouter(cfg, eng, tools.connectedTools, log)
+	rt, err := newRouter(cfg, eng, tools.connectedTools, idx.currentFolders, log)
 	if err != nil {
 		return err
 	}
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
 	a.UseSkills(sk)
+	a.UseFolders(idx.currentFolders)
 	machine := machineLine(ctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)
@@ -237,11 +236,18 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	idx := newIndexService(ix, st, mems, cfg.Index.Folders, configPath, log)
 	// The session ops show source paths as ~/... like a live turn does. A
 	// home folder merud can't find leaves the paths whole.
 	home, _ := os.UserHomeDir()
 	hist := historyService{dir: sessionsDir, home: home}
+	// config.Load has checked output_dir, so expandHome fails only when
+	// the OS can't say where home is; then saves have nowhere to go.
+	outputDir, _ := expandHome(cfg.Skills.OutputDir)
+	svc := services{
+		agent: a, idx: idx, tools: tools, mems: mems, skills: sk, hist: hist, st: st, configPath: configPath,
+		save:   saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
+		models: modelService{models: cfg.Models, profile: cfg.Profile, configPath: configPath, outputDir: outputDir, eng: eng},
+	}
 	log.Info("listening", "socket", socketPath)
 
 	// An errgroup runs each function in its own goroutine and Wait waits
@@ -251,9 +257,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// of the memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, hist, st), log) })
+	g.Go(func() error { return rpc.Serve(gctx, ln, handler(svc), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
-	g.Go(func() error { idx.watch(gctx); return nil })
+	g.Go(func() error { idx.watchAndRescan(gctx); return nil })
 	g.Go(func() error { sum.Run(gctx); return nil })
 	g.Go(func() error { mems.watch(gctx); return nil })
 	return g.Wait()
@@ -308,13 +314,30 @@ func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) erro
 	return emit(rpc.Event{Type: rpc.EventUsage, Usage: windows})
 }
 
+// services holds everything that answers a request, so handler takes one
+// value instead of a long list.
+type services struct {
+	agent      *agent.Agent
+	idx        *indexService
+	tools      *toolService
+	mems       memoryService
+	skills     *skillService
+	hist       historyService
+	st         *store.Store
+	save       saveService
+	models     modelService
+	configPath string
+}
+
 // handler returns the rpc.Handler merud serves: questions go to the agent,
-// the index ops to the index service, the tools, log and MCP probe,
-// reload and status ops to the tool service, the memory ops to the memory
+// the index and folder ops to the index service, the tools, log, MCP and
+// connection ops to the tool service, the memory ops to the memory
 // service, the skill ops to the skill service, the session ops to the
-// history service, and the usage op to the store. The rpc server answers
+// history service, save_file to the save service, the models op to the
+// model service, and the usage op to the store. The rpc server answers
 // pings itself.
-func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryService, sk *skillService, hist historyService, st *store.Store) rpc.Handler {
+func handler(svc services) rpc.Handler {
+	a, idx, tools, mems, sk, hist, st := svc.agent, svc.idx, svc.tools, svc.mems, svc.skills, svc.hist, svc.st
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		switch req.Op {
 		case rpc.OpAsk:
@@ -351,6 +374,28 @@ func handler(a *agent.Agent, idx *indexService, tools *toolService, mems memoryS
 			return hist.handleSessions(req.Limit, emit)
 		case rpc.OpSessionTurns:
 			return hist.handleTurns(req.Session, emit)
+		case rpc.OpConnections:
+			return tools.handleConnections(emit)
+		case rpc.OpToolPolicy:
+			return tools.handleToolPolicy(ctx, req, emit)
+		case rpc.OpMCPAdd:
+			return tools.handleMCPAdd(ctx, req, emit)
+		case rpc.OpMCPRemove:
+			return tools.handleMCPRemove(ctx, req, emit)
+		case rpc.OpSecretSet:
+			return tools.handleSecretSet(ctx, req)
+		case rpc.OpFolders:
+			return idx.handleFolders(ctx, emit)
+		case rpc.OpFolderAdd:
+			return idx.handleFolderAdd(ctx, req, emit)
+		case rpc.OpFolderRemove:
+			return idx.handleFolderRemove(ctx, req, emit)
+		case rpc.OpSaveFile:
+			return svc.save.handleSave(ctx, req, emit, approve)
+		case rpc.OpSkillEnable, rpc.OpSkillDisable:
+			return sk.handleSetDisabled(ctx, req, req.Op == rpc.OpSkillDisable, svc.configPath, tools.bt.EditConfig, emit)
+		case rpc.OpModels:
+			return svc.models.handleModels(ctx, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}
@@ -389,22 +434,25 @@ func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
 // newRouter builds the router the agent asks for each turn's route: the
 // one-token classifier in internal/router, running on the fast model and
 // writing its debug lines to log. Each turn, the router's prompt names what
-// tools returns as connected.
-func newRouter(cfg config.Config, eng engine.Engine, tools func() []string, log *slog.Logger) (agent.Router, error) {
+// tools returns as connected, and the folders folders returns.
+func newRouter(cfg config.Config, eng engine.Engine, tools, folders func() []string, log *slog.Logger) (agent.Router, error) {
 	rc, err := router.ConfigFrom(cfg.Router, cfg.Models.Fast)
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
 	rc.Log = log
-	return routerAdapter{eng: eng, cfg: rc, folders: cfg.Index.Folders, tools: tools}, nil
+	return routerAdapter{eng: eng, cfg: rc, folders: folders, tools: tools}, nil
 }
 
 // routerAdapter lets router.Decide serve as an agent.Router. The two packages
 // don't import each other, so this small type in main joins them.
 type routerAdapter struct {
-	eng     engine.Engine
-	cfg     router.Config
-	folders []string // [index] folders; the router's prompt names them
+	eng engine.Engine
+	cfg router.Config
+	// folders returns the [index] folders, which the router's prompt
+	// names. It is a function because the desktop app can add or remove a
+	// folder while merud runs.
+	folders func() []string
 	// tools returns what is connected, for the prompt to name. It is a
 	// function because an MCP reload changes the list while merud runs.
 	tools func() []string
@@ -414,7 +462,7 @@ type routerAdapter struct {
 // agent's own Decision type. router.Decide records the meru.route span and
 // metric itself.
 func (r routerAdapter) Decide(ctx context.Context, question string, history []engine.Message) (agent.Decision, error) {
-	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question, Folders: r.folders, Tools: r.tools()})
+	d, err := router.Decide(ctx, r.eng, r.cfg, router.Turn{History: history, Question: question, Folders: r.folders(), Tools: r.tools()})
 	if err != nil {
 		return agent.Decision{}, err
 	}

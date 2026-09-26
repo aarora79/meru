@@ -91,7 +91,7 @@ func (t *Tools) download(ctx context.Context, rawURL string) (string, error) {
 	fmt.Fprintf(&b, "Saved %s to %s. %s, %s.", final, abs, size(n), shownType)
 	if preview := previewText(root, saved, mediaType, n); preview != "" {
 		fmt.Fprintf(&b, "\n\nThe first %d characters of its text:\n\n%s", previewChars, preview)
-		if t.files != nil {
+		if t.hasFiles() {
 			b.WriteString("\n\n[Read the rest with read_file, or search it with grep.]")
 		}
 	}

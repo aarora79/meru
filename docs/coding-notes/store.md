@@ -169,6 +169,9 @@ or `_` in a folder name has no special meaning. An empty prefix lists every
 path; the indexer's startup scan uses that to find files whose folder left
 `[index] folders` and deletes them with `DeleteDocument`.
 
+`CountPaths(ctx, prefix)` counts the documents under a folder with the same
+`substr` rule as `Paths`, for the desktop app's Folders section.
+
 ### search.go: the two searches
 
 `SearchVector` computes the distance from the query to every stored vector

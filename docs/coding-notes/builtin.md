@@ -178,6 +178,15 @@ both pass the duplicate-name check and add the same server twice.
 `catalog` property lists the catalog names as an `enum`, so the model sees the
 valid choices.
 
+**Changing while `merud` runs.** The desktop app sets a built-in tool's policy,
+and `merud` hands the new lists to `SetLists`. `on` and `confirm` sit behind
+`lists`, a `sync.RWMutex`, and `enabled`, `asks` and `Off` read them under it.
+`hasFiles` asks the indexer whether any `[index]` folder is set, so the first
+folder the app adds turns the file tools on; `merud` now always passes its
+indexer. `EditConfig` runs a change to `config.toml` under `mu`, the lock
+`configure` holds, so every writer in `merud` takes turns. `Summary` gives each
+tool one line for the app's list, off tools included.
+
 ### datetime.go
 
 `datetime` reads the clock and nothing else: the date and time with weekday and

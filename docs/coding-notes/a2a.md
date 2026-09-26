@@ -172,6 +172,10 @@ headers on a clone.
 `("research", "summarize")`. `Close` drops each agent's SDK client and idle
 connections; calls after it fail with `ErrUnavailable`.
 
+`fetchLocked` also keeps `skills`: every skill the card lists, by full name, which
+`Status` hands out as `OfferedTools` for the desktop app's list of what each agent
+may do.
+
 ### call.go
 
 `Call` works through five steps:

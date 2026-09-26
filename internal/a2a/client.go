@@ -93,6 +93,7 @@ type agent struct {
 	client  *a2aclient.Client
 	tools   []engine.ToolSpec // allowed skills from the last card, sorted
 	offered int               // how many skills the last card listed
+	skills  []rpc.ToolInfo    // every skill the last card listed, by full name
 	unknown []string          // allow entries the last card didn't list
 	lastErr string            // why the last fetch or call failed, for Status
 	lastTry time.Time         // when the last card fetch started
@@ -268,7 +269,9 @@ func (c *Client) Status() []rpc.ServerInfo {
 			LastError: a.lastErr,
 			Offered:   a.offered,
 			Unknown:   slices.Clone(a.unknown),
-			Tools:     make([]rpc.ToolInfo, 0, len(a.tools)),
+
+			OfferedTools: slices.Clone(a.skills),
+			Tools:        make([]rpc.ToolInfo, 0, len(a.tools)),
 		}
 		for _, t := range a.tools {
 			_, skill, _ := c.lookup(t.Name)
@@ -358,6 +361,10 @@ func (c *Client) fetchLocked(ctx context.Context, a *agent) error {
 	a.client = client
 	a.lastErr = ""
 	a.offered = len(card.Skills)
+	a.skills = a.skills[:0]
+	for _, sk := range card.Skills {
+		a.skills = append(a.skills, rpc.ToolInfo{Name: "a2a." + a.cfg.Name + "." + sk.ID, Description: sk.Description})
+	}
 	a.tools, a.unknown = allowedTools(a.cfg.Name, card, a.allow)
 	c.log.Info("a2a agent card read", "a2a_agent", a.cfg.Name,
 		"skills_offered", a.offered, "skills_allowed", len(a.tools), "streaming", card.Capabilities.Streaming)

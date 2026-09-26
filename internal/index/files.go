@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/aarora79/meru/internal/config"
 )
 
 // Roots returns the folders Check, Walk and ReadText reach, with symlinks
@@ -106,7 +108,7 @@ func (ix *Indexer) Check(p string) (Checked, error) {
 // folders nest, the deepest one wins.
 func (ix *Indexer) locate(p string) (path, root string) {
 	// slices.Concat returns a new slice holding both lists.
-	for _, f := range slices.Concat(ix.folders, ix.readOnly) {
+	for _, f := range slices.Concat(ix.configured(), ix.readOnly) {
 		r, err := filepath.EvalSymlinks(f)
 		if err != nil {
 			continue // the folder doesn't exist now
@@ -312,4 +314,35 @@ func (ix *Indexer) readInRoot(root, rel string) (data []byte, reason string, err
 		return nil, ReasonTooLarge, nil
 	}
 	return data, "", nil
+}
+
+// CountFiles counts the files under dir that an indexer with cfg's skip
+// rules would read, stopping at limit. merud uses it to show how big a
+// folder is before the user adds it, so it walks the folder the way Scan
+// would but reads nothing into the store. more is true when the count
+// stopped at limit. It fails when dir can't be expanded or read, or when
+// ctx ends.
+func CountFiles(ctx context.Context, cfg config.Index, dir string, limit int) (n int, more bool, err error) {
+	c := cfg
+	c.Folders = []string{dir}
+	ix, err := New(c, nil, nil, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	roots := ix.Folders()
+	if len(roots) == 0 {
+		return 0, false, fmt.Errorf("%s: %w", dir, fs.ErrNotExist)
+	}
+	err = ix.Walk(ctx, roots[0], func(_ string, info fs.FileInfo, reason string) error {
+		if reason != "" || !info.Mode().IsRegular() {
+			return nil
+		}
+		n++
+		if n >= limit {
+			more = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return n, more, err
 }

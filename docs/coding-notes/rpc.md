@@ -140,6 +140,22 @@ report.
 Adding a slice field (`Sources`) made `Event` a type Go can't compare with
 `==`, so tests compare events with `reflect.DeepEqual`.
 
+### settings.go
+
+The types of the desktop app's settings ops. `Scope` values name where a question
+may look (`auto`, `files`, `mail`, `web`, `talk`), and `Scopes` lists them in the
+order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
+`Policy` constants (`off`, `ask`, `allow`, and `always`, which only `merud`
+reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
+tool source tool by tool, `CatalogEntry` and `CatalogNeed` a catalog server and
+what it needs, `FolderInfo` one folder with its file count, and `ModelsInfo` the
+models.
+
+`Request.Policy` is a pointer, as `Request.Server` is. A struct holding a map or a
+slice can't be compared with `==`, and tests compare requests; a pointer keeps
+`Request` comparable. For the same reason `mcp_add` takes no keys: the app saves a
+key with `secret_set` first.
+
 ### citation.go
 
 Two helpers both clients use, so `meru` and `meru chat` show sources the same

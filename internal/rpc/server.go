@@ -33,7 +33,8 @@ import (
 // Handler answers one request whose op isn't OpPing: OpAsk, OpIndex,
 // OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd,
 // OpMemoryForget, OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe,
-// OpMCPReload, OpMCPStatus, OpSessions or OpSessionTurns. It calls emit
+// OpMCPReload, OpMCPStatus, OpSessions, OpSessionTurns, or one of the
+// desktop app's settings ops in settings.go. It calls emit
 // once per event to send ("session", "route", "token" and so on) and
 // returns when the reply is complete.
 //
@@ -189,7 +190,9 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd, OpMemoryForget,
-		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload, OpMCPStatus, OpSessions, OpSessionTurns:
+		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload, OpMCPStatus, OpSessions, OpSessionTurns,
+		OpConnections, OpToolPolicy, OpMCPAdd, OpMCPRemove, OpSecretSet, OpFolders, OpFolderAdd,
+		OpFolderRemove, OpSaveFile, OpSkillEnable, OpSkillDisable, OpModels:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
