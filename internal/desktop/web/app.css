@@ -854,6 +854,26 @@ pre {
 }
 
 /* Source chips. */
+/* merud's warning under an answer that claims an action no tool
+   performed, in the colours of an approval. */
+.answer-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ask-border);
+  border-radius: 8px;
+  background: var(--ask-fill);
+  color: var(--ask-ink);
+  font-size: 13px;
+}
+
+.answer-notice .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
 /* The cited sources: one closed line under the answer, "3 sources", whose
    chevron turns down when it opens. */
 .sources-line {

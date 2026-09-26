@@ -39,6 +39,9 @@ type TurnView struct {
 	// Outcome says how a turn ended without a full answer; see
 	// rpc.TurnInfo.
 	Outcome string `json:"outcome,omitempty"`
+	// Notice is the amber note under an answer that claimed an action no
+	// tool performed, as the transcript keeps it.
+	Notice string `json:"notice,omitempty"`
 	// Sources are the files the turn's prompt held, numbered from 1, for
 	// the side panel; Cited are the ones the answer cites, for the line
 	// under the answer.
@@ -84,7 +87,7 @@ func (b *Bridge) SessionTurns(ctx context.Context, id string) ([]TurnView, error
 	out := make([]TurnView, 0, len(ev.Turns))
 	for _, t := range ev.Turns {
 		v := TurnView{
-			Question: t.Question, Answer: t.Answer, Route: t.Route, Outcome: t.Outcome,
+			Question: t.Question, Answer: t.Answer, Route: t.Route, Outcome: t.Outcome, Notice: t.Notice,
 			DurationMillis: t.DurationMillis, TokensOut: t.TokensOut,
 		}
 		for i, p := range t.Sources {

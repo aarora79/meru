@@ -356,8 +356,10 @@ the line as its tooltip.
   session and scope) and a dim stats line. Under the answer, one closed line,
   "3 sources", opens to a chip for each source the answer cites, and a chip opens
   its file. The Bridge picks those sources with `rpc.Cited`, as `meru` and `meru
-  chat` do; an answer that cites none shows no line. A new chat shows the logo
-  beside "Ask Meru". The composer sends on Enter and adds a line on
+  chat` do; an answer that cites none shows no line. When `merud` sends a
+  `notice`, because the answer claims an action no tool performed, an amber note
+  with a warning icon sits under the answer, and again when the chat reopens from
+  history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on
   Shift+Enter; while a turn
   runs, Enter queues, and the queue shows above the composer with a remove button
   on each question. Under the text box sit the **Where Meru looks** switch and

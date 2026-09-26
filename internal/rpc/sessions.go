@@ -35,6 +35,10 @@ type TurnInfo struct {
 	// transcript's assistant line holds them.
 	Route   string `json:"route,omitempty"`
 	Outcome string `json:"outcome,omitempty"`
+	// Notice is the warning the transcript's assistant line holds, shown
+	// under the answer: set when the answer claimed an action no tool
+	// performed (the "notice" event), and empty otherwise.
+	Notice string `json:"notice,omitempty"`
 	// Sources lists the files whose excerpts went into the prompt, as
 	// shortened paths such as "~/Notes/lisbon.md". The transcript keeps
 	// the files, not the excerpts, so there are no headings or lines.

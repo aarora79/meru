@@ -69,11 +69,13 @@ export function createTurn(t, h) {
   detail.id = "steps-" + t.key;
   const approval = el("div", "approval-slot");
   const body = el("div", "body");
+  const notice = el("p", "answer-notice");
+  notice.setAttribute("role", "note");
   const sources = el("div", "sources-line");
   const footer = el("div", "answer-foot");
-  answer.append(strip, detail, approval, body, sources, footer);
+  answer.append(strip, detail, approval, body, notice, sources, footer);
   root.append(q, answer);
-  t.el = { root, answer, strip, detail, approval, body, sources, footer };
+  t.el = { root, answer, strip, detail, approval, body, notice, sources, footer };
   drawAll(t, h);
   return root;
 }
@@ -83,6 +85,7 @@ export function drawAll(t, h) {
   drawStrip(t, h);
   drawApproval(t, h);
   drawBody(t, h);
+  drawNotice(t);
   drawSources(t, h);
   drawFooter(t, h);
 }
@@ -273,6 +276,17 @@ function outcomeText(outcome) {
       return "Meru stopped after too many tool rounds.";
   }
   return "";
+}
+
+// drawNotice draws merud's warning under the answer, as an amber note
+// with a warning icon: the answer claimed an action, such as moving a
+// folder, and no tool did it. It shows for a live turn and for a past one
+// reopened from history, and hides when there is none.
+export function drawNotice(t) {
+  const p = t.el.notice;
+  p.replaceChildren();
+  p.hidden = !t.notice;
+  if (t.notice) p.append(icon("alert", 14), document.createTextNode(" " + t.notice));
 }
 
 // drawSources draws the sources the finished answer cites: one closed

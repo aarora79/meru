@@ -127,7 +127,7 @@ for its list of past chats, with their types in `sessions.go`:
 | Op | Reply | What it carries |
 | --- | --- | --- |
 | `sessions` (`OpSessions`) | one `sessions` event | `Sessions`, a `SessionInfo` per session that holds a question, newest change first, at most `Limit` (200 when zero): the ID, the first question as a one-line `Title`, `Started`, `Updated` and the number of `Turns`. |
-| `session_turns` (`OpSessionTurns`) | one `turns` event | `Turns`, a `TurnInfo` per question of the session in `Request.Session`: the question, the answer, the route, how it ended, the source files, the tool calls as `ToolStep`s (full name, kind, arguments, outcome, time), the duration and the token counts. |
+| `session_turns` (`OpSessionTurns`) | one `turns` event | `Turns`, a `TurnInfo` per question of the session in `Request.Session`: the question, the answer, the route, how it ended, the notice under the answer if any, the source files, the tool calls as `ToolStep`s (full name, kind, arguments, outcome, time), the duration and the token counts. |
 
 `merud` answers both from the transcripts, so they need no `meru.db`.
 `ToolName(kind, server, tool)` joins a transcript line's three fields back into

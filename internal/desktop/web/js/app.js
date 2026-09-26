@@ -11,7 +11,7 @@
 import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
-  el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval,
+  el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
   appendToken, approvalCard,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
@@ -195,6 +195,7 @@ function newTurn(fields) {
     stats: null,
     error: "",
     outcome: "",
+    notice: "", // merud's warning under an answer that claims an action no tool performed
     approval: null,
     contacted: [],
     showSteps: false,
@@ -391,6 +392,16 @@ function onEvent(u) {
         else t.steps.push(u.step);
       }
       drawStrip(t, handlers);
+      break;
+    // "notice" is rpc.EventNotice, which #29 (branch honest-actions) adds:
+    // merud sends it after the last token when the answer claims an action,
+    // such as moving a folder, and no tool call in the turn succeeded. The
+    // page names it here, in one place, so it works once #29 merges; until
+    // then merud never sends it. Any other type the page doesn't know, it
+    // skips.
+    case "notice":
+      t.notice = ev.text || "";
+      drawNotice(t);
       break;
     case "done":
       t.stats = ev;
@@ -748,6 +759,7 @@ function openSession(s) {
           state: "done",
           route: v.route || "",
           outcome: v.outcome || "",
+          notice: v.notice || "",
           sources: v.sources || [],
           cited: v.cited || [],
           steps: v.steps || [],

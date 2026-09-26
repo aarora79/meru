@@ -30,7 +30,7 @@ func historyServer(t *testing.T, updated string) string {
 				return errors.New("no such session")
 			}
 			return emit(rpc.Event{Type: rpc.EventTurns, Turns: []rpc.TurnInfo{{
-				Question: "Which hotel did I book in Lisbon?", Answer: "The Casa do Rio [1].", Route: "search+tools",
+				Question: "Which hotel did I book in Lisbon?", Answer: "The Casa do Rio [1].", Route: "search+tools", Notice: "a note",
 				Sources:        []string{"~/Notes/lisbon.md", "~/Notes/garden.md"},
 				Tools:          []rpc.ToolStep{{Name: "google.search_gmail_messages", Kind: "mcp", Args: json.RawMessage(`{}`), Outcome: "ok", DurationMillis: 840}},
 				DurationMillis: 5100, TokensOut: 14,
@@ -72,7 +72,7 @@ func TestSessionTurns(t *testing.T) {
 		t.Fatalf("SessionTurns = %+v, want one turn", got)
 	}
 	v := got[0]
-	if v.Answer != "The Casa do Rio [1]." || v.DurationMillis != 5100 || v.TokensOut != 14 {
+	if v.Answer != "The Casa do Rio [1]." || v.Notice != "a note" || v.DurationMillis != 5100 || v.TokensOut != 14 {
 		t.Errorf("turn = %+v", v)
 	}
 	if !reflect.DeepEqual(v.Sources, []rpc.Citation{{N: 1, Path: "~/Notes/lisbon.md"}, {N: 2, Path: "~/Notes/garden.md"}}) {

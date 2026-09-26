@@ -111,6 +111,7 @@ func turnsOf(lines []transcript.Line, home string) []rpc.TurnInfo {
 			cur.Answer = l.Text
 			cur.Route = l.Route
 			cur.Outcome = l.Outcome
+			cur.Notice = l.Notice
 			cur.DurationMillis = l.Ms
 			cur.TokensIn = l.TokensIn
 			cur.TokensOut = l.TokensOut

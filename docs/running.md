@@ -251,7 +251,9 @@ computer". What you see:
   **Copy**, **Save to a note**, **Try again** and a dim line of timings. Under an
   answer that cites your files, a line such as "3 sources" opens to a chip for
   each cited file, and a chip opens its file. An answer that cites nothing shows
-  no line. **Share as file**, at the top, saves the whole chat.
+  no line. When an answer claims an action, such as moving a folder, and no tool
+  ran, an amber note under it says nothing changed on your computer. **Share as
+  file**, at the top, saves the whole chat.
 - **On the right**, "What this answer used": the sources, the tools with their
   server and time, what Meru **remembered**, each with a Forget button, and a line
   such as "The model ran on this Mac. Only google was contacted." The panel

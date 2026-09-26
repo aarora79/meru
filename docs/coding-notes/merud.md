@@ -225,8 +225,11 @@ sessions folder and the home folder.
   shape, so a client can't name a file outside the folder. `turnsOf` then walks
   the lines once: a user line starts a turn, a `tool_call` line adds a step and
   remembers its index by call ID in a map, the matching `tool_result` line fills in
-  the outcome and time, and the assistant line adds the answer, the route and the
-  sources, shortened to `~/...` with `rpc.ShortPath`.
+  the outcome and time, and the assistant line adds the answer, the route, the
+  notice the user read under it, if any, and the sources, shortened to `~/...`
+  with `rpc.ShortPath`. The line's `Notice` field comes with #29; this branch
+  adds the same field, word for word, so the desktop app can show the note again
+  when a chat reopens.
 
 Both read the files, never `meru.db`, so deleting the database loses no chat.
 

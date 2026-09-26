@@ -161,7 +161,7 @@ new question, and the model's new call brings a new card.
 Yesterday or Earlier with `groupOf`, which compares against local midnight.
 `SessionTurns` sends `session_turns` and shapes each past turn like a live one, so
 the page draws both with the same code; each past turn carries its `Cited`
-sources too. Both go through `one`, which sends a
+sources and its `Notice` too. Both go through `one`, which sends a
 request and waits, at most five seconds, for the one event that answers it.
 
 `Status` asks for `index_status` and `mcp_status`. It never fails: a `merud` that
@@ -291,7 +291,12 @@ bundler.
   sources line, footer) has its own draw function, so a token redraws only the
   body. The sources line shows only the cited sources, closed, as "3 sources"
   with a chevron; the button, with `aria-expanded`, opens a chip per source. An
-  answer that cites nothing shows no line. All text goes in with `textContent`,
+  answer that cites nothing shows no line. `drawNotice` draws `merud`'s `notice`
+  event, sent when the answer claims an action no tool performed, as an amber
+  note with a warning icon, in the approval card's colours; a past turn carries
+  it as `TurnView.Notice`. The event comes with #29, and `app.js` names the
+  `"notice"` type in one place; the page skips any type it doesn't know, so
+  nothing breaks before #29 merges. All text goes in with `textContent`,
   which the browser never reads as HTML.
 - `js/markdown.js` renders a finished answer: `marked` turns Markdown into HTML with
   raw HTML escaped, and DOMPurify keeps a short list of tags and only `http`,
