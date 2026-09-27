@@ -384,7 +384,8 @@ func startMerud(t *testing.T, h *home, env []string) *proc {
 	return startProc(t, "merud", env, "-config", h.config, "-socket", h.socket)
 }
 
-// waitReady runs `meru ping` until it succeeds. It fails the test, printing
+// waitReady runs `meru ping` until it succeeds and merud has loaded the
+// answer model (see answerModelLoaded). It fails the test, printing
 // merud's stderr and log, when merud exits first or timeout passes.
 func waitReady(t *testing.T, h *home, merud *proc, timeout time.Duration) {
 	t.Helper()
@@ -394,7 +395,7 @@ func waitReady(t *testing.T, h *home, merud *proc, timeout time.Duration) {
 			t.Fatalf("merud exited with status %d before answering a ping\nstderr:\n%s\nlog:\n%s",
 				merud.cmd.ProcessState.ExitCode(), merud.stderr.String(), h.log())
 		}
-		if res := runMeru(t, h, "ping"); res.code == 0 {
+		if res := runMeru(t, h, "ping"); res.code == 0 && answerModelLoaded(h.log()) {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -402,6 +403,18 @@ func waitReady(t *testing.T, h *home, merud *proc, timeout time.Duration) {
 		}
 		time.Sleep(pollEvery)
 	}
+}
+
+// answerModelLoaded reports whether log, merud.log, shows the answer
+// model's startup load ended, well or badly, for every time merud started.
+// merud loads it in the background after it answers pings, with a call to
+// the fake Ollama that would take the reply a test queues for the answer
+// if it came later; waitReady waits for it first. A home that merud
+// started twice holds two "merud starting" lines, and needs two loads.
+func answerModelLoaded(log string) bool {
+	starts := strings.Count(log, `msg="merud starting"`)
+	loads := strings.Count(log, `msg="answer model warm"`) + strings.Count(log, `msg="couldn't load the answer model"`)
+	return loads >= starts
 }
 
 // result is what a finished meru run produced.

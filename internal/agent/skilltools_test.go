@@ -123,13 +123,15 @@ func TestSkillBringsTools(t *testing.T) {
 		wantWeb    bool     // webFallbackNote in the system prompt
 	}{
 		{
-			name: "direct gains the web tools", route: "direct", pick: "web-research, writing", tools: webOn,
-			wantRoute: "tools", wantOffer: []string{"datetime", "web_search", "web_fetch", "read_file"},
-			wantSkills: []string{"web-research", "writing"}, wantNote: true, wantWeb: true,
+			// Every route offers the web tools while web_search is on, so
+			// web-research needs no wider route.
+			name: "direct has the web tools already", route: "direct", pick: "web-research, writing", tools: webOn,
+			wantRoute: "direct", wantOffer: []string{"datetime", "web_search", "web_fetch"},
+			wantSkills: []string{"web-research", "writing"}, wantNote: true,
 		},
 		{
-			name: "search gains the web tools", route: "search", pick: "web-research", tools: webOn,
-			wantRoute: "search+tools", wantOffer: []string{"datetime", "web_search", "web_fetch", "read_file"},
+			name: "search has the web tools already", route: "search", pick: "web-research", tools: webOn,
+			wantRoute: "search", wantOffer: []string{"datetime", "web_search", "web_fetch", "read_file"},
 			wantSkills: []string{"web-research"}, wantNote: true, wantWeb: true,
 		},
 		{
@@ -146,14 +148,14 @@ func TestSkillBringsTools(t *testing.T) {
 		},
 		{
 			name: "a skill with no tools leaves the route", route: "direct", pick: "writing", tools: webOn,
-			wantRoute: "direct", wantOffer: []string{"datetime"},
+			wantRoute: "direct", wantOffer: []string{"datetime", "web_search", "web_fetch"},
 			wantSkills: []string{"writing"}, wantNote: true,
 		},
 		{
 			name: "the file tools on search are there already", route: "search", pick: "file-research",
 			tools:     []engine.ToolSpec{spec("datetime"), spec("read_file"), spec("list_folder"), spec("grep"), spec("search_files"), spec("web_search")},
-			wantRoute: "search", wantOffer: []string{"datetime", "read_file", "list_folder", "grep", "search_files"},
-			wantSkills: []string{"file-research"}, wantNote: true,
+			wantRoute: "search", wantOffer: []string{"datetime", "read_file", "list_folder", "grep", "search_files", "web_search"},
+			wantSkills: []string{"file-research"}, wantNote: true, wantWeb: true,
 		},
 		{
 			// The pick that sent the real btop turn into the user's

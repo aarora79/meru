@@ -170,6 +170,12 @@ type Agent struct {
 	mainMu  sync.Mutex
 	main    string
 	noThink bool // true turns the answer model's thinking off; see SetMain
+
+	// warmMu guards warming, a channel that stays open while merud loads
+	// the answer model at startup and closes when the load ends; nil when
+	// merud started no load. See warm.go.
+	warmMu  sync.Mutex
+	warming chan struct{}
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -177,7 +183,7 @@ type Agent struct {
 // search on every route but "direct", and on a direct question that names
 // one of cfg.Index.Folders. search may be nil, which turns search off. It
 // offers the model the tools from tools on the "tools" and "search+tools"
-// routes, and only the file tools on "search", for at most
+// routes, fewer on the others (see toolSpecs), for at most
 // cfg.Agent.MaxRounds model calls per turn. tools may be
 // nil, which turns tools off. With cfg.Index.Retrieval "agentic" it
 // searches nothing before the answer and leaves the model to explore with
@@ -703,7 +709,7 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 			return reply{}, err
 		}
 	}
-	skillList, skillBodies := a.skillsSection(ctx, picked)
+	skillList, skillBodies := a.skillsSection(ctx, picked, specs)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
@@ -1293,21 +1299,13 @@ func (a *Agent) canDo() string {
 func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string, sec sections) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
+	system, profile := a.stablePart(ctx, sec.toolsNote, sec.skillList)
 	// add appends one section, leaving out an empty one.
-	system := a.system
 	add := func(part string) {
 		if part != "" {
 			system += "\n\n" + part
 		}
 	}
-	add(today(time.Now()))
-	add(a.machine)
-	profile := a.profileSection(ctx)
-	add(profile)
-	add(a.currentFilesNote())
-	add(a.canDo())
-	add(sec.toolsNote)
-	add(sec.skillList)
 	add(sec.fileTools)
 	add(sec.memories)
 	add(sec.skillBodies)
@@ -1339,6 +1337,33 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	return msgs
 }
 
+// stablePart returns the opening of the system prompt, the parts that stay
+// the same from turn to turn: the configured prompt with whoIsWho and
+// honestyRule, today's date, the line on the user's computer, the user's
+// profile, filesNote, canDoNote, then toolsNote and skillList, the tools
+// note and the list of skills for the tools the turn offers. It returns
+// the profile on its own as well, for the memory metric. prompt builds on
+// it, and so does the startup warm-up (see warm.go), so the warm-up
+// prompt starts the way a real one does.
+func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (system, profile string) {
+	system = a.system
+	// add appends one section, leaving out an empty one.
+	add := func(part string) {
+		if part != "" {
+			system += "\n\n" + part
+		}
+	}
+	add(today(time.Now()))
+	add(a.machine)
+	profile = a.profileSection(ctx)
+	add(profile)
+	add(a.currentFilesNote())
+	add(a.canDo())
+	add(toolsNote)
+	add(skillList)
+	return system, profile
+}
+
 // answer streams the main model's reply to msgs, offering it tools (nil for
 // none), sends each piece of text through emit as a "token" event, and
 // returns the whole text, the tool calls, the runtime's usage counters and
@@ -1346,6 +1371,11 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // first_token event, and the model-call metrics. Each round of a turn calls
 // it once.
 func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
+	// A question that comes while merud still loads the answer model at
+	// startup waits for that load rather than start a second one.
+	if err := a.WaitWarm(ctx); err != nil {
+		return reply{}, fmt.Errorf("wait for the answer model to load: %w", err)
+	}
 	model, noThink := a.mainModel()
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()

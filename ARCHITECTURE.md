@@ -384,7 +384,7 @@ touch:
 
 | Scope | Route | Searches first | Tools offered |
 | --- | --- | --- | --- |
-| `files` | `search` | yes | what the search route offers: the file tools, `datetime`, `about_meru`, commands that don't ask |
+| `files` | `search` | yes | what the search route offers but the web tools: the file tools, `datetime`, `about_meru`, commands that don't ask |
 | `mail` | `tools` | no | every tool of each mail and calendar server, with `datetime` and `about_meru` |
 | `web` | `tools` | no | `web_search`, `web_fetch`, `datetime` and `about_meru` |
 | `talk` | `direct` | no | none |
@@ -394,7 +394,10 @@ noun that ends in "mail" (gmail, email), or "calendar" or "event": the nouns the
 router's prompt already reads (see [Routing](#routing)). So Meru needs no list of
 mail providers, and the google server brings Drive and Docs along with Gmail,
 while obsidian stays out. Deny-by-default still holds: a scope only narrows what
-config allows. `merud` logs the scope in the turn's info line and on its span;
+config allows. In Auto every route offers `web_search` and `web_fetch` while
+`web_search` is on (see [Who decides what](#who-decides-what)); of the other
+scopes only Web does, since My files, Mail and calendar and Just talk each
+promise where the turn looks. `merud` logs the scope in the turn's info line and on its span;
 the value is one of five.
 
 **Attaching files.** The attach button opens the system's file dialog, which
@@ -686,11 +689,23 @@ The `tools` and `search+tools` routes offer every allowed tool. `search` offers
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
-something, so it waits for a tools route. So do `web_search` and `web_fetch`:
-the router's option C names the web, so a question that needs it lands on a
-tools route. `direct` offers `datetime` and `about_meru` alone: both only read,
-and "what day is Christmas?" and "which model are you?" route there. The model
-can't call a tool it hasn't seen, and the prompt stays shorter.
+something, so it waits for a tools route. `direct` offers `datetime` and
+`about_meru`: both only read, and "what day is Christmas?" and "which model are
+you?" route there. The model can't call a tool it hasn't seen, and the prompt
+stays shorter.
+
+Every route, `direct` included, also offers `web_search` and `web_fetch` while
+`web_search` is on, which takes both `[builtin] tools` and `[web]
+searxng_url`. A real session drove this, here with an invented song: asked
+"what does the song maname maname sung by r. devi acvtually mean", typo and all, the router
+sent the question `direct` at 0.966, where the model had no web tool. The model knew the song only in
+part, called the `web-research` skill as if it were a tool, and told the user
+it couldn't search the web. A question the router takes for general knowledge
+is often one a model half knows. With the web tools on offer and one line in
+the tools note (see [Agent loop](#agent-loop), step 2), the model can check a
+fact before it answers. The two schemas are short. `web_fetch` without
+`web_search` stays on the tools routes, since the model would have to guess a
+URL.
 
 ### Approving a tool call
 
@@ -754,8 +769,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
-  | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
-  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
+  | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
+  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it: on every route while `web_search` is on too, and on the tools routes alone otherwise. |
 
   The file tools reach only the `[index] folders` and `[skills] output_dir`
   (`~/meru-output`), and they skip what the indexer skips (see
@@ -859,6 +874,37 @@ Two profiles ship in `config.toml`. **`lite` is the default.**
 tier at startup. Ollama must allow enough models in memory at once
 (`OLLAMA_MAX_LOADED_MODELS`, 3 for `full`).
 
+The warm-up runs in two parts. Before the socket takes requests, `merud` sends
+the `fast` model a one-token "hi" and the `embed` model one short text: the
+router needs the first on every question, the store the second to open, and
+both load in a second or two. The answer model, the one a set in use names
+(see [Model sets](#model-sets)), loads next, in the background, while `merud`
+already answers pings, settings and the router. Its warm-up prompt is the
+system prompt a `direct` question gets, with the tools and skills it lists,
+and a one-token answer with the set's think setting. A question that reaches
+its first answer call before the load ends waits for that load, and a model
+switch waits too, so Ollama never loads the model twice or unloads it while
+it loads. The info log says `loading the answer model`, then `answer model
+warm` with the time it took, or `couldn't load the answer model` with the
+`ollama pull` command to run. A model that isn't pulled no longer stops
+`merud`; the first question then fails with Ollama's reason.
+
+A real session showed why the warm-up uses a real prompt. `merud` warmed
+`qwen3.6:35b-a3b-mxfp8`, a 38 GB mixture-of-experts model, with "hi" before it
+took questions; the load took 84 seconds, and Ollama kept the model, as
+`keep_alive: -1` asks, with no reload in its log. Yet the first question, 26
+minutes later, spent 2 minutes 17 seconds on a prompt of 1,349 tokens, and the
+next question spent 6 seconds on 1,460. A mixture-of-experts model runs each
+token through a few of its many experts, so a three-token prompt touched a
+sliver of the weights, and the first long prompt read the rest from disk. A
+warm-up prompt of a thousand tokens or more touches most experts before the
+user asks, and Ollama keeps its opening for the first question to reuse.
+
+Loading a 38 GB model at every start costs a minute or two of disk reads, in
+the background. `keep_alive: -1` already says the user wants the models in
+memory, and the other choice, a load on the first question, is the wait the
+real session hit. So the warm-up stays on for every start.
+
 The `fast` tier needs a runtime that reports log probabilities, because
 [routing](#routing) reads them. Ollama added them in v0.12.11; `merud` reads
 `/api/version` at startup and refuses to start on anything older, naming both
@@ -954,14 +1000,15 @@ this order, because `keep_alive: -1` keeps every model in memory, and three
 main models of 38, 28 and 17 GB would push a 64 GB Mac into swap and make every
 measurement after it noise:
 
-1. Check that Ollama has the new main model, so a switch that can't finish
-   unloads nothing.
+1. Wait for the startup load of the answer model to end, if it still runs,
+   then check that Ollama has the new main model, so a switch that can't
+   finish unloads nothing.
 2. Ask Ollama to drop the old answer model: `POST /api/generate` with the
    model, no prompt and `keep_alive: 0` (`OllamaEngine.Unload`).
 3. Ask `/api/ps` every 100 ms until it no longer lists the old model, for at
    most 10 seconds.
-4. Load the new model with a one-token question, as `merud` warms each tier at
-   startup, so the first real question doesn't pay for the load.
+4. Load the new model with a one-token question, so the first real question
+   doesn't pay for the whole load.
 5. Hand the model and its think setting to the agent, and only then reply.
 
 Steps 2 and 3 are skipped when the old answer model is also the `fast` or
@@ -1004,8 +1051,9 @@ support tools". Every route offers some tool, `datetime` and `about_meru` at
 least, so with such a model every turn would fail. Before it builds the prompt,
 the agent asks whether the answer model lists `tools`, through the engine's
 cached `Details`. When it doesn't, the turn offers no tools, and when the route
-would have offered more than those two, a `notice` under the answer names the
-model and says how to pick another. So `gemma3:12b` answers direct questions,
+would have offered more than the tools every route offers (those two, and the
+web tools while `web_search` is on), or the scope is Web, a `notice` under the
+answer names the model and says how to pick another. So `gemma3:12b` answers direct questions,
 questions about images, and search questions from the excerpts search puts in
 the prompt, and can't read mail, notes, the web or files on its own. The
 Library says so on its card, and `model_set` replies with a warning.
@@ -1121,7 +1169,9 @@ order.
    `search` becomes `search+tools`. The router alone can't catch this: "help
    me understand btop with some simple commands" gave `direct` 0.761 and
    `tools` 0.022, while the skill pick chose `web-research`, whose first step
-   is `web_search`. A skill that adds only web tools leaves a `direct` turn
+   is `web_search`. Every route now offers the web tools while `web_search` is
+   on, so `web-research` widens a route only when `web_search` is off and
+   `web_fetch` isn't. A skill that adds only web tools leaves a `direct` turn
    unsearched; one that adds the file tools makes it a file turn. Last,
    some questions go to the web before the model's first round (see
    [Web first](#web-first)): one that asks for the web or gives a URL, and,
@@ -1166,22 +1216,33 @@ order.
    `search+tools` routes the model also gets the allowed tools' schemas; on
    `search` it gets the four file tools' schemas and those of the local
    commands that don't ask, with a note that says it may run the `cmd.` tools.
+   Every route gets the schemas of `datetime` and `about_meru`, and of
+   `web_search` and `web_fetch` while `web_search` is on.
    The note on the file tools says it may read whole files, list folders, grep
-   and search again when the excerpts fall short. A turn that offers both
-   `web_search` and a file tool adds a line to the tools note: when the files
+   and search again when the excerpts fall short. A turn that offers
+   `web_search`, on any route, adds a line to the tools note: "When you aren't
+   sure of a fact, such as a song, a film, a book, a person, a product, a place
+   or anything that may have changed, call web_search before you answer, and
+   cite the pages you use. Never tell the user you can't search the web." The
+   skills list then names only the skills whose tools the turn offers, or that
+   name no tools, so it never points the model at a tool it lacks. Both depend
+   only on the tools offered, and in Auto every route offers the same web tools,
+   so both keep their place among the parts that stay the same. A turn that
+   offers both `web_search` and a file tool adds a second line: when the files
    don't answer, call `web_search` before answering from memory, and never make
-   up a command's flags or a version number. The line depends only on the tools
-   offered, so it keeps its place among the parts that stay the same. On such a
-   turn, a search that finds nothing tells the model to use `web_search` for how
+   up a command's flags or a version number. It too depends only on the tools
+   offered. On a turn that offers `web_search`, a search that finds nothing tells the model to use `web_search` for how
    to use a program and for facts that change, where it would otherwise say
    "answer from what you know". A real turn drove both: "help me understand
    btop with some simple commands" grepped the user's folders, found only pages
    that name btop in passing, and answered with flags btop doesn't have.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
-   On a route that offers tools, the loop first asks each connected MCP server
+   On the `tools` and `search+tools` routes, the loop first asks each connected MCP server
    for its tools again and gives each server that isn't connected one try, then
    lists the tools (see [MCP](#mcp)).
-3. **Call `main`.** Stream text to the client as it arrives. Ollama sends each tool
+3. **Call `main`.** A turn that gets here while `merud` still loads the answer
+   model at startup waits for that load (see [Model tiers](#model-tiers)).
+   Stream text to the client as it arrives. Ollama sends each tool
    call whole, in a chunk of its own, and the loop collects them. It tells the
    client about each call with a `tool_call` event. Each call carries
    `num_predict = [agent] max_output_tokens` (default 8,192). Ollama counts a
@@ -1499,7 +1560,9 @@ isn't on the list, since "summarise my research folder" is about your files,
 and neither is "google" alone, the name of the server behind Gmail. The router
 sent "Search the web: what is SearXNG?" to `direct`, and the model, with no
 tools, wrote a tool call as plain text. Such a question also goes to the web
-first (see [Web first](#web-first)).
+first (see [Web first](#web-first)). Since every route now offers the web tools
+while `web_search` is on, a factual question the router sends `direct` without
+asking for the web can still look things up; the router itself didn't change.
 
 The fifth: when a word in the question matches something a connected server's
 tools act on, the loop adds tools. The nouns come from the tool names, singular
@@ -2189,14 +2252,24 @@ it had over and over. A name Meru doesn't know as a tool, such as Claude's
 The key takes a comma list, a `[...]` list or a YAML list of `- name` lines.
 
 The list of skills in every prompt says a skill is a set of instructions, not a
-tool, and gives each skill whose `allowed-tools` config allows a line such as
-"To use it, call web_search or web_fetch." The line names every tool config
-allows, not the tools one route offers, so the list stays the same from turn to
-turn. A model in a real session still called `web-research` as a tool. Such a
-call goes to `dispatch`, which denies it as it denies any tool no backend
-offers. When the round offers a tool the skill names, the model reads
-"web-research is a skill, not a tool. Call web_search or web_fetch." in place of
-the usual refusal, and the call counts in `meru.model.malformed_calls`.
+tool. It names a skill only when the turn offers at least one of the tools its
+`allowed-tools` names, or when it names none, and gives each skill with tools a
+line such as "To use it, call web_search or web_fetch." that names the tools the
+turn offers. A picked skill whose tools the turn doesn't offer, as on the Just
+talk scope, leaves its instructions out too. In a real session the list named
+`web-research` on a `direct` turn that offered no web tool; the model called
+`web-research` as a tool, and then told the user it couldn't search the web.
+Since every route in Auto offers the same web tools, the list still stays the
+same from turn to turn there.
+
+A model may still call a skill as a tool. Such a call goes to `dispatch`, which
+denies it as it denies any tool no backend offers, and the call counts in
+`meru.model.malformed_calls`. In place of the usual refusal the model reads a
+hint whenever config allows the skill's tools. When the round offers them, the
+hint is "web-research is a skill, not a tool. Call web_search or web_fetch.",
+and the model can call the tool in its next round. When config allows them but
+the round doesn't offer them, it says the skill works through those tools and
+that this answer doesn't offer them, so the model answers without them.
 
 A skill's `name` is lowercase letters and digits in words joined by `-`, such as
 `meeting-notes`, and must match its folder's name. A `SKILL.md` may be up to
@@ -2774,8 +2847,10 @@ start it once, in Docker ([docs/running.md](docs/running.md), "Web search"), and
 `merud` reaches it on loopback, as it reaches Ollama.
 
 Two built-in tools use it. Both go through `dispatch`, so every search, page and
-download lands in the transcript and in `tool_calls`, and both wait for a tools
-route:
+download lands in the transcript and in `tool_calls`. While `web_search` is on,
+both go with every route, `direct` included (see
+[Who decides what](#who-decides-what)); without it, `web_fetch` waits for a
+tools route:
 
 | Tool | Offered when | What it does |
 | --- | --- | --- |
@@ -2899,7 +2974,7 @@ So `merud` itself searches before the model's first round in two cases:
 
 | Case | When | What `merud` runs |
 | --- | --- | --- |
-| `asked` | the question asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or it holds an http or https URL and `web_fetch` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web and the filler words at either end; a follow-up too short to stand alone gets the earlier question, as a file search does |
+| `asked` | the question asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or it holds an http or https URL and `web_fetch` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web, a closing instruction ("and tell me what it is in three lines") and the filler words at either end (see below); a follow-up too short to stand alone gets the earlier question, as a file search does, and one that speaks only of the web searches for the earlier question alone |
 | `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, and the excerpts don't cover it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
 
 The calls go through `dispatch` like any other. Their `tool_call` lines and
@@ -2914,6 +2989,24 @@ in equal shares among the calls. The route becomes at least `tools` (`direct`
 becomes `tools`, `search` becomes `search+tools`), so the model can search again
 or read a page. A call that fails, as when SearXNG doesn't answer, leaves the
 section out; the model still has the tools.
+
+**The search words for an asked turn.** No model writes them; `merud` cuts the
+question down with short word lists. A closing instruction goes: "and" or
+"then" before a verb that asks for an answer ("tell", "explain", "summarize",
+"give", "write", "list", "describe", "show", "say"), and a length at the very
+end ("in three lines", "in 50 words"). So "search the web for Acme Flow pricing
+and tell me what it costs in three lines" searches for "Acme Flow pricing". A
+follow-up that speaks only of the web searches for the session's latest earlier
+question that doesn't, cleaned the same way. It speaks only of the web when no
+words are left once the web phrase and the filler go, or when fewer than three
+subject words are left and one of them speaks of what Meru can reach, such as
+"have", "access", "use" or "go ahead". A real session drove this. After the
+song question in [Who decides what](#who-decides-what), the user wrote "you
+have accerss to web search", and `merud` searched for "have accerss what does
+the song ... acvtually mean", the follow-up's words glued to the question
+before it. Now it searches for "song maname maname sung by r. devi acvtually
+mean". A follow-up with a subject, such as "search the web for the pricing",
+still gets the earlier question after it.
 
 **Named things.** The detector reads English and knows three shapes: a term in
 double quotes; a run of capitalised words, such as "Acme Flow", where a lone

@@ -77,6 +77,9 @@ type modelUnloader interface {
 type answerModel interface {
 	Main() string
 	SetMain(model string, noThink bool)
+	// WaitWarm waits for the startup load of the answer model to end, so
+	// a switch never unloads the model while Ollama loads it.
+	WaitWarm(ctx context.Context) error
 }
 
 // modelService answers the model ops. models holds the tiers and sets as
@@ -339,9 +342,12 @@ func (m *modelService) noSuchSet(name string) error {
 //     unloads nothing;
 //  1. ask Ollama to unload the answer model now (see engine.Unload);
 //  2. wait until /api/ps no longer lists it, at most m.wait;
-//  3. load to with a one-token question, as merud warms each tier at
-//     startup, so the first real question doesn't pay for the load;
+//  3. load to with a one-token question, so the first real question
+//     doesn't pay for the load;
 //  4. hand to to the agent.
+//
+// First of all it waits for the answer model's startup load to end, if
+// one still runs, so step 1 never unloads a model while Ollama loads it.
 //
 // Steps 1 and 2 are skipped when the old answer model stays in use: it is
 // to itself, or it is the fast or embed model, which merud keeps loaded,
@@ -353,6 +359,9 @@ func (m *modelService) noSuchSet(name string) error {
 // holds m.switchMu.
 func (m *modelService) switchMain(ctx context.Context, to string, noThink bool) error {
 	start := time.Now()
+	if err := m.answer.WaitWarm(ctx); err != nil {
+		return fmt.Errorf("switch to %s: wait for the answer model to load: %w", to, err)
+	}
 	from := m.answer.Main()
 	lctx, cancel := context.WithTimeout(ctx, modelsTimeout)
 	pulled, err := m.pulled(lctx)

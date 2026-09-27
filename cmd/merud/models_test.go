@@ -63,6 +63,9 @@ func (a *fixedAnswer) Main() string { return a.main }
 // SetMain changes the answer model.
 func (a *fixedAnswer) SetMain(model string, noThink bool) { a.main, a.noThink = model, noThink }
 
+// WaitWarm returns at once: no startup load runs in these tests.
+func (a *fixedAnswer) WaitWarm(context.Context) error { return nil }
+
 // modelsConfig is a config.toml with a comment and an unrelated key, which
 // every change must keep.
 const modelsConfig = "# my models, keep me\n[models]\nmain = \"" + qwen + "\" # the big one\n\n[agent]\nhistory_turns = 3\n"

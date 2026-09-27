@@ -1,5 +1,6 @@
 // This file holds merud's startup checks on the model runtime: the Ollama
-// version check and the warm-up call for each model tier.
+// version check and the warm-up calls for the fast and embedding models.
+// The answer model warms in the background; see agent.StartWarm.
 
 package main
 
@@ -80,30 +81,27 @@ func parseVersion(s string) ([3]int, error) {
 	return v, nil
 }
 
-// warm loads each tier's model into Ollama with a tiny request, so the first
-// real question doesn't wait for a model to load from disk. The engine sends
-// keep_alive from config with every call, so the models then stay loaded.
+// warm loads the fast and embedding models into Ollama with a tiny request
+// each, before merud takes questions: the router needs the fast model for
+// every question, and the store needs the embedding model to open. Both
+// are small, so this takes a second or two. The engine sends keep_alive
+// from config with every call, so the models then stay loaded.
 //
-// When fast and main name the same model, as in the lite profile, it loads
-// once. warm fails on the first model that can't load, which usually means it
-// hasn't been pulled yet, and says so.
+// The answer model, often tens of gigabytes, loads in the background once
+// the socket is open; see agent.StartWarm. In the lite profile it is the
+// fast model, which this has loaded already. warm fails on the first model
+// that can't load, which usually means it hasn't been pulled yet, and says
+// so.
 func warm(ctx context.Context, eng engine.Engine, m config.Models, log *slog.Logger) error {
-	chat := []string{m.Fast}
-	if m.Main != m.Fast {
-		chat = append(chat, m.Main)
-	}
 	hello := []engine.Message{{Role: engine.RoleUser, Content: "hi"}}
-	for _, model := range chat {
-		start := time.Now()
-		log.DebugContext(ctx, "warming", "model", model)
-		_, err := eng.Generate(ctx, hello, nil, engine.Options{Model: model, MaxTokens: 1})
-		if err != nil {
-			return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", model, err, model)
-		}
-		log.Info("warmed", "model", model, "ms", time.Since(start).Milliseconds())
-	}
-
 	start := time.Now()
+	log.DebugContext(ctx, "warming", "model", m.Fast)
+	if _, err := eng.Generate(ctx, hello, nil, engine.Options{Model: m.Fast, MaxTokens: 1}); err != nil {
+		return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", m.Fast, err, m.Fast)
+	}
+	log.Info("warmed", "model", m.Fast, "ms", time.Since(start).Milliseconds())
+
+	start = time.Now()
 	log.DebugContext(ctx, "warming", "model", m.Embed)
 	if _, err := eng.Embed(ctx, []string{"hi"}); err != nil {
 		return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", m.Embed, err, m.Embed)

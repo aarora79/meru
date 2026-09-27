@@ -100,17 +100,22 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 
 // scopeSpecs returns the tools a turn with scope may use:
 //
-//   - files: what the search route offers, the file tools, the local
-//     commands that don't ask, and datetime and about_meru;
+//   - files: what the search route offers but the web tools: the file
+//     tools, the local commands that don't ask, and datetime and
+//     about_meru;
 //   - mail: every tool of the mail and calendar servers (see
 //     mailServers), with datetime, since "what's on Friday?" needs the
 //     date, and about_meru;
 //   - web: web_search and web_fetch, with datetime and about_meru;
 //   - talk: none at all;
 //   - auto, which reaches here only for a question with images: what
-//     the direct route offers, datetime and about_meru.
+//     the direct route offers, datetime and about_meru, and the web tools
+//     while web_search is on.
 //
 // builtin.EveryRoute names the two tools every scope but talk carries.
+// The web tools go with every route in auto (see everyRoute), but of the
+// other scopes only web offers them: files, mail and talk each promise
+// the user where the turn looks.
 //
 // A mail turn refreshes the tool servers first, as a tools route does, so
 // a server started after merud is there for it.
@@ -120,7 +125,11 @@ func (a *Agent) scopeSpecs(ctx context.Context, scope string) []engine.ToolSpec 
 	}
 	switch scope {
 	case rpc.ScopeFiles:
-		return a.toolSpecs("search")
+		// The search route offers the web tools too, but "My files"
+		// promises the user's files, so they stay out.
+		return slices.DeleteFunc(a.toolSpecs("search"), func(s engine.ToolSpec) bool {
+			return builtin.IsWebTool(s.Name)
+		})
 	case rpc.ScopeMail:
 		a.tools.Refresh(ctx)
 		all := a.tools.Tools()

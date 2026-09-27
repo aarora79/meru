@@ -26,7 +26,7 @@ flowchart TB
         O --> E["build engine"]
         E --> V["check Ollama version ≥ 0.12.11"]
         V --> S["rpc.Listen: claim the socket"]
-        S --> W["warm fast, main, embed"]
+        S --> W["warm fast and embed"]
         W --> D["embed a probe text: vector size"]
         D --> ST["store.Open(meru.db, embed model, size)"]
         ST --> RT["ReplayTurns: rebuild turns if empty"]
@@ -34,11 +34,12 @@ flowchart TB
         IX --> MO["memory.Open(~/.meru/memory)"]
         MO --> SK["skills: install built-ins, Load"]
         SK --> G2["errgroup"]
+        G2 --> WM2["load the answer model (agent.StartWarm)"]
         G2 --> R["rpc.Serve(handler)"]
         G2 --> SC["startup scan (or re-embed)"]
         G2 --> WA["watch the folders"]
         G2 --> WM["sync and watch the memory folder"]
-        R -- "SIGINT / SIGTERM" --> X["stop all four, close the store, flush telemetry"]
+        R -- "SIGINT / SIGTERM" --> X["stop every job, close the store, flush telemetry"]
     end
     subgraph meru["meru"]
         A["meru \"question\""] -- "rpc.Do" --> R
@@ -66,10 +67,11 @@ builder as a parameter, so `TestRunServesAndStops` runs the whole daemon over
 a fake engine. `TestRunLogLevel` does the same with and without `-v`, and
 checks what `merud.log` holds at each level.
 
-`serve` claims the socket **before** warming the models. Warming the `full`
-profile's main model can take a minute, and a second `merud` should fail at
-once rather than after that minute. Clients that connect during warm-up wait
-in the socket's queue.
+`serve` claims the socket **before** warming the models, so a second
+`merud` fails at once rather than after the warm-up. Clients that connect
+during warm-up wait in the socket's queue. That wait is short now: `warm`
+loads only the fast and embedding models, and the answer model, which can
+take minutes, loads in the background once the server runs (see below).
 
 After warming, `serve` opens the store with `openStore`. The store needs the
 embedding model's vector size, and `embedDims` learns it by embedding one
@@ -77,12 +79,14 @@ short probe text, so config never holds a number that could go stale. When
 the model or the size changed since the last run, the store drops the old
 vectors (`store.NeedsReembed` then reports true).
 
-Then five jobs run side by side in an **errgroup** from
+Then six jobs run side by side in an **errgroup** from
 `golang.org/x/sync`:
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(a, idx, tools, mems, sk, st), log) })
+warmAnswer := a.StartWarm()
+g.Go(func() error { warmAnswer(gctx); return nil })
+g.Go(func() error { return rpc.Serve(gctx, ln, handler(svc), log) })
 g.Go(func() error { idx.startupScan(gctx); return nil })
 g.Go(func() error { idx.watch(gctx); return nil })
 g.Go(func() error { sum.Run(gctx); return nil })
@@ -92,10 +96,19 @@ return g.Wait()
 
 `g.Go` starts a function in its own goroutine, and `g.Wait` waits for all of
 them. `gctx` ends when `ctx` does, or when one function returns an error, so
-all five stop together. The scan, the summarizer and the two watchers log their
+all six stop together. The answer model's load, the scan, the summarizer and the two watchers log their
 own errors and return `nil`, so a folder that can't be read never stops `merud`. Because the
 scan runs beside the server, questions get answers during a long first scan;
 they search whatever the index holds so far.
+
+`a.StartWarm()` returns a function, and a Go function can do that: the
+function it returns keeps the variables it uses, here a channel, and runs
+later. `serve` calls `StartWarm` before `rpc.Serve` starts, so the agent knows
+a load is on its way before any question can arrive; the errgroup then runs
+the load in its own goroutine. A question that reaches the answer model before
+the load ends waits for it (`agent.WaitWarm`), and so does a model switch, so
+Ollama never loads the answer model twice. See the agent's coding note,
+"The startup warm-up", for why the load sends a real prompt and not "hi".
 
 `handler` sends each request to the right place: `ask` to the agent, `index`
 and `index_status` to the index service, `tools` and `log` to the tool service,
@@ -156,11 +169,16 @@ than 0.12.11, the first release that reports log probabilities.
 `versionAtLeast` compares versions number by number, so `0.12.11` beats
 `0.9.99`, which a plain string comparison gets wrong.
 
-`warm` sends a one-token request to each chat model and one embedding
-request, and logs `warmed` with the time each took. At debug level the
-engine's own lines show each call's status and Ollama's load time. When `fast` and `main` name the same model, as in the `lite` profile,
-it loads that model once. A failure says which model and suggests
-`ollama pull`.
+`warm` sends a one-token request to the fast model and one embedding
+request, and logs `warmed` with the time each took. The router needs the
+first on every question, and `openStore` needs the second. At debug level the
+engine's own lines show each call's status and Ollama's load time. A failure
+says which model and suggests `ollama pull`, and `merud` stops. The answer
+model isn't here: the agent loads it in the background (see `StartWarm`
+above), logs `answer model warm` when it is, and logs `couldn't load the
+answer model` with the `ollama pull` command when it can't, without stopping
+`merud`. In the `lite` profile the fast model is the answer model, so `warm`
+has loaded it already and the background load is quick.
 
 ### merud: index.go
 
@@ -665,13 +683,15 @@ changes the answer model. `handleModelUse`, `handleModelSet` and nothing else
 call it, and each holds `switchMu` while it runs, so a second switch waits
 rather than loading a third model beside the first two. In order, it:
 
-1. asks `Pulled` whether Ollama has `to`, and refuses before it unloads
+1. waits for the answer model's startup load to end with
+   `m.answer.WaitWarm`, so it never unloads a model Ollama is loading, then
+   asks `Pulled` whether Ollama has `to`, and refuses before it unloads
    anything when it doesn't;
 2. calls the engine's `Unload` on the old answer model, which sends
    `keep_alive: 0`;
 3. calls `waitUnloaded`, which asks `Info` every 100 ms until the old model
    leaves Ollama's list, for at most 10 seconds;
-4. loads `to` with a one-token `Generate`, as `warm` does at startup;
+4. loads `to` with a one-token `Generate`;
 5. calls `SetMain(to, noThink)` on the agent.
 
 Steps 2 and 3 are skipped when the old model is also the fast or embed model,
@@ -1255,6 +1275,9 @@ and `expandHome`.
 - **`run` returns instead of exiting.** `os.Exit` skips deferred calls and
   can't be tested; returning an error or a status code avoids both problems.
 - **The socket before the warm-up**, so a duplicate daemon fails fast.
+- **The answer model loads in the background.** It can take minutes; the
+  router, pings and settings needn't wait for it, and a question that
+  needs it waits on the same load rather than starting another.
 - **`meru` stays thin.** It imports only `rpc`, `tui`, `config` (for the
   default socket path), and `catalog` and `secrets` (for setup), and starts in
   milliseconds. `meru tools` and `meru log` format what `merud` sends; `merud`

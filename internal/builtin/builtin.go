@@ -595,9 +595,19 @@ func (t *Tools) EditConfig(edit func() error) error {
 // route and every scope that offers tools, "direct" included: datetime,
 // because "what day is Christmas?" routes direct, and about_meru, because
 // "which model are you?" does too. Both only read, and their schemas are
-// short.
+// short. The web tools join every route too, while web_search is on, but
+// not every scope; see IsWebTool.
 func EveryRoute(name string) bool {
 	return name == DateTime || name == AboutMeru
+}
+
+// IsWebTool reports whether name is web_search or web_fetch. The agent
+// offers both on every route while web_search is on, so a question the
+// router sends direct, such as what a song means, can still look the facts
+// up. The desktop app's "My files", "Mail and calendar" and "Just talk"
+// scopes leave them out.
+func IsWebTool(name string) bool {
+	return name == WebSearch || name == WebFetch
 }
 
 // Summary says in one line what the built-in tool name does, for the

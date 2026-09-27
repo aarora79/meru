@@ -119,9 +119,10 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 }
 
 // serve does the work between reading config and shutting down: telemetry,
-// the engine, the runtime check, claiming the socket, warming the models,
-// opening the store and replaying the transcripts into it, and then four
-// jobs side by side until ctx is cancelled: answering requests, the
+// the engine, the runtime check, claiming the socket, warming the fast and
+// embedding models, opening the store and replaying the transcripts into
+// it, and then these jobs side by side until ctx is cancelled: loading the
+// answer model, answering requests, the
 // startup scan of the [index] folders, the file watcher, and the session
 // summarizer. Questions get answers while the first scan runs; they search
 // whatever the index holds so far.
@@ -150,10 +151,10 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	}
 	log.Info("ollama ok", "version", version)
 
-	// Claim the socket before warming, which can take minutes on a cold
-	// start: a second merud then fails at once instead of loading models for
-	// nothing. Clients that connect meanwhile wait in the socket's queue
-	// until Serve starts accepting.
+	// Claim the socket before warming: a second merud then fails at once
+	// instead of loading models for nothing. Clients that connect meanwhile
+	// wait in the socket's queue until Serve starts accepting, a few
+	// seconds, since the large answer model loads after Serve starts.
 	ln, err := rpc.Listen(ctx, socketPath)
 	if err != nil {
 		return err
@@ -271,6 +272,13 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// of the memory folder, log their own errors and return nil.
 	served = true
 	g, gctx := errgroup.WithContext(ctx)
+	// The answer model loads beside the server, so ping, settings and the
+	// router answer at once. StartWarm runs before Serve, so a question
+	// that comes during the load waits for it instead of starting another.
+	// newModelService has already told the agent which model answers and
+	// whether it thinks.
+	warmAnswer := a.StartWarm()
+	g.Go(func() error { warmAnswer(gctx); return nil })
 	g.Go(func() error { return rpc.Serve(gctx, ln, handler(svc), log) })
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watchAndRescan(gctx); return nil })

@@ -229,11 +229,11 @@ func TestNoteFor(t *testing.T) {
 		{"file tools and a command", names("grep", "cmd.git-log"), commandsNote},
 		{"with datetime", names("datetime", "grep"), toolsNote},
 		{"an MCP tool", names("obsidian.obsidian_read_note", "cmd.git-log"), toolsNote},
-		{"web_search and a file tool", names("datetime", "web_search", "grep"), toolsNote + " " + webFallbackNote},
-		{"web_search and a file tool alone", names("web_search", "read_file"), toolsNote + " " + webFallbackNote},
-		{"web_search with no file tool", names("datetime", "web_search", "web_fetch"), toolsNote},
+		{"web_search and a file tool", names("datetime", "web_search", "grep"), toolsNote + " " + webNote + " " + webFallbackNote},
+		{"web_search and a file tool alone", names("web_search", "read_file"), toolsNote + " " + webNote + " " + webFallbackNote},
+		{"web_search with no file tool", names("datetime", "web_search", "web_fetch"), toolsNote + " " + webNote},
 		{"web_fetch and a file tool", names("web_fetch", "grep"), toolsNote},
-		{"web_search, a file tool and a command", names("web_search", "grep", "cmd.git-log"), toolsNote + " " + webFallbackNote},
+		{"web_search, a file tool and a command", names("web_search", "grep", "cmd.git-log"), toolsNote + " " + webNote + " " + webFallbackNote},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

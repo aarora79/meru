@@ -506,7 +506,13 @@ Skill: writing
 ```
 
 The list goes into every turn that has skills; the second part only when the
-pick chose some. `formatBodies` caps the instructions at 3,000 tokens (12,000
+pick chose some. `skillsSection` takes the turn's tools, `specs`, and
+`skillList` names a skill only when `skillFits` says it belongs: the skill
+names no tool Meru knows, or the turn offers at least one of the tools it
+names. A picked skill that doesn't fit leaves its instructions out too. A real
+turn showed why: the list named `web-research` on a `direct` turn that offered
+no web tool, and the model called a tool named "web-research", got a refusal,
+and told the user it couldn't search the web. `formatBodies` caps the instructions at 3,000 tokens (12,000
 characters). The first skill goes in whole even past the cap, because half a
 skill's steps can mislead the model more than none. A second skill gets what is
 left, cut at a line break and closed with a note that Meru cut the rest.
@@ -514,12 +520,17 @@ left, cut at a line break and closed with a note that Meru cut the rest.
 section `skills`.
 
 **A skill isn't a tool.** The list's header says so, and `skillToolNames`
-adds "To use it, call web_search or web_fetch." to each skill whose
-`allowed-tools` config allows. It checks every tool config allows, not the
-round's tools, so the list stays the same from turn to turn. A model can still
-call a skill by name. `runCalls` then sets `dispatch.Call.Hint` from
-`skillHint`, which, when the round offers a tool the skill uses, reads
-"web-research is a skill, not a tool. Call web_search or web_fetch.".
+adds "To use it, call web_search or web_fetch." to each skill whose tools the
+turn offers. In `auto` every route offers the same web tools while
+`web_search` is on, so the list stays the same from turn to turn there. A
+model can still call a skill by name. `runCalls` then sets
+`dispatch.Call.Hint` from `skillHint(reg, name, offer, allowed)`, where
+`allowed` names every tool config allows. When the round offers a tool the
+skill uses, the hint reads "web-research is a skill, not a tool. Call
+web_search or web_fetch.". When config allows the skill's tools but the round
+doesn't offer them, as on "Just talk", it names them and says this answer
+doesn't offer them, so the model answers without them. A skill whose tools
+config turns off gets no hint. `TestSkillHint` covers each case.
 `dispatch` denies the call as it denies any tool no backend offers, and hands
 the model the hint in place of its usual refusal. `checkCalls` counts the call
 as malformed, with its own reason, `whySkillName`. The turn keeps the registry
@@ -581,13 +592,14 @@ the router:
 
 | Scope | Route (`scopeRoute`) | Searches first | Tools (`scopeSpecs`) |
 | --- | --- | --- | --- |
-| `files` | `search` | yes | `toolSpecs("search")` |
+| `files` | `search` | yes | `toolSpecs("search")` without the web tools |
 | `mail` | `tools` | no | every tool of the servers `mailServers` picks, with `datetime` and `about_meru` |
 | `web` | `tools` | no | `web_search`, `web_fetch`, `datetime`, `about_meru` |
 | `talk` | `direct` | no | none |
 
 The route rules that widen a route stay out, and so do a picked skill's tools: a
-scope promises what the turn may touch. Skills are still picked, since the
+scope promises what the turn may touch. That is also why `files` drops the
+web tools the search route offers in `auto` (`builtin.IsWebTool` names them). Skills are still picked, since the
 writing skill shapes an answer without a tool. The `route` event carries
 confidence 1, because nothing guessed.
 
@@ -613,8 +625,10 @@ line as its error.
 model can't call tools, `offerable` returns nil, so the prompt holds no tools
 note and the model call carries no tools, and the model answers from what it
 knows and any excerpts search put in the prompt. When the tools it dropped
-held more than the two every route offers, it also puts the model's name in
-`t.noTools`, and `Handle` sends a `notice` under the answer:
+held more than the tools every route offers (`everyRoute`: `datetime`,
+`about_meru`, and the web tools while `web_search` is on), or the scope is
+web, it also puts the model's name in `t.noTools`, and `Handle` sends a
+`notice` under the answer:
 
 ```text
 gemma3:12b can't call tools, so Meru answered without them: no mail, calendar,
@@ -622,14 +636,47 @@ notes, web or file tools. To use them, pick another answer model under Library,
 Models in the desktop app, or in [models] main in config.toml.
 ```
 
-A plain question on the `direct` route drops only `datetime` and `about_meru`
-and gets no notice, which would otherwise sit under every answer. The notice
+A plain question on the `direct` route drops only the tools every route
+offers and gets no notice, which would otherwise sit under every answer. The notice
 goes in the assistant line's `notice` field, before the unbacked-claim warning
 when both apply, and the turn span records `meru.turn.no_tools`. A check that
 fails, as when Ollama is down, leaves the tools in, and the model call then
 fails with Ollama's own reason. `TestNoToolsModel` covers a model with tools,
 one without on a tools route and on a direct question, a check that fails, and
 no check.
+
+### The startup warm-up (warm.go)
+
+`merud` loads the answer model in the background once its socket takes
+requests. `StartWarm` marks the load as running, before the server starts, and
+returns the function that does it; `merud` runs that function in its
+errgroup. `answer` calls `WaitWarm` before every model call, so a question that
+comes during the load waits for it rather than make Ollama load the model a
+second time, and `merud`'s model switch calls it too, so it never unloads a
+model Ollama is loading. `WaitWarm` returns at once when nothing started a load,
+as in every test that builds an agent with `New`.
+
+`warm` sends the answer model the opening of a real prompt: `stablePart`, the
+part of the system prompt that stays the same from turn to turn, with the
+tools note and skills list of a `direct` turn, then "hi", for one token, with
+the model set's think setting. `prompt` builds its own opening with
+`stablePart` too, so the two match, and Ollama keeps the warm-up's opening for
+the first question to reuse. It logs `loading the answer model`, then `answer
+model warm` with the time it took, or `couldn't load the answer model` with
+the `ollama pull` command to run.
+
+Why not "hi" alone: in a real session `merud` warmed a 38 GB
+mixture-of-experts model with "hi", and Ollama kept it loaded, yet the first
+question 26 minutes later spent 2 minutes 17 seconds on a prompt of 1,349
+tokens, where the next spent 6 seconds on 1,460. Such a model runs each token
+through a few of its many experts, so a three-token prompt touched a sliver of
+the weights, and the first long prompt read the rest from disk. A prompt of a
+thousand tokens or more touches most of them before the user asks.
+
+`TestStartupWarmsAnswerModel`, in `cmd/merud`, runs `merud` with a model set
+over a fake engine whose answer model loads until the test lets it go: a ping
+answers during the load, a question waits for it, the model loads once, and
+the load carries thinking off and the system prompt.
 
 ### Images (images.go)
 
@@ -999,9 +1046,26 @@ cut "search the web" whole:
 "can you search the web for Acme Flow pricing?"  ->  "Acme Flow pricing"
 ```
 
-It deletes the phrases, then the filler words at either end (`isFiller`, the
-same list the file search uses), then a closing "?". A follow-up that is too
-short after that gets the earlier question, through `searchQuery`.
+`webWords` deletes the phrases, then a closing instruction, then the filler
+words at either end (`isFiller`, the same list the file search uses), then a
+closing "?". `instructionAt` finds the closing instruction: "and" or "then"
+before a verb that asks for an answer ("and tell me what it is"), or a length
+at the very end ("in three lines"). The cut needs a word before it, so a
+question made of an instruction alone keeps its words:
+
+```text
+"contoso relay and tell me what it is in three lines"  ->  "contoso relay"
+```
+
+`webWords` also says whether the question speaks only of the web: nothing is
+left, or fewer than three subject words are left and one of them is a
+`reachWord`, such as "have", "access" or "use". Such a follow-up searches for
+the latest earlier question that doesn't, through `earlierWebWords`, cleaned
+the same way and with nothing glued on. A real follow-up, "you have accerss to
+web search", used to search for "have accerss" glued to the question before
+it. Any other follow-up that is too short gets the earlier question after it,
+through `searchQuery`, as before. `TestWebQuery` covers each shape, and
+`TestSongSessionReplay` replays the real session with an invented song.
 
 **Named things.** `namedThing` walks the question's words once and returns the
 first name. A term in double quotes wins. Otherwise it collects runs of
@@ -1194,7 +1258,7 @@ tools, and a server the user restarted with new tools offers them on that turn.
 
 ```go
 specs := a.toolSpecs(dec.Route)
-if len(specs) > 0 {
+if len(specs) > 0 && (dec.Route == "tools" || dec.Route == "search+tools") {
     a.tools.Refresh(ctx)
     specs = a.toolSpecs(dec.Route)
 }
@@ -1202,28 +1266,32 @@ if len(specs) > 0 {
 
 The second `toolSpecs` call lists the tools again, so a server that answers now,
 or one whose tool list changed, joins this turn with its current tools. One that still fails is left out, and the model answers without
-it. `len(specs) > 0` is the whole test: any turn that offers a tool asks, a `search`
-turn with only file tools included, and a `direct` turn never does.
+it. Only the two routes that offer a server's tools refresh: `search` and
+`direct` offer none, so they don't wait on a server that may take 30 seconds
+to start.
 `Refresh` runs once per turn, before the first round, and never between
 rounds.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
-ToolRunner offers on `tools` and `search+tools`. On `search` it keeps
-`datetime` and `about_meru`, which `builtin.EveryRoute` names, the four
-read-only file tools, `read_file`, `list_folder`, `grep` and `search_files`,
-which `builtin.IsFileTool` names, and the local commands (`cmd.<name>`) for
-which `Asks` says no:
+ToolRunner offers on `tools` and `search+tools`. Every other route keeps the
+tools `everyRoute` names: `datetime` and `about_meru`, which
+`builtin.EveryRoute` names, and `web_search` and `web_fetch`, which
+`builtin.IsWebTool` names, while `web_search` is on. On `search` it also keeps
+the four read-only file tools, `read_file`, `list_folder`, `grep` and
+`search_files`, which `builtin.IsFileTool` names, and the local commands
+(`cmd.<name>`) for which `Asks` says no:
 
 ```go
-case "search":
-    var specs []engine.ToolSpec
-    for _, s := range a.tools.Tools() {
-        if builtin.EveryRoute(s.Name) || builtin.IsFileTool(s.Name) ||
-            (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
-            specs = append(specs, s)
-        }
+webOn := offersWebSearch(all)
+for _, s := range all {
+    switch {
+    case everyRoute(s.Name, webOn):
+        specs = append(specs, s)
+    case route == "search" && (builtin.IsFileTool(s.Name) ||
+        (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name))):
+        specs = append(specs, s)
     }
-    return specs
+}
 ```
 
 Ten excerpts can't cover "everything in my work folder", and the file tools
@@ -1231,8 +1299,11 @@ read nothing search couldn't. The commands are there because "what
 changed in the meru repo this week?" lands on `search` when `meru` is an
 indexed folder, and a declared `git log` answers it. A command with
 `confirm = true` changes something, so it waits for a tools route. On
-`direct` it keeps `datetime` and `about_meru` alone: "what day is Christmas?"
-and "which model are you?" both route there, and both tools only read. When
+`direct` it keeps the tools every route gets: "what day is Christmas?" and
+"which model are you?" both route there, and so did a real question about
+what a song meant, where the model had no web tool and told the user it
+couldn't search the web. `web_fetch` joins only while `web_search` is on,
+since with no search the model would have to guess a URL. When
 the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model can't call a tool
 it hasn't seen, and the prompt stays shorter.
 
@@ -1243,8 +1314,16 @@ some calls ask you first. A turn whose tools are only file tools and
 commands gets `commandsNote` when it has commands (it may run the `cmd.`
 tools). A turn with no tools gets none.
 
-When the turn offers both `web_search` and a file tool, `noteFor` adds
-`webFallbackNote` after `toolsNote`:
+When the turn offers `web_search`, on any route, `noteFor` adds `webNote`
+after `toolsNote`:
+
+```text
+When you aren't sure of a fact, such as a song, a film, a book, a person, a product, a place or anything that may have changed, call web_search before you answer, and cite the pages you use. Never tell the user you can't search the web.
+```
+
+A model trained months ago doesn't know which facts it lacks, so the note
+names the kinds it most often gets wrong. When the turn offers a file tool
+too, `noteFor` adds `webFallbackNote` after that:
 
 ```text
 When the user's files don't answer the question, because a search, grep or read found nothing on it, call web_search before you answer from memory. Never make up a command's flags or options, or a version number: look them up, or say you don't know.
@@ -1524,7 +1603,14 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   or a hyphen, so "personal-knowledge-base" stays one word.
 - **`switch` with a list of cases** — `isFiller` lists its words in one `case`,
   and the switch returns true when `w` matches any of them.
-- **Deleting from a slice** — `webQuery` calls `slices.Delete(tokens, start,
+- **A function that returns a function** — `StartWarm` returns the
+  function that loads the answer model. The inner function keeps `done`, the
+  channel `StartWarm` made, and closes it when the load ends, so the channel's
+  one sender closes it.
+- **`select`** — `WaitWarm` waits for whichever comes first, the load's
+  channel closing or the turn's context ending. A first `select` with a
+  `default` case checks without waiting, so a finished load costs nothing.
+- **Deleting from a slice** — `webWords` calls `slices.Delete(tokens, start,
   start+n)`, which removes the items from `start` up to `start+n` and returns
   the shorter slice.
 - **A stable sort** — `keptNotes` uses `slices.SortStableFunc`, which keeps
