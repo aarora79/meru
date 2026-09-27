@@ -186,9 +186,19 @@ opens Setup on its own.
 One method per thing the Library and Setup show or change, each a single request:
 `Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SetSecret`,
 `Folders`, `AddFolder`, `RemoveFolder`, `Memories`, `AddMemory`, `ForgetMemory`,
-`Skills`, `SetSkill`, `Models`, `Activity` and `Usage`. Each hands back what
-`merud` sent, shaped for the page: a view struct such as `ConnectionsView`, with
-an empty list in place of `nil`, since `nil` reaches JavaScript as `null`.
+`Skills`, `SetSkill`, `Models`, `UseModel`, `Activity` and `Usage`. Each hands
+back what `merud` sent, shaped for the page: a view struct such as
+`ConnectionsView`, with an empty list in place of `nil`, since `nil` reaches
+JavaScript as `null`.
+
+`UseModel(name)` is the "Use for answers" button on a model card. It sends
+`model_set` with the model's name, and `merud` refuses a model Ollama doesn't
+have, writes `[models] main`, and answers the next question with it, with no
+restart. The reply is the models view after the change, with a `Warning` for a
+model that can't call tools, such as `gemma3:12b`. The status block names the
+answer model, so `UseModel` keeps the new name in the Bridge's `model` field.
+That field now sits under the Bridge's mutex, `mu`, since `Status` reads it
+while a Library call may write it.
 
 `AddConnection` saves the key first, with `secret_set`, then adds the server with
 `mcp_add`: `merud` refuses to add a catalog server whose key it lacks.
@@ -353,7 +363,12 @@ bundler.
   a tick for a server on another computer. Each argument gets a field of its own,
   so an argument with a space in it needs no quotes, and no quoting rule can cut
   one in the wrong place. A variable ticked Secret shows as a password field. The form checks the
-  name's pattern to answer sooner; `merud` checks everything again. About shows
+  name's pattern to answer sooner; `merud` checks everything again. Models shows
+  the tiers, then "Models you can use for answers": a card per model we tried,
+  with its size, a pill per capability, "No tools" and what that means for a
+  model without them, a line on what it did well and one on what it did badly,
+  its `ollama pull` and `ollama run` commands in copy lines, and "Use for
+  answers", which stays off until Ollama has the model. About shows
   the tagline, the name, what Meru does and why it runs on your computer, the
   version and folders, and the three links the Bridge hands it.
 - `js/setup.js` draws the four Setup steps.
@@ -452,7 +467,8 @@ return before it releases the next one: until the server notices the stop, the
 stopped handler still waits too and could take the release meant for the next
 turn, which made `TestStopDropsQueue` fail on a slow CI runner.
 `settings_test.go` checks that each settings method sends
-the request `merud` expects, that a save shows its card and returns the path,
+the request `merud` expects, that `UseModel` changes the model the status block
+names, passes a warning on and leaves the model alone when `merud` refuses, that a save shows its card and returns the path,
 which saved files `Reveal` opens, the scope, and the slash commands against
 `meru chat`'s. `attach_test.go` runs the attachments against a fake `merud` that
 copies files and refuses one with "secret" in its name: a cancelled dialog sends

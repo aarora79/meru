@@ -1,6 +1,7 @@
 // This file tests the Bridge methods behind the Library, Setup and the new
 // chat actions against an in-process rpc server: each sends the request
-// merud expects and hands the reply back, saves show their approval card,
+// merud expects and hands the reply back, "Use for answers" switches the
+// model the status block names, saves show their approval card,
 // and the slash commands match `meru chat`'s. attach_test.go covers the
 // attachments.
 
@@ -48,7 +49,19 @@ func (f *fakeMerud) handler(ctx context.Context, req rpc.Request, emit func(rpc.
 	case rpc.OpSkills, rpc.OpSkillEnable, rpc.OpSkillDisable:
 		return emit(rpc.Event{Type: rpc.EventSkills, Skills: []rpc.SkillInfo{{Name: "writing", Builtin: true}}, Text: "odd: no SKILL.md"})
 	case rpc.OpModels:
-		return emit(rpc.Event{Type: rpc.EventModels, Models: &rpc.ModelsInfo{Profile: "lite", Main: "main-model", Loaded: []string{"main-model"}}})
+		return emit(rpc.Event{Type: rpc.EventModels, Models: &rpc.ModelsInfo{Profile: "lite", Main: "main-model", Loaded: []string{"main-model"},
+			Choices: []rpc.ModelChoice{{Name: "gemma3:12b", Pull: "ollama pull gemma3:12b"}}}})
+	case rpc.OpModelSet:
+		// merud refuses a model Ollama doesn't have, and warns about one
+		// that can't call tools.
+		if req.ID == "missing:1b" {
+			return errors.New("missing:1b isn't in Ollama yet; fetch it first with: ollama pull missing:1b")
+		}
+		info := &rpc.ModelsInfo{Profile: "lite", Main: req.ID}
+		if req.ID == "gemma3:12b" {
+			info.Warning = "Meru can't use tools with this model."
+		}
+		return emit(rpc.Event{Type: rpc.EventModels, Models: info})
 	case rpc.OpLog:
 		return emit(rpc.Event{Type: rpc.EventLog, Log: []rpc.LogEntry{{Tool: "search_gmail_messages", Outcome: "ok"}}})
 	case rpc.OpUsage:
@@ -106,6 +119,7 @@ func TestSettingsCalls(t *testing.T) {
 		{"skill off", func() (any, error) { return b.SetSkill(ctx, "explainer", false) }, rpc.Request{Op: rpc.OpSkillDisable, ID: "explainer"}},
 		{"skill on", func() (any, error) { return b.SetSkill(ctx, "explainer", true) }, rpc.Request{Op: rpc.OpSkillEnable, ID: "explainer"}},
 		{"models", func() (any, error) { return b.Models(ctx) }, rpc.Request{Op: rpc.OpModels}},
+		{"use model", func() (any, error) { return b.UseModel(ctx, "qwen3.6:35b") }, rpc.Request{Op: rpc.OpModelSet, ID: "qwen3.6:35b"}},
 		{"activity", func() (any, error) { return b.Activity(ctx) }, rpc.Request{Op: rpc.OpLog, Limit: defaultActivity}},
 		{"usage", func() (any, error) { return b.Usage(ctx) }, rpc.Request{Op: rpc.OpUsage}},
 	}
@@ -147,6 +161,54 @@ func TestSettingsCalls(t *testing.T) {
 	}
 	if _, err := b.AddCustomServer(ctx, rpc.CustomServer{Command: "npx"}); err == nil {
 		t.Error("a server with no name went to merud")
+	}
+}
+
+// TestUseModel checks the "Use for answers" button: the status block names
+// the new answer model, a warning comes back to the page, a refusal
+// leaves the model as it was, and the lists reach the page as [] rather
+// than null.
+func TestUseModel(t *testing.T) {
+	f := &fakeMerud{}
+	b, _ := newBridge(startServer(t, f.handler))
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		model   string
+		wantErr string
+		warning string
+		status  string // the model the status block names after
+	}{
+		{"a model with tools", "qwen3.6:35b", "", "", "qwen3.6:35b"},
+		{"a model without tools", "gemma3:12b", "", "Meru can't use tools with this model.", "gemma3:12b"},
+		{"a model Ollama lacks", "missing:1b", "ollama pull missing:1b", "", "gemma3:12b"},
+		{"no name", " ", "pick a model first", "", "gemma3:12b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := b.UseModel(ctx, tt.model)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want one that says %q", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("UseModel: %v", err)
+			} else if info.Main != tt.model || info.Warning != tt.warning || info.Choices == nil {
+				t.Errorf("info = %+v; want main %q, warning %q and choices not null", info, tt.model, tt.warning)
+			}
+			if got := b.Status(ctx).Model; got != tt.status {
+				t.Errorf("the status block names %q, want %q", got, tt.status)
+			}
+		})
+	}
+
+	m, err := b.Models(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Choices) != 1 || m.Choices[0].Capabilities == nil || m.Choices[0].Tiers == nil {
+		t.Errorf("choices = %+v; want capabilities and tiers as [], not null", m.Choices)
 	}
 }
 

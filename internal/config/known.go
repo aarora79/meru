@@ -51,9 +51,10 @@ func KnownModels() []KnownModel {
 			Name:  "gemma3:12b",
 			Label: "Gemma 3 12B",
 			Size:  "8.1 GB",
-			Good:  "A mid-size model that looks at pictures and answers from what it knows.",
-			Bad:   "Ollama lists no tool calling for it, so it can't search your files, mail or the web.",
-			// Ollama's gemma3 lists completion and vision, not tools.
+			Good:  "12.2B parameters and a context of 131,072 tokens; it reads pictures and answers questions from what it knows.",
+			Bad:   "Ollama lists no tools for it, so Meru answers without mail, notes, the web or the file tools.",
+			// Ollama 0.34 lists completion and vision for it, and neither
+			// tools nor thinking.
 			Capabilities: []string{"completion", "vision"},
 		},
 		{

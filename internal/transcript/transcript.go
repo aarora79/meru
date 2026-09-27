@@ -78,9 +78,9 @@ type Line struct {
 	OK      bool   `json:"ok,omitempty"`
 	// Notice is the warning the user read under the answer, on an
 	// assistant line: set when the answer claimed an action and no tool
-	// call in the turn succeeded, and empty otherwise. History hands it to
-	// the model with the answer, so a later turn doesn't build on the
-	// claim.
+	// call in the turn succeeded, or when the answer model couldn't call
+	// tools, and empty otherwise. History hands it to the model with the
+	// answer, so a later turn doesn't build on the claim.
 	Notice string `json:"notice,omitempty"`
 	// Ms is how long the call took, in milliseconds.
 	Ms int64 `json:"ms,omitempty"`

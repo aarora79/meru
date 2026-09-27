@@ -255,8 +255,10 @@ const (
 	// EventNotice carries a warning about the answer, in Text, for the
 	// client to show under it. merud sends it after the last "token" and
 	// before "done", when the answer claims an action, such as "I've moved
-	// the folder", and no tool call in the turn succeeded. A client that
-	// doesn't know the type skips it, as it does any unknown type.
+	// the folder", and no tool call in the turn succeeded, or when the
+	// answer model can't call tools and the turn had to go without them. A
+	// client that doesn't know the type skips it, as it does any unknown
+	// type.
 	EventNotice EventType = "notice"
 	// EventToolCall says the model asked for a tool, in Tool, before
 	// dispatch decides whether it runs.

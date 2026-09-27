@@ -181,7 +181,8 @@ func (b *Bridge) done(ctx context.Context, req rpc.Request) (rpc.Event, error) {
 func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
-		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile:
+		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile,
+		rpc.OpModelSet:
 		return true
 	}
 	return false

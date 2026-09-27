@@ -71,7 +71,6 @@ type Options struct {
 // when the running turn ends.
 type Bridge struct {
 	socket     string
-	model      string
 	fast       string
 	embed      string
 	home       string
@@ -87,7 +86,10 @@ type Bridge struct {
 	// so ServiceShutdown can wait for them.
 	wg sync.WaitGroup
 
-	mu      sync.Mutex // guards the fields below
+	mu sync.Mutex // guards the fields below
+	// model is the answer model the status block names: config's at
+	// start, then the one UseModel picked last.
+	model   string
 	turn    *turn      // the running turn, or nil
 	last    int        // the number of the latest turn
 	session string     // the session the running and queued questions go to

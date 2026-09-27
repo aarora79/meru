@@ -1,8 +1,8 @@
 // This file holds the Bridge methods behind the Library and Setup screens:
 // connections and tool policies, folders, what Meru knows about you,
-// skills, models, activity and usage. Each one sends one request to merud
-// and hands back its reply. merud makes every change; the app writes no
-// file of Meru's (ARCHITECTURE.md, "Desktop app").
+// skills, models and the answer model, activity and usage. Each one sends
+// one request to merud and hands back its reply. merud makes every change;
+// the app writes no file of Meru's (ARCHITECTURE.md, "Desktop app").
 
 package desktop
 
@@ -223,17 +223,60 @@ func (b *Bridge) skills(ctx context.Context, req rpc.Request) (SkillsView, error
 	return v, nil
 }
 
-// Models asks merud which models config names and which Ollama holds in
-// memory.
+// Models asks merud which models config names, which Ollama holds in
+// memory, and which of the models we tried Ollama has.
 func (b *Bridge) Models(ctx context.Context) (rpc.ModelsInfo, error) {
-	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpModels}, rpc.EventModels)
+	return b.models(ctx, rpc.Request{Op: rpc.OpModels})
+}
+
+// UseModel asks merud to make name the answer model, the Library's "Use
+// for answers" button. merud writes [models] main and answers the next
+// question with it, with no restart. The reply is the Models view after
+// the change, with a Warning when the model can't call tools. It fails
+// with merud's reason when merud refuses, as it does for a model Ollama
+// doesn't have.
+//
+// The status block names the answer model, so the Bridge keeps the new
+// name for it.
+func (b *Bridge) UseModel(ctx context.Context, name string) (rpc.ModelsInfo, error) {
+	if strings.TrimSpace(name) == "" {
+		return rpc.ModelsInfo{}, errors.New("pick a model first")
+	}
+	info, err := b.models(ctx, rpc.Request{Op: rpc.OpModelSet, ID: name})
+	if err != nil {
+		return rpc.ModelsInfo{}, err
+	}
+	b.mu.Lock()
+	b.model = info.Main
+	b.mu.Unlock()
+	return info, nil
+}
+
+// models sends req and returns the "models" reply. Choices comes back as
+// [] rather than null, which the page's code can't loop over, and so does
+// each choice's Capabilities and Tiers.
+func (b *Bridge) models(ctx context.Context, req rpc.Request) (rpc.ModelsInfo, error) {
+	ev, err := b.one(ctx, req, rpc.EventModels)
 	if err != nil {
 		return rpc.ModelsInfo{}, err
 	}
 	if ev.Models == nil {
 		return rpc.ModelsInfo{}, errors.New("merud sent no models")
 	}
-	return *ev.Models, nil
+	info := *ev.Models
+	if info.Choices == nil {
+		info.Choices = []rpc.ModelChoice{}
+	}
+	for i := range info.Choices {
+		c := &info.Choices[i]
+		if c.Capabilities == nil {
+			c.Capabilities = []string{}
+		}
+		if c.Tiers == nil {
+			c.Tiers = []string{}
+		}
+	}
+	return info, nil
 }
 
 // Activity returns the latest tool calls from the audit log, newest first:
