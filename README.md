@@ -4,6 +4,12 @@
 
 **A personal AI assistant that runs entirely on your own machine.**
 
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-2F6B4F?logo=apple&style=for-the-badge)](https://aarora79.github.io/meru/#install)
+[![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
+
+Meru.app needs `merud` and Ollama running beside it. The one-line installer
+below sets up all three, so use it rather than copying the app by hand.
+
 Meru runs local models only. Its code has no path to a cloud AI model, not even a
 disabled one. It loads open-weight models into your computer's memory and keeps them
 there, so a question needs no API key and costs only electricity.
@@ -236,6 +242,8 @@ call.
 
 ## Docs
 
+- [aarora79.github.io/meru](https://aarora79.github.io/meru/) — the web page: what
+  Meru does, the install command and links to the three levels below
 - Architecture, in three levels ([web pages](https://aarora79.github.io/meru/architecture/100.html)):
   - [100: the big picture](docs/architecture/100.md)
   - [200: how it works](docs/architecture/200.md)
