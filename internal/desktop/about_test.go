@@ -125,3 +125,20 @@ func TestAppVersion(t *testing.T) {
 		t.Errorf("appVersion without a stamp = %q, want the build's own version", got)
 	}
 }
+
+// TestShortVersion checks the version the rail shows beside the logo.
+func TestShortVersion(t *testing.T) {
+	for _, tt := range []struct{ in, want string }{
+		{"v0.4.1", "v0.4.1"},
+		{"v0.4.2-0.20260927021103-5325b3ef94cb", "dev 5325b3e"},
+		{"v0.5.0-20260927021103-5325b3ef94cb", "dev 5325b3e"},
+		{"(devel) 5325b3e", "dev 5325b3e"},
+		{"(devel) 5325b3e, modified", "dev 5325b3e"},
+		{"(devel)", ""},
+		{"unknown", ""},
+	} {
+		if got := shortVersion(tt.in); got != tt.want {
+			t.Errorf("shortVersion(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

@@ -309,6 +309,16 @@ pre {
   height: 30px;
 }
 
+/* The version beside the wordmark, such as "v0.4.1", filled in by app.js
+   from the Bridge's About data. The full version is its tooltip. */
+.brand-version {
+  align-self: flex-end;
+  margin: 0 0 5px 2px;
+  font-size: 12px;
+  color: var(--caption);
+  white-space: nowrap;
+}
+
 .wordmark {
   font-family: var(--display);
   font-size: 24px;

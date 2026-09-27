@@ -230,7 +230,11 @@ while it links the binary, and `appVersion` returns that when it isn't empty.
 Otherwise `buildVersion` reads `debug.ReadBuildInfo`, what the Go toolchain
 wrote into the binary: a tag such as `v0.3.0` for `go install …@v0.3.0`, or
 `(devel)` plus the git commit for a local build. The app and `merud` build from
-the same tree, so the app's version stands in. [releasing.md](../releasing.md)
+the same tree, so the app's version stands in. `shortVersion` cuts it to fit beside the
+logo in the rail: a release tag such as `v0.4.1` stays, and a build between tags,
+whose Go pseudo-version names a release that doesn't exist yet, shows as `dev`
+and the commit, such as `dev 5325b3e`. The rail shows the full version as the
+label's tooltip. [releasing.md](../releasing.md)
 shows the flag.
 
 The links live in Go on purpose. `assets_test.go` fails when the page's own files
