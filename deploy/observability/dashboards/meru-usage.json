@@ -1,13 +1,13 @@
 {
   "uid": "meru-usage",
   "title": "Meru usage",
-  "description": "merud: sessions, questions, tokens, active time, files read and tool calls, one bar per day.",
+  "description": "merud: totals for the chosen time range across the top, then sessions, questions, tokens, active time, files read and tool calls, one bar per day.",
   "tags": [
     "meru"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "refresh": "5m",
   "time": {
@@ -24,6 +24,384 @@
   "links": [],
   "panels": [
     {
+      "id": 7,
+      "type": "stat",
+      "title": "Sessions",
+      "description": "meru.sessions: sessions started in the time range, every source.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_sessions_total{job=\"merud\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Questions",
+      "description": "meru.turn.duration: questions answered in the time range. Failed and stopped turns don't count, as in meru usage.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_turn_duration_seconds_count{job=\"merud\", meru_outcome=\"ok\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Tokens in",
+      "description": "meru.turn.tokens: prompt tokens the main model read in the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_turn_tokens_total{job=\"merud\", gen_ai_token_type=\"input\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Tokens out",
+      "description": "meru.turn.tokens: answer tokens the main model wrote in the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_turn_tokens_total{job=\"merud\", gen_ai_token_type=\"output\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Active time",
+      "description": "meru.turn.duration: the time merud spent answering questions in the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_turn_duration_seconds_sum{job=\"merud\", meru_outcome=\"ok\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Tool calls",
+      "description": "meru.tool.calls: tool calls in the time range, every outcome.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(meru_tool_calls_total{job=\"merud\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
       "id": 1,
       "type": "timeseries",
       "title": "Sessions per day",
@@ -35,7 +413,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 4,
         "w": 12,
         "h": 9
       },
@@ -101,7 +479,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 4,
         "w": 12,
         "h": 9
       },
@@ -167,7 +545,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 13,
         "w": 12,
         "h": 9
       },
@@ -233,7 +611,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 12,
-        "y": 9,
+        "y": 13,
         "w": 12,
         "h": 9
       },
@@ -299,7 +677,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 22,
         "w": 12,
         "h": 9
       },
@@ -365,7 +743,7 @@
       "interval": "1d",
       "gridPos": {
         "x": 12,
-        "y": 18,
+        "y": 22,
         "w": 12,
         "h": 9
       },
