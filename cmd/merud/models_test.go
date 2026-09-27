@@ -354,7 +354,7 @@ func TestModelUseTimesOut(t *testing.T) {
 	m, answer, srv := testModelService(t, everyModel, []string{miniCPM, qwen}, ollamaCaps)
 	m.eng = stickyEngine{m.eng.(*engine.OllamaEngine)}
 	_, err := use(t, m, "gemma-moe", false)
-	if err == nil || !strings.Contains(err.Error(), "step 2 of 3: Ollama still holds "+qwen) {
+	if err == nil || !strings.Contains(err.Error(), "step 2 of 3: ollama still holds "+qwen) {
 		t.Fatalf("err = %v, want step 2's timeout", err)
 	}
 	if answer.main != qwen {

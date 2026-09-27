@@ -326,8 +326,8 @@ func (s *Store) UsageByModel(ctx context.Context) ([]rpc.UsageWindow, error) {
 
 // ttftMedians returns the median time to first token of each model's
 // turns, leaving out turns that wrote no text. With an even count it takes
-// the lower of the two middle values, so the number is always one a turn
-// really took.
+// the lower of the two middle values, so the number is always the time
+// of one real turn.
 func (s *Store) ttftMedians(ctx context.Context) (map[string]int64, error) {
 	rows, err := s.db.QueryContext(ctx, ttftByModel)
 	if err != nil {

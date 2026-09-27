@@ -403,7 +403,7 @@ func (m *modelService) waitUnloaded(ctx context.Context, model string) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("Ollama still holds %s in memory after %s; see ollama ps", model, m.wait)
+			return fmt.Errorf("ollama still holds %s in memory after %s; see ollama ps", model, m.wait)
 		}
 		// select waits for whichever comes first: the next poll, or the
 		// request ending because the client hung up.
