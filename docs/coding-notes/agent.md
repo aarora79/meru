@@ -1054,7 +1054,7 @@ at the very end ("in three lines"). The cut needs a word before it, so a
 question made of an instruction alone keeps its words:
 
 ```text
-"amazon quick and tell me what it is in three lines"  ->  "amazon quick"
+"contoso relay and tell me what it is in three lines"  ->  "contoso relay"
 ```
 
 `webWords` also says whether the question speaks only of the web: nothing is

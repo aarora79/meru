@@ -105,7 +105,7 @@ func TestWebQuery(t *testing.T) {
 			engine.Message{Role: engine.RoleAssistant, Content: "I can't search."}),
 			"song maname maname sung by r. devi acvtually mean"},
 		// A closing instruction means nothing to a search engine.
-		{"and tell me", "amazon quick and tell me what it is in three lines", nil, "amazon quick"},
+		{"and tell me", "contoso relay and tell me what it is in three lines", nil, "contoso relay"},
 		{"both shapes", "search the web for Acme Flow pricing and tell me what it costs in three lines", nil,
 			"Acme Flow pricing"},
 		{"a length at the end", "search the web for Acme Flow pricing in three lines", nil, "Acme Flow pricing"},
