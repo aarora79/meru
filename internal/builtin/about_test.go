@@ -47,7 +47,7 @@ func TestAboutText(t *testing.T) {
 		"Answer model (main): qwen3.6:35b.",
 		"Fast model: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M.",
 		"Embedding model: nomic-embed-text.",
-		"Ollama 0.34.0 runs every model on this computer",
+		"Ollama runs every model on this computer; no model runs in the cloud.\nOllama version: 0.34.0\n",
 		"36.0B parameters, Q4_K_M, a context of 262144 tokens. It can: vision, tools, thinking.",
 		"Profile: lite.",
 		"Apple M4 Max",
@@ -74,7 +74,7 @@ func TestAboutTextWithoutOllama(t *testing.T) {
 	a.RuntimeVersion, a.MainDetails = "", engine.ModelDetails{}
 	got := aboutText(a)
 	if !strings.Contains(got, "Answer model (main): qwen3.6:35b. It writes every answer, so it is the model the user talks to.\n") ||
-		strings.Contains(got, "parameters") || strings.Contains(got, "Ollama 0") {
+		strings.Contains(got, "parameters") || strings.Contains(got, "Ollama version") {
 		t.Errorf("text with no Ollama facts:\n%s", got)
 	}
 }
@@ -127,6 +127,18 @@ func TestAboutMeruTool(t *testing.T) {
 		"Output folder, where write_file saves: " + dir + "."} {
 		if !strings.Contains(res.Text, want) {
 			t.Errorf("the result lacks %q:\n%s", want, res.Text)
+		}
+	}
+}
+
+// TestAboutDescription checks that the tool's description tells the model
+// to quote names and numbers as the tool gives them. Without that line a
+// model read "0.34.0" and wrote "Ollama 0.44".
+func TestAboutDescription(t *testing.T) {
+	d := aboutSpec().Description
+	for _, want := range []string{"which model you are", "Quote model names, versions and numbers exactly as this tool gives them."} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the description lacks %q:\n%s", want, d)
 		}
 	}
 }
