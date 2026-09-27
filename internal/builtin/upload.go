@@ -66,10 +66,10 @@ func (t *Tools) Upload(src string) (Uploaded, error) {
 		limit = imageCap
 	} else {
 		if !t.hasFiles() {
-			return Uploaded{}, errors.New("attaching needs read_file, which stays off until you add a folder in the Library, under Folders")
+			return Uploaded{}, errors.New("attaching needs read_file, which stays off until you add a folder in Settings, under Folders")
 		}
 		if !t.enabled(ReadFile) {
-			return Uploaded{}, errors.New("attaching needs read_file, which is off; turn it on in the Library, under Connections")
+			return Uploaded{}, errors.New("attaching needs read_file, which is off; turn it on in Settings, under Connections")
 		}
 	}
 	if !filepath.IsAbs(src) {
@@ -86,7 +86,7 @@ func (t *Tools) Upload(src string) (Uploaded, error) {
 	case info.Mode()&fs.ModeSymlink != 0:
 		return Uploaded{}, fmt.Errorf("%s is a shortcut (a symbolic link); attach the file it points to", name)
 	case info.IsDir():
-		return Uploaded{}, fmt.Errorf("%s is a folder; attach the files in it, or add it in the Library under Folders", name)
+		return Uploaded{}, fmt.Errorf("%s is a folder; attach the files in it, or add it in Settings under Folders", name)
 	case !info.Mode().IsRegular():
 		return Uploaded{}, fmt.Errorf("%s isn't a regular file", name)
 	case index.IsSecret(name):

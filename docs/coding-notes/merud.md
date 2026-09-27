@@ -496,7 +496,7 @@ SearXNG port, checks the log line, and runs a turn in which the model calls
 
 ### merud: connections.go
 
-The desktop app's Library changes tools through four ops, and lists them through
+The desktop app's Settings changes tools through four ops, and lists them through
 a fifth. `connectionsEvent` loads `config.toml` fresh and joins it with
 `dispatcher.Servers()`: a `Connection` for the built-in tools, each MCP server,
 each A2A agent and the local commands. `fillPolicies` lists every tool a source
@@ -608,7 +608,7 @@ Each fact comes from a place `merud` already keeps:
 | Fact | Source |
 | --- | --- |
 | profile, the fast and embed models | `cfg`, as `merud` started with it |
-| the answer model | `main`, which is the agent's `Main`, since the Library can switch it |
+| the answer model | `main`, which is the agent's `Main`, since Settings can switch it |
 | Ollama's version | `eng.Info`, at most 3 seconds |
 | the main model's capabilities, size, quantization, context | `Details`, through the `modelDetailer` interface, at most 3 seconds |
 | the computer | the `machineLine` the prompt carries |
@@ -657,7 +657,7 @@ page shows. Both engine methods sit outside the `Engine` interface, so
 `modelService` reaches them with a type assertion, `m.eng.(modelLister)`, as
 `about.go` does for `Details`.
 
-`handleModelSet` answers `model_set`, the Library's "Use for answers" button.
+`handleModelSet` answers `model_set`, the Settings screen's "Use for answers" button.
 When you pick `gemma3:12b` it:
 
 1. refuses a name that isn't on the known list, and one `Pulled` doesn't list,
@@ -676,7 +676,7 @@ When you pick `gemma3:12b` it:
 setting, the main model's size from `Pulled`, whether Ollama holds it now
 (`Info`'s loaded list), whether it is the set in use, and what the main model can
 do. A set whose main model is one we tried shows the capabilities from
-`known.go` before it is pulled, as its Library card does.
+`known.go` before it is pulled, as its Settings card does.
 
 **One switch path.** `switchMain(ctx, to, noThink)` is the only code that
 changes the answer model. `handleModelUse`, `handleModelSet` and nothing else
@@ -710,8 +710,8 @@ save and a restart, and `noToolsWarning`.
 
 `handleModelSave` answers `model_save`. It writes the answer model, and the set's
 fast and embed models when it names them, with `catalog.SetTableStrings`, one
-write for all keys, under the same config lock. `handleModelSet`, the Library's
-"Use for answers", now calls `switchMain` too, then saves `main`; a Library pick
+write for all keys, under the same config lock. `handleModelSet`, the Settings screen's
+"Use for answers", now calls `switchMain` too, then saves `main`; a pick in Settings
 is a setting, so it lands in `config.toml` at once.
 
 `warnMissingSetModels` runs once after `warm` and logs a warning for each model a

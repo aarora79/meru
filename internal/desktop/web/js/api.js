@@ -33,7 +33,7 @@ export const bridge = {
   attachFile: () => call("AttachFile"),
   detach: (index) => call("Detach", index),
   detachAll: () => call("DetachAll"),
-  // The Library and Setup (settings.go).
+  // Settings and Setup (settings.go).
   connections: () => call("Connections"),
   setPolicy: (kind, server, tool, policy) => call("SetPolicy", kind, server, tool, policy),
   addConnection: (name, secret, key) => call("AddConnection", name, secret, key),
@@ -54,7 +54,7 @@ export const bridge = {
   saveModels: () => call("SaveModels"),
   activity: () => call("Activity"),
   usage: () => call("Usage"),
-  // The Library's About section (about.go).
+  // The About section of Settings (about.go).
   about: () => call("About"),
   // Slash commands (commands.go).
   commands: () => call("Commands"),

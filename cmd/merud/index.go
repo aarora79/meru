@@ -215,7 +215,7 @@ func (s *indexService) finish(rep *index.Report, err error) {
 // the client prints them as they are.
 func (s *indexService) handleIndex(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
 	if len(s.currentFolders()) == 0 {
-		return fmt.Errorf("no folders to index; add one in the desktop app's Library, or list them under [index] folders in %s and restart merud", s.configPath)
+		return fmt.Errorf("no folders to index; add one in the desktop app's Settings, or list them under [index] folders in %s and restart merud", s.configPath)
 	}
 	if req.Path != "" && !filepath.IsAbs(req.Path) {
 		return fmt.Errorf("index %q: need an absolute path", req.Path)

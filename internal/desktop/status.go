@@ -40,7 +40,7 @@ type Status struct {
 	Documents int  `json:"documents"`
 	Scanning  bool `json:"scanning,omitempty"`
 	// Chunks counts the pieces those files were cut into, for the
-	// Library's "On this Mac" panel.
+	// "On this Mac" panel in Settings.
 	Chunks int `json:"chunks"`
 	// Folders counts the [index] folders, and Profile the memories that go
 	// into every prompt. With both at zero Meru knows nothing yet, and the
@@ -56,7 +56,7 @@ type Status struct {
 // with Up false and the reason in Problem. A merud too old to know
 // mcp_status still reports its index.
 func (b *Bridge) Status(ctx context.Context) Status {
-	// The Library can change the answer model, so b.model sits under b.mu.
+	// Settings can change the answer model, so b.model sits under b.mu.
 	b.mu.Lock()
 	model := b.model
 	b.mu.Unlock()

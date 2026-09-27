@@ -8,7 +8,7 @@ import (
 )
 
 // TestKnownModels checks that each known model has every field the
-// Library shows, that the names are the three we tried, and that a
+// Settings shows, that the names are the three we tried, and that a
 // caller's change to the list doesn't reach the next caller.
 func TestKnownModels(t *testing.T) {
 	list := KnownModels()
@@ -26,7 +26,7 @@ func TestKnownModels(t *testing.T) {
 	if !slices.Equal(names, want) {
 		t.Errorf("names = %v, want %v", names, want)
 	}
-	// The lite profile's main model must stay on the list, so the Library
+	// The lite profile's main model must stay on the list, so Settings
 	// can switch back to it.
 	if !slices.Contains(names, profiles["lite"].Main) {
 		t.Errorf("the lite main model %q isn't known", profiles["lite"].Main)

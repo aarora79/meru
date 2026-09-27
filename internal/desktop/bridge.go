@@ -1,7 +1,7 @@
 // This file holds the Bridge: the methods the page calls to ask a
 // question, stop it, answer an approval and manage the queue, and the
 // goroutine that reads each turn's events from merud and hands them to the
-// page as Updates. settings.go holds the methods behind the Library and
+// page as Updates. settings.go holds the methods behind Settings and
 // Setup screens, and files.go the ones that save, pick and open files.
 
 package desktop

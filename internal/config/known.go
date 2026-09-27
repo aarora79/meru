@@ -1,5 +1,5 @@
 // This file lists the answer models we have tried with Meru, for the
-// desktop app's Library, Models. Each entry names the model as Ollama
+// desktop app's Settings, Models. Each entry names the model as Ollama
 // does and says what it did well and badly in our tests. See
 // ARCHITECTURE.md, "Models we tried".
 

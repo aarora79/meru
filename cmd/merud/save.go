@@ -100,7 +100,7 @@ func (s saveService) handleSave(ctx context.Context, req rpc.Request, emit func(
 	case dispatch.OutcomeDeclined:
 		return errors.New("not saved: you didn't allow write_file")
 	case dispatch.OutcomeDenied:
-		return errors.New("not saved: write_file is off; turn it on in the Library under Connections, or with /mcp in meru chat")
+		return errors.New("not saved: write_file is off; turn it on in Settings under Connections, or with /mcp in meru chat")
 	}
 	return fmt.Errorf("not saved: %s", res.Text)
 }

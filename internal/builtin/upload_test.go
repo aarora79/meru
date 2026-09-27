@@ -153,8 +153,8 @@ func TestUploadNeedsReadFile(t *testing.T) {
 		noOut   bool
 		refusal string
 	}{
-		{name: "no folders", tools: config.BuiltinTools(), refusal: "add a folder in the Library"},
-		{name: "read_file off", folders: true, tools: noRead, refusal: "turn it on in the Library"},
+		{name: "no folders", tools: config.BuiltinTools(), refusal: "add a folder in Settings"},
+		{name: "read_file off", folders: true, tools: noRead, refusal: "turn it on in Settings"},
 		{name: "no output folder", folders: true, tools: config.BuiltinTools(), noOut: true, refusal: "no output folder"},
 	}
 	for _, tt := range tests {

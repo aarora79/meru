@@ -1,4 +1,4 @@
-// This file tests the Bridge methods behind the Library, Setup and the new
+// This file tests the Bridge methods behind Settings, Setup and the new
 // chat actions against an in-process rpc server: each sends the request
 // merud expects and hands the reply back, "Use for answers" switches the
 // model the status block names, saves show their approval card,
@@ -256,7 +256,7 @@ func TestUseModelSet(t *testing.T) {
 }
 
 // TestModelCommandRouting checks the composer's /model in commands.js: a
-// bare /model opens Library, Models, save and a set's name reach the
+// bare /model opens Settings, Models, save and a set's name reach the
 // Bridge's SaveModels and UseModelSet, and a switch waits for a running
 // turn, as in meru chat. The page runs no tests of its own, so this reads
 // the source.
@@ -264,7 +264,7 @@ func TestModelCommandRouting(t *testing.T) {
 	src := ownFiles(t)["web/js/commands.js"]
 	for _, want := range []string{
 		`case "/model":`,
-		`act.openLibrary("models")`,
+		`act.openSettings("models")`,
 		`bridge.saveModels()`,
 		`bridge.useModelSet(name, rebuild)`,
 		`words[1] === "--rebuild"`,

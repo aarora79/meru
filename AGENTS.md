@@ -35,31 +35,30 @@ easier to review.
 
 ## Status
 
-Pre-alpha, **v0.3**: `merud` and `meru` answer questions with local models, stream
-the answer, keep JSONL session transcripts and route each question with the
-one-token router. v0.2 added the SQLite store, the folder indexer with its watcher
-and `meru index`, hybrid retrieval on every route but `direct`, and citations: a
-`sources` event and a `Sources:` list in both clients. v0.3 adds tools: `dispatch`
-as the one path for every call, the MCP client pool and the A2A client behind it,
-the `tool_calls` audit log, approvals over the socket in both clients, `meru tools`,
-`meru log`, `meru setup`, `meru mcp add` with its server catalog, the built-in
-`configure` tool, secrets in `~/.meru/secrets.toml`, `web_search` and `web_fetch`
-through a SearXNG the user runs, and `[[commands]]` entries that run local
-programs as tools. ROADMAP.md ticks every
-v0.4 item: your profile (the `me` and `preferences` memories) goes into every
-prompt, the built-in `remember` tool saves memories from chat, `meru setup user`
-and `meru memory` manage them, and each turn recalls the memories that fit the
-question. Quiet sessions get a summary, and search turns recall past
-conversations. Skills load with progressive disclosure, `meru skills` manages
-them, and the built-in `write_file` tool writes to `~/meru-output/`. A context
-budget in `internal/agent/budget.go` caps each section of the prompt. Outside the
-roadmap, `meru usage` counts sessions and questions, and `meru check` grades
-answers against a file of expected ones. The desktop app,
-`meru-desktop` (Wails v3, macOS first), has its chat screen, a Library for
-settings and a Setup screen, each change made by `merud`; the owner asked for it
-ahead of v0.5. Work goes milestone
-by milestone ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's
-features (the scheduler) ahead of the milestone that owns them.
+Pre-alpha, with releases up to **v0.4.4**. ROADMAP.md ticks every item from v0.1
+to v0.4:
+
+- **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
+  JSONL session transcripts and route each question with the one-token router.
+- **v0.2:** the SQLite store, the folder indexer with its watcher, hybrid
+  retrieval, and answers that cite their sources.
+- **v0.3:** tools, each call through `dispatch`: MCP servers, A2A agents,
+  `[[commands]]` entries, `web_search` and `web_fetch` through a SearXNG the user
+  runs, approvals in both clients, the `tool_calls` log, the server catalog and
+  secrets in `~/.meru/secrets.toml`.
+- **v0.4:** memories, with your profile in every prompt and recall on each turn,
+  session summaries, skills with progressive disclosure, `write_file` into
+  `~/meru-output/`, and a context budget for the prompt.
+
+The desktop app, `meru-desktop` (Wails v3, macOS first), came ahead of v0.5 at the
+owner's request. It has the chat screen, Settings and the Setup screen, takes
+files by the attach button or drag and drop, and asks `merud` to make every
+change. `meru chat` does the same things in a terminal. Outside the milestones,
+Meru switches between named model sets at run time, searches the web first when a
+question needs it, warms the answer model in the background, and ships
+through `make release` and a one-line installer. Work goes milestone by milestone
+([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features (the
+scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):

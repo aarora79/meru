@@ -68,7 +68,7 @@ func TestUploadImage(t *testing.T) {
 		{name: "jpeg with a capital ending", src: filepath.Join(away, "receipt.JPG"), want: "receipt.jpg"},
 		{name: "text named like a png", src: filepath.Join(away, "notes.png"), refusal: "isn't a PNG, JPEG, GIF or WebP image"},
 		{name: "over the image cap", src: filepath.Join(away, "huge.jpg"), refusal: "Meru takes images up to 20.0 MB"},
-		{name: "a file still needs read_file", src: filepath.Join(away, "garden-plan.md"), refusal: "add a folder in the Library"},
+		{name: "a file still needs read_file", src: filepath.Join(away, "garden-plan.md"), refusal: "add a folder in Settings"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

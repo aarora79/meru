@@ -231,7 +231,7 @@ Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tie
   32 GB (64 GB is comfortable), or a GPU with about 24 GB of memory.
 
 For the answer model we tried three: MiniCPM5-2B, `qwen3.6:35b`, the one we use
-now, and `gemma3:12b`, which can't call tools. The desktop app's Library, Models
+now, and `gemma3:12b`, which can't call tools. The desktop app's Settings, Models
 lists them with their `ollama pull` and `ollama run` commands and switches
 between them without a restart. [docs/running.md](docs/running.md#models-we-tried-for-answers)
 has what we measured.

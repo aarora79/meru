@@ -7,7 +7,7 @@
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import { el, button } from "./turns.js";
-import { catalogCard, count } from "./library.js";
+import { catalogCard, count } from "./settings.js";
 
 // STEPS are the four steps, in order.
 const STEPS = ["The models", "Your folders", "Connections", "About you"];
@@ -151,7 +151,7 @@ function folders(body, nav) {
 }
 
 // check draws one folder as a checkbox. An indexed folder shows checked
-// and can't be unticked here; the Library removes it.
+// and can't be unticked here; Settings removes it.
 function check(path, note, on, fixed) {
   const id = "folder-" + path.replace(/[^a-z0-9]/gi, "-");
   const row = el("div", "check");
@@ -186,7 +186,7 @@ function addPicked() {
 function connections(body, nav) {
   body.append(el("h2", "section-head", "Connections"));
   body.append(el("p", "", "Optional. A connection lets Meru use your mail, calendar or notes. " +
-    "Each tool starts as the catalog sets it, and you can change any of them in the Library."));
+    "Each tool starts as the catalog sets it, and you can change any of them in Settings."));
   bridge.connections().then(
     (cv) => {
       const open = cv.catalog.filter((e) => !e.added);

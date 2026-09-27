@@ -1,7 +1,7 @@
 // Package desktop is everything in the desktop app, cmd/meru-desktop, that
 // doesn't need a window: the Bridge that the page calls, the plain views it
 // sends the page, and the page itself (HTML, CSS and JavaScript, embedded
-// from web/): the chat, the Library of settings and the Setup screen.
+// from web/): the chat, Settings and the Setup screen.
 //
 // The app is a thin client, like `meru` and `meru chat`. The Bridge talks
 // to merud over the Unix socket with rpc.Do and holds no model, store or

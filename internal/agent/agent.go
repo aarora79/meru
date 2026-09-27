@@ -165,7 +165,7 @@ type Agent struct {
 
 	// mainMu guards main, the answer model, and noThink, which can change
 	// while turns run: `/model`, `meru model use` and the desktop app's
-	// Library switch them through SetMain. A sync.Mutex lets one goroutine
+	// Settings switch them through SetMain. A sync.Mutex lets one goroutine
 	// at a time hold it, so a read never sees half a write.
 	mainMu  sync.Mutex
 	main    string

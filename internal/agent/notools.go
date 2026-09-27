@@ -21,7 +21,7 @@ import (
 // named at %s, can't call tools and the turn would have offered more than
 // the tools every route offers, or the user picked the web scope.
 const noToolsNotice = "%s can't call tools, so Meru answered without them: no mail, calendar, notes, web or file tools. " +
-	"To use them, pick another answer model under Library, Models in the desktop app, or in [models] main in config.toml."
+	"To use them, pick another answer model under Settings, Models in the desktop app, or in [models] main in config.toml."
 
 // UseToolCheck gives the agent a check of whether a model can call tools;
 // merud passes one that reads OllamaEngine.Capabilities. Call it once,

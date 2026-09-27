@@ -322,7 +322,7 @@ questions waiting at most, and Stop drops the queue with a notice. For each tool
 call it adds a friendly label ("Searched mail", "Read lisbon.md"), and when a turn
 ends it lists who the turn's tool calls reached: each MCP server and A2A agent by
 name, "web search" for `web_search` and the site for `web_fetch`. The other
-methods each send one request for the Library and Setup screens, save a chat or
+methods each send one request for the Settings and Setup screens, save a chat or
 an answer, show the system's file and folder dialogs, and close the app.
 
 **One line says what Meru is**: "A personal AI assistant that runs entirely on
@@ -332,13 +332,13 @@ the line as its tooltip.
 
 **The chat screen** has three columns:
 
-- **The rail** holds the logo and wordmark, one button that opens the Library's
-  About, then New chat, a search box that filters the list, past chats grouped
+- **The rail** holds the logo and wordmark, one button that opens About
+  in Settings, then New chat, a search box that filters the list, past chats grouped
   Today, Yesterday and Earlier, a status block, and two buttons at its foot,
-  Library and Setup. The status block shows the answer
+  Settings and Setup. The status block shows the answer
   model, the file count and the connected MCP servers, or, when `merud` doesn't
   answer, that it isn't running and the command that starts it. A button folds
-  the rail to a column of icons: the logo, New chat, chats, Library and a status
+  the rail to a column of icons: the logo, New chat, chats, Settings and a status
   dot.
 - **The conversation** shows each question as a bubble and each answer as a card.
   The header holds the chat's title, **Share as file** and a button that shows
@@ -367,10 +367,10 @@ the line as its tooltip.
   with a privacy line: "The model ran on this Mac. Only google was contacted."
   While an approval card is open, the panel turns into **Why Meru is asking**:
   why this call waits, the server's tools that are on with their policies, a
-  link, "Change what google may do", that opens the Library at that connection,
-  and a note that every call goes in the tool log under Library, Activity. The
+  link, "Change what google may do", that opens Settings at that connection,
+  and a note that every call goes in the tool log under Settings, Activity. The
   panel doesn't open for a card: the card says why Meru asks, with a link to the
-  panel. In the Library the panel is **On this Mac**: the answer and router
+  panel. In Settings the panel is **On this Mac**: the answer and router
   models, what
   the search index holds, and a line that says there is no account and no cloud,
   with the path of `config.toml`. Below 1180 pixels the panel slides over the
@@ -481,11 +481,11 @@ newest answer), `/scope <name>` (the Where Meru looks switch), `/attach` (the fi
 dialog), `/save` (Save to a note on the newest answer; `/save chat` is Share as
 file), `/used` (the side panel for the newest answer), `/copy N` (code block N of
 this chat, numbered as the chat numbers them; `/copy` alone the newest answer's
-last block, and `/copy answer` the whole answer), `/usage` (Library, Usage), `/me`
-(Library, About you), `/mcp` (Library, Connections), `/folders` (Library,
-Folders), `/skills` (Library, Skills), `/model` (Library, Models; `/model <name>`
-and `/model save` switch and save as in the chat), `/log` (Library, Activity),
-`/about` (Library, About), `/help` (the command menu) and `/exit` (close the app,
+last block, and `/copy answer` the whole answer), `/usage` (Settings, Usage), `/me`
+(Settings, About you), `/mcp` (Settings, Connections), `/folders` (Settings,
+Folders), `/skills` (Settings, Skills), `/model` (Settings, Models; `/model <name>`
+and `/model save` switch and save as in the chat), `/log` (Settings, Activity),
+`/about` (Settings, About), `/help` (the command menu) and `/exit` (close the app,
 asking first while a turn runs). Typing "/" at the start of the box opens a menu
 of them, a listbox the arrow keys move through, filtered as you type; Enter or
 Tab picks one and Esc closes it. A line that starts with "/" runs in the page and
@@ -493,7 +493,7 @@ never reaches the model; an unknown one leaves the text in the box and lists the
 commands, as the chat does. The Bridge holds the list, and a test fails when it
 differs from `meru chat`'s.
 
-**The Library** is the settings screen, with a back link and eight sections:
+**Settings** has a back link and eight sections:
 
 - **Connections** has a card per tool source: the built-in web tools, merud's
   other built-in tools, each MCP server and A2A agent, and the local commands.
@@ -939,7 +939,7 @@ five minutes.
 
 `config.KnownModels` lists the three we offer, MiniCPM5-2B, `gemma3:12b` and
 `qwen3.6:35b`, with their sizes and a line each on what they did well and badly.
-The desktop app's Library, Models shows each one with its commands, which also
+The desktop app's Settings, Models shows each one with its commands, which also
 work in a terminal:
 
 ```sh
@@ -959,7 +959,7 @@ uses it.
 list, and one `GET /api/tags` doesn't show, with the `ollama pull` to run. It
 switches the way a [model set](#model-sets) switches, unloading the old answer
 model first, then writes `[models] main` with the same safe write and lock as the
-other settings. A pick in the Library is a setting, and every Library setting
+other settings. A pick in Settings is a setting, and every setting made there
 lands in `config.toml`; the chat's `/model` is for comparing, so it waits for
 `/model save`. The `fast` and `embed` models stay as they are. To set any other
 model, name it in a model set, or edit `[models] main` in `config.toml` and
@@ -992,8 +992,8 @@ a set names that `GET /api/tags` doesn't list, and starts anyway: the model
 can be pulled later. The set in use at startup is the first whose models match
 the ones `merud` started with.
 
-`/model <name>` in `meru chat`, `meru model use <name>` and the Library's
-**Use** send `model_use`. The switch lasts until `merud` stops, which is what a
+`/model <name>` in `meru chat`, `meru model use <name>` and **Use** in
+Settings send `model_use`. The switch lasts until `merud` stops, which is what a
 comparison wants; `/model save`, `meru model save` and **Make default** send
 `model_save`, which writes the models in use to `[models]`. `model_use` runs in
 this order, because `keep_alive: -1` keeps every model in memory, and three
@@ -1056,7 +1056,7 @@ web tools while `web_search` is on), or the scope is Web, a `notice` under the
 answer names the model and says how to pick another. So `gemma3:12b` answers direct questions,
 questions about images, and search questions from the excerpts search puts in
 the prompt, and can't read mail, notes, the web or files on its own. The
-Library says so on its card, and `model_set` replies with a warning.
+Settings says so on its card, and `model_set` replies with a warning.
 
 **Context length.** `OLLAMA_CONTEXT_LENGTH` sets how many tokens of context
 Ollama loads each model with, and the `CONTEXT` column of `ollama ps` shows what
@@ -1123,8 +1123,8 @@ life of the engine; a failed call keeps nothing. `Capabilities` reads the list
 through `Details`, and `Pulled` reads `GET /api/tags`, the models Ollama has on
 disk. All three sit outside the interface, which keeps its four methods: `merud`
 hands the agent a check built on `Capabilities` for image turns and another for
-whether the answer model can take tools; `about_meru` and the Library's models
-need `Details`, and only the Library's models need `Pulled`. The "ollama http"
+whether the answer model can take tools; `about_meru` and the models in Settings
+need `Details`, and only the models in Settings need `Pulled`. The "ollama http"
 debug line counts a request's images; no log line or span holds their bytes.
 
 Two engines may come later, behind the same interface:
@@ -1823,7 +1823,7 @@ The indexer cuts each file into chunks along its own structure:
 - **Folders you drop leave the index.** Before it walks the folders, a full scan
   deletes every stored file that sits in none of them. Take `~/notes-old` out
   of `[index] folders` and restart `merud`, or remove it in the desktop app's
-  Library, which rescans at once, and search stops finding its files. The
+  Settings, which rescans at once, and search stops finding its files. The
   test works on whole folder names, so `~/notes` keeps nothing from `~/notes-old`.
   An empty list empties the index.
 - **Missing folders keep their entries.** A folder that doesn't exist, such as one

@@ -1,7 +1,7 @@
 # tui
 
 **Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, the Library boxes, Edit first and the version) after v0.4
+**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, Settings boxes, Edit first and the version) after v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
@@ -43,7 +43,7 @@ app already sends; `merud` got no new op for it. The short version of the audit
 | Try again | has: `/retry` |
 | What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
 | Past chats and reopening one | has: `/chats [words]` |
-| Library: Connections, Folders, About you, Skills, Models, Activity, Usage, About | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
+| Settings: Connections, Folders, About you, Skills, Models, Activity, Usage, About | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
 | Setup | in another terminal: `meru setup` and `meru setup user` |
 | Version beside the name | has |
 | SVG preview, image previews, sidebar and panel layout | not in a terminal: they draw pictures or need a mouse-driven window |

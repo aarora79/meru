@@ -12,7 +12,7 @@ library that pairs a Go program with the system's own WebView, the browser engin
 macOS, Linux and Windows already ship. The window shows a page written in plain
 HTML, CSS and JavaScript, and the page calls Go.
 
-Beside the chat, the app has a Library, where you set what each tool may do,
+Beside the chat, the app has a Settings screen, where you set what each tool may do,
 which folders Meru reads, what it knows about you and which skills it loads, and a
 Setup screen for a first run. Neither writes a file: each change goes to `merud`
 as a request, and `merud` makes it.
@@ -183,7 +183,7 @@ opens Setup on its own.
 
 ### settings.go
 
-One method per thing the Library and Setup show or change, each a single request:
+One method per thing Settings and Setup show or change, each a single request:
 `Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SetSecret`,
 `Folders`, `AddFolder`, `RemoveFolder`, `Memories`, `AddMemory`, `ForgetMemory`,
 `Skills`, `SetSkill`, `Models`, `UseModel`, `Activity` and `Usage`. Each hands
@@ -195,7 +195,7 @@ JavaScript as `null`.
 `model_set` with the model's name, and `merud` refuses a model Ollama doesn't
 have, unloads the old answer model, loads the new one, writes `[models] main`,
 and answers the next question with it, with no restart. `UseModelSet(name,
-rebuild)` sends `model_use` for a model set, the Library's **Use** and the
+rebuild)` sends `model_use` for a model set, the Settings screen's **Use** and the
 composer's `/model <name>`, and `SaveModels` sends `model_save`, **Make
 default** and `/model save`. A switch gets `switchTimeout`, three minutes, in
 `one`, since a large model can take a minute to load. The reply is the models view after the change, with a `Warning` for a
@@ -203,7 +203,7 @@ model that can't call tools, such as `gemma3:12b`. The status block names the
 answer model, and any client can switch it, so `models` keeps the name each
 models reply gives in the Bridge's `model` field.
 That field now sits under the Bridge's mutex, `mu`, since `Status` reads it
-while a Library call may write it.
+while a call from Settings may write it.
 
 `AddConnection` saves the key first, with `secret_set`, then adds the server with
 `mcp_add`: `merud` refuses to add a catalog server whose key it lacks.
@@ -226,7 +226,7 @@ front of it for the title bar; the name comes first, because macOS cuts a long
 title from the end. `index.html` repeats the line as the logo's tooltip, and
 `TestTaglineEverywhere` fails when the page or `main.go` drifts from it.
 
-`About` returns what the Library's About section needs from Go: the tagline, the
+`About` returns what the About section of Settings needs from Go: the tagline, the
 version and its short form, the license, where `config.toml` and Meru's folder
 are, written with `~`, and the project's four links on GitHub. `internal/about`
 supplies all but the paths. `merud` reports no version over the socket, so the
@@ -236,7 +236,7 @@ such as `v0.4.1` stays, and a build between tags shows as `dev` and the commit,
 such as `dev 5325b3e`. The rail shows the full version as the label's tooltip.
 `type Link = about.Link` gives the package's link type a second name here, so the
 page gets the same JSON as before. In the About section, the license, the settings
-file and Meru's folder are link-styled buttons (`openable` in `library.js`): the
+file and Meru's folder are link-styled buttons (`openable` in `settings.js`): the
 license opens on GitHub through `OpenURL`, and the two paths open through
 `OpenSource`, the file in its default app and the folder in Finder.
 
@@ -315,10 +315,10 @@ button: `/chats` opens the rail with the words in its search box, `/retry` is Tr
 again on the newest answer, `/scope` flips the Where Meru looks switch, `/attach`
 opens the file dialog, `/save` is Save to a note (`/save chat` is Share as file),
 `/used` opens the side panel on the newest answer, `/copy answer` copies the whole
-answer, `/folders`, `/skills`, `/log` and `/about` open their Library sections, and
+answer, `/folders`, `/skills`, `/log` and `/about` open their Settings sections, and
 `/help` opens the command menu. `app.js` hands `commands.js` the functions these
 need. `TestEveryCommandRuns` fails when a listed command has no case in
-`commands.js`. In the page, `/model` alone opens Library, Models; `/model save` calls
+`commands.js`. In the page, `/model` alone opens Settings, Models; `/model save` calls
 `SaveModels` and `/model <name>` calls `UseModelSet`, and both say on the
 notice line how it went. A switch waits while a turn runs, as in `meru chat`.
 `TestModelCommandRouting` reads `commands.js` and checks that each form reaches
@@ -350,13 +350,13 @@ bundler.
   name needs no generated bindings, so no Wails command-line tool either.
 - `js/app.js` keeps the page's state and wires the rail, the composer, the queue and
   the side panel to the updates. It shows one of three screens in the middle
-  column: the chat, the Library or Setup. The rail folds to a column of icons; its
-  logo and name are one button that opens the Library's About. A new chat shows
+  column: the chat, Settings or Setup. The rail folds to a column of icons; its
+  logo and name are one button that opens About in Settings. A new chat shows
   the logo beside "Ask Meru", as an `<img>` with empty alt text, since the heading
   already says Meru. The side panel starts closed, and the header's button opens
   it; the page stores nothing, so the choice lasts until the window closes. It
   shows what the selected answer used, Remembered included, or "Why Meru is
-  asking" while a card is open, or "On this Mac" in the Library. The approval card
+  asking" while a card is open, or "On this Mac" in Settings. The approval card
   says why Meru asks on its own, with a link to the panel, because the panel may be
   closed. The composer holds the "Where Meru looks" switch, a radio group the
   arrow keys move through, and the attach button. `onAttachments` draws the
@@ -379,7 +379,7 @@ bundler.
   option the arrow keys point at. `/copy N` counts the code blocks in the chat's
   finished answers in order, as `meru chat` does, and each block's header shows its
   number.
-- `js/library.js` draws the Library's eight sections: Connections, with an Off /
+- `js/library.js` draws the eight sections of Settings: Connections, with an Off /
   Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity, Usage
   and About. Under the catalog cards, "Add your own MCP server" opens a form: a
   name, then a program with its arguments and environment variables, or a URL with
@@ -472,7 +472,7 @@ holds (16 to 512 pixels, each also at double size), and run
 ## Try it
 
 Typing "/" at the start of the question box opens the command menu; `/copy 2`
-copies the second code block of the chat. The Library and Setup buttons sit at the
+copies the second code block of the chat. The Settings and Setup buttons sit at the
 foot of the rail.
 
 ```sh
