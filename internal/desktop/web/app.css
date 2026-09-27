@@ -323,6 +323,11 @@ pre {
   font-size: 11.5px;
   color: var(--caption);
   white-space: nowrap;
+  /* A long version stops at about 15 characters with an ellipsis; the
+     tooltip still holds all of it. */
+  max-width: 15ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brand-version:empty {
