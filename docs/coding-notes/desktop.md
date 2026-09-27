@@ -234,7 +234,10 @@ the same tree, so the app's version stands in. `shortVersion` cuts it to fit und
 wordmark in the rail: a release tag such as `v0.4.1` stays, and a build between tags,
 whose Go pseudo-version names a release that doesn't exist yet, shows as `dev`
 and the commit, such as `dev 5325b3e`. The rail shows the full version as the
-label's tooltip. [releasing.md](../releasing.md)
+label's tooltip. In the About section, the license, the settings
+file and Meru's folder are link-styled buttons (`openable` in `library.js`):
+the license opens on GitHub through `OpenURL`, and the two paths open through
+`OpenSource`, the file in its default app and the folder in Finder. [releasing.md](../releasing.md)
 shows the flag.
 
 The links live in Go on purpose. `assets_test.go` fails when the page's own files

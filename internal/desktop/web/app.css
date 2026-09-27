@@ -309,6 +309,29 @@ pre {
   height: 30px;
 }
 
+/* A button that looks like a link, for a value in a list that opens
+   something, such as the About section's license and paths. */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--pine);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--ink);
+}
+
+.link-button.mono {
+  font-family: var(--mono);
+}
+
 /* The wordmark with the version under it, beside the logo. */
 .brand-text {
   display: flex;
