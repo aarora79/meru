@@ -560,7 +560,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	}
 	// The same gap for tools: "search my obsidian vault" can route to
 	// search, which offers only the file tools. When the question points at
-	// a connected tool (toolTarget in toolnouns.go lists the four signs) and
+	// a connected tool (toolTarget in toolnouns.go lists the five signs) and
 	// the route lacks the full set of tools, add them. A wrong guess costs
 	// a prompt that holds the tool schemas, and the model need not call any.
 	var target string

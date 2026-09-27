@@ -1125,8 +1125,8 @@ best excerpts in the prompt. The model can still call `search_files`, `grep` and
 Meru skips that search when a question needs no answer from your files. It
 never searches on the `direct` route. On the `tools` route it skips the search
 when the question names a connected server ("ask obsidian"), says "remember",
-names the web ("search the web for …"), or names what a server's tools handle
-("my last email", "my calendar"). Those turns still offer the file tools, but
+asks for the web ("search the web for …", "look it up"), holds a URL, or names
+what a server's tools handle ("my last email", "my calendar"). Those turns still offer the file tools, but
 their prompt drops the note on using them, so a web answer doesn't list your
 files as its sources. The `search` and `search+tools` routes always search.
 With `merud -v`, the log says `no search first` and why.

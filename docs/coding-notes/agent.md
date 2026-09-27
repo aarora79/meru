@@ -408,7 +408,7 @@ tool that saves, and the model then says it will remember and saves nothing. So 
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
-count. It is one of the four signs `toolTarget` checks, so a `tools` turn that
+count. It is one of the five signs `toolTarget` checks, so a `tools` turn that
 asks Meru to remember also skips the search of your files. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
@@ -835,14 +835,15 @@ show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
 A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
-four signs that a question points at a connected tool, and returns the first
+five signs that a question points at a connected tool, and returns the first
 it finds as words for the log line, or `""` for none:
 
 | Sign | Example | Found by |
 | --- | --- | --- |
 | names a tool server | "search my obsidian vault" | `namesFolder` over `toolServers` |
 | asks Meru to remember | "remember that my name is Dana" | `asksToRemember` |
-| asks for the web | "search the web: what is SearXNG?" | `asksForWeb` |
+| asks for the web | "search the web: what is SearXNG?" | `asksForWeb`, with the phrases in `webPhrases` |
+| gives a web address | "what does https://acme.example/flow say?" | `givesURL` |
 | names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
 
 When it finds one and the route is `direct` or `search`, `withTools` adds the
