@@ -1,0 +1,24 @@
+Meru मेरु v0.4.3 lite · minic… ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ Tool calls                         │
+  │                                    │
+  │   09-27 10:17  google.search_gmai… │
+  │ › 09-27 10:16  web_search  ok  by… │
+  │     args: {"query":"tomato spacin… │
+  │     result: (no result)            │
+  │   09-27 10:12  google.send_gmail_… │
+  │                                    │
+  │ Every tool call, allowed or not,   │
+  │ lands here. meru log -v prints     │
+  │ each result in full.               │
+  ╰────────────────────────────────────╯
+
+
+
+
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+↑/↓ move · esc/q close …

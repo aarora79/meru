@@ -15,7 +15,7 @@ import (
 
 // copiedMsg reports how a copy went, for the notice line.
 type copiedMsg struct {
-	n     int    // the block's number
+	n     int    // the block's number, or 0 for a whole answer
 	lines int    // how many lines it has
 	via   string // how the text reached the clipboard, such as "pbcopy"
 	err   error
@@ -25,9 +25,16 @@ type copiedMsg struct {
 // (2 lines)", with a note when it went through OSC 52, or the error.
 func (msg copiedMsg) notice() string {
 	if msg.err != nil {
+		if msg.n == 0 {
+			return fmt.Sprintf("couldn't copy the answer: %v", msg.err)
+		}
 		return fmt.Sprintf("couldn't copy block %d: %v", msg.n, msg.err)
 	}
-	s := fmt.Sprintf("copied block %d (%d %s)", msg.n, msg.lines, plural(msg.lines, "line", "lines"))
+	what := fmt.Sprintf("block %d", msg.n)
+	if msg.n == 0 {
+		what = "the answer"
+	}
+	s := fmt.Sprintf("copied %s (%d %s)", what, msg.lines, plural(msg.lines, "line", "lines"))
 	if msg.via == "OSC 52" {
 		s += " through the terminal (OSC 52): no clipboard program found"
 	}
@@ -68,7 +75,8 @@ func (m *Model) block(n int) (string, bool) {
 }
 
 // copyCommand runs /copy: with a number, it copies that block; alone, the
-// newest answer's last block, as Ctrl-Y does.
+// newest answer's last block, as Ctrl-Y does; with "answer", the newest
+// answer's whole text.
 func (m Model) copyCommand(arg string) (tea.Model, tea.Cmd) {
 	m.input.Reset()
 	m.layout()
@@ -76,9 +84,12 @@ func (m Model) copyCommand(arg string) (tea.Model, tea.Cmd) {
 	if arg == "" {
 		return m.copyLast()
 	}
+	if arg == "answer" {
+		return m.copyAnswer()
+	}
 	n, err := strconv.Atoi(arg)
 	if err != nil {
-		m.notice = "/copy takes a block number, such as /copy 2"
+		m.notice = "/copy takes a block number, such as /copy 2, or answer"
 		return m, nil
 	}
 	return m.copyBlock(n)
@@ -119,7 +130,21 @@ func (m Model) copyLast() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// copyCmd returns a command that puts text, block n, on the clipboard.
+// copyAnswer copies the newest finished answer's whole text, as the
+// model wrote it, Markdown and all: the desktop app's Copy under an
+// answer.
+func (m Model) copyAnswer() (tea.Model, tea.Cmd) {
+	for i := len(m.turns) - 1; i >= 0; i-- {
+		if t := m.turns[i]; t.state == stateDone && t.answer != "" {
+			return m, copyCmd(m.copy, 0, t.answer)
+		}
+	}
+	m.notice = "no answer to copy yet"
+	return m, nil
+}
+
+// copyCmd returns a command that puts text, block n, on the clipboard; an
+// n of 0 means the whole answer.
 // Copying starts a program, so it runs as a command, off the loop that
 // draws the screen, and reports back with a copiedMsg.
 func copyCmd(copyText copyFunc, n int, text string) tea.Cmd {

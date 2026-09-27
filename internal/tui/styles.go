@@ -43,7 +43,7 @@ type styles struct {
 	choice        lipgloss.Style // a choice in the box
 	choiceOn      lipgloss.Style // the choice Enter would pick
 
-	box lipgloss.Style // the /usage, /me and /mcp boxes, in a teal border
+	box lipgloss.Style // every box that opens over the conversation, in a teal border
 }
 
 // answerIndent is how far message text sits from the left edge. Glamour's
@@ -140,74 +140,67 @@ type keyMap struct {
 	// Copy copies the newest answer's last code block, as /copy does.
 	// Ctrl-Y is free: the input box binds no key to it.
 	Copy key.Binding
-	// Commands lists the slash commands, /new, /usage, /me and /mcp. They
-	// have no key: Ctrl-U, the obvious one for usage, already deletes to
-	// the start of the line in the input box. The binding exists only so
-	// the help line lists them. The help line skips a binding with no
-	// keys, so it gets "/new /usage /me /mcp", which no key press ever
-	// reads as; submit runs the commands.
+	// Commands points at /help, which lists every slash command. The
+	// commands have no key, and the help line has room for one entry, so
+	// it names the one that shows the rest. The help line skips a binding
+	// with no keys, so the binding's key is "/help", which no key press
+	// ever reads as; submit runs the commands.
 	Commands key.Binding
 }
 
 // newKeyMap returns the chat screen's keys.
 func newKeyMap() keyMap {
 	return keyMap{
-		Send:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "send")),
-		Stop:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
-		Quit:    key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "quit")),
-		Recall:  key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
-		Scroll:  key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/dn", "scroll")),
-		Newline: key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
-		Copy:    key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "copy code")),
-		// The help text splits "/new /usage /me /mcp" across the key and
-		// the description slots, so the line reads "/new /usage /me /mcp"
-		// and still fits in 80 columns.
-		Commands: key.NewBinding(key.WithKeys("/new /usage /me /mcp"), key.WithHelp("/new", "/usage /me /mcp")),
+		Send:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "send")),
+		Stop:     key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
+		Quit:     key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "quit")),
+		Recall:   key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "recall")),
+		Scroll:   key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/dn", "scroll")),
+		Newline:  key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
+		Copy:     key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "copy code")),
+		Commands: key.NewBinding(key.WithKeys("/help"), key.WithHelp("/help", "commands")),
 	}
 }
 
 // ShortHelp returns the keys the help line shows, in order. Having this
 // method makes keyMap satisfy help.KeyMap, the interface the Bubbles help
-// component draws from. Ctrl-J, Ctrl-D, Ctrl-Y and /copy are left out: the
-// line would no longer fit an 80-column terminal, and the help component
-// cuts what doesn't fit. Ctrl-C already quits when no answer streams, so
-// Ctrl-D is the one to spare, and the "⧉ copy N" label under each code
-// block shows the way to /copy.
+// component draws from. Ctrl-J, Ctrl-D and Ctrl-Y are left out: the line
+// would no longer fit an 80-column terminal, and the help component cuts
+// what doesn't fit. /help lists them all. Ctrl-C already quits when no
+// answer streams, so Ctrl-D is the one to spare, and the "⧉ copy N" label
+// under each code block shows the way to /copy.
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Send, k.Stop, k.Recall, k.Scroll, k.Commands}
 }
 
-// FullHelp returns every key as one column. The help component asks for it
-// only in its expanded mode, which the chat screen never turns on.
+// FullHelp returns every key as one column, for the /help box.
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Send, k.Newline, k.Stop, k.Quit, k.Recall, k.Scroll, k.Copy, k.Commands}}
 }
 
 // keyList is a list of keys for the help line while a box is open: the
-// approval box, the /usage box, the /me box or the /mcp box. A plain slice of bindings satisfies
-// help.KeyMap once it has the two methods below.
+// approval box or any box over the conversation (box.go). A plain slice of
+// bindings satisfies help.KeyMap once it has the two methods below.
 type keyList []key.Binding
 
 // newApprovalKeys returns the help line's keys for an approval that offers
-// choices: one key per choice, then ←/→ with Enter, then Ctrl-C.
-func newApprovalKeys(choices []rpc.Choice) keyList {
+// choices: one key per choice, then e for Edit first when edit is true,
+// then ←/→ with Enter, then Ctrl-C. A turn's box offers Edit first and a
+// save's doesn't; Ctrl-C stops a turn, and with no turn running it quits.
+func newApprovalKeys(choices []rpc.Choice, edit bool) keyList {
 	var k keyList
 	for _, c := range choices {
 		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c))))
 	}
+	stop := "quit"
+	if edit {
+		k = append(k, key.NewBinding(key.WithKeys(editKey), key.WithHelp(editKey, "edit first")))
+		stop = "stop"
+	}
 	return append(k,
 		key.NewBinding(key.WithKeys("left", "right", "enter"), key.WithHelp("←/→ enter", "choose")),
-		key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop")),
+		key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", stop)),
 	)
-}
-
-// newBoxKeys returns the help line's keys while the /usage, /me or /mcp
-// box is open.
-func newBoxKeys() keyList {
-	return keyList{
-		key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "close")),
-		key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "stop/quit")),
-	}
 }
 
 // ShortHelp returns the keys in order.

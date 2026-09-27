@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/aarora79/meru/internal/about"
 	"github.com/aarora79/meru/internal/opener"
 	"github.com/aarora79/meru/internal/rpc"
 )
@@ -55,6 +56,8 @@ type Info struct {
 	// click on a "⧉ copy N" label copies that code block, and a click on
 	// a link opens it.
 	MouseCopy bool
+	// Dir is Meru's folder, ~/.meru, for the /about box; "" leaves it out.
+	Dir string
 }
 
 // look is how the screen draws itself: a Lip Gloss renderer that knows the
@@ -98,6 +101,17 @@ type exchange struct {
 	// tools lists the turn's tool calls in the order merud reported them.
 	tools []toolCall
 
+	// scope is where the turn could look, one of rpc.Scopes, "" for auto,
+	// and images the full paths of the images it carried. /retry sends
+	// both again.
+	scope  string
+	images []string
+	// memories lists what recall put in the turn's prompt, from its
+	// "memories" event, for the /used box.
+	memories []rpc.MemoryInfo
+	// past is true for a turn /chats reopened from its transcript.
+	past bool
+
 	answer string    // the answer's raw text, grown token by token
 	notice string    // merud's warning about the answer, from a "notice" event; "" for none
 	err    string    // why the turn failed, for stateFailed
@@ -121,6 +135,8 @@ type exchange struct {
 type toolCall struct {
 	id      string
 	name    string // the full name, such as "notes.search"
+	kind    string // "mcp", "a2a", "builtin" or "command"
+	host    string // for web_fetch, the site it asked for; the /used box names it
 	outcome string // "" while the call runs, then "ok", "declined" and so on
 	millis  int64  // how long the call took, from "tool_result"
 }
@@ -133,6 +149,19 @@ type pendingApproval struct {
 	reply chan rpc.Choice
 	// selected is the index in ask.Choices that Enter picks; ←/→ move it.
 	selected int
+	// save is true for a call a /save asked about, which belongs to no
+	// turn: its box takes the conversation's place, and it offers no Edit
+	// first, since the chat or the answer is what it saves.
+	save bool
+}
+
+// outgoing is one question on its way to merud, or waiting in the queue:
+// its text, with a "Read this file" line per attached file, where it may
+// look, and the full paths of the images it carries.
+type outgoing struct {
+	text   string
+	scope  string
+	images []string
 }
 
 // link says whether merud answered last time we heard from it.
@@ -190,7 +219,24 @@ type Model struct {
 	// queue holds the questions typed while a turn runs, oldest first.
 	// When the turn ends, the next one goes to merud; merud still gets one
 	// turn at a time.
-	queue []string
+	queue []outgoing
+	// scope is where the next questions may look, set by /scope: one of
+	// rpc.Scopes, with "" for auto. attached holds the files and images
+	// the next question carries, from /attach.
+	scope    string
+	attached []attachment
+	// version is Meru's short version for the header, such as "v0.4.3",
+	// and fullVersion the whole one for the /about box (internal/about).
+	version     string
+	fullVersion string
+	// saves counts the saves /save started, and saving is the number of
+	// the one that runs now, 0 for none. A save's approval carries its
+	// number, as a turn's does.
+	saves  int
+	saving int
+	// forgetting is the ID of the memory a forget asked merud to delete,
+	// until merud answers; "" for none.
+	forgetting string
 	// turn counts questions. Events carry the turn they belong to, so events
 	// from a cancelled turn can't leak into the next one.
 	turn int
@@ -210,6 +256,16 @@ type Model struct {
 	mcpBox *mcpBox
 	// modelBox is the open /model box, or nil, and works the same way.
 	modelBox *modelBox
+	// So do the /chats, /used, /folders, /skills and /log boxes. The
+	// /about and /help boxes only scroll.
+
+	chatsBox   *chatsBox
+	usedBox    *usedBox
+	foldersBox *foldersBox
+	skillsBox  *skillsBox
+	logBox     *logBox
+	aboutBox   *scrollBox
+	helpBox    *scrollBox
 	// notice is a dim line that takes the help line's place until the next
 	// key press, such as the answer to an unknown /command.
 	notice string
@@ -271,6 +327,8 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		help:         h,
 		copy:         systemClipboard().copy,
 		open:         opener.Open,
+		version:      about.ShortVersion(),
+		fullVersion:  about.Version(),
 	}
 	// The viewport's own keys would scroll on j, k, space and the arrows,
 	// which the user types into the input. Update scrolls it on PgUp and
@@ -336,11 +394,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case meMsg:
 		m.applyMe(msg)
 		return m, nil
-	case mcpMsg:
-		m.applyMCP(msg)
-		return m, nil
 	case modelsMsg:
 		m.applyModels(msg)
+		return m, nil
+	case replyMsg:
+		cmd := m.applyReply(msg)
+		return m, cmd
+	case savedMsg:
+		m.applySaved(msg)
 		return m, nil
 	case refreshMsg:
 		// Check now, and book the next check. Only this branch books one,
@@ -405,10 +466,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.approvalKey(msg)
 		return m, nil
 	case m.boxOpen():
-		// So do the /usage, /me, /mcp and /model boxes, until Esc or q
-		// closes them.
-		m.boxKey(msg)
-		return m, nil
+		// So does any other box, until Esc or q closes it.
+		return m, m.boxKey(msg)
 	case key.Matches(msg, m.keys.Send):
 		return m.submit()
 	case key.Matches(msg, m.keys.Copy):
@@ -452,21 +511,29 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.input.Reset()
-	m.layout()
 	m.lastQuestion = text
-	m.conversation.GotoBottom() // asking a question jumps to the newest text
-	if m.streaming {
-		m.queue = append(m.queue, text)
-		m.refresh()
-		return m, nil
-	}
-	return m, m.startTurn(text)
+	return m, m.sendOrQueue(m.takeAttachments(text))
 }
 
-// startTurn sends text to merud as a new turn and marks the screen busy.
+// sendOrQueue sends q to merud as a new turn, or, while a turn runs, puts
+// it in the queue, which handleDone empties one question at a time. The
+// caller checks that the queue has room. It returns the command that runs
+// the turn, or nil for a queued question.
+func (m *Model) sendOrQueue(q outgoing) tea.Cmd {
+	m.layout()
+	m.conversation.GotoBottom() // asking a question jumps to the newest text
+	if m.streaming {
+		m.queue = append(m.queue, q)
+		m.refresh()
+		return nil
+	}
+	return m.startTurn(q)
+}
+
+// startTurn sends q to merud as a new turn and marks the screen busy.
 // It returns the command that runs the turn and the command that starts
 // the spinner; tea.Batch runs both.
-func (m *Model) startTurn(text string) tea.Cmd {
+func (m *Model) startTurn(q outgoing) tea.Cmd {
 	m.turn++
 	m.streaming = true
 
@@ -476,13 +543,17 @@ func (m *Model) startTurn(text string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	m.turns = append(m.turns, exchange{question: text, state: stateActive})
+	m.turns = append(m.turns, exchange{question: q.text, state: stateActive, scope: q.scope, images: q.images})
 	m.refresh()
 	req := rpc.Request{
 		Op:      rpc.OpAsk,
 		Session: m.session, // empty on the first question, so merud starts a session
-		Text:    text,
+		Text:    q.text,
 		Source:  rpc.SourceTUI,
+		Scope:   q.scope,
+	}
+	if len(q.images) > 0 {
+		req.Images = &rpc.Images{Paths: q.images}
 	}
 	return tea.Batch(streamCmd(ctx, m.ask, m.send, m.turn, req), m.spin.Tick)
 }
@@ -509,8 +580,10 @@ func (m *Model) handleEvent(msg eventMsg) {
 		cur.sources = ev.Sources
 	case rpc.EventToolCall:
 		if ev.Tool != nil {
-			cur.tools = append(cur.tools, toolCall{id: ev.Tool.ID, name: ev.Tool.Name})
+			cur.tools = append(cur.tools, toolCall{id: ev.Tool.ID, name: ev.Tool.Name, kind: ev.Tool.Kind, host: urlHost(ev.Tool.Args)})
 		}
+	case rpc.EventMemories:
+		cur.memories = ev.Memories
 	case rpc.EventToolResult:
 		if ev.Tool != nil {
 			cur.finishTool(*ev.Tool)
@@ -623,13 +696,18 @@ func (m *Model) resize(width, height int) {
 }
 
 // layout grows or shrinks the input box to fit its text, up to
-// maxInputLines, and gives the conversation the rows that are left. A
+// maxInputLines, and gives the conversation the rows that are left, less
+// one for the attachments line while the next question carries files. A
 // conversation scrolled to the bottom stays at the bottom.
 func (m *Model) layout() {
 	follow := m.conversation.AtBottom()
 	lines := min(max(m.input.LineCount(), 1), maxInputLines)
 	m.input.SetHeight(lines)
-	m.conversation.Height = max(m.height-headerLines-(lines+inputChromeH)-helpLines, 1)
+	attach := 0
+	if len(m.attached) > 0 {
+		attach = 1
+	}
+	m.conversation.Height = max(m.height-headerLines-(lines+inputChromeH)-helpLines-attach, 1)
 	if follow {
 		m.conversation.GotoBottom()
 	}

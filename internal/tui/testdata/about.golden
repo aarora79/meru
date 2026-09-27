@@ -1,0 +1,24 @@
+Meru मेरु v0.4.3 lite · minicpm5:2b                                    ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+  ╭───────────────────────────────────────────────────────────────────────────╮
+  │ About Meru                                                                │
+  │                                                                           │
+  │ A personal AI assistant that runs entirely on your own computer           │
+  │                                                                           │
+  │ version  v0.4.3                                                           │
+  │ license  Apache License 2.0                                               │
+  │ config   ~/.meru/config.toml                                              │
+  │ folder   ~/.meru                                                          │
+  │                                                                           │
+  │ Source code on GitHub  https://github.com/aarora79/meru                   │
+  │ Read the design                                                           │
+  │     https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md            │
+  │ ↓ more                                                                    │
+  │                                                                           │
+  │ The models run on this computer, and Meru has no account to sign in to.   │
+  ╰───────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+↑/↓ scroll · esc/q close · ctrl+c stop/quit

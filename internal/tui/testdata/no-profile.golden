@@ -1,12 +1,12 @@
-Meru मेरु lite · minicpm5:2b · 2637 docs · no profile                  ● connected
+Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs · no profile           ● connected
 ────────────────────────────────────────────────────────────────────────────────
 
   Ask a question below. The answer comes from models on this machine.
 
-  Meru doesn't know you yet. Run meru setup user in another terminal, or tell it
-  about yourself in a message.
+  Meru doesn't know you yet. Type /me add and a line about yourself, or run meru
+  setup user in another terminal.
 
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /help commands

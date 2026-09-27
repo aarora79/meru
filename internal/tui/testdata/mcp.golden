@@ -1,20 +1,20 @@
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories               ● connected
+Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories        ● connected
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  ╭─────────────────────────────────────────────────────────────────────────────────────────────╮
-  │ MCP servers                                                                                 │
-  │                                                                                             │
-  │ SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM                                 │
-  │ google     http       connected       124        6        2   127.0.0.1:8000/mcp            │
-  │ obsidian   stdio      connected        13        5        1                                 │
-  │ notes      stdio      not connected     —        3        1   exec: "npx" not found         │
-  │                                                                                             │
-  │ meru tools lists each tool; meru mcp list shows the catalog and meru mcp add adds a server. │
-  ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
-
-
-
+  ╭──────────────────────────────────────────────────────────────────────────────────────────╮
+  │ Connections                                                                              │
+  │                                                                                          │
+  │   meru · built in · 3 of 3 tools on                                                      │
+  │ ›   Always asks configure                                                                │
+  │     Allow       web_search                                                               │
+  │     Ask         write_file                                                               │
+  │                                                                                          │
+  │   google · MCP server, http · connected · 2 of 124 tools on                              │
+  │ ↓ more                                                                                   │
+  │                                                                                          │
+  │ Ask means Meru asks before each call. meru mcp add stdio|http adds a server of your own. │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                                               │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-esc/q close · ctrl+c stop/quit
+↑/↓ move · ←/→ policy · enter add · d remove · esc/q close · ctrl+c stop/quit

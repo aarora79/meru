@@ -1,20 +1,20 @@
-Meru मेरु lite · minicpm5:2b · 2637 docs                               ● connected
+Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs                        ● connected
 ────────────────────────────────────────────────────────────────────────────────
 
   ╭────────────────────────────────────────────────────────────────────────────╮
   │ About you                                                                  │
   │                                                                            │
   │ me                                                                         │
-  │ Name: Dana Reyes                                                           │
-  │ Work: staff engineer on the registry team at Acme, in the platform group   │
+  │ › Name: Dana Reyes                                                         │
+  │   Work: staff engineer on the registry team at Acme, in the platform group │
   │                                                                            │
   │ preferences                                                                │
-  │ Answers: short, with bullet points                                         │
+  │   Answers: short, with bullet points                                       │
   │                                                                            │
-  │ Say "remember that …" in a message, or run meru setup user in another      │
-  │ terminal.                                                                  │
+  │ /me add <fact> or /me prefer <how you like answers> adds one.              │
   ╰────────────────────────────────────────────────────────────────────────────╯
+
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-esc/q close · ctrl+c stop/quit
+↑/↓ move · d forget · esc/q close · ctrl+c stop/quit
