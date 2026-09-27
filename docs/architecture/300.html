@@ -677,12 +677,12 @@
   <thead><tr><th>Platform</th><th>Status</th><th>Restarts <code>merud</code> after a reboot</th></tr></thead>
   <tbody>
     <tr><td>macOS, Apple silicon</td><td>Supported and tested. The development machine is a Mac Studio (M4 Max, 64 GB).</td><td><code>launchd</code></td></tr>
-    <tr><td>Linux, x86-64 or arm64</td><td>Supported, including home servers and cloud virtual machines such as Amazon EC2.</td><td><code>systemd</code></td></tr>
+    <tr><td>Linux, x86-64 or arm64</td><td>Supported, including home servers and cloud virtual machines.</td><td><code>systemd</code></td></tr>
     <tr><td>Windows 10 and later</td><td>Should work; not tested at first.</td><td>a Windows service</td></tr>
   </tbody>
 </table></div>
 
-<p>On a cloud server such as EC2, Meru still sends no prompt to a model provider, but your notes, email and transcripts live on that server. Meru's promise is "a machine you control"; where that machine sits is your call. You'd run <code>meru</code> over SSH, because it reaches <code>merud</code> through a local socket.</p>
+<p>On a cloud server, Meru still sends no prompt to a model provider, but your notes, email and transcripts live on that server. Meru's promise is "a machine you control"; where that machine sits is your call. You'd run <code>meru</code> over SSH, because it reaches <code>merud</code> through a local socket.</p>
 
 <!-- ============================================================ -->
 <h2 id="end-to-end">A question, end to end</h2>
@@ -2510,7 +2510,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <thead><tr><th>Question</th><th>Decision</th></tr></thead>
   <tbody>
     <tr><td>Language</td><td>Go, for a small footprint, easy distribution, room to scale, built-in concurrency and fewer dependencies (see <a href="#why-go">Why Go</a>).</td></tr>
-    <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers such as EC2 count as "a machine you control".</td></tr>
+    <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers count as "a machine you control".</td></tr>
     <tr><td>Agent harness</td><td>Our own loop plus the official MCP and A2A Go SDKs. We looked at Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and neither saves much once the allowlist, audit and budget logic are ours.</td></tr>
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
     <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 32 GB or more, or a ~24 GB GPU (<code>qwen3.8:27b</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>

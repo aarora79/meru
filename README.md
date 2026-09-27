@@ -220,7 +220,7 @@ Meru runs wherever Ollama and Go do:
 
 - **macOS on Apple silicon:** supported and tested. Developed on a Mac Studio, M4 Max,
   64 GB.
-- **Linux:** supported, including home servers and cloud VMs such as EC2.
+- **Linux:** supported, including home servers and cloud virtual machines.
 - **Windows 10 and later:** should work; not tested at first.
 
 Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tiers)):
