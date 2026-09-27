@@ -6,6 +6,7 @@ package desktop
 
 import (
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 )
@@ -42,6 +43,10 @@ type About struct {
 	// merud reports no version over the socket, and the app and merud
 	// come from the same source tree, so the app's own build stands in.
 	Version string `json:"version"`
+	// ShortVersion is Version cut to fit beside the logo in the rail:
+	// "v0.4.1" for a release, "dev 5325b3e" for any other build. See
+	// shortVersion.
+	ShortVersion string `json:"short_version"`
 	// License is the License constant.
 	License string `json:"license"`
 	// ConfigPath is config.toml, and DataDir the folder that holds it,
@@ -70,12 +75,14 @@ func (b *Bridge) About() About {
 		// holds the socket is the best guess left.
 		dir = filepath.Dir(b.socket)
 	}
+	v := appVersion()
 	return About{
-		Tagline:    Tagline,
-		Version:    appVersion(),
-		License:    License,
-		ConfigPath: tilde(filepath.Join(dir, "config.toml"), b.home),
-		DataDir:    tilde(dir, b.home),
+		Tagline:      Tagline,
+		Version:      v,
+		ShortVersion: shortVersion(v),
+		License:      License,
+		ConfigPath:   tilde(filepath.Join(dir, "config.toml"), b.home),
+		DataDir:      tilde(dir, b.home),
 		Links: []Link{
 			{ID: "source", Label: "Source code on GitHub", URL: sourceURL},
 			{ID: "design", Label: "Read the design", URL: designURL},
@@ -99,6 +106,32 @@ func appVersion() string {
 		return releaseVersion
 	}
 	return buildVersion(debug.ReadBuildInfo())
+}
+
+// pseudoVersion matches the version Go gives a build made between tags,
+// such as "v0.4.2-0.20260927021103-5325b3ef94cb": the next patch, then a
+// time and the commit's first twelve characters.
+var pseudoVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:0\.)?\d{14}-([0-9a-f]{12})$`)
+
+// shortVersion cuts v, as appVersion returns it, to fit in the rail. A
+// release tag such as "v0.4.1" stays as it is. A pseudo-version or a
+// "(devel) 5325b3e" build becomes "dev" and the commit's first seven
+// characters, since the version Go guesses for a build between tags names
+// a release that doesn't exist yet. It returns "" when v says nothing
+// useful, such as "unknown".
+func shortVersion(v string) string {
+	if m := pseudoVersion.FindStringSubmatch(v); m != nil {
+		return "dev " + m[1][:7]
+	}
+	if rest, ok := strings.CutPrefix(v, "(devel) "); ok {
+		// rest is "5325b3e" or "5325b3e, modified"; keep the commit.
+		sha, _, _ := strings.Cut(rest, ",")
+		return "dev " + sha
+	}
+	if v == "(devel)" || v == "unknown" {
+		return ""
+	}
+	return v
 }
 
 // buildVersion turns what the Go toolchain recorded in the binary into a

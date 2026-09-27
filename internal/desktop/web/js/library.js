@@ -33,6 +33,19 @@ const WEB_TOOLS = ["web_search", "web_fetch"];
 // connection to bring into view, and what it calls back into app.js.
 const lib = { root: null, section: "connections", focus: "", pages: null, expanded: new Set() };
 
+// openable returns a <dd> holding text as a link-styled button that runs
+// open on a click, or as plain text when open is null. className adds a
+// class to the button, such as "mono" for a path.
+function openable(text, className, open) {
+  const dd = el("dd", "");
+  if (!open) {
+    dd.textContent = text;
+    return dd;
+  }
+  dd.append(button(text, { className: ("link-button " + className).trim(), onClick: open }));
+  return dd;
+}
+
 // openLibrary draws the Library in root at section. focus names a
 // connection to scroll to and mark, as "Change what google may do" asks.
 export function openLibrary(root, section, focus, pages) {
@@ -1023,9 +1036,17 @@ function about(body) {
       body.append(el("h2", "section-head", "This copy"));
       const dl = el("dl", "facts");
       dl.append(el("dt", "", "Version"), el("dd", "", a.version));
-      dl.append(el("dt", "", "License"), el("dd", "", a.license));
-      dl.append(el("dt", "", "Settings"), el("dd", "mono", a.config_path));
-      dl.append(el("dt", "", "Meru's folder"), el("dd", "mono", a.data_dir));
+      // The license, the settings file and Meru's folder open on a click:
+      // the license on GitHub, the file in its default app, the folder in
+      // Finder. Each goes through the Bridge, which checks the URL first.
+      const fail = (err) => lib.pages.notice(errorText(err));
+      const license = a.links.find((l) => l.id === "license");
+      dl.append(el("dt", "", "License"), openable(a.license, "",
+        license ? () => bridge.openURL(license.url).catch(fail) : null));
+      dl.append(el("dt", "", "Settings"), openable(a.config_path, "mono",
+        () => bridge.openSource(a.config_path).catch(fail)));
+      dl.append(el("dt", "", "Meru's folder"), openable(a.data_dir, "mono",
+        () => bridge.openSource(a.data_dir).catch(fail)));
       body.append(dl);
       body.append(el("p", "card-note", "Meru's folder holds the settings, your keys in secrets.toml, " +
         "every chat, what Meru remembers and the search index."));

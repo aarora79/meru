@@ -1054,6 +1054,13 @@ function wire() {
   $("open-setup").addEventListener("click", goSetup);
   // The logo and the name at the top of the rail open the Library's About.
   $("open-about").addEventListener("click", () => goLibrary("about"));
+  // The version beside the logo: short in the rail, in full as its
+  // tooltip. It stays empty when the build carries no useful version.
+  bridge.about().then((a) => {
+    const v = $("brand-version");
+    v.textContent = a.short_version || "";
+    if (a.version) v.title = "Version " + a.version;
+  }).catch(() => {});
   $("share").addEventListener("click", () => save(() => bridge.saveChat(state.session), "chat"));
   $("attach").addEventListener("click", attach);
   $("search").addEventListener("input", (e) => {
