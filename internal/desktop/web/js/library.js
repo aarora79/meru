@@ -1120,7 +1120,7 @@ function about(body) {
       body.append(el("p", "about-tagline", a.tagline + "."));
 
       body.append(el("h2", "section-head", "The name"));
-      body.append(el("p", "", "Meru (मेरु) is the cosmic mountain that the sun, moon and stars turn around. " +
+      body.append(el("p", "", "In some Eastern traditions, Meru (मेरु) is the cosmic mountain that the sun, moon and stars turn around. " +
         "The assistant takes the name because it works the same way: it stays in one place, on your computer, " +
         "and your notes, tools and daily routine turn around it."));
 
