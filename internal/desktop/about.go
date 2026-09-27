@@ -52,7 +52,7 @@ type About struct {
 // Link is one of the project's pages, as internal/about lists them: a
 // button's label and the page's URL, with an ID that lets the page put
 // its own words beside a link. "type Link = about.Link" makes Link a
-// second name for that type, not a new type, so no copy is needed.
+// second name for that type, not a new type, so nothing needs copying.
 type Link = about.Link
 
 // About returns what the About section shows. It asks merud for nothing,

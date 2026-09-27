@@ -1,7 +1,7 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
-**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, the Library boxes, Edit first and the version) after v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
 ## What it does
@@ -19,10 +19,34 @@ or file link shows its URL cut to fit its line, and a click opens the full URL i
 the browser.
 
 `cmd/meru/main.go` calls `tui.Run` for `meru chat`. Before that, `chatInfo` reads the
-profile and main model from `~/.meru/config.toml` for the header, and
-`[chat] mouse_copy` into `Info.MouseCopy`. If the file doesn't load, the header
+profile and main model from `~/.meru/config.toml` for the header,
+`[chat] mouse_copy` into `Info.MouseCopy`, and Meru's folder into `Info.Dir` for
+the `/about` box. If the file doesn't load, the header
 leaves them out and mouse copying stays on, its default; `merud` reports config
 errors itself.
+
+## Matching the desktop app
+
+The chat does what the desktop app does wherever a terminal can, with the ops the
+app already sends; `merud` got no new op for it. The short version of the audit
+(the pull request that brought the chat level holds the full table):
+
+| App feature | `meru chat` |
+| --- | --- |
+| Streaming, Markdown, code blocks with Copy, links, cited sources, stats, notices | has: the answer, `⧉ copy N`, OSC 8 links, the Sources list, the stats line, the amber note |
+| Approvals: once, this chat, deny; Edit first | has: `o`, `s`, `d`, and `e` for Edit first |
+| Queue and Stop | has: Enter queues five, Ctrl-C stops and drops them |
+| Slash commands | has: the same list, in the same order; `/help` lists them |
+| Where Meru looks | has: `/scope`, shown in the header |
+| Attachments, files and images | has: `/attach <path>`; no drag and drop or file dialog, which need a window |
+| Share as file, Save to a note | has: `/save chat`, `/save` |
+| Try again | has: `/retry` |
+| What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
+| Past chats and reopening one | has: `/chats [words]` |
+| Library: Connections, Folders, About you, Skills, Models, Activity, Usage, About | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
+| Setup | in another terminal: `meru setup` and `meru setup user` |
+| Version beside the name | has |
+| SVG preview, image previews, sidebar and panel layout | not in a terminal: they draw pictures or need a mouse-driven window |
 
 ## The picture
 
@@ -46,7 +70,7 @@ Meru  direct · 0.91
 ╭──────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                       │
 ╰──────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /help commands
 ```
 
 Once `merud` has answered the first status check, the header also says how big the
@@ -66,8 +90,8 @@ Meru मेरु lite · minicpm5:2b · 2637 docs · no profile                
 
   Ask a question below. The answer comes from models on this machine.
 
-  Meru doesn't know you yet. Run meru setup user in another terminal, or tell it
-  about yourself in a message.
+  Meru doesn't know you yet. Type /me add and a line about yourself, or run meru
+  setup user in another terminal.
 ```
 
 When the model calls a tool, a dim line inside the Meru message tracks it. When the
@@ -78,18 +102,18 @@ for your answer:
 Meru  tools · 0.82
   ✓ notes.search · 120 ms
   → mail.send
-  ╭──────────────────────────────────────────────╮
-  │ Run mail.send?  mcp                          │
-  │ {                                            │
-  │   "to": "sam@example.com",                   │
-  │   "subject": "Garden plan",                  │
-  │   "body": "We sow the tomatoes on 12 April." │
-  │ }                                            │
-  │                                              │
-  │  o once   s this session  [d deny]           │
-  ╰──────────────────────────────────────────────╯
+  ╭───────────────────────────────────────────────────╮
+  │ Run mail.send?  mcp                               │
+  │ {                                                 │
+  │   "to": "sam@example.com",                        │
+  │   "subject": "Garden plan",                       │
+  │   "body": "We sow the tomatoes on 12 April."      │
+  │ }                                                 │
+  │                                                   │
+  │  o once   s this session  [d deny]  e edit first  │
+  ╰───────────────────────────────────────────────────╯
 ...
-o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
+o once · s this session · d deny · e edit first · ←/→ enter choose · ctrl+c stop
 ```
 
 Once the call ends, its line changes to `✓ mail.send · 80 ms`, or to
@@ -103,31 +127,36 @@ knows about you, the memories that go into every prompt:
   │ About you                                                                  │
   │                                                                            │
   │ me                                                                         │
-  │ Name: Dana Reyes                                                           │
-  │ Work: staff engineer on the registry team at Acme, in the platform group   │
+  │ › Name: Dana Reyes                                                         │
+  │   Work: staff engineer on the registry team at Acme, in the platform group │
   │                                                                            │
   │ preferences                                                                │
-  │ Answers: short, with bullet points                                         │
+  │   Answers: short, with bullet points                                       │
   │                                                                            │
-  │ Say "remember that …" in a message, or run meru setup user in another      │
-  │ terminal.                                                                  │
+  │ /me add <fact> or /me prefer <how you like answers> adds one.              │
   ╰────────────────────────────────────────────────────────────────────────────╯
 ```
 
-`/mcp` opens one with the state of each MCP server, the same table `meru mcp`
-prints:
+`/mcp` opens the app's Connections: each tool source, each tool with its policy,
+and the catalog servers not added yet. ↑ and ↓ move the `›` marker, and ← and →
+step the marked tool through Off, Ask and Allow:
 
 ```text
-  ╭─────────────────────────────────────────────────────────────────────────────────────────────╮
-  │ MCP servers                                                                                 │
-  │                                                                                             │
-  │ SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM                                 │
-  │ google     http       connected       124        6        2   127.0.0.1:8000/mcp            │
-  │ obsidian   stdio      connected        13        5        1                                 │
-  │ notes      stdio      not connected     —        3        1   exec: "npx" not found         │
-  │                                                                                             │
-  │ meru tools lists each tool; meru mcp list shows the catalog and meru mcp add adds a server. │
-  ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
+  ╭──────────────────────────────────────────────────────────────╮
+  │ Connections                                                  │
+  │                                                              │
+  │   meru · built in · 11 of 11 tools on                        │
+  │ ›   Always asks configure                                    │
+  │     Allow       datetime                                     │
+  │     Ask         write_file                                   │
+  │ …                                                            │
+  │   Add a connection                                           │
+  │     google · Gmail, Google Calendar, Drive and Docs          │
+  │     obsidian · Obsidian · needs an API key                   │
+  │                                                              │
+  │ Ask means Meru asks before each call. meru mcp add           │
+  │ stdio|http adds a server of your own.                        │
+  ╰──────────────────────────────────────────────────────────────╯
 ```
 
 `/usage` opens a box of the same kind, with one column per window of time:
@@ -671,33 +700,49 @@ mark the selected choice, so the selection shows with colour off too. `View` swa
 the help line for a `keyList`, a slice of key bindings with the two methods the
 help component needs, so the bottom line lists the keys that answer the box.
 
-An approval box closes an open `/usage`, `/me` or `/mcp` box: the approval needs
-the keys, and it sits in the conversation those boxes cover.
+`e` is Edit first, as in the app. `editFirst` answers deny, then puts the call in
+the input as a draft (`draftOf`): "Run mail.send with these arguments instead:" and
+the arguments as the box shows them, for the user to change and send as a new
+question. The model then makes the call again with the new text, and `merud` asks
+again, so nothing runs that the user didn't see. The app lays a mail out as To,
+Subject and Body; the chat keeps the JSON the box already shows.
+
+An approval box closes any open box (`dropBoxes`): the approval needs the keys,
+and it sits in the conversation those boxes cover.
 
 ### commands.go
 
 A line that starts with `/` never reaches the model; `submit` hands it to
-`command`. `/usage` opens the usage box, `/me` the profile box, `/mcp` the MCP
-status box and `/model` the model sets box (all below). `/new` calls `newSession`, which
-stops a streaming answer, clears the screen and forgets the session ID, so the next
-question asks `merud` for a new session. It also counts up `m.turn`: the stopped
-answer may still send events, and `handleEvent` drops any event whose turn number
-isn't the current one, so a late `session` event can't bring the old session back.
-`newSession` also drops the queue and says how many questions went: they were typed
-for the old conversation, and sending them into the new one would carry it on.
-The other commands only open a box, copy text or talk to `merud`, so they run at
-once while a turn runs and never wait in the queue. A model switch is the one
-exception: `modelCommand` refuses it while a turn streams, since `merud` would
-unload the model that writes the answer.
-`/exit` does what Ctrl-D does: it stops a streaming answer and returns `tea.Quit`.
-People type it out of habit from other chat programs. The help line leaves it out,
-because it would push the line past 80 columns, and Ctrl-C already shows there as
-the way to quit. Any other `/word` stays in the input and the help line lists the
-commands.
+`command`, which splits the name from its argument with
+`strings.Cut(text, " ")` and sends each name to its function. Most live in the
+file of the box they open: `/chats` in chats.go, `/scope` and `/retry` in
+scope.go, `/attach` in attach.go, `/save` in save.go, `/used` in used.go, `/me` in
+me.go, `/folders` in folders.go, `/model` in models.go and `/usage` in usage.go.
+`/mcp`, `/skills`, `/log`, `/about` and `/help` open their box right in `command`
+and send the first request with `requestCmd` (box.go).
 
-`/copy` runs `copyCommand` in copy.go, below. `strings.Cut(text, " ")` splits the
-line at its first space into the command's name and its argument, such as the
-`3` of `/copy 3`.
+`commandList` is the one list of names, in the order `/help` shows them. The
+desktop app's `TestCommandsMatchChat` reads that constant from this file's
+source and fails when the app's list differs, so a command added here must also
+go into `internal/desktop/commands.go` and `commands.js`. `commandHelp` holds each
+command's line for the `/help` box, and `TestCommandHelp` checks that it names the
+same commands in the same order.
+
+`/new` calls `newSession`, which stops a streaming answer, clears the screen and
+forgets the session ID, so the next question asks `merud` for a new session. It
+also counts up `m.turn`: the stopped answer may still send events, and
+`handleEvent` drops any event whose turn number isn't the current one, so a late
+`session` event can't bring the old session back. `newSession` also drops the
+queue and the attachments, which belonged to the old conversation, and says how
+many questions went.
+
+Commands that only open a box, copy text or talk to `merud` run at once while a
+turn runs and never wait in the queue. `/retry` is a question, so it queues like
+one. A model switch, a reopened chat and a save wait for the turn to end: `merud`
+would unload the model writing the answer, the answer would land in the wrong
+conversation, and two approval boxes could open at once. `/exit` does what Ctrl-D
+does. Any other `/word` stays in the input, so a typo can be fixed, and the bottom
+line points at `/help`.
 
 `/new` exists because a conversation carries forward: each turn's prompt holds the
 turns before it. After a small model answers "I don't know" twice, it tends to say it
@@ -936,72 +981,96 @@ except Ctrl-C and Ctrl-D, as it does for the approval box, so typing can't slip 
 the input.
 
 `/usage` has no shortcut key. Ctrl-U would be the obvious one, but the text area
-already uses it to delete to the start of the line. The help line lists `/usage`
-through a key binding whose key is the text `/usage`, which no key press produces;
-Bubbles skips a binding with no keys at all. The binding's help splits
-"/new /usage /me /mcp" across its key and description slots, and the scroll key
-reads `pgup/dn`, so the whole help line still fits in 80 columns.
+already uses it to delete to the start of the line. Eighteen commands don't fit on
+the help line, so it ends with `/help commands`, through a key binding whose key is
+the text `/help`, which no key press produces; Bubbles skips a binding with no keys
+at all. The `/help` box lists every key and command.
 
 ### box.go
 
-The `/usage`, `/me`, `/mcp` and `/model` boxes share their frame. `boxPane` draws a title, a blank
-line, the body, a blank line and a dim note inside a teal border, as wide as the
-widest line allows up to the pane's width, and pads the result to the pane's height.
-A body line too wide for the box ends in "…", so a caller that wants its lines whole
-wraps them to `boxRoom(width)` first. `boxOpen` says whether either box is open,
-`boxKey` handles the keys while one is, and `closeBox` closes it and gives the input
-its cursor back. The `Model` holds one pointer per box (`usageBox`, `meBox`,
-`mcpBox`, `modelBox`); nil means closed, so `boxOpen` checks all four.
+Every box shares its frame. `boxPane` draws a title, a blank line, the body, a
+blank line and a dim note inside a teal border, as wide as the widest line allows
+up to the pane's width, and pads the result to the pane's height. A body line too
+wide for the box ends in "…", so a caller that wants its lines whole wraps them to
+`boxRoom(width)` first. `boxPaneAt` does the same with one body line kept in view:
+when the body is taller than the pane, `window` picks the lines around it and puts
+"↑ more" or "↓ more" where lines are hidden.
+
+The `Model` holds one pointer per box: `usageBox`, `meBox`, `mcpBox`, `modelBox`,
+`chatsBox`, `usedBox`, `foldersBox`, `skillsBox`, `logBox`, and `aboutBox` and
+`helpBox`, which only scroll. nil means closed, so `boxOpen` checks them all;
+`closeBox` clears them and gives the input its cursor back, and `openBox` clears
+the typed command and hides the cursor. `boxKey` gets every key while a box is
+open, except Ctrl-C and Ctrl-D. Esc closes any box and q closes one that isn't
+taking typed text; every other key goes to the open box's own handler, such as
+`mcpKey`, which returns the command a key starts. `boxKeys` gives the help line the
+keys the open box answers.
+
+Three helpers keep the boxes alike. `moveMark` moves a marker with ↑, ↓, PgUp,
+PgDn, Home and End and keeps it inside the list. `markRow` draws `› ` before the
+marked row and two spaces before the others, so the marker shows with colour off.
+`requestCmd` sends one request, waits for the reply event of the type asked for,
+and hands it back as a `replyMsg` with a tag that names the request;
+`applyReply` passes each tag to the file that sent it. A read waits five seconds
+and a change 90, as the desktop app does: a change can make `merud` restart every
+MCP server.
+
+A change that can't be undone from the chat, removing a folder or a server or
+forgetting a memory, takes `d` twice. The first `d` puts the row's ID in the box's
+`confirm` field and the note asks for a second; any other key clears it.
 
 ### me.go
 
-`/me` works like `/usage`: `command` opens a `meBox` with `loading` set and returns
-`meCmd`, which asks `merud` for `OpMemoryList` and keeps the memories whose kind is
-in `rpc.ProfileKinds()`, `me` and `preferences`. Those are the memories `merud` puts
-into every prompt, so the box shows what the model knows about you before it
-searches anything. `applyMe` fills a waiting box and ignores a reply that comes after
-the box closed. `meBoxView` groups the memories under their kind, wraps each to the
-box, and ends with the two ways to add more: say "remember that …" in chat, or run
-`meru setup user`.
+`/me` works like `/usage`: `meCommand` opens a `meBox` with `loading` set and
+returns `meCmd`, which asks `merud` for `OpMemoryList` and keeps the memories whose
+kind is in `rpc.ProfileKinds()`, `me` and `preferences`. Those are the memories
+`merud` puts into every prompt, so the box shows what the model knows about you
+before it searches anything. `applyMe` fills a waiting box, kind by kind, so the
+marker's index names the row on screen, and ignores a reply that comes after the
+box closed.
 
-The chat itself never writes a memory. Telling Meru something in a message goes
-through `merud`'s `remember` tool, like any tool call, and `meru setup user` runs in
-another terminal. The profile counts in the status move on the next status check,
-so the nudge and the `no profile` marker go away within 30 seconds of the first
-memory. `Update` redraws the conversation when a status check turns the nudge on or
-off.
+`/me add <text>` and `/me prefer <text>` save a memory of kind `me` or
+`preferences` with `OpMemoryAdd`, as the app's About you form and `meru setup user`
+do. In the box, `d` twice forgets the marked memory with `OpMemoryForget`
+(`forgetKey` in used.go, which the `/used` box shares). The chat writes no memory
+file itself; `merud` does. The profile counts in the status move on the next status
+check, so the nudge and the `no profile` marker go away within 30 seconds of the
+first memory. `Update` redraws the conversation when a status check turns the
+nudge on or off.
 
 ### mcp.go
 
-`/mcp` works like `/me`: `command` opens an `mcpBox` with `loading` set and returns
-`mcpCmd`, which sends `rpc.OpMCPStatus` once and hands the rows back as an
-`mcpMsg`. `applyMCP` fills a waiting box and ignores a reply that comes after the
-box closed. `mcpBoxView` draws the rows with `MCPTable`, or `merud`'s error, such
-as an older `merud` that doesn't know the op.
+The file holds two views of the MCP servers. `MCPTable` lays out `merud`'s
+`OpMCPStatus` rows for `meru mcp`. It starts with a capital letter, which in Go
+makes it visible to other packages. `line` is a function value stored in a
+variable, a closure: it reads `nameWidth` from the function around it. In its
+format, `%-10s` pads a string on the right to 10 columns and `%5s` pads on the left,
+so the numbers line up on the right; `%-*s` takes its width from the argument
+before the string. `TOOLS` shows `—` for a server that isn't connected, and the
+last field is the reason, folded onto one line by `oneLine`, or an HTTP server's
+URL without its scheme.
 
-`MCPTable` starts with a capital letter, which in Go makes it visible to other
-packages: `meru mcp` calls it to print the same table in the shell, so the two
-views can't drift apart. It returns one string per line:
+The `/mcp` box is the app's Connections. It sends `OpConnections`, and `mcpRows`
+lays out the reply: a heading per source, a row per tool with its policy in the
+app's words (`policyWords`), then the catalog servers not added yet. Each `mcpRow`
+says whether a key can act on it and which connection, tool or catalog entry it
+stands for, so the key handler and the drawing read the same list. `mcpKey` does
+the rest:
 
-```go
-line := func(name, transport, state, tools, allowed, confirm, last string) string {
-    s := fmt.Sprintf("%-*s %-10s %-13s %5s  %7s  %7s   %s",
-        nameWidth, name, transport, state, tools, allowed, confirm, last)
-    return strings.TrimRight(s, " ")
-}
-```
+- ← and → call `nextPolicy`, which steps Off, Ask, Allow and stops at the ends. A
+  tool that always asks, such as `configure`, steps between Off and Always asks,
+  since `merud` refuses Allow for it. The change goes out as `OpToolPolicy` with
+  the server `meru` for a built-in tool.
+- Enter on a catalog server sends `OpMCPAdd`. A server whose API key
+  `secrets.toml` doesn't hold yet (`keyNeed`) first opens a field, a Bubbles
+  `textinput` with `EchoPassword`, which draws `•` for each character.
+  `addServerCmd` then sends `OpSecretSet` with the key and, once that works,
+  `OpMCPAdd`. The key goes to `merud` over the socket and never comes back.
+- `d` twice on an MCP server's heading sends `OpMCPRemove`.
 
-`line` is a function value stored in a variable, a closure: it reads `nameWidth`
-from the function around it. In the format, `%-10s` pads a string on the right to
-10 columns and `%5s` pads on the left, so the numbers line up on the right. `%-*s`
-takes its width from the argument before the string, here `nameWidth`, which grows
-to fit the longest server name. `fmt` counts characters, so `—` takes one column.
-
-`TOOLS` shows `—` when `Tools` is -1, the value `merud` sends for a server that
-isn't connected. The last field is the reason a server isn't connected, folded onto
-one line by `oneLine`, or else an HTTP server's URL without its scheme. With no rows,
-`MCPTable` returns one line that says how to add a server. A box too narrow for the
-table cuts each line with "…", as `boxPane` does for any box.
+While a change waits, `busy` says what `merud` is doing and the box takes no other
+change. `applyConnections` puts the new lists in place, keeps the marker inside
+them, and says on the notice line what changed or why nothing did.
 
 ### models.go
 
@@ -1040,6 +1109,101 @@ The arrow marks the set in use. `DiskSize` writes sizes as `ollama list` does,
 counting by 1,000, so they match the numbers Ollama prints. A set that also
 names a fast or embed model gets a second line that names them, and when no set
 is in use, a last line names the model that answers.
+
+### scope.go
+
+`/scope <name>` sets `m.scope`, which `takeAttachments` copies into each question
+it builds, so a question that waits in the queue keeps the scope it had when it was
+typed. `startTurn` puts it in the request's `Scope`. `m.scope` holds "" for auto, which
+the request leaves out, as the app's does. `scopeLabel` names a scope in the app's
+words for the header, where a scope other than auto shows in amber.
+
+`/retry` sends the newest turn's question again with the scope and the image paths
+the turn kept, the app's Try again. It goes through `sendOrQueue`, the path Enter
+takes, so while a turn runs it waits in the queue like any question.
+
+### attach.go
+
+`/attach <path>` turns the typed path into a full one (`fullPath`: `~` becomes the
+home folder, and a relative path starts from the folder the chat runs in) and sends
+`OpAttachFile`. `merud` copies the file into its uploads folder and answers with the
+copy's path and its kind. `applyAttach` keeps the copy as an `attachment`, reads its
+size with `os.Stat`, and, for a file, switches a scope with no `read_file` to files,
+as the app does. The attachments line above the input lists them, and `layout`
+gives the conversation one row less while it shows.
+
+When the question goes, `takeAttachments` adds one "Read this file: <path>" line per
+file, the line the model follows with a `read_file` call, and puts each image's full
+path in `images`, which `startTurn` sends as `Request.Images`. `withImages` adds an
+"image: <name>" line to the question on screen, since a terminal can't draw the
+picture. `/attach` alone takes the attachments off; the copies stay where `merud`
+put them. The app takes only a pick or a drop, so its page can never choose a path;
+here the user types the path, and `merud` checks the file the same way either way.
+
+### save.go
+
+`/save` saves the newest finished answer as a note, and `/save chat` the whole
+session, with `OpSaveFile`. `merud` writes the file with the `write_file` tool,
+through `dispatch`, so it asks first. `saveCmd` passes `approveVia(send, n, true)`
+as the approval function: the question reaches `Update` as an
+`approvalRequestMsg` with `save` set and the save's number, and `openApproval`
+checks that number against `m.saving` as it checks a turn's. The box opens in the
+conversation's place (`savePaneView`), since the save belongs to no turn, and it
+offers no Edit first. A save waits while a turn runs, so one approval box shows at
+a time. `applySaved` says where the file went, with `~` for the home folder.
+
+### used.go
+
+`/used` opens the app's "What this answer used" for the newest turn: every file the
+prompt held, each tool call as the turn shows it, and under Remembered the memories
+from the turn's `memories` event, which `handleEvent` now keeps. ↑ and ↓ move over
+the memories, and `forgetKey` forgets the marked one after a second `d`. The note is
+`privacyLine`: "The model ran on this computer. Only google was contacted." It
+comes from `contacted`, which names each MCP server and A2A agent a call reached,
+"web search" for `web_search`, and the site `web_fetch` read, from `urlHost` of the
+call's arguments. A call that was denied or declined reached no one.
+`applyMemoryChange` takes a forgotten memory off every turn and off the `/me` box.
+
+### chats.go
+
+`/chats` asks `merud` for the past sessions (`OpSessions`, the newest 100) and
+keeps the ones whose first question holds every word typed after the command.
+Enter asks for the marked session's turns (`OpSessionTurns`), and `reopen` puts them
+on screen as finished turns: the answer, the route, the notice, the files the
+prompt held as numbered sources, the tool calls, the time and the token count. The
+transcript keeps no time to first token and no confidence, so the stats line and the
+badge leave those out, and no record of what recall brought, so `/used` says so for
+a past turn (`past`). `reopen` counts up `m.turn`, as `/new` does, numbers the code
+blocks afresh, and sets `m.session`, so the next question continues that chat. A
+chat can't open while a turn runs.
+
+### folders.go, skills.go and logbox.go
+
+`/folders` sends `OpFolders`, which lists the `[index]` folders with their file
+counts and the usual folders not indexed yet. Enter on a suggestion sends
+`OpFolderAdd`, and `d` twice on an indexed folder `OpFolderRemove`; `/folders add
+<path>` adds any folder. Every folder op gets the longer wait, since listing counts
+files. `/skills` sends `OpSkills`, and Enter or space sends `OpSkillEnable` or
+`OpSkillDisable` for the marked skill; `applySkills` keeps the marker on the same
+skill, since `merud` lists the disabled ones last. `/log` sends `OpLog` for the
+latest 100 calls, the data `meru log` prints, and shows the marked call's arguments
+and the start of its result under its row. The file is logbox.go, not log.go,
+which would read as logging.
+
+### about.go and help.go
+
+`/about` shows what `internal/about` holds for both clients: the tagline, the full
+version, the license and the project's links, with Meru's folder from `Info.Dir`.
+The links sit in two columns where they fit (`twoColumns`), and with links on each
+URL is an OSC 8 link. `/help` lists `FullHelp`'s keys and `commandHelp` in the same
+two columns. Both boxes only scroll, so they share `scrollBox`, which keeps the line
+↑ and ↓ move to, and the number of lines the box drew last.
+
+The header shows `about.ShortVersion()` beside the name: `v0.4.3` for a release,
+`dev` and the commit for any other build. `Model` keeps it in `version`, which the
+tests set to a fixed value, since a test binary's own version differs from one
+machine to the next. When the header is too narrow for the details beside it, the
+version goes first.
 
 ### run.go
 
@@ -1122,7 +1286,8 @@ go run ./cmd/meru chat
 ```
 
 Ask for a list and a code sample, then a follow-up that only makes sense with the
-first answer in mind. Press Ctrl-C during a long answer to stop it, and Ctrl-D to
+first answer in mind. Type `/used` to see what the answer used, `/chats` to reopen
+an older chat, and `/mcp` to change what a tool may do. Press Ctrl-C during a long answer to stop it, and Ctrl-D to
 leave. Run it again with `NO_COLOR=1` to see the plain version. Ask how to install
 and run `btop`, then press Ctrl-Y, or type `/copy 1`, and paste into another
 terminal.
@@ -1182,8 +1347,21 @@ clicks a Sources line, which opens its `file://` URL.
 
 `mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
 without its scheme, a reason with a line break, a long name that widens the first
-column, no servers), that `/mcp` sends `OpMCPStatus`, fills the box, ignores a late
-reply and closes on q, and that the box shows `merud`'s error.
+column, no servers), that `/mcp` sends `OpConnections` and fills the box, and that
+the box shows `merud`'s error. `TestMCPPolicyKeys` steps tools with ← and → and
+checks each `OpToolPolicy`, and that a tool that always asks never reaches Allow;
+`TestMCPAddAndRemove` adds a catalog server, types a key into the field that shows
+`•`, and removes a server with `d` twice.
+
+`boxes_test.go` draws each new box at 80 and 40 columns and compares it with a
+golden: `/chats` with and without words, `/used` and its `d` prompt, `/folders`,
+`/skills` (`skills-box`), `/log`, `/about`, `/help`, the `/mcp` key field, a save's
+approval, and the attachments line with a scope in the header. `parity_test.go`
+checks what each command sends and what the screen does with the reply: `/scope`,
+`/retry`, `/attach` (the full path, the "Read this file" line, the images, the scope
+switch, a refusal), `/save` with its approval, Edit first, forgetting from `/used`
+and `/me`, `contacted`, reopening a chat, the folder and skill keys, `/me add` and
+`/me prefer`, `/copy answer`, and scrolling `/help` and `/about`.
 
 ## Why it's built this way
 
@@ -1259,6 +1437,13 @@ open a link on a click. The chat opens links itself to make up for that.
 **Why open a link with `open` or `xdg-open` over an HTTP client?** The chat
 doesn't fetch the page: the user's browser does, as it would from any other
 program. The platform's opener also knows which program handles `file://` URLs.
+
+**Why no new op for the chat?** The desktop app already sends an op for every
+setting, and `merud` checks each one. Reusing them keeps one way to make each
+change, and a rule that holds for the app holds for the chat.
+
+**Why `d` twice?** A terminal has no dialog to ask "are you sure?", and a single
+stray key shouldn't remove a folder or a server. The second press is the question.
 
 **Why a renderer passed in, not the global one?** The tests build the model with an
 ASCII renderer, so the golden files hold plain text however the tests are run. The

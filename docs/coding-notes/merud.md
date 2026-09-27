@@ -545,13 +545,16 @@ sent), picks `chats/` or `notes/` and a name from the date and `slug` of the tit
 and with `freeName` adds `-2` and up when a file has the name already. Then it
 makes one `dispatch.Call` to `write_file`, with the session's `Append` and the
 request's `approve`, so the save lands in `tool_calls` and the transcript and asks
-first as `write_file` does. The outcome decides the reply: a `saved` event with the
-path, or an error that says whether the user said no or `write_file` is off.
+first as `write_file` does. `saveSource` names the client on the call: `tui` when
+`meru chat`'s `/save` sent it, and `desktop` for anything else, so the source stays
+one of a fixed few, as a metric attribute must. The outcome decides the reply: a
+`saved` event with the path, or an error that says whether the user said no or
+`write_file` is off.
 
 ### merud: attach.go
 
 `toolService.handleAttach` answers `attach_file`, which the desktop app sends for
-each file the user picks or drops. It hands the path to the built-in tools'
+each file the user picks or drops, and `meru chat` for each path `/attach` names. It hands the path to the built-in tools'
 `Upload` (see [builtin](builtin.md)), which copies the file into
 `<output_dir>/uploads/`, and replies with a `saved` event that names the copy.
 `Upload`'s error goes back as it stands, because the app shows it to the user.

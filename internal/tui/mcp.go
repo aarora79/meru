@@ -95,7 +95,7 @@ type mcpBox struct {
 	// confirm names the server a first d asked to remove.
 	confirm string
 	// keyFor is the catalog server whose API key the key field takes, and
-	// need what it asks for; nil while no key is asked for. key is the
+	// need what it asks for; nil while the box asks for no key. key is the
 	// field, which shows • for each character.
 	keyFor *rpc.CatalogEntry
 	need   rpc.CatalogNeed

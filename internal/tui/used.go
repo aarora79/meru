@@ -148,7 +148,7 @@ func contacted(tools []toolCall) []string {
 			server, _, _ := strings.Cut(tc.name, ".")
 			add(server)
 		case tc.kind == "a2a":
-			// An agent's skill is named "a2a.<agent>.<skill>".
+			// merud names an agent's skill "a2a.<agent>.<skill>".
 			agent, _, _ := strings.Cut(strings.TrimPrefix(tc.name, "a2a."), ".")
 			add(agent)
 		case tc.name == "web_search":

@@ -32,6 +32,7 @@ https://github.com/CursorTouch/Windows-MCP                   # the Windows serve
 https://workspacemcp.com/quick-start                         # how to make a Google OAuth client
 https://docs.astral.sh/uv/getting-started/installation/      # how to install uv, which runs uvx
 
-# The desktop app's About section links to the project on GitHub. The user
-# clicks them and the system browser opens them; the app never fetches them.
+# The desktop app's About section and meru chat's /about box link to the
+# project on GitHub (internal/about). The user clicks them and the system
+# browser opens them; neither client fetches them.
 https://github.com/aarora79/meru  # the source, the design and new issues

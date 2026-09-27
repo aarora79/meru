@@ -224,7 +224,9 @@ internal/
                      of every op and event
   obs/               OpenTelemetry metrics and traces, loopback only, and the slog handler
   loopback/          the one rule for "this address is on this machine"
-  tui/               the Bubble Tea UI behind `meru chat`
+  tui/               the Bubble Tea UI behind `meru chat`, with the desktop app's features as
+                     slash commands and boxes
+  about/             the tagline, the version and the project's links, for both clients
   desktop/           the desktop app minus the window: the Bridge, its views, and the page in
                      web/ (index.html, app.css, js/, vendored marked and DOMPurify in vendor/,
                      fonts/)
@@ -257,17 +259,18 @@ docs/
 .scratchpad/         git-ignored; the design and review skills write here
 ```
 
-**Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`
-and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
+**Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`,
+`about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
 `dispatch`, `a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
-may import `rpc`, `config`, `loopback` and `opener`, plus Wails in the command,
+may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
 and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 `internal/policy` fails the build if either changes, directly or through another
-package. `loopback` imports only the standard library, so any package can use it.
+package. `loopback` and `about` import only the standard library, so any package
+can use them.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
 import it.

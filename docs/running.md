@@ -295,34 +295,58 @@ In `meru chat`:
 | Up arrow | bring back your last question |
 | PgUp, PgDn | scroll |
 | Ctrl-Y | copy the last code block of the newest answer |
-| `/copy N`, then Enter | copy code block N; `/copy` alone works like Ctrl-Y |
-| `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
-| `/usage by model`, then Enter | show a row per answer model: questions, time to first token, speed, tool calls, bad calls and capped turns |
-| `/new`, then Enter | start a new conversation: the screen clears, queued questions go, and the next question carries none of the earlier ones |
-| `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
-| `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
-| `/model`, then Enter | show the model sets, the table `meru model` prints; Esc or q closes it |
-| `/model <name>`, then Enter | switch to that model set; add `--rebuild` for a set that changes the embed model. It waits while an answer streams |
-| `/model save`, then Enter | make the models in use the default in `config.toml` |
-| `/exit`, then Enter | quit, like Ctrl-D |
+| `e` in an approval box | Edit first: say no, and put the call in the box as a draft to change and send |
 
-The line at the top of `meru chat` shows the profile, the main model, the search
-index, the memories and the session on the left:
+Type a command and press Enter. `/help` lists them all, and Esc or q closes any
+box a command opens. In a box with rows, ↑ and ↓ move the `›` marker.
+
+| Command | What it does |
+| --- | --- |
+| `/new` | start a new conversation: the screen clears, queued questions go, and the next question carries none of the earlier ones |
+| `/chats` | list your past chats; Enter reopens the marked one, and your next question continues it. `/chats garden` lists only the chats whose first question holds "garden" |
+| `/retry` | ask the newest question again, with its scope and images |
+| `/scope web` | look only on the web from now on; the others are `files`, `mail` (mail and calendar), `talk` (no search and no tools) and `auto`, where Meru decides. The header shows a scope other than auto |
+| `/attach ~/plans/garden-plan.pdf` | attach a file or an image to the next question, five at most; they show above the input box. `/attach` alone takes them off |
+| `/save` | save the newest answer as a note in `~/meru-output/notes/`; `/save chat` saves the whole chat in `~/meru-output/chats/`. Meru asks first, as for any file it writes |
+| `/used` | what the newest answer used: the files, the tool calls, the memories it brought in, and who the calls reached. `d` twice forgets the marked memory |
+| `/copy N` | copy code block N; `/copy` alone works like Ctrl-Y, and `/copy answer` copies the whole answer |
+| `/usage` | show how much you use Meru; `/usage by model` shows a row per answer model: questions, time to first token, speed, tool calls, bad calls and capped turns |
+| `/me` | show what Meru knows about you; `d` twice forgets the marked memory. `/me add I grow tomatoes` saves a fact about you, and `/me prefer short answers` how you like answers |
+| `/mcp` | your connections: each tool with Off, Ask or Allow, which ← and → change, and the catalog servers you can add with Enter. A server that needs an API key asks for it in a field that shows `•` for each character. `d` twice removes the marked server |
+| `/folders` | the folders Meru searches, with the usual ones not searched yet: Enter adds the marked one, and `d` twice removes one. `/folders add ~/Garden` adds any folder |
+| `/skills` | the skills; Enter turns the marked one on or off |
+| `/model` | show the model sets, the table `meru model` prints |
+| `/model <name>` | switch to that model set; add `--rebuild` for a set that changes the embed model. It waits while an answer streams |
+| `/model save` | make the models in use the default in `config.toml` |
+| `/log` | the latest tool calls, with the marked one's arguments and result |
+| `/about` | Meru's version, license, folder and links |
+| `/help` | every key and command |
+| `/exit` | quit, like Ctrl-D |
+
+Each change a box makes goes to `merud`, which writes `config.toml`,
+`secrets.toml` or the memory folder, as the desktop app's Library does.
+
+The line at the top of `meru chat` shows the version beside the name, then the
+profile, the main model, the search index, the memories and the session on the
+left:
 
 ```text
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories · session 101500-ab12
+Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories · session 101500-ab12
 ```
+
+A build between releases shows `dev` and its commit, such as `dev 5325b3e`,
+where a release shows `v0.4.3`.
 
 The index part counts the files Meru searches, the vectors it holds for them, and
 the size of `meru.db` on disk; `· indexing` follows while a scan runs. Then comes
 the number of memories, and `· no profile` while Meru knows nothing about you. On
 the right, a wide terminal shows the last hour's use, such as
-`1h: 4 questions · 18k in · 2.1k out`, then the model set in use, then whether
-`merud` is running. A narrow one drops the last hour first, then the vectors,
+`1h: 4 questions · 18k in · 2.1k out`, then a scope you set with `/scope`, in
+amber, then the model set in use, then whether `merud` is running. A narrow one drops the last hour first, then the vectors,
 size and memory count. The model set stays.
 
 Any other line that starts with `/` stays in the input box, and the bottom line
-lists the commands `meru chat` knows.
+points you to `/help`.
 
 Each `meru "..."` starts a new conversation. `meru chat` keeps one conversation
 going until you quit or type `/new`, so later questions see the earlier ones. That
@@ -484,8 +508,8 @@ and look for `vision` under Capabilities. When `[models] main` names a model
 without it, Meru sends nothing and says so in the answer; pick a model with
 vision in `config.toml` and restart `merud`. Later questions in the chat don't
 send the image again: the model reads a note, such as `[image: garden-bed.jpg]`,
-and its own earlier answer about it. `meru` and `meru chat` can't attach
-images.
+and its own earlier answer about it. In `meru chat`, `/attach` takes the path
+of a file or an image; one-shot `meru` can't attach one.
 
 **Approvals.** When Meru wants to run a tool that asks first, an amber card shows
 up inside the answer with the tool and its arguments, a mail's To, Subject and Body
@@ -508,10 +532,22 @@ the list. They run at once, even while an answer runs, and never reach the model
 | Command | What it does |
 | --- | --- |
 | `/new` | starts a new chat, like New chat; a running answer stops and the queue goes |
+| `/chats` | opens the list of past chats, with any words after it in the search box |
+| `/retry` | Try again on the newest answer |
+| `/scope web` | sets Where Meru looks; the others are `auto`, `files`, `mail` and `talk` |
+| `/attach` | opens the file dialog |
+| `/save` | Save to a note on the newest answer; `/save chat` is Share as file |
+| `/used` | opens the side panel for the newest answer |
+| `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block, and `/copy answer` the whole answer |
 | `/usage` | opens Library, Usage |
 | `/me` | opens Library, About you |
 | `/mcp` | opens Library, Connections |
-| `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block |
+| `/folders` | opens Library, Folders |
+| `/skills` | opens Library, Skills |
+| `/model` | opens Library, Models; `/model <name>` and `/model save` switch and save |
+| `/log` | opens Library, Activity |
+| `/about` | opens Library, About |
+| `/help` | opens the list of commands |
 | `/exit` | closes the app, asking first while an answer runs |
 
 **The Library** holds the settings. Each change goes to `merud`, which writes

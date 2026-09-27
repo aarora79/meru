@@ -43,8 +43,9 @@ Read them in this order; each builds on the ones before it.
 22. [summarize](summarize.md): session summaries, written when a session goes quiet, for recall by episode
 23. [opener](opener.md): opening a clicked link with the system's opener, `http`, `https` and `file` only
 24. [desktop](desktop.md): the desktop app, its Bridge to `merud`, and the page in its window
-25. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-26. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+25. [about](about.md): the tagline, the version and the links both clients show
+26. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+27. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 
