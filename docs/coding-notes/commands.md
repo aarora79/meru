@@ -76,6 +76,7 @@ problem, each wrapped as `command "git-log": ...`, then joins them with
 - an unknown type, or a key the type doesn't take (`under` on a `string`);
 - a `path` with no `under`, and an `under` or `cwd` that isn't a folder;
 - an `enum` with no `values`, `min` above `max`, a bad `env_allowlist` name;
+- a `pattern` on a type other than `string`, or one that doesn't compile;
 - a timeout that doesn't parse or is over 300 seconds.
 
 After the checks, `New` looks up each `argv[0]` with `exec.LookPath` and logs a
@@ -106,6 +107,19 @@ brace is an error, so a typo such as `{repo` fails at startup instead of reachin
 **`~`.** `expandHome` replaces a leading `~` in each argv element, `cwd` and
 `under` with your home folder. Only a leading one: `--dir=~/x` stays as written.
 
+**Patterns.** A string parameter may set `pattern`, a regular expression in
+Go's RE2 syntax. `checkParam` compiles it once, wrapped as `^(?:...)$`, into
+`Param.Pattern`, a `*regexp.Regexp`:
+
+```go
+re, err := regexp.Compile("^(?:" + p.Pattern + ")$")
+```
+
+The wrapping makes the pattern match the whole value. Without it,
+`[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+` would find `a/b` inside
+`a/b --web` and let the rest through. The GitHub samples in the config
+template use it for `owner/name`.
+
 ### render.go: from the model's JSON to an argv
 
 `ArgsFromJSON` reads the model's arguments. It decodes with `UseNumber`, so a
@@ -133,7 +147,7 @@ argument, semicolon and all. The checks by type:
 
 | Type | Check | The argv gets |
 | --- | --- | --- |
-| `string` | not empty, no null byte, at most `MaxLen` bytes, no leading `-` when it fills a whole element | the value |
+| `string` | not empty, no null byte, at most `MaxLen` bytes, a whole match for `Pattern` when set, no leading `-` when it fills a whole element | the value |
 | `int` | `strconv.ParseInt`, within `Min` and `Max` | the number in plain form: `" 007"` gives `7` |
 | `enum` | one of `Values` | the value |
 | `path` | exists, and lies inside `Under` once every link is resolved | the resolved path |
@@ -242,7 +256,7 @@ orphan. The file starts with `//go:build unix`, so only Unix builds compile it.
 | Method | For a command |
 | --- | --- |
 | `Kind` | `"command"` |
-| `Tools` | one spec per command, named `cmd.<name>`; the description ends with the argv template, and the schema has one required property per parameter |
+| `Tools` | one spec per command, named `cmd.<name>`; the description ends with the argv template, and the schema has one required property per parameter, a string's with its anchored `pattern` |
 | `Confirm` | `ConfirmAsk` when the entry says `confirm = true`, else `ConfirmNever` |
 | `Locate` | `("meru", "cmd.<name>")`: `merud` runs it, so the server is `meru` |
 | `Call` | `ArgsFromJSON`, `Render`, `Run`, then `Result.Text` |
@@ -290,7 +304,9 @@ interfaces. `(*Set)(nil)` is a nil pointer of type `*Set`, enough for the check.
   with no `implements` keyword. More in
   [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Pointers for "not set"** — `Min` and `Max` are `*int64`, so `nil` means no
-  bound and differs from 0.
+  bound and differs from 0. `Pattern` is a `*regexp.Regexp`, `nil` for none.
+- **`regexp`** — Go's regular expressions (RE2) run in time linear in the
+  input, so no value the model sends can make a pattern check hang.
 
 ## Try it
 
@@ -308,8 +324,13 @@ checks the child is gone. `TestRunEnvironment` sets a variable outside
 `env_allowlist` and checks the program never sees it.
 `TestConfirmingCommandInAJob` runs a `confirm = true` command under a scheduled
 job through a real `Dispatcher`: it is declined without a prompt, and its row
-still holds the argv. `TestExampleCommands` loads the `[[commands]]` samples in
-`config.example.toml`.
+still holds the argv. `TestRenderPattern` checks that `owner/name` passes and
+that a bare name, a URL, an extra path part and `owner/name --web` don't, and
+that the schema carries the anchored pattern. `TestExampleCommands` loads the
+`[[commands]]` samples in `config.example.toml`, the six GitHub ones included,
+checks that none of those asks first, renders `gh-prs` and `gh-pr` to the argv
+`gh` gets, and checks that `gh-prs` refuses a repository that isn't
+`owner/name` and `gh-repos` an owner with a slash.
 
 To see it live, add the `git-log` entry above to `~/.meru/config.toml`, restart
 `merud`, and run:
@@ -335,6 +356,9 @@ meru log -n 1
 - **A non-zero exit is a result.** `grep` exits 1 when nothing matches, and
   `git` exits non-zero on a bad ref. The model should read that and react, not
   get "the call failed".
+- **A pattern, not a GitHub type.** A `repo` type would teach this package
+  about one service. A regular expression on a string covers `owner/name` and
+  any other shape a user needs, with one small key.
 - **The backend in this package, not in cmd/merud.** The MCP pool needs an
   adapter because `mcp` doesn't import `dispatch`. `commands` has no such
   reason, so `Set` implements `Backend` itself, as `builtin.Tools` does.

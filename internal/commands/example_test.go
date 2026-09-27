@@ -1,6 +1,6 @@
-// This file checks the [[commands]] samples in the config template: once
-// uncommented, they must load and pass New's checks, so the examples a
-// user copies always work.
+// This file checks the [[commands]] samples in the config template, the
+// GitHub ones included: once uncommented, they must load and pass New's
+// checks, so the examples a user copies always work.
 
 package commands
 
@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/dispatch"
 )
 
 func TestExampleCommands(t *testing.T) {
@@ -50,7 +51,35 @@ func TestExampleCommands(t *testing.T) {
 	for _, spec := range s.Tools() {
 		names = append(names, spec.Name)
 	}
-	if strings.Join(names, " ") != "cmd.git-log cmd.git-status cmd.search-notes cmd.disk-free" {
+	if strings.Join(names, " ") != "cmd.git-log cmd.git-status cmd.search-notes cmd.disk-free "+
+		"cmd.gh-prs cmd.gh-pr cmd.gh-issues cmd.gh-issue cmd.gh-runs cmd.gh-repos" {
 		t.Errorf("samples give %v", names)
+	}
+
+	// The GitHub samples only read, so none asks first, and each
+	// repository parameter takes owner/name and nothing else.
+	for _, name := range []string{"cmd.gh-prs", "cmd.gh-pr", "cmd.gh-issues", "cmd.gh-issue", "cmd.gh-runs", "cmd.gh-repos"} {
+		if s.Confirm(name) != dispatch.ConfirmNever {
+			t.Errorf("%s asks first; the GitHub samples only read", name)
+		}
+	}
+	prs, _ := s.lookup("cmd.gh-prs")
+	argv, err := prs.Render(map[string]string{"repo": "dana-reyes/garden-planner", "state": "merged"})
+	want := "gh pr list --repo dana-reyes/garden-planner --state merged --limit 20 --json number,title,author,state,updatedAt,url"
+	if err != nil || strings.Join(argv, " ") != want {
+		t.Errorf("gh-prs renders %q, %v; want %q", argv, err, want)
+	}
+	if _, err := prs.Render(map[string]string{"repo": "garden-planner --web", "state": "open"}); err == nil {
+		t.Error("gh-prs took a repository that isn't owner/name")
+	}
+	pr, _ := s.lookup("cmd.gh-pr")
+	argv, err = pr.Render(map[string]string{"repo": "dana-reyes/garden-planner", "number": "12"})
+	want = "gh pr view 12 --repo dana-reyes/garden-planner --json number,title,body,state,author,reviews,comments,url"
+	if err != nil || strings.Join(argv, " ") != want {
+		t.Errorf("gh-pr renders %q, %v; want %q", argv, err, want)
+	}
+	repos, _ := s.lookup("cmd.gh-repos")
+	if _, err := repos.Render(map[string]string{"owner": "dana-reyes/garden"}); err == nil {
+		t.Error("gh-repos took an owner with a slash")
 	}
 }

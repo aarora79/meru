@@ -391,9 +391,9 @@ touch:
 
 | Scope | Route | Searches first | Tools offered |
 | --- | --- | --- | --- |
-| `files` | `search` | yes | what the search route offers: the file tools, `datetime`, commands that don't ask |
-| `mail` | `tools` | no | every tool of each mail and calendar server, and `datetime` |
-| `web` | `tools` | no | `web_search`, `web_fetch` and `datetime` |
+| `files` | `search` | yes | what the search route offers: the file tools, `datetime`, `about_meru`, commands that don't ask |
+| `mail` | `tools` | no | every tool of each mail and calendar server, with `datetime` and `about_meru` |
+| `web` | `tools` | no | `web_search`, `web_fetch`, `datetime` and `about_meru` |
 | `talk` | `direct` | no | none |
 
 A mail and calendar server is an MCP server or A2A agent whose tool names hold a
@@ -724,15 +724,16 @@ sequenceDiagram
 | When the turn ends | the `main` model, with caps | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer. A model that repeats a call twice loses its tools early. Each model call writes at most `[agent] max_output_tokens` (default 8,192, thinking included), and the whole turn has `[agent] turn_timeout` (default 5 minutes). A turn that hits a limit with no answer says sorry instead of going quiet |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
-`datetime`, the four read-only file tools, `read_file`, `list_folder`, `grep` and
+`datetime`, `about_meru`, the four read-only file tools, `read_file`, `list_folder`, `grep` and
 `search_files`, and the local commands that don't ask first. A question such as "write about everything
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
 something, so it waits for a tools route. So do `web_search` and `web_fetch`:
 the router's option C names the web, so a question that needs it lands on a
-tools route. `direct` offers none. The model can't
-call a tool it hasn't seen, and the prompt stays shorter.
+tools route. `direct` offers `datetime` and `about_meru` alone: both only read,
+and "what day is Christmas?" and "which model are you?" route there. The model
+can't call a tool it hasn't seen, and the prompt stays shorter.
 
 ### Approving a tool call
 
@@ -762,9 +763,9 @@ and arguments and offers the choices `merud` sends, at most these three:
 
   ```toml
   [builtin]
-  tools   = ["configure", "datetime", "remember", "write_file", "read_file",
-             "list_folder", "grep", "search_files", "web_search",
-             "web_fetch"]   # all ten, the default
+  tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
+             "read_file", "list_folder", "grep", "search_files",
+             "web_search", "web_fetch"]   # all eleven, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -783,8 +784,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
-  clock tool, `datetime`; and four read-only file tools. `web_search`,
-  `datetime` and the file tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
+  clock tool, `datetime`; `about_meru`, which reports this setup; and four
+  read-only file tools. `web_search`, `datetime`, `about_meru` and the file
+  tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
 
   | Tool | What it returns |
@@ -794,6 +796,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
+  | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
 
@@ -954,10 +957,12 @@ message. `OllamaEngine` sends them as the message's `images` array in
 writes a `[]byte` that way with no code of ours. Only a model with the `vision`
 capability can read them, and Ollama's `POST /api/show` lists a model's
 capabilities, such as `["completion", "vision", "tools", "thinking"]`.
-`OllamaEngine.Capabilities` asks it and keeps each model's answer for the life of
-the engine; a failed call keeps nothing. `Capabilities` sits outside the
-interface, which keeps its four methods: only image turns need it, and `merud`
-hands the agent that one method. The "ollama http" debug line counts a request's
+`OllamaEngine.Details` asks it for the capabilities, the size in parameters,
+the quantization and the context length, and keeps each model's answer for the
+life of the engine; a failed call keeps nothing. `Capabilities` reads the list
+through `Details`. Both sit outside the interface, which keeps its four methods:
+only image turns need `Capabilities`, and `merud` hands the agent that one
+method; only `about_meru` needs `Details`, and `merud` asks it for that tool. The "ollama http" debug line counts a request's
 images; no log line or span holds their bytes.
 
 Two engines may come later, behind the same interface:
@@ -1014,7 +1019,9 @@ order.
    reads at startup (the OS and version, the processor, memory, the shell and the
    time zone, and no host or user name; without it the model answered a GPU
    question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, a line on what
-   Meru's own tools can change, the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
+   Meru's own tools can change (with, when config allows `about_meru`, a line
+   that sends questions about Meru itself, such as which model answers, to that
+   tool instead of the model's training), the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, and file excerpts with earlier conversations.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
@@ -2576,7 +2583,7 @@ element.
 
 | Type | Accepts |
 | --- | --- |
-| `string` | non-empty text, no null byte, at most `max_len` bytes (default 4096). It may not start with `-` when it fills a whole element, where the program would read it as a flag |
+| `string` | non-empty text, no null byte, at most `max_len` bytes (default 4096). It may not start with `-` when it fills a whole element, where the program would read it as a flag. With `pattern` set, a Go (RE2) regular expression, the whole value must match it, and the tool's schema carries the same pattern |
 | `int` | a whole number, within `min` and `max` when set |
 | `enum` | one of `values` |
 | `path` | a path that exists and, once `filepath.EvalSymlinks` resolves every link, lies inside `under`. `~` expands, and a relative path starts at `under`. The argv gets the resolved path |
@@ -2589,7 +2596,7 @@ or badly formed `name`; an empty `argv`; a placeholder or an interpreter in
 `argv[0]`; a placeholder with no parameter, or a parameter no placeholder uses; an
 unknown type, or a key the type doesn't take; a `path` with no `under`; an `under` or
 `cwd` that isn't an existing folder; an `enum` with no `values`; `min` above `max`;
-and a timeout over 300 seconds. A program missing from `PATH` gets a warning in
+a `pattern` that doesn't compile; and a timeout over 300 seconds. A program missing from `PATH` gets a warning in
 `merud.log`, not a refusal. `merud` reads the list when it starts; restart it after a
 change.
 
@@ -2603,6 +2610,16 @@ command's template. The `meru.dispatch` span carries `meru.command.exit_code` an
 `capture_content = true`, since a path or search term can say something about the
 question. The metrics use `kind = "command"`, `server = "meru"` and
 `tool = "cmd.<name>"`, all names from config, never the arguments.
+
+**GitHub through `gh`.** The config template carries six read-only commands
+for GitHub's `gh` CLI, all commented out: `gh-prs`, `gh-pr`, `gh-issues`,
+`gh-issue`, `gh-runs` and `gh-repos`. Each asks `gh` for `--json` with a fixed
+list of fields and a fixed `--limit`. A `repo` parameter must match
+`owner/name` and an `owner` one name, so the model can't pass a URL, a host or a
+flag. `gh` keeps the token that `gh auth login` stored in the system keychain,
+and finds it with `HOME` alone, so Meru never holds a GitHub token. A command
+that writes, such as `gh issue comment`, stays out of the template; a user who
+adds one sets `confirm = true`.
 
 ---
 
@@ -3011,7 +3028,9 @@ transcript lines hold. No level writes question or answer text. With
 - API keys live in `~/.meru/secrets.toml`, which `merud` refuses to read when other
   users can. Config names them, never holds them, and `dispatch` strips their
   values from transcripts, `tool_calls`, logs and spans. No key passes through the
-  model: `configure` sends you to `meru mcp add` to type one.
+  model: `configure` sends you to `meru mcp add` to type one. `about_meru`
+  reports server names and counts, never a value from `secrets.toml`, an env
+  value or a header. The `gh` commands leave GitHub's token with `gh`.
 - Meru doesn't sandbox MCP servers. They run with your permissions, so choose them as
   carefully as any program you install.
 - Web search sends the search words to SearXNG on loopback, and SearXNG sends them

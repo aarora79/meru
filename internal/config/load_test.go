@@ -304,8 +304,8 @@ func TestBuiltinToolsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 10 {
-		t.Errorf("default builtin.tools = %q, want all ten: %q", cfg.Builtin.Tools, builtinTools)
+	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 11 {
+		t.Errorf("default builtin.tools = %q, want all eleven: %q", cfg.Builtin.Tools, builtinTools)
 	}
 	cfg, err = Load(writeConfig(t, "[builtin]\ntools = []\nconfirm = []"))
 	if err != nil {
@@ -450,8 +450,8 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
 	}
-	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 4 {
-		t.Errorf("samples hold %d servers, %d agents and %d commands, want 3, 1 and 4",
+	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 10 {
+		t.Errorf("samples hold %d servers, %d agents and %d commands, want 3, 1 and 10",
 			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands))
 	}
 }

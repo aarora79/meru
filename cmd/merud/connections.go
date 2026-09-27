@@ -87,7 +87,7 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 	return rpc.Event{Type: rpc.EventConnections, Connections: conns, Catalog: catalogEntries(cfg, sec)}, nil
 }
 
-// builtinConnection lists merud's own tools, every one of the ten, with
+// builtinConnection lists merud's own tools, every one of the eleven, with
 // its policy from [builtin] tools and confirm. configure always asks.
 // Note says why web_search does nothing yet when [web] searxng_url is
 // empty.

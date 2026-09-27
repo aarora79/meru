@@ -85,6 +85,44 @@ func TestRender(t *testing.T) {
 	}
 }
 
+// TestRenderPattern checks a string with a pattern, as the gh commands in
+// the config template declare for a repository: the whole value must
+// match, so text after a good start is refused, and the model's schema
+// carries the same anchored pattern.
+func TestRenderPattern(t *testing.T) {
+	testHome(t)
+	prs := mustCommand(t, config.Command{
+		Name: "gh-prs",
+		Argv: []string{"gh", "pr", "list", "--repo", "{repo}"},
+		Params: map[string]config.CommandParam{
+			"repo": {Type: TypeString, Pattern: `[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`},
+		},
+	})
+	tests := []struct {
+		repo string
+		ok   bool
+	}{
+		{"dana-reyes/garden-planner", true},
+		{"cli/cli", true},
+		{"garden-planner", false},
+		{"dana-reyes/garden-planner --web", false},
+		{"dana-reyes/garden-planner/extra", false},
+		{"https://example.com/dana-reyes/garden-planner", false},
+	}
+	for _, tt := range tests {
+		got, err := prs.Render(map[string]string{"repo": tt.repo})
+		switch {
+		case tt.ok && (err != nil || got[4] != tt.repo):
+			t.Errorf("Render(%q) = %q, %v; want it accepted", tt.repo, got, err)
+		case !tt.ok && (err == nil || !strings.Contains(err.Error(), "doesn't match the pattern")):
+			t.Errorf("Render(%q) = %q, %v; want a pattern error", tt.repo, got, err)
+		}
+	}
+	if schema := string(prs.schema()); !strings.Contains(schema, `"pattern":"^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$"`) {
+		t.Errorf("schema lacks the anchored pattern: %s", schema)
+	}
+}
+
 // TestRenderEmbeddedDash checks that a value may start with "-" when its
 // placeholder sits inside a longer element: "--grep=-x" is one flag.
 func TestRenderEmbeddedDash(t *testing.T) {

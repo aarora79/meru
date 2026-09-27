@@ -86,15 +86,17 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 
 // scopeSpecs returns the tools a turn with scope may use:
 //
-//   - files: what the search route offers, the file tools, datetime and
-//     the local commands that don't ask;
+//   - files: what the search route offers, the file tools, the local
+//     commands that don't ask, and datetime and about_meru;
 //   - mail: every tool of the mail and calendar servers (see
 //     mailServers), with datetime, since "what's on Friday?" needs the
-//     date;
-//   - web: web_search and web_fetch, with datetime;
+//     date, and about_meru;
+//   - web: web_search and web_fetch, with datetime and about_meru;
 //   - talk: none at all;
 //   - auto, which reaches here only for a question with images: what
-//     the direct route offers, datetime alone.
+//     the direct route offers, datetime and about_meru.
+//
+// builtin.EveryRoute names the two tools every scope but talk carries.
 //
 // A mail turn refreshes the tool servers first, as a tools route does, so
 // a server started after merud is there for it.
@@ -110,11 +112,11 @@ func (a *Agent) scopeSpecs(ctx context.Context, scope string) []engine.ToolSpec 
 		all := a.tools.Tools()
 		servers := mailServers(all)
 		return slices.DeleteFunc(slices.Clone(all), func(s engine.ToolSpec) bool {
-			return s.Name != builtin.DateTime && !slices.Contains(servers, serverOf(s.Name))
+			return !builtin.EveryRoute(s.Name) && !slices.Contains(servers, serverOf(s.Name))
 		})
 	case rpc.ScopeWeb:
 		return slices.DeleteFunc(slices.Clone(a.tools.Tools()), func(s engine.ToolSpec) bool {
-			return s.Name != builtin.DateTime && s.Name != builtin.WebSearch && s.Name != builtin.WebFetch
+			return !builtin.EveryRoute(s.Name) && s.Name != builtin.WebSearch && s.Name != builtin.WebFetch
 		})
 	case rpc.ScopeAuto:
 		return a.toolSpecs("direct")

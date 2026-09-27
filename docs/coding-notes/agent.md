@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -15,8 +15,8 @@ your files first and whether the model may call tools:
 
 | Route | Searches your files? | Offers tools? |
 | --- | --- | --- |
-| `direct` | no, unless the question names an indexed folder | no |
-| `search` | yes | only the four file tools, `datetime` and the local commands that don't ask |
+| `direct` | no, unless the question names an indexed folder | only `datetime` and `about_meru` |
+| `search` | yes | only the four file tools, `datetime`, `about_meru` and the local commands that don't ask |
 | `tools` | yes (the router sends some file questions here, see below) | yes |
 | `search+tools` | yes | yes |
 
@@ -232,6 +232,20 @@ The line reads "You can't write files" when `write_file` is off, and drops
 not what the route offers, so it stays the same on every turn and Ollama keeps
 reusing its work on the prompt's opening.
 
+When config allows `about_meru`, `selfNote` follows the line:
+
+```text
+For questions about yourself or this setup, such as which model you are, what
+you can reach or which folders you read, call about_meru; don't answer from
+what you learned in training.
+```
+
+A real turn drove it. Asked "which model are you using" and then "tell me the
+exact model name", which the router sent `direct`, `qwen3.6:35b` answered that
+it was Qwen from Alibaba's Tongyi Lab and had no access to version numbers.
+`merud` knew the exact name all along. The line depends only on config, so it
+sits with the parts Ollama reuses.
+
 `New` also keeps `folderNames(cfg.Index.Folders)`: the last part of each folder
 path, in lower case, such as `meru` for `~/repos/meru`. It drops names under
 three letters, which match too many ordinary words, and keeps each name once.
@@ -352,7 +366,7 @@ which is what a context budget needs.
 
 A third rule gives tools to a turn that asks Meru to remember something. The
 router can send "remember that my name is Dana" to `direct`, which offers no
-tools, and the model then says it will remember and saves nothing. So when the
+tool that saves, and the model then says it will remember and saves nothing. So when the
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
@@ -471,7 +485,7 @@ span under it, and a `skills picked` debug line.
 tools its steps use (see [skills](skills.md)). The bug that led here: "help me
 understand btop with some simple commands" routed `direct` at 0.761 (`tools`
 0.022), and the pick chose `web-research`, whose first step is "search first
-with web_search". A `direct` turn offers only `datetime`, so the 2B model
+with web_search". A `direct` turn then offered only `datetime`, so the 2B model
 called `datetime` with no arguments in all eight rounds. The router can't fix
 this: it never sees the skill.
 
@@ -516,8 +530,8 @@ the router:
 | Scope | Route (`scopeRoute`) | Searches first | Tools (`scopeSpecs`) |
 | --- | --- | --- | --- |
 | `files` | `search` | yes | `toolSpecs("search")` |
-| `mail` | `tools` | no | every tool of the servers `mailServers` picks, and `datetime` |
-| `web` | `tools` | no | `web_search`, `web_fetch`, `datetime` |
+| `mail` | `tools` | no | every tool of the servers `mailServers` picks, with `datetime` and `about_meru` |
+| `web` | `tools` | no | `web_search`, `web_fetch`, `datetime`, `about_meru` |
 | `talk` | `direct` | no | none |
 
 The route rules that widen a route stay out, and so do a picked skill's tools: a
@@ -559,8 +573,8 @@ two functions, and `merud` decides where they come from.
 4. Otherwise `respond` hands the turn to `respondScoped` even in `auto`. The
    router's fast model reads only text, so its guess about a photo would be
    noise. `scopeRoute` gives `auto` the route `direct`, and `scopeSpecs` the
-   tools `direct` offers, `datetime` alone. A scope the user picked still
-   holds.
+   tools `direct` offers, `datetime` and `about_meru`. A scope the user
+   picked still holds.
 5. `finishPrompt` calls `withImages`, which sets `Images` on the last message,
    the question. Tool rounds reuse the same `msgs`, so every round of this turn
    sees the images, and no later turn does: `transcript.History` gives a later
@@ -1022,15 +1036,16 @@ rounds.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
 ToolRunner offers on `tools` and `search+tools`. On `search` it keeps
-`datetime`, the four read-only file tools, `read_file`, `list_folder`, `grep`
-and `search_files`, which `builtin.IsFileTool` names, and the local commands
-(`cmd.<name>`) for which `Asks` says no:
+`datetime` and `about_meru`, which `builtin.EveryRoute` names, the four
+read-only file tools, `read_file`, `list_folder`, `grep` and `search_files`,
+which `builtin.IsFileTool` names, and the local commands (`cmd.<name>`) for
+which `Asks` says no:
 
 ```go
 case "search":
     var specs []engine.ToolSpec
     for _, s := range a.tools.Tools() {
-        if s.Name == builtin.DateTime || builtin.IsFileTool(s.Name) ||
+        if builtin.EveryRoute(s.Name) || builtin.IsFileTool(s.Name) ||
             (toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
             specs = append(specs, s)
         }
@@ -1043,8 +1058,10 @@ read nothing search couldn't. The commands are there because "what
 changed in the meru repo this week?" lands on `search` when `meru` is an
 indexed folder, and a declared `git log` answers it. A command with
 `confirm = true` changes something, so it waits for a tools route. On
-`direct`, or when the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model
-can't call a tool it hasn't seen, and the prompt stays shorter.
+`direct` it keeps `datetime` and `about_meru` alone: "what day is Christmas?"
+and "which model are you?" both route there, and both tools only read. When
+the ToolRunner is `nil`, `toolSpecs` returns `nil`. A model can't call a tool
+it hasn't seen, and the prompt stays shorter.
 
 Two functions pick the notes `prompt` adds to the system prompt.
 `noteFor(specs)` gives `toolsNote` to a turn that offers any tool but the file
@@ -1353,7 +1370,8 @@ sentences that are claims ("Done. It's now at ~/Projects/garden", "I've moved
 the folder", "The file has been saved to ~/Projects") and ones that aren't
 ("I can move it if you like", "Want me to save it?", "I couldn't move it
 because…", "Done is better than perfect"). `TestCanDoNote` checks the line on
-what Meru can do, and `TestPromptSaysWhatMeruCanDo` that a search turn's prompt
+what Meru can do, with `selfNote` when `about_meru` is allowed, and
+`TestPromptSaysWhatMeruCanDo` that a search turn's prompt
 holds it with the folder and the command names. `TestUnbackedClaim` runs whole
 turns: a claim with no tool call sends the `notice` between the last token and
 `done` and writes it to the assistant line; a claim after a `write_file` that
@@ -1379,6 +1397,13 @@ the new tool in the same turn, and a `direct` turn never calls it.
 `files_test.go` runs a `search` turn over the real built-in tools behind a real
 `dispatch.Dispatcher`: the fake engine calls `read_file`, and the next round
 must read the file's whole text.
+
+`about_test.go` replays the turn behind `about_meru`. The fake Ollama answers
+"which model are you using" on a `direct` route by calling `about_meru`, which
+runs as a real built-in behind a real `dispatch.Dispatcher`. The test checks
+that the first round offered `datetime` and `about_meru`, that the system
+prompt holds `selfNote`, and that the second round reads the tool's answer
+with the main model's name in it.
 
 `agentic_test.go` runs turns over the real built-in tools, with a fake
 searcher behind `search_files`. `TestAgenticTurnSkipsSearchFirst` sets

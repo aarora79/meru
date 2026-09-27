@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -326,6 +326,9 @@ with a message that names the two built-ins.
 These ops don't go through `dispatch`: they are your commands, like editing a
 file by hand. The model's way to write a file, `write_file`, does.
 
+`names` returns the loaded skills and the disabled ones, for `about_meru`. It
+goes through `Registry`, so a skill added by hand counts at once.
+
 ### merud: backends.go
 
 `mcpBackend` joins the MCP pool to `dispatch`, and `mcpServerConfigs` turns the
@@ -566,6 +569,42 @@ uploads folder, and asks `visionCheck` whether the main model can look at them.
 true when `eng` holds one. The tests' fake engine isn't one, so `visionCheck`
 returns nil, and the agent then refuses questions with images rather than
 send them to a model that might not see them.
+
+### merud: about.go
+
+`aboutService` gathers what the built-in `about_meru` tool reports (see
+[builtin](builtin.md)). `serve` builds it last, once the store, the indexer,
+the tool service, the skills and the machine line exist, and hands its
+`facts` method to `tools.bt.UseAbout`. `facts` runs on each call, so the answer
+shows the setup as it is then, a folder the desktop app just added included.
+
+Each fact comes from a place `merud` already keeps:
+
+| Fact | Source |
+| --- | --- |
+| profile, the three models | `cfg`, as `merud` started with it |
+| Ollama's version | `eng.Info`, at most 3 seconds |
+| the main model's capabilities, size, quantization, context | `Details`, through the `modelDetailer` interface, at most 3 seconds |
+| the computer | the `machineLine` the prompt carries |
+| folders, files, chunks, database size | `idx.currentFolders`, `st.Stats`, `st.DiskBytes` |
+| MCP servers, A2A agents, commands | `tools.dispatcher.Servers`, the list `meru tools` prints |
+| skills on and off | `skillService.names` |
+| memories by kind | `mem.List`, keeping only each memory's kind |
+
+`modelDetailer` is an interface with the one method `Details`, defined here,
+where it is used. `eng.(modelDetailer)` asks whether the engine has it:
+`OllamaEngine` does, so the real `merud` reports the details; the tests' fake
+engine gets a `Details` method in `about_test.go`. A fact that fails stays out,
+with a debug line, and the tool still answers.
+
+`facts` copies names, counts and paths only. `rpc.ServerInfo` holds no env or
+header values, and `facts` skips each server's last error, which can quote a
+URL, and each memory's text. `TestAboutMeruFacts` builds a real tool service
+over a Streamable HTTP server reached with a `secret:` header and a stdio
+server started with a `secret:` env value and a plain one, runs `about_meru`
+through `dispatch`, and checks that the answer names the models, both servers,
+the command, the disabled skill and the memory count, and holds neither secret,
+the plain env value nor the memory's text.
 
 ### merud: models.go
 

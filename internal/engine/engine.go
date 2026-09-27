@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"iter"
+	"slices"
 	"time"
 )
 
@@ -170,4 +171,21 @@ type ModelInfo struct {
 	Runtime        string   // for example "ollama"
 	RuntimeVersion string   // for example "0.34.0"
 	LoadedModels   []string // models currently in memory
+}
+
+// ModelDetails is what the runtime says about one model: what it can do
+// and how big it is. OllamaEngine.Details fills it from /api/show; a field
+// the runtime leaves out stays empty or 0.
+type ModelDetails struct {
+	Capabilities  []string // for example ["completion", "vision", "tools", "thinking"]
+	ParameterSize string   // for example "36.0B"
+	Quantization  string   // for example "Q4_K_M"
+	ContextLength int      // the most tokens the model can read at once
+}
+
+// clone returns a copy of d whose Capabilities a caller can change without
+// touching the engine's cache.
+func (d ModelDetails) clone() ModelDetails {
+	d.Capabilities = slices.Clone(d.Capabilities)
+	return d
 }

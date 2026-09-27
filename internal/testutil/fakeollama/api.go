@@ -42,8 +42,11 @@ func (f *Fake) servePS(w http.ResponseWriter, _ *http.Request, _ []byte, _ int) 
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
-// serveShow answers POST /api/show with the model's capabilities, and
-// with a 404, as Ollama does, for a model the fake doesn't accept.
+// serveShow answers POST /api/show with the model's capabilities, the
+// size and quantization /api/ps reports, and a context length under
+// "fake.context_length", as Ollama puts it under the model's architecture.
+// It answers with a 404, as Ollama does, for a model the fake doesn't
+// accept.
 func (f *Fake) serveShow(w http.ResponseWriter, _ *http.Request, body []byte, _ int) {
 	var req struct {
 		Model string `json:"model"`
@@ -60,7 +63,11 @@ func (f *Fake) serveShow(w http.ResponseWriter, _ *http.Request, body []byte, _ 
 	if !ok {
 		caps = defaultCapabilities
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"capabilities": caps})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"capabilities": caps,
+		"details":      map[string]any{"parameter_size": "1B", "quantization_level": "Q4_K_M"},
+		"model_info":   map[string]any{"general.architecture": "fake", "fake.context_length": 8192},
+	})
 }
 
 // digest makes up a stable digest for a model name, standing in for the

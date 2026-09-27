@@ -36,7 +36,8 @@ const honestyRule = "Never say you did something, such as saved, moved, sent, de
 // Ollama reuses (see budget.go). A tool from an MCP server or an A2A
 // agent may change things on its own service, such as a mail or a note;
 // its own description says so, and the line speaks only of Meru's own
-// tools.
+// tools. When tools holds about_meru, selfNote follows, which sends
+// questions about Meru itself to that tool.
 func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 	write := "You can't write files."
 	var cmds []string
@@ -54,8 +55,22 @@ func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 		slices.Sort(cmds)
 		run = " other than " + strings.Join(cmds, ", ") + "."
 	}
-	return write + " Meru's own tools can't move, rename or delete files, or run programs" + run
+	line := write + " Meru's own tools can't move, rename or delete files, or run programs" + run
+	if slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.AboutMeru }) {
+		line += " " + selfNote
+	}
+	return line
 }
+
+// selfNote follows canDoNote's line when config allows about_meru. A real
+// turn showed why. Asked "which model are you using" and then "tell me the
+// exact model name", a question the router sent direct, the main model
+// answered from its training that it came from another company's lab and
+// had no access to version numbers, while merud knew the exact name. The
+// line depends only on config, so it stays with the parts of the prompt
+// Ollama reuses.
+const selfNote = "For questions about yourself or this setup, such as which model you are, " +
+	"what you can reach or which folders you read, call about_meru; don't answer from what you learned in training."
 
 // unbackedNotice is the warning a client shows under an answer that claims
 // an action when no tool call in the turn succeeded.

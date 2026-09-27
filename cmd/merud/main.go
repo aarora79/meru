@@ -239,10 +239,17 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return err
 	}
-	// The session ops show source paths as ~/... like a live turn does. A
-	// home folder merud can't find leaves the paths whole.
+	// The session ops show source paths as ~/... like a live turn does, and
+	// so does about_meru. A home folder merud can't find leaves the paths
+	// whole.
 	home, _ := os.UserHomeDir()
 	hist := historyService{dir: sessionsDir, home: home}
+	// about_meru reads every source above, so merud hands it them last. It
+	// reads them on each call, so it reports the setup as it is then.
+	tools.bt.UseAbout(aboutService{
+		cfg: cfg, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
+		skills: sk, mem: mem, machine: machine, home: home, log: log,
+	}.facts)
 	// config.Load has checked output_dir, so expandHome fails only when
 	// the OS can't say where home is; then saves have nowhere to go.
 	outputDir, _ := expandHome(cfg.Skills.OutputDir)

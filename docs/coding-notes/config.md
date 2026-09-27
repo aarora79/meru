@@ -61,7 +61,8 @@ parameter name. The double brackets in `[[commands]]` make a TOML array of
 tables, which the parser decodes into a slice (`[]Command`); each
 `[commands.params.<name>]` becomes one entry of the `Params` map. `Min` and
 `Max` are `*int64`, pointers, so that "no bound" (`nil`) differs from a bound of
-0. `Load` only decodes these entries. The rules for placeholders, paths and
+0. A string parameter's `Pattern` is the text of a regular expression. `Load`
+only decodes these entries. The rules for placeholders, paths, patterns and
 interpreters live in [commands](commands.md), which checks the entries when
 `merud` starts, as the MCP pool checks `[[mcp.servers]]`.
 
@@ -119,7 +120,7 @@ keeps the client thin.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all ten, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all eleven, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
 }
 ```
@@ -232,7 +233,7 @@ meaning altogether and keep only `grep` (see
 [Retrieval](../../ARCHITECTURE.md#retrieval)).
 
 `checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
-the ten in `builtinTools`, and the message lists them. A name in `confirm` must
+the eleven in `builtinTools`, and the message lists them. A name in `confirm` must
 also be in `tools`; otherwise the confirm line would do nothing, which is
 almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
 because `builtin` imports `config` and Go refuses an import cycle. A test in
@@ -252,7 +253,9 @@ same `Config` as no file at all; `TestTemplateMatchesDefaults` checks that.
 The `[models]` lines stay empty, with the `lite` names in comments, because a
 name there would override the profile: a user who then picked `full` would
 still run the `lite` model. The MCP servers, local commands and A2A agent
-sit in comments, ready to uncomment.
+sit in comments, ready to uncomment. So do six read-only GitHub commands for
+the `gh` CLI: nothing runs until the user takes the `# ` off an entry, which
+keeps tools deny-by-default.
 
 `template.go` compiles the file into the binary:
 
@@ -276,7 +279,8 @@ example from the template would need a `go generate` line and a check that
 someone ran it; the test is the simpler guard.
 
 Two more tests keep the comments honest. `TestTemplateCommentedBlocks`
-uncomments every `# [[` block and loads the result. The catalog's two server
+uncomments every `# [[` block and loads the result, and checks it holds three
+servers, one agent and ten commands, the GitHub ones included. The catalog's two server
 blocks can't come from `catalog.Block` here, because `catalog` imports
 `config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
 the catalog package checks it against `Block`'s output.

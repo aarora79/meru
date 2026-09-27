@@ -47,7 +47,7 @@ allows only code inside this repo to import.
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder` and `grep`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, `datetime` and `about_meru`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder`, `grep` and `search_files`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, the safe append to `config.toml`, and the edits of one list in it | `catalog.go`: `Entries`, then `block.go`, `append.go` and `edit.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
@@ -481,6 +481,7 @@ sequenceDiagram
     M->>M: logWebSearch: catalog.CheckSearXNG, one info line, never fatal
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
+    M->>M: bt.UseAbout(aboutService.facts): about_meru reads the setup on each call
     par errgroup, until Ctrl-C, SIGTERM or a server error
         M->>R: Serve(listener, handler) — questions to the agent, index ops to the indexer, tool ops to the tool service
     and
