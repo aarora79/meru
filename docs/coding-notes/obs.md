@@ -264,8 +264,8 @@ docker compose -f deploy/observability/compose.yaml up -d
 ```
 
 Grafana opens on the Meru dashboard. The "Meru usage" dashboard, in the same
-folder, shows totals for the chosen time range, then one bar per day over the
-last 30 days.
+folder, shows totals for the chosen time range, then one bar per hour over the
+last 24 hours.
 
 ## Why it's built this way
 

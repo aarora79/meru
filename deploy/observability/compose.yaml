@@ -38,7 +38,7 @@ services:
       TEMPO_EXTRA_ARGS: "-reporting.enabled=false"
       PYROSCOPE_EXTRA_ARGS: "-usage-stats.enabled=false"
       # Prometheus keeps 15 days of metrics unless told otherwise, too few
-      # for the usage dashboard's 30-day trends. One person's usage adds a
+      # for a 30-day view of the usage dashboard. One person's usage adds a
       # few megabytes a month, so keep 400 days.
       PROMETHEUS_EXTRA_ARGS: "--storage.tsdb.retention.time=400d"
     volumes:

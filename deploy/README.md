@@ -8,7 +8,7 @@ Files that run Meru as a service and show what it is doing:
 | `systemd/merud.service` | the same on Linux, as a systemd user unit |
 | `observability/compose.yaml` | a local Grafana stack that receives `merud`'s metrics and traces |
 | `observability/dashboards/meru.json` | the Meru dashboard that stack loads |
-| `observability/dashboards/meru-usage.json` | the Meru usage dashboard: totals for the chosen range, then one bar per day over 30 days |
+| `observability/dashboards/meru-usage.json` | the Meru usage dashboard: totals for the chosen range, then one bar per hour over the last 24 hours |
 
 All the steps below assume you built and installed `merud` with:
 
