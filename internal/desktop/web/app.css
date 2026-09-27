@@ -309,14 +309,24 @@ pre {
   height: 30px;
 }
 
-/* The version beside the wordmark, such as "v0.4.1", filled in by app.js
+/* The wordmark with the version under it, beside the logo. */
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+/* The version under the wordmark, such as "v0.4.1", filled in by app.js
    from the Bridge's About data. The full version is its tooltip. */
 .brand-version {
-  align-self: flex-end;
-  margin: 0 0 5px 2px;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--caption);
   white-space: nowrap;
+}
+
+.brand-version:empty {
+  display: none;
 }
 
 .wordmark {
