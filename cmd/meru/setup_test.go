@@ -202,7 +202,7 @@ func TestSetupFirstRun(t *testing.T) {
 	}
 	// The empty [models] lines in the template leave the tiers to the
 	// profile, so picking full gives full's models.
-	if cfg.Models != full {
+	if cfg.Models.Fast != full.Fast || cfg.Models.Main != full.Main || cfg.Models.Embed != full.Embed {
 		t.Errorf("models = %+v, want the full profile's %+v", cfg.Models, full)
 	}
 	written, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
