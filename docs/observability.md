@@ -67,7 +67,7 @@ password `admin`. Grafana opens on the Meru dashboard.
 | You want | Open | Time range |
 | --- | --- | --- |
 | Today's usage: sessions, questions, tokens, active time, tool calls | **Meru usage**, the row of totals at the top | Today so far |
-| Usage over weeks, one bar per day | **Meru usage**, the charts below the totals | Last 30 days, its default |
+| Usage through the day, one bar per hour | **Meru usage**, the charts below the totals | Last 24 hours, its default; widen it to see a week |
 | Speed right now: time to first token, tokens per second, turn time, routes | **Meru** | Last 1 hour, its default |
 | Where one slow question spent its time | **Explore**, then **Tempo** (see [Traces](#see-one-questions-trace)) | around the question |
 
@@ -83,21 +83,21 @@ password `admin`. Grafana opens on the Meru dashboard.
 
 **Meru usage** shows the numbers behind `meru usage`. Its top row gives totals for
 the time range you pick: sessions, questions, tokens in, tokens out, active time
-and tool calls. Below that row, one bar per day shows sessions by source,
+and tool calls. Below that row, one bar per hour shows sessions by source,
 questions by route, the main model's input and output tokens, active time, files
 read per question, and tool calls by outcome.
 
 ## When a panel says "No data"
 
 - **You just turned export on.** Prometheus holds only what `merud` sent after
-  you set `otlp_endpoint` and restarted it. It has nothing from before, so days
+  you set `otlp_endpoint` and restarted it. It has nothing from before, so hours
   before that stay empty. `meru usage` reads the `turns` table, which `merud`
   rebuilds from your transcripts, so use it for all-time numbers.
-- **A daily bar lands after midnight.** Grafana draws each day's bar at midnight,
-  and that bar covers the day before. Today's usage shows in the top row of
-  Meru usage, never in the bars.
-- **The range is shorter than a day.** The daily charts need a range that spans
-  at least one midnight. Pick "Last 7 days" or longer for them.
+- **An hour's bar lands when the hour ends.** Grafana draws each bar on the
+  hour, and that bar covers the hour before, so the bar for 15:00 to 16:00
+  shows at 16:00. The top row of Meru usage counts the current hour as it goes.
+- **The range is shorter than an hour.** The hourly charts need a range that
+  spans at least one full hour. Pick "Last 6 hours" or longer for them.
 
 The totals also run a little under `meru usage`. Prometheus misses the first
 count of each new series, such as the first question on a route from a new
