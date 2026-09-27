@@ -119,7 +119,57 @@ shell that runs it:
 OLLAMA_CONTEXT_LENGTH=32768 ollama serve
 ```
 
-## 3. Build Meru
+## 3. Install Meru
+
+Install a release, or build Meru from source. A release needs no Go.
+
+### Install from a release
+
+Each release on GitHub holds `meru` and `merud` for five platforms and
+`Meru.app` for a Mac with Apple silicon, with a `SHA256SUMS` file.
+[releasing.md](releasing.md) lists the files. The repository is private for
+now, so download with `gh`, GitHub's command-line tool, signed in with an
+account that can see it (`brew install gh`, then `gh auth login`).
+
+On a Mac with Apple silicon (use `darwin-amd64` on an Intel Mac, which gets
+the command-line programs only):
+
+```sh
+mkdir -p ~/meru-download && cd ~/meru-download
+gh release download --repo aarora79/meru \
+  --pattern 'meru-*-darwin-arm64.tar.gz' --pattern 'Meru-*-macos-arm64.zip' --pattern SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing     # each file should say OK
+```
+
+With no tag, `gh release download` takes the latest release; put a tag such as
+`v0.4.1` after `download` to pick one. Then install the programs in
+`~/.local/bin` and the app in `/Applications`:
+
+```sh
+tar -xzf meru-*-darwin-arm64.tar.gz
+mkdir -p ~/.local/bin
+cp meru-*-darwin-arm64/meru meru-*-darwin-arm64/merud ~/.local/bin/
+ditto -x -k Meru-*-macos-arm64.zip /Applications/
+```
+
+If `which meru` finds nothing, add `export PATH="$HOME/.local/bin:$PATH"` to
+`~/.zshrc` and open a new terminal.
+
+`Meru.app` isn't signed or notarized, so macOS may refuse to open it and say it
+can't check it for malicious software. If you trust the download, clear the
+quarantine mark once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Meru.app
+```
+
+To install a newer release, run the same commands with the new files, then
+restart `merud` (see [Update to a newer version](#11-update-to-a-newer-version)).
+Meru never checks for updates on its own. If you use Claude Code, the
+`meru-install` skill in this repo's `.claude/skills/` walks through all of this,
+Ollama and the models included.
+
+### Build from source
 
 ```sh
 git clone https://github.com/aarora79/meru.git
@@ -1795,6 +1845,10 @@ the debug log (see [How much merud logs](#how-much-merud-logs)); leave it off fo
 the shorter log. If `merud` runs as a service, restart it with the service
 manager instead of `pkill` ([deploy/README.md](../deploy/README.md)).
 
+If you installed a release, download the newer one and copy its files over the
+old ones as in [Install from a release](#install-from-a-release), then restart
+`merud` the same way. Quit `Meru.app` before you replace it.
+
 ### Check answers on your own files
 
 Unit and end-to-end tests run against fake models and made-up files. They can't
@@ -1921,6 +1975,9 @@ later.
 rm ~/go/bin/merud ~/go/bin/meru
 rm -rf ~/.meru          # deletes your settings, every transcript and the index
 ```
+
+For a release install, remove `~/.local/bin/meru`, `~/.local/bin/merud` and
+`/Applications/Meru.app` instead of the files in `~/go/bin`.
 
 If you installed the service file, remove it first with the `bootout` (macOS) or
 `disable` (Linux) command in [deploy/README.md](../deploy/README.md). To free the

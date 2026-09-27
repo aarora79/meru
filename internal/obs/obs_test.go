@@ -617,3 +617,19 @@ func TestSetupExportsToLoopback(t *testing.T) {
 		t.Error("instruments still live after shutdown")
 	}
 }
+
+// TestBuildVersion checks that a version `make release` stamps in wins over
+// the build information, and that a plain build still reports one. It sets
+// the variable the linker sets, and puts it back when the test ends.
+func TestBuildVersion(t *testing.T) {
+	// t.Cleanup runs the function after the test, pass or fail.
+	t.Cleanup(func() { releaseVersion = "" })
+	releaseVersion = "v0.4.1"
+	if got := BuildVersion(); got != "v0.4.1" {
+		t.Errorf("BuildVersion = %q, want v0.4.1", got)
+	}
+	releaseVersion = ""
+	if got := BuildVersion(); got == "v0.4.1" || got == "" {
+		t.Errorf("BuildVersion without a stamp = %q, want the build's own version", got)
+	}
+}

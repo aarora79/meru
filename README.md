@@ -121,6 +121,11 @@ compiles, or `-a -x` to rebuild everything and print each command.
 On a Mac, `make desktop && ./bin/meru-desktop` builds and opens the desktop app, a
 window onto the same `merud`. It needs the Xcode command line tools.
 
+To skip Go, install a release instead: each one on GitHub holds `meru` and `merud`
+for macOS, Linux and Windows, and `Meru.app` for Apple silicon.
+[Install from a release](docs/running.md#install-from-a-release) shows how, and
+in Claude Code the `meru-install` skill walks you through it.
+
 [docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,
 `meru chat`, running `merud` as a service, the local dashboard, troubleshooting and
 uninstalling.
@@ -225,6 +230,7 @@ call.
   - [300: the full design](ARCHITECTURE.md), the design contract
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
+- [docs/releasing.md](docs/releasing.md) — how a release gets built and published
 - [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents

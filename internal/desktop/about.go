@@ -72,7 +72,7 @@ func (b *Bridge) About() About {
 	}
 	return About{
 		Tagline:    Tagline,
-		Version:    buildVersion(debug.ReadBuildInfo()),
+		Version:    appVersion(),
 		License:    License,
 		ConfigPath: tilde(filepath.Join(dir, "config.toml"), b.home),
 		DataDir:    tilde(dir, b.home),
@@ -83,6 +83,22 @@ func (b *Bridge) About() About {
 			{ID: "license", Label: "Read the license", URL: licenseURL},
 		},
 	}
+}
+
+// releaseVersion holds the version `make release` writes into the app
+// with the linker flag -X, such as "v0.4.1". Every other build leaves it
+// empty. The linker sets it before main starts and nothing changes it
+// after, so it acts as a constant. docs/releasing.md shows the flag.
+var releaseVersion string
+
+// appVersion returns the version the About section shows: the one
+// `make release` stamped in, else the one buildVersion reads from the
+// binary's build information.
+func appVersion() string {
+	if releaseVersion != "" {
+		return releaseVersion
+	}
+	return buildVersion(debug.ReadBuildInfo())
 }
 
 // buildVersion turns what the Go toolchain recorded in the binary into a

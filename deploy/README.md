@@ -32,6 +32,14 @@ sed "s|__HOME__|$HOME|g" deploy/launchd/com.meru.merud.plist \
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.meru.merud.plist
 ```
 
+If you installed a release, `merud` lives in `~/.local/bin`. Run this copy in
+place of the `sed` line above; its first expression points the plist there:
+
+```sh
+sed -e "s|__HOME__/go/bin/merud|$HOME/.local/bin/merud|" -e "s|__HOME__|$HOME|g" \
+  deploy/launchd/com.meru.merud.plist > ~/Library/LaunchAgents/com.meru.merud.plist
+```
+
 `merud` now starts each time you log in, and launchd starts it again if it exits.
 Anything `merud` prints before its own log opens goes to `~/.meru/merud.out.log` and
 `~/.meru/merud.err.log`.

@@ -12,6 +12,10 @@ run through `go run tool@version`: Go downloads and caches each one on first
 use, so you install nothing but Go. The Makefile pins every tool version at
 its top.
 
+CI builds no releases. The owner builds each one on a Mac with
+`make release`, because `Meru.app` needs the Mac's own WebView;
+[releasing.md](releasing.md) explains how.
+
 ## The checks
 
 | Check | Workflow job | Catches | Run it locally |

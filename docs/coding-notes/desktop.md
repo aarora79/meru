@@ -224,10 +224,14 @@ from the end. `index.html` repeats the line as the logo's tooltip, and
 version, the license (`License`, the AGPL-3.0 as `LICENSE` gives it), where
 `config.toml` and Meru's folder are, written with `~`, and the project's four links
 on GitHub: the source, the design, a new issue and the license. `merud` reports no version over the socket, so
-`buildVersion` reads the app's own: `debug.ReadBuildInfo` returns what the Go
-toolchain wrote into the binary, a tag such as `v0.3.0` for a release, or
+`appVersion` reads the app's own. `make release` stamps the version into
+`releaseVersion` with the Go linker's `-X` flag, which sets a package variable
+while it links the binary, and `appVersion` returns that when it isn't empty.
+Otherwise `buildVersion` reads `debug.ReadBuildInfo`, what the Go toolchain
+wrote into the binary: a tag such as `v0.3.0` for `go install …@v0.3.0`, or
 `(devel)` plus the git commit for a local build. The app and `merud` build from
-the same tree, so the app's version stands in.
+the same tree, so the app's version stands in. [releasing.md](../releasing.md)
+shows the flag.
 
 The links live in Go on purpose. `assets_test.go` fails when the page's own files
 name any host, so the page asks `About` for the links and opens each through
@@ -486,7 +490,7 @@ the file none, `Send` writes the file's line alone and sends the image's full
 path in `Request.Images`, the `start` update carries the preview, and a
 reopened session shows the image again. `draft_test.go` checks Edit first's drafts.
 `about_test.go` checks the About data, the version read from build information,
-and the tagline in the page and the window. `assets_test.go` checks the security headers, and fails when
+that a version `make release` stamps in wins over it, and the tagline in the page and the window. `assets_test.go` checks the security headers, and fails when
 the page's own code uses `innerHTML`, `eval`, inline scripts or styles, or names a
 host on the network.
 
