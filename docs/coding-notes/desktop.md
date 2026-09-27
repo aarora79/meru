@@ -379,7 +379,7 @@ bundler.
   option the arrow keys point at. `/copy N` counts the code blocks in the chat's
   finished answers in order, as `meru chat` does, and each block's header shows its
   number.
-- `js/library.js` draws the eight sections of Settings: Connections, with an Off /
+- `js/settings.js` draws the eight sections of Settings: Connections, with an Off /
   Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity, Usage
   and About. Under the catalog cards, "Add your own MCP server" opens a form: a
   name, then a program with its arguments and environment variables, or a URL with
@@ -393,8 +393,12 @@ bundler.
   its `ollama pull` and `ollama run` commands in copy lines, and "Use for
   answers", which stays off until Ollama has the model. About shows
   the tagline, the name, what Meru does and why it runs on your computer, the
-  version and folders, and the three links the Bridge hands it.
-- `js/setup.js` draws the four Setup steps.
+  version and folders, a "Run setup again" link, and the three links the
+  Bridge hands it.
+- `js/setup.js` draws the four Setup steps. `app.js` opens them on its own the
+  first time `merud` reports no folders and no profile; the rail has no Setup
+  button, so after that the only way in is "Run setup again", which calls
+  `pages.openSetup`.
 - `js/turns.js` draws one turn. Each part (work strip, approval card, body,
   sources line, footer) has its own draw function, so a token redraws only the
   body. The sources line shows only the cited sources, closed, as "3 sources"
@@ -472,8 +476,8 @@ holds (16 to 512 pixels, each also at double size), and run
 ## Try it
 
 Typing "/" at the start of the question box opens the command menu; `/copy 2`
-copies the second code block of the chat. The Settings and Setup buttons sit at the
-foot of the rail.
+copies the second code block of the chat. The Settings button sits at the
+foot of the rail, and "Run setup again" in Settings, About opens Setup.
 
 ```sh
 go test ./internal/desktop/...      # runs anywhere, no cgo

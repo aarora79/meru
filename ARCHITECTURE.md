@@ -334,8 +334,8 @@ the line as its tooltip.
 
 - **The rail** holds the logo and wordmark, one button that opens About
   in Settings, then New chat, a search box that filters the list, past chats grouped
-  Today, Yesterday and Earlier, a status block, and two buttons at its foot,
-  Settings and Setup. The status block shows the answer
+  Today, Yesterday and Earlier, a status block, and a Settings button at its
+  foot. The status block shows the answer
   model, the file count and the connected MCP servers, or, when `merud` doesn't
   answer, that it isn't running and the command that starts it. A button folds
   the rail to a column of icons: the logo, New chat, chats, Settings and a status
@@ -541,10 +541,12 @@ differs from `meru chat`'s.
   why it runs on your computer, the app's version, where `config.toml` and
   Meru's folder are, and three links: the source code, the design and a new
   issue on GitHub. The Bridge hands the page the links, so the page's own files
-  name no host, and each opens in the browser through `OpenURL`.
+  name no host, and each opens in the browser through `OpenURL`. Under those
+  paths, "Run setup again" opens Setup.
 
 **Setup** has four steps, and opens on its own when `merud` reports no folders
-and no profile memory; the rail's Setup button opens it any time. **The models**
+and no profile memory; after that, "Run setup again" in Settings, About opens
+it. **The models**
 lists the three models; with `merud` down it shows the `ollama pull` each one
 needs and the command that starts `merud`. Meru pulls nothing on its own: a model
 is gigabytes, and `merud` doesn't start until its models are there. **Your

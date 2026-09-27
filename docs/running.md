@@ -433,7 +433,7 @@ which you can drag to `/Applications` and open like any app. The app finds `meru
 
 The first time the app finds `merud` with no folders and nothing about you, it
 opens **Setup**: four steps for the models, your folders, your connections and a
-few facts about you. Skip any step; the Setup button at the foot of the rail opens
+few facts about you. Skip any step; "Run setup again" in Settings, About opens
 it again.
 
 The title bar reads "Meru · A personal AI assistant that runs entirely on your own
@@ -444,7 +444,7 @@ computer". What you see:
   question carries it on. Below them, a block says whether `merud` runs, which
   model writes the answers, how many files Meru can search and which tools are
   connected; when `merud` isn't running, it says so and shows the command that
-  starts it. **Settings** and **Setup** sit at the foot. The button beside the
+  starts it. **Settings** sits at the foot. The button beside the
   logo folds the rail to a column of icons.
 - **In the middle**, the conversation. Each answer opens with one line of what Meru
   did, such as "Searched mail · Read lisbon.md"; "Show steps" shows the raw tool
@@ -584,7 +584,7 @@ the list. They run at once, even while an answer runs, and never reach the model
   version, where its files live, and buttons that open the source code, the
   design and a new issue on GitHub in your browser. To ask for a feature or
   report a problem, open an issue: say what you tried, what you expected and what
-  happened, and leave out anything private.
+  happened, and leave out anything private. "Run setup again" opens Setup.
 
 Links in answers open in your browser; Meru opens only `http`, `https` and `file`
 links. The app loads nothing from the internet: its fonts and code ship inside it.

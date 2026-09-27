@@ -1,5 +1,5 @@
 // The page's state and wiring: the rail (new chat, search, the list of
-// past chats, merud's status, Settings and Setup), the conversation, the
+// past chats, merud's status and Settings), the conversation, the
 // composer with its scope switch, attachments, slash commands and queue,
 // and the side panel. turns.js draws each turn, settings.js the Settings screen,
 // setup.js the Setup screen, commands.js the slash commands; api.js
@@ -143,7 +143,6 @@ function showView(view) {
   $("setup-view").hidden = view !== "setup";
   $("app").classList.toggle("no-panel", view === "setup");
   $("open-settings").setAttribute("aria-current", String(view === "settings"));
-  $("open-setup").setAttribute("aria-current", String(view === "setup"));
   drawPanel();
   if (view === "chat") $("question").focus();
 }
@@ -158,6 +157,7 @@ const pages = {
   status: () => state.status,
   refreshStatus: () => loadStatus(),
   openSettings: (section, focus) => goSettings(section, focus),
+  openSetup: () => goSetup(),
 };
 
 // goSettings opens Settings at section, and at the connection focus
@@ -1049,9 +1049,8 @@ function wire() {
   $("mini-expand").append(icon("sidebar", 18));
   $("mini-new").append(icon("plus", 18));
   $("mini-chats").append(icon("chats", 18));
-  $("mini-settings").append(icon("book", 18));
-  $("open-settings").prepend(icon("book", 16), document.createTextNode(" "));
-  $("open-setup").prepend(icon("sliders", 16), document.createTextNode(" "));
+  $("mini-settings").append(icon("sliders", 18));
+  $("open-settings").prepend(icon("sliders", 16), document.createTextNode(" "));
   $("share").prepend(icon("share", 15), document.createTextNode(" "));
   $("attach").append(icon("clip", 17));
 
@@ -1065,7 +1064,6 @@ function wire() {
   });
   $("mini-settings").addEventListener("click", () => goSettings("connections"));
   $("open-settings").addEventListener("click", () => goSettings("connections"));
-  $("open-setup").addEventListener("click", goSetup);
   // The logo and the name at the top of the rail open About in Settings.
   $("open-about").addEventListener("click", () => goSettings("about"));
   // The version beside the logo: short in the rail, in full as its

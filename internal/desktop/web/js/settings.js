@@ -29,8 +29,9 @@ const TOOLS_SHOWN = 6;
 // built-ins go on the "Built into Meru" card.
 const WEB_TOOLS = ["web_search", "web_fetch"];
 
-// current is the open Settings screen: its root element, the section on show, the
-// connection to bring into view, and what it calls back into app.js.
+// current is the open Settings screen: its root element, the section on
+// show, the connection to bring into view, and what it calls back into
+// app.js.
 const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set() };
 
 // openable returns a <dd> holding text as a link-styled button that runs
@@ -1146,6 +1147,11 @@ function about(body) {
       body.append(dl);
       body.append(el("p", "card-note", "Meru's folder holds the settings, your keys in secrets.toml, " +
         "every chat, what Meru remembers and the search index."));
+      // Setup opens on its own only on a first run, so this link is the
+      // one way back to its four steps later.
+      const again = el("p", "");
+      again.append(button("Run setup again", { className: "text-button link", onClick: current.pages.openSetup }));
+      body.append(again);
 
       body.append(el("h2", "section-head", "The project"));
       const links = el("div", "about-links");

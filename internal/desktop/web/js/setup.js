@@ -1,8 +1,8 @@
-// The Setup screen: four steps for a first run, and any time after from
-// the rail's Setup button. The models, your folders, connections, and
-// about you. Each step asks the Bridge for what it shows, and every
-// change goes to merud. Meru never pulls a model on its own: the models
-// step shows the command, and the user runs it.
+// The Setup screen: four steps that open on their own on a first run, and
+// any time after from "Run setup again" in Settings, About. The models,
+// your folders, connections, and about you. Each step asks the Bridge for
+// what it shows, and every change goes to merud. Meru never pulls a model
+// on its own: the models step shows the command, and the user runs it.
 
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
