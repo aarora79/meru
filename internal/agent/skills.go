@@ -245,29 +245,33 @@ func parsePick(text string, reg *skills.Registry) []string {
 // there are no skills. It records their size as meru.context.tokens with
 // section "skills".
 //
+// Both parts leave out a skill that names tools when the turn offers none
+// of them: specs, the tools the turn offers, decide (see skillFits). A
+// real turn showed why. The list named web-research on a direct turn that
+// offered no web tool; the model called a tool named "web-research",
+// dispatch refused it, and the model told the user it couldn't search.
+// The list is then the same on every turn that offers the same tools,
+// which in auto scope is nearly every turn, since every route offers the
+// web tools while web_search is on.
+//
 // A picked skill whose file can't be read now, say because it was deleted
 // a moment ago, is left out with a warning.
-func (a *Agent) skillsSection(ctx context.Context, p pickedSkills) (list, bodies string) {
+func (a *Agent) skillsSection(ctx context.Context, p pickedSkills, specs []engine.ToolSpec) (list, bodies string) {
 	if p.reg == nil {
 		return "", ""
 	}
-	skills := p.reg.List()
-	if len(skills) == 0 {
-		return "", ""
+	offered := make([]string, len(specs))
+	for i, s := range specs {
+		offered[i] = s.Name
 	}
-	lines := []string{skillsListHeader}
-	allowed := a.offeredNames()
-	for _, s := range skills {
-		line := "- " + s.Name + ": " + strings.Join(strings.Fields(s.Description), " ")
-		if tools := skillToolNames(p.reg, s.Name, allowed); len(tools) > 0 {
-			line += " To use it, call " + orList(tools) + "."
-		}
-		lines = append(lines, line)
-	}
-	list = strings.Join(lines, "\n")
+	list = skillList(p.reg, offered)
 
 	var bodyList []namedBody
 	for _, name := range p.names {
+		if !skillFits(p.reg, name, offered) {
+			a.log.DebugContext(ctx, "picked skill left out: the turn offers none of its tools", "skill", name)
+			continue
+		}
 		body, err := p.reg.Body(name)
 		if err != nil {
 			a.log.WarnContext(ctx, "skill left out of the prompt", "skill", name, "err", err)
@@ -283,6 +287,28 @@ func (a *Agent) skillsSection(ctx context.Context, p pickedSkills) (list, bodies
 	}
 	obs.RecordContextTokens(ctx, "skills", (utf8.RuneCountInString(list)+utf8.RuneCountInString(bodies))/4)
 	return list, bodies
+}
+
+// skillList returns the list of skills for a turn that offers the tools
+// named in offered: skillsListHeader, then one line per skill that fits
+// the turn (see skillFits), each with its name, its description on one
+// line and the offered tools it uses. It returns "" when no skill fits.
+func skillList(reg *skills.Registry, offered []string) string {
+	var lines []string
+	for _, s := range reg.List() {
+		if !skillFits(reg, s.Name, offered) {
+			continue
+		}
+		line := "- " + s.Name + ": " + strings.Join(strings.Fields(s.Description), " ")
+		if tools := skillToolNames(reg, s.Name, offered); len(tools) > 0 {
+			line += " To use it, call " + orList(tools) + "."
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return skillsListHeader + "\n" + strings.Join(lines, "\n")
 }
 
 // namedBody is one picked skill's name and instructions.
@@ -442,9 +468,8 @@ func notOffered(want []string, specs []engine.ToolSpec) []string {
 // allowed-tools key, that the list offered holds, in the skill's order. It
 // returns nil for a skill that names none, or none of them is offered.
 //
-// The skills list passes every tool config allows, not the tools one
-// round offers, so its text stays the same from turn to turn and Ollama
-// can reuse its work on it; skillHint passes the round's tools.
+// The skills list passes the tools the turn offers, and skillHint the
+// round's tools, then every tool config allows.
 func skillToolNames(reg *skills.Registry, name string, offered []string) []string {
 	if reg == nil {
 		return nil
@@ -462,14 +487,35 @@ func skillToolNames(reg *skills.Registry, name string, offered []string) []strin
 	return out
 }
 
+// skillFits reports whether the skill called name belongs in a turn that
+// offers the tools named in offered: it does when its allowed-tools key
+// names no tool Meru knows (see toolShaped), or when offered holds at
+// least one of the tools it names. A skill whose tools are all missing
+// would tell the model to call a tool it doesn't have.
+func skillFits(reg *skills.Registry, name string, offered []string) bool {
+	s, ok := reg.Get(name)
+	if !ok {
+		return false
+	}
+	named := slices.DeleteFunc(slices.Clone(s.AllowedTools), func(n string) bool { return !toolShaped(n) })
+	return len(named) == 0 || len(skillToolNames(reg, name, offered)) > 0
+}
+
 // skillHint returns what the model reads back when it calls a tool named
-// after a skill, such as "web-research is a skill, not a tool. Call
-// web_search or web_fetch.", when offer, the round's tools, holds a tool
-// the skill uses. It returns "" otherwise, and dispatch then gives its
-// usual refusal. The call still goes to dispatch, which denies and records
-// it like any call to a tool no backend offers; the hint only changes the
-// words, so the model can recover in its next round.
-func skillHint(reg *skills.Registry, name string, offer []engine.ToolSpec) string {
+// after a skill. When offer, the round's tools, holds a tool the skill
+// uses, the hint names it: "web-research is a skill, not a tool. Call
+// web_search or web_fetch." When config allows the skill's tools but the
+// round doesn't offer them, as on the desktop app's "Just talk" scope,
+// the hint names them and says they aren't there, so the model answers
+// without them instead of calling them next. all holds the names of every
+// tool config allows. It returns "" for a name that isn't a skill, or a
+// skill whose tools config turns off, and dispatch then gives its usual
+// refusal.
+//
+// The call still goes to dispatch, which denies and records it like any
+// call to a tool no backend offers; the hint only changes the words, so
+// the model can recover in its next round.
+func skillHint(reg *skills.Registry, name string, offer []engine.ToolSpec, all []string) string {
 	if reg == nil || !reg.Has(name) {
 		return ""
 	}
@@ -477,11 +523,14 @@ func skillHint(reg *skills.Registry, name string, offer []engine.ToolSpec) strin
 	for i, s := range offer {
 		names[i] = s.Name
 	}
-	tools := skillToolNames(reg, name, names)
-	if len(tools) == 0 {
-		return ""
+	if tools := skillToolNames(reg, name, names); len(tools) > 0 {
+		return name + " is a skill, not a tool. Call " + orList(tools) + "."
 	}
-	return name + " is a skill, not a tool. Call " + orList(tools) + "."
+	if tools := skillToolNames(reg, name, all); len(tools) > 0 {
+		return name + " is a skill, not a tool. It works through " + orList(tools) +
+			", and this answer doesn't offer them, so answer without them."
+	}
+	return ""
 }
 
 // orList joins names as English does: "a", "a or b", "a, b or c".

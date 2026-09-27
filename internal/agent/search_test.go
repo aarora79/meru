@@ -283,9 +283,9 @@ func TestSearchFindsNothing(t *testing.T) {
 		{"search fails", &fakeSearcher{err: failing}, "search", nil, noResults},
 		{"no results with web_search", &fakeSearcher{}, "search+tools", web, noResultsWeb},
 		{"search fails with web_search", &fakeSearcher{err: failing}, "search+tools", web, noResultsWeb},
-		// The search route offers only the file tools, so web_search
-		// isn't there to point at.
-		{"search route leaves web_search out", &fakeSearcher{}, "search", web, noResults},
+		// Every route offers web_search while config allows it, the
+		// search route too.
+		{"search route with web_search", &fakeSearcher{}, "search", web, noResultsWeb},
 		{"tools without web_search", &fakeSearcher{}, "search+tools", []engine.ToolSpec{spec("grep")}, noResults},
 	}
 	for _, tt := range tests {

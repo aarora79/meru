@@ -177,7 +177,7 @@ type Agent struct {
 // search on every route but "direct", and on a direct question that names
 // one of cfg.Index.Folders. search may be nil, which turns search off. It
 // offers the model the tools from tools on the "tools" and "search+tools"
-// routes, and only the file tools on "search", for at most
+// routes, fewer on the others (see toolSpecs), for at most
 // cfg.Agent.MaxRounds model calls per turn. tools may be
 // nil, which turns tools off. With cfg.Index.Retrieval "agentic" it
 // searches nothing before the answer and leaves the model to explore with
@@ -703,7 +703,7 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 			return reply{}, err
 		}
 	}
-	skillList, skillBodies := a.skillsSection(ctx, picked)
+	skillList, skillBodies := a.skillsSection(ctx, picked, specs)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
@@ -1293,21 +1293,13 @@ func (a *Agent) canDo() string {
 func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string, sec sections) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
+	system, profile := a.stablePart(ctx, sec.toolsNote, sec.skillList)
 	// add appends one section, leaving out an empty one.
-	system := a.system
 	add := func(part string) {
 		if part != "" {
 			system += "\n\n" + part
 		}
 	}
-	add(today(time.Now()))
-	add(a.machine)
-	profile := a.profileSection(ctx)
-	add(profile)
-	add(a.currentFilesNote())
-	add(a.canDo())
-	add(sec.toolsNote)
-	add(sec.skillList)
 	add(sec.fileTools)
 	add(sec.memories)
 	add(sec.skillBodies)
@@ -1337,6 +1329,31 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	)
 	a.log.DebugContext(ctx, "prompt built", "messages", len(msgs), "chars", chars, "est_tokens", chars/4)
 	return msgs
+}
+
+// stablePart returns the opening of the system prompt, the parts that stay
+// the same from turn to turn: the configured prompt with whoIsWho and
+// honestyRule, today's date, the line on the user's computer, the user's
+// profile, filesNote, canDoNote, then toolsNote and skillList, the tools
+// note and the list of skills for the tools the turn offers. It returns
+// the profile on its own as well, for the memory metric.
+func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (system, profile string) {
+	system = a.system
+	// add appends one section, leaving out an empty one.
+	add := func(part string) {
+		if part != "" {
+			system += "\n\n" + part
+		}
+	}
+	add(today(time.Now()))
+	add(a.machine)
+	profile = a.profileSection(ctx)
+	add(profile)
+	add(a.currentFilesNote())
+	add(a.canDo())
+	add(toolsNote)
+	add(skillList)
+	return system, profile
 }
 
 // answer streams the main model's reply to msgs, offering it tools (nil for

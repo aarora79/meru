@@ -66,19 +66,31 @@ const webFallbackNote = "When the user's files don't answer the question, becaus
 	"found nothing on it, call web_search before you answer from memory. " +
 	"Never make up a command's flags or options, or a version number: look them up, or say you don't know."
 
+// webNote follows toolsNote on every turn that offers web_search, the
+// direct route included. A real turn showed why. Asked what the words of
+// a song meant, a question the router sent direct, the model knew the
+// song only in part and told the user it had no web search, while merud
+// had one ready. A model trained months ago doesn't know it is missing a
+// fact, so the note names the kinds of fact it most often gets wrong.
+const webNote = "When you aren't sure of a fact, such as a song, a film, a book, a person, a product, " +
+	"a place or anything that may have changed, call web_search before you answer, and cite the pages you use. " +
+	"Never tell the user you can't search the web."
+
 // noteFor returns the tools note for a turn that offers specs: toolsNote
 // when any is an MCP tool, an A2A skill or a built-in other than the file
 // tools (datetime included); otherwise commandsNote when any is a command;
 // and "" for none. The file tools get a note of their own; see
 // fileToolsNoteFor.
 //
-// When specs hold web_search and a file tool, webFallbackNote follows
-// toolsNote. It depends only on which tools the turn offers, not on the
-// question, so it stays the same from one such turn to the next and can
-// sit with the other parts Ollama reuses (see budget.go). web_fetch alone
-// doesn't bring the note: with no search, the model would have to guess a
-// URL, and web_fetch asks the user before it fetches a URL that no search
-// result gave.
+// When specs hold web_search, webNote follows toolsNote, and when they
+// hold a file tool too, webFallbackNote follows that. Both depend only on
+// which tools the turn offers, not on the question, so they stay the same
+// from one such turn to the next and sit with the other parts Ollama
+// reuses (see budget.go). Since every route offers web_search while
+// config allows it, the note is the same on nearly every turn. web_fetch
+// alone doesn't bring either note: with no search, the model would have
+// to guess a URL, and web_fetch asks the user before it fetches a URL that
+// no search result gave.
 func noteFor(specs []engine.ToolSpec) string {
 	var cmds, other, files, web bool
 	for _, s := range specs {
@@ -98,7 +110,9 @@ func noteFor(specs []engine.ToolSpec) string {
 	// test is true, so the web line wins over the plain toolsNote.
 	switch {
 	case web && files:
-		return toolsNote + " " + webFallbackNote
+		return toolsNote + " " + webNote + " " + webFallbackNote
+	case web:
+		return toolsNote + " " + webNote
 	case other:
 		return toolsNote
 	case cmds:
@@ -252,11 +266,13 @@ func userWords(question string, history []engine.Message) string {
 
 // toolSpecs returns the tool schemas to offer on route: every tool the
 // ToolRunner allows on "tools" and "search+tools"; on "search", the file
-// tools, the local commands that don't ask first, and datetime and
-// about_meru; on "direct", datetime and about_meru alone; and nil when
-// tools are off. A model can't
-// call a tool it hasn't seen, and the prompt stays shorter (ARCHITECTURE.md,
-// "Who decides what").
+// tools, the local commands that don't ask first, and the tools every
+// route gets; on "direct", the tools every route gets alone; and nil when
+// tools are off. A model can't call a tool it hasn't seen, and the prompt
+// stays shorter (ARCHITECTURE.md, "Who decides what").
+//
+// Every route gets datetime and about_meru, and web_search and web_fetch
+// while web_search is on; see everyRoute.
 //
 // "search" gets the file tools because a question such as "write about
 // everything in my work folder" lands there, and ten excerpts can't cover
@@ -269,29 +285,41 @@ func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	if a.tools == nil {
 		return nil
 	}
-	switch route {
-	case "tools", "search+tools":
-		return a.tools.Tools()
-	case "search":
-		var specs []engine.ToolSpec
-		for _, s := range a.tools.Tools() {
-			if builtin.EveryRoute(s.Name) || builtin.IsFileTool(s.Name) ||
-				(toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
-				specs = append(specs, s)
-			}
-		}
-		return specs
+	all := a.tools.Tools()
+	if route == "tools" || route == "search+tools" {
+		return all
 	}
-	// Every other route, "direct" included, gets datetime and about_meru
-	// alone. They only read, cost short schemas, and "what day is
-	// Christmas?" or "which model are you?" route direct.
+	webOn := offersWebSearch(all)
 	var specs []engine.ToolSpec
-	for _, s := range a.tools.Tools() {
-		if builtin.EveryRoute(s.Name) {
+	for _, s := range all {
+		switch {
+		case everyRoute(s.Name, webOn):
+			specs = append(specs, s)
+		case route == "search" && (builtin.IsFileTool(s.Name) ||
+			(toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name))):
 			specs = append(specs, s)
 		}
 	}
 	return specs
+}
+
+// everyRoute reports whether the tool called name goes with every route,
+// "direct" included: datetime and about_meru always, and web_search and
+// web_fetch when webOn says config allows web_search, which takes both
+// [builtin] tools and [web] searxng_url. datetime is there because "what
+// day is Christmas?" routes direct, and about_meru because "which model
+// are you?" does too.
+//
+// The web tools joined every route after a real turn. Asked what the words
+// of a song meant, the router sent the question direct with confidence
+// 0.97, and direct offered no web tool. The model knew the song only in
+// part, called the web-research skill as if it were a tool, and then told
+// the user it couldn't search the web. A question the router takes for
+// general knowledge is often one a model half knows; with the web tools on
+// offer, it can check. Both schemas are short. web_fetch without
+// web_search stays off, since the model would have to guess a URL.
+func everyRoute(name string, webOn bool) bool {
+	return builtin.EveryRoute(name) || (webOn && builtin.IsWebTool(name))
 }
 
 // schemaChars returns the size of the tool schemas in characters: each
@@ -682,6 +710,8 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 	// appendLine records a span and a debug line for each transcript line
 	// dispatch writes, as it does for the agent's own lines.
 	appendTo := func(l transcript.Line) error { return a.appendLine(ctx, t.sess, l) }
+	// allowed names every tool config allows, for skillHint.
+	allowed := a.offeredNames()
 
 	// Each goroutine writes only its own slot of out and found, so they
 	// need no lock.
@@ -707,7 +737,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				Approve:  t.approve,
 				TraceID:  t.traceID,
 				Caller:   caller,
-				Hint:     skillHint(t.skills, c.Name, t.offer),
+				Hint:     skillHint(t.skills, c.Name, t.offer, allowed),
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			found[i] = res.Sources

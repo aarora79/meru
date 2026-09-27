@@ -40,8 +40,12 @@ func TestNoToolsModel(t *testing.T) {
 			cfg := ollamaConfig(t)
 			srv := fakeollama.Start(t, fakeollama.Config{})
 			srv.Enqueue(cfg.Models.Main, fakeollama.Reply{Text: "Lisbon is the capital of Portugal."})
+			// The direct route offers the first four, the tools every
+			// route offers while web_search is on; the tools route adds
+			// the notes tool, which brings the notice.
 			tools := &fakeTools{specs: []engine.ToolSpec{
-				spec(builtin.DateTime), spec(builtin.AboutMeru), spec(builtin.WebSearch),
+				spec(builtin.DateTime), spec(builtin.AboutMeru), spec(builtin.WebSearch), spec(builtin.WebFetch),
+				spec("obsidian.obsidian_simple_search"),
 			}}
 			a := ollamaAgent(t, cfg, srv, tt.route, tools)
 			if tt.check != nil {

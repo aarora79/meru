@@ -13,13 +13,13 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // noToolsNotice is the notice under an answer when the answer model,
 // named at %s, can't call tools and the turn would have offered more than
-// the two tools every route offers.
+// the tools every route offers, or the user picked the web scope.
 const noToolsNotice = "%s can't call tools, so Meru answered without them: no mail, calendar, notes, web or file tools. " +
 	"To use them, pick another answer model under Library, Models in the desktop app, or in [models] main in config.toml."
 
@@ -34,9 +34,10 @@ func (a *Agent) UseToolCheck(check func(ctx context.Context, model string) (bool
 // offerable returns specs, the tools the turn would offer, or nil when
 // the answer model can't call tools. In that case it also sets t.noTools
 // to the model's name, so Handle adds noToolsNotice under the answer,
-// unless specs held only the tools every route offers: then the user
-// asked nothing a tool would answer, and a notice on every plain question
-// would only be noise.
+// unless specs held only the tools every route offers (see everyRoute):
+// then the user asked nothing a tool would answer, and a notice on every
+// plain question would only be noise. The web scope gets the notice all
+// the same, since there the user asked for the web.
 //
 // A check that fails, as when Ollama is down, leaves specs as they are:
 // the model call then fails with Ollama's own reason.
@@ -54,7 +55,7 @@ func (a *Agent) offerable(ctx context.Context, t *turn, specs []engine.ToolSpec)
 		return specs
 	}
 	a.log.DebugContext(ctx, "the answer model can't call tools; the turn offers none", "model", model, "tools", len(specs))
-	if slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return !builtin.EveryRoute(s.Name) }) {
+	if t.scope == rpc.ScopeWeb || slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return !everyRoute(s.Name, true) }) {
 		t.noTools = model
 	}
 	return nil
