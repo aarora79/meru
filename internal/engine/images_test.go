@@ -1,6 +1,6 @@
-// This file tests the two engine parts behind picture turns: a message's
-// Images go out as base64 strings in /api/chat, and Capabilities reads
-// /api/show once per model.
+// This file tests the engine parts behind picture turns and about_meru: a
+// message's Images go out as base64 strings in /api/chat, and Capabilities
+// and Details read /api/show once per model.
 
 package engine
 
@@ -92,6 +92,45 @@ func TestCapabilities(t *testing.T) {
 				t.Errorf("Ollama got %d requests, want %d", calls.Load(), want)
 			}
 		})
+	}
+}
+
+// TestDetails checks that Details reads the size, the quantization and the
+// context length from /api/show, whatever the architecture's key prefix,
+// and that Capabilities and Details share one request.
+func TestDetails(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"capabilities":["completion","vision","tools","thinking"],` +
+			`"details":{"family":"qwen35moe","parameter_size":"36.0B","quantization_level":"Q4_K_M"},` +
+			`"model_info":{"general.architecture":"qwen35moe","qwen35moe.context_length":262144,"qwen35moe.block_count":40},` +
+			`"license":"a long text Meru skips"}`))
+	}))
+	t.Cleanup(srv.Close)
+	e, err := NewOllama(srv.URL, "", "", srv.Client(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.Details(context.Background(), "qwen3.6:35b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ModelDetails{
+		Capabilities:  []string{"completion", "vision", "tools", "thinking"},
+		ParameterSize: "36.0B", Quantization: "Q4_K_M", ContextLength: 262144,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Details = %+v, want %+v", got, want)
+	}
+	// Changing the copy must not change the cache.
+	got.Capabilities[0] = "changed"
+	caps, err := e.Capabilities(context.Background(), "qwen3.6:35b")
+	if err != nil || caps[0] != "completion" {
+		t.Errorf("Capabilities = %v, %v; the cache changed with a caller's copy", caps, err)
+	}
+	if calls.Load() != 1 {
+		t.Errorf("Ollama got %d requests, want 1", calls.Load())
 	}
 }
 

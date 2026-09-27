@@ -1,7 +1,7 @@
 // This file holds OllamaEngine, the one Engine Meru ships. It talks to
 // Ollama's native HTTP API on loopback: /api/chat for answers, /api/embed for
 // vectors, /api/version plus /api/ps for Info, and /api/show for what a
-// model can do.
+// model can do and how big it is.
 //
 // Each HTTP call gets its own client span (named like "POST /api/chat") and,
 // at debug level, log lines with its status, timings and the runtime's
@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,8 +45,8 @@ const maxErrorBody = 64 << 10
 // OllamaEngine is the Engine backed by a local Ollama server. Build one with
 // NewOllama; the zero value isn't usable.
 //
-// Its one piece of mutable state is the capabilities cache, which a mutex
-// guards, so several goroutines may call it at once.
+// Its one piece of mutable state is the cache of /api/show answers, which
+// a mutex guards, so several goroutines may call it at once.
 type OllamaEngine struct {
 	baseURL    string          // for example "http://127.0.0.1:11434", no trailing slash
 	keepAlive  json.RawMessage // keep_alive as Ollama wants it, or nil to leave it out
@@ -55,8 +54,8 @@ type OllamaEngine struct {
 	client     *http.Client
 	log        *slog.Logger // debug lines for each call; never message text
 
-	mu   sync.Mutex          // guards caps
-	caps map[string][]string // what /api/show said each model can do, by model name
+	mu    sync.Mutex              // guards shown
+	shown map[string]ModelDetails // what /api/show said about each model, by model name
 }
 
 // This line checks at compile time that *OllamaEngine has every Engine
@@ -106,7 +105,7 @@ func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client, log *
 		embedModel: embedModel,
 		client:     c,
 		log:        log,
-		caps:       map[string][]string{},
+		shown:      map[string]ModelDetails{},
 	}, nil
 }
 
@@ -371,53 +370,68 @@ func (e *OllamaEngine) Info(ctx context.Context) (ModelInfo, error) {
 
 // Capabilities returns what model can do, as POST /api/show lists it, such
 // as ["completion", "vision", "tools", "thinking"]. A model can look at
-// pictures when the list holds Vision.
-//
-// It keeps each model's answer for the life of the engine, so only a
-// turn's first question about a model waits on Ollama. A model pulled
-// again under the same name keeps the old answer until merud restarts,
-// which is rare enough to accept. A failed call keeps nothing, so the next
-// one asks again.
-//
-// It fails when model is empty, the request fails, or Ollama answers with
-// a non-2xx status, as it does (404) for a model that isn't pulled.
+// pictures when the list holds Vision. It reads Details, so it shares that
+// method's cache and fails when Details fails.
 //
 // Capabilities isn't part of the Engine interface. Only the agent's
 // picture turns ask it, and merud hands the agent this method on its own
 // (ARCHITECTURE.md, "Engine layer").
 func (e *OllamaEngine) Capabilities(ctx context.Context, model string) ([]string, error) {
+	d, err := e.Details(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+	return d.Capabilities, nil
+}
+
+// Details returns what POST /api/show says about model: what it can do,
+// its size in parameters, its quantization and its context length.
+//
+// It keeps each model's answer for the life of the engine, so only the
+// first question about a model waits on Ollama. A model pulled again under
+// the same name keeps the old answer until merud restarts, which is rare
+// enough to accept. A failed call keeps nothing, so the next one asks
+// again.
+//
+// It fails when model is empty, the request fails, or Ollama answers with
+// a non-2xx status, as it does (404) for a model that isn't pulled.
+//
+// Like Capabilities, Details sits outside the Engine interface. merud asks
+// it for the about_meru tool, which tells the model which model it is.
+func (e *OllamaEngine) Details(ctx context.Context, model string) (ModelDetails, error) {
 	if model == "" {
-		return nil, errors.New("ollama /api/show: no model given")
+		return ModelDetails{}, errors.New("ollama /api/show: no model given")
 	}
 	e.mu.Lock()
 	// v, ok := m[k] reads a map entry; ok is false when k isn't there.
-	cached, ok := e.caps[model]
+	cached, ok := e.shown[model]
 	e.mu.Unlock()
 	if ok {
-		return slices.Clone(cached), nil
+		return cached.clone(), nil
 	}
 	body, err := json.Marshal(showRequest{Model: model})
 	if err != nil {
-		return nil, fmt.Errorf("ollama /api/show: encode request: %w", err)
+		return ModelDetails{}, fmt.Errorf("ollama /api/show: encode request: %w", err)
 	}
 	start := time.Now()
 	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/show", body)
 	defer span.End()
 	resp, err := e.do(ctx, span, http.MethodPost, "/api/show", body, []any{"model", model})
 	if err != nil {
-		return nil, err
+		return ModelDetails{}, err
 	}
 	defer resp.Body.Close()
 	var r showResponse
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, e.fail(ctx, span, start, "/api/show",
+		return ModelDetails{}, e.fail(ctx, span, start, "/api/show",
 			fmt.Errorf("ollama /api/show: decode reply: %w", ctxErr(ctx, err)))
 	}
-	e.log.DebugContext(ctx, "ollama capabilities", "model", model, "capabilities", strings.Join(r.Capabilities, ","))
+	d := r.details()
+	e.log.DebugContext(ctx, "ollama capabilities", "model", model, "capabilities", strings.Join(d.Capabilities, ","))
 	e.mu.Lock()
-	e.caps[model] = r.Capabilities
+	e.shown[model] = d
 	e.mu.Unlock()
-	return slices.Clone(r.Capabilities), nil
+	return d.clone(), nil
 }
 
 // version returns the version string from GET /api/version.

@@ -9,6 +9,7 @@ package engine
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -130,9 +131,38 @@ type showRequest struct {
 }
 
 // showResponse is the part of the reply from /api/show that Meru reads:
-// what the model can do, such as ["completion", "vision", "tools"].
+// what the model can do, such as ["completion", "vision", "tools"], its
+// size and quantization, and model_info, whose keys depend on the model's
+// architecture. The reply holds more, such as the license and the list of
+// tensors, which the decoder skips.
 type showResponse struct {
 	Capabilities []string `json:"capabilities"`
+	Details      struct {
+		ParameterSize     string `json:"parameter_size"`
+		QuantizationLevel string `json:"quantization_level"`
+	} `json:"details"`
+	// json.RawMessage keeps each value undecoded, since details reads
+	// only one of them.
+	ModelInfo map[string]json.RawMessage `json:"model_info"`
+}
+
+// details turns the reply into ModelDetails. The context length sits
+// under "<architecture>.context_length", such as "qwen3.context_length",
+// so details finds the key by its ending. A missing or odd value leaves
+// ContextLength at 0.
+func (r showResponse) details() ModelDetails {
+	d := ModelDetails{
+		Capabilities:  r.Capabilities,
+		ParameterSize: r.Details.ParameterSize,
+		Quantization:  r.Details.QuantizationLevel,
+	}
+	for k, v := range r.ModelInfo {
+		var n int
+		if strings.HasSuffix(k, ".context_length") && json.Unmarshal(v, &n) == nil {
+			d.ContextLength = n
+		}
+	}
+	return d
 }
 
 // versionResponse is the reply from GET /api/version.
