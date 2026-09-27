@@ -93,7 +93,7 @@ func describeSource(name, prefix string, allow []string) string {
 // toolTarget returns what in question points at one of the tools in
 // specs, as words for a log line, or "" when nothing does. Handle uses it
 // twice: to add tools to a route that lacks them, and to skip the search
-// before the answer on a "tools" turn (see aboutFiles). It checks four
+// before the answer on a "tools" turn (see aboutFiles). It checks five
 // signs, in order, each added after the router missed one:
 //
 //   - "names a tool server": "search my obsidian vault" routed to search,
@@ -101,7 +101,10 @@ func describeSource(name, prefix string, allow []string) string {
 //   - "asks Meru to remember": "remember that my name is Dana" routed
 //     direct, and the model said it would remember and saved nothing.
 //   - "asks for the web": "Search the web: what is SearXNG?" routed direct,
-//     and the model, with no tools, wrote a tool call as plain text.
+//     and the model, with no tools, wrote a tool call as plain text. The
+//     phrases come from webPhrases.
+//   - "gives a web address": a question that holds an http or https URL
+//     needs web_fetch, whatever route the router picked.
 //   - "names what a tool handles": "what was the last email I sent?" routed
 //     to search, and the model grepped the user's files.
 //
@@ -117,6 +120,8 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 		return "asks Meru to remember"
 	case asksForWeb(question, specs):
 		return "asks for the web"
+	case givesURL(question, specs):
+		return "gives a web address"
 	case asksAboutToolNoun(question, specs):
 		return "names what a tool handles"
 	}

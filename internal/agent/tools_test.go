@@ -83,7 +83,13 @@ func (f *fakeTools) Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Res
 	if r.done != nil {
 		defer close(r.done)
 	}
-	_ = c.Append(transcript.Line{Type: transcript.TypeToolCall, CallID: c.ID, Tool: c.Name, Args: c.Args})
+	_ = c.Append(transcript.Line{Type: transcript.TypeToolCall, CallID: c.ID, Tool: c.Name, Args: c.Args, Caller: c.Caller})
+	// A call to a tool the fake doesn't offer, with a hint, gets the hint
+	// back as a denied call, as dispatch gives it.
+	if c.Hint != "" && !slices.ContainsFunc(f.Tools(), func(s engine.ToolSpec) bool { return s.Name == c.Name }) {
+		_ = c.Append(transcript.Line{Type: transcript.TypeToolResult, CallID: c.ID, Outcome: dispatch.OutcomeDenied, Result: c.Hint})
+		return dispatch.Result{Text: c.Hint, IsError: true}, dispatch.Outcome{Outcome: dispatch.OutcomeDenied}
+	}
 	outcome := r.outcome
 	if outcome == "" {
 		outcome = dispatch.OutcomeOK

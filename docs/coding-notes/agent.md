@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -23,6 +23,10 @@ your files first and whether the model may call tools:
 With `[index] retrieval = "agentic"` no route searches first. The routes keep
 the tools the table gives them, and the model finds text in your files with the
 file tools: `search_files`, `grep`, `list_folder` and `read_file`.
+
+Some turns also search the web before the model's first round: a question that
+asks for the web or gives a URL, and one that names a thing your files don't
+cover. See [Web first](#web-first-webfirstgo-webnotesgo).
 
 A turn with no tools makes one model call. A turn with tools runs in
 **rounds**: each round is one model call, and a round in which the model calls
@@ -50,13 +54,16 @@ sequenceDiagram
     and
         A->>F: Generate(pick prompt), when there are skills
     end
-    A-->>S: emit route (with the picked skills)
     opt route isn't direct, or the question names an indexed folder
         A->>A: Searcher.Search(question)
-        A-->>S: emit sources (when it found some)
     end
+    A-->>S: emit route (with the picked skills)
+    A-->>S: emit sources (when the search found some)
     opt the route offers tools
         A->>D: Refresh (list tools again; one try per server that isn't connected)
+    end
+    opt the question asks for the web, gives a URL, or names a thing the files don't cover
+        A->>D: web_search or web_fetch, caller "meru" (emit tool_call, tool_result)
     end
     A->>A: Profile.Recall(question), on every route
     loop each round, up to max_rounds
@@ -71,7 +78,7 @@ sequenceDiagram
             end
         end
     end
-    A->>T: Append assistant line (text, tokens, route, ms, sources)
+    A->>T: Append assistant line (text, tokens, route, ms, sources, web notes)
     A->>A: TurnRecorder.InsertTurn (turns row)
     A-->>S: emit done with stats
     A-->>S: return nil (server sends the done)
@@ -485,8 +492,9 @@ reuses its work on the prompt from the second ask on.
 after the tools note and before the excerpts from your files:
 
 ```text
-Skills you can use:
+Skills you can use. A skill is a set of instructions, not a tool, so never call a skill by name:
 - explainer: Build a self-contained HTML explainer ...
+- web-research: Look things up on the web ... To use it, call web_search or web_fetch.
 - writing: Write prose people will actually read. ...
 
 Follow these instructions for this answer:
@@ -504,6 +512,19 @@ skill's steps can mislead the model more than none. A second skill gets what is
 left, cut at a line break and closed with a note that Meru cut the rest.
 `skillsSection` records the whole section's size as `meru.context.tokens` with
 section `skills`.
+
+**A skill isn't a tool.** The list's header says so, and `skillToolNames`
+adds "To use it, call web_search or web_fetch." to each skill whose
+`allowed-tools` config allows. It checks every tool config allows, not the
+round's tools, so the list stays the same from turn to turn. A model can still
+call a skill by name. `runCalls` then sets `dispatch.Call.Hint` from
+`skillHint`, which, when the round offers a tool the skill uses, reads
+"web-research is a skill, not a tool. Call web_search or web_fetch.".
+`dispatch` denies the call as it denies any tool no backend offers, and hands
+the model the hint in place of its usual refusal. `checkCalls` counts the call
+as malformed, with its own reason, `whySkillName`. The turn keeps the registry
+in `t.skills`, and `converse` puts each round's tools in `t.offer`, for
+`skillHint` to read.
 
 **Who sees the pick.** The `route` event carries the names in `Skills`, each an
 `rpc.SkillInfo` with only `Name` set, and `meru chat` shows them in the route
@@ -950,6 +971,95 @@ they offered, so `search` gets the four file tools, and on a file turn
 that question gets the file tools. `ARCHITECTURE.md`, "Retrieval", has the
 numbers that compare the two modes.
 
+### Web first (webfirst.go, webnotes.go)
+
+A real session showed a model at its worst with the web. Asked about a product
+newer than its training, it searched for an older product with a similar name
+and answered about that one. Three follow-ups to a page the user pasted called
+no web tool and made up features. "do a web search about quick and educate
+yourself" routed `direct`, and the model called `web-research`, a skill, as a
+tool. So for some questions `merud` searches itself, before the model's first
+round.
+
+**When.** `respond` sets `t.webFirst` to one of two reasons, or leaves it empty:
+
+| Reason | Test | Calls |
+| --- | --- | --- |
+| `asked` | `askedWebFirst`: the question asks for the web (`asksForWeb`) or gives a URL (`givesURL`), and the tool it needs is on; or, in `respondScoped`, the scope is web | `askedCalls`: `web_fetch` per URL, two at most, or one `web_search` on `webQuery` |
+| `named` | `namedWebFirst`: the turn searched files, no tool is the target, `web_search` is on, the question doesn't say "my" or "our", `namedThing` finds a name, and `filesCover` says the excerpts don't hold it | `namedCalls`: one `web_search` on `namedQuery` |
+
+`asksForWeb` reads the phrases in `webPhrases`, each a list of lower-case
+words matched whole against `words(question)`: "search the web", "look it up",
+"online", "do some research" and the rest. `askPhrase` walks the question's
+words and tries every phrase at each place, longest first, so `webQuery` can
+cut "search the web" whole:
+
+```text
+"can you search the web for Acme Flow pricing?"  ->  "Acme Flow pricing"
+```
+
+It deletes the phrases, then the filler words at either end (`isFiller`, the
+same list the file search uses), then a closing "?". A follow-up that is too
+short after that gets the earlier question, through `searchQuery`.
+
+**Named things.** `namedThing` walks the question's words once and returns the
+first name. A term in double quotes wins. Otherwise it collects runs of
+capitalised words and flushes a run when a word isn't capitalised, is in
+`stopName`, or ends in a mark such as "," or "?". A run counts when it has two
+words, or one word of three or more characters that doesn't start a sentence.
+`productLike` catches words such as "GitHub", "iPhone" and "qwen3" wherever
+they sit.
+
+```text
+"tell me about Amazon Quick"   ->  "Amazon Quick"
+"Kubernetes is hard to learn"  ->  ""  (one word at the start of a sentence)
+"I'm planning a trip in May"   ->  ""  ("I" and "May" are in the stop list)
+```
+
+**Weak files.** `filesCover` says the files cover a name when the best
+excerpt scores above `weakScore`, 1/61, and some excerpt holds the name.
+Reciprocal-rank fusion gives the top of one list 1/61, and a chunk
+both lists found at least 2/110, so a best score at or below 1/61 means only
+one of the two searches found anything. The name check is there because the
+keyword search matches any word, "what" and "is" included.
+
+**The calls.** `runWebFirst` turns each `webCall` into an `engine.ToolCall`
+and hands the list to `runCalls` with `dispatch.CallerMeru`. That is the same
+function the model's calls go through, so each call gets its events,
+transcript lines and `tool_calls` row, with `caller` set. A call that failed or
+returned nothing stays out of the section. The rest go under `webCiteRule` and
+"From the web", each cut to an equal share of `maxWebChars`:
+
+```text
+Below, under "From the web", is what Meru found on the web for this question before you started. ...
+
+From the web
+
+Web results for "Acme Flow pricing", 2 of 2. Cite each result you use by its URL.
+
+[1] Acme Flow — https://acme.example/flow
+Acme Flow moves notes between apps.
+```
+
+The section goes in `sections.web`, which `prompt` adds last, after the file
+excerpts, and its size goes to `meru.context.tokens` with section `web`. A turn that goes to the web first widens its route with `withTools`,
+so the model has the web tools to search again. The named rule decides after
+the file search, so `respond` now searches before it sends the route event.
+
+**Web notes.** Once a round's calls end, `runCalls` hands each successful
+web call's text to `webHitsOf`. It reads the text the built-in tools write:
+the `[n] title — url` lines of a `web_search` result with the snippet under
+each, or the URL, `Title:` line and opening text of a `web_fetch` result.
+Each becomes a `webHit`. When the turn ends, `keptNotes` puts pages before
+search results, drops repeated URLs, and keeps five at most and 1,500
+characters in all, for the assistant line's `web` field. `transcript.History`
+then puts them under the answer for later turns. The text is what `dispatch`
+returned, so its redaction of secrets has already run.
+
+**Only the model's calls back a claim.** `runCalls` counts `t.succeeded`, the
+number `honest.go` reads, only for calls with no caller: a web search `merud`
+chose doesn't back "I sent the email".
+
 ### Earlier conversations (earlier.go)
 
 On the same turns, right after the file search, one line in `Handle` adds past
@@ -1368,7 +1478,8 @@ what mattered from them.
 ### What it logs
 
 At info level, one `turn` line per turn in `merud.log`: session ID, route,
-source, outcome, total milliseconds, `ttft_ms`, token counts, the trace ID,
+source, scope, `web_first` (`asked`, `named` or `none`), outcome, total
+milliseconds, `ttft_ms`, token counts, the trace ID,
 `unbacked_claim=true` when the answer claimed an action no tool took, `images`
 when the question carried any, and the error when there is one. At debug level each stage adds a line: `turn
 started`, `session created` or `session opened`, `history loaded`,
@@ -1412,6 +1523,12 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   or a hyphen, so "personal-knowledge-base" stays one word.
 - **`switch` with a list of cases** — `isFiller` lists its words in one `case`,
   and the switch returns true when `w` matches any of them.
+- **Deleting from a slice** — `webQuery` calls `slices.Delete(tokens, start,
+  start+n)`, which removes the items from `start` up to `start+n` and returns
+  the shorter slice.
+- **A stable sort** — `keptNotes` uses `slices.SortStableFunc`, which keeps
+  items that compare equal in the order they came, so search results stay in
+  their ranking behind the pages.
 - **Regular expressions** — `regexp.MustCompile` turns a pattern into a
   `*regexp.Regexp` once, when the program starts, and panics on a bad pattern,
   which a test catches at once. `(?i)` in a pattern ignores case and `\b`
@@ -1613,6 +1730,15 @@ hold the question or answer until `capture_content` is on.
 - **Calls in a round run at the same time.** The model asked for them
   together, so none needs another's result, and a slow MCP server doesn't
   hold up a quick built-in.
+- **merud searches before the model, for some questions.** A model that
+  doesn't know a product can't tell it doesn't know it, and it searched for
+  one it knew. Searching the user's own words first, in quotes for a name,
+  puts the right pages in front of it. The calls still go through dispatch
+  (non-negotiable 4), marked `caller = "meru"`, so the audit log shows which
+  searches no model chose.
+- **Notes, not pages, in history.** A follow-up needs to know what the page
+  said, not the whole page; five notes of 300 characters cost at most 1,500 of
+  the history's 8,000.
 - **A separate pick call, not a longer router.** The router reads one token's
   probabilities and can't name skills. A second short call keeps the router's
   prompt and its calibration as they are, and running both at once costs no

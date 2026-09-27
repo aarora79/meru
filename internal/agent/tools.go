@@ -21,6 +21,7 @@ import (
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/skills"
 	"github.com/aarora79/meru/internal/transcript"
 )
 
@@ -197,6 +198,19 @@ type turn struct {
 	// badCalls counts the tool calls the model wrote this turn that Meru
 	// couldn't run as written; see malformed.go.
 	badCalls int
+	// skills is the registry the turn read, nil for none. A call named
+	// after one of its skills gets a hint back; see skillHint.
+	skills *skills.Registry
+	// offer is the tools the current round offers, which skillHint reads.
+	// converse sets it before each round.
+	offer []engine.ToolSpec
+	// webFirst says why the turn went to the web before the model's first
+	// round: webFirstAsked, webFirstNamed, or "" for no reason.
+	webFirst string
+	// web holds what the turn's web calls brought back, for the assistant
+	// line's notes; see webnotes.go. Only runCalls adds to it, after its
+	// calls end, so it needs no lock.
+	web []webHit
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.
@@ -360,6 +374,7 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			call = slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: outputNudge}})
 			nudge = false
 		}
+		t.offer = offer
 		rep, err := a.answer(ctx, call, offer, t.emit)
 		total.add(rep)
 		if err != nil {
@@ -600,9 +615,35 @@ func callKey(c engine.ToolCall) string {
 	return c.Name + "\x00" + string(args)
 }
 
-// runTools runs one round's tool calls through dispatch, all at the same
-// time, and returns one RoleTool message per call, in call order, for the
-// model to read next round.
+// runTools runs one round's tool calls, the ones the model asked for,
+// through runCalls, and returns one RoleTool message per call, in call
+// order, for the model to read next round. It fails when runCalls does.
+func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) ([]engine.Message, error) {
+	ran, err := a.runCalls(ctx, t, calls, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]engine.Message, len(ran))
+	for i, r := range ran {
+		out[i] = r.msg
+	}
+	return out, nil
+}
+
+// ranCall is one call runCalls ran: the RoleTool message the model reads,
+// and how the call ended, one of the dispatch Outcome constants.
+type ranCall struct {
+	msg     engine.Message
+	outcome string
+}
+
+// runCalls runs tool calls through dispatch, all at the same time, and
+// returns what each gave, in call order. caller goes on each dispatch.Call:
+// "" for the model's calls, dispatch.CallerMeru for the ones merud makes
+// itself before the first round (see webfirst.go). Only the model's calls
+// that end "ok" count in t.succeeded, the count that backs a claim of an
+// action (see honest.go): a web search merud chose doesn't back "I sent
+// the email".
 //
 // It gives each call an ID ("call-1", "call-2", ... across the turn, or the
 // engine's own ID when it sent one) and sends a "tool_call" event for each
@@ -619,7 +660,12 @@ func callKey(c engine.ToolCall) string {
 //
 // It fails when emit fails or ctx ends. Either way it waits for every call
 // to return first, so no goroutine outlives the turn.
-func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) ([]engine.Message, error) {
+// A call named after a skill carries a hint for the model, from
+// skillHint, which dispatch hands back in place of its usual refusal.
+//
+// Once every call has ended, runCalls adds what the web calls that
+// succeeded brought back to t.web (see webHitsOf).
+func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, caller string) ([]ranCall, error) {
 	ids := make([]string, len(calls))
 	for i, c := range calls {
 		t.calls++
@@ -660,6 +706,8 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 				Append:   appendTo,
 				Approve:  t.approve,
 				TraceID:  t.traceID,
+				Caller:   caller,
+				Hint:     skillHint(t.skills, c.Name, t.offer),
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			found[i] = res.Sources
@@ -674,10 +722,16 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	for _, o := range outcomes {
-		if o == dispatch.OutcomeOK {
+	ran := make([]ranCall, len(calls))
+	for i, o := range outcomes {
+		ran[i] = ranCall{msg: out[i], outcome: o}
+		if o != dispatch.OutcomeOK {
+			continue
+		}
+		if caller == "" {
 			t.succeeded++
 		}
+		t.web = append(t.web, webHitsOf(calls[i].Name, out[i].Content)...)
 	}
 	// A call cut short by a cancelled turn still returns, with the
 	// "cancelled" outcome; the turn stops here instead of asking the model
@@ -688,7 +742,7 @@ func (a *Agent) runTools(ctx context.Context, t *turn, calls []engine.ToolCall) 
 	if err := t.addSources(found); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return ran, nil
 }
 
 // addSources adds the excerpts one round's calls returned to t.sources,

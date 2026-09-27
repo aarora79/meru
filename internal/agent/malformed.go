@@ -29,6 +29,9 @@ const (
 	// whyBadArgs: the call's arguments aren't a JSON object, which every
 	// tool's schema asks for.
 	whyBadArgs = "the arguments aren't a JSON object"
+	// whySkillName: the call names a skill, such as "web-research", as if
+	// it were a tool. dispatch denies it, and the model reads skillHint.
+	whySkillName = "the call names a skill, not a tool"
 )
 
 // malformed counts one tool call that model wrote and Meru couldn't run
@@ -50,6 +53,8 @@ func (a *Agent) malformed(ctx context.Context, t *turn, model, why string) {
 func (a *Agent) checkCalls(ctx context.Context, t *turn, model string, calls []engine.ToolCall, offer []engine.ToolSpec) {
 	for _, c := range calls {
 		switch {
+		case !offered(c.Name, offer) && t.skills != nil && t.skills.Has(c.Name):
+			a.malformed(ctx, t, model, whySkillName)
 		case !offered(c.Name, offer):
 			a.malformed(ctx, t, model, whyNotOffered)
 		case !isObject(c.Arguments):

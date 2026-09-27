@@ -38,7 +38,7 @@ func scopeRoute(scope string) string {
 // skill never adds tools here.
 //
 // A "files" turn searches first, as a search route does. The other scopes
-// search nothing.
+// search no files. A "web" turn goes to the web first: see askedCalls.
 //
 // A question with images comes here in auto too, since the router's fast
 // model can't see them. It takes the "direct" route and the tools that
@@ -53,6 +53,7 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 	// skillTools drops a picked skill whose tools config turns off; the
 	// tools it names are ignored, because the scope sets the tools.
 	picked.names, _ = a.skillTools(ctx, picked)
+	t.skills = picked.reg
 	res.route = scopeRoute(t.scope)
 	// Confidence 1: nothing guessed this route. Fallback stays false.
 	ev := rpc.Event{Type: rpc.EventRoute, Route: res.route, Confidence: 1, Skills: skillInfos(picked.names)}
@@ -64,23 +65,36 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 	fileTurn := t.scope == rpc.ScopeFiles
 	var files string
 	if a.searchesFirst(fileTurn) {
-		var sources []rpc.Citation
-		var err error
-		files, sources, res.docs, err = a.searchFiles(ctx, searchQuery(question, history), false)
+		found, err := a.searchFiles(ctx, searchQuery(question, history), false)
 		if err != nil {
 			return res, err
 		}
-		if len(sources) > 0 {
-			if err := t.emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
+		res.docs = found.docs
+		if len(found.sources) > 0 {
+			if err := t.emit(rpc.Event{Type: rpc.EventSources, Sources: found.sources}); err != nil {
 				return res, err
 			}
 		}
-		t.sources, t.cites = sources, len(sources)
-		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
+		t.sources, t.cites = found.sources, len(found.sources)
+		files = joinSections(found.section, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
+	}
+	// The web scope always goes to the web first, with the question as it
+	// stands; no other scope does. See webfirst.go.
+	var webCalls []webCall
+	if t.scope == rpc.ScopeWeb && a.tools != nil {
+		webCalls = askedCalls(question, history, a.tools.Tools())
+		if len(webCalls) > 0 {
+			t.webFirst = webFirstAsked
+		} else {
+			a.log.DebugContext(ctx, "no web first: the web tool the question needs is off")
+		}
 	}
 	a.log.DebugContext(ctx, "route set by the scope", "scope", t.scope, "route", res.route, "tools", len(specs))
-	var err error
-	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, specs, fileTurn)
+	web, err := a.runWebFirst(ctx, t, webCalls)
+	if err != nil {
+		return res, err
+	}
+	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, web, specs, fileTurn)
 	return res, err
 }
 
