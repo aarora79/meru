@@ -1,6 +1,513 @@
-<!doctype html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Meru</title>
-<meta http-equiv="refresh" content="0; url=architecture/">
-<link rel="canonical" href="architecture/">
-<p>Meru's architecture page is at <a href="architecture/">architecture/</a>.</p>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Amit Arora">
+<meta name="description" content="Meru is a personal AI assistant that runs entirely on your own computer. Install it on a Mac with one command.">
+<title>Meru: a personal AI assistant that runs on your own computer</title>
+<style>
+  /* One file, no external fonts, scripts or trackers, so it opens from disk and
+     offline. Colours, type and figure styles match docs/architecture/*.html so
+     the site reads as one set. */
+  :root {
+    --measure: 68ch;
+    --wide: 960px;
+    --sans: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --bg: #ffffff; --panel: #f8f9fa; --ink: #202124; --ink-2: #3c4043;
+    --ink-3: #5f6368; --rule: #dadce0; --accent: #1a73e8; --accent-2: #b06000;
+    --warn: #c5221f; --code-bg: #f1f3f4; --band: #f1f3f4; --meru: #0E7C7B;
+    /* The main button: white on dark teal, 5:1 contrast. */
+    --cta-bg: #0E7C7B; --cta-bg-hover: #0A5453; --cta-ink: #ffffff;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+      --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+      --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+      --cta-bg: #5FC4BD; --cta-bg-hover: #8ad6d0; --cta-ink: #0b2524;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+    --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+    --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+    --cta-bg: #5FC4BD; --cta-bg-hover: #8ad6d0; --cta-ink: #0b2524;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 18px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 16px 80px; }
+  .prose { max-width: var(--measure); }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  p { margin: 0 0 18px; }
+  strong, b { font-weight: 600; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 16px; top: 12px; background: var(--bg); padding: 6px 10px; z-index: 2; }
+
+  /* Top bar: links to the design pages and GitHub, and the theme toggle. */
+  .bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px;
+         padding: 18px 0 0; font-size: 15px; }
+  .bar a { color: var(--ink-2); font-weight: 600; text-decoration: none; }
+  .bar a:hover { color: var(--meru); }
+  .bar .spacer { flex: 1; }
+  .bar .repo { display: inline-flex; align-items: center; gap: 6px; }
+  .bar .repo svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+  .theme { display: inline-flex; align-items: center; justify-content: center;
+           width: 36px; height: 36px; padding: 0; border: 1px solid var(--rule); border-radius: 999px;
+           background: transparent; color: var(--ink-2); cursor: pointer; }
+  .theme:hover { color: var(--meru); border-color: var(--meru); }
+  .theme svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+               stroke-linecap: round; stroke-linejoin: round; }
+  .theme .sun { display: none; }
+  .theme.is-dark .sun { display: block; }
+  .theme.is-dark .moon { display: none; }
+
+  /* Hero: the logo, the name and the one-line tagline, then the main button. */
+  .hero { text-align: center; padding: 48px 0 56px; border-bottom: 1px solid var(--rule); }
+  /* The logo has a dark outline, so it sits on a light tile in both themes,
+     as it does on the architecture pages. */
+  .hero-logo { width: 148px; height: 148px; padding: 12px; margin: 0 auto 20px; display: block;
+               background: #FFFDF7; border: 1px solid #E6E1D6; border-radius: 32px; }
+  h1 { font-size: clamp(44px, 8vw, 64px); line-height: 1.1; font-weight: 700;
+       letter-spacing: -0.025em; margin: 0 0 14px; }
+  h1 .meru-name { color: var(--meru); }
+  h1 .deva { font-weight: 600; }
+  .tagline { font-size: clamp(20px, 3vw, 25px); line-height: 1.45; color: var(--ink-2);
+             margin: 0 auto 32px; max-width: 30ch; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; }
+  .cta { display: inline-flex; align-items: center; gap: 10px; min-height: 56px;
+         padding: 14px 32px; border-radius: 999px; background: var(--cta-bg); color: var(--cta-ink);
+         font-size: 19px; font-weight: 700; text-decoration: none; line-height: 1.2;
+         box-shadow: 0 2px 10px rgba(14, 124, 123, 0.28); }
+  .cta:hover { background: var(--cta-bg-hover); }
+  .cta svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor;
+             stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .ghost { display: inline-flex; align-items: center; min-height: 48px; padding: 10px 22px;
+           border-radius: 999px; border: 1.5px solid var(--rule); color: var(--ink);
+           font-size: 17px; font-weight: 600; text-decoration: none; }
+  .ghost:hover { border-color: var(--meru); color: var(--meru); }
+  .hero .small { font-size: 15px; color: var(--ink-3); margin: 18px 0 0; }
+
+  h2 { font-size: 30px; line-height: 1.25; font-weight: 700; letter-spacing: -0.015em;
+       margin: 64px 0 10px; scroll-margin-top: 16px; }
+  .lede { font-size: 19px; color: var(--ink-2); margin-bottom: 26px; }
+
+  /* Cards: one fact each, in as many columns as fit. */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+           gap: 16px; margin: 0; padding: 0; list-style: none; }
+  .cards li { border: 1px solid var(--rule); border-top: 4px solid var(--meru); border-radius: 10px;
+              background: var(--panel); padding: 18px 20px; font-size: 16.5px; line-height: 1.6;
+              color: var(--ink-2); }
+  .cards h3 { font-size: 18.5px; line-height: 1.35; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
+  .cards p { margin: 0; }
+
+  .points { margin: 0 0 18px; padding-left: 22px; max-width: var(--measure); }
+  .points li { margin-bottom: 12px; }
+  .points b { color: var(--ink); }
+  .limit { border-left: 4px solid var(--meru); background: var(--panel);
+           background: color-mix(in srgb, var(--meru) 9%, var(--bg));
+           padding: 14px 18px; margin: 24px 0 0; border-radius: 0 8px 8px 0;
+           font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: var(--measure); }
+
+  /* Install: the one command, with a copy button that the script shows. */
+  .install { border: 2px solid var(--meru); border-radius: 14px; padding: 24px 24px 20px;
+             margin-top: 64px; scroll-margin-top: 16px;
+             background: color-mix(in srgb, var(--meru) 6%, var(--bg)); }
+  .install h2 { margin-top: 0; }
+  .cmd { position: relative; margin: 0 0 20px; }
+  .cmd pre { margin: 0; background: var(--code-bg); color: var(--ink); border: 1px solid var(--rule);
+             border-radius: 10px; padding: 18px 20px; font-family: var(--mono); font-size: 15.5px;
+             line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd pre code { background: none; padding: 0; font-size: inherit; }
+  .cmd .prompt { color: var(--ink-3); user-select: none; -webkit-user-select: none; }
+  .cmd.has-copy pre { padding-right: 112px; }
+  .copy { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center;
+          gap: 6px; min-height: 40px; padding: 8px 14px; border-radius: 8px;
+          border: 1px solid var(--rule); background: var(--bg); color: var(--ink-2);
+          font: 600 14px/1 var(--sans); cursor: pointer; }
+  .copy:hover, .copy.done { color: var(--meru); border-color: var(--meru); }
+  .copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
+              stroke-linecap: round; stroke-linejoin: round; }
+  .notes { margin: 0 0 20px; padding-left: 22px; font-size: 16.5px; line-height: 1.6; color: var(--ink-2); }
+  .notes li { margin-bottom: 8px; }
+  .more { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; font-size: 16.5px; }
+  .more .ghost { font-size: 16px; }
+
+  /* The parts figure, copied from architecture/100.html with its styles. */
+  figure { margin: 8px 0 0; }
+  .figbox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px;
+            background: var(--bg); padding: 12px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { margin-top: 10px; max-width: var(--measure); font-size: 14.5px; line-height: 1.55; color: var(--ink-3); }
+  svg text { font-family: var(--sans); }
+  svg .mono { font-family: var(--mono); }
+  .t1 { fill: var(--ink); } .t2 { fill: var(--ink-2); } .t3 { fill: var(--ink-3); }
+  .ta { fill: var(--accent); } .ta2 { fill: var(--accent-2); }
+  .b  { fill: var(--panel); stroke: var(--rule); stroke-width: 1.5; }
+  .bg { fill: none; stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .ba { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+  .ba2 { fill: var(--bg); stroke: var(--accent-2); stroke-width: 1.6; }
+  .ln { stroke: var(--ink-3); stroke-width: 1.4; fill: none; }
+  .lna { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+  .lnd { stroke: var(--ink-3); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .lna2 { stroke: var(--accent-2); stroke-width: 1.6; fill: none; }
+  .lnd2 { stroke: var(--accent-2); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  .mk { fill: var(--ink-3); } .mka { fill: var(--accent); } .mka2 { fill: var(--accent-2); }
+
+  /* The three architecture levels, side by side, with the level number large. */
+  .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .levels a { display: block; text-decoration: none; color: inherit; border: 1px solid var(--rule);
+              border-top: 4px solid var(--meru); border-radius: 10px; padding: 18px 20px;
+              background: var(--panel); }
+  .levels a:hover { border-color: var(--meru); }
+  .levels b { display: block; font-size: 19px; line-height: 1.35; color: var(--meru); margin-bottom: 6px; }
+  .levels span { display: block; color: var(--ink-2); font-size: 16px; line-height: 1.55; }
+
+  /* Links to the project. */
+  .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .links a { display: block; min-height: 44px; text-decoration: none; color: inherit;
+             border: 1px solid var(--rule); border-left: 4px solid var(--meru); border-radius: 10px;
+             padding: 14px 18px; background: var(--panel); }
+  .links a:hover { border-color: var(--meru); }
+  .links b { display: block; font-size: 17.5px; color: var(--meru); margin-bottom: 2px; }
+  .links span { display: block; color: var(--ink-2); font-size: 15px; line-height: 1.5; }
+
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--rule);
+           font-size: 15px; color: var(--ink-3); }
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 700px) {
+    body { font-size: 17px; line-height: 1.65; }
+    .hero { padding: 32px 0 44px; }
+    .hero-logo { width: 116px; height: 116px; border-radius: 26px; }
+    h2 { font-size: 25px; margin-top: 52px; }
+    .install { padding: 18px 16px 16px; }
+    .cmd pre { font-size: 14px; padding: 14px 16px; }
+    .cmd.has-copy pre { padding-right: 16px; padding-top: 60px; }
+    figure svg { min-width: 640px; }
+  }
+  @media print {
+    body { background: #fff; color: #000; font-size: 11pt; }
+    .bar, .copy, .theme { display: none; }
+    figure, .cards li { break-inside: avoid; }
+  }
+</style>
+<script>
+  // Theme: use the choice saved on the architecture pages, if any, before the
+  // page paints. Without one, the page follows the system setting.
+  (function () {
+    try {
+      var saved = localStorage.getItem("meru-theme");
+      if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<div class="wrap">
+
+<nav class="bar" aria-label="Site">
+  <a href="#how-it-works">How it works</a>
+  <a href="#install">Install</a>
+  <span class="spacer"></span>
+  <button class="theme" type="button" hidden aria-label="Switch to dark mode" title="Switch to dark mode">
+    <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+  <a class="repo" href="https://github.com/aarora79/meru"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>GitHub</a>
+</nav>
+
+<main id="main">
+
+<header class="hero">
+  <svg class="hero-logo" role="img" aria-label="Meru logo: a mountain with a dashed orbit around its peak" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -5 50 50" width="148" height="148">
+    <ellipse cx="23" cy="17" rx="21" ry="6" fill="none" stroke="#0A5453" stroke-width="1.4" stroke-dasharray="3 2.4"/>
+    <path d="M6 38 L20 12 L25 20 L29 14 L40 38 Z" fill="#0E7C7B" stroke="#14181C" stroke-width="2" stroke-linejoin="round"/>
+    <line x1="20" y1="1" x2="20" y2="12" stroke="#14181C" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="3.5" cy="16" r="2.6" fill="#E9A82C" stroke="#14181C" stroke-width="1.2"/>
+    <circle cx="41" cy="20.5" r="2" fill="#FFFDF7" stroke="#14181C" stroke-width="1.2"/>
+  </svg>
+  <h1><span class="meru-name">Meru</span> <span class="deva" lang="hi">मेरु</span></h1>
+  <p class="tagline">A personal AI assistant that runs entirely on your own computer.</p>
+  <div class="actions">
+    <a class="cta" href="#install">Try it on your Mac
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></a>
+    <a class="ghost" href="#how-it-works">How it works</a>
+  </div>
+  <p class="small">Free software. No account, no cloud model, no subscription.</p>
+</header>
+
+<section aria-labelledby="for-you">
+<h2 id="for-you">What it does for you</h2>
+<p class="lede prose">Meru answers questions from your notes and files, and uses the tools you allow. The models run on your computer, so your questions never reach an AI company.</p>
+<ul class="cards">
+  <li><h3>Your data stays home</h3><p>Your files, mail and questions stay on your computer. Ollama, a free program, runs the models there too.</p></li>
+  <li><h3>No account and no bill</h3><p>Meru needs no sign-up, no cloud model and no subscription. A question costs the electricity your computer uses.</p></li>
+  <li><h3>Answers from your folders</h3><p>You pick the folders Meru may read. It searches them by keyword and by meaning, and names the files behind each answer.</p></li>
+  <li><h3>Tools you choose</h3><p>Mail, calendar, notes, web search and GitHub start switched off. Meru asks you before any call that sends, deletes or changes something.</p></li>
+  <li><h3>It remembers what you tell it</h3><p>Meru keeps what it learns about you as small Markdown files. You can read, edit or delete each one.</p></li>
+  <li><h3>Every chat is a file you own</h3><p>Each conversation lands in one plain text file on your disk, ready to back up, search or delete.</p></li>
+</ul>
+</section>
+
+<section aria-labelledby="parts">
+<h2 id="parts">What runs where</h2>
+<p class="lede prose">Two programs do the work: <code>merud</code> runs in the background, and you ask it questions through <code>meru</code> in the terminal or the desktop app.</p>
+<figure id="fig-parts">
+<div class="figbox">
+<svg viewBox="0 0 780 590" role="img" aria-labelledby="f1t f1d">
+  <title id="f1t">The parts of Meru</title>
+  <desc id="f1d">A dashed line marks your machine. Inside it, you type into meru or meru-desktop, for a chat or one question, and it passes the question to merud, which runs in the background. merud holds three parts: the scheduler, which starts jobs such as morning briefs; the agent loop, which answers your question; and dispatch, which checks each tool call and asks before risky calls. The agent loop uses local models run by Ollama (fast, main and embed, in a lite or full setup), your data (the folders you index, memory files, conversation transcripts and a SQLite search index) and skills (writing, explainer, web-research, file-research and any you add). Dispatch reaches other agents over A2A and tools over MCP, such as Gmail, Calendar, web search and your notes. An optional dashboard, Grafana, runs on the same machine. Outside the dashed line sit internet services such as a search engine or Google; only the tools you allow connect to them.</desc>
+  <defs>
+    <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
+    <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
+    <marker id="f1c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka2"/></marker>
+  </defs>
+
+  <!-- your machine -->
+  <rect x="8" y="8" width="764" height="480" rx="16" class="bg"/>
+  <text x="26" y="36" class="t3" font-size="13.5" font-weight="700">your machine</text>
+
+  <!-- you and meru -->
+  <rect x="44" y="92" width="100" height="44" rx="22" class="b"/>
+  <text x="94" y="120" class="t1" font-size="16" font-weight="600" text-anchor="middle">you</text>
+  <path d="M94 136 L94 164" class="lna" marker-end="url(#f1b)"/>
+  <rect x="22" y="166" width="144" height="100" rx="10" class="b"/>
+  <text x="94" y="192" class="t1 mono" font-size="17" font-weight="700" text-anchor="middle">meru</text>
+  <text x="94" y="212" class="t2 mono" font-size="13" text-anchor="middle">or meru-desktop</text>
+  <text x="94" y="234" class="t3" font-size="12.5" text-anchor="middle">chat, or</text>
+  <text x="94" y="251" class="t3" font-size="12.5" text-anchor="middle">one question</text>
+
+  <!-- merud -->
+  <rect x="190" y="56" width="250" height="290" rx="12" class="ba"/>
+  <text x="206" y="82" class="ta mono" font-size="17" font-weight="700">merud</text>
+  <text x="270" y="82" class="t3" font-size="12.5">runs in the background</text>
+  <path d="M166 204 L204 204" class="lna" marker-end="url(#f1b)"/>
+
+  <rect x="206" y="98" width="218" height="52" rx="8" class="b"/>
+  <text x="220" y="119" class="t1" font-size="14" font-weight="600">scheduler</text>
+  <text x="220" y="139" class="t3" font-size="12.5">morning briefs</text>
+  <path d="M315 150 L315 174" class="ln" marker-end="url(#f1a)"/>
+
+  <rect x="206" y="176" width="218" height="56" rx="8" class="ba"/>
+  <text x="220" y="199" class="t1" font-size="14" font-weight="600">agent loop</text>
+  <text x="220" y="220" class="t3" font-size="12.5">answers your question</text>
+  <path d="M315 232 L315 256" class="ln" marker-end="url(#f1a)"/>
+
+  <rect x="206" y="258" width="218" height="72" rx="8" class="ba2"/>
+  <text x="220" y="281" class="t1 mono" font-size="14" font-weight="600">dispatch</text>
+  <text x="220" y="301" class="t3" font-size="12.5">checks each tool call,</text>
+  <text x="220" y="319" class="t3" font-size="12.5">asks before risky calls</text>
+
+  <!-- dashboard -->
+  <path d="M315 346 L315 382" class="lnd" marker-end="url(#f1a)"/>
+  <rect x="206" y="384" width="218" height="58" rx="10" class="bg"/>
+  <text x="220" y="407" class="t1" font-size="14" font-weight="600">dashboard (optional)</text>
+  <text x="220" y="428" class="t3" font-size="12.5">Grafana, local only</text>
+
+  <!-- local models -->
+  <rect x="500" y="40" width="260" height="84" rx="10" class="b"/>
+  <text x="514" y="62" class="t1" font-size="13.5" font-weight="700">local models · Ollama</text>
+  <text x="746" y="62" class="t3" font-size="12.5" text-anchor="end">lite or full</text>
+  <rect x="514" y="76" width="72" height="34" rx="6" class="ba"/>
+  <text x="550" y="98" class="t1 mono" font-size="12.5" text-anchor="middle">fast</text>
+  <rect x="594" y="76" width="72" height="34" rx="6" class="ba"/>
+  <text x="630" y="98" class="t1 mono" font-size="12.5" text-anchor="middle">main</text>
+  <rect x="674" y="76" width="72" height="34" rx="6" class="ba"/>
+  <text x="710" y="98" class="t1 mono" font-size="12.5" text-anchor="middle">embed</text>
+
+  <!-- your data -->
+  <rect x="500" y="138" width="260" height="126" rx="10" class="b"/>
+  <text x="514" y="160" class="t1" font-size="13.5" font-weight="700">your data</text>
+  <rect x="514" y="172" width="112" height="40" rx="6" class="ba"/>
+  <text x="524" y="189" class="t1" font-size="12.5" font-weight="600">your folders</text>
+  <text x="524" y="205" class="t3" font-size="12.5">indexed</text>
+  <rect x="634" y="172" width="112" height="40" rx="6" class="ba"/>
+  <text x="644" y="189" class="t1" font-size="12.5" font-weight="600">memory files</text>
+  <text x="644" y="205" class="t3" font-size="12.5">Markdown</text>
+  <rect x="514" y="218" width="112" height="40" rx="6" class="ba"/>
+  <text x="524" y="235" class="t1" font-size="12.5" font-weight="600">transcripts</text>
+  <text x="524" y="251" class="t3" font-size="12.5">one per chat</text>
+  <rect x="634" y="218" width="112" height="40" rx="6" class="ba"/>
+  <text x="644" y="235" class="t1" font-size="12.5" font-weight="600">search index</text>
+  <text x="644" y="251" class="t3" font-size="12.5">SQLite</text>
+
+  <!-- skills -->
+  <rect x="500" y="278" width="260" height="64" rx="10" class="b"/>
+  <text x="514" y="300" class="t1" font-size="13.5" font-weight="700">skills</text>
+  <text x="746" y="300" class="t3" font-size="12.5" text-anchor="end">+ yours</text>
+  <text x="514" y="318" class="t2" font-size="12.5">writing · explainer</text>
+  <text x="514" y="334" class="t2" font-size="12.5">web-research · file-research</text>
+
+  <!-- other agents -->
+  <rect x="500" y="350" width="260" height="40" rx="10" class="b"/>
+  <text x="514" y="375" class="t1" font-size="13.5" font-weight="700">other agents · A2A</text>
+
+  <!-- tools -->
+  <rect x="500" y="404" width="260" height="62" rx="10" class="ba2"/>
+  <text x="514" y="426" class="t1" font-size="13.5" font-weight="700">tools · MCP, built in</text>
+  <text x="746" y="426" class="t3" font-size="12.5" text-anchor="end">+ yours</text>
+  <text x="514" y="450" class="t2" font-size="12.5">Gmail · Calendar · web search · notes</text>
+
+  <!-- agent loop reaches models, data, skills; dispatch reaches agents and tools -->
+  <path d="M424 190 L498 84" class="ln" marker-end="url(#f1a)"/>
+  <path d="M424 204 L498 200" class="ln" marker-end="url(#f1a)"/>
+  <path d="M424 218 L498 306" class="ln" marker-end="url(#f1a)"/>
+  <path d="M424 294 L498 370" class="lna2" marker-end="url(#f1c)"/>
+  <path d="M424 312 L498 434" class="lna2" marker-end="url(#f1c)"/>
+
+  <!-- internet, outside your machine -->
+  <path d="M630 466 L630 518" class="lnd2" marker-end="url(#f1c)"/>
+  <text x="618" y="508" class="t3" font-size="12.5" text-anchor="end">only tools you allow</text>
+  <rect x="540" y="520" width="180" height="58" rx="29" class="b"/>
+  <text x="630" y="544" class="t1" font-size="13.5" font-weight="700" text-anchor="middle">internet services</text>
+  <text x="630" y="564" class="t3" font-size="12.5" text-anchor="middle">search engine, Google</text>
+</svg>
+</div>
+<figcaption>Everything inside the dashed line runs on your machine: the models, your data and the assistant itself. Only the tools you allow reach the internet, and each call goes through <code>dispatch</code> first.</figcaption>
+</figure>
+</section>
+
+<section aria-labelledby="how-it-works">
+<h2 id="how-it-works">How it works</h2>
+<p class="lede prose">Three pages explain the design, each one deeper than the last. Start with the one that fits you.</p>
+<nav class="levels" aria-label="Architecture levels">
+  <a href="architecture/100.html"><b>Level 100: the big picture</b><span>The main parts in a few minutes, with two diagrams. For anyone who wants to know what Meru is.</span></a>
+  <a href="architecture/200.html"><b>Level 200: how it works</b><span>Each part in plain words: models, storage, search, memory, tools, approvals, setup and what you can see.</span></a>
+  <a href="architecture/300.html"><b>Level 300: the full design</b><span>The design contract for people building Meru: interfaces, tables, metrics, config and open questions.</span></a>
+</nav>
+</section>
+
+<section aria-labelledby="for-teams">
+<h2 id="for-teams">What it does for a company</h2>
+<p class="lede prose">Staff want an assistant, and the data they would use it on can't leave the building. Meru fits that problem.</p>
+<ul class="points">
+  <li><b>The data stays put.</b> Meru runs on a laptop, a virtual desktop or a server in your own account. It reads email, documents, code and notes without sending any of it to a model provider, so it can work on material that policy or regulation keeps in-house.</li>
+  <li><b>Tools stay off until you allow them.</b> Each server's tools start switched off, and risky ones ask before they run.</li>
+  <li><b>Every action lands in a log.</b> Each tool call goes into an audit table and the session transcript. One function, <code>dispatch</code>, handles every call, so a reviewer checks one code path.</li>
+  <li><b>You can measure it.</b> Meru sends OpenTelemetry metrics and traces (tokens, time, which tool ran and which failed) to a collector you run on the same machine.</li>
+  <li><b>It installs anywhere.</b> Meru ships as native programs with no interpreter to install. It runs on laptops, virtual desktops, servers on your own network and machines with no internet connection.</li>
+  <li><b>No per-question bill.</b> You pay for hardware you already own.</li>
+  <li><b>A license that fits.</b> Meru is free software under the <a href="https://github.com/aarora79/meru/blob/main/LICENSE">GNU Affero General Public License, version 3</a> (AGPL-3.0). A company that wants to ship it inside a closed product can buy a commercial license; ask through <a href="https://github.com/aarora79">@aarora79</a> on GitHub.</li>
+</ul>
+<p class="limit">Meru serves one person on one machine today. Central control over who may use which tools, across a company, doesn't exist yet.</p>
+</section>
+
+<section id="install" class="install" aria-labelledby="install-h">
+<h2 id="install-h">Try it on your Mac</h2>
+<p>Open Terminal and paste this line:</p>
+<div class="cmd">
+  <pre><code><span class="prompt" aria-hidden="true">$ </span><span id="install-cmd">curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash</span></code></pre>
+  <button class="copy" type="button" hidden aria-label="Copy the install command">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span>Copy</span></button>
+</div>
+<ul class="notes">
+  <li>The script runs on macOS. On a Mac with Apple silicon it also installs Meru.app, the desktop app.</li>
+  <li>It lists what it will install, then asks once: everything, one step at a time, or quit.</li>
+  <li>It takes several minutes, most of it downloading the models, about 2 GB.</li>
+  <li>It checks every download against the release's checksums. Run it again to update; Meru never checks for updates by itself.</li>
+</ul>
+<div class="more">
+  <a class="ghost" href="https://github.com/aarora79/meru/releases/latest">Download from the latest release</a>
+  <span>Linux and Windows: see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</span>
+</div>
+</section>
+
+<section aria-labelledby="project">
+<h2 id="project">The project</h2>
+<nav class="links" aria-label="The project">
+  <a href="https://github.com/aarora79/meru"><b>The code</b><span>The GitHub repository, with the roadmap.</span></a>
+  <a href="https://github.com/aarora79/meru/blob/main/LICENSE"><b>The license</b><span>GNU AGPL-3.0, with a commercial license on request.</span></a>
+  <a href="https://github.com/aarora79/meru/issues/new"><b>Request a feature</b><span>Open an issue on GitHub.</span></a>
+</nav>
+</section>
+
+</main>
+
+<footer>
+  <p><i>Meru</i> (<span lang="hi">मेरु</span>) is the cosmic mountain that the sun, moon and stars turn around.</p>
+  <p>Amit Arora · Meru</p>
+</footer>
+
+</div>
+<script>
+  // The page's only script: the Copy button and the theme toggle. Without
+  // JavaScript both buttons stay hidden, and the command stays selectable.
+  (function () {
+    var btn = document.querySelector(".copy");
+    var cmd = document.getElementById("install-cmd");
+    if (btn && cmd) {
+      var label = btn.querySelector("span");
+      btn.hidden = false;
+      btn.parentElement.classList.add("has-copy");
+      function copied() {
+        label.textContent = "Copied";
+        btn.classList.add("done");
+        setTimeout(function () { label.textContent = "Copy"; btn.classList.remove("done"); }, 1500);
+      }
+      // A browser that refuses the clipboard API still copies a selected textarea.
+      function fallback(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { if (document.execCommand("copy")) copied(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+      btn.addEventListener("click", function () {
+        var text = cmd.textContent;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(copied, function () { fallback(text); });
+        } else {
+          fallback(text);
+        }
+      });
+    }
+
+    // Theme toggle: the same one as the architecture pages, sharing their saved choice.
+    var theme = document.querySelector(".theme");
+    if (!theme) return;
+    var root = document.documentElement;
+    var media = window.matchMedia("(prefers-color-scheme: dark)");
+    function current() {
+      var t = root.getAttribute("data-theme");
+      return t === "light" || t === "dark" ? t : (media.matches ? "dark" : "light");
+    }
+    function paint() {
+      var dark = current() === "dark";
+      theme.classList.toggle("is-dark", dark);
+      var text = dark ? "Switch to light mode" : "Switch to dark mode";
+      theme.setAttribute("aria-label", text);
+      theme.title = text;
+    }
+    theme.hidden = false;
+    paint();
+    theme.addEventListener("click", function () {
+      var next = current() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("meru-theme", next); } catch (e) {}
+      paint();
+    });
+    media.addEventListener("change", paint);
+  })();
+</script>
+</body>
+</html>
