@@ -220,7 +220,9 @@ as it arrives.
 `meru chat` also uses Bubbles, from the same authors, for the text input and the
 scrolling answer pane, and two more Charm libraries for its look:
 
-- **Lip Gloss** styles the screen: a header with the profile, model, what the
+- **Lip Gloss** styles the screen: a header with the name and the short
+  version (`v0.4.3`, or `dev` and the commit for a build between tags, from
+  `internal/about`, as the desktop app's rail shows it), the profile, model, what the
   index holds (`2637 docs (11698 vectors, 84 MB)`, with `· indexing` while a
   scan runs), the session, the last hour's use (`1h: 4 questions · 18k in ·
   2.1k out`) and whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
@@ -281,6 +283,61 @@ answer wants the screen back. `/new` drops it too, since those questions
 belonged to the old conversation. Commands that only open a box or copy text
 run at once. A model switch waits for the running turn to end, since `merud`
 would unload the model that writes its answer.
+
+**The same features as the desktop app.** The chat does what the app does
+wherever a terminal can, with the ops the app already sends; it adds no op of its
+own. The commands, in the order `/help` lists them:
+
+| Command | What it does | Op |
+| --- | --- | --- |
+| `/new` | start a new session | — |
+| `/chats [words]` | a box of past chats, filtered by the words; Enter reopens one, and the next question continues it | `sessions`, `session_turns` |
+| `/retry` | ask the newest question again, with its scope and images (the app's Try again) | `ask` |
+| `/scope [auto\|files\|mail\|web\|talk]` | set where the next questions look, as the app's switch does; the header names a scope other than auto | `ask` with `scope` |
+| `/attach [path]` | attach a file or an image to the next question; `/attach` alone takes them all off | `attach_file` |
+| `/save [chat]` | save the newest answer as a note, or the whole chat as a file | `save_file` |
+| `/used` | what the newest answer used: every source, each tool call, the memories recall brought, and who the calls reached | `memory_forget` |
+| `/copy [N\|answer]` | copy code block N, the newest answer's last block, or the whole answer | — |
+| `/usage [by model]` | the usage box | `usage` |
+| `/me [add\|prefer <text>]` | the profile memories; `add` saves one to `me` and `prefer` one to `preferences` | `memory_list`, `memory_add`, `memory_forget` |
+| `/mcp` | every tool source with each tool's Off, Ask or Allow, and the catalog servers not added yet | `connections`, `tool_policy`, `mcp_add`, `mcp_remove`, `secret_set` |
+| `/folders [add <path>]` | the `[index]` folders and the usual ones not indexed yet | `folders`, `folder_add`, `folder_remove` |
+| `/skills` | every skill, on or off | `skills`, `skill_enable`, `skill_disable` |
+| `/model [name\|save]` | the model sets, a switch, and a save | `models`, `model_use`, `model_save` |
+| `/log` | the latest tool calls, the app's Activity | `log` |
+| `/about` | the tagline, the version, the license, Meru's folder and the project's links | — |
+| `/help` | every key and command | — |
+| `/exit` | quit | — |
+
+Each box opens over the conversation and keeps the keys until Esc or q closes it.
+In a box with rows, ↑ and ↓ move a marker and the box scrolls to keep it in view.
+The keys that change something are the same everywhere: ← and → step a tool's
+policy through Off, Ask and Allow (a tool that always asks steps between Off and
+Always asks), Enter adds or toggles the marked row, and `d` removes a folder or an
+MCP server or forgets a memory, after a second `d`, since none of those can be
+undone from the chat. Adding a catalog server that needs an API key opens a field
+that shows `•` for each character; Enter sends the key to `merud` with
+`secret_set`, then `mcp_add` adds the server. The key never comes back.
+
+`/attach` takes a path the user types, with `~` for the home folder. The app takes
+only a real pick or drop, since its page could otherwise choose a path; in the
+terminal the user types the path, so typing it is the consent. `merud` applies the
+same rules to the file either way, and the chat applies the app's: five files at
+most, one "Read this file" line per file, the images in the request's `images`,
+and a scope other than auto or files switches to files when a file comes in. The
+attachments show on one line above the input box.
+
+A save asks first, as `write_file` does. The approval box opens where the
+conversation was, since the save belongs to no turn, and a save waits while a turn
+runs, so one approval box shows at a time. The approval box for a turn also offers
+`e`, Edit first: it answers deny and puts the call in the input as a draft, "Run
+mail.send with these arguments instead:" and the arguments, for the user to change
+and send as a new question, as the app does.
+
+The chat leaves out what needs a window: drag and drop, the file and folder
+dialogs, the SVG preview, image previews, and custom MCP servers, which take a form
+of their own. `meru mcp add stdio` and `meru mcp add http` add those in the
+terminal.
 
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
@@ -481,12 +538,19 @@ turn does with them.
   itself, so an image never passes through the socket, and the transcript can
   name what the question carried.
 
-**Slash commands.** The composer understands the seven commands `meru chat` has:
-`/new` (as New chat: it stops a running turn and drops the queue, with the chat's
-notice), `/usage` (Library, Usage), `/me` (Library, About you), `/mcp` (Library,
-Connections), `/model` (Library, Models; `/model <name>` and `/model save`
-switch and save as in the chat), `/copy N` (code block N of this chat, numbered as the chat numbers
-them; `/copy` alone the newest answer's last block) and `/exit` (close the app,
+**Slash commands.** The composer understands the commands `meru chat` has, each
+mapped to the app's own screen: `/new` (as New chat: it stops a running turn and
+drops the queue, with the chat's notice), `/chats` (the rail, with the search box
+focused and filled with any words after the command), `/retry` (Try again on the
+newest answer), `/scope <name>` (the Where Meru looks switch), `/attach` (the file
+dialog), `/save` (Save to a note on the newest answer; `/save chat` is Share as
+file), `/used` (the side panel for the newest answer), `/copy N` (code block N of
+this chat, numbered as the chat numbers them; `/copy` alone the newest answer's
+last block, and `/copy answer` the whole answer), `/usage` (Library, Usage), `/me`
+(Library, About you), `/mcp` (Library, Connections), `/folders` (Library,
+Folders), `/skills` (Library, Skills), `/model` (Library, Models; `/model <name>`
+and `/model save` switch and save as in the chat), `/log` (Library, Activity),
+`/about` (Library, About), `/help` (the command menu) and `/exit` (close the app,
 asking first while a turn runs). Typing "/" at the start of the box opens a menu
 of them, a listbox the arrow keys move through, filtered as you type; Enter or
 Tab picks one and Esc closes it. A line that starts with "/" runs in the page and
