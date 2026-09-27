@@ -226,7 +226,7 @@ from the end. `index.html` repeats the line as the logo's tooltip, and
 `TestTaglineEverywhere` fails when the page or `main.go` drifts from it.
 
 `About` returns what the Library's About section needs from Go: the tagline, the
-version, the license (`License`, the AGPL-3.0 as `LICENSE` gives it), where
+version, the license (`License`, the Apache License 2.0 as `LICENSE` gives it), where
 `config.toml` and Meru's folder are, written with `~`, and the project's four links
 on GitHub: the source, the design, a new issue and the license. `merud` reports no version over the socket, so
 `appVersion` reads the app's own. `make release` stamps the version into

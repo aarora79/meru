@@ -132,6 +132,10 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.
+5. **Nothing for sale, anywhere.** Meru comes under the Apache License 2.0 and
+   offers nothing for sale: no offer of a paid licence, no pricing, no invitation
+   to buy, no sponsor link. That holds for the README, `CONTRIBUTING.md`, the
+   desktop app's About panel, the landing page, the posters and issue templates.
 
 ## Shape
 
@@ -163,7 +167,8 @@ ARCHITECTURE.md      the design contract, level 300
 ROADMAP.md           milestones and their "Done when" lines
 README.md            what Meru is, how to try it, the status line
 CONTRIBUTING.md      how to contribute, and the contributor agreement
-LICENSE              GNU Affero General Public License (AGPL)
+LICENSE              Apache License 2.0
+NOTICE               copyright line and the personal-project disclaimer
 config.example.toml  every config key with its default; a copy of internal/config/template.toml
 Makefile             `make check` runs everything CI runs
 go.mod, go.sum       one module, github.com/aarora79/meru
