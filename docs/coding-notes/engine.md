@@ -3,7 +3,8 @@
 **Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `version.go`,
 `observe_test.go`, `images_test.go`), and the loopback check in `internal/loopback/loopback.go`
 **Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
-`Capabilities` with the desktop app's image attachments
+`Capabilities` with the desktop app's image attachments; `Details` with the
+`about_meru` tool
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -133,15 +134,23 @@ status outside 200–299 it reads Ollama's `{"error": "..."}` body and returns a
 `*APIError`. Callers can find that error with `errors.As`, for example to spot a
 404 for a model that isn't pulled. See [go-basics/http-clients.md](go-basics/http-clients.md).
 
-`Capabilities(ctx, model)` sends `POST /api/show` with `{"model": ...}` and
-returns the `capabilities` list from the reply, such as
-`["completion", "vision", "tools", "thinking"]`. It isn't one of the four
-`Engine` methods: only a question with images asks it, and `merud` hands the
-agent this one method. The answer for each model goes in a map, `caps`, so a
+`Details(ctx, model)` sends `POST /api/show` with `{"model": ...}` and
+returns a `ModelDetails`: the `capabilities` list, such as
+`["completion", "vision", "tools", "thinking"]`, the parameter size (`36.0B`),
+the quantization (`Q4_K_M`) and the context length. Ollama files the context
+length under the model's architecture, as `qwen35moe.context_length`, so
+`showResponse.details` finds the key by its ending. The reply also holds the
+license and the list of tensors, over 100 KB for a large model; the decoder
+skips every field `showResponse` doesn't name.
+
+`Capabilities(ctx, model)` returns `Details(ctx, model).Capabilities`. Neither
+is one of the four `Engine` methods: only a question with images asks
+`Capabilities`, only `about_meru` asks `Details`, and `merud` hands each caller
+the one method it needs. The answer for each model goes in a map, `shown`, so a
 second question about the same model doesn't wait on Ollama; a failed call
 stores nothing. Several turns can ask at once, so a `sync.Mutex`, `mu`, sits
-next to the map and every read and write takes it. `slices.Clone` hands the
-caller a copy, so no caller can change the cached list.
+next to the map and every read and write takes it. `clone` hands the caller a
+copy made with `slices.Clone`, so no caller can change the cached list.
 
 ### What each call logs and traces
 
@@ -228,7 +237,10 @@ done line doesn't. `TestStreamHTTPErrorIsNotModelOutput` checks that an HTTP
 reach `/api/chat` as base64 strings and the system message carries none, and
 `TestCapabilities` feeds `/api/show` replies for a model with vision, one
 without, an older reply with no `capabilities` key and a 404; a good answer is
-asked for once, a failure twice. To run against the real Ollama:
+asked for once, a failure twice. `TestDetails` reads size, quantization and
+context length from a reply shaped like Ollama 0.34's for `qwen3.6:35b`, checks
+that changing the returned list leaves the cache alone, and that `Details` and
+`Capabilities` share one request. To run against the real Ollama:
 
 ```sh
 go test -tags integration -v -run Integration ./internal/engine/

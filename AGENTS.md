@@ -200,10 +200,10 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
                      `meru mcp add` runs before it saves a server
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           the ten tools inside merud: `configure`, `datetime`, `remember`,
-                     `write_file`, the read-only `read_file`, `list_folder`, `grep` and
-                     `search_files`, and `web_search` and `web_fetch` (web.go, webguard.go,
-                     webdownload.go)
+  builtin/           the eleven tools inside merud: `configure`, `datetime`, `about_meru`,
+                     `remember`, `write_file`, the read-only `read_file`, `list_folder`,
+                     `grep` and `search_files`, and `web_search` and `web_fetch` (web.go,
+                     webguard.go, webdownload.go)
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and SearXNG, the safe append to config.toml, and
                      one-list edits and removals in it

@@ -875,6 +875,39 @@ date or the time somewhere else, the model calls the built-in `datetime` tool, w
 reads your computer's clock. It needs no setup and is offered on every question:
 `meru "how many days until 25 December?"` shows `→ datetime` before the answer.
 
+### Which model answers
+
+Ask Meru which model it runs, and the model calls the built-in `about_meru` tool
+instead of answering from its training. Before this tool, `qwen3.6:35b`, asked
+"which model are you using", said it was a Qwen model from Alibaba's lab with no
+version number. The tool reads the facts from `merud`: the profile, the exact
+name of each model and what it does, the main model's size and what it can do,
+the Ollama version, your computer, the indexed folders, the connected servers
+and agents, the local commands, the built-in tools, the skills and how many
+memories of each kind Meru keeps. It never reports a key, an environment value,
+a header, a file's text or a memory's text. Like `datetime`, it comes with every
+question and never asks:
+
+```sh
+meru "which model are you using?"
+```
+
+```text
+→ about_meru
+✓ about_meru 2 ms
+I'm qwen3.6:35b, the answer model, running in Ollama 0.34.0 on your computer.
+```
+
+A config written before this tool existed names the built-ins one by one and
+leaves `about_meru` out, so the model never gets it. Add the name to `[builtin]
+tools`, or set `about_meru` to Allow under Library, Connections in the desktop
+app:
+
+```toml
+[builtin]
+tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch"]
+```
+
 ### Reading whole files
 
 Search puts the ten best excerpts in the prompt, about 500 tokens each. When a
@@ -1383,7 +1416,8 @@ meru tools
 ```
 
 `secrets.toml` holds one `name = "value"` line per key. `merud` refuses the file if
-other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that.
+other users can read it; `chmod 600 ~/.meru/secrets.toml` fixes that. See
+[Credentials and secrets](#credentials-and-secrets) below.
 
 ### Local commands
 
@@ -1441,7 +1475,9 @@ The rules:
   Write `{{` and `}}` for a literal brace.
 - **Parameters have types.** `string` takes text up to `max_len` bytes (default
   4096), and can't start with `-` when it fills a whole argument, so it can't
-  become a flag. `int` takes a whole number, within `min` and `max` if you set
+  become a flag. Add `pattern`, a regular expression, and the whole value must
+  match it: `pattern = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"` takes `owner/name` and
+  nothing else. `int` takes a whole number, within `min` and `max` if you set
   them. `enum` takes one of `values`. `path` must exist and, with every link
   followed, lie inside `under`; `~` works, and a relative path such as `meru`
   starts at `under`. Every parameter is required.
@@ -1467,8 +1503,153 @@ The rules:
 it: a duplicate name, a placeholder with no parameter, a parameter no placeholder
 uses, a `path` with no `under`, an `under` folder that doesn't exist, a timeout
 over `"300s"`, and so on. A program missing from `PATH` only gets a warning in
-`merud.log`. The config template (`meru config template`) has four starters,
-commented out: `git-log`, `git-status`, `search-notes` and `disk-free`.
+`merud.log`. The config template (`meru config template`) has ten starters,
+commented out: `git-log`, `git-status`, `search-notes` and `disk-free`, and six
+for GitHub (see below).
+
+### GitHub
+
+Meru reads GitHub through `gh`, GitHub's own command-line tool, declared as
+local commands. `gh` keeps its login in your system's keychain, so Meru never
+holds a GitHub token. The config template carries six commands that only read,
+all off until you uncomment them:
+
+| Tool | What the model gets |
+| --- | --- |
+| `cmd.gh-prs` | a repository's 20 newest pull requests, open, closed, merged or all |
+| `cmd.gh-pr` | one pull request with its text, reviews and comments |
+| `cmd.gh-issues` | a repository's 20 newest issues, open, closed or all |
+| `cmd.gh-issue` | one issue with its text and comments |
+| `cmd.gh-runs` | the 10 latest GitHub Actions runs and how each ended |
+| `cmd.gh-repos` | up to 30 repositories of one user or organization |
+
+Each asks `gh` for JSON with a fixed list of fields. A `repo` parameter must
+look like `owner/name`, such as `dana-reyes/garden-planner`, and an `owner` like
+one name, so the model can't pass a URL or a flag.
+
+1. **Install `gh`.** On a Mac, `brew install gh`. On Linux, follow
+   <https://github.com/cli/cli#installation>.
+2. **Sign in once.** Run `gh auth login`, pick GitHub.com and HTTPS, and log in
+   with the browser. Check it:
+
+   ```sh
+   gh auth status
+   ```
+
+   ```text
+   github.com
+     ✓ Logged in to github.com account dana-reyes (keyring)
+   ```
+
+3. **Find `gh`.** Run `command -v gh`. `merud` looks up `argv[0]` on its own
+   `PATH`. Started from your shell, it has your shell's `PATH`; started by
+   `launchd` on a Mac, it has only `/usr/bin:/bin:/usr/sbin:/sbin`. If `gh`
+   lives anywhere else, such as `/opt/homebrew/bin/gh` or `~/.local/bin/gh`,
+   write that full path as `argv[0]` in each command.
+4. **Uncomment the commands.** Print the template with `meru config template`,
+   copy the block under "GitHub with the gh CLI" into `~/.meru/config.toml`,
+   and delete the `# ` in front of the lines of each command you want. The first
+   one reads:
+
+   ```toml
+   [[commands]]
+   name        = "gh-prs"
+   description = "Pull requests in a GitHub repository, newest first, as JSON"
+   argv        = ["gh", "pr", "list", "--repo", "{repo}", "--state", "{state}", "--limit", "20", "--json", "number,title,author,state,updatedAt,url"]
+     [commands.params.repo]
+     type        = "string"
+     pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+     description = "The repository as owner/name, such as dana-reyes/garden-planner"
+     [commands.params.state]
+     type   = "enum"
+     values = ["open", "closed", "merged", "all"]
+   ```
+
+5. **Restart `merud`.** It reads `[[commands]]` only when it starts, so a
+   reload from the desktop app isn't enough:
+
+   ```sh
+   pkill merud; merud &
+   meru tools
+   ```
+
+   `meru tools` lists each `cmd.gh-*` tool with the command it runs.
+
+Then ask:
+
+```sh
+meru "which pull requests are open in dana-reyes/garden-planner?"
+meru "did the last CI run in dana-reyes/garden-planner pass?"
+meru "what does issue 12 in dana-reyes/garden-planner say?"
+```
+
+`gh` finds its login with `HOME` alone on a Mac, where the keychain answers any
+program you run. On Linux, `gh` may keep the token in a keyring it reaches over
+D-Bus; if `gh auth status` works in your shell but the tool says you aren't
+logged in, add `env_allowlist = ["DBUS_SESSION_BUS_ADDRESS"]` to each command.
+If you set `GH_CONFIG_DIR` or `XDG_CONFIG_HOME` for `gh`, list that name too.
+Don't pass `GH_TOKEN` through `env_allowlist`: `gh` already has its login,
+and a token in `merud`'s environment is one more copy to guard.
+
+**Adding a command that writes.** The template leaves out everything that
+changes GitHub, such as commenting, opening an issue or merging a pull request.
+Such a command acts as you, with every scope your `gh` token holds. To add one,
+give it `confirm = true`, so each call asks you first and shows the exact
+command it will run:
+
+```toml
+[[commands]]
+name        = "gh-issue-comment"
+description = "Adds a comment to an issue in a GitHub repository"
+argv        = ["gh", "issue", "comment", "{number}", "--repo", "{repo}", "--body", "{body}"]
+confirm     = true
+  [commands.params.repo]
+  type        = "string"
+  pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+  description = "The repository as owner/name"
+  [commands.params.number]
+  type = "int"
+  min  = 1
+  [commands.params.body]
+  type        = "string"
+  max_len     = 2000
+  description = "The comment's text"
+```
+
+Read the prompt before you approve, and approve each call once: a session
+approval would let every later call through without a prompt.
+Don't declare `gh api` with a path the model fills in: the model could then pick
+any endpoint GitHub has, deletes included.
+
+### Credentials and secrets
+
+Meru keeps the API keys and tokens of MCP servers and A2A agents in
+`~/.meru/secrets.toml`, one `name = "value"` line each:
+
+```toml
+obsidian_api_key = "..."
+```
+
+- **Only you can read it.** `merud` refuses the file when other users can;
+  `chmod 600 ~/.meru/secrets.toml` fixes that.
+- **Config names a key, never holds it.** An `env` or `headers` value of
+  `secret:<name>` reads that line when `merud` starts the server or connects to
+  it: `env = { OBSIDIAN_API_KEY = "secret:obsidian_api_key" }` or
+  `headers = { Authorization = "secret:my_server_token" }`.
+- **Three ways to add a key.** `meru mcp add <name>` asks for it in the terminal
+  and doesn't echo it. In the desktop app, Library, Connections, Add your own MCP
+  server, tick Secret beside the variable that holds the key. Or edit the file
+  yourself and restart `merud`.
+- **Meru never shows a key back.** Not in `meru mcp`, the Library or
+  `about_meru`. `dispatch` strips every value in the file from transcripts, the
+  `tool_calls` table, logs and traces, and no key reaches the model: asked in
+  chat to connect a server that needs one, `configure` sends you to
+  `meru mcp add` instead.
+- **Some tools keep their own login.** `gh` stores its token in your keychain
+  after `gh auth login`, and the Google server keeps its own tokens (see
+  [google-setup.md](google-setup.md)). Meru reads neither, and a local command
+  gets no value from `secrets.toml`.
+
 
 ## 9. Keep merud running
 

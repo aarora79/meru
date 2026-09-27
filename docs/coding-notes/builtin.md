@@ -1,11 +1,11 @@
 # builtin
 
-**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `remember.go`,
-`writefile.go`, `files.go`, `search.go`, `web.go`, `webguard.go`,
-`webdownload.go`, `upload.go`, `images.go`, and the tests `builtin_test.go`,
-`writefile_test.go`, `files_test.go`, `search_test.go`, `web_test.go`,
-`webfetch_test.go`, `upload_test.go` and `images_test.go`, with the PDF in
-`testdata/`)
+**Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
+`about.go`, `remember.go`, `writefile.go`, `files.go`, `search.go`, `web.go`,
+`webguard.go`, `webdownload.go`, `upload.go`, `images.go`, and the tests
+`builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
+`search_test.go`, `web_test.go`, `webfetch_test.go`, `upload_test.go` and
+`images_test.go`, with the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
 `search_files`)
@@ -22,8 +22,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are ten built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all ten by default. When you say "connect my Gmail" in chat, the model calls
+There are eleven built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all eleven by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -61,6 +61,12 @@ question, and the model gets back one line that starts `From
 https://go.dev/doc/devel/release (fetched 2026-09-24):`. Without a prompt it gets
 the page's text; with `save` the file lands in `~/meru-output/downloads/`. A URL
 that neither a search result nor your own question showed asks you first.
+
+When you ask "which model are you using?", the model calls `about_meru` with
+no arguments and gets back what `merud` knows about itself, such as `Answer
+model (main): qwen3.6:35b` and `Ollama 0.34.0 runs every model on this
+computer`. Before this tool, a model asked that question answered from its
+training and named another company's model.
 
 Two functions here are no tools. When you drop `~/Downloads/garden-plan.pdf` on
 the desktop app, `merud` calls `Upload`, which copies the file to
@@ -143,8 +149,10 @@ A listed tool can still lack what it works on: `remember` needs the memory store
 indexer and a searcher, and `web_search` a SearXNG URL. `missing(name)` returns the reason, or `""`, and `Off()` returns one
 `Off{Tool, Reason}` per listed tool with a reason, in list order. `merud` logs
 each as "built-in tool off" at startup, so a user who listed `grep` with no
-`[index] folders` can read why the model doesn't get it. `web_fetch`,
-`configure` and `datetime` need nothing, so they never show up in `Off`.
+`[index] folders` can read why the model doesn't get it. `about_meru` needs
+the facts function `merud` hands `UseAbout`; without it, `Off` says "merud gave
+it no facts to report". `web_fetch`, `configure` and `datetime` need nothing, so
+they never show up in `Off`.
 
 `Confirm` decides whether a call asks first:
 
@@ -215,6 +223,54 @@ Two details:
 
 `Tools.now` holds the clock, `time.Now` outside tests, so `datetime_test.go` can
 fix the time.
+
+`EveryRoute(name)` reports whether a built-in goes with every route and every
+scope but "talk": `datetime` and `about_meru`. The agent asks it, so the rule
+lives in one place.
+
+### about.go
+
+`about_meru` answers questions about Meru itself: which models it runs, on
+what, and what it can reach. It takes no arguments and only reads, so it never
+asks.
+
+The facts come from `merud`, which knows them; this package only writes them
+out. `About` is a plain struct of names, counts and paths:
+
+```go
+type About struct {
+    Version string
+    Profile string
+    Fast, Main, Embed string
+    MainDetails engine.ModelDetails
+    RuntimeVersion string
+    Machine string
+    Folders []string
+    Files, Chunks int
+    DBBytes int64
+    Sources []AboutSource
+    Commands []string
+    Skills, Disabled []string
+    Memories map[string]int
+    // plus builtins and outputDir, which the tools fill themselves
+}
+```
+
+`merud` calls `UseAbout(facts)` once at startup, with a function that fills an
+`About` on each call (see [merud](merud.md)). Until then the tool stays off.
+`aboutMeru` calls that function, adds the built-in tools the model may use and
+the output folder, which `Tools` knows better than `merud`, and hands the lot to
+`aboutText`.
+
+`aboutText` writes one short line per fact. A fact `merud` couldn't read, such
+as Ollama's version while Ollama is down, drops its part of the line instead of
+guessing. Each list stops at 12 names and says how many more there are, and the
+whole text stops at 2,000 characters, about 500 tokens, because it lands in the
+model's context on every call.
+
+Nothing here can leak a secret, because `About` has no field for one: no env,
+no header, no server error, no memory text. `dispatch` also runs the result
+through its secret redaction, as it does for every tool.
 
 ### remember.go
 
@@ -812,11 +868,20 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the ten names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the eleven names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
-call to any other built-in fails. With no settings, `Off` names `remember`,
-`write_file`, the four file tools and `web_search`, each with a reason.
+call to any other built-in fails. With no settings, `Off` names `about_meru`,
+`remember`, `write_file`, the four file tools and `web_search`, each with a
+reason.
+
+`about_test.go` feeds `aboutText` a setup like the one behind the tool:
+`qwen3.6:35b` as the main model, the lite fast model, one folder and two MCP
+servers. `TestAboutText` checks each line, `TestAboutTextWithoutOllama` checks
+that missing facts drop out, and `TestAboutTextCap` gives it 200 commands and
+200 agents and checks the lists shrink and the text stays under 2,000
+characters. `TestAboutMeruTool` checks the tool is off until `UseAbout`, then
+offered, never asks, and lists the built-ins and the output folder.
 `TestWebToolsOffered` crosses `[web] searxng_url` with `[builtin] tools` for the
 two web tools.
 
@@ -889,8 +954,13 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all ten. `web_fetch` had its own key under `[web]` before; two
+  same way for all eleven. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
+
+- **Facts from `merud`, text from here.** `merud` owns the engine, the store,
+  the pool and the skills, and this package imports none of them to report on
+  them. A function that fills a struct keeps the two apart, and a test can
+  hand the tool any setup it likes.
 
 - **One writer for config.** `configure` and `meru mcp add` both call
   `catalog.AppendServer`, so chat and terminal can't write different blocks.
