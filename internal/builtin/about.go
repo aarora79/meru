@@ -115,7 +115,7 @@ func aboutText(a About) string {
 		fmt.Fprintf(&b, format+"\n", args...)
 	}
 
-	line("You are Meru %s, a personal assistant that runs on the user's own computer. Profile: %s.", a.Version, a.Profile)
+	line("You are Meru, a personal assistant that runs on the user's own computer. Meru build: %s. Profile: %s.", a.Version, a.Profile)
 	where := "Ollama runs every model on this computer; no model runs in the cloud."
 	if a.RuntimeVersion != "" {
 		where = "Ollama " + a.RuntimeVersion + " runs every model on this computer; no model runs in the cloud."
