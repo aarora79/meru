@@ -86,12 +86,12 @@ Go's linker sets a string variable in a package when it gets
 
 ```text
 -X github.com/aarora79/meru/internal/obs.releaseVersion=v0.4.1
--X github.com/aarora79/meru/internal/desktop.releaseVersion=v0.4.1
+-X github.com/aarora79/meru/internal/about.releaseVersion=v0.4.1
 ```
 
 through the `LDFLAGS` variable of `make build` and `make desktop`. `merud`
-reports the first in its traces and through the `about_meru` tool, and the
-app's About section shows the second. Every other build leaves both empty,
+reports the first in its traces and through the `about_meru` tool. The app's
+About section and the header of `meru chat` show the second. Every other build leaves both empty,
 and the programs fall back to what Go records in each binary: `(devel)` and
 the git commit for a local build. Nobody bumps a version number in the code.
 
