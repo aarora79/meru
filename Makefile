@@ -22,6 +22,14 @@ GITLEAKS    := github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
 # The platforms `make build` cross-compiles for, as GOOS/GOARCH.
 PLATFORMS := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 
+# LDFLAGS goes to the Go linker in `make build` and `make desktop`. It stays
+# empty unless scripts/release.sh sets it to stamp the version in.
+LDFLAGS ?=
+
+# VERSION and DRY_RUN are for `make release`; docs/releasing.md explains them.
+VERSION ?=
+DRY_RUN ?=
+
 COVER_PROFILE := coverage.out
 
 # GO_FILES lists every Go file outside hidden directories. gofmt walks every
@@ -29,7 +37,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app router-eval pick-eval figures check clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app router-eval pick-eval figures check release clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -97,7 +105,7 @@ build: ## Cross-compile ./cmd/... into ./bin/GOOS-GOARCH/
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; \
 		echo "build $$os/$$arch"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o bin/$$os-$$arch/ ./cmd/... || exit 1; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$$os-$$arch/ ./cmd/... || exit 1; \
 	done
 
 # The desktop app uses Wails v3, which needs cgo and the system's WebView,
@@ -113,7 +121,7 @@ DESKTOP_CGO += CGO_CFLAGS="-O2 -g -mmacosx-version-min=11.0" CGO_LDFLAGS="-mmaco
 endif
 
 desktop: ## Build the desktop app for this machine into bin/meru-desktop (needs cgo)
-	$(DESKTOP_CGO) go build -trimpath -tags "$(DESKTOP_TAGS)" -o bin/meru-desktop ./cmd/meru-desktop
+	$(DESKTOP_CGO) go build -trimpath -tags "$(DESKTOP_TAGS)" -ldflags "$(LDFLAGS)" -o bin/meru-desktop ./cmd/meru-desktop
 
 desktop-check: ## Vet, lint and vuln-check cmd/meru-desktop with its tags (needs cgo)
 	$(DESKTOP_CGO) go vet -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
@@ -129,5 +137,9 @@ desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 
 check: fmt-check vet lint tidy-check test e2e build vuln sec secrets actionlint ## Run every check CI runs, in CI's order
 
-clean: ## Remove build and coverage output
-	rm -rf bin $(COVER_PROFILE) gosec.sarif
+# Releases build on the owner's Mac, not in CI; docs/releasing.md says why.
+release: ## Build, pack and publish a release: make release VERSION=v0.4.1 [DRY_RUN=1]
+	VERSION="$(VERSION)" DRY_RUN="$(DRY_RUN)" bash scripts/release.sh
+
+clean: ## Remove build, release and coverage output
+	rm -rf bin dist $(COVER_PROFILE) gosec.sarif

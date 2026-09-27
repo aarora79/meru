@@ -161,6 +161,14 @@ as it starts. A dropped span ignores attributes and events and is never exported
 but it still has a random trace ID. So with export off, each turn keeps an ID that
 its log lines and transcript lines share.
 
+`BuildVersion` names `merud`'s version for the traces and for `about_meru`.
+`make release` sets the string `releaseVersion` through the Go linker's `-X`
+flag, which writes a value into a package variable while it links the binary,
+so a release build reports `v0.4.1`. Every other build leaves it empty, and
+`BuildVersion` falls back to what `debug.ReadBuildInfo` holds: a tag for
+`go install …@v0.4.1`, or `(devel)`. [releasing.md](../releasing.md) shows the
+flag.
+
 ### spans.go
 
 The router, the agent and the summarizer all call a model, so the `gen_ai.chat`

@@ -230,6 +230,8 @@ internal/
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
 deploy/              launchd/ and systemd/ service files; observability/ holds the local
                      Grafana stack (compose.yaml), its provisioning and the dashboards
+scripts/             release.sh, which `make release` runs
+dist/                git-ignored; `make release` packs a release here
 docs/
   architecture/      100.md, 200.md and the HTML pages for levels 100 (index.html), 200 and 300
   coding-notes/      one note per package, and go-basics/ for Go concepts
@@ -238,11 +240,13 @@ docs/
   ci.md              what each check in CI does
   fast-router.md     how the one-token router works
   google-setup.md    setting up Gmail, Calendar and Drive for the `google` server
+  releasing.md       how the owner builds and publishes a release
   examples/          a starter check file for `meru check`
   img/               the logo and the social preview image
   posters/           the one-page poster: HTML, PNGs and PDF
   index.html         the project's landing page
-.claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review
+.claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review,
+                     meru-install
 .github/             CI and security workflows, Dependabot, the pull-request template
 .scratchpad/         git-ignored; the design and review skills write here
 ```
@@ -385,6 +389,8 @@ In `.claude/skills/`:
 - **`explainer`** — build a self-contained HTML explainer. Used for the pages in
   `docs/architecture/`; update them when the Markdown they mirror changes.
 - **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
+- **`meru-install`** — walk a user through installing, updating or removing Meru
+  on a Mac from a GitHub release, asking before each change.
 
 ## Commands
 
@@ -401,6 +407,7 @@ make cover            # tests with coverage, and the total
 make build            # binaries for five platforms in bin/
 make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
 make desktop-app      # wrap the desktop app in bin/Meru.app (macOS)
+make release VERSION=v0.4.1 DRY_RUN=1  # build and pack a release in dist/; drop DRY_RUN to publish
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama
 make figures          # redraw the 100.md and 200.md figures from the HTML (needs Chrome)

@@ -220,11 +220,21 @@ func traceOptions(u *url.URL) []otlptracehttp.Option {
 	return opts
 }
 
-// BuildVersion returns merud's version as the Go toolchain recorded it in
-// the binary: a tag such as "v0.1.0" for `go install …@v0.1.0`, or
-// "(devel)" for a local build. It avoids a version variable that someone
-// must remember to bump. The traces carry it, and so does about_meru.
+// releaseVersion holds the version `make release` writes into the binary
+// with the linker flag -X, such as "v0.4.1". Every other build leaves it
+// empty. The linker sets it before main starts and nothing changes it
+// after, so it acts as a constant. docs/releasing.md shows the flag.
+var releaseVersion string
+
+// BuildVersion returns merud's version: the one `make release` stamped
+// in, else what the Go toolchain recorded in the binary, a tag such as
+// "v0.1.0" for `go install …@v0.1.0`, or "(devel)" for a local build.
+// Nobody has to remember to bump a number in the code. The traces carry
+// it, and so does about_meru.
 func BuildVersion() string {
+	if releaseVersion != "" {
+		return releaseVersion
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info.Main.Version == "" {
 		return "(devel)"

@@ -109,3 +109,19 @@ func TestTaglineEverywhere(t *testing.T) {
 		t.Errorf("WindowTitle = %q; the name must come first", WindowTitle)
 	}
 }
+
+// TestAppVersion checks that a version `make release` stamps in wins over
+// the build information. It sets the variable the linker sets, and puts it
+// back when the test ends; no test in this package runs in parallel.
+func TestAppVersion(t *testing.T) {
+	// t.Cleanup runs the function after the test, pass or fail.
+	t.Cleanup(func() { releaseVersion = "" })
+	releaseVersion = "v0.4.1"
+	if got := appVersion(); got != "v0.4.1" {
+		t.Errorf("appVersion = %q, want v0.4.1", got)
+	}
+	releaseVersion = ""
+	if got := appVersion(); got == "v0.4.1" || got == "" {
+		t.Errorf("appVersion without a stamp = %q, want the build's own version", got)
+	}
+}
