@@ -118,14 +118,15 @@ strings bin/darwin-arm64/merud | grep -x v0.4.1
 
 ## What users need to know
 
-**The repository is private for now.** GitHub serves the release files only to
-people with access, so they download with `gh`, signed in as themselves:
+**Anyone can download a release.** The repository is public, so a Mac installs
+the latest release with one line:
 
 ```sh
-gh release download v0.4.1 --repo aarora79/meru --pattern 'meru-v0.4.1-darwin-arm64.tar.gz' --pattern SHA256SUMS
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
 ```
 
-Once the repository is public, a plain `curl -LO` of each file's URL works too.
+`make release` attaches `scripts/install.sh` to every release, so that URL always
+serves the latest copy. A plain `curl -LO` of any file's URL works too.
 
 **Meru.app isn't signed or notarized**, because the project has no Apple
 Developer account. A browser marks a downloaded file with the
