@@ -628,7 +628,9 @@ meru skills reset writing     # put the shipped copy back
 ```
 
 `reset` replaces your edits, so on a terminal it asks first; in a script, add
-`--yes`. It works only on the four built-ins.
+`--yes`. It works only on the four built-ins. A copy of `web-research` from
+before this release lacks the rule to search a name as you wrote it; run
+`meru skills reset web-research` to get it.
 
 **Edit a skill** by opening its `SKILL.md` in any editor. `merud` notices the
 change on the next question; no restart. `merud` never overwrites your copy, even
@@ -786,7 +788,8 @@ meru log -v         # each call's result under it
 ```
 
 The columns are the local time, the session, the kind of tool, the tool, how the
-call ended, what you chose when asked (`-` when nobody was asked), how long it took,
+call ended, what you chose when asked (`-` when nobody was asked, `by meru` for a
+web search or page `merud` ran itself before the model started), how long it took,
 and its arguments, cut to fit one line. For a local command the last column is the
 program and arguments it ran, such as `git -C /Users/you/repos/meru log --oneline`.
 
@@ -1228,7 +1231,31 @@ To stop it: `cd ~/srv/searxng && docker compose down`. To update it:
 that is what web search is. They go without an account and without cookies,
 spread across engines rather than building a profile with one company. Your
 question, your files and the model's answer never leave; only the search words do.
-The model writes those words, so they can hold words from your question.
+The model writes those words, or `merud` does when it searches first (below), so
+they can hold words from your question.
+
+**Meru searches first for some questions.** When a question asks for the web
+("search the web", "look it up", "online", "do some research" and a few more
+phrases) or holds a web address, `merud` runs `web_search` on your words, or
+`web_fetch` on each address, two at most, before the model starts. It does the
+same when a question names something, such as "Acme Flow" or a term in quotes,
+and the search of your files finds nothing that mentions it. That second search
+goes out without your asking: the name, in quotes, and a few words of the
+question. It never runs for a question that says "my" or "our", one about mail,
+a calendar or notes, one the router sent straight to the model, or the Files,
+Just talk and Mail scopes in the desktop app. The Web scope always searches
+first.
+
+```sh
+meru "search the web for Acme Flow pricing"   # merud searches "Acme Flow pricing" first
+meru "what is Acme Flow?"                     # searches the web when your files don't mention it
+```
+
+`meru log` shows these searches with `by meru` in the approval column. The
+results sit in the prompt under "From the web", and the model can search again.
+Later questions in the same chat see a short note of each page or result the
+chat read, so a follow-up doesn't have to search again to know what a page
+said. Turn off web search, as above, to stop both kinds.
 
 **If searches stop returning anything**, an engine is rate-limiting your address.
 SearXNG spreads queries across engines, which softens this rather than curing it.

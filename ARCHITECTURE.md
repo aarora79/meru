@@ -1173,9 +1173,9 @@ order.
    the model alone. Four rules then adjust the route (see [Routing](#routing)):
    a `direct` question that names an indexed folder becomes `search`, a
    question that names a connected tool server gets tools, and so does a
-   question that says "remember", names the web, or names what a connected
-   server's tools act on ("email" for Gmail's tools). The same four signs
-   skip the search on a `tools` turn: a web, mail or notes-app question gets no
+   question that says "remember", asks for the web, gives a URL, or names
+   what a connected server's tools act on ("email" for Gmail's tools). The
+   same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
    short call picks the skills to load, beside the router. A picked skill
@@ -1185,7 +1185,12 @@ order.
    me understand btop with some simple commands" gave `direct` 0.761 and
    `tools` 0.022, while the skill pick chose `web-research`, whose first step
    is `web_search`. A skill that adds only web tools leaves a `direct` turn
-   unsearched; one that adds the file tools makes it a file turn.
+   unsearched; one that adds the file tools makes it a file turn. Last,
+   some questions go to the web before the model's first round (see
+   [Web first](#web-first)): one that asks for the web or gives a URL, and,
+   on a turn that searched your files, one that names a thing the files
+   don't cover. `merud` runs `web_search` or `web_fetch` itself, through
+   `dispatch`, and the route gains the tools when it lacked them.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, the rule that the model never claims an action no tool took (see
@@ -1199,7 +1204,8 @@ order.
    Meru's own tools can change (with, when config allows `about_meru`, a line
    that sends questions about Meru itself, such as which model answers, to that
    tool instead of the model's training), the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
-   picked skills' instructions, and file excerpts with earlier conversations.
+   picked skills' instructions, file excerpts with earlier conversations, and
+   what the web-first step found.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
    history and the question. A turn about your files (every turn that searches
@@ -1214,7 +1220,8 @@ order.
    | Recalled memories | 2,400 | the lowest-ranked drop |
    | Skill instructions | 12,000 | the first skill stays whole; the second is cut |
    | Earlier conversations | 2,400 | the lowest-ranked drop |
-   | History | 8,000 | the oldest turns drop, each question with its answer |
+   | From the web | 8,000 | each call's result is cut to an equal share |
+   | History | 8,000 | the oldest turns drop, each question with its answer; a turn's web notes take at most 1,500 |
 
    File excerpts need no cap of their own: a search keeps 10 chunks of about 500
    tokens. The caps keep one part from crowding out the others; a `lite` turn
@@ -1249,7 +1256,8 @@ order.
    1. **Allowlist.** A tool that no backend offers is `denied`. It doesn't run,
       but it still gets a `tool_call` line, a `tool_result` line and a
       `tool_calls` row, so a model that keeps reaching for forbidden tools shows
-      up in the log.
+      up in the log. A call named after a skill, such as `web-research`, gets
+      a result that names the tools to call instead (see [Skills](#skills)).
    2. **Transcript.** The `tool_call` line goes in before the call runs. If it
       can't be written, the call doesn't run.
    3. **Confirm.** Each tool asks never, asks unless approved for this session, or
@@ -1538,10 +1546,19 @@ The third: when the question holds "remember" as a whole word and the route is
 work on the registry team" reads like chit-chat to the router, and a `direct` turn
 would answer "noted" and save nothing.
 
-The fourth: when the question says "web", "internet" or "online" as a whole word,
-`web_search` exists and the route is `direct` or `search`, the loop adds the rest.
-The router sent "Search the web: what is SearXNG?" to `direct`, and the model, with
-no tools, wrote a tool call as plain text.
+The fourth: when the question asks for the web and `web_search` exists, or gives
+an http or https URL and `web_fetch` exists, and the route is `direct` or
+`search`, the loop adds the rest. A question asks for the web when it holds one
+of these phrases as whole words, in any case: "web", "internet", "online", "the
+net", "web search", "internet search", "search the web", "search the internet",
+"search online", "look up", "look it up" (or "this", "that", "them"), "google
+it" (or "this", "that", "for"), "do research", "do some research", "deep
+research", and "research about" (or "this", "it", "that"). "research" alone
+isn't on the list, since "summarise my research folder" is about your files,
+and neither is "google" alone, the name of the server behind Gmail. The router
+sent "Search the web: what is SearXNG?" to `direct`, and the model, with no
+tools, wrote a tool call as plain text. Such a question also goes to the web
+first (see [Web first](#web-first)).
 
 The fifth: when a word in the question matches something a connected server's
 tools act on, the loop adds tools. The nouns come from the tool names, singular
@@ -1629,6 +1646,17 @@ a session, so the transcript alone says which model wrote each answer. An
 assistant line also carries `ttft_ms`, `eval_ms`, `bad_calls` and `capped` (see
 [Model sets](#model-sets)).
 
+A `tool_call` line gets `"caller":"meru"` when `merud` made the call itself
+before the model's first round (see [Web first](#web-first)); a call the model
+asked for has no `caller`. An assistant line whose turn read the web gets a
+`web` field: up to five notes, each a URL, a title and a gist of at most 300
+characters, pages before search results, 1,500 characters in all. History hands
+them to the model after the answer, one line each:
+
+```text
+[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]
+```
+
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
@@ -1664,7 +1692,7 @@ files with mode `0600`, so only you can read them.
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
 | `summary_fts` (v0.4) | keyword index over session summaries | session summaries |
-| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
+| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and `caller` (`meru` for a call `merud` made itself) | `sessions/*.jsonl` |
 | `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
@@ -2020,9 +2048,10 @@ turns that need no files, and the web questions pointed at the note on the file
 tools.
 
 - **No search first on a tool question.** A `tools` turn skips the search when the
-  question points at a connected tool. The four signs that add tools to a route
+  question points at a connected tool. The signs that add tools to a route
   decide it (see [Routing](#routing)): the question names a tool server, says
-  "remember", names the web, or names what a server's tools act on. `search` and
+  "remember", asks for the web, gives a URL, or names what a server's tools
+  act on. `search` and
   `search+tools` always search: the router, or the folder rule, saw files in the
   question. The turn still offers the file tools, so the model can look when it
   has to. Before this, "search the web for the latest Go release" put ten
@@ -2245,6 +2274,16 @@ it had over and over. A name Meru doesn't know as a tool, such as Claude's
 `Read`, counts for nothing, so a skill copied from Claude doesn't lose its body.
 The key takes a comma list, a `[...]` list or a YAML list of `- name` lines.
 
+The list of skills in every prompt says a skill is a set of instructions, not a
+tool, and gives each skill whose `allowed-tools` config allows a line such as
+"To use it, call web_search or web_fetch." The line names every tool config
+allows, not the tools one route offers, so the list stays the same from turn to
+turn. A model in a real session still called `web-research` as a tool. Such a
+call goes to `dispatch`, which denies it as it denies any tool no backend
+offers. When the round offers a tool the skill names, the model reads
+"web-research is a skill, not a tool. Call web_search or web_fetch." in place of
+the usual refusal, and the call counts in `meru.model.malformed_calls`.
+
 A skill's `name` is lowercase letters and digits in words joined by `-`, such as
 `meeting-notes`, and must match its folder's name. A `SKILL.md` may be up to
 256 KiB. A skill that breaks a rule is skipped with a warning that says why, and
@@ -2275,7 +2314,7 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 | --- | --- |
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
-| `web-research` | For how to use a program or command, and for questions that need current facts: search, read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
+| `web-research` | For how to use a program or command, and for questions that need current facts: search the user's own words first, with a name in double quotes; never swap in a product or company the model knows for the one named; search again when the results are about something else; read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
 | `file-research` | For questions about the user's own files, and not for how to use a program: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those four tools |
 
 The fast model picks from the descriptions alone, so their words decide which
@@ -2296,8 +2335,10 @@ own files did worse, 42 of 63: naming the skill drew the model to it.
 - **Your copy wins.** `merud` never overwrites a skill you've edited, or one a
   newer Meru changed. To get the shipped version back, run
   `meru skills reset <name>`; a copy of `web-research` from before
-  `allowed-tools` needs it to bring its tools, and copies of `web-research`
-  and `file-research` from before the sharper descriptions need it to get them.
+  `allowed-tools` needs it to bring its tools, copies of `web-research`
+  and `file-research` from before the sharper descriptions need it to get them,
+  and a copy of `web-research` from before the rule on names needs it to get
+  that rule.
 - **You add more by dropping in a folder.** Any `SKILL.md` under `~/.meru/skills/`
   counts, whether you wrote it or copied it from elsewhere.
 - **You turn one off in config.** `[skills] disabled` names the skills `merud`
@@ -2898,7 +2939,11 @@ redirect. Your question, your files and the answer stay here.
 
 **What leaves.** SearXNG sends the search words to the engines it asks, with no
 account and no cookies, spread across several companies. The model writes those
-words, so they can hold words from your question.
+words, or `merud` does on a web-first turn, so they can hold words from your
+question. The named rule (see [Web first](#web-first)) sends a search with no
+request from you: a name your files don't cover, in quotes, with a few words of
+the question. A question that says "my" or "our" never goes, and neither does
+one about mail, a calendar or notes.
 
 **Fetching pages is on by default.** Asked for the latest Go release, the
 `lite` model trusted months-old snippets and answered 1.26; the answer sat on
@@ -2922,6 +2967,70 @@ then fails with "SearXNG isn't answering on <url>. See "Web search" in
 docs/running.md.", and the model tells you. A SearXNG that answers HTML has JSON
 turned off, and the error names the `search.formats` setting in `settings.yml`.
 `meru setup` runs the same check in its Web search step.
+
+### Web first
+
+A model left to decide when to search can guess wrong. In a real session with
+`qwen3.6:35b-a3b-mxfp8`, thinking off, the user asked about a product released
+after the model's training. Asked to search for it and compare it with Meru, the
+model searched for an older product with a similar name and answered about that
+one. After the user pasted the product's page, three follow-ups called no web
+tool: their history held only the questions and answers, and the model made up
+features. "do a web search about quick and educate yourself" routed `direct` at
+0.55, and the model called `web-research`, a skill, as a tool, twice, then
+apologised. Only "do some deep research about quick", at `tools` 0.86, got two
+searches, four pages and a right answer.
+
+So `merud` itself searches before the model's first round in two cases:
+
+| Case | When | What `merud` runs |
+| --- | --- | --- |
+| `asked` | the question asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or it holds an http or https URL and `web_fetch` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web and the filler words at either end; a follow-up too short to stand alone gets the earlier question, as a file search does |
+| `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, and the excerpts don't cover it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
+
+The calls go through `dispatch` like any other. Their `tool_call` lines and
+`tool_calls` rows carry `caller = "meru"`, so `meru log` shows `by meru` in the
+approval column, and each sends its `tool_call` and `tool_result` events, so the
+chat shows the search. What comes back sits in the prompt under "From the web",
+among the parts each question changes, with a rule that mirrors the one for your
+files: cite each source by its URL, never swap in a product, company or person
+you know for the one the user named, and search again with other words when the
+results are about something else. The section holds at most 8,000 characters,
+in equal shares among the calls. The route becomes at least `tools` (`direct`
+becomes `tools`, `search` becomes `search+tools`), so the model can search again
+or read a page. A call that fails, as when SearXNG doesn't answer, leaves the
+section out; the model still has the tools.
+
+**Named things.** The detector reads English and knows three shapes: a term in
+double quotes; a run of capitalised words, such as "Acme Flow", where a lone
+capitalised word that starts a sentence doesn't count and a lone word needs
+three characters; and a word shaped like a product name anywhere, such as
+"GitHub", "iPhone" or "qwen3". "I", "Meru", the months, the days, greetings and
+the short words a title capitalises never count.
+
+**Files that don't cover a name.** The excerpts cover a name when the best one
+scores above 1/61 and at least one holds the name in its text, heading or path.
+Vector search ranks every chunk, so it always hands back a nearest one, however
+unrelated. Reciprocal-rank fusion gives the top chunk of one list 1/61, about
+0.0164, and a chunk both lists found at least 2/110, about 0.0182, so a best
+score of 1/61 or less means only one search found the chunk. The keyword search
+matches any word of the question, "what" and "is" included, so a strong score
+alone doesn't show that your files know the name.
+
+**What it skips.** A `direct` question never gets the named search: no file
+search ran, and the router judged it small talk. Neither does a question that
+points at mail, a calendar or notes, a turn in `agentic` retrieval, or a scope
+of files, talk or mail. When the tool a case needs is off, the turn goes on
+without the section and a debug line says why. The turn's info log line carries
+`web_first` (`asked`, `named` or `none`), and the turn span
+`meru.turn.web_first`.
+
+**Follow-ups remember the web.** Each web call that succeeds, `merud`'s or the
+model's, leaves notes on the turn's assistant line (see
+[Session transcripts](#session-transcripts)), and a later turn's history carries
+them after the answer. Each note's gist comes from the result as `dispatch`
+returned it, after the redaction of secrets, and holds no more than 300
+characters of a page.
 
 ---
 
@@ -3143,7 +3252,7 @@ for the rest.
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |
 | `meru.turn.iterations` | histogram | route | loop depth |
-| `meru.context.tokens` | histogram | section (system/skills/memories/sessions/chunks/history/tools) | data for the context budget policy |
+| `meru.context.tokens` | histogram | section (system/skills/memories/sessions/chunks/web/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin/command), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
 | `meru.model.malformed_calls` | counter | model | tool calls the main model wrote that Meru couldn't run as written |
@@ -3240,7 +3349,11 @@ transcript lines hold. No level writes question or answer text. With
   carefully as any program you install.
 - Web search sends the search words to SearXNG on loopback, and SearXNG sends them
   to the search engines it asks. That is the one part of a question that leaves
-  the machine when the model searches.
+  the machine when the model searches. `merud` also searches on its own before
+  the model's first round (see [Web first](#web-first)): for a question that
+  asks for the web, and for a name your files don't cover, in quotes with a few
+  words of the question. A question that says "my" or "our", or one about mail,
+  a calendar or notes, never gets the second search.
 - `web_fetch` makes `merud` fetch public pages off this machine, by default,
   when the model asks; taking it out of `[builtin] tools` turns it off. It refuses any address
   on this machine or your network. It runs without asking only for a URL that a

@@ -753,3 +753,24 @@ why exact match under `top` fell by one row while the top pick gained two.
 - **Cost.** The list adds 48 prompt tokens, from 289 to 337 with the eval's
   folders. It changes only when config does, so Ollama reuses its work on it,
   and warm decisions stayed at about 30 ms.
+
+## Notes from web first
+
+The fourth rule after the router now reads a phrase list instead of three
+words, and a URL counts too (ARCHITECTURE.md, "Routing" and "Web first").
+The router and its prompt didn't change, so the calibration stands. We ran the
+new tests over the 153 labelled questions without a model:
+
+- **Phrases.** The list matches 4 questions against 2 for "web", "internet"
+  and "online". The two new ones, "look up reviews for the books on my reading
+  list" and "look up the current price of everything on my shopping list
+  note", carry the label `search+tools`, so the rule can only add tools the
+  label wants. No question holds a URL.
+- **Names.** The detector finds a name in 12 questions. It found 15 before
+  the four-word cap on quoted names, which drops sentences quoted to rewrite
+  or fill in. Three of the 12 sit on `direct`, where the named search never
+  runs, and four say "my" or point at mail. That leaves five that could search
+  the web when the files don't mention the name: "Lisbon" in the weather
+  question and "SFO" in the drive question, which want the web; "Sintra" and
+  "TODOs", which the user's notes likely cover; and "shipping v0.2 today" in
+  "post … to slack", a message that would reach SearXNG for nothing.
