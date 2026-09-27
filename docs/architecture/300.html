@@ -52,10 +52,14 @@
 
   header.top { padding: 32px 0 28px; border-bottom: 1px solid var(--rule); }
   /* The project logo, inlined from docs/img/meru-logo.svg, top right of the
-     header. It sits on a light tile so its dark outline reads in dark mode. */
+     header. It sits on a light tile so its dark outline reads in dark mode,
+     and links to the landing page. */
   .page-logo { float: right; width: 76px; height: 76px; margin: 2px 0 12px 24px;
                padding: 6px; box-sizing: border-box; background: #FFFDF7;
                border: 1px solid #E6E1D6; border-radius: 16px; }
+  .page-logo { display: block; }
+  .page-logo svg { display: block; width: 100%; height: 100%; }
+  .page-logo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   @media (max-width: 700px) { .page-logo { width: 56px; height: 56px; margin-left: 16px; border-radius: 12px; } }
   h1 { font-size: clamp(32px, 4.6vw, 42px); line-height: 1.16; font-weight: 700;
        letter-spacing: -0.021em; margin: 0 0 16px; }
@@ -165,12 +169,12 @@
   }
   .meru-name { color: var(--meru); }
   .meru-name i { font-style: italic; }
-  /* ===== Level switcher: shared by index.html, 200.html and 300.html =====
+  /* ===== Level switcher: shared by 100.html, 200.html and 300.html =====
      Markup:
        <nav class="levels" aria-label="Architecture levels">
          <span class="levels-label">Level</span>
          <ol>
-           <li><a href="index.html">100</a></li>
+           <li><a href="100.html">100</a></li>
            <li><a href="200.html" aria-current="page">200</a></li>
            <li><a href="300.html">300</a></li>
          </ol>
@@ -224,7 +228,7 @@
 <nav class="levels" aria-label="Architecture levels">
   <span class="levels-label">Level</span>
   <ol>
-    <li><a href="index.html" title="The big picture">100</a></li>
+    <li><a href="100.html" title="The big picture">100</a></li>
     <li><a href="200.html" title="How it works">200</a></li>
     <li><a href="300.html" aria-current="page" title="The full design">300</a></li>
   </ol>
@@ -236,16 +240,16 @@
 </nav>
 
 <header class="top">
-  <svg class="page-logo" role="img" aria-label="Meru logo: a mountain with a dashed orbit around its peak" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -5 50 50" width="76" height="76">
+  <a class="page-logo" href="../index.html" aria-label="Meru home page" title="Meru home page"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -5 50 50" width="76" height="76">
     <ellipse cx="23" cy="17" rx="21" ry="6" fill="none" stroke="#0A5453" stroke-width="1.4" stroke-dasharray="3 2.4"/>
     <path d="M6 38 L20 12 L25 20 L29 14 L40 38 Z" fill="#0E7C7B" stroke="#14181C" stroke-width="2" stroke-linejoin="round"/>
     <line x1="20" y1="1" x2="20" y2="12" stroke="#14181C" stroke-width="1.8" stroke-linecap="round"/>
     <circle cx="3.5" cy="16" r="2.6" fill="#E9A82C" stroke="#14181C" stroke-width="1.2"/>
     <circle cx="41" cy="20.5" r="2" fill="#FFFDF7" stroke="#14181C" stroke-width="1.2"/>
-  </svg>
+  </svg></a>
   <h1><span class="meru-name"><i>Meru</i> (<span lang="hi">मेरु</span>)</span>: an AI assistant that stays on your machine</h1>
   <p class="standfirst">Meru is a personal AI assistant that runs on a machine you control, with every model on the same machine as your data. This page describes how it works and why: two programs, three model jobs, one store, one guarded path to outside tools, and the traces that show where each second went.</p>
-  <p class="truth">This is the level-300 page, the full design down to config keys and table columns; if you are new to Meru, start with <a href="index.html">level 100</a>. <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> is the source of truth. We generate this page from it; where the two disagree, the markdown wins and this page has a bug.</p>
+  <p class="truth">This is the level-300 page, the full design down to config keys and table columns; if you are new to Meru, start with <a href="100.html">level 100</a>. <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> is the source of truth. We generate this page from it; where the two disagree, the markdown wins and this page has a bug.</p>
   <p class="byline">Amit Arora · September 2026 · the design, written before the code · code samples in Go</p>
 </header>
 
