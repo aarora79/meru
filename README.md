@@ -269,6 +269,7 @@ Contributions come under the agreement in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## The name
 
-*Meru* (मेरु) is the cosmic mountain that the sun, moon and stars turn around. This
-assistant takes the name because it works the same way: it stays in one place, on
-your machine, and your notes, tools and daily routine turn around it.
+In some Eastern traditions, *Meru* (मेरु) is the cosmic mountain that the sun,
+moon and stars turn around. This assistant takes the name because it works the
+same way: it stays in one place, on your machine, and your notes, tools and daily
+routine turn around it.
