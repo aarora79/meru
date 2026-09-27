@@ -17,7 +17,12 @@
 // included, it puts the user's profile and the memories recalled for the
 // question (through the Profile interface) into the system prompt. On the
 // routes that search, it also recalls up to three past sessions and adds
-// them under "From earlier conversations" (earlier.go).
+// them under "From earlier conversations" (earlier.go). A question that
+// asks for the web, gives a URL, or names a thing the user's files don't
+// cover gets a web search or page fetch before the model's first round,
+// through the ToolRunner like any call, under "From the web" (webfirst.go,
+// ARCHITECTURE.md, "Web first"); the web calls of a turn leave short notes
+// on its answer line for later turns (webnotes.go).
 //
 // What this package deliberately doesn't do: it holds no socket code (that's
 // internal/rpc), picks no model names (those come from config), never calls

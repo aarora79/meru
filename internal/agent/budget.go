@@ -22,8 +22,12 @@ import (
 //	recalled memories           2,400        600 t   the lowest-ranked
 //	skill instructions          12,000       3,000 t the second skill, cut
 //	earlier conversations       2,400        600 t   the lowest-ranked
+//	from the web                8,000        2,000 t each result's end
 //	history                     8,000        2,000 t the oldest turns
 //
+// The web section's cap, maxWebChars, lives in webfirst.go with the step
+// that fills it. Each turn's web notes in the history take at most
+// maxWebNoteChars (webnotes.go) of the history's 8,000.
 // File excerpts have no cap of their own: a search keeps 10 chunks of about
 // 500 tokens each, so they stay under 5,000 tokens. meru.context.tokens
 // records each section's size per turn, the numbers to tune these by.
@@ -43,7 +47,8 @@ const (
 // the profile, the files note, the tools note and the list of skills. The
 // note on the file tools comes next, on file turns only (see aboutFiles).
 // Then come the parts each question changes: recalled memories, the picked
-// skills' instructions, and the file excerpts with earlier conversations.
+// skills' instructions, the file excerpts with earlier conversations, and
+// what the web-first step found (see webfirst.go).
 //
 // The order matters for speed. Ollama reuses its work on a prompt's opening
 // tokens when the next prompt starts the same way, and it stops reusing at
@@ -70,6 +75,7 @@ type sections struct {
 	skillList   string // every skill's name and description; "" for none
 	skillBodies string // the picked skills' instructions; "" for none
 	files       string // file excerpts, then earlier conversations; "" for none
+	web         string // what the web-first step found, under "From the web"; "" for none
 	toolsNote   string // toolsNote or commandsNote when the turn offers tools; "" for none
 	fileTools   string // fileToolsNote or exploreNote on a file turn with the file tools; "" otherwise
 }

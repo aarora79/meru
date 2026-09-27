@@ -106,8 +106,26 @@ type Line struct {
 	To   string `json:"to,omitempty"`
 	// Result is what the tool returned, as text, secrets redacted.
 	Result string `json:"result,omitempty"`
+	// Caller is who made a call, on a tool_call line: "meru" when merud
+	// ran it before the model's first round (see the agent's web-first
+	// step), and "" when the model asked for it.
+	Caller string `json:"caller,omitempty"`
+	// Web holds what the turn's web calls brought back, on an assistant
+	// line: one short note per page or result, at most a few, so a later
+	// turn's history still knows what the web said. See WebNote.
+	Web []WebNote `json:"web,omitempty"`
 
 	TraceID string `json:"trace_id,omitempty"`
+}
+
+// WebNote is one thing a turn read on the web: a page web_fetch read or a
+// result web_search showed. Gist holds the first few hundred characters
+// of the page's text or the result's snippet, secrets redacted, and never
+// the whole page.
+type WebNote struct {
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
+	Gist  string `json:"gist,omitempty"`
 }
 
 // Session is one open transcript file. It holds only the file's path, so
@@ -222,7 +240,11 @@ func (s *Session) Append(l Line) error {
 // History returns the last maxTurns turns of the session as model messages,
 // oldest first. A turn is a user line and the assistant line that answered
 // it. An answer that carries a notice gets it after its text, in square
-// brackets, so the model reads that its claim didn't happen. A question
+// brackets, so the model reads that its claim didn't happen. An answer
+// whose turn read the web gets one line per web note after that, such as
+// "[from the web: Acme Flow https://example.com/flow — Acme Flow is a
+// ...]", so a follow-up still knows what the pages said: see webNotes. A
+// question
 // that carried images gets one note per image after its text, such as
 // "[image: receipt.jpg]", and never the image itself: see imageNotes. A
 // user line with no answer (the turn failed or was cancelled) is left out,
@@ -253,6 +275,7 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 				if l.Notice != "" {
 					answer += "\n\n[" + l.Notice + "]"
 				}
+				answer += webNotes(l.Web)
 				turns = append(turns, [2]engine.Message{
 					{Role: engine.RoleUser, Content: question.Text + imageNotes(question.Images)},
 					{Role: engine.RoleAssistant, Content: answer},
@@ -294,6 +317,28 @@ func LastModel(lines []Line) string {
 		}
 	}
 	return model
+}
+
+// webNotes returns one line per note, "[from the web: <title> <url> —
+// <gist>]", after a blank line, or "" for none. A real session showed why
+// history needs them: a turn read a product's page and answered well, and
+// the next three answers, whose history held only the question and answer
+// text, made up the product's features instead of searching again.
+func webNotes(notes []WebNote) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	var s strings.Builder
+	s.WriteString("\n")
+	for _, n := range notes {
+		head := strings.TrimSpace(n.Title + " " + n.URL)
+		s.WriteString("\n[from the web: " + head)
+		if n.Gist != "" {
+			s.WriteString(" — " + n.Gist)
+		}
+		s.WriteString("]")
+	}
+	return s.String()
 }
 
 // imageNotes returns one line per image in paths, "[image: <name>]",

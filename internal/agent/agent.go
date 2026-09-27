@@ -341,6 +341,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
 			attribute.Bool("meru.turn.no_tools", t.noTools != ""),
 			attribute.Int("meru.turn.images", len(images)),
+			attribute.String("meru.turn.web_first", webFirstOf(t)),
 			attribute.String("meru.turn.outcome", outcome),
 		)
 		obs.EndSpanErr(ctx, span, err)
@@ -351,7 +352,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			Route: route, Source: source, Outcome: outcome,
 			Duration: time.Since(start), Iterations: t.rounds,
 		})
-		a.logTurn(ctx, start, sessionID, route, source, scope, outcome, unbacked, len(images), rep, err)
+		a.logTurn(ctx, start, sessionID, route, source, scope, outcome, webFirstOf(t), unbacked, len(images), rep, err)
 	}()
 	if obs.CaptureContent() {
 		span.SetAttributes(attribute.String("meru.question", question))
@@ -476,6 +477,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		EvalMs:    rep.usage.EvalDuration.Milliseconds(),
 		BadCalls:  t.badCalls,
 		Capped:    capped,
+		Web:       keptNotes(t.web),
 		TraceID:   traceID,
 	}
 	if err := a.appendLine(ctx, sess, answer); err != nil {
@@ -558,7 +560,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	}
 	// The same gap for tools: "search my obsidian vault" can route to
 	// search, which offers only the file tools. When the question points at
-	// a connected tool (toolTarget in toolnouns.go lists the four signs) and
+	// a connected tool (toolTarget in toolnouns.go lists the five signs) and
 	// the route lacks the full set of tools, add them. A wrong guess costs
 	// a prompt that holds the tool schemas, and the model need not call any.
 	var target string
@@ -593,15 +595,17 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			dec.Route = r
 		}
 	}
-	res.route = dec.Route
+	t.skills = picked.reg
 	if dec.Route == "tools" && !fileTurn {
 		a.log.DebugContext(ctx, "no search first: the question points at a connected tool", "target", target)
 	}
-	// Any outcome but "ok" means the router wasn't sure and used the
-	// fallback route; the chat screen marks such a route.
-	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
-	if err := t.emit(routeEv); err != nil {
-		return res, err
+	// A question that asks for the web, or gives a URL, goes to the web
+	// before the model's first round. toolTarget has already given its
+	// route the tools. See webfirst.go.
+	var webCalls []webCall
+	if a.askedWebFirst(ctx, question) {
+		webCalls = askedCalls(question, history, a.tools.Tools())
+		t.webFirst = webFirstAsked
 	}
 
 	// A file turn looks in the user's files first. "tools" searches too,
@@ -616,22 +620,52 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// tool server reconnects, but web_search is built in and doesn't wait
 	// on one.
 	specs := a.toolSpecs(dec.Route)
-	var files string
-	if a.searchesFirst(fileTurn) {
-		var sources []rpc.Citation
-		files, sources, res.docs, err = a.searchFiles(ctx, searchQuery(question, history), offersWebSearch(specs))
+	var found fileHits
+	searched := a.searchesFirst(fileTurn)
+	if searched {
+		found, err = a.searchFiles(ctx, searchQuery(question, history), offersWebSearch(specs))
 		if err != nil {
 			return res, err
 		}
-		if len(sources) > 0 {
-			if err := t.emit(rpc.Event{Type: rpc.EventSources, Sources: sources}); err != nil {
+		res.docs = found.docs
+	}
+	// A question that names a thing the files don't cover goes to the web
+	// first too, and its route gains the tools, so the model can search
+	// again. The search runs before the route event for this reason: the
+	// rule needs its excerpts.
+	if t.webFirst == "" {
+		if name, ok := a.namedWebFirst(question, target, searched, found.results); ok {
+			webCalls = namedCalls(name, question, a.tools.Tools())
+			t.webFirst = webFirstNamed
+			if r, ok := withTools(dec.Route); ok {
+				a.log.DebugContext(ctx, "route changed: the question names a thing the files don't cover",
+					"from", dec.Route, "to", r, "confidence", dec.Confidence)
+				dec.Route = r
+				specs = a.toolSpecs(dec.Route)
+			}
+		}
+	}
+	if t.webFirst != "" && searched && len(found.results) == 0 {
+		found.section = noResultsWebFirst
+	}
+	res.route = dec.Route
+	// Any outcome but "ok" means the router wasn't sure and used the
+	// fallback route; the chat screen marks such a route.
+	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
+	if err := t.emit(routeEv); err != nil {
+		return res, err
+	}
+	var files string
+	if searched {
+		if len(found.sources) > 0 {
+			if err := t.emit(rpc.Event{Type: rpc.EventSources, Sources: found.sources}); err != nil {
 				return res, err
 			}
 		}
 		// Excerpts a tool finds later in the turn number on from these.
-		t.sources, t.cites = sources, len(sources)
+		t.sources, t.cites = found.sources, len(found.sources)
 		// Past sessions join the files' section: no numbers, no sources event.
-		files = joinSections(files, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
+		files = joinSections(found.section, a.earlierSection(ctx, searchQuery(question, history), t.sess.ID()))
 	}
 	// A turn on a tools route first refreshes the tool servers, then lists
 	// the tools again. Refresh asks each connected server for its tools, so
@@ -647,16 +681,20 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 		a.tools.Refresh(ctx)
 		specs = a.toolSpecs(dec.Route)
 	}
-	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, specs, fileTurn)
+	web, err := a.runWebFirst(ctx, t, webCalls)
+	if err != nil {
+		return res, err
+	}
+	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, web, specs, fileTurn)
 	return res, err
 }
 
 // finishPrompt does the end of a turn that respond and respondScoped
 // share: recall the memories that fit the question and tell the client
 // which ones, build the prompt, put the question's images on it, and run
-// the rounds.
+// the rounds. web is the "From the web" section, "" for none.
 func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
-	picked pickedSkills, files string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
+	picked pickedSkills, files, web string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
 	// An answer model that can't call tools gets none; see notools.go.
 	specs = a.offerable(ctx, t, specs)
 	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
@@ -668,7 +706,7 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	skillList, skillBodies := a.skillsSection(ctx, picked)
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
-		files: files, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
+		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
 	})
 	// The images ride on this turn's question alone; see withImages.
 	msgs = withImages(msgs, t.images)
@@ -815,20 +853,21 @@ func (a *Agent) logStart(ctx context.Context, session, source, question string) 
 }
 
 // logTurn writes the one info line each turn gets. scope is where the
-// user let the turn look, one of the rpc.Scope constants. images, the
+// user let the turn look, one of the rpc.Scope constants. webFirst says
+// why the turn went to the web first: "asked", "named" or "none". images, the
 // count of images the question carried, joins the line when above zero.
 // ttft_ms counts
 // from when Handle started to the first token of the answer, so it
 // includes routing; it is 0 when no text arrived. unbacked_claim joins the
 // line, set to true, only when the answer claimed an action no tool took
 // (see claimsAction). err joins the line only when the turn failed.
-func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, scope, outcome string, unbacked bool, images int, rep reply, err error) {
+func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, source, scope, outcome, webFirst string, unbacked bool, images int, rep reply, err error) {
 	var ttft int64
 	if !rep.firstToken.IsZero() {
 		ttft = rep.firstToken.Sub(start).Milliseconds()
 	}
 	args := []any{"session", sessionID, "route", route, "source", source, "scope", scope,
-		"outcome", outcome, "ms", time.Since(start).Milliseconds(), "ttft_ms", ttft,
+		"web_first", webFirst, "outcome", outcome, "ms", time.Since(start).Milliseconds(), "ttft_ms", ttft,
 		"tokens_in", rep.usage.PromptTokens, "tokens_out", rep.usage.OutputTokens}
 	if unbacked {
 		args = append(args, "unbacked_claim", true)
@@ -1134,10 +1173,20 @@ func isFiller(w string) bool {
 	return false
 }
 
+// fileHits is what a search of the user's files found: the prompt section
+// to add under the system prompt, the citations for the "sources" event,
+// numbered as the section numbers them, the cited files' absolute paths,
+// each once, for the transcript, and the excerpts, best first, with their
+// paths shortened, which the web-first rule for named things reads.
+type fileHits struct {
+	section string
+	sources []rpc.Citation
+	docs    []string
+	results []retrieve.Result
+}
+
 // searchFiles searches the user's files for query inside a meru.search
-// span. It returns the prompt section to add under the system prompt, the
-// citations for the "sources" event, numbered as the section numbers them,
-// and the cited files' absolute paths, each once, for the transcript.
+// span and returns what it found.
 //
 // A search that finds nothing, or runs before anything is indexed, gives a
 // short section saying so and no citations: noResultsWeb when web is true,
@@ -1145,7 +1194,7 @@ func isFiller(w string) bool {
 // reason but a cancelled turn is logged and treated the same way: the
 // answer can still come from the model alone. It returns an error only when
 // ctx ends.
-func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string, []rpc.Citation, []string, error) {
+func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (fileHits, error) {
 	ctx, span := obs.Tracer().Start(ctx, "meru.search")
 	defer span.End()
 	start := time.Now()
@@ -1154,7 +1203,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	if err != nil {
 		if ctx.Err() != nil {
 			obs.EndSpanErr(ctx, span, err)
-			return "", nil, nil, fmt.Errorf("search: %w", err)
+			return fileHits{}, fmt.Errorf("search: %w", err)
 		}
 		// The turn goes on without excerpts, so this is a warning, not the
 		// turn's error.
@@ -1195,7 +1244,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (string
 	span.SetAttributes(attribute.Int("meru.search.results", len(results)))
 	a.log.DebugContext(ctx, "search done", "results", len(results),
 		"chars", utf8.RuneCountInString(section), "ms", time.Since(start).Milliseconds())
-	return section, sources, docs, nil
+	return fileHits{section: section, sources: sources, docs: docs, results: results}, nil
 }
 
 // displayDir returns dir, a folder from config such as "~/meru-output", as
@@ -1230,8 +1279,8 @@ func (a *Agent) canDo() string {
 //     changes only with the kind of turn, so it comes after the parts every
 //     turn shares and before the parts each question changes;
 //   - the parts each question changes: the recalled memories, the picked
-//     skills' instructions, and the excerpts from the user's files with any
-//     earlier conversations.
+//     skills' instructions, the excerpts from the user's files with any
+//     earlier conversations, and what the web-first step found.
 //
 // The profile sits right after whoIsWho, so the rule that "I" means the user
 // and the facts about who the user is read together. The recalled memories
@@ -1263,6 +1312,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	add(sec.memories)
 	add(sec.skillBodies)
 	add(sec.files)
+	add(sec.web)
 	recordMemoryTokens(ctx, profile, sec.memories)
 
 	history, dropped := trimHistory(history, maxHistoryChars)

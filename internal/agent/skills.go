@@ -28,9 +28,12 @@ import (
 	"github.com/aarora79/meru/internal/skills"
 )
 
-// Headers for the two skills sections of the system prompt.
+// Headers for the two skills sections of the system prompt. The list's
+// header says a skill isn't a tool: in a real session the model called
+// "web-research", a skill's name, as a tool, twice, and apologised when
+// both calls failed.
 const (
-	skillsListHeader = "Skills you can use:"
+	skillsListHeader = "Skills you can use. A skill is a set of instructions, not a tool, so never call a skill by name:"
 	skillsBodyHeader = "Follow these instructions for this answer:"
 )
 
@@ -253,8 +256,13 @@ func (a *Agent) skillsSection(ctx context.Context, p pickedSkills) (list, bodies
 		return "", ""
 	}
 	lines := []string{skillsListHeader}
+	allowed := a.offeredNames()
 	for _, s := range skills {
-		lines = append(lines, "- "+s.Name+": "+strings.Join(strings.Fields(s.Description), " "))
+		line := "- " + s.Name + ": " + strings.Join(strings.Fields(s.Description), " ")
+		if tools := skillToolNames(p.reg, s.Name, allowed); len(tools) > 0 {
+			line += " To use it, call " + orList(tools) + "."
+		}
+		lines = append(lines, line)
 	}
 	list = strings.Join(lines, "\n")
 
@@ -428,6 +436,60 @@ func notOffered(want []string, specs []engine.ToolSpec) []string {
 		}
 	}
 	return out
+}
+
+// skillToolNames returns the tools the skill called name uses, from its
+// allowed-tools key, that the list offered holds, in the skill's order. It
+// returns nil for a skill that names none, or none of them is offered.
+//
+// The skills list passes every tool config allows, not the tools one
+// round offers, so its text stays the same from turn to turn and Ollama
+// can reuse its work on it; skillHint passes the round's tools.
+func skillToolNames(reg *skills.Registry, name string, offered []string) []string {
+	if reg == nil {
+		return nil
+	}
+	s, ok := reg.Get(name)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, n := range s.AllowedTools {
+		if slices.Contains(offered, n) && !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// skillHint returns what the model reads back when it calls a tool named
+// after a skill, such as "web-research is a skill, not a tool. Call
+// web_search or web_fetch.", when offer, the round's tools, holds a tool
+// the skill uses. It returns "" otherwise, and dispatch then gives its
+// usual refusal. The call still goes to dispatch, which denies and records
+// it like any call to a tool no backend offers; the hint only changes the
+// words, so the model can recover in its next round.
+func skillHint(reg *skills.Registry, name string, offer []engine.ToolSpec) string {
+	if reg == nil || !reg.Has(name) {
+		return ""
+	}
+	names := make([]string, len(offer))
+	for i, s := range offer {
+		names[i] = s.Name
+	}
+	tools := skillToolNames(reg, name, names)
+	if len(tools) == 0 {
+		return ""
+	}
+	return name + " is a skill, not a tool. Call " + orList(tools) + "."
+}
+
+// orList joins names as English does: "a", "a or b", "a, b or c".
+func orList(names []string) string {
+	if len(names) <= 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // skillInfos turns the picked names into the list the "route" event

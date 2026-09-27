@@ -521,6 +521,11 @@ turn's sources.
 `New` keeps them in a `webClients` struct. Neither uses a proxy
 (`Transport{Proxy: nil}`) or a cookie jar.
 
+The tool's description tells the model to search a product, company or
+person under the name the user wrote, in double quotes, and never to swap in a
+name it knows. A model once searched for an older product with a similar name
+to the one the user asked about.
+
 **`web_search`** checks its arguments first: `query` must hold a word,
 `max_results` must be 1 to 20 (0 means `[web] max_results`), and `time_range`
 must be `day`, `week`, `month` or `year` when given. `searxng` builds the URL

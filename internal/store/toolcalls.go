@@ -49,6 +49,9 @@ type ToolCall struct {
 	Approval       string
 	DurationMillis int64
 	TraceID        string
+	// Caller is "meru" for a call merud made on its own before the
+	// model's first round, and "" for a call the model asked for.
+	Caller string
 }
 
 // InsertToolCall writes one row to tool_calls through the store's one
@@ -65,10 +68,10 @@ func (s *Store) InsertToolCall(ctx context.Context, c ToolCall) error {
 func insertToolCall(ctx context.Context, tx *sql.Tx, c ToolCall) error {
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO tool_calls
-		 (call_id, session, ts, kind, server, tool, args, result, outcome, approval, duration_ms, trace_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (call_id, session, ts, kind, server, tool, args, result, outcome, approval, duration_ms, trace_id, caller)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.CallID, c.Session, c.Time.UTC().Format(time.RFC3339), c.Kind, c.Server, c.Tool,
-		string(c.Args), capText(c.Result, MaxToolResult), c.Outcome, c.Approval, c.DurationMillis, c.TraceID)
+		string(c.Args), capText(c.Result, MaxToolResult), c.Outcome, c.Approval, c.DurationMillis, c.TraceID, c.Caller)
 	if err != nil {
 		return fmt.Errorf("write tool call %s: %w", c.CallID, err)
 	}
@@ -83,7 +86,7 @@ func (s *Store) ToolCalls(ctx context.Context, limit int) ([]ToolCall, error) {
 		limit = -1 // SQLite reads a negative LIMIT as "no limit"
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, call_id, session, ts, kind, server, tool, args, result, outcome, approval, duration_ms, trace_id
+		`SELECT id, call_id, session, ts, kind, server, tool, args, result, outcome, approval, duration_ms, trace_id, caller
 		 FROM tool_calls ORDER BY ts DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read tool calls: %w", err)
@@ -95,7 +98,7 @@ func (s *Store) ToolCalls(ctx context.Context, limit int) ([]ToolCall, error) {
 		var c ToolCall
 		var ts, args string
 		if err := rows.Scan(&c.ID, &c.CallID, &c.Session, &ts, &c.Kind, &c.Server, &c.Tool,
-			&args, &c.Result, &c.Outcome, &c.Approval, &c.DurationMillis, &c.TraceID); err != nil {
+			&args, &c.Result, &c.Outcome, &c.Approval, &c.DurationMillis, &c.TraceID, &c.Caller); err != nil {
 			return nil, fmt.Errorf("read tool calls: %w", err)
 		}
 		c.Time, err = time.Parse(time.RFC3339, ts)
@@ -201,6 +204,7 @@ func pairToolLines(session string, lines []transcript.Line) []ToolCall {
 				Args:    l.Args,
 				Outcome: "cancelled", // until a tool_result line says otherwise
 				TraceID: l.TraceID,
+				Caller:  l.Caller,
 			})
 			open[l.CallID] = len(calls) - 1
 		case transcript.TypeApproval:

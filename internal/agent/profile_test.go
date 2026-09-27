@@ -192,24 +192,3 @@ func TestRememberGetsTools(t *testing.T) {
 		})
 	}
 }
-
-func TestAsksForWeb(t *testing.T) {
-	web := []engine.ToolSpec{spec("web_search")}
-	tests := []struct {
-		question string
-		specs    []engine.ToolSpec
-		want     bool
-	}{
-		{"Search the web: what is SearXNG?", web, true},
-		{"look it up online", web, true},
-		{"what does the internet say about Go 1.27", web, true},
-		{"what is the capital of France", web, false},
-		{"search the web for it", nil, false}, // no web_search configured
-		{"my website is down", web, false},    // "website" isn't "web"
-	}
-	for _, tt := range tests {
-		if got := asksForWeb(tt.question, tt.specs); got != tt.want {
-			t.Errorf("asksForWeb(%q) = %v, want %v", tt.question, got, tt.want)
-		}
-	}
-}

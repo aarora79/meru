@@ -193,8 +193,11 @@ copies differ.
 Meru's own, so they have no twin in `.claude/skills/`, and
 `TestBuiltinsMatchRepo` checks only the two copied skills against the repo (the
 `fromAssets` list). It tells the model how to answer a
-question about current facts with `web_search` and `web_fetch`: search first,
-treat a snippet as a pointer, read the one or two best pages with a prompt,
+question about current facts with `web_search` and `web_fetch`: search the
+user's own words first, with a name in double quotes; never swap in a product
+or company it knows for the one the user named; when the results are about
+something else, say so and search again; treat a snippet as a pointer, read the
+one or two best pages with a prompt,
 prefer the project's own site, check dates against today, quote versions from
 the page, cite each URL and say when sources disagree. Its description decides
 when the fast model picks it, so it names the questions that need it: "how to
@@ -205,7 +208,11 @@ the latest Go release", and `make pick-eval` scores the pick on 21 labelled
 questions (see [agent](agent.md)). The program-and-command words came from a
 real miss: before them, the pick chose `file-research` for "help me understand
 btop with some simple commands", and the model grepped the user's folders
-instead of searching the web.
+instead of searching the web. The rule on names came from another real
+session: asked about a product newer than its training, the model searched for
+an older product with a similar name and answered about that one. A copy of
+`web-research` from before the rule keeps the old steps until `meru skills
+reset web-research`.
 
 Both name their tools in `allowed-tools`: `web-research` lists `web_search,
 web_fetch` and `file-research` its four file tools. A copy installed before the

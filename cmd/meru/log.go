@@ -67,6 +67,10 @@ func logCmd(ctx context.Context, socket string, args []string, stdout, stderr io
 //
 //	2026-09-24 10:17:21  101500-ab12  mcp  notes.search  ok  session  120 ms  {"query":"garden"}
 //
+// The approval column shows "-" when nobody was asked, and "by meru" for a
+// call merud made on its own before the model's first round, such as the
+// web search for a question that asks for the web.
+//
 // With verbose, each call's result follows on its own indented line. It
 // fails only when w does.
 func writeLog(w io.Writer, entries []rpc.LogEntry, verbose bool) error {
@@ -82,7 +86,10 @@ func writeLog(w io.Writer, entries []rpc.LogEntry, verbose bool) error {
 	tw := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	for _, e := range entries {
 		approval := e.Approval
-		if approval == "" {
+		switch {
+		case approval == "" && e.Caller != "":
+			approval = "by " + e.Caller // merud made the call; no model chose it
+		case approval == "":
 			approval = "-" // nobody was asked
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s.%s\t%s\t%s\t%s\t%s\n",

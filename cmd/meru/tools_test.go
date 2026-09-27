@@ -124,6 +124,10 @@ func TestLogCommand(t *testing.T) {
 		Args: json.RawMessage(`{"argv":["git","-C","/home/sam/repos/meru","log","--since=1.week","--oneline"],"params":{"repo":"meru"}}`)}
 	cmdRow := "2026-09-24 10:18:40  101500-ab12  command  meru.cmd.git-log  ok  -  31 ms  " +
 		"git -C /home/sam/repos/meru log --since=1.week --oneline\n"
+	// A search merud ran on its own shows "by meru" where the approval goes.
+	meruEntry := rpc.LogEntry{Time: at("10:19:05"), Session: "2026-09-24T101500-ab12", Kind: "builtin", Server: "meru",
+		Tool: "web_search", Outcome: "ok", DurationMillis: 640, Caller: "meru", Args: json.RawMessage(`{"query":"Acme Flow"}`)}
+	meruRow := "2026-09-24 10:19:05  101500-ab12  builtin  meru.web_search  ok  by meru  640 ms  {\"query\":\"Acme Flow\"}\n"
 	rows := "2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {\"to\":\"sam@example.com\"}\n" +
 		"2026-09-24 10:16:02  101500-ab12  mcp  notes.search  ok        -     120 ms  {\"query\":\"garden\"}\n"
 	verbose := "2026-09-24 10:17:21  101500-ab12  mcp  mail.send     declined  deny  0 ms    {\"to\":\"sam@example.com\"}\n" +
@@ -144,6 +148,7 @@ func TestLogCommand(t *testing.T) {
 		{"verbose", []string{"log", "-v"}, entries, 0, 20, verbose, ""},
 		{"empty", []string{"log"}, nil, 0, 20, "No tool calls yet.\n", ""},
 		{"command", []string{"log"}, []rpc.LogEntry{cmdEntry}, 0, 20, cmdRow, ""},
+		{"merud's own call", []string{"log"}, []rpc.LogEntry{meruEntry}, 0, 20, meruRow, ""},
 		{"bad -n", []string{"log", "-n", "0"}, entries, 1, 0, "", "usage: meru log"},
 		{"extra word", []string{"log", "mail"}, entries, 1, 0, "", "usage: meru log"},
 	}

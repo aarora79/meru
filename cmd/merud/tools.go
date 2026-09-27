@@ -417,7 +417,7 @@ func (s *toolService) handleLog(ctx context.Context, limit int, emit func(rpc.Ev
 			Kind: r.Kind, Server: r.Server, Tool: r.Tool,
 			Args: r.Args, Result: rpc.Cut(r.Result, maxLogResult),
 			Outcome: r.Outcome, Approval: r.Approval,
-			DurationMillis: r.DurationMillis, TraceID: r.TraceID,
+			DurationMillis: r.DurationMillis, TraceID: r.TraceID, Caller: r.Caller,
 		}
 	}
 	return emit(rpc.Event{Type: rpc.EventLog, Log: entries})

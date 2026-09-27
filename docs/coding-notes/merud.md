@@ -824,6 +824,10 @@ result on its own line under it without breaking the columns. `argsCell` fills
 the last column: the arguments as compact JSON cut to 60 characters, or for a
 local command (`kind` "command") the `argv` from the row, written as a command
 line with `rpc.ArgvLine` and cut to 160, since the argv is the audit record.
+A call `merud` made itself, before the model's first round, shows `by meru`
+in the approval column, from the entry's `Caller`, where a call nobody was
+asked about shows `-`. `handleLog` in `cmd/merud/tools.go` copies `Caller`
+from the row.
 
 `rpc.ArgsLines` and `rpc.ArgsLine` format arguments for the prompt and the log,
 so `meru chat` shows them the same way. `rpc.ArgvLine` joins an argv with spaces

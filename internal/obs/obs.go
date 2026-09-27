@@ -176,7 +176,7 @@ func RecordRoute(ctx context.Context, route, outcome string) {
 }
 
 // RecordContextTokens records meru.context.tokens for one prompt section:
-// "system", "skills", "memories", "sessions", "chunks", "history" or
+// "system", "skills", "memories", "sessions", "chunks", "web", "history" or
 // "tools". Any other section becomes "other".
 func RecordContextTokens(ctx context.Context, section string, tokens int) {
 	in := load()

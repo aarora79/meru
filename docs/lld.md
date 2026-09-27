@@ -426,8 +426,8 @@ the server again (ARCHITECTURE.md, "MCP").
 
 `Handle` also calls `Tools()` on each turn for a second route rule. `toolTarget`
 looks for a sign that the question points at a connected tool: it names an MCP
-server or A2A agent (`toolServers`), says "remember", names the web, or names what
-a server's tools act on. When it finds one and the route has no tools, `withTools`
+server or A2A agent (`toolServers`), says "remember", asks for the web
+(`asksForWeb`), gives a URL (`givesURL`), or names what a server's tools act on. When it finds one and the route has no tools, `withTools`
 adds them, `direct` to `tools` and `search` to `search+tools`. On a `tools` turn
 the same sign skips the search of your files (`aboutFiles`). It reads the names
 each turn because `configure` can add a server while `merud` runs.
@@ -551,16 +551,20 @@ sequenceDiagram
     E-->>RT: Completion with log probabilities
     RT-->>A: Decision{Route, Confidence, Outcome}
     A->>A: namesFolder, toolTarget, withTools: search → search+tools
-    A-->>U: emit route event
     opt a file turn (aboutFiles): search or search+tools, or tools with no tool target
         A->>A: searchFiles → retrieve.Search (embed, vector, keyword, rrf)
-        A-->>U: emit sources event
     end
+    A->>A: askedWebFirst or namedWebFirst; withTools when the web goes first
+    A-->>U: emit route event
+    A-->>U: emit sources event, when the search found some
     opt the route offers tools
         A->>D: Refresh: list each MCP server's tools again; one try at each one not connected
         A->>A: toolSpecs(route) again
     end
-    A->>A: prompt(system prompt + toolsNote + fileToolsNote + excerpts, history, question)
+    opt the web goes first
+        A->>D: runWebFirst → runCalls: web_search or web_fetch, Caller "meru"
+    end
+    A->>A: prompt(system prompt + toolsNote + fileToolsNote + excerpts + "From the web", history, question)
     A->>E: round 1: Stream(messages, toolSpecs(route))
     E-->>A: Delta{ToolCalls: obsidian.obsidian_simple_search}
     A-->>U: emit tool_call event
@@ -581,7 +585,7 @@ sequenceDiagram
         E-->>A: Delta{Text}
         A-->>U: emit token event
     end
-    A->>T: Append(assistant line, summed token counts)
+    A->>T: Append(assistant line, summed token counts, web notes)
     A-->>S: emit done event with the turn's stats
     S-->>U: done event (sent last)
 ```
@@ -619,7 +623,13 @@ The same path as a reading list, in order:
    Last, `skillTools` (`skills.go`) adds the tools a picked skill's
    `allowed-tools` names, when config allows them, and widens the route to match;
    a skill whose tools are all off leaves the prompt. These rules run in
-   `respond`, the part of `Handle` between the question and the answer.
+   `respond`, the part of `Handle` between the question and the answer. After
+   the search of your files, `respond` decides whether the web goes first
+   (`webfirst.go`): `askedWebFirst` for a question that asks for the web or
+   gives a URL, `namedWebFirst` for one that names a thing the excerpts don't
+   cover. `runWebFirst` then runs the calls through `runCalls`, the function the
+   model's calls use, with `Caller` set to `dispatch.CallerMeru`, and puts the
+   results under "From the web".
 6. **`internal/agent/agent.go` → `searchFiles`**, on a file turn (`aboutFiles`:
    `search` and `search+tools`, and `tools` when the question points at no
    connected tool), calls
@@ -641,8 +651,8 @@ The same path as a reading list, in order:
    round (`[agent] max_rounds`, default 8) and after the model has repeated a
    call twice. Each call caps the model at `[agent] max_output_tokens`. When the
    model calls tools, `runRound` hands back the earlier result for a call it
-   already made (same name, same arguments), and `runTools` gives each new call
-   an ID, emits `tool_call`, and runs the calls at the same time in an
+   already made (same name, same arguments), and `runTools`, through `runCalls`,
+   gives each new call an ID, emits `tool_call`, and runs the calls at the same time in an
    `errgroup`, each through `ToolRunner.Dispatch`. Each result goes back to the
    model as a `RoleTool` message, in call order, and each call emits
    `tool_result` as it ends. The loop stops when a round has no tool calls. When

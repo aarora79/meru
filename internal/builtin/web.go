@@ -666,6 +666,7 @@ func (w *webClients) toolSpecs(saveDir string) []engine.ToolSpec {
 			Name: WebSearch,
 			Description: "Searches the web and returns numbered results, each with a title, URL, snippet and, when known, the date. " +
 				"Use it for news, recent events, prices, releases and anything else your training data may not hold or may hold out of date. " +
+				"When the user names a product, company or person, search for the name as the user wrote it, in double quotes, and never swap in a name you know. " +
 				"In your answer, cite each result you use by its URL.",
 			Parameters: mustSchema(map[string]any{
 				"query": prop("string", "The words to search for, as you would type them into a search engine."),
