@@ -180,6 +180,21 @@ func runApprove(ctx context.Context, a *Agent, req rpc.Request, approve rpc.Appr
 // readLines parses a session file into transcript lines.
 func readLines(t *testing.T, cfg config.Config, id string) []transcript.Line {
 	t.Helper()
+	var out []transcript.Line
+	for _, l := range allLines(t, cfg, id) {
+		// The model_switch line each session's first answer gets has
+		// tests of its own (modelswitch_test.go); the rest check the turn.
+		if l.Type != transcript.TypeModelSwitch {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// allLines returns every line of the session's transcript, model_switch
+// lines included.
+func allLines(t *testing.T, cfg config.Config, id string) []transcript.Line {
+	t.Helper()
 	s, err := transcript.Open(filepath.Join(cfg.Dir, "sessions"), id)
 	if err != nil {
 		t.Fatal(err)

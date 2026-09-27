@@ -163,12 +163,13 @@ type Agent struct {
 	// tools; see notools.go.
 	canCallTools func(ctx context.Context, model string) (bool, error)
 
-	// mainMu guards main, the answer model, which can change while turns
-	// run: the desktop app's Library switches it through SetMain. A
-	// sync.Mutex lets one
-	// goroutine at a time hold it, so a read never sees half a write.
-	mainMu sync.Mutex
-	main   string
+	// mainMu guards main, the answer model, and noThink, which can change
+	// while turns run: `/model`, `meru model use` and the desktop app's
+	// Library switch them through SetMain. A sync.Mutex lets one goroutine
+	// at a time hold it, so a read never sees half a write.
+	mainMu  sync.Mutex
+	main    string
+	noThink bool // true turns the answer model's thinking off; see SetMain
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -234,21 +235,30 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 // Main returns the answer model, the one that writes every answer: config's
 // [models] main at startup, or the model SetMain named last.
 func (a *Agent) Main() string {
+	model, _ := a.mainModel()
+	return model
+}
+
+// mainModel returns the answer model and whether its thinking is off, read
+// together so a switch can't land between the two.
+func (a *Agent) mainModel() (string, bool) {
 	a.mainMu.Lock()
-	// defer runs Unlock when Main returns, after it has read a.main.
+	// defer runs Unlock when mainModel returns, after it has read both.
 	defer a.mainMu.Unlock()
-	return a.main
+	return a.main, a.noThink
 }
 
 // SetMain makes model the answer model from the next model call on, so a
-// switch in the desktop app takes effect without a restart. merud calls
-// it after it has written the name to [models] main. A turn that is
-// running when the switch lands may answer its next round with the new
-// model; a turn is short, so that is rare and does no harm.
-func (a *Agent) SetMain(model string) {
+// switch takes effect without a restart. noThink true turns the model's
+// hidden reasoning off, as a model set's think = false asks. merud calls
+// it once Ollama has loaded the model (see cmd/merud/models.go). A turn
+// that is running when the switch lands answers its next round with the
+// new model, which is already in memory; its answer line then names that
+// model, so its numbers count for the model that wrote the answer.
+func (a *Agent) SetMain(model string, noThink bool) {
 	a.mainMu.Lock()
 	defer a.mainMu.Unlock()
-	a.main = model
+	a.main, a.noThink = model, noThink
 }
 
 // Handle runs one turn for req and sends its events through emit, in this
@@ -398,6 +408,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	ended = endOf(err, rep)
+	// A turn that used every round max_rounds allows and still wrote no
+	// text hit the cap; `/usage by model` counts these per model.
+	capped := ended == endGaveUp && t.rounds >= a.maxRounds
 	if ended != "" {
 		// err is only ever the deadline, unreadable output or no vision
 		// here, which endTurn answers for.
@@ -434,10 +447,21 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		}
 	}
 
+	// The model that wrote the answer: the last round's, or the answer
+	// model now when no round ran, as for a question with images the
+	// model can't read.
+	model := rep.model
+	if model == "" {
+		model = a.Main()
+	}
+	if err := a.noteModel(ctx, sess, model, traceID); err != nil {
+		return err
+	}
+
 	// The assistant line holds the turn's facts, so `meru usage` can
 	// rebuild from the files: the route after the override rules, how long
-	// the turn took, and which files it read. Outcome is set only on a turn
-	// that ended without a full answer.
+	// the turn took, which files it read, and how the model did. Outcome
+	// is set only on a turn that ended without a full answer.
 	answer := transcript.Line{
 		Type:      transcript.TypeAssistant,
 		Text:      rep.text,
@@ -448,13 +472,41 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		Sources:   res.docs,
 		Outcome:   ended,
 		Notice:    notice,
+		TTFTMs:    rep.ttft.Milliseconds(),
+		EvalMs:    rep.usage.EvalDuration.Milliseconds(),
+		BadCalls:  t.badCalls,
+		Capped:    capped,
 		TraceID:   traceID,
 	}
 	if err := a.appendLine(ctx, sess, answer); err != nil {
 		return err
 	}
-	a.recordUsage(ctx, sessionID, source, start, answer, t.calls)
+	a.recordUsage(ctx, sessionID, source, start, model, answer, t.calls)
 	return emit(doneEvent(start, rep))
+}
+
+// noteModel writes a model_switch line to the session before an answer
+// that model wrote, when the session's answers so far came from another
+// model or when it has none yet. The turns table reads these lines to
+// split usage by model (see store.turnsOf), so the transcript alone says
+// which model wrote each answer. It fails only when the transcript can't
+// be read or written.
+//
+// The line goes in the session that saw the change, at the answer that
+// first used the new model, not at the moment of the switch: a switch
+// applies to every session at once, and a session that asks nothing more
+// needs no line.
+func (a *Agent) noteModel(ctx context.Context, sess *transcript.Session, model, traceID string) error {
+	was, err := sess.Model()
+	if err != nil {
+		return err
+	}
+	if was == model {
+		return nil
+	}
+	return a.appendLine(ctx, sess, transcript.Line{
+		Type: transcript.TypeModelSwitch, Tier: "main", From: was, To: model, TraceID: traceID,
+	})
 }
 
 // response is what respond hands back to Handle: the route after the
@@ -723,14 +775,15 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 }
 
 // recordUsage writes the turns row for an answered turn and records
-// meru.turn.tokens and meru.turn.docs. answer is the assistant line just
-// written, and calls the number of tool calls the turn made.
+// meru.turn.tokens and meru.turn.docs. model is the main model that wrote
+// the answer, answer the assistant line just written, and calls the number
+// of tool calls the turn made.
 //
 // A failed insert only logs a warning: the transcript already holds the
 // turn, and the next rebuild of meru.db brings the row back. The insert
 // runs even when the client hung up after the answer: WithoutCancel keeps
 // ctx's values (the trace) and drops its cancel.
-func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, answer transcript.Line, calls int) {
+func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, model string, answer transcript.Line, calls int) {
 	obs.RecordTurnUsage(ctx, obs.TurnUsage{
 		Route: answer.Route, Source: source,
 		TokensIn: answer.TokensIn, TokensOut: answer.TokensOut, Docs: len(answer.Sources),
@@ -742,6 +795,7 @@ func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start
 		Session: sessionID, Time: start, Source: source, Route: answer.Route,
 		TokensIn: int64(answer.TokensIn), TokensOut: int64(answer.TokensOut),
 		DurationMillis: answer.Ms, ToolCalls: calls, Docs: answer.Sources, TraceID: answer.TraceID,
+		Model: model, TTFTMillis: answer.TTFTMs, EvalMillis: answer.EvalMs, BadCalls: answer.BadCalls, Capped: answer.Capped,
 	})
 	if err != nil {
 		a.log.WarnContext(ctx, "turn row not written; the transcript still has the turn", "err", err)
@@ -810,13 +864,17 @@ func doneEvent(start time.Time, rep reply) rpc.Event {
 // reply is what answer hands back: the whole answer text, the tool calls
 // the model made, the runtime's usage counters, when the first piece of
 // text arrived (the zero time.Time when none did), and why the model
-// stopped: "stop", or "length" when it hit the token cap.
+// stopped: "stop", or "length" when it hit the token cap. model names the
+// model that answered, and ttft is its time from sending the request to
+// the first text, zero when no text came.
 type reply struct {
 	text       string
 	calls      []engine.ToolCall
 	usage      engine.Usage
 	firstToken time.Time
 	doneReason string
+	model      string
+	ttft       time.Duration
 }
 
 // openSession opens the session named id, or starts a new one when id is
@@ -1238,7 +1296,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // first_token event, and the model-call metrics. Each round of a turn calls
 // it once.
 func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
-	model := a.Main()
+	model, noThink := a.mainModel()
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()
 
@@ -1255,13 +1313,14 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 	// so a turn that ran out of time can keep it.
 	fail := func(err error) (reply, error) {
 		obs.EndSpanErr(ctx, span, err)
-		return reply{text: text.String(), firstToken: firstToken}, fmt.Errorf("main model %s: %w", model, err)
+		return reply{text: text.String(), firstToken: firstToken, model: model, ttft: ttft}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
 	// MaxTokens becomes Ollama's num_predict, which counts every token the
 	// model writes, its hidden thinking included. It stops a thinking model
-	// that would reason for minutes and never answer.
-	stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model, MaxTokens: a.maxTokens})
+	// that would reason for minutes and never answer. NoThink comes from
+	// the model set in use, when its think = false.
+	stream, err := a.engine.Stream(ctx, msgs, tools, engine.Options{Model: model, MaxTokens: a.maxTokens, NoThink: noThink})
 	if err != nil {
 		return fail(err)
 	}
@@ -1312,7 +1371,8 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 		args = append(args, "answer", obs.Preview(text.String()))
 	}
 	a.log.DebugContext(ctx, "answer finished", args...)
-	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken, doneReason: doneReason}, nil
+	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken, doneReason: doneReason,
+		model: model, ttft: ttft}, nil
 }
 
 // buildMessages puts the prompt together: the system prompt, the session's

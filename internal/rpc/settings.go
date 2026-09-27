@@ -3,8 +3,9 @@
 // OpToolPolicy makes, the tool sources and catalog servers OpConnections
 // lists, the server of the user's own that OpMCPAdd adds, the folders
 // OpFolders lists, the two kinds of file OpSaveFile saves, and the models
-// OpModels reports and OpModelSet picks from. merud makes every change these
-// ops ask for; a client only sends the request.
+// and model sets OpModels reports and OpModelUse and OpModelSet pick from.
+// merud makes every change these ops ask for; a client only sends the
+// request.
 
 package rpc
 
@@ -206,9 +207,42 @@ type ModelsInfo struct {
 	// Choices are the models we tried as the answer model, each with
 	// whether Ollama has it and which tier uses it now.
 	Choices []ModelChoice `json:"choices,omitempty"`
-	// Warning, in the reply to OpModelSet, says what the new answer model
-	// can't do, such as call tools. It is empty otherwise.
+	// Sets are the [[models.sets]] from config.toml, in config's order,
+	// and Active names the one in use now: the one the last OpModelUse
+	// picked, or at startup the first whose models match the ones merud
+	// started with. Active is "" when none is in use.
+	Sets   []ModelSet `json:"sets,omitempty"`
+	Active string     `json:"active,omitempty"`
+	// Warning, in the reply to OpModelUse or OpModelSet, says what the
+	// switch leaves undone or what the new answer model can't do, such as
+	// call tools. It is empty otherwise.
 	Warning string `json:"warning,omitempty"`
+}
+
+// ModelSet is one row of `meru model` and the chat's /model box: a named
+// set of models the user can switch to, and what merud knows about it
+// right now.
+type ModelSet struct {
+	Name string `json:"name"`
+	// Main, Fast and Embed are the set's models; "" when the set leaves
+	// that tier as it is.
+	Main  string `json:"main,omitempty"`
+	Fast  string `json:"fast,omitempty"`
+	Embed string `json:"embed,omitempty"`
+	// ThinkOff is true when the set turns the main model's thinking off.
+	ThinkOff bool `json:"think_off,omitempty"`
+	// Bytes is the main model's size on disk, from Ollama's list of the
+	// models it has; 0 when Ollama doesn't list it.
+	Bytes int64 `json:"bytes,omitempty"`
+	// Pulled is true when Ollama has the main model on disk, and Loaded
+	// when it holds it in memory now.
+	Pulled bool `json:"pulled,omitempty"`
+	Loaded bool `json:"loaded,omitempty"`
+	// Active is true for the set in use now.
+	Active bool `json:"active,omitempty"`
+	// Capabilities are what Ollama says the main model can do, such as
+	// "tools" and "vision"; empty when Ollama can't say.
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // ModelChoice is one model we tried as the answer model, as OpModels

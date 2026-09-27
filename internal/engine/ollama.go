@@ -1,7 +1,8 @@
 // This file holds OllamaEngine, the one Engine Meru ships. It talks to
 // Ollama's native HTTP API on loopback: /api/chat for answers, /api/embed for
-// vectors, /api/version plus /api/ps for Info, and /api/show for what a
-// model can do and how big it is.
+// vectors, /api/version plus /api/ps for Info, /api/show for what a model
+// can do and how big it is, /api/tags for the models on disk, and
+// /api/generate with keep_alive 0 to unload a model.
 //
 // Each HTTP call gets its own client span (named like "POST /api/chat") and,
 // at debug level, log lines with its status, timings and the runtime's
@@ -370,21 +371,53 @@ func (e *OllamaEngine) Info(ctx context.Context) (ModelInfo, error) {
 
 // Pulled lists the models Ollama has on disk (GET /api/tags), by the
 // names Ollama gives them, such as "gemma3:12b" or
-// "nomic-embed-text:latest". It fails when the request fails.
+// "nomic-embed-text:latest", each with its size in bytes. It fails when
+// the request fails.
 //
 // Like Capabilities, Pulled isn't part of the Engine interface. Only
-// merud's models op asks it, to say which of the models we tried are
-// ready to use.
-func (e *OllamaEngine) Pulled(ctx context.Context) ([]string, error) {
+// merud's model ops ask it: which of the models we tried are ready to use,
+// and how big each model set's main model is.
+func (e *OllamaEngine) Pulled(ctx context.Context) ([]PulledModel, error) {
 	var tags tagsResponse
 	if err := e.getJSON(ctx, "/api/tags", &tags); err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(tags.Models))
+	out := make([]PulledModel, 0, len(tags.Models))
 	for _, m := range tags.Models {
-		names = append(names, m.Name)
+		out = append(out, PulledModel{Name: m.Name, Bytes: m.Size})
 	}
-	return names, nil
+	return out, nil
+}
+
+// Unload asks Ollama to drop model from memory now: a POST /api/generate
+// that names the model, holds no prompt and sets keep_alive to 0, which is
+// how Ollama's own docs unload a model. Ollama answers at once and frees
+// the memory soon after, so a caller that needs the room waits until
+// /api/ps stops listing the model (see Info). It fails when model is
+// empty, the request fails, or Ollama answers with a non-2xx status.
+//
+// merud calls it before it loads another main model: with keep_alive -1,
+// Ollama would keep both, and two large models can fill a 64 GB Mac and
+// make it swap (ARCHITECTURE.md, "Model tiers"). Like Pulled, it sits
+// outside the Engine interface.
+func (e *OllamaEngine) Unload(ctx context.Context, model string) error {
+	if model == "" {
+		return errors.New("ollama /api/generate: no model given")
+	}
+	body, err := json.Marshal(unloadRequest{Model: model, KeepAlive: json.RawMessage("0")})
+	if err != nil {
+		return fmt.Errorf("ollama /api/generate: encode request: %w", err)
+	}
+	ctx, span := e.startSpan(ctx, http.MethodPost, "/api/generate", body)
+	defer span.End()
+	resp, err := e.do(ctx, span, http.MethodPost, "/api/generate", body, []any{"model", model, "unload", true})
+	if err != nil {
+		return err
+	}
+	// The reply says only that the model is done; nothing in it matters.
+	// Reading it to the end lets the connection go back to the pool.
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.Body.Close()
 }
 
 // Capabilities returns what model can do, as POST /api/show lists it, such

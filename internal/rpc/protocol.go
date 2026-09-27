@@ -41,7 +41,9 @@ const (
 	// and "done".
 	OpLog Op = "log"
 	// OpUsage asks how much Meru has been used. The reply is one "usage"
-	// event and "done".
+	// event and "done". With Request.Kind set to UsageByModel, the event
+	// holds one window per answer model instead, over all time; see
+	// UsageWindow.Model.
 	OpUsage Op = "usage"
 	// OpMemoryList asks for every memory file. The reply is one "memories"
 	// event and "done".
@@ -148,14 +150,30 @@ const (
 	OpSkillEnable  Op = "skill_enable"
 	OpSkillDisable Op = "skill_disable"
 	// OpModels asks which models config names and which ones Ollama holds
-	// in memory now, with the models we tried as the answer model. The
-	// reply is one "models" event and "done".
+	// in memory now, with the models we tried as the answer model and the
+	// [[models.sets]] the user can switch between. The reply is one
+	// "models" event and "done".
 	OpModels Op = "models"
+	// OpModelUse switches to the model set named Request.ID until merud
+	// stops: merud unloads the answer model, waits for Ollama to let it
+	// go, loads the set's main model, and only then answers. A set that
+	// changes the embed model needs Request.Rebuild. The reply is one
+	// "models" event, as OpModels sends, with a Warning when the set
+	// changes a tier that waits for a restart or its model can't call
+	// tools, and "done". A switch that fails names the step that failed
+	// and leaves the answer model as it was.
+	OpModelUse Op = "model_use"
+	// OpModelSave writes the models in use now to [models] in config.toml,
+	// so merud starts with them: the answer model, and the fast and embed
+	// models of the set in use when it names them. The reply is one
+	// "models" event and "done".
+	OpModelSave Op = "model_save"
 	// OpModelSet makes the model named Request.ID the answer model: merud
-	// writes it to [models] main and answers the next question with it.
-	// merud accepts only a model from the list OpModels sends, and only
-	// once Ollama has it. The reply is one "models" event, as OpModels
-	// sends, with a Warning when the model can't call tools, and "done".
+	// switches to it as OpModelUse does, then writes it to [models] main.
+	// It is the desktop app's "Use for answers" on one of the models we
+	// tried, and accepts only a model from that list, once Ollama has it.
+	// The reply is one "models" event, as OpModels sends, with a Warning
+	// when the model can't call tools, and "done".
 	OpModelSet Op = "model_set"
 )
 
@@ -205,6 +223,10 @@ type Request struct {
 	// the same reason: a slice field would make Request impossible to
 	// compare with ==.
 	Images *Images `json:"images,omitempty"`
+	// Rebuild lets OpModelUse switch to a set that changes the embed
+	// model, which makes merud re-embed every file once the set is saved
+	// and merud restarts.
+	Rebuild bool `json:"rebuild,omitempty"`
 }
 
 // Images names the images a question carries, at most MaxImages. Each
@@ -583,6 +605,10 @@ const (
 	UsageLifetime = "all"
 )
 
+// UsageByModel is the Request.Kind that asks OpUsage for one window per
+// answer model.
+const UsageByModel = "model"
+
 // UsageWindow is how much Meru was used in one window of time, counting
 // answered questions only: a turn that failed or was cancelled has no
 // answer line in the transcript, and the numbers must be rebuildable from
@@ -606,6 +632,27 @@ type UsageWindow struct {
 	Docs int `json:"docs"`
 	// ToolCalls counts the tool calls those turns made.
 	ToolCalls int `json:"tool_calls"`
+
+	// The fields below are set only on a reply to OpUsage with Kind
+	// UsageByModel, which holds one window per model.
+
+	// Model is the main model that wrote these turns' answers, from the
+	// transcripts' model_switch lines; "" for turns older than those.
+	Model string `json:"model,omitempty"`
+	// TTFTp50Millis is the median of the turns' times to first token: on
+	// the round that first wrote text, from sending the request to the
+	// first text, as gen_ai.server.time_to_first_token measures it. 0 when
+	// no turn wrote text.
+	TTFTp50Millis int64 `json:"ttft_p50_ms,omitempty"`
+	// EvalMillis sums the time Ollama reported writing the answers' tokens;
+	// TokensOut over it is the model's speed.
+	EvalMillis int64 `json:"eval_ms,omitempty"`
+	// BadCalls counts the tool calls the model wrote that Meru couldn't
+	// run as written: see ARCHITECTURE.md, "Metrics", for what counts.
+	BadCalls int `json:"bad_calls,omitempty"`
+	// Capped counts the turns that used every round [agent] max_rounds
+	// allows and still wrote no answer.
+	Capped int `json:"capped,omitempty"`
 }
 
 // ProfileKinds returns the memory kinds whose files go into every prompt:

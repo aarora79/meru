@@ -43,6 +43,17 @@ type Turn struct {
 	// the prompt, each once.
 	Docs    []string
 	TraceID string
+	// Model is the main model that wrote the answer, "" when the
+	// transcript doesn't say. TTFTMillis is its time to first token on the
+	// round that first wrote text, EvalMillis the time Ollama spent writing
+	// tokens over the turn, BadCalls the tool calls it wrote that Meru
+	// couldn't run as written, and Capped whether the turn used every
+	// round and wrote no answer.
+	Model      string
+	TTFTMillis int64
+	EvalMillis int64
+	BadCalls   int
+	Capped     bool
 }
 
 // InsertTurn writes one row to turns through the store's one write path.
@@ -67,10 +78,12 @@ func insertTurn(ctx context.Context, tx *sql.Tx, t Turn) error {
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO turns
-		 (session, ts, source, route, tokens_in, tokens_out, duration_ms, tool_calls, docs, trace_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (session, ts, source, route, tokens_in, tokens_out, duration_ms, tool_calls, docs, trace_id,
+		  model, ttft_ms, eval_ms, bad_calls, capped)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.Session, t.Time.UTC().Format(time.RFC3339), t.Source, t.Route, t.TokensIn, t.TokensOut,
-		t.DurationMillis, t.ToolCalls, string(b), t.TraceID)
+		t.DurationMillis, t.ToolCalls, string(b), t.TraceID,
+		t.Model, t.TTFTMillis, t.EvalMillis, t.BadCalls, t.Capped)
 	if err != nil {
 		return fmt.Errorf("write turn: %w", err)
 	}
@@ -136,13 +149,17 @@ func (s *Store) ReplayTurns(ctx context.Context, sessionsDir string) (int, error
 
 // turnsOf turns one session's lines into rows, one per assistant line. A
 // row's time is the user line before the answer, and its tool calls are
-// the tool_call lines between the two. The rest comes from the assistant
+// the tool_call lines between the two. Its model is the To of the last
+// main-tier model_switch line before the answer, so a session that
+// switched models splits at the switch. The rest comes from the assistant
 // line itself. Lines written before v0.3 have no route, duration or
-// sources, so those fields stay empty.
+// sources, and lines written before model_switch have no model or model
+// numbers, so those fields stay empty.
 func turnsOf(session string, lines []transcript.Line) []Turn {
 	var turns []Turn
 	var asked time.Time // the open question's time; zero when none is open
 	calls := 0
+	model := ""
 	for _, l := range lines {
 		switch l.Type {
 		case transcript.TypeUser:
@@ -150,6 +167,10 @@ func turnsOf(session string, lines []transcript.Line) []Turn {
 			asked, calls = l.TS, 0
 		case transcript.TypeToolCall:
 			calls++
+		case transcript.TypeModelSwitch:
+			if l.Tier == "main" {
+				model = l.To
+			}
 		case transcript.TypeAssistant:
 			ts := asked
 			if ts.IsZero() {
@@ -159,6 +180,7 @@ func turnsOf(session string, lines []transcript.Line) []Turn {
 				Session: session, Time: ts, Route: l.Route,
 				TokensIn: int64(l.TokensIn), TokensOut: int64(l.TokensOut),
 				DurationMillis: l.Ms, ToolCalls: calls, Docs: l.Sources, TraceID: l.TraceID,
+				Model: model, TTFTMillis: l.TTFTMs, EvalMillis: l.EvalMs, BadCalls: l.BadCalls, Capped: l.Capped,
 			})
 			asked, calls = time.Time{}, 0
 		}
@@ -252,4 +274,83 @@ func (s *Store) Usage(ctx context.Context, now time.Time) ([]rpc.UsageWindow, er
 		out[i] = w
 	}
 	return out, nil
+}
+
+// usageByModel adds up every turn per answer model. The median time to
+// first token needs each turn's value, which SQL has no function for, so
+// UsageByModel reads those with ttftByModel and works it out in Go.
+const (
+	usageByModel = `SELECT model, COUNT(DISTINCT session), COUNT(*),
+		COALESCE(SUM(tokens_in), 0), COALESCE(SUM(tokens_out), 0),
+		COALESCE(SUM(duration_ms), 0), COALESCE(SUM(tool_calls), 0),
+		COALESCE(SUM(eval_ms), 0), COALESCE(SUM(bad_calls), 0), COALESCE(SUM(capped), 0)
+		FROM turns GROUP BY model ORDER BY COUNT(*) DESC, model`
+	ttftByModel = `SELECT model, ttft_ms FROM turns WHERE ttft_ms > 0 ORDER BY model, ttft_ms`
+)
+
+// UsageByModel adds up the turns table per answer model, over all time,
+// and returns one window per model, the model with the most turns first.
+// Each window's Name is rpc.UsageLifetime and its Model the model; turns
+// from before the transcripts named the model come under Model "". Docs
+// stays 0: the files a model read say nothing about the model.
+//
+// It fails when the database does.
+func (s *Store) UsageByModel(ctx context.Context) ([]rpc.UsageWindow, error) {
+	rows, err := s.db.QueryContext(ctx, usageByModel)
+	if err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+	defer rows.Close()
+	var out []rpc.UsageWindow
+	for rows.Next() {
+		w := rpc.UsageWindow{Name: rpc.UsageLifetime}
+		if err := rows.Scan(&w.Model, &w.Sessions, &w.Turns, &w.TokensIn, &w.TokensOut,
+			&w.ActiveMillis, &w.ToolCalls, &w.EvalMillis, &w.BadCalls, &w.Capped); err != nil {
+			return nil, fmt.Errorf("usage by model: %w", err)
+		}
+		out = append(out, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+
+	medians, err := s.ttftMedians(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].TTFTp50Millis = medians[out[i].Model]
+	}
+	return out, nil
+}
+
+// ttftMedians returns the median time to first token of each model's
+// turns, leaving out turns that wrote no text. With an even count it takes
+// the lower of the two middle values, so the number is always one a turn
+// really took.
+func (s *Store) ttftMedians(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx, ttftByModel)
+	if err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+	defer rows.Close()
+	// byModel holds each model's values in rising order, as the query
+	// sorts them.
+	byModel := map[string][]int64{}
+	for rows.Next() {
+		var model string
+		var ms int64
+		if err := rows.Scan(&model, &ms); err != nil {
+			return nil, fmt.Errorf("usage by model: %w", err)
+		}
+		byModel[model] = append(byModel[model], ms)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("usage by model: %w", err)
+	}
+	medians := map[string]int64{}
+	for model, v := range byModel {
+		medians[model] = v[(len(v)-1)/2]
+	}
+	return medians, nil
 }

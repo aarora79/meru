@@ -97,3 +97,34 @@ func TestShortBytes(t *testing.T) {
 		}
 	}
 }
+
+// TestModelUsageTable checks the per-model table: one row per model under
+// the header, the speed worked out from tokens and writing time, and a
+// dash for what a model has no data for.
+func TestModelUsageTable(t *testing.T) {
+	windows := []UsageWindow{
+		{Model: "qwen3.6:35b-a3b-mxfp8", Turns: 41, TTFTp50Millis: 820, TokensOut: 2410, EvalMillis: 100_000,
+			ToolCalls: 63, BadCalls: 2, Capped: 1},
+		{Model: "qwen3.8:27b-mlx", Turns: 35, TTFTp50Millis: 12_400, TokensOut: 142, EvalMillis: 10_000, ToolCalls: 51, BadCalls: 4, Capped: 3},
+		{Turns: 3},
+	}
+	want := [][]string{
+		{"MODEL", "TURNS", "TTFT p50", "TOK/S", "TOOL CALLS", "BAD CALLS", "CAPPED"},
+		{"qwen3.6:35b-a3b-mxfp8", "41", "820ms", "24.1", "63", "2", "1"},
+		{"qwen3.8:27b-mlx", "35", "12s", "14.2", "51", "4", "3"},
+		{"(not recorded)", "3", "—", "—", "0", "0", "0"},
+	}
+	if got := ModelUsageTable(windows); !reflect.DeepEqual(got, want) {
+		t.Errorf("ModelUsageTable =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestShortMillis checks the three ranges of a time to first token, and
+// that 9.96 seconds rounds up to "10s" rather than "10.0s".
+func TestShortMillis(t *testing.T) {
+	for ms, want := range map[int64]string{0: "0ms", 820: "820ms", 1240: "1.2s", 9960: "10s", 14_200: "14s"} {
+		if got := ShortMillis(ms); got != want {
+			t.Errorf("ShortMillis(%d) = %q, want %q", ms, got, want)
+		}
+	}
+}

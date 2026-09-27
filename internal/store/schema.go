@@ -16,7 +16,8 @@ import (
 // database from schema_version i to i+1. To change the schema, append a
 // step; never edit one that has shipped, because existing databases have
 // already run it. Later milestones add messages and memories this way, as
-// v0.3 added tool_calls and turns.
+// v0.3 added tool_calls and turns, and step 6 added the answer model's
+// numbers to turns.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -183,6 +184,21 @@ func migrations() []string {
 		CREATE VIRTUAL TABLE memory_fts USING fts5(
 			text, content='memories', content_rowid='id'
 		);`,
+
+		// 6: how each turn's answer model did, for `/usage by model`.
+		//
+		// model is the main model that wrote the answer, from the
+		// transcript's model_switch lines; ttft_ms its time to first token,
+		// eval_ms the time Ollama spent writing tokens, bad_calls the tool
+		// calls it wrote that Meru couldn't run as written, and capped 1
+		// when the turn used every round and wrote no answer. Rows written
+		// before this step keep the defaults: their transcripts don't name
+		// the model either.
+		`ALTER TABLE turns ADD COLUMN model TEXT NOT NULL DEFAULT '';
+		ALTER TABLE turns ADD COLUMN ttft_ms INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE turns ADD COLUMN eval_ms INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE turns ADD COLUMN bad_calls INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE turns ADD COLUMN capped INTEGER NOT NULL DEFAULT 0;`,
 	}
 }
 

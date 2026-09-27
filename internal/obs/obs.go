@@ -282,6 +282,21 @@ func RecordTurnUsage(ctx context.Context, u TurnUsage) {
 	in.turnDocs.Record(ctx, int64(u.Docs), metric.WithAttributes(route))
 }
 
+// RecordMalformedCall adds one to meru.model.malformed_calls for a tool
+// call the main model named model wrote and Meru couldn't run as written:
+// output Ollama couldn't read, arguments that aren't a JSON object, or a
+// tool the turn didn't offer (ARCHITECTURE.md, "Metrics"). The model name
+// comes from config.toml, so it is a small set; the metric carries nothing
+// else, so the tool's name, which a model can make up, never becomes a
+// series of its own.
+func RecordMalformedCall(ctx context.Context, model string) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.malformedCalls.Add(ctx, 1, metric.WithAttributes(attr(keyModel, model)))
+}
+
 // ActiveStreams adds delta (+1 or -1) to meru.rpc.active_streams.
 func ActiveStreams(ctx context.Context, delta int64) {
 	in := load()

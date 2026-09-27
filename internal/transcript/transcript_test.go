@@ -135,6 +135,34 @@ func TestOpenContinuesSession(t *testing.T) {
 	}
 }
 
+// TestModel checks that Model reads the session's latest main-tier
+// model_switch line, skips other tiers, and says "" for a session with
+// none.
+func TestModel(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, err := s.Model(); err != nil || m != "" {
+		t.Fatalf("Model of a new session = %q, %v; want \"\"", m, err)
+	}
+	lines := []Line{
+		{Type: TypeModelSwitch, Tier: "main", To: "qwen3.6:35b-a3b-mxfp8"},
+		{Type: TypeUser, Text: "q"},
+		{Type: TypeAssistant, Text: "a"},
+		{Type: TypeModelSwitch, Tier: "main", From: "qwen3.6:35b-a3b-mxfp8", To: "gemma4:26b-mxfp8"},
+		{Type: TypeModelSwitch, Tier: "fast", From: "a", To: "b"},
+	}
+	for _, l := range lines {
+		if err := s.Append(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m, err := s.Model(); err != nil || m != "gemma4:26b-mxfp8" {
+		t.Errorf("Model = %q, %v; want gemma4:26b-mxfp8", m, err)
+	}
+}
+
 func TestOpenRejectsBadIDs(t *testing.T) {
 	dir := t.TempDir()
 	tests := []string{

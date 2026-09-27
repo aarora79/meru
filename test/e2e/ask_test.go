@@ -42,15 +42,20 @@ func TestAsk(t *testing.T) {
 		t.Fatalf("want one transcript, found %v", files)
 	}
 	lines := readTranscript(t, files[0])
-	if len(lines) != 2 {
-		t.Fatalf("transcript has %d lines, want 2: %+v", len(lines), lines)
+	if len(lines) != 3 {
+		t.Fatalf("transcript has %d lines, want 3: %+v", len(lines), lines)
 	}
-	user, asst := lines[0], lines[1]
+	// The session's first answer names its model in a model_switch line
+	// just before it.
+	user, sw, asst := lines[0], lines[1], lines[2]
 	if user.Type != transcript.TypeUser || user.Text != question {
 		t.Errorf("line 1 = %+v, want the user's question", user)
 	}
+	if sw.Type != transcript.TypeModelSwitch || sw.Tier != "main" || sw.From != "" || sw.To == "" {
+		t.Errorf("line 2 = %+v, want a model_switch line naming the main model", sw)
+	}
 	if asst.Type != transcript.TypeAssistant || asst.Text != answer {
-		t.Errorf("line 2 = %+v, want the assistant's answer", asst)
+		t.Errorf("line 3 = %+v, want the assistant's answer", asst)
 	}
 	if asst.TokensIn != 42 || asst.TokensOut != 7 {
 		t.Errorf("assistant tokens in/out = %d/%d, want 42/7", asst.TokensIn, asst.TokensOut)
@@ -198,7 +203,9 @@ func TestSessionContinues(t *testing.T) {
 	for _, l := range lines {
 		types = append(types, l.Type)
 	}
-	wantTypes := []string{"user", "assistant", "user", "assistant"}
+	// Only the first answer gets a model_switch line: the second comes
+	// from the same model.
+	wantTypes := []string{"user", "model_switch", "assistant", "user", "assistant"}
 	if !slices.Equal(types, wantTypes) {
 		t.Errorf("transcript line types = %q, want %q", types, wantTypes)
 	}

@@ -32,6 +32,12 @@ const (
 	// TypeSummary holds, in Text, a one- or two-sentence summary of the
 	// session, which merud appends once the session has gone quiet (v0.4).
 	TypeSummary = "summary"
+	// TypeModelSwitch says that the answers from here on come from another
+	// model: Tier is "main", From the model before and To the one after.
+	// The agent writes one before an answer whose model differs from the
+	// session's last one, so a session's first answer gets one with an
+	// empty From. The turns table reads it to split usage by model.
+	TypeModelSwitch = "model_switch"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type
@@ -84,6 +90,20 @@ type Line struct {
 	Notice string `json:"notice,omitempty"`
 	// Ms is how long the call took, in milliseconds.
 	Ms int64 `json:"ms,omitempty"`
+	// TTFTMs, EvalMs, BadCalls and Capped describe how the model did, on
+	// an assistant line: its time to first token on the round that first
+	// wrote text, the time Ollama spent writing tokens over the turn, the
+	// tool calls it wrote that Meru couldn't run as written, and whether
+	// the turn used every round and still wrote no answer. `/usage by
+	// model` adds them up.
+	TTFTMs   int64 `json:"ttft_ms,omitempty"`
+	EvalMs   int64 `json:"eval_ms,omitempty"`
+	BadCalls int   `json:"bad_calls,omitempty"`
+	Capped   bool  `json:"capped,omitempty"`
+	// Tier, From and To belong to a model_switch line.
+	Tier string `json:"tier,omitempty"`
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 	// Result is what the tool returned, as text, secrets redacted.
 	Result string `json:"result,omitempty"`
 
@@ -250,6 +270,30 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 		msgs = append(msgs, t[0], t[1])
 	}
 	return msgs, nil
+}
+
+// Model returns the main model the session's answers come from now: the
+// To of its last model_switch line for the main tier, or "" when it has
+// none, as a new session or one written before the line existed has. It
+// fails only when the file can't be read.
+func (s *Session) Model() (string, error) {
+	lines, err := s.read()
+	if err != nil {
+		return "", err
+	}
+	return LastModel(lines), nil
+}
+
+// LastModel returns the To of the last main-tier model_switch line in
+// lines, or "" when there is none.
+func LastModel(lines []Line) string {
+	model := ""
+	for _, l := range lines {
+		if l.Type == TypeModelSwitch && l.Tier == "main" {
+			model = l.To
+		}
+	}
+	return model
 }
 
 // imageNotes returns one line per image in paths, "[image: <name>]",
