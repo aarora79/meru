@@ -195,6 +195,17 @@ a catalog server takes no keys: the app saves a key with `secret_set` first. A
 server of the user's own can't work that way, because `secret_set` accepts only a
 name config already uses, so its secrets travel inside `Custom`.
 
+`ModelsInfo.Sets` lists an `rpc.ModelSet` per `[[models.sets]]` entry: its
+models, `ThinkOff`, the main model's size (`Bytes`), whether Ollama has it
+(`Pulled`) and holds it now (`Loaded`), whether it is the set in use (`Active`),
+and what it can do. `ModelsInfo.Active` names the set in use. `model_use`
+(`OpModelUse`) takes a set's name in `Request.ID`, and `Request.Rebuild`, a
+plain bool, lets through a set that changes the embed model; `model_save`
+(`OpModelSave`) takes nothing. Both reply with a `models` event, as `models`
+and `model_set` do, with `Warning` set when the switch leaves something undone.
+The existing `models` op grew these fields rather than a second op beside it:
+old clients skip fields they don't know.
+
 ### citation.go
 
 Two helpers both clients use, so `meru` and `meru chat` show sources the same
@@ -256,6 +267,13 @@ box in `meru chat` show the same numbers:
 
 Each client lays out the cells its own way: `meru` with a `text/tabwriter`, and
 `meru chat` by hand, so it can drop windows that don't fit the terminal.
+
+`UsageByModel` is the `Request.Kind` that asks `OpUsage` for one window per
+answer model. Those windows carry `Model`, `TTFTp50Millis`, `EvalMillis`,
+`BadCalls` and `Capped` as well. `ModelUsageTable` lays them out as `meru
+chat`'s `/usage by model` shows them, with `ShortMillis` for the time to first
+token (`820ms`, `1.2s`) and tokens per second worked out as `TokensOut` over
+`EvalMillis`. `ModelUsageNote` goes under it and says what the columns count.
 
 ### client.go
 

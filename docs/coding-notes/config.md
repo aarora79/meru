@@ -285,6 +285,24 @@ blocks can't come from `catalog.Block` here, because `catalog` imports
 `config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
 the catalog package checks it against `Block`'s output.
 
+### Model sets
+
+`Models.Sets` holds the `[[models.sets]]` entries, each a `ModelSet`: a name, a
+main model, and optional fast and embed models. In TOML, `[[models.sets]]`
+starts one entry of an array of tables, so each block becomes one element of
+the slice. `Think` is a `*bool`, a pointer to a bool, so that a key left out
+(`nil`) differs from `think = false`; `ThinkOff` reports the second. A test
+writes `new(false)`, which since Go 1.26 makes a `*bool` that points at `false`.
+
+`checkSets` refuses an entry with no name, a name with anything but letters,
+digits, `.`, `-` and `_`, a name used twice, and a set that names no model. It
+doesn't ask Ollama whether the models exist: `config` never talks to Ollama, and
+`merud` warns about a missing one when it starts. `FindSet` looks a set up by
+name for `merud`'s model ops.
+
+`Models` now holds a slice, and Go can't compare a struct that holds a slice
+with `==`, so the tests compare its three model names one by one.
+
 ### known.go
 
 `KnownModels()` lists the three models we tried as the answer model:

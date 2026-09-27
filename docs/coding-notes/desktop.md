@@ -193,10 +193,15 @@ JavaScript as `null`.
 
 `UseModel(name)` is the "Use for answers" button on a model card. It sends
 `model_set` with the model's name, and `merud` refuses a model Ollama doesn't
-have, writes `[models] main`, and answers the next question with it, with no
-restart. The reply is the models view after the change, with a `Warning` for a
+have, unloads the old answer model, loads the new one, writes `[models] main`,
+and answers the next question with it, with no restart. `UseModelSet(name,
+rebuild)` sends `model_use` for a model set, the Library's **Use** and the
+composer's `/model <name>`, and `SaveModels` sends `model_save`, **Make
+default** and `/model save`. A switch gets `switchTimeout`, three minutes, in
+`one`, since a large model can take a minute to load. The reply is the models view after the change, with a `Warning` for a
 model that can't call tools, such as `gemma3:12b`. The status block names the
-answer model, so `UseModel` keeps the new name in the Bridge's `model` field.
+answer model, and any client can switch it, so `models` keeps the name each
+models reply gives in the Bridge's `model` field.
 That field now sits under the Bridge's mutex, `mu`, since `Status` reads it
 while a Library call may write it.
 
@@ -309,8 +314,13 @@ the user deleted keeps its name and loses its preview.
 
 ### commands.go
 
-`commandList` holds the six slash commands, `/new`, `/usage`, `/me`, `/mcp`,
-`/copy [N]` and `/exit`, with a line on each for the menu. `Commands` hands the
+`commandList` holds the seven slash commands, `/new`, `/usage`, `/me`, `/mcp`,
+`/model [name | save]`, `/copy [N]` and `/exit`, with a line on each for the
+menu. In the page, `/model` alone opens Library, Models; `/model save` calls
+`SaveModels` and `/model <name>` calls `UseModelSet`, and both say on the
+notice line how it went. A switch waits while a turn runs, as in `meru chat`.
+`TestModelCommandRouting` reads `commands.js` and checks that each form reaches
+the Bridge, since the page has no tests of its own. `Commands` hands the
 page a copy. `TestCommandsMatchChat` reads `commandList` out of
 `internal/tui/commands.go`'s source and fails when the two lists differ; it reads
 the file because `internal/desktop` may not import `internal/tui`. `Quit` closes

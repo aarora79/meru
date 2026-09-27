@@ -91,6 +91,15 @@ against Ollama 0.34. The agent's skill pick and the session summarizer set `NoTh
 skill name within 20 tokens, the other two sentences, and neither gains from
 reasoning first.
 
+`Unload(ctx, model)` drops a model from Ollama's memory. It posts to
+`/api/generate` with the model, no prompt, `stream: false` and `keep_alive: 0`,
+which is how Ollama's docs unload a model; config's `keep_alive` doesn't apply
+to this one call. Ollama answers at once and frees the memory a moment later,
+so `merud` then asks `/api/ps` until the model is gone (`cmd/merud/models.go`).
+`Pulled` reads `/api/tags` and now returns a `PulledModel` for each model, its
+name and its size in bytes. Both sit outside the `Engine` interface, which keeps
+its four methods.
+
 `Stream` posts with `stream: true`. Ollama answers with NDJSON (newline-delimited
 JSON): one JSON object per line. `Stream` returns an iterator that reads a line,
 turns it into a `Delta` and hands it to the caller's loop. The last line has

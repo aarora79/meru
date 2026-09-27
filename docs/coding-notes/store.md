@@ -302,6 +302,21 @@ fastest as its own subquery over the `session` index. SQLite's query planner
 picks one index per query, so the two forms put the session count in different
 places. `BenchmarkUsage` runs `Usage` over 50,000 turns.
 
+Migration step 6 adds five columns to `turns`, with `ALTER TABLE ... ADD COLUMN`:
+`model`, the main model that wrote the answer; `ttft_ms`, its time to first
+token; `eval_ms`, the time Ollama spent writing tokens; `bad_calls`; and
+`capped`. Rows written before the step keep the defaults, since their
+transcripts don't name the model either. `turnsOf` reads the model from the
+session's `model_switch` lines: it keeps the `to` of the last one it has passed
+and gives it to each answer after it, so a session that switched models splits
+at the switch.
+
+`UsageByModel(ctx)` adds the rows up per model with one `GROUP BY model` query.
+SQLite has no median function, so `ttftMedians` reads each model's times to
+first token in rising order and takes the middle one in Go; with an even count it
+takes the lower of the two middle values, so the number is always the time of
+one real turn. Turns that wrote no text have a time of 0 and stay out.
+
 `DiskBytes` adds up the sizes of `meru.db`, `meru.db-wal` and `meru.db-shm`;
 a missing file counts as 0. The store keeps its own path for it.
 

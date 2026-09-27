@@ -613,10 +613,17 @@ the plain env value nor the memory's text.
 
 ### merud: models.go
 
-This file answers the Library's two model ops. `modelService.handleModels`
+This file answers the four model ops: `models`, `model_use`, `model_save` and
+`model_set`. `newModelService` builds the service once at startup. It finds the
+model set in use, the first `[[models.sets]]` entry whose models match the ones
+`merud` started with, and when that set has `think = false`, it tells the agent
+with `SetMain`. The service is a pointer, `*modelService`, because it holds a
+mutex and the name of the set in use, and a copy of either would be a bug.
+
+`modelService.handleModels`
 answers `models`, and `info` gathers the reply: the profile, the fast and embed
-models from config, and the answer model from the agent's `Main`, since
-`model_set` can change it. It asks the engine's `Info` for the Ollama version
+models from config, and the answer model from the agent's `Main`, since a
+switch can change it. It asks the engine's `Info` for the Ollama version
 and the models it holds, and waits at most 3 seconds. A runtime that doesn't
 answer leaves the list empty and says why in `Err`.
 
@@ -643,6 +650,49 @@ When you pick `gemma3:12b` it:
 
 `answerModel` is the interface for step 3, with the two methods `Main` and
 `SetMain`. `*agent.Agent` has both; the tests pass a small struct.
+
+`info` also fills `Sets`, one `rpc.ModelSet` per set: its models, its think
+setting, the main model's size from `Pulled`, whether Ollama holds it now
+(`Info`'s loaded list), whether it is the set in use, and what the main model can
+do. A set whose main model is one we tried shows the capabilities from
+`known.go` before it is pulled, as its Library card does.
+
+**One switch path.** `switchMain(ctx, to, noThink)` is the only code that
+changes the answer model. `handleModelUse`, `handleModelSet` and nothing else
+call it, and each holds `switchMu` while it runs, so a second switch waits
+rather than loading a third model beside the first two. In order, it:
+
+1. asks `Pulled` whether Ollama has `to`, and refuses before it unloads
+   anything when it doesn't;
+2. calls the engine's `Unload` on the old answer model, which sends
+   `keep_alive: 0`;
+3. calls `waitUnloaded`, which asks `Info` every 100 ms until the old model
+   leaves Ollama's list, for at most 10 seconds;
+4. loads `to` with a one-token `Generate`, as `warm` does at startup;
+5. calls `SetMain(to, noThink)` on the agent.
+
+Steps 2 and 3 are skipped when the old model is also the fast or embed model,
+since the router needs it. Each failure returns an error that starts "step N of
+3", and the agent keeps its model. `waitUnloaded` waits with `select`, which
+blocks until one of its cases can go: the next poll, from `time.After`, or
+`ctx.Done()`, which closes when the client hangs up.
+
+`handleModelUse` answers `model_use`, `/model <name>`. It looks the set up with
+`config.FindSet`, refuses a set that changes `embed` unless `Request.Rebuild` is
+set, switches, and records the set's name with `setActive`. `active` has its own
+small mutex, `mu`, apart from `switchMu`, so `models` answers while a switch
+loads a model. The reply's `Warning` joins `fastWarning` for a set that changes
+the router's model, a line saying the set's fast and embed models wait for a
+save and a restart, and `noToolsWarning`.
+
+`handleModelSave` answers `model_save`. It writes the answer model, and the set's
+fast and embed models when it names them, with `catalog.SetTableStrings`, one
+write for all keys, under the same config lock. `handleModelSet`, the Library's
+"Use for answers", now calls `switchMain` too, then saves `main`; a Library pick
+is a setting, so it lands in `config.toml` at once.
+
+`warnMissingSetModels` runs once after `warm` and logs a warning for each model a
+set names that Ollama doesn't list. It doesn't stop `merud`.
 
 ### merud: handler
 
@@ -804,6 +854,21 @@ digit. The labels stay out of the tabwriter, because that mode would push them
 right too; `%-*s` pads each one on the right and it joins its line afterwards.
 A `merud` older than `OpUsage` answers with an error event, and `meru usage`
 fails with `merud gave no usage numbers: unknown op "usage"`.
+
+In `merud`, `handleUsage` answers `OpUsage` from the store: `Usage` for the
+windows of time, or `UsageByModel` when `Request.Kind` is `rpc.UsageByModel`,
+which `/usage by model` in `meru chat` sends.
+
+### meru: model.go
+
+`meru model` prints the model sets with `tui.ModelTable`, the same lines the
+chat's `/model` box draws. `meru model use <name>` sends `OpModelUse`, with
+`Rebuild` set when `--rebuild` follows the name, and `meru model save` sends
+`OpModelSave`. `modelCmd` checks the words before it sends anything, and gives a
+switch or a save three minutes, since `merud` unloads one model and loads
+another before it answers. `context.WithTimeout` returns a copy of `ctx` that
+ends after the timeout; `defer cancel()` frees its timer. merud's `Warning`, when
+it sends one, prints as a `note:` line.
 
 ### meru: look.go
 

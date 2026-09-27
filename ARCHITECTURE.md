@@ -231,8 +231,11 @@ scrolling answer pane, and two more Charm libraries for its look:
   otherwise. Typing `/usage` opens a table of sessions, questions, tokens in
   and out, active time, files touched and tool calls for the last hour, today,
   this week, this month, the last 30 days and all time; `meru usage` prints
-  the same table. Typing `/new` starts a new session, so a conversation that
-  went wrong stops shaping the answers after it. In both clients, each source
+  the same table, and `/usage by model` shows one row per answer model (see
+  [Model sets](#model-sets)). Typing `/model` opens a table of the model sets,
+  `/model <name>` switches to one and `/model save` makes it the default; the
+  header names the set in use beside the usage. Typing `/new` starts a new
+  session, so a conversation that went wrong stops shaping the answers after it. In both clients, each source
   line is a link (OSC 8) to its `file://` path, which terminals that support
   links open on a click.
 - **Glamour** renders each finished answer as Markdown: headings, lists, and code
@@ -276,7 +279,8 @@ each one costs a whole turn and a longer line of them is more often a slip than
 a plan. Ctrl-C stops the running turn and drops the queue: a user who stops an
 answer wants the screen back. `/new` drops it too, since those questions
 belonged to the old conversation. Commands that only open a box or copy text
-run at once.
+run at once. A model switch waits for the running turn to end, since `merud`
+would unload the model that writes its answer.
 
 The stats come from the `done` event that ends each reply, which carries the
 turn's timings and token counts.
@@ -477,10 +481,11 @@ turn does with them.
   itself, so an image never passes through the socket, and the transcript can
   name what the question carried.
 
-**Slash commands.** The composer understands the six commands `meru chat` has:
+**Slash commands.** The composer understands the seven commands `meru chat` has:
 `/new` (as New chat: it stops a running turn and drops the queue, with the chat's
 notice), `/usage` (Library, Usage), `/me` (Library, About you), `/mcp` (Library,
-Connections), `/copy N` (code block N of this chat, numbered as the chat numbers
+Connections), `/model` (Library, Models; `/model <name>` and `/model save`
+switch and save as in the chat), `/copy N` (code block N of this chat, numbered as the chat numbers
 them; `/copy` alone the newest answer's last block) and `/exit` (close the app,
 asking first while a turn runs). Typing "/" at the start of the box opens a menu
 of them, a listbox the arrow keys move through, filtered as you type; Enter or
@@ -523,10 +528,13 @@ differs from `meru chat`'s.
   card for each model in [Models we tried](#models-we-tried): its size, what it
   can do, a line on what it did well and one on what it did badly, whether
   Ollama has it, and its `ollama pull` and `ollama run` commands, each with a Copy
-  button. **Use for answers** switches the answer model with no restart; it stays
-  off until Ollama has the model, and a model without tools carries a warning.
-  The router, the embedding model and the profile change in `config.toml`, then
-  a restart.
+  button. **Use for answers** switches the answer model with no restart and saves
+  it; it stays off until Ollama has the model, and a model without tools carries
+  a warning. Above those cards, **Model sets** shows a card per
+  [model set](#model-sets), with what its main model can do when Ollama or the
+  list of models we tried says; **Use** switches to the set until `merud` stops,
+  and **Make default** saves the set in use. The router, the embedding model and
+  the profile change in `config.toml`, then a restart.
 - **Activity** lists the `tool_calls` log, the data `meru log` prints: time,
   tool, outcome and duration, with the arguments and result behind a button.
 - **Usage** shows the usage windows the chat's `/usage` box shows.
@@ -561,8 +569,10 @@ add` and `configure` use, and applies it at once:
 | `folder_add`, `folder_remove` | edits `[index] folders`, hands the indexer the new list, restarts the watcher and scans |
 | `skill_enable`, `skill_disable` | edits `[skills] disabled` and loads the skills again |
 | `save_file` | saves the chat or an answer as Markdown through `write_file` |
-| `models` | names the models, asks Ollama which it holds, and lists the models we tried with whether Ollama has each |
-| `model_set` | writes `[models] main` for a model on that list that Ollama has, and hands it to the agent for the next question |
+| `models` | names the models, asks Ollama which it holds, and lists the models we tried with whether Ollama has each, and the model sets |
+| `model_use` | switches to a model set until `merud` stops, unloading the old answer model first (see [Model sets](#model-sets)) |
+| `model_save` | writes the models in use to `[models]` |
+| `model_set` | switches to a model on that list that Ollama has, the same way, then writes `[models] main` |
 
 A change to a list edits only that list's lines in `config.toml`: every comment
 and every other key stays. `merud` writes a temporary file, loads it, checks that
@@ -964,13 +974,92 @@ uses it.
 **Switching the answer model.** "Use for answers" on a model's card sends
 `model_set` (see [Desktop app](#desktop-app)). `merud` refuses a model off the
 list, and one `GET /api/tags` doesn't show, with the `ollama pull` to run. It
-writes `[models] main` with the same safe write and lock as the other settings,
-then hands the name to the agent, which reads the answer model on every model
-call. The next question uses the new model, with no restart. The `fast` and
-`embed` models stay as they are. Ollama loads the new model on that first
-question and keeps the old one loaded, since `merud` asks for `keep_alive: -1`,
-until Ollama stops or `ollama stop <model>` unloads it. To set any other model,
-edit `[models] main` in `config.toml` and restart `merud`.
+switches the way a [model set](#model-sets) switches, unloading the old answer
+model first, then writes `[models] main` with the same safe write and lock as the
+other settings. A pick in the Library is a setting, and every Library setting
+lands in `config.toml`; the chat's `/model` is for comparing, so it waits for
+`/model save`. The `fast` and `embed` models stay as they are. To set any other
+model, name it in a model set, or edit `[models] main` in `config.toml` and
+restart `merud`.
+
+### Model sets
+
+A model set names the models to switch between, so a switch names one thing
+rather than three. Sets sit beside `[models]` in `config.toml`:
+
+```toml
+[[models.sets]]
+name  = "qwen-moe"
+main  = "qwen3.6:35b-a3b-mxfp8"
+think = false
+
+[[models.sets]]
+name  = "gemma-moe"
+main  = "gemma4:26b-mxfp8"
+think = false
+```
+
+A set names `main`, and may name `fast` and `embed`. `think = false` sends
+Ollama `think: false` with every answer call, so a model that reasons before
+it answers doesn't lose on time to first token for that reason alone; left
+out, each model does what it does by default. `config.Load` checks that each
+set has a name of letters, digits, `.`, `-` and `_`, that no name repeats, and
+that each set names a model. At startup `merud` logs a warning for each model
+a set names that `GET /api/tags` doesn't list, and starts anyway: the model
+can be pulled later. The set in use at startup is the first whose models match
+the ones `merud` started with.
+
+`/model <name>` in `meru chat`, `meru model use <name>` and the Library's
+**Use** send `model_use`. The switch lasts until `merud` stops, which is what a
+comparison wants; `/model save`, `meru model save` and **Make default** send
+`model_save`, which writes the models in use to `[models]`. `model_use` runs in
+this order, because `keep_alive: -1` keeps every model in memory, and three
+main models of 38, 28 and 17 GB would push a 64 GB Mac into swap and make every
+measurement after it noise:
+
+1. Check that Ollama has the new main model, so a switch that can't finish
+   unloads nothing.
+2. Ask Ollama to drop the old answer model: `POST /api/generate` with the
+   model, no prompt and `keep_alive: 0` (`OllamaEngine.Unload`).
+3. Ask `/api/ps` every 100 ms until it no longer lists the old model, for at
+   most 10 seconds.
+4. Load the new model with a one-token question, as `merud` warms each tier at
+   startup, so the first real question doesn't pay for the load.
+5. Hand the model and its think setting to the agent, and only then reply.
+
+Steps 2 and 3 are skipped when the old answer model is also the `fast` or
+`embed` model, as in `lite`, since the router still needs it. A step that fails
+comes back as an error that names it, such as "step 2 of 3: Ollama still holds
+qwen3.6:35b in memory after 10s", and the answer model and the set in use stay
+as they were. One switch runs at a time.
+
+Only the main model changes while `merud` runs. The router, the skill pick, the
+summarizer and the index read the `fast` and `embed` models at startup, so a
+set's `fast` and `embed` models take effect once the set is saved and `merud`
+restarts, and the reply says so. A set that changes `embed` needs `--rebuild`:
+a new embedding model makes vectors of another size, every stored vector goes
+stale, and `merud` re-embeds every file in the `[index]` folders at that
+restart. A set that changes `fast` carries a warning, because the router needs
+log probabilities and one token per route letter (see [Routing](#routing)).
+
+**Which model wrote each answer.** Before an answer whose model differs from
+the session's last one, the agent appends a `model_switch` line to the session
+(see [Session transcripts](#session-transcripts)); a session's first answer gets
+one with an empty `from`. The answer line records the model's time to first
+token on the round that first wrote text, the time Ollama spent writing tokens,
+its bad calls and whether the turn hit the cap. The `turns` table takes these
+from the transcripts, so `/usage by model` rebuilds with the rest of `meru.db`:
+
+```text
+MODEL                  TURNS  TTFT p50  TOK/S  CALLS  BAD CALLS  CAPPED
+qwen3.6:35b-a3b-mxfp8     41     820ms   24.1     63          2       1
+gemma4:26b-mxfp8          38     610ms   31.7     59          7       0
+```
+
+TTFT p50 is the median time to first token. TOK/S divides the tokens written by
+Ollama's `eval_duration`. CALLS counts tool calls. BAD CALLS counts what
+`meru.model.malformed_calls` counts (see [Metrics](#metrics)). CAPPED counts
+turns that used every round `agent.max_rounds` allows and wrote no text.
 
 **A model without tools.** Ollama refuses a request that offers tools to a model
 whose `/api/show` lacks `tools`, with a 400 that says the model "does not
@@ -1031,6 +1120,11 @@ For [routing](#routing), `Options` gains two fields, `LogProbs` and `TopLogProbs
 and `Completion` gains `LogProbs`: for each generated position, the chosen token and
 the alternatives the model weighed, each with its log probability. Both default to
 off, so other callers see no change, and the interface keeps its four methods.
+
+Two more methods sit outside the interface, for the model ops alone.
+`Unload` drops a model from Ollama's memory with a `POST /api/generate` that
+sets `keep_alive: 0`, and `Pulled` reads `GET /api/tags` with each model's size
+on disk.
 
 For images, `Message` gains `Images`, the raw bytes of each image on a user
 message. `OllamaEngine` sends them as the message's `images` array in
@@ -1526,6 +1620,15 @@ event. `merud` appends a line as each event happens and never rewrites old ones.
 {"ts":"2026-09-23T10:31:40Z","type":"summary","text":"Found the launch date agreed in email: 14 October, in the thread with Sam."}
 ```
 
+```json
+{"ts":"2026-09-27T09:14:02Z","type":"model_switch","tier":"main","from":"qwen3.6:35b-a3b-mxfp8","to":"gemma4:26b-mxfp8"}
+```
+
+A `model_switch` line comes before the first answer a new main model writes in
+a session, so the transcript alone says which model wrote each answer. An
+assistant line also carries `ttft_ms`, `eval_ms`, `bad_calls` and `capped` (see
+[Model sets](#model-sets)).
+
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
@@ -1564,7 +1667,7 @@ files with mode `0600`, so only you can read them.
 | `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration and trace ID | `sessions/*.jsonl` |
 | `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
-| `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, and trace ID. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration and files) |
+| `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
 | `meta` | schema version, embedding model name and vector size | config |
 
@@ -3043,11 +3146,30 @@ for the rest.
 | `meru.context.tokens` | histogram | section (system/skills/memories/sessions/chunks/history/tools) | data for the context budget policy |
 | `meru.tool.calls` | counter | `meru.tool.kind` (mcp/a2a/builtin/command), `meru.tool.server`, `gen_ai.tool.name`, `meru.outcome` (ok/error/denied/declined/cancelled/timeout) | tool usage and failures |
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
+| `meru.model.malformed_calls` | counter | model | tool calls the main model wrote that Meru couldn't run as written |
 | `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories/sessions) | retrieval cost (v0.2; memories and sessions stages v0.4) |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
 
 The OTel Go runtime package adds heap, garbage-collection and goroutine metrics.
+
+**What counts as a malformed call.** The agent counts one for each of these, in
+the round where it happens:
+
+- Ollama sends `ErrModelOutput` in the middle of a stream: its parser couldn't
+  read what the model wrote, most often a tool call. The retry that follows
+  counts again if it fails too.
+- A call names a tool the round didn't offer, whether the tool exists or not.
+  This covers a call on the last round, which offers no tools, and a call to a
+  tool the model made up, which `dispatch` also refuses as `denied`.
+- A call's arguments aren't a JSON object. Ollama parses the model's call
+  itself, so this is rare.
+
+A repeated call isn't malformed: the model wrote it well, and the agent hands
+back the earlier result (see [Agent loop](#agent-loop)). The counter carries
+the model name alone, which config bounds; the tool's name, which a model can
+make up, stays off it. The answer line's `bad_calls` holds the same count per
+turn, for `/usage by model`.
 
 Token counts come from Ollama's counters on each response; Meru doesn't estimate
 them. `merud` measures time to first token from the start of the request to the
@@ -3183,7 +3305,10 @@ We'll settle these with working code and measurements.
    questions about recent events from memory, and sends requests such as "text
    alex that I'm on my way" to search. Next:
    label real turns from transcripts, refit, and decide whether `lite` needs a
-   larger `fast` model for tool-heavy use.
+   larger `fast` model for tool-heavy use. For the `main` model, [model
+   sets](#model-sets) and `/usage by model` now measure a change on real
+   questions: time to first token, speed, bad calls and capped turns per
+   model, rebuilt from the transcripts.
 2. **Context caps.** v0.4 sets a cap per part of the prompt and orders the parts
    for Ollama's prompt reuse (see [Agent loop](#agent-loop), step 2). The caps are
    first guesses; `meru.context.tokens` will show whether any part runs into its

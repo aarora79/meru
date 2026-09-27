@@ -159,6 +159,16 @@ failed before its first line, stays out.
 `testdata/sessions/` holds three small session files and one stray file for
 `List`'s tests, including a torn line.
 
+### Model switch lines
+
+`TypeModelSwitch` lines say which main model writes the answers from there on:
+`Tier` is `"main"`, `From` the model before and `To` the one after. The agent
+writes one before an answer whose model differs from the session's last one, so
+a session's first answer gets one with an empty `From`. `Session.Model` reads the
+file and returns the `To` of the last one, through `LastModel`, which the store
+could use on lines it already holds. The assistant line gained `TTFTMs`,
+`EvalMs`, `BadCalls` and `Capped`, the numbers `/usage by model` adds up.
+
 ### Summary lines
 
 From v0.4, `merud` appends a `summary` line once a session has gone quiet

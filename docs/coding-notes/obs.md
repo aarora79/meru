@@ -77,6 +77,13 @@ so Grafana can work out percentiles. The SDK's default buckets suit milliseconds
 and Meru records seconds, so each histogram gets its own edges. Time to first token
 has an edge at exactly 1 s, the v0.1 target.
 
+`meru.model.malformed_calls` is a counter with one attribute, the model. The
+agent adds one for each tool call the main model wrote that Meru couldn't run as
+written: output Ollama couldn't read (`engine.ErrModelOutput`), a call to a tool
+the round didn't offer, or arguments that aren't a JSON object. The tool's name
+stays off the metric, because a model can make up any name and each would start
+a new series.
+
 ### obs.go
 
 This file holds the functions other packages call. They share one pattern:
@@ -139,6 +146,9 @@ it leaves out turns that failed, so its totals match the `turns` table that
 number is zero. It skips time to first token for calls that didn't stream. It records
 model load time on every call, zero included, so the dashboard can count how many
 calls paid for a cold load.
+
+`RecordMalformedCall(ctx, model)` adds one to `meru.model.malformed_calls`. The
+agent calls it from `internal/agent/malformed.go`.
 
 ### setup.go
 

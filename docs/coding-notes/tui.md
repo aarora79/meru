@@ -677,16 +677,18 @@ the keys, and it sits in the conversation those boxes cover.
 ### commands.go
 
 A line that starts with `/` never reaches the model; `submit` hands it to
-`command`. `/usage` opens the usage box, `/me` the profile box and `/mcp` the MCP
-status box (all below). `/new` calls `newSession`, which
+`command`. `/usage` opens the usage box, `/me` the profile box, `/mcp` the MCP
+status box and `/model` the model sets box (all below). `/new` calls `newSession`, which
 stops a streaming answer, clears the screen and forgets the session ID, so the next
 question asks `merud` for a new session. It also counts up `m.turn`: the stopped
 answer may still send events, and `handleEvent` drops any event whose turn number
 isn't the current one, so a late `session` event can't bring the old session back.
 `newSession` also drops the queue and says how many questions went: they were typed
 for the old conversation, and sending them into the new one would carry it on.
-The other commands only open a box or copy text, so they run at once while a turn
-runs and never wait in the queue.
+The other commands only open a box, copy text or talk to `merud`, so they run at
+once while a turn runs and never wait in the queue. A model switch is the one
+exception: `modelCommand` refuses it while a turn streams, since `merud` would
+unload the model that writes the answer.
 `/exit` does what Ctrl-D does: it stops a streaming answer and returns `tea.Quit`.
 People type it out of habit from other chat programs. The help line leaves it out,
 because it would push the line past 80 columns, and Ctrl-C already shows there as
@@ -908,6 +910,14 @@ other command it leaves the text in the input, so you can fix a typo, and sets
 unknown command /usag · commands: /new, /usage, /me, /mcp, /exit
 ```
 
+`/usage by model` goes through `usageCommand`, which opens the box with `byModel`
+set and returns `askUsage(ask, true)`: the same request with `Kind` set to
+`rpc.UsageByModel`. The reply comes back as a `usageMsg` with `byModel` set, so
+`applyUsage` fills only a box waiting by model and never hands those windows to
+the header, whose summary reads windows of time. The box draws
+`rpc.ModelUsageTable`: one row per model, with turns, the median time to first
+token, tokens per second, tool calls, bad calls and capped turns.
+
 `applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A
 box still loading takes the first reply that comes, whichever request it answers,
 because they all ask for the same numbers. When `merud` answered with an error, the
@@ -934,14 +944,14 @@ reads `pgup/dn`, so the whole help line still fits in 80 columns.
 
 ### box.go
 
-The `/usage`, `/me` and `/mcp` boxes share their frame. `boxPane` draws a title, a blank
+The `/usage`, `/me`, `/mcp` and `/model` boxes share their frame. `boxPane` draws a title, a blank
 line, the body, a blank line and a dim note inside a teal border, as wide as the
 widest line allows up to the pane's width, and pads the result to the pane's height.
 A body line too wide for the box ends in "…", so a caller that wants its lines whole
 wraps them to `boxRoom(width)` first. `boxOpen` says whether either box is open,
 `boxKey` handles the keys while one is, and `closeBox` closes it and gives the input
 its cursor back. The `Model` holds one pointer per box (`usageBox`, `meBox`,
-`mcpBox`); nil means closed, so `boxOpen` checks all three.
+`mcpBox`, `modelBox`); nil means closed, so `boxOpen` checks all four.
 
 ### me.go
 
@@ -992,6 +1002,44 @@ isn't connected. The last field is the reason a server isn't connected, folded o
 one line by `oneLine`, or else an HTTP server's URL without its scheme. With no rows,
 `MCPTable` returns one line that says how to add a server. A box too narrow for the
 table cuts each line with "…", as `boxPane` does for any box.
+
+### models.go
+
+The file is `models.go`, with an s, because `model.go` holds the Bubble Tea
+`Model`, the chat screen's state; two files named for "model" would confuse every
+reader of the package.
+
+`/model` works like `/mcp`: `modelCommand` opens a `modelBox` with `loading` set
+and returns `listModels`, which sends `rpc.OpModels` and hands the reply back as
+a `modelsMsg`. `/model save` sends `OpModelSave`, and `/model <name>` sends
+`OpModelUse` with the set's name in `ID`, and `Rebuild` set when `--rebuild`
+follows it. `modelsCmd` does the sending for all three, with an `action` field so
+`applyModels` knows which reply it holds. A switch or a save says on the notice
+line that it has started, and `applyModels` says how it ended, with `merud`'s
+warning after a `·`. A switch waits up to `switchTimeout`, three minutes, since
+`merud` loads a model of up to 38 GB before it answers.
+
+Every models reply updates `m.models`, which the header reads: `answerModel`
+names the model `merud` says answers now, and `activeSet` the set in use, which
+the header shows in teal beside the usage. When the line is narrow the usage goes
+first; the set's name stays, and the details shrink around it. The chat asks for
+the models at start and on the refresh timer, because another client, such as
+the desktop app, may switch the answer model.
+
+`ModelTable` lays out the sets, as `MCPTable` does for servers, and `meru model`
+prints it:
+
+```text
+  MODEL SET    MAIN                      SIZE   THINK     STATE
+→ qwen-moe     qwen3.6:35b-a3b-mxfp8    38 GB   off       loaded
+  gemma-moe    gemma4:26b-mxfp8         28 GB   off       on disk
+  qwen-dense   qwen3.8:27b-mlx              —   off       not pulled
+```
+
+The arrow marks the set in use. `DiskSize` writes sizes as `ollama list` does,
+counting by 1,000, so they match the numbers Ollama prints. A set that also
+names a fast or embed model gets a second line that names them, and when no set
+is in use, a last line names the model that answers.
 
 ### run.go
 
