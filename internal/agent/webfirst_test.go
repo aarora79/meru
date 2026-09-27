@@ -71,6 +71,10 @@ func TestWebQuery(t *testing.T) {
 		{Role: engine.RoleUser, Content: "what does Acme Flow do with shared notes"},
 		{Role: engine.RoleAssistant, Content: "It copies them."},
 	}
+	song := []engine.Message{
+		{Role: engine.RoleUser, Content: "what does the song maname maname sung by r. devi acvtually mean"},
+		{Role: engine.RoleAssistant, Content: "I don't have access to web search."},
+	}
 	tests := []struct {
 		name     string
 		question string
@@ -86,6 +90,26 @@ func TestWebQuery(t *testing.T) {
 		{"a question that stands alone keeps to itself", "search the web for Acme Flow team plans", earlier,
 			"Acme Flow team plans"},
 		{"only the phrase", "search the web", nil, "search the web"},
+		{"a real follow-up still borrows", "search the web for the pricing", earlier,
+			"pricing what does Acme Flow do with shared notes"},
+		// A follow-up that speaks only of the web searches for the earlier
+		// question alone. The first case replays the real turn, typos and
+		// all, with an invented song.
+		{"a follow-up about the web alone", "you have accerss to web search", song,
+			"song maname maname sung by r. devi acvtually mean"},
+		{"look it up alone", "look it up", song, "song maname maname sung by r. devi acvtually mean"},
+		{"can you look it up", "ok, can you look it up online?", song,
+			"song maname maname sung by r. devi acvtually mean"},
+		{"two follow-ups in a row", "search the web", append(slices.Clone(song),
+			engine.Message{Role: engine.RoleUser, Content: "you have access to web search"},
+			engine.Message{Role: engine.RoleAssistant, Content: "I can't search."}),
+			"song maname maname sung by r. devi acvtually mean"},
+		// A closing instruction means nothing to a search engine.
+		{"and tell me", "amazon quick and tell me what it is in three lines", nil, "amazon quick"},
+		{"both shapes", "search the web for Acme Flow pricing and tell me what it costs in three lines", nil,
+			"Acme Flow pricing"},
+		{"a length at the end", "search the web for Acme Flow pricing in three lines", nil, "Acme Flow pricing"},
+		{"then explain", "look up Acme Flow team plans, then explain them simply", nil, "Acme Flow team plans"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -155,14 +155,68 @@ func offersTool(specs []engine.ToolSpec, name string) bool {
 
 // webQuery returns the words to search the web for when the user asked
 // for the web: the question with its URLs, the phrases that asked for the
-// web, the filler words at either end and a closing mark such as "?" taken
-// out, such as "Acme Flow pricing" from "can you search the web for Acme
-// Flow pricing?". A
-// follow-up too short to stand alone gets the session's latest earlier
-// question with a subject after it, as a search of the files does (see
-// searchQuery). The result is cut to maxWebQuery characters.
+// web, a closing instruction such as "and tell me what it is in three
+// lines", the filler words at either end and a closing mark such as "?"
+// taken out, such as "Acme Flow pricing" from "can you search the web for
+// Acme Flow pricing?" (see webWords). The result is cut to maxWebQuery
+// characters.
+//
+// A follow-up that speaks only of the web, such as "look it up" or "you
+// have access to web search", searches for the session's latest earlier
+// question alone, cleaned the same way. A real turn showed why: the
+// follow-up "you have accerss to web search" borrowed the question before
+// it, as a file search does, and sent SearXNG "have accerss what does the
+// song ... mean", typo and all.
+//
+// Any other follow-up too short to stand alone, such as "search the web
+// for the pricing", gets the session's latest earlier question with a
+// subject after it, as a search of the files does (see searchQuery).
 func webQuery(question string, history []engine.Message) string {
-	tokens := strings.Fields(urlPattern.ReplaceAllString(question, " "))
+	q, onlyWeb := webWords(question)
+	if onlyWeb {
+		if earlier := earlierWebWords(history); earlier != "" {
+			return cutRunes(earlier, maxWebQuery)
+		}
+	}
+	if q == "" {
+		q = strings.TrimSpace(urlPattern.ReplaceAllString(question, " "))
+	}
+	// searchQuery joins an earlier question with a line break; a search
+	// engine wants one line.
+	q = strings.Join(strings.Fields(searchQuery(q, history)), " ")
+	return cutRunes(q, maxWebQuery)
+}
+
+// earlierWebWords returns webWords of the latest earlier question of the
+// user's in history that names a subject and doesn't speak only of the
+// web, or "" when there is none. It skips a string of follow-ups such as
+// "look it up" then "search the web" and reaches the question they both
+// point at.
+func earlierWebWords(history []engine.Message) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != engine.RoleUser {
+			continue
+		}
+		if q, onlyWeb := webWords(history[i].Content); !onlyWeb && q != "" {
+			return q
+		}
+	}
+	return ""
+}
+
+// webWords returns the words of text to search the web for, with no
+// earlier question borrowed: text without its URLs, the phrases that ask
+// for the web, a closing instruction (see instructionAt), the filler words
+// at either end and a closing mark such as "?".
+//
+// onlyWeb reports whether text speaks only of the web and names nothing to
+// search for: no words are left, or the words left are fewer than
+// standaloneWords subjects and one of them speaks of what Meru can reach
+// (see reachWord), as "have" and "accerss" are left from "you have
+// accerss to web search". "search the web for the pricing" leaves
+// "pricing", which counts as a subject.
+func webWords(text string) (q string, onlyWeb bool) {
+	tokens := strings.Fields(urlPattern.ReplaceAllString(text, " "))
 	// keys holds each token in lower case with its punctuation taken off,
 	// the form webPhrases uses.
 	keys := make([]string, len(tokens))
@@ -179,6 +233,11 @@ func webQuery(question string, history []engine.Message) string {
 		tokens = slices.Delete(tokens, start, start+n)
 		keys = slices.Delete(keys, start, start+n)
 	}
+	// Cut a closing instruction, which tells the model how to answer and
+	// means nothing to a search engine.
+	if i := instructionAt(keys); i > 0 {
+		tokens, keys = tokens[:i], keys[:i]
+	}
 	// Drop filler words, such as "can you ... for the", from both ends.
 	for len(keys) > 0 && (keys[0] == "" || isFiller(keys[0])) {
 		tokens, keys = tokens[1:], keys[1:]
@@ -186,14 +245,58 @@ func webQuery(question string, history []engine.Message) string {
 	for len(keys) > 0 && (keys[len(keys)-1] == "" || isFiller(keys[len(keys)-1])) {
 		tokens, keys = tokens[:len(tokens)-1], keys[:len(keys)-1]
 	}
-	q := strings.TrimRight(strings.Join(tokens, " "), "?.!,;:")
-	if q == "" {
-		q = strings.TrimSpace(urlPattern.ReplaceAllString(question, " "))
+	q = strings.TrimRight(strings.Join(tokens, " "), "?.!,;:")
+	subjects := subjectWords(q)
+	reach := slices.ContainsFunc(keys, reachWord)
+	return q, q == "" || (subjects < standaloneWords && reach)
+}
+
+// instructionAt returns where a closing instruction starts in keys, the
+// lower-case words of a question, or -1 when there is none. It knows two
+// shapes, each common enough in a question that asks for the web:
+//
+//   - "and" or "then" before a verb that asks for an answer: "and tell me
+//     what it is", "then explain it", "and give me the gist";
+//   - a length at the very end: "in three lines", "in 50 words", "in two
+//     sentences".
+//
+// The first shape wins, since it holds the second when both are there.
+// The lists are short on purpose: a closing instruction they miss only
+// adds a few words to the search.
+func instructionAt(keys []string) int {
+	for i := 0; i+1 < len(keys); i++ {
+		if keys[i] != "and" && keys[i] != "then" {
+			continue
+		}
+		switch keys[i+1] {
+		case "tell", "explain", "summarize", "summarise", "give", "write", "list", "describe", "show", "say":
+			return i
+		}
 	}
-	// searchQuery joins an earlier question with a line break; a search
-	// engine wants one line.
-	q = strings.Join(strings.Fields(searchQuery(q, history)), " ")
-	return cutRunes(q, maxWebQuery)
+	if n := len(keys); n >= 3 && keys[n-3] == "in" {
+		switch keys[n-1] {
+		case "line", "lines", "word", "words", "sentence", "sentences", "bullet", "bullets",
+			"point", "points", "paragraph", "paragraphs":
+			return n - 3
+		}
+	}
+	return -1
+}
+
+// reachWord reports whether w, a lower-case word left in a question once
+// its web phrase has gone, speaks of what Meru can reach or do rather than
+// of a subject: "have" and "access" in "you have access to web search",
+// "use" in "use the web", "go ahead" in "go ahead and search". A word that
+// isn't on the list, such as a subject or a typo of "access", counts as a
+// subject unless a word on the list sits beside it.
+func reachWord(w string) bool {
+	switch w {
+	case "have", "has", "got", "access", "able", "use", "using", "allowed", "enabled",
+		"go", "ahead", "yes", "yeah", "just", "already", "should", "need", "tool", "tools",
+		"browse", "browsing", "searching", "cannot", "can't", "cant", "not", "don't", "dont":
+		return true
+	}
+	return false
 }
 
 // namedQuery returns the words to search the web for a named thing: the
