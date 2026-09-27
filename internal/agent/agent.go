@@ -159,6 +159,9 @@ type Agent struct {
 	// and say whether a model can look at them; see images.go.
 	readImage func(path string) ([]byte, error)
 	vision    func(ctx context.Context, model string) (bool, error)
+	// canCallTools, set by UseToolCheck, says whether a model can call
+	// tools; see notools.go.
+	canCallTools func(ctx context.Context, model string) (bool, error)
 
 	// mainMu guards main, the answer model, which can change while turns
 	// run: the desktop app's Library switches it through SetMain. A
@@ -326,6 +329,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
 			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
+			attribute.Bool("meru.turn.no_tools", t.noTools != ""),
 			attribute.Int("meru.turn.images", len(images)),
 			attribute.String("meru.turn.outcome", outcome),
 		)
@@ -413,10 +417,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// the warning. See honest.go. A turn that ended without a full answer
 	// (ended != "") gets no check: its text ends in Meru's own message,
 	// such as badOutputAnswer, and claims nothing.
+	//
+	// A turn whose answer model can't call tools ran none (see
+	// notools.go), and says so in the same notice, first.
 	var notice string
 	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 		notice = unbackedNotice
 		unbacked = true
+	}
+	if t.noTools != "" {
+		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
+	}
+	if notice != "" {
 		if err := emit(rpc.Event{Type: rpc.EventNotice, Text: notice}); err != nil {
 			return err
 		}
@@ -593,6 +605,8 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 // the rounds.
 func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
 	picked pickedSkills, files string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
+	// An answer model that can't call tools gets none; see notools.go.
+	specs = a.offerable(ctx, t, specs)
 	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
 	if len(recalled) > 0 {
 		if err := t.emit(rpc.Event{Type: rpc.EventMemories, Memories: recalled}); err != nil {

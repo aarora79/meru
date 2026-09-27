@@ -559,16 +559,20 @@ The event's `Kind` passes on what `Upload` found, `image` or `file`. The copy is
 the user's act, not the model's, so it skips `dispatch`; the `read_file` call
 that later reads a file's copy goes through it.
 
-The same file holds `visionCheck`, which `run` hands the agent with
-`a.UseImages(tools.bt.Image, visionCheck(eng))`. The agent reads a question's
-images through the built-in tools' `Image`, which refuses any path outside the
-uploads folder, and asks `visionCheck` whether the main model can look at them.
-`visionCheck` needs `OllamaEngine.Capabilities`, which sits outside the
+The same file holds `capabilityCheck(eng, capability)`, which `run` hands the
+agent twice: `a.UseImages(tools.bt.Image, capabilityCheck(eng, engine.Vision))`
+and `a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))`. The agent reads a
+question's images through the built-in tools' `Image`, which refuses any path
+outside the uploads folder, and asks the vision check whether the main model
+can look at them. It asks the tools check whether the main model can take a
+list of tools at all (see [agent](agent.md), "Answer models without tools").
+`capabilityCheck` needs `OllamaEngine.Capabilities`, which sits outside the
 `Engine` interface, so it asks with a *type assertion*:
 `oe, ok := eng.(*engine.OllamaEngine)` gives the concrete engine and `ok`
-true when `eng` holds one. The tests' fake engine isn't one, so `visionCheck`
-returns nil, and the agent then refuses questions with images rather than
-send them to a model that might not see them.
+true when `eng` holds one. The tests' fake engine isn't one, so
+`capabilityCheck` returns nil: the agent then refuses questions with images
+rather than send them to a model that might not see them, and offers tools
+without a check.
 
 ### merud: about.go
 
@@ -1166,7 +1170,7 @@ that says why.
 `image` back, then sends `ask` requests that name the original outside
 uploads, a symbolic link inside it, six images, and the good copy on a merud
 whose fake engine can't check for vision. Each fails with its reason, and none
-starts a session. `TestVisionCheck` runs `visionCheck` against the fake
+starts a session. `TestCapabilityCheck` runs both checks against the fake
 Ollama's `/api/show`.
 
 `skills_test.go` checks the skill service: the first-run install, a skill added

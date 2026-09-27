@@ -231,7 +231,10 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	a.UseFolders(idx.currentFolders)
 	// A question's images come from the uploads folder through the
 	// built-in tools' Image, which refuses any other path.
-	a.UseImages(tools.bt.Image, visionCheck(eng))
+	a.UseImages(tools.bt.Image, capabilityCheck(eng, engine.Vision))
+	// An answer model that can't call tools, such as gemma3:12b, answers
+	// with none; see internal/agent/notools.go.
+	a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))
 	machine := machineLine(ctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)

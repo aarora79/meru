@@ -36,7 +36,9 @@ flowchart LR
 The interface and the types that pass through it: `Message`, `Options`,
 `Completion`, `Delta`, `Usage`, and the log-probability types the router reads.
 `Message.Images` holds the raw bytes of each image on a user message, and the
-constant `Vision` names the capability a model needs to read them. A
+constant `Vision` names the capability a model needs to read them. `ToolUse`
+names the one it needs to take a list of tools; Ollama refuses tools to a model
+without it, such as `gemma3:12b`. A
 Go *interface* is a list of method signatures; any type with those methods counts
 as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 

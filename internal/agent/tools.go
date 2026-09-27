@@ -190,6 +190,10 @@ type turn struct {
 	// Ollama couldn't read what the model wrote (see retriesOutput). A turn
 	// does it once, apart from the empty-reply retry.
 	outputRetry bool
+	// noTools names the answer model when the turn dropped its tools
+	// because that model can't call them, and "" otherwise; see
+	// notools.go.
+	noTools string
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.

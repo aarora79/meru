@@ -3,8 +3,8 @@
 // read_file can read it, or, for an image, so a question can carry it. The
 // copy is the user's act, not the model's, so it is no tool call and
 // doesn't go through dispatch; the read_file call that later reads a copy
-// does, and lands in tool_calls as any other. It also holds visionCheck,
-// which tells the agent whether a model can look at images. See
+// does, and lands in tool_calls as any other. It also holds capabilityCheck,
+// which tells the agent whether a model can look at images or call tools. See
 // ARCHITECTURE.md, "Desktop app".
 
 package main
@@ -31,17 +31,19 @@ func (s *toolService) handleAttach(ctx context.Context, req rpc.Request, emit fu
 	return emit(rpc.Event{Type: rpc.EventSaved, Text: up.Path, Kind: up.Kind})
 }
 
-// visionCheck returns the check the agent runs before it sends the main
-// model a question's images: does model list engine.Vision among its
-// capabilities? Only OllamaEngine can say, through /api/show, so for any
-// other engine, as in tests, visionCheck returns nil, and the agent then
-// refuses questions with images.
+// capabilityCheck returns a check of whether a model lists capability,
+// such as engine.Vision or engine.ToolUse, among its capabilities. The
+// agent runs the vision check before it sends the main model a question's
+// images, and the tools check before it offers the main model tools. Only
+// OllamaEngine can say, through /api/show, so for any other engine, as in
+// tests, capabilityCheck returns nil: the agent then refuses questions
+// with images, and offers tools without a check.
 //
 // eng.(*engine.OllamaEngine) is a type assertion: it asks whether the
 // interface value eng holds that concrete type, and ok says whether it
 // does. Capabilities sits outside the Engine interface on purpose, which
 // keeps that interface at four methods (ARCHITECTURE.md, "Engine layer").
-func visionCheck(eng engine.Engine) func(ctx context.Context, model string) (bool, error) {
+func capabilityCheck(eng engine.Engine, capability string) func(ctx context.Context, model string) (bool, error) {
 	oe, ok := eng.(*engine.OllamaEngine)
 	if !ok {
 		return nil
@@ -51,6 +53,6 @@ func visionCheck(eng engine.Engine) func(ctx context.Context, model string) (boo
 		if err != nil {
 			return false, err
 		}
-		return slices.Contains(caps, engine.Vision), nil
+		return slices.Contains(caps, capability), nil
 	}
 }
