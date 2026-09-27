@@ -219,7 +219,13 @@ as `[index]` with `folders` or `[builtin]` with `tools` and `confirm`, and adds 
 table at the end when the file has none. Two keys of one table change in one
 write, so nobody reads one changed without the other.
 
-`setKeys` does the line work. For each key, in sorted order:
+`SetTableString(path, table, key, value, check)` sets one string the same way,
+such as `main = "gemma3:12b"` in `[models]` when you press "Use for answers" in
+the desktop app. Both table functions call `setTableValues`, which takes each
+value already written as TOML: a list from `list`, or a string from `quote`.
+
+`setValues` does the line work (`setKeys` writes each list as TOML and calls
+it). For each key, in sorted order:
 
 1. Find the table's own lines: from its header to the next header of any kind,
    so a key never lands in `[mcp.servers.env]`.
@@ -227,7 +233,7 @@ write, so nobody reads one changed without the other.
    over as many lines as it runs: `bracketDepth` counts `[` and `]` outside
    strings and before a `#`, until the brackets close.
 3. Replace those lines with one: whatever came before the `=`, so `allow   =`
-   keeps its spacing, then the new list, then any comment the value's last line
+   keeps its spacing, then the new value, then any comment the value's last line
    had (`trailingComment`).
 4. A key the table lacks goes in after its last key line, before trailing
    comments and blank lines.

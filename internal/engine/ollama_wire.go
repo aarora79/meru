@@ -177,6 +177,14 @@ type psResponse struct {
 	} `json:"models"`
 }
 
+// tagsResponse is the reply from GET /api/tags: the models on disk. The
+// reply says more about each, such as its size, which Meru doesn't read.
+type tagsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
 // errorResponse is the body Ollama sends with a non-2xx status.
 type errorResponse struct {
 	Error string `json:"error"`

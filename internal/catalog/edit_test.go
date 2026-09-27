@@ -195,6 +195,49 @@ func TestSetTableLists(t *testing.T) {
 	})
 }
 
+// TestSetTableString sets [models] main the way the desktop app's "Use
+// for answers" does: in the template, where the line has a comment, and in
+// a config with no [models] table.
+func TestSetTableString(t *testing.T) {
+	tests := []struct {
+		name   string
+		before string
+		want   string // the whole file after, or "" to compare with the template
+	}{
+		{"the template", config.Template(), ""},
+		{"no models table", "profile = \"lite\"\n", "profile = \"lite\"\n\n[models]\nmain = \"gemma3:12b\"\n"},
+		{"a name already set", "[models]\nmain = \"qwen3.6:35b\" # mine\nfast = \"\"\n", "[models]\nmain = \"gemma3:12b\" # mine\nfast = \"\"\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeConfig(t, tt.before)
+			if err := SetTableString(path, "models", "main", "gemma3:12b", nil); err != nil {
+				t.Fatalf("SetTableString: %v", err)
+			}
+			got := readText(t, path)
+			want := tt.want
+			if want == "" {
+				// Only the main line differs, and its comment stays.
+				i := strings.Index(tt.before, "main  = \"\"")
+				if i < 0 {
+					t.Fatal("the template has no main line")
+				}
+				want = tt.before[:i] + "main  = \"gemma3:12b\"" + tt.before[i+len("main  = \"\""):]
+			}
+			if got != want {
+				t.Errorf("config =\n%s\nwant\n%s", got, want)
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Models.Main != "gemma3:12b" {
+				t.Errorf("main = %q", cfg.Models.Main)
+			}
+		})
+	}
+}
+
 func TestBracketDepth(t *testing.T) {
 	tests := []struct {
 		line string

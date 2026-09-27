@@ -383,6 +383,35 @@ func TestInfo(t *testing.T) {
 	}
 }
 
+// TestPulled checks that Pulled lists the names /api/tags gives, and
+// fails when Ollama does.
+func TestPulled(t *testing.T) {
+	tests := []struct {
+		name    string
+		reply   route
+		want    []string
+		wantErr bool
+	}{
+		{"two models", route{200, `{"models":[{"name":"gemma3:12b","size":8149190253,"capabilities":["completion","vision"]},{"name":"nomic-embed-text:latest"}]}`},
+			[]string{"gemma3:12b", "nomic-embed-text:latest"}, false},
+		{"none", route{200, `{"models":[]}`}, []string{}, false},
+		{"ollama fails", route{500, `{"error":"boom"}`}, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeOllama(t, map[string]route{"/api/tags": tt.reply})
+			e := newTestEngine(t, f, "")
+			got, err := e.Pulled(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Pulled error = %v, want error %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Pulled = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCheckVersion(t *testing.T) {
 	tests := []struct {
 		version string

@@ -1,6 +1,7 @@
-// This file changes one list in config.toml without touching the rest of
-// the file: a server's or agent's allow and confirm lists, and the lists
-// in a plain table such as [index] folders or [skills] disabled. merud
+// This file changes one list or string in config.toml without touching
+// the rest of the file: a server's or agent's allow and confirm lists, the
+// lists in a plain table such as [index] folders or [skills] disabled, and
+// a string such as [models] main. merud
 // uses it for the desktop app's settings. Like AppendServer, it writes
 // through writeChecked, so a change that would break config leaves the
 // file as it was.
@@ -81,6 +82,25 @@ func SetEntryLists(configPath, table, name string, lists map[string][]string) er
 // Like SetEntryLists, it keeps every other line as it was and fails when
 // config doesn't load or the result wouldn't.
 func SetTableLists(configPath, table string, lists map[string][]string, check func(config.Config) error) error {
+	values := make(map[string]string, len(lists))
+	for k, items := range lists {
+		values[k] = list(items)
+	}
+	return setTableValues(configPath, table, values, check)
+}
+
+// SetTableString sets one string key in the plain table table, such as
+// main = "gemma3:12b" in [models], the way SetTableLists sets lists: every
+// other line stays, a missing table goes at the end, and check runs on
+// the loaded result before the file is replaced. check may be nil.
+func SetTableString(configPath, table, key, value string, check func(config.Config) error) error {
+	return setTableValues(configPath, table, map[string]string{key: quote(value)}, check)
+}
+
+// setTableValues does the work of SetTableLists and SetTableString.
+// values maps each key to its new value, already written as TOML, such
+// as ["a", "b"] or "gemma3:12b".
+func setTableValues(configPath, table string, values map[string]string, check func(config.Config) error) error {
 	old, err := os.ReadFile(configPath) // #nosec G304 -- the user's own config.toml
 	if err != nil {
 		return fmt.Errorf("read config %s: %w", configPath, err)
@@ -92,7 +112,7 @@ func SetTableLists(configPath, table string, lists map[string][]string, check fu
 	start, end, ok := tableSpan(lines, table)
 	if !ok {
 		// No such table yet: add its header at the end, after a blank
-		// line, and let setKeys fill it in.
+		// line, and let setValues fill it in.
 		if n := len(lines); n > 0 && !strings.HasSuffix(lines[n-1], "\n") {
 			lines[n-1] += "\n"
 		}
@@ -102,7 +122,7 @@ func SetTableLists(configPath, table string, lists map[string][]string, check fu
 		lines = append(lines, "["+table+"]\n")
 		start, end = len(lines)-1, len(lines)
 	}
-	lines = setKeys(lines, start, end, lists)
+	lines = setValues(lines, start, end, values)
 	return writeChecked(configPath, strings.Join(lines, ""), func(next config.Config) error {
 		if check == nil {
 			return nil
@@ -195,20 +215,31 @@ func entryNamed(lines []string, table, name string) bool {
 }
 
 // setKeys sets each key of lists in lines[start:end], a table whose header
-// is lines[start], and returns the new lines. A key already there has its
-// whole value replaced, however many lines it spans, and keeps whatever
-// comes before the "=" and any comment after the value. A key not there
-// goes in after the table's last key line, before any comments and blank
-// lines that follow it and before any sub-table. Keys go in sorted order, so the result doesn't
-// depend on map order.
+// is lines[start], and returns the new lines, as setValues does.
 func setKeys(lines []string, start, end int, lists map[string][]string) []string {
-	keys := make([]string, 0, len(lists))
-	for k := range lists {
+	values := make(map[string]string, len(lists))
+	for k, items := range lists {
+		values[k] = list(items)
+	}
+	return setValues(lines, start, end, values)
+}
+
+// setValues sets each key of values, a value already written as TOML, in
+// lines[start:end], a table whose header is lines[start], and returns the
+// new lines. A key already there has its whole value replaced, however
+// many lines it spans, and keeps whatever comes before the "=" and any
+// comment after the value. A key not there goes in after the table's last
+// key line, before any comments and blank lines that follow it and before
+// any sub-table. Keys go in sorted order, so the result doesn't depend on
+// map order.
+func setValues(lines []string, start, end int, values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for k := range values {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		value := list(lists[key])
+		value := values[key]
 		// The table's own keys stop at the first header after it, such as
 		// [mcp.servers.env]: the keys below that belong to the sub-table.
 		own := start + 1
