@@ -774,3 +774,22 @@ new tests over the 153 labelled questions without a model:
   question and "SFO" in the drive question, which want the web; "Sintra" and
   "TODOs", which the user's notes likely cover; and "shipping v0.2 today" in
   "post … to slack", a message that would reach SearXNG for nothing.
+
+## Notes from the web on every route
+
+Every route, `direct` included, now offers `web_search` and `web_fetch` while
+`web_search` is on (ARCHITECTURE.md, "Who decides what"). A real question drove
+it, here with an invented song: "what does the song maname maname sung by r.
+devi acvtually mean" routed `direct` at 0.966. The route fits the label the
+eval would give it, general knowledge, but the model knew the song only in
+part, had no web tool, and told the user it couldn't search the web. On a
+`direct` turn the model now has the web tools and a line in the tools note
+that tells it to call `web_search` when it isn't sure of a fact, so a factual
+question the router sends `direct` can still look things up.
+
+The router and its prompt didn't change, so the calibration stands. Of the 153
+labelled questions, 36 carry the label `direct`: general knowledge, chit-chat,
+arithmetic, writing help and the like. Each such turn now carries two more tool
+schemas and one more line in the prompt, and the model decides whether to
+search. The router needs no change: a `direct` label still means "no files
+and no connected tool", which stays true.

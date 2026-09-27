@@ -473,7 +473,7 @@ sequenceDiagram
     M->>E: NewOllama(base URL, keep_alive, embed model, logger)
     M->>E: checkRuntime: Info() → Ollama 0.12.11 or later?
     M->>R: Listen(socket) — refuses if another merud answers
-    M->>E: warm(): one tiny call per model, so they load now
+    M->>E: warm(): one tiny call each to the fast and embed models
     M->>E: embedDims: embed one probe text to learn the vector size
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
@@ -482,7 +482,10 @@ sequenceDiagram
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     M->>M: bt.UseAbout(aboutService.facts): about_meru reads the setup on each call
+    M->>M: a.StartWarm(): mark the answer model as loading
     par errgroup, until Ctrl-C, SIGTERM or a server error
+        M->>E: load the answer model with a real prompt; questions wait for it
+    and
         M->>R: Serve(listener, handler) — questions to the agent, index ops to the indexer, tool ops to the tool service
     and
         M->>M: startupScan: Scan, or Reembed after an embed model change

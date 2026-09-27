@@ -249,9 +249,12 @@ Linux and Windows to `bin/<os>-<arch>/`.
 merud
 ```
 
-On startup `merud` reads its config, checks the Ollama version, loads each model
-into memory, and then listens on its socket. The first start can take several
-seconds while Ollama loads the models; later questions skip that wait. Leave it
+On startup `merud` reads its config, checks the Ollama version, loads the fast
+and embedding models, and then listens on its socket. It loads the answer model
+next, in the background: a large one can take a minute or two the first time.
+`merud` answers `meru ping` and settings meanwhile, and a question asked during
+the load waits for it. The log says `answer model warm` when the load is done;
+later questions skip that wait. Leave it
 running in its own terminal, or start it in the background with `merud &`.
 
 `merud` keeps everything in its home folder, `~/.meru/`:
@@ -1221,7 +1224,11 @@ change did not take; check the file path and restart again.
 Meru's default config already points at `http://127.0.0.1:8888`, so there is
 nothing else to do. `merud` logs `web search ready` when it starts, `meru tools`
 lists `web_search` under `meru`, and a question such as
-`meru "search the web for the latest Go release"` uses it. To turn web search off,
+`meru "search the web for the latest Go release"` uses it. The model can search
+on any question, not only one that asks for the web: it has `web_search` and
+`web_fetch` on every route, and its instructions tell it to search when it
+isn't sure of a fact, such as what a song means. The desktop app's My files,
+Mail and calendar and Just talk scopes leave the web tools out. To turn web search off,
 set `searxng_url = ""` under `[web]` in `~/.meru/config.toml`.
 
 To stop it: `cd ~/srv/searxng && docker compose down`. To update it:
@@ -1237,7 +1244,10 @@ they can hold words from your question.
 **Meru searches first for some questions.** When a question asks for the web
 ("search the web", "look it up", "online", "do some research" and a few more
 phrases) or holds a web address, `merud` runs `web_search` on your words, or
-`web_fetch` on each address, two at most, before the model starts. It does the
+`web_fetch` on each address, two at most, before the model starts. It drops
+the asking phrase and a closing instruction such as "and tell me in three
+lines" from the search. A follow-up that only asks for the web, such as "look
+it up", searches for your previous question. It does the
 same when a question names something, such as "Acme Flow" or a term in quotes,
 and the search of your files finds nothing that mentions it. That second search
 goes out without your asking: the name, in quotes, and a few words of the
@@ -2039,7 +2049,8 @@ later.
 | `web_search` answers that JSON is off, or `curl` on SearXNG prints HTML | SearXNG answers web pages only. Add `json` under `search: formats:` in `~/srv/searxng/core-config/settings.yml`, then `docker compose restart` (see [Web search](#web-search)). |
 | `web_search` says `SearXNG isn't answering on http://127.0.0.1:8888` | The container isn't running. Run `cd ~/srv/searxng && docker compose up -d`, and check that Docker itself runs. `docker compose ps` should show `127.0.0.1:8888->8888/tcp`. |
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
-| The first answer is slow | Ollama was loading the model. Later answers are fast while `merud` runs, because it keeps the models loaded. |
+| The first answer is slow | Ollama was loading the answer model; `merud` loads it in the background at startup, and a question asked before `answer model warm` shows in `~/.meru/merud.log` waits for it. Later answers are fast while `merud` runs, because it keeps the models loaded. |
+| `couldn't load the answer model` in the log | Ollama couldn't load `[models] main`. Pull it with the `ollama pull` command on the same line, or pick another answer model. |
 | Answers are slow and you can't tell why | Stop `merud`, run `merud -v`, ask again and read `~/.meru/merud.log`. The debug lines show the time each stage took; a large `thinking_chunks` count means the model spent the wait reasoning before its first word. |
 | "Sorry, I couldn't answer that." | The question hit a limit. `outcome=` on the `turn` line in `~/.meru/merud.log` says which: `timeout` (raise `[agent] turn_timeout`), `cut_off` (raise `[agent] max_output_tokens`) or `gave_up` (the model only called tools, or wrote nothing twice; ask again in other words). |
 | "The model wrote a tool call that Ollama couldn't read" | Ollama's parser rejected the model's tool call, and the one retry failed too. The `turn` line shows `outcome=bad_output`; the warn line before it holds Ollama's error, such as `XML syntax error on line 8`. Ask again, or in other words. If it keeps happening with one model, update Ollama or try another model. |

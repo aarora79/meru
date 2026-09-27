@@ -226,7 +226,10 @@ fix the time.
 
 `EveryRoute(name)` reports whether a built-in goes with every route and every
 scope but "talk": `datetime` and `about_meru`. The agent asks it, so the rule
-lives in one place.
+lives in one place. `IsWebTool(name)` names `web_search` and `web_fetch`,
+which the agent also offers on every route while `web_search` is on, so a
+question the router sends `direct` can still look a fact up; the "My files",
+"Mail and calendar" and "Just talk" scopes leave them out.
 
 ### about.go
 
