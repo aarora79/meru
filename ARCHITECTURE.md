@@ -663,6 +663,44 @@ from the app, and Linux and Windows builds come in later versions.
 
 ---
 
+## merud as an agent harness
+
+An *agent harness* is the code that runs a model in a loop: it builds the prompt,
+runs the tools the model asks for, hands back the results and keeps a record.
+`merud` holds a whole one: a model loop with tool rounds, one gate for every tool
+call, an MCP client, skills with progressive disclosure, local commands and A2A
+agents as tools, a session record, a context budget and tracing. `meru`,
+`meru chat` and `meru-desktop` are clients of that harness. Meru the assistant sits
+on top of it and decides where to look, what to remember and how to catch a small
+model's mistakes.
+
+| Layer | Packages and files |
+| --- | --- |
+| Harness core | `engine`; the tool rounds in `agent/tools.go`; `dispatch`; `mcp`; `skills`, with the skill pick in `agent/skills.go`; `commands`; `a2a`; `transcript`; the budget in `agent/budget.go`; `obs` |
+| Meru the assistant | `router`, with the route rules in `agent/toolnouns.go`; `retrieve`; `memory` and the profile (`agent/profile.go`, `agent/recall.go`); recall of earlier chats (`agent/earlier.go`, `summarize`); web first (`agent/webfirst.go`, `agent/webnotes.go`); the fixes for small-model failures: `agent/honest.go`, the retries after bad output and empty replies in `agent/tools.go` and `agent/agent.go`, and `agent/notools.go` |
+
+Four places tie the loop to Meru today:
+
+- `agent.New` takes the whole `config.Config`. It reads the assistant's settings,
+  such as `cfg.Index.Folders`, next to the loop's own `cfg.Agent.MaxRounds`.
+- `Agent.Handle` takes an `rpc.Request` and emits `rpc.Event`, the socket
+  protocol's types, so the loop speaks Meru's wire format.
+- Both layers live in one package, `agent`, and run inside one `Handle` call:
+  routing, search, recall and web first share the function that runs the tool
+  rounds.
+- `dispatch` asks for approval through `rpc.ApproveFunc` and writes each call to
+  the store's `tool_calls` table as a `store.ToolCall`.
+
+A script can drive the harness with no one at the keyboard.
+`meru run --json "question"` writes each socket event as one JSON line on stdout
+and exits non-zero when the turn fails. The command denies a tool call that asks
+first, as any client with no one to ask does, and `dispatch` logs it as
+`declined`. The command also writes the approval event to stdout, so the script
+sees which call it refused. Every tool call still goes through `dispatch`; the
+mode adds no second path.
+
+---
+
 ## A question, end to end
 
 The diagram below follows two turns of one conversation. The first turn searches

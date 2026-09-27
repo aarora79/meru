@@ -408,6 +408,15 @@ type Event struct {
 	// the answer's tokens. TokensOut / EvalMillis gives the model's speed
 	// without the network, routing or buffering in between.
 	EvalMillis int64 `json:"eval_ms,omitempty"`
+	// TTLTMillis is the time from receiving the question to the last token
+	// of the answer, routing and tool rounds included, in milliseconds. It
+	// ends before merud saves the answer, so it runs a little under
+	// DurationMillis.
+	TTLTMillis int64 `json:"ttlt_ms,omitempty"`
+	// TPOTMillis is the time per output token: EvalMillis divided by
+	// TokensOut, in milliseconds. It measures how fast the model writes,
+	// with no network or routing time in it.
+	TPOTMillis float64 `json:"tpot_ms,omitempty"`
 }
 
 // Citation is one excerpt a turn's prompt held, as the "sources" event lists

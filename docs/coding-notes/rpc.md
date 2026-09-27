@@ -48,9 +48,10 @@ The message types. `Request` has an `Op` (`ask` or `ping`), an optional
 `job`). `Event` has a `Type` and only the fields that type needs. A `route`
 event sets `Fallback` when the router wasn't sure and used its fallback route.
 The `done` that ends an ask carries the turn's stats: time to first token
-(`ttft_ms`), total time (`duration_ms`), the main model's token counts
-(`tokens_in`, `tokens_out`), and the time the model spent writing
-(`eval_ms`). Every field has `omitempty`, so a `ping`'s `done` stays
+(`ttft_ms`), time to last token (`ttlt_ms`), total time (`duration_ms`), the
+main model's token counts (`tokens_in`, `tokens_out`), the time the model spent
+writing (`eval_ms`), and the time per output token (`tpot_ms`, `eval_ms` over
+`tokens_out`). `tpot_ms` is a `float64`, so it keeps the fraction. Every field has `omitempty`, so a `ping`'s `done` stays
 `{"type":"done"}`, and a client built before these fields existed skips
 them.
 

@@ -889,9 +889,11 @@ func (a *Agent) logTurn(ctx context.Context, start time.Time, sessionID, route, 
 }
 
 // doneEvent builds the "done" event that ends a turn, with the turn's stats.
-// Both times count from start, when merud received the question, so they
+// The times count from start, when merud received the question, so they
 // match what the person waiting at the terminal sees. A turn whose answer
-// was empty has no first token, and its TTFTMillis stays zero.
+// was empty has no first or last token, and its TTFTMillis and TTLTMillis
+// stay zero. TPOTMillis stays zero when the model wrote no tokens, since
+// there is nothing to divide by.
 func doneEvent(start time.Time, rep reply) rpc.Event {
 	ev := rpc.Event{
 		Type:           rpc.EventDone,
@@ -903,6 +905,14 @@ func doneEvent(start time.Time, rep reply) rpc.Event {
 	if !rep.firstToken.IsZero() {
 		ev.TTFTMillis = rep.firstToken.Sub(start).Milliseconds()
 	}
+	if !rep.lastToken.IsZero() {
+		ev.TTLTMillis = rep.lastToken.Sub(start).Milliseconds()
+	}
+	if rep.usage.OutputTokens > 0 {
+		// Dividing by a float keeps the fraction: 1482 ms over 8 tokens is
+		// 185.25 ms, where integer division would give 185.
+		ev.TPOTMillis = float64(rep.usage.EvalDuration.Microseconds()) / 1000 / float64(rep.usage.OutputTokens)
+	}
 	return ev
 }
 
@@ -911,12 +921,14 @@ func doneEvent(start time.Time, rep reply) rpc.Event {
 // text arrived (the zero time.Time when none did), and why the model
 // stopped: "stop", or "length" when it hit the token cap. model names the
 // model that answered, and ttft is its time from sending the request to
-// the first text, zero when no text came.
+// the first text, zero when no text came. lastToken is when the last piece
+// of text arrived, the zero time.Time when none did.
 type reply struct {
 	text       string
 	calls      []engine.ToolCall
 	usage      engine.Usage
 	firstToken time.Time
+	lastToken  time.Time
 	doneReason string
 	model      string
 	ttft       time.Duration
@@ -1383,6 +1395,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 	start := time.Now()
 	var ttft time.Duration   // time to first token; zero until text arrives
 	var firstToken time.Time // when that token arrived
+	var lastToken time.Time  // when the latest piece of text arrived
 	var usage engine.Usage
 	var doneReason string
 	var text strings.Builder
@@ -1393,7 +1406,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 	// so a turn that ran out of time can keep it.
 	fail := func(err error) (reply, error) {
 		obs.EndSpanErr(ctx, span, err)
-		return reply{text: text.String(), firstToken: firstToken, model: model, ttft: ttft}, fmt.Errorf("main model %s: %w", model, err)
+		return reply{text: text.String(), firstToken: firstToken, lastToken: lastToken, model: model, ttft: ttft}, fmt.Errorf("main model %s: %w", model, err)
 	}
 
 	// MaxTokens becomes Ollama's num_predict, which counts every token the
@@ -1415,6 +1428,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 				ttft = firstToken.Sub(start)
 				span.AddEvent("first_token", trace.WithAttributes(attribute.Int64("meru.ttft_ms", ttft.Milliseconds())))
 			}
+			lastToken = time.Now()
 			text.WriteString(delta.Text)
 			if err := emit(rpc.Event{Type: rpc.EventToken, Text: delta.Text}); err != nil {
 				return fail(err)
@@ -1451,7 +1465,7 @@ func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engin
 		args = append(args, "answer", obs.Preview(text.String()))
 	}
 	a.log.DebugContext(ctx, "answer finished", args...)
-	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken, doneReason: doneReason,
+	return reply{text: text.String(), calls: calls, usage: usage, firstToken: firstToken, lastToken: lastToken, doneReason: doneReason,
 		model: model, ttft: ttft}, nil
 }
 

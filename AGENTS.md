@@ -53,7 +53,9 @@ to v0.4:
 The desktop app, `meru-desktop` (Wails v3, macOS first), came ahead of v0.5 at the
 owner's request. It has the chat screen, Settings and the Setup screen, takes
 files by the attach button or drag and drop, and asks `merud` to make every
-change. `meru chat` does the same things in a terminal. Outside the milestones,
+change. `meru chat` does the same things in a terminal. The headless mode,
+`meru run --json`, also came ahead of v0.5 (#52): it lets a script drive `merud`
+as an agent harness, one JSON event per line. Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
 through `make release` and a one-line installer. Work goes milestone by milestone
@@ -186,8 +188,8 @@ cmd/
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
                      `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
-                     `check` (check.go, checkfile.go), the approval prompt (approve.go) and
-                     the terminal styles (look.go)
+                     `check` (check.go, checkfile.go), `run --json` (run.go), the approval
+                     prompt (approve.go) and the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
                      Info.plist and Meru.icns for Meru.app
   fakeollama/        a fake Ollama server for end-to-end tests
@@ -253,7 +255,8 @@ docs/
   fast-router.md     how the one-token router works
   google-setup.md    setting up Gmail, Calendar and Drive for the `google` server
   releasing.md       how the owner builds and publishes a release
-  examples/          a starter check file for `meru check`
+  examples/          a starter check file for `meru check`, and vault-digest.sh, a second
+                     agent that drives `meru run --json`
   img/               the logo and the social preview image
   posters/           the one-page poster: HTML, PNGs and PDF
   index.html         the landing page GitHub Pages serves at aarora79.github.io/meru

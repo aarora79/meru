@@ -202,6 +202,8 @@ type Event struct {
     EvalMillis     int64 // the model's own time spent writing the answer
     TokensIn       int   // prompt tokens
     TokensOut      int   // answer tokens
+    TTLTMillis     int64   // question received to the answer's last token
+    TPOTMillis     float64 // EvalMillis / TokensOut: time per output token
 }
 ```
 

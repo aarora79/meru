@@ -539,8 +539,8 @@ const outputNudge = "Your last tool call didn't parse, so it didn't run. " +
 	"Call the tool again with valid arguments, or answer in plain text."
 
 // add folds one round's reply into r: the token counts and durations sum,
-// firstToken and ttft keep the turn's first text, and model becomes the
-// latest round's. It leaves r.text alone; converse sets it from the final
+// firstToken and ttft keep the turn's first text, lastToken moves to the
+// latest round that wrote text, and model becomes the latest round's. It leaves r.text alone; converse sets it from the final
 // round.
 //
 // add has a pointer receiver (r *reply), so it changes the caller's reply
@@ -555,6 +555,9 @@ func (r *reply) add(next reply) {
 	if r.firstToken.IsZero() {
 		r.firstToken = next.firstToken
 		r.ttft = next.ttft
+	}
+	if !next.lastToken.IsZero() {
+		r.lastToken = next.lastToken
 	}
 	if next.model != "" {
 		r.model = next.model

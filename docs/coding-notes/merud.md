@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -885,6 +885,68 @@ fails with `merud gave no usage numbers: unknown op "usage"`.
 In `merud`, `handleUsage` answers `OpUsage` from the store: `Usage` for the
 windows of time, or `UsageByModel` when `Request.Kind` is `rpc.UsageByModel`,
 which `/usage by model` in `meru chat` sends.
+
+### meru: run.go
+
+`meru run --json "question"` is the headless mode: it lets a script drive
+`merud` as an agent without importing any of Meru's code. `runCmd` sends one
+`ask` and writes each event of the reply to stdout as one line of JSON, in the
+shape `merud` sent it. `main.go` sends the arguments here only when `--json`
+follows `run` (`isRunCmd`), so `meru run the tests` is still a question.
+
+```text
+{"type":"session","session":"2026-09-27T200303-9751"}
+{"type":"route","route":"search+tools","confidence":0.5330759022261689}
+{"type":"sources","sources":[…]}
+{"type":"token","text":"I"}
+{"type":"tool_call","tool":{"id":"call_z3a4grsm","name":"obsidian.obsidian_list_vaults","kind":"mcp","args":{}}}
+{"type":"tool_result","tool":{"id":"call_z3a4grsm","name":"obsidian.obsidian_list_vaults","kind":"mcp","outcome":"ok","duration_ms":3}}
+{"type":"done","ttft_ms":11739,"duration_ms":19973,"tokens_in":73020,"tokens_out":390,"eval_ms":5779,"ttlt_ms":19970,"tpot_ms":14.819407692307694}
+```
+
+A `json.Encoder` writes each value and a newline, which is the JSON Lines
+format that `jq` and a line-by-line loop in any language read. `SetEscapeHTML`
+is off, so a `<` in an answer stays `<` instead of `\u003c`. The request goes
+out with `Source` `cli`, the same as `meru "..."`, so `merud` needed no change
+to accept it.
+
+No one can answer an approval here. `deny` has the shape of `rpc.ApproveFunc`:
+it writes the `approval` event to stdout, then answers deny, as any client with
+no one to ask does. `dispatch` records the call as `declined`, and its
+`tool_result` line follows. Writing the approval first lets the script see
+which call was refused and why. A flag naming tools the script may approve
+would be a second place to grant trust, next to the `confirm` lists in
+`config.toml`, so the mode has none.
+
+`runCmd` fails, and `meru` exits with 1, when merud can't be reached, when
+stdout closes, or when the turn ends with an `error` event, which it has
+already written to stdout. Ctrl-C exits with 130, as for any `meru` command.
+
+`docs/examples/vault-digest.sh` is a second agent built on this mode: a weekly
+digest of an Obsidian vault through the `obsidian` server, with the
+instructions in the question and Meru's prompt left as it is. It prints each
+tool call and the stats to stderr and the digest to stdout, and `meru log`
+lists its calls afterwards.
+
+Building it showed where the seam between the harness and the assistant runs
+today:
+
+- `agent.New` and `Agent.Handle` needed no change. The agent runs on `Handle`
+  as it stands, through the socket.
+- The assistant layer runs on every script turn. The router picked
+  `search+tools` for one version of the question, so `retrieve` put ten
+  excerpts from unrelated folders into the prompt, and the rounds read
+  73,020 prompt tokens. A script can't turn routing or search off.
+  `Request.Scope` skips the router for the desktop app, but it names where to
+  look (files, mail, web), not "only these tools".
+- Token events don't say which round they belong to. The model writes a line
+  before each tool round ("Let me read them."), so the script takes the text
+  after the last `tool_result` as the answer.
+- A script's turns count as `cli` in `meru usage` and the metrics.
+  `agent.sourceOf` accepts only the four sources in `rpc`, so a `script`
+  source would be a change to `Handle`.
+- A tool that asks first is declined, so an agent that writes, such as one
+  that sends mail, can't run headless until its tools leave the `confirm` list.
 
 ### meru: model.go
 

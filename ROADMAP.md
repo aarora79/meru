@@ -147,6 +147,30 @@ No milestone names these, and each is on `main`:
 - The landing page (#41)
 - The Apache-2.0 license (#44)
 
+## Headless mode
+
+The owner asked for this in #52, ahead of v0.5. It is a client of the same
+socket, so it needs nothing from a later milestone.
+
+- [x] ARCHITECTURE.md, 200 and 100 describe `merud` as an agent harness in two
+  layers: the harness core and Meru the assistant
+- [x] `meru run --json "..."` writes each socket event to stdout as one JSON line
+  and exits non-zero when the turn fails; a call that asks first is denied, and
+  its `approval` line shows which
+- [x] A second agent built on it, a weekly digest of an `obsidian` vault, with no
+  change to Meru's prompt, and a record of what `agent.New` or `Handle` had to
+  change for it (`docs/examples/vault-digest.sh`; nothing had to change, and the
+  seams it found are in `docs/coding-notes/merud.md`)
+- [x] The `done` event carries time to last token (`ttlt_ms`) and time per output
+  token (`tpot_ms`) beside the token counts and time to first token
+
+**Done when:** a script runs the second agent through `meru run --json`, reads
+its events as JSON, and `meru log` shows its tool calls.
+
+**Measured:** on the development machine, `vault-digest.sh` listed the vault,
+searched it and read four notes through the `obsidian` server in 10.3 s, and
+`meru log` showed all six calls.
+
 ## v0.5 — It acts unprompted
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
