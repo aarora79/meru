@@ -138,7 +138,7 @@ func TestNamedThing(t *testing.T) {
 		{"how fast is qwen3.6 on a laptop", "qwen3.6"},
 		{"the Q3 plan is late", ""}, // too short to count
 		{"is Go fast?", ""},         // a lone word needs three characters
-		{"is AWS down?", "AWS"},
+		{"is Contoso Cloud down?", "Contoso Cloud"},
 		// Plain questions name nothing.
 		{"what is the capital of france", ""},
 		{"how do I bake bread?", ""},

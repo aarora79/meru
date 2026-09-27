@@ -106,14 +106,14 @@ OpenTelemetry stack.
 | Platform | Status | Restarts `merud` after a reboot |
 | --- | --- | --- |
 | macOS, Apple silicon | supported and tested; the development machine is a Mac Studio (M4 Max, 64 GB) | `launchd` |
-| Linux, x86-64 or arm64 (home servers, cloud VMs such as EC2) | supported | `systemd` |
+| Linux, x86-64 or arm64 (home servers, cloud virtual machines) | supported | `systemd` |
 | Windows 10 and later | should work; not tested at first | a Windows service |
 
 Code must not assume one platform: build paths with `filepath`, find the home
 directory with `os.UserHomeDir`, and keep platform-specific code behind Go build tags
 in as few files as possible.
 
-**On a cloud server** such as EC2, Meru still sends no prompt to a model provider,
+**On a cloud server**, Meru still sends no prompt to a model provider,
 but your notes, email and transcripts live on that server. Meru's promise is "a
 machine you control"; where that machine sits is your call. You'd run `meru` over SSH,
 because it reaches `merud` through a local socket.
@@ -3454,7 +3454,7 @@ We'll settle these with working code and measurements.
 - **Language:** Go, for a small footprint, easy distribution, room to scale, built-in
   concurrency and fewer dependencies (see [Why Go](#why-go)).
 - **Platforms:** macOS on Apple silicon first, Linux supported, Windows untested at
-  first. Cloud servers such as EC2 count as "a machine you control".
+  first. Cloud servers count as "a machine you control".
 - **Agent harness:** our own loop plus the official MCP and A2A Go SDKs. We looked at
   Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and
   neither saves much once the allowlist, audit and budget logic are ours.
