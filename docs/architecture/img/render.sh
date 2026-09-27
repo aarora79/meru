@@ -1,6 +1,7 @@
 #!/bin/sh
-# render.sh draws each figure in the level 100 and 200 HTML pages to a PNG in
-# this folder, so 100.md and 200.md show the same pictures as the pages.
+# render.sh draws each figure in the level 100, 200 and 300 HTML pages to a
+# PNG in this folder, so 100.md, 200.md and ARCHITECTURE.md show the same
+# pictures as the pages.
 # Run it from anywhere with `make figures` after you change a figure's SVG.
 # It needs only Google Chrome; set CHROME to its path if it lives elsewhere.
 set -eu
@@ -56,3 +57,10 @@ render 200.html fig-turns 200-turns.png
 render 200.html fig-storage 200-storage.png
 render 200.html fig-search 200-search.png
 render 200.html fig-dispatch 200-dispatch.png
+render 300.html fig-overview 300-overview.png
+render 300.html fig-end-to-end 300-end-to-end.png
+render 300.html fig-storage 300-storage.png
+render 300.html fig-hybrid 300-hybrid.png
+render 300.html fig-routing 300-routing.png
+render 300.html fig-a2a 300-a2a.png
+render 300.html fig-trace 300-trace.png
