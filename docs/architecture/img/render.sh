@@ -49,8 +49,8 @@ render() {
 	echo "wrote img/$3"
 }
 
-render index.html fig-parts 100-parts.png
-render index.html fig-ask 100-ask.png
+render 100.html fig-parts 100-parts.png
+render 100.html fig-ask 100-ask.png
 render 200.html fig-overview 200-overview.png
 render 200.html fig-turns 200-turns.png
 render 200.html fig-storage 200-storage.png

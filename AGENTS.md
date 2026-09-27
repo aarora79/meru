@@ -18,7 +18,7 @@ easier to review.
   [200.md](docs/architecture/200.md) explain the same design at gentler levels.
   **Change ARCHITECTURE.md first**, then carry the change into 200, 100 and their
   HTML pages in the same PR: `docs/architecture/300.html` mirrors ARCHITECTURE.md,
-  `200.html` mirrors 200.md, and `index.html` mirrors 100.md.
+  `200.html` mirrors 200.md, and `100.html` mirrors 100.md.
   The figures in 100.md and 200.md are PNG files in `docs/architecture/img/`,
   drawn from the SVG in the HTML pages. After you change a figure's SVG, run
   `make figures` to redraw them.
@@ -233,7 +233,8 @@ deploy/              launchd/ and systemd/ service files; observability/ holds t
 scripts/             release.sh, which `make release` runs
 dist/                git-ignored; `make release` packs a release here
 docs/
-  architecture/      100.md, 200.md and the HTML pages for levels 100 (index.html), 200 and 300
+  architecture/      100.md, 200.md and the HTML pages 100.html, 200.html and 300.html;
+                     index.html sends old links to 100.html
   coding-notes/      one note per package, and go-basics/ for Go concepts
   lld.md             the low-level design
   running.md         how to build and run Meru
@@ -244,7 +245,7 @@ docs/
   examples/          a starter check file for `meru check`
   img/               the logo and the social preview image
   posters/           the one-page poster: HTML, PNGs and PDF
-  index.html         the project's landing page
+  index.html         the landing page GitHub Pages serves at aarora79.github.io/meru
 .claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review,
                      meru-install
 .github/             CI and security workflows, Dependabot, the pull-request template

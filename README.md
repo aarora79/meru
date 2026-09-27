@@ -236,7 +236,7 @@ call.
 
 ## Docs
 
-- Architecture, in three levels ([web pages](https://aarora79.github.io/meru/architecture/)):
+- Architecture, in three levels ([web pages](https://aarora79.github.io/meru/architecture/100.html)):
   - [100: the big picture](docs/architecture/100.md)
   - [200: how it works](docs/architecture/200.md)
   - [300: the full design](ARCHITECTURE.md), the design contract
