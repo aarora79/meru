@@ -256,7 +256,7 @@ in-memory exporter and span recorder, and run the real exporters against an
 the trace ID appears only on lines logged with a span in their context.
 
 To see the dashboard, start the stack and point `merud` at it (details in
-[deploy/README.md](../../deploy/README.md)):
+[observability.md](../observability.md)):
 
 ```sh
 docker compose -f deploy/observability/compose.yaml up -d
@@ -264,7 +264,8 @@ docker compose -f deploy/observability/compose.yaml up -d
 ```
 
 Grafana opens on the Meru dashboard. The "Meru usage" dashboard, in the same
-folder, shows one bar per day over the last 30 days.
+folder, shows totals for the chosen time range, then one bar per day over the
+last 30 days.
 
 ## Why it's built this way
 

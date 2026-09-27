@@ -248,6 +248,7 @@ docs/
   coding-notes/      one note per package, and go-basics/ for Go concepts
   lld.md             the low-level design
   running.md         how to build and run Meru
+  observability.md   the local Grafana stack: setup, dashboards, command-line queries
   ci.md              what each check in CI does
   fast-router.md     how the one-token router works
   google-setup.md    setting up Gmail, Calendar and Drive for the `google` server

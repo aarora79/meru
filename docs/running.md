@@ -1914,41 +1914,23 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 
 ## 10. Watch it on a dashboard (optional)
 
-With Docker installed, one command starts a local Grafana with a ready-made Meru
-dashboard:
+`merud` can send its metrics and traces to a local Grafana stack, which runs in
+one Docker container. The setup takes one command and one line in
+`~/.meru/config.toml`:
 
 ```sh
 docker compose -f deploy/observability/compose.yaml up -d
 ```
-
-Then add this to `~/.meru/config.toml` and restart `merud`:
 
 ```toml
 [observability]
 otlp_endpoint = "http://127.0.0.1:4318"
 ```
 
-Open <http://127.0.0.1:3000> (user `admin`, password `admin`). The dashboard shows
-time to first token, turn duration, tokens per second, router decisions and model
-loads. Everything stays on this machine. [deploy/README.md](../deploy/README.md)
-explains each panel and how to stop the stack.
-
-### See one question's trace
-
-Each question also sends a trace: one span for each stage, nested so you can see
-which stage took the time.
-
-1. In Grafana, open **Explore** and pick the **Tempo** data source.
-2. To list recent questions, choose **Search**, set **Service Name** to `merud` and
-   **Span Name** to `rpc.request`, then run the query.
-3. To find the question behind a log line, copy the line's `trace_id`, choose
-   **TraceQL**, paste the ID into the query box and run it.
-
-The trace shows `rpc.request` at the top, `meru.turn` under it, and then the
-session, the route and its model call, the prompt, the answer's model call and the
-two transcript writes. Each `gen_ai.chat` span carries token counts and Ollama's
-load, prompt and answer times; the answer's span has a `first_token` event. Spans
-carry no question or answer text unless `capture_content = true`.
+Restart `merud` and open <http://127.0.0.1:3000> (user `admin`, password
+`admin`). [observability.md](observability.md) walks through each step, says which
+dashboard to open for what, explains empty panels, shows how to query the metrics
+from the command line, and how to find one question's trace.
 
 ## 11. Update to a newer version
 
