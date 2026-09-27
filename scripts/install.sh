@@ -6,8 +6,9 @@
 # It downloads the release, checks every file against SHA256SUMS, puts meru
 # and merud in ~/.local/bin and Meru.app in /Applications, and then offers
 # the next steps: Ollama, the models, `meru setup`, and starting merud at
-# login. It asks before each step that installs or changes anything. Set
-# MERU_VERSION=v0.4.1 to install a given release instead of the latest.
+# login. It first lists what it will install and asks once: everything, each
+# step in turn, or quit. MERU_YES=1 answers "everything" without asking.
+# MERU_VERSION=v0.4.1 installs a given release instead of the latest.
 #
 # Meru never runs this script itself and never checks for updates; you run
 # it again to update. MERU_APP_DIR puts Meru.app somewhere other than
@@ -19,6 +20,9 @@ set -euo pipefail
 
 repo="aarora79/meru"
 bin_dir="$HOME/.local/bin"
+# all is 1 when the user answers "install everything" at the start, or sets
+# MERU_YES=1 to skip the question.
+all="${MERU_YES:-0}"
 
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
@@ -28,6 +32,8 @@ fail() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 # terminal, such as in CI, every answer is no.
 ask() {
   local reply
+  # With "install everything" chosen at the start, every step says yes.
+  if [ "$all" = 1 ]; then printf '%s yes\n' "$1"; return 0; fi
   # Opening /dev/tty fails when there is no terminal, even if the file
   # exists, so try it quietly first.
   if ! { : </dev/tty; } 2>/dev/null; then return 1; fi
@@ -51,6 +57,44 @@ if [ -z "$version" ]; then
   version="${url##*/}"
 fi
 case "$version" in v[0-9]*.[0-9]*.[0-9]*) ;; *) fail "couldn't find the release to install (got '$version')" ;; esac
+# What this Mac will get, so the banner can list it before anything starts.
+mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+has_ollama=0; command -v ollama >/dev/null 2>&1 && has_ollama=1
+has_brew=0; command -v brew >/dev/null 2>&1 && has_brew=1
+
+echo
+echo "  Meru $version for macOS on $arch"
+echo "  --------------------------------"
+echo "  This takes several minutes, most of it downloading models."
+echo "  Here is what it installs:"
+echo
+echo "    - meru and merud, about 40 MB, in $bin_dir"
+[ "$arch" = "arm64" ] && echo "    - Meru.app, about 12 MB, in ${MERU_APP_DIR:-/Applications}"
+if [ "$has_ollama" = 1 ]; then
+  echo "    - Ollama: already installed"
+elif [ "$has_brew" = 1 ]; then
+  echo "    - Ollama, with Homebrew"
+else
+  echo "    - Ollama: install it yourself from https://ollama.com/download"
+fi
+echo "    - the lite models, about 2 GB: MiniCPM5-2B and nomic-embed-text"
+[ "$mem_gb" -ge 48 ] && echo "    - qwen3.6:35b, 23 GB, a stronger answer model (this Mac has $mem_gb GB)"
+echo "    - meru setup, which asks its own questions: your folders and about you"
+echo "    - merud, started now and at every login"
+echo
+echo "  Nothing goes anywhere but the downloads from GitHub, Homebrew and Ollama."
+echo
+
+if [ "$all" != 1 ] && { : </dev/tty; } 2>/dev/null; then
+  printf 'Install everything [a], choose each step [s], or quit [q]? ' >/dev/tty
+  read -r choice </dev/tty || choice=q
+  case "$choice" in
+    [aA]*) all=1 ;;
+    [sS]*) all=0 ;;
+    *) echo "Nothing installed."; exit 0 ;;
+  esac
+fi
+
 say "Installing Meru $version for macOS on $arch"
 
 tmp="$(mktemp -d)"
@@ -113,7 +157,6 @@ else
 fi
 
 if command -v ollama >/dev/null 2>&1; then
-  mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 ))
   echo "This Mac has $mem_gb GB of memory. Meru's lite models need about 2 GB."
   if ask "Download the lite models (MiniCPM5-2B and nomic-embed-text)?"; then
     ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
@@ -126,7 +169,9 @@ if command -v ollama >/dev/null 2>&1; then
 fi
 
 say "Setting up Meru"
-if ask "Run meru setup now (config, folders, and questions about you)?"; then
+# meru setup asks its own questions, so it needs a terminal even when every
+# step says yes.
+if { : </dev/tty; } 2>/dev/null && ask "Run meru setup now (config, folders, and questions about you)?"; then
   "$bin_dir/meru" setup </dev/tty
 else
   echo "Run 'meru setup' when you're ready."

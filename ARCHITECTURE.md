@@ -6,7 +6,7 @@ document describes how it works and why.
 This is the level-300 document: the full design, for people building Meru. For a
 shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
 [level 200](docs/architecture/200.md) (how it works). All three are also
-[web pages](https://aarora79.github.io/meru/architecture/).
+[web pages](https://aarora79.github.io/meru/architecture/100.html).
 
 > We wrote this design before the code. If the code and this file disagree, one of
 > them has a bug; say which.
