@@ -188,6 +188,13 @@ type ModelDetails struct {
 	ContextLength int      // the most tokens the model can read at once
 }
 
+// PulledModel is one model the runtime has on disk: its name, such as
+// "gemma3:12b", and its size in bytes.
+type PulledModel struct {
+	Name  string
+	Bytes int64
+}
+
 // clone returns a copy of d whose Capabilities a caller can change without
 // touching the engine's cache.
 func (d ModelDetails) clone() ModelDetails {

@@ -139,13 +139,22 @@ const requestTimeout = 5 * time.Second
 // while to start.
 const changeTimeout = 90 * time.Second
 
+// switchTimeout bounds a model switch: merud unloads one model and loads
+// another before it answers, and a model of 38 GB can take a minute or
+// more to load from disk.
+const switchTimeout = 3 * time.Minute
+
 // one sends req and returns the reply event of type want, waiting at most
-// requestTimeout, or changeTimeout for an op that changes a setting. It
+// requestTimeout, changeTimeout for an op that changes a setting, or
+// switchTimeout for a model switch. It
 // fails when merud can't be reached, answers with an error event, or sends
 // no event of that type.
 func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (rpc.Event, error) {
 	timeout := requestTimeout
-	if changes(req.Op) {
+	switch {
+	case req.Op == rpc.OpModelUse || req.Op == rpc.OpModelSet:
+		timeout = switchTimeout
+	case changes(req.Op):
 		timeout = changeTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -182,7 +191,7 @@ func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
 		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile,
-		rpc.OpModelSet:
+		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave:
 		return true
 	}
 	return false

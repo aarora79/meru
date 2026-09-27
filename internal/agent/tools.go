@@ -194,6 +194,9 @@ type turn struct {
 	// because that model can't call them, and "" otherwise; see
 	// notools.go.
 	noTools string
+	// badCalls counts the tool calls the model wrote this turn that Meru
+	// couldn't run as written; see malformed.go.
+	badCalls int
 
 	// mu guards cites, which the calls of one round, each in its own
 	// goroutine, count up at the same time.
@@ -364,10 +367,11 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			if !errors.Is(err, engine.ErrModelOutput) {
 				return total, err
 			}
+			a.malformed(ctx, t, rep.model, whyUnreadable)
 			retry := a.retriesOutput(ctx, t)
 			// Ollama's own words go to the log, never to the chat. The
 			// model name comes from config, so it is one of a few values.
-			a.log.WarnContext(ctx, "ollama couldn't read the model's output", "model", a.Main(),
+			a.log.WarnContext(ctx, "ollama couldn't read the model's output", "model", rep.model,
 				"round", t.rounds, "retry", retry, "err", err)
 			if !retry {
 				return total, err
@@ -383,8 +387,11 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			nudge = true
 			continue
 		}
-		// A model that calls a tool it wasn't offered gets no call run: the
-		// round is its answer.
+		// Count the calls Meru can't run as written: a tool this round
+		// didn't offer, or arguments that aren't a JSON object.
+		a.checkCalls(ctx, t, rep.model, rep.calls, offer)
+		// A model that calls a tool when none was offered gets no call
+		// run: the round is its answer.
 		if len(rep.calls) == 0 || len(offer) == 0 {
 			a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 				"ms", time.Since(start).Milliseconds())
@@ -452,9 +459,13 @@ func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, 
 	rep, err := a.answer(ctx, nudged, nil, t.emit)
 	total.add(rep)
 	total.text, total.doneReason = rep.text, rep.doneReason
+	if errors.Is(err, engine.ErrModelOutput) {
+		a.malformed(ctx, t, rep.model, whyUnreadable)
+	}
 	if err != nil {
 		return total, err
 	}
+	a.checkCalls(ctx, t, rep.model, rep.calls, nil)
 	a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 		"empty_retry", true, "ms", time.Since(start).Milliseconds())
 	return total, nil
@@ -485,8 +496,9 @@ const outputNudge = "Your last tool call didn't parse, so it didn't run. " +
 	"Call the tool again with valid arguments, or answer in plain text."
 
 // add folds one round's reply into r: the token counts and durations sum,
-// and firstToken keeps the earliest text of the turn. It leaves r.text
-// alone; converse sets it from the final round.
+// firstToken and ttft keep the turn's first text, and model becomes the
+// latest round's. It leaves r.text alone; converse sets it from the final
+// round.
 //
 // add has a pointer receiver (r *reply), so it changes the caller's reply
 // instead of a copy.
@@ -499,6 +511,10 @@ func (r *reply) add(next reply) {
 	r.usage.TotalDuration += next.usage.TotalDuration
 	if r.firstToken.IsZero() {
 		r.firstToken = next.firstToken
+		r.ttft = next.ttft
+	}
+	if next.model != "" {
+		r.model = next.model
 	}
 }
 

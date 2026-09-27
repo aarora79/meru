@@ -177,12 +177,23 @@ type psResponse struct {
 	} `json:"models"`
 }
 
-// tagsResponse is the reply from GET /api/tags: the models on disk. The
-// reply says more about each, such as its size, which Meru doesn't read.
+// tagsResponse is the reply from GET /api/tags: the models on disk, each
+// with its size in bytes. The reply says more about each, such as its
+// digest, which Meru doesn't read.
 type tagsResponse struct {
 	Models []struct {
 		Name string `json:"name"`
+		Size int64  `json:"size"`
 	} `json:"models"`
+}
+
+// unloadRequest is the body of the POST /api/generate that unloads a
+// model: no prompt, keep_alive 0, and stream off, so Ollama answers with
+// one JSON object.
+type unloadRequest struct {
+	Model     string          `json:"model"`
+	KeepAlive json.RawMessage `json:"keep_alive"`
+	Stream    bool            `json:"stream"`
 }
 
 // errorResponse is the body Ollama sends with a non-2xx status.

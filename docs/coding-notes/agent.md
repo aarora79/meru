@@ -256,14 +256,36 @@ then builds the note and the names from it, through `currentFilesNote` and
 `currentFolderNames`. The note's text changes only when the folders do, so Ollama
 still reuses its work on the prompt's opening.
 
-The answer model can change while `merud` runs too: the Library's "Use for
-answers" button ends in `SetMain`. So `New` copies `[models] main` into the
-field `main`, and every place that needs the answer model, `answer`,
-`checkVision`, the no-vision reply and the bad-output log line, reads it
-through `Main()`. Turns run side by side and `SetMain` can land during one, so
-a `sync.Mutex`, `mainMu`, sits next to the field and both methods take it.
-`TestSetMain` switches the model twice and checks that each next turn asks
-the new one.
+The answer model can change while `merud` runs too: every switch, from
+`/model`, `meru model use` or the Library, ends in `SetMain(model, noThink)`.
+So `New` copies `[models] main` into the field `main`, and every place that
+needs the answer model, `answer`, `checkVision` and the no-vision reply, reads
+it through `Main()`. `noThink`, from a model set's `think = false`, sits beside
+it, and `answer` reads both at once through `mainModel`, so it sends
+`engine.Options.NoThink` with the model it belongs to. Turns run side by side
+and `SetMain` can land during one, so a `sync.Mutex`, `mainMu`, sits next to the
+fields and every method takes it. `TestSetMain` switches the model twice and
+checks that each next turn asks the new one.
+
+**Which model wrote the answer.** `reply` carries the `model` that answered and
+its `ttft`, the time from sending the request to the first text. `reply.add`
+keeps the first round's `ttft` that wrote text and the last round's model. Before
+it writes the answer line, `Handle` calls `noteModel`, which reads the session's
+last `model_switch` line through `Session.Model` and writes a new one when the
+model differs, so a session's first answer gets one with an empty `from`. The
+answer line then carries `ttft_ms`, `eval_ms`, `bad_calls` and `capped`, and the
+turns row gets the same numbers with the model. A turn is `capped` when it ended
+`gave_up` after using every round `max_rounds` allows.
+
+**Bad calls (malformed.go).** `malformed` adds one to the turn's `badCalls` and
+to the `meru.model.malformed_calls` metric, and logs why at debug level with a
+fixed reason, never the model's text. `converse` and `retryEmpty` call it when a
+round fails with `engine.ErrModelOutput`, and `checkCalls` calls it for each call
+in a round that names a tool the round didn't offer (`offered`) or whose
+arguments aren't a JSON object (`isObject`). Counting changes nothing about how a
+call runs: `dispatch` still refuses a made-up tool, and a call made when no
+tools were offered still doesn't run. `TestBadCallsCounted` runs turns against
+the fake Ollama with a broken stream and a call to a tool the round didn't offer.
 
 ### The profile section (profile.go)
 
@@ -1333,7 +1355,8 @@ once every call has returned. The model isn't called again.
 
 ### The transcript
 
-The agent writes two lines per turn: the question and the final answer. The
+The agent writes two lines per turn: the question and the final answer, with a
+`model_switch` line before the answer when the session's answer model changed. The
 question line carries `images`, their paths, only when the question had some.
 The answer line carries `outcome` only on a turn that ended without a full answer,
 and `notice` only on one whose answer claimed an action no tool took.

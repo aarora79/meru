@@ -1,9 +1,10 @@
-// The slash commands in the composer: the same six `meru chat` has, from
+// The slash commands in the composer: the same seven `meru chat` has, from
 // the Bridge's list (internal/desktop/commands.go), so the two can't drift.
 // Typing "/" at the start of the box opens a menu of them; a line that
 // starts with "/" runs here and never reaches the model. Every command
 // runs at once, even while a turn runs; /new stops that turn first, as it
-// does in `meru chat`.
+// does in `meru chat`. A model switch is the exception: it waits for the
+// turn to end, since merud would unload the model writing the answer.
 
 import { bridge, errorText } from "./api.js";
 import { el } from "./turns.js";
@@ -21,8 +22,8 @@ let listbox = null;
 // the commands do in the page: newChat(), openLibrary(section), blocks()
 // (every numbered code block in the chat, oldest first), newestBlocks()
 // (the newest finished answer's, or null when none has finished),
-// textOf(block), copy(text) (a promise), notice(text), askQuit() and
-// fit().
+// textOf(block), copy(text) (a promise), notice(text), askQuit(), fit(),
+// running() (true while a turn runs) and refreshStatus().
 export function setupCommands(question, menuList, actions) {
   box = question;
   listbox = menuList;
@@ -35,7 +36,7 @@ export function setupCommands(question, menuList, actions) {
 }
 
 // names writes the command list as the "unknown command" line does in
-// `meru chat`: "/new, /usage, /me, /mcp, /copy, /exit".
+// `meru chat`: "/new, /usage, /me, /mcp, /model, /copy, /exit".
 function names() {
   return list.map((c) => c.name).join(", ");
 }
@@ -156,6 +157,9 @@ export function runCommand(text) {
     case "/mcp":
       act.openLibrary("connections");
       return true;
+    case "/model":
+      modelCommand(rest);
+      return true;
     case "/copy":
       copyCommand(arg);
       return true;
@@ -165,6 +169,45 @@ export function runCommand(text) {
   }
   act.notice("unknown command " + name + " · commands: " + names());
   return false;
+}
+
+// modelCommand runs /model with the words after it, as `meru chat` does:
+// none opens Library, Models; "save" makes the models in use the default;
+// a set's name switches to it, with "--rebuild" after it for a set that
+// changes the embed model. merud does the work, and the notice line says
+// how it went, with merud's warning when it sends one.
+function modelCommand(words) {
+  if (words.length === 0) {
+    act.openLibrary("models");
+    return;
+  }
+  const done = (text) => (info) => {
+    act.notice(info.warning ? text(info) + " · " + info.warning : text(info));
+    act.refreshStatus();
+  };
+  if (words.length === 1 && words[0] === "save") {
+    act.notice("Saving the models in use as the default…");
+    bridge.saveModels().then(
+      done((info) => "Saved: merud starts with " + (info.active ? info.active + " (" + info.main + ")" : info.main) + "."),
+      (err) => act.notice("Couldn't save the models: " + errorText(err)),
+    );
+    return;
+  }
+  const rebuild = words.length === 2 && words[1] === "--rebuild";
+  if (words.length > 2 || (words.length === 2 && !rebuild)) {
+    act.notice("/model takes a set's name, with --rebuild after it for a set that changes the embed model");
+    return;
+  }
+  if (act.running()) {
+    act.notice("Wait for the answer to finish, or stop it, before you switch models.");
+    return;
+  }
+  const name = words[0];
+  act.notice("Switching to " + name + ": unloading the old model, then loading the new one…");
+  bridge.useModelSet(name, rebuild).then(
+    done((info) => name + " answers now with " + info.main + "."),
+    (err) => act.notice("Couldn't switch to " + name + ": " + errorText(err)),
+  );
 }
 
 // copyCommand runs /copy: with a number it copies that block, alone the

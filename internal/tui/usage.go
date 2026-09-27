@@ -1,6 +1,7 @@
 // This file holds what the chat screen shows of merud's usage numbers: the
-// /usage box that opens over the conversation, and the last hour's summary
-// for the header.
+// /usage box that opens over the conversation, its `/usage by model` form
+// with a row per answer model, and the last hour's summary for the
+// header.
 
 package tui
 
@@ -8,17 +9,36 @@ import (
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/aarora79/meru/internal/rpc"
 )
 
 // usageBox is the open /usage box. It opens at once with loading set, and
-// the next usage reply fills in windows or err.
+// the next usage reply of its kind fills in windows or err. byModel is
+// true for `/usage by model`.
 type usageBox struct {
 	loading bool
+	byModel bool
 	windows []rpc.UsageWindow
 	err     string // why merud gave no numbers
+}
+
+// usageCommand runs /usage with its argument: alone it opens the usage
+// box, and "by model" opens it with a row per answer model. Any other
+// argument leaves the text in the input and says what /usage takes.
+func (m Model) usageCommand(arg string) (tea.Model, tea.Cmd) {
+	byModel := strings.Join(strings.Fields(arg), " ") == "by model"
+	if arg != "" && !byModel {
+		m.notice = "/usage takes nothing, or by model"
+		return m, nil
+	}
+	m.input.Reset()
+	m.layout()
+	m.usageBox = &usageBox{loading: true, byModel: byModel}
+	m.input.Blur() // the input takes no text while the box is open
+	return m, askUsage(m.ask, byModel)
 }
 
 // applyUsage takes in one usage reply. The header keeps the windows for its
@@ -28,16 +48,19 @@ type usageBox struct {
 // it keeps the document count; the status check alone decides whether
 // merud is up.
 //
-// An open box that still waits takes the first reply, whichever request it
-// answers: all of them ask for the same numbers.
+// An open box that still waits takes the first reply of its kind,
+// whichever request it answers: all of them ask for the same numbers. A
+// reply by model never reaches the header, whose summary reads windows of
+// time.
 func (m *Model) applyUsage(msg usageMsg) {
 	switch {
+	case msg.byModel:
 	case msg.err == nil:
 		m.usage = msg.windows
 	case msg.answered:
 		m.usage = nil
 	}
-	if b := m.usageBox; b != nil && b.loading {
+	if b := m.usageBox; b != nil && b.loading && b.byModel == msg.byModel {
 		b.loading = false
 		b.windows = msg.windows
 		if msg.err != nil {
@@ -89,10 +112,18 @@ func (m *Model) usageBoxView(width, height int) string {
 		body = []string{m.style.dim.Render("asking merud…")}
 	case b.err != "":
 		body = strings.Split(ansi.Wrap("merud gave no usage numbers: "+b.err, avail, ""), "\n")
+	case b.byModel && len(b.windows) == 0:
+		body = []string{"No answered questions yet."}
+	case b.byModel:
+		body = m.usageTableLines(rpc.ModelUsageTable(b.windows), avail)
 	default:
 		body = m.usageTableLines(rpc.UsageTable(b.windows), avail)
 	}
-	return m.boxPane("Usage", body, rpc.UsageNote, width, height)
+	title, note := "Usage", rpc.UsageNote
+	if b.byModel {
+		title, note = "Usage by model", rpc.ModelUsageNote
+	}
+	return m.boxPane(title, body, note, width, height)
 }
 
 // usageTableLines lines up the table's cells in columns: labels on the
@@ -103,6 +134,7 @@ func (m *Model) usageBoxView(width, height int) string {
 // all first, then 30d and so on, down to the first window. The windows run
 // from the most recent to the longest, and the recent ones say most about
 // how you use Meru now; `meru usage` prints every window at any width.
+// The table by model drops its columns the same way, from CAPPED back.
 func (m *Model) usageTableLines(rows [][]string, width int) []string {
 	cols := len(rows[0])
 	widths := make([]int, cols)

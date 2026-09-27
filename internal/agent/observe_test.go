@@ -275,8 +275,10 @@ func TestTurnSpanTree(t *testing.T) {
 		t.Errorf("rpc.request children = %v, want [meru.turn]", got)
 	}
 	turn := st.find(t, "meru.turn")
+	// Three appends: the question, the model_switch line a session's
+	// first answer gets, and the answer.
 	wantTurn := []string{"gen_ai.chat", "meru.prompt", "meru.route", "meru.session",
-		"meru.transcript.append", "meru.transcript.append"}
+		"meru.transcript.append", "meru.transcript.append", "meru.transcript.append"}
 	if got := st.children(turn); !slices.Equal(got, wantTurn) {
 		t.Errorf("meru.turn children = %v, want %v", got, wantTurn)
 	}

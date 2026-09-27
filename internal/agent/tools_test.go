@@ -478,12 +478,13 @@ func TestTranscriptAndHistoryAfterToolTurn(t *testing.T) {
 	}
 	id := evs[0].Session
 	var got []string
-	for _, l := range readLines(t, cfg, id) {
+	for _, l := range allLines(t, cfg, id) {
 		got = append(got, l.Type)
 	}
-	// The agent writes the user line and one assistant line; the tool
-	// lines between them come from dispatch (here, the fake).
-	if want := []string{"user", "tool_call", "tool_result", "assistant"}; !slices.Equal(got, want) {
+	// The agent writes the user line, the model_switch line that names the
+	// session's first answer model, and one assistant line; the tool lines
+	// between them come from dispatch (here, the fake).
+	if want := []string{"user", "tool_call", "tool_result", "model_switch", "assistant"}; !slices.Equal(got, want) {
 		t.Fatalf("transcript types = %v, want %v", got, want)
 	}
 	lines := readLines(t, cfg, id)

@@ -223,7 +223,7 @@ type Event struct {
 | `folders`, `folder_add`, `folder_remove` | one `folders`; `done` |
 | `skill_enable`, `skill_disable` | one `skills`; `done` |
 | `save_file` | an `approval` when `write_file` asks; one `saved`, whose `Text` is the path; `done` |
-| `models`, `model_set` | one `models`; `done` |
+| `models`, `model_use`, `model_save`, `model_set` | one `models`; `done` |
 
 `meru index` sends `index`, and `meru index -status` sends `index_status`. The
 desktop app sends `sessions` for its list of past chats and `session_turns` to
@@ -713,6 +713,27 @@ the user starts; its `Entry.Start` holds the command, which `meru mcp add` print
 and never runs. Before it probes such an entry, `doIt` asks `urlAnswers`, a
 one-second TCP dial to the URL's host and port. When nothing answers, it skips
 the probe and writes the catalog's lists.
+
+### `/model gemma-moe`, function by function
+
+1. **`internal/tui/models.go` → `modelCommand`** refuses while an answer
+   streams, then sends `model_use` with `ID` `gemma-moe` through `modelsCmd`,
+   which waits up to three minutes. `meru model use` does the same from
+   `cmd/meru/model.go`, and the desktop app from `Bridge.UseModelSet`.
+2. **`cmd/merud/models.go` → `handleModelUse`** finds the set with
+   `config.FindSet`, refuses one that changes `embed` without `Rebuild`, and
+   takes `switchMu`.
+3. **`switchMain`** checks `Pulled` for the new model, calls
+   `OllamaEngine.Unload` on the old one (`keep_alive: 0`), polls `Info` in
+   `waitUnloaded` until `/api/ps` drops it, loads the new model with a
+   one-token `Generate`, then calls `agent.SetMain(model, noThink)`.
+4. **`handleModelUse`** records the set in use and replies with `info`, the
+   `models` event, with any `Warning`. `applyModels` in the chat puts the result
+   on the notice line and the set's name in the header.
+5. **The next turn**: `agent.answer` reads the model and `noThink` together,
+   and `Handle` calls `noteModel`, which writes a `model_switch` line before the
+   answer. `store.turnsOf` reads that line when it rebuilds `turns`, and
+   `Store.UsageByModel` adds the rows up for `/usage by model`.
 
 ### `meru mcp` and `/mcp`, function by function
 

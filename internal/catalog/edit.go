@@ -94,10 +94,21 @@ func SetTableLists(configPath, table string, lists map[string][]string, check fu
 // other line stays, a missing table goes at the end, and check runs on
 // the loaded result before the file is replaced. check may be nil.
 func SetTableString(configPath, table, key, value string, check func(config.Config) error) error {
-	return setTableValues(configPath, table, map[string]string{key: quote(value)}, check)
+	return SetTableStrings(configPath, table, map[string]string{key: value}, check)
 }
 
-// setTableValues does the work of SetTableLists and SetTableString.
+// SetTableStrings sets several string keys of the plain table table in one
+// write, such as main and fast in [models], so a reader never sees one
+// changed without the other. It works as SetTableString does.
+func SetTableStrings(configPath, table string, values map[string]string, check func(config.Config) error) error {
+	quoted := make(map[string]string, len(values))
+	for k, v := range values {
+		quoted[k] = quote(v)
+	}
+	return setTableValues(configPath, table, quoted, check)
+}
+
+// setTableValues does the work of SetTableLists and SetTableStrings.
 // values maps each key to its new value, already written as TOML, such
 // as ["a", "b"] or "gemma3:12b".
 func setTableValues(configPath, table string, values map[string]string, check func(config.Config) error) error {

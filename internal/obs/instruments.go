@@ -35,6 +35,7 @@ const (
 	metricSessions          = "meru.sessions"
 	metricTurnTokens        = "meru.turn.tokens" // #nosec G101 -- a metric name, not a credential
 	metricTurnDocs          = "meru.turn.docs"
+	metricMalformedCalls    = "meru.model.malformed_calls"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -145,6 +146,7 @@ type instruments struct {
 	sessions          metric.Int64Counter
 	turnTokens        metric.Int64Counter
 	turnDocs          metric.Int64Histogram
+	malformedCalls    metric.Int64Counter
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -244,6 +246,11 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 		metric.WithUnit("{file}"),
 		metric.WithDescription("Distinct files whose excerpts went into one answered turn's prompt."),
 		metric.WithExplicitBucketBoundaries(docBuckets...))
+	keep(err)
+
+	in.malformedCalls, err = meter.Int64Counter(metricMalformedCalls,
+		metric.WithUnit("{call}"),
+		metric.WithDescription("Tool calls the main model wrote that Meru couldn't run as written, by model."))
 	keep(err)
 
 	if err := errors.Join(errs...); err != nil {

@@ -238,6 +238,72 @@ func TestReplayTurns(t *testing.T) {
 	}
 }
 
+// TestUsageByModel checks that a transcript with a model_switch line in
+// the middle rebuilds into rows on each side of it, and that UsageByModel
+// adds them up per model: turns, the median time to first token, the
+// writing time, bad calls and capped turns. A turn from before the
+// model_switch line existed comes under the model "".
+func TestUsageByModel(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "sessions")
+	sess, err := transcript.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const qwen, gemma = "qwen3.6:35b-a3b-mxfp8", "gemma4:26b-mxfp8"
+	lines := []transcript.Line{
+		// An answer written before model_switch lines.
+		{TS: at(9, 0, 0), Type: transcript.TypeUser, Text: "q0"},
+		{TS: at(9, 0, 1), Type: transcript.TypeAssistant, Text: "a0", TokensOut: 5},
+		{TS: at(10, 0, 0), Type: transcript.TypeUser, Text: "q1"},
+		{TS: at(10, 0, 1), Type: transcript.TypeModelSwitch, Tier: "main", To: qwen},
+		{TS: at(10, 0, 2), Type: transcript.TypeAssistant, Text: "a1", TokensOut: 100, EvalMs: 4000, TTFTMs: 800, BadCalls: 1},
+		{TS: at(10, 1, 0), Type: transcript.TypeUser, Text: "q2"},
+		{TS: at(10, 1, 1), Type: transcript.TypeToolCall, CallID: "c1", Kind: "builtin", Server: "meru", Tool: "datetime"},
+		{TS: at(10, 1, 2), Type: transcript.TypeAssistant, Text: "a2", TokensOut: 20, EvalMs: 1000, TTFTMs: 900},
+		{TS: at(10, 1, 3), Type: transcript.TypeUser, Text: "q3"},
+		{TS: at(10, 1, 4), Type: transcript.TypeAssistant, Text: "a3", TTFTMs: 1200},
+		// The switch: the turns after it belong to gemma.
+		{TS: at(10, 2, 0), Type: transcript.TypeUser, Text: "q4"},
+		{TS: at(10, 2, 1), Type: transcript.TypeModelSwitch, Tier: "main", From: qwen, To: gemma},
+		{TS: at(10, 2, 2), Type: transcript.TypeAssistant, Text: "sorry", Outcome: "gave_up", Capped: true, BadCalls: 2},
+		{TS: at(10, 3, 0), Type: transcript.TypeUser, Text: "q5"},
+		{TS: at(10, 3, 1), Type: transcript.TypeAssistant, Text: "a5", TokensOut: 60, EvalMs: 2000, TTFTMs: 600},
+	}
+	for _, l := range lines {
+		if err := sess.Append(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := s.ReplayTurns(ctx, dir); err != nil || n != 6 {
+		t.Fatalf("ReplayTurns = %d, %v; want 6, nil", n, err)
+	}
+
+	got, err := s.UsageByModel(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []rpc.UsageWindow{
+		{Name: rpc.UsageLifetime, Model: qwen, Sessions: 1, Turns: 3, TokensOut: 120, ToolCalls: 1,
+			TTFTp50Millis: 900, EvalMillis: 5000, BadCalls: 1},
+		{Name: rpc.UsageLifetime, Model: gemma, Sessions: 1, Turns: 2, TokensOut: 60,
+			TTFTp50Millis: 600, EvalMillis: 2000, BadCalls: 2, Capped: 1},
+		{Name: rpc.UsageLifetime, Model: "", Sessions: 1, Turns: 1, TokensOut: 5},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("UsageByModel =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// TestUsageByModelEmpty checks that an empty table gives no rows.
+func TestUsageByModelEmpty(t *testing.T) {
+	got, err := openTest(t).UsageByModel(context.Background())
+	if err != nil || len(got) != 0 {
+		t.Errorf("UsageByModel = %+v, %v; want no rows", got, err)
+	}
+}
+
 func TestDiskBytes(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()

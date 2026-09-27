@@ -546,6 +546,34 @@ func TestRecordUsage(t *testing.T) {
 	histPoint[int64](t, got[metricTurnDocs], attrs(keyRoute, "other"))
 }
 
+// TestRecordMalformedCall checks that meru.model.malformed_calls counts
+// by model and carries no other attribute.
+func TestRecordMalformedCall(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	RecordMalformedCall(ctx, "gemma4:26b-mxfp8")
+	RecordMalformedCall(ctx, "gemma4:26b-mxfp8")
+	RecordMalformedCall(ctx, "qwen3.6:35b-a3b-mxfp8")
+	got := collect(t, reader)
+	m := got[metricMalformedCalls]
+	if m.Unit != "{call}" {
+		t.Errorf("unit = %q, want {call}", m.Unit)
+	}
+	counts := sumPoints(t, m, keyModel)
+	if counts["gemma4:26b-mxfp8"] != 2 || counts["qwen3.6:35b-a3b-mxfp8"] != 1 || len(counts) != 2 {
+		t.Errorf("malformed calls = %v, want gemma 2 and qwen 1", counts)
+	}
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	if !ok {
+		t.Fatalf("data is %T, want a sum", m.Data)
+	}
+	for _, p := range sum.DataPoints {
+		if p.Attributes.Len() != 1 {
+			t.Errorf("point has attributes %v, want the model alone", p.Attributes.ToSlice())
+		}
+	}
+}
+
 // TestTracerUsesGlobalProvider checks that Tracer follows the installed
 // provider and names Meru as the scope.
 func TestTracerUsesGlobalProvider(t *testing.T) {

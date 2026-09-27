@@ -174,6 +174,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		}
 		return err
 	}
+	warnMissingSetModels(ctx, eng, cfg.Models.Sets, log)
 	st, err := openStore(ctx, cfg, eng, log)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -258,11 +259,8 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	outputDir, _ := expandHome(cfg.Skills.OutputDir)
 	svc := services{
 		agent: a, idx: idx, tools: tools, mems: mems, skills: sk, hist: hist, st: st, configPath: configPath,
-		save: saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
-		models: modelService{
-			models: cfg.Models, profile: cfg.Profile, configPath: configPath, outputDir: outputDir,
-			eng: eng, answer: a, edit: tools.bt.EditConfig, log: log,
-		},
+		save:   saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
+		models: newModelService(cfg, configPath, outputDir, eng, a, tools.bt.EditConfig, log),
 	}
 	log.Info("listening", "socket", socketPath)
 
@@ -321,9 +319,15 @@ func replayTurns(ctx context.Context, st *store.Store, sessionsDir string, log *
 
 // handleUsage answers OpUsage with one "usage" event: the turns table added
 // up over each usage window, with today, week and month in merud's local
-// time.
-func handleUsage(ctx context.Context, st *store.Store, emit func(rpc.Event) error) error {
-	windows, err := st.Usage(ctx, time.Now())
+// time, or, when req.Kind is rpc.UsageByModel, added up per answer model.
+func handleUsage(ctx context.Context, st *store.Store, req rpc.Request, emit func(rpc.Event) error) error {
+	var windows []rpc.UsageWindow
+	var err error
+	if req.Kind == rpc.UsageByModel {
+		windows, err = st.UsageByModel(ctx)
+	} else {
+		windows, err = st.Usage(ctx, time.Now())
+	}
 	if err != nil {
 		return err
 	}
@@ -341,7 +345,7 @@ type services struct {
 	hist       historyService
 	st         *store.Store
 	save       saveService
-	models     modelService
+	models     *modelService
 	configPath string
 }
 
@@ -350,7 +354,7 @@ type services struct {
 // connection ops to the tool service, the memory ops to the memory
 // service, the skill ops to the skill service, the session ops to the
 // history service, save_file to the save service, attach_file to the
-// tool service, which holds the built-in tools, the two model ops to the
+// tool service, which holds the built-in tools, the model ops to the
 // model service, and the usage op to the store. The rpc server answers
 // pings itself.
 func handler(svc services) rpc.Handler {
@@ -374,7 +378,7 @@ func handler(svc services) rpc.Handler {
 		case rpc.OpMCPStatus:
 			return tools.handleMCPStatus(emit)
 		case rpc.OpUsage:
-			return handleUsage(ctx, st, emit)
+			return handleUsage(ctx, st, req, emit)
 		case rpc.OpMemoryList:
 			return mems.handleList(emit)
 		case rpc.OpMemoryAdd:
@@ -417,6 +421,10 @@ func handler(svc services) rpc.Handler {
 			return svc.models.handleModels(ctx, emit)
 		case rpc.OpModelSet:
 			return svc.models.handleModelSet(ctx, req, emit)
+		case rpc.OpModelUse:
+			return svc.models.handleModelUse(ctx, req, emit)
+		case rpc.OpModelSave:
+			return svc.models.handleModelSave(ctx, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

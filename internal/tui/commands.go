@@ -11,7 +11,7 @@ import (
 
 // commandList names the slash commands the chat understands, for the line
 // that answers an unknown one.
-const commandList = "/new, /usage, /me, /mcp, /copy, /exit"
+const commandList = "/new, /usage, /me, /mcp, /model, /copy, /exit"
 
 // command runs a line that starts with "/" instead of sending it as a
 // question:
@@ -19,11 +19,15 @@ const commandList = "/new, /usage, /me, /mcp, /copy, /exit"
 //   - /new starts a new session, so the next question carries none of the
 //     conversation so far. While a turn runs, it stops that turn and drops
 //     the queued questions, which belonged to the old conversation;
-//   - /usage opens the usage box and asks merud for the numbers;
+//   - /usage opens the usage box and asks merud for the numbers, and
+//     /usage by model opens it with a row per answer model;
 //   - /me opens a box with what Meru knows about the user, the memories
 //     merud puts into every prompt;
 //   - /mcp opens a box with each MCP server's state, the table `meru mcp`
 //     prints;
+//   - /model opens a box with the model sets, the table `meru model`
+//     prints; /model <name> switches to a set and /model save makes the
+//     set in use the default (models.go);
 //   - /copy N copies code block N to the clipboard, and /copy alone the
 //     newest answer's last block, as Ctrl-Y does (copy.go);
 //   - /exit quits the chat, the same as Ctrl-D: an answer still streaming
@@ -31,8 +35,10 @@ const commandList = "/new, /usage, /me, /mcp, /copy, /exit"
 //     of habit from other chat programs, and without it the line would go
 //     nowhere.
 //
-// The other commands only open a box or copy text, so they run at once,
-// even while a turn runs; none of them waits in the queue.
+// The other commands only open a box, copy text or talk to merud, so they
+// run at once, even while a turn runs; none of them waits in the queue.
+// The one exception is a model switch, which waits for the turn to end
+// (see modelCommand).
 //
 // Any other command leaves the text in the input, so the user can fix a
 // typo, and shows one dim line with the commands the chat knows.
@@ -47,11 +53,7 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 	case "/usage":
-		m.input.Reset()
-		m.layout()
-		m.usageBox = &usageBox{loading: true}
-		m.input.Blur() // the input takes no text while the box is open
-		return m, usageCmd(m.ask)
+		return m.usageCommand(arg)
 	case "/me":
 		m.input.Reset()
 		m.layout()
@@ -64,6 +66,8 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		m.mcpBox = &mcpBox{loading: true}
 		m.input.Blur()
 		return m, mcpCmd(m.ask)
+	case "/model":
+		return m.modelCommand(arg)
 	case "/copy":
 		return m.copyCommand(arg)
 	case "/exit":

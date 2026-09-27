@@ -31,7 +31,7 @@ func TestSetMain(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.set != "" {
-				a.SetMain(tt.set)
+				a.SetMain(tt.set, false)
 			}
 			before := len(chatBodies(t, srv, tt.want))
 			if _, err := run(context.Background(), a, rpc.Request{Text: "hello"}); err != nil {

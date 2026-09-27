@@ -94,6 +94,13 @@ func TestViewGolden(t *testing.T) {
 		usageBox bool
 		meBox    bool
 		mcpBox   bool
+		// models, when set, arrives as merud's models reply, for the
+		// header; modelBox then types /model and answers it with them.
+		// byModel types /usage by model and answers it with these
+		// windows.
+		models   *rpc.ModelsInfo
+		modelBox bool
+		byModel  []rpc.UsageWindow
 		// queued, when set, are typed and sent while the turn runs, so
 		// they wait in the queue.
 		queued []string
@@ -141,6 +148,14 @@ func TestViewGolden(t *testing.T) {
 		{name: "usage-narrow", width: 40, height: 24, index: bigIndex, usage: usageFixture, usageBox: true},
 		{name: "mcp", width: 100, height: 20, index: bigIndex, mcpBox: true},
 		{name: "mcp-narrow", width: 40, height: 20, index: bigIndex, mcpBox: true},
+		{name: "model", width: 80, height: 20, index: bigIndex, models: modelsFixture, modelBox: true},
+		{name: "model-narrow", width: 40, height: 20, index: bigIndex, models: modelsFixture, modelBox: true},
+		// The set in use sits in the header beside the usage, and goes
+		// after the usage when the line is narrow.
+		{name: "header-set", width: 150, height: 8, index: bigIndex, usage: usageFixture, models: modelsFixture},
+		{name: "header-set-narrow", width: 100, height: 8, index: bigIndex, usage: usageFixture, models: modelsFixture},
+		{name: "usage-by-model", width: 80, height: 20, index: bigIndex, byModel: byModelFixture},
+		{name: "usage-by-model-narrow", width: 40, height: 20, index: bigIndex, byModel: byModelFixture},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,6 +175,16 @@ func TestViewGolden(t *testing.T) {
 			}
 			if tt.mcpBox {
 				m, _ = update(t, m, typeText("/mcp"), press(tea.KeyEnter), mcpMsg{rows: mcpFixture})
+			}
+			if tt.models != nil {
+				m, _ = update(t, m, modelsMsg{action: actionList, info: tt.models})
+			}
+			if tt.modelBox {
+				m, _ = update(t, m, typeText("/model"), press(tea.KeyEnter), modelsMsg{action: actionList, info: tt.models})
+			}
+			if tt.byModel != nil {
+				m, _ = update(t, m, typeText("/usage by model"), press(tea.KeyEnter),
+					usageMsg{windows: tt.byModel, answered: true, byModel: true})
 			}
 			for _, q := range tt.queued {
 				m, _ = update(t, m, typeText(q), press(tea.KeyEnter))
@@ -214,6 +239,28 @@ var usageFixture = []rpc.UsageWindow{
 	{Name: rpc.UsageMonth, Sessions: 12, Turns: 88, TokensIn: 420_000, TokensOut: 61_000, ActiveMillis: 3_700_000, Docs: 51, ToolCalls: 14},
 	{Name: rpc.Usage30d, Sessions: 14, Turns: 97, TokensIn: 468_000, TokensOut: 66_500, ActiveMillis: 4_020_000, Docs: 55, ToolCalls: 15},
 	{Name: rpc.UsageLifetime, Sessions: 30, Turns: 212, TokensIn: 1_400_000, TokensOut: 180_000, ActiveMillis: 11_100_000, Docs: 140, ToolCalls: 40},
+}
+
+// modelsFixture is merud's models reply with the three sets of the
+// comparison, the first in use.
+var modelsFixture = &rpc.ModelsInfo{
+	Profile: "full", Main: "qwen3.6:35b-a3b-mxfp8", Fast: "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
+	Embed: "qwen3-embedding:0.6b", Active: "qwen-moe",
+	Sets: []rpc.ModelSet{
+		{Name: "qwen-moe", Main: "qwen3.6:35b-a3b-mxfp8", ThinkOff: true, Bytes: 38_000_000_000, Pulled: true, Loaded: true, Active: true},
+		{Name: "gemma-moe", Main: "gemma4:26b-mxfp8", ThinkOff: true, Bytes: 28_000_000_000, Pulled: true},
+		{Name: "qwen-dense", Main: "qwen3.8:27b-mlx", ThinkOff: true},
+	},
+}
+
+// byModelFixture is a reply to /usage by model: two models and the turns
+// from before the transcripts named their model.
+var byModelFixture = []rpc.UsageWindow{
+	{Name: rpc.UsageLifetime, Model: "qwen3.6:35b-a3b-mxfp8", Turns: 41, TTFTp50Millis: 820, TokensOut: 2410,
+		EvalMillis: 100_000, ToolCalls: 63, BadCalls: 2, Capped: 1},
+	{Name: rpc.UsageLifetime, Model: "gemma4:26b-mxfp8", Turns: 38, TTFTp50Millis: 610, TokensOut: 3170,
+		EvalMillis: 100_000, ToolCalls: 59, BadCalls: 7},
+	{Name: rpc.UsageLifetime, Turns: 12, ToolCalls: 4},
 }
 
 // golden compares got with testdata/<name>.golden, or writes the file when

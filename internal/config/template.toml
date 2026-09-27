@@ -27,6 +27,30 @@ fast  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; routes and quick ans
 main  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; writes the answer
 embed = ""   # lite: nomic-embed-text; turns text into vectors for search
 
+# Named sets of models to switch between while merud runs: /model <name>
+# in meru chat, or meru model use <name>. A switch changes the main model
+# and lasts until merud stops; /model save makes it the default above.
+# A set names main, and may name fast and embed, which change only once
+# the set is saved and merud restarts. A set that changes embed needs
+# --rebuild, because merud then re-embeds every file. think = false turns
+# the main model's thinking off, so sets compare on equal terms. A model
+# Ollama doesn't list only draws a warning when merud starts.
+#
+# [[models.sets]]
+# name  = "qwen-moe"
+# main  = "qwen3.6:35b-a3b-mxfp8"
+# think = false
+#
+# [[models.sets]]
+# name  = "gemma-moe"
+# main  = "gemma4:26b-mxfp8"
+# think = false
+#
+# [[models.sets]]
+# name  = "qwen-dense"
+# main  = "qwen3.8:27b-mlx"
+# think = false
+
 [ollama]
 # Where Ollama listens. Loopback only: 127.0.0.1, ::1 or localhost.
 base_url   = "http://127.0.0.1:11434"

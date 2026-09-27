@@ -50,10 +50,38 @@ type Config struct {
 
 // Models names the Ollama model for each tier (see ARCHITECTURE.md, "Model
 // tiers"). The code asks for a tier; config says which model fills it.
+//
+// Sets lists the named sets `/model` and `meru model use` switch between.
+// Fast, Main and Embed stay the default: they are what merud starts with,
+// and what `/model save` writes.
 type Models struct {
-	Fast  string `toml:"fast"`
+	Fast  string     `toml:"fast"`
+	Main  string     `toml:"main"`
+	Embed string     `toml:"embed"`
+	Sets  []ModelSet `toml:"sets"`
+}
+
+// ModelSet is one [[models.sets]] entry: a name for a choice of models, so
+// a switch names one thing rather than three. A tier left empty stays as it
+// is. Only Main changes while merud runs; Fast and Embed take effect when
+// the set is saved as the default and merud restarts. See ARCHITECTURE.md,
+// "Model tiers".
+type ModelSet struct {
+	// Name is what `/model <name>` takes: letters, digits, ".", "-" and
+	// "_".
+	Name  string `toml:"name"`
 	Main  string `toml:"main"`
+	Fast  string `toml:"fast"`
 	Embed string `toml:"embed"`
+	// Think set to false turns the main model's hidden reasoning off for
+	// this set. Left out, the model does what it does by default. It is a
+	// pointer so that "left out" (nil) differs from false.
+	Think *bool `toml:"think"`
+}
+
+// ThinkOff reports whether the set turns the main model's thinking off.
+func (s ModelSet) ThinkOff() bool {
+	return s.Think != nil && !*s.Think
 }
 
 // Ollama is where the local model runtime listens.

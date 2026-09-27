@@ -622,7 +622,15 @@
   </tbody>
 </table></div>
 
-<p>We also tried <code>qwen3.8:27b</code>: its answer was the best grounded, but it took about five minutes. The desktop app's Library, Models shows the three with their <code>ollama pull</code> and <code>ollama run</code> commands. "Use for answers" switches the answer model with no restart. With a model that can't call tools, Meru answers from the model alone and says so under the answer.</p>
+<p>We also tried <code>qwen3.8:27b</code>: its answer was the best grounded, but it took about five minutes. The desktop app's Library, Models shows the three with their <code>ollama pull</code> and <code>ollama run</code> commands. "Use for answers" switches the answer model with no restart and saves it in the config file. With a model that can't call tools, Meru answers from the model alone and says so under the answer.</p>
+
+<h3 id="model-sets">Switching and comparing models</h3>
+
+<p>A <em>model set</em> in the config file gives a name to a choice of models, such as <code>qwen-moe</code> for <code>qwen3.6:35b-a3b-mxfp8</code>. In <code>meru chat</code>, <code>/model</code> lists the sets, <code>/model qwen-moe</code> switches the answer model, and <code>/model save</code> makes the switch last past a restart of <code>merud</code>; <code>meru model</code> and the desktop app do the same. A set can turn a model's hidden thinking off, so each model answers on equal terms.</p>
+
+<p>Ollama keeps every model it has loaded, and two large models fill a 64 GB Mac. So a switch first asks Ollama to drop the old answer model, waits until it has, then loads the new one, and only then says it is done. A step that fails says which, and the old model stays in charge.</p>
+
+<p>Each session's transcript notes when its answers start to come from another model. From that, <code>/usage by model</code> shows a row per model: questions, time to first word, words per second, tool calls, <em>bad calls</em> (tool calls Meru couldn't run as the model wrote them) and questions that ran out of rounds.</p>
 
 <!-- ============================================================ -->
 <h2 id="where-data-lives">Where data lives</h2>
@@ -1016,6 +1024,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 
 <ul>
   <li>Export stays off until you set an address in config, and <code>merud</code> refuses to start if that address isn't on loopback.</li>
+  <li>A counter of bad calls per model shows which answer model mangles its tool calls; <code>/usage by model</code> shows the same number from the transcripts.</li>
   <li>Traces carry token counts, times, model names and tool names, and no prompt or answer text unless you switch it on. Each tool call gets a span of its own, with its outcome and your approval.</li>
   <li>The repo ships one container, <code>grafana/otel-lgtm</code>, that stores the data and shows a ready-made Meru dashboard in Grafana, listening on 127.0.0.1 only.</li>
 </ul>

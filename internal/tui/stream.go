@@ -174,11 +174,13 @@ func pingCmd(ask askFunc) tea.Cmd {
 // usageMsg reports what merud said to OpUsage. answered is true when merud
 // replied at all, even with an error event, and err says why no windows
 // came. An older merud answers OpUsage with an "unknown op" error event,
-// which gives answered true and an err.
+// which gives answered true and an err. byModel is true for the reply to
+// `/usage by model`, whose windows hold one model each.
 type usageMsg struct {
 	windows  []rpc.UsageWindow
 	answered bool
 	err      error
+	byModel  bool
 }
 
 // usageCmd returns a command that asks merud once how much Meru has been
@@ -186,23 +188,33 @@ type usageMsg struct {
 // timer and after each answer, so the header's last-hour numbers stay
 // fresh, and again when the user types /usage.
 func usageCmd(ask askFunc) tea.Cmd {
+	return askUsage(ask, false)
+}
+
+// askUsage returns a command that sends OpUsage once, asking for one
+// window per answer model when byModel is true.
+func askUsage(ask askFunc, byModel bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		defer cancel()
+		req := rpc.Request{Op: rpc.OpUsage}
+		if byModel {
+			req.Kind = rpc.UsageByModel
+		}
 		var windows []rpc.UsageWindow
-		for ev, err := range ask(ctx, rpc.Request{Op: rpc.OpUsage}, nil) {
+		for ev, err := range ask(ctx, req, nil) {
 			if err != nil {
-				return usageMsg{err: err}
+				return usageMsg{err: err, byModel: byModel}
 			}
 			switch ev.Type {
 			case rpc.EventUsage:
 				windows = ev.Usage
 			case rpc.EventDone:
-				return usageMsg{windows: windows, answered: true}
+				return usageMsg{windows: windows, answered: true, byModel: byModel}
 			case rpc.EventError:
-				return usageMsg{answered: true, err: errors.New(ev.Error)}
+				return usageMsg{answered: true, err: errors.New(ev.Error), byModel: byModel}
 			}
 		}
-		return usageMsg{err: errors.New("merud sent no reply")}
+		return usageMsg{err: errors.New("merud sent no reply"), byModel: byModel}
 	}
 }

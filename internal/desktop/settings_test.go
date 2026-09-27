@@ -62,6 +62,13 @@ func (f *fakeMerud) handler(ctx context.Context, req rpc.Request, emit func(rpc.
 			info.Warning = "Meru can't use tools with this model."
 		}
 		return emit(rpc.Event{Type: rpc.EventModels, Models: info})
+	case rpc.OpModelUse, rpc.OpModelSave:
+		// A set that changes the embed model needs rebuild, as in merud.
+		if req.ID == "new-embed" && !req.Rebuild {
+			return errors.New("set new-embed changes the embed model; switch again with --rebuild")
+		}
+		return emit(rpc.Event{Type: rpc.EventModels, Models: &rpc.ModelsInfo{Main: "gemma4:26b-mxfp8", Active: "gemma-moe",
+			Sets: []rpc.ModelSet{{Name: "gemma-moe", Main: "gemma4:26b-mxfp8", Active: true}}}})
 	case rpc.OpLog:
 		return emit(rpc.Event{Type: rpc.EventLog, Log: []rpc.LogEntry{{Tool: "search_gmail_messages", Outcome: "ok"}}})
 	case rpc.OpUsage:
@@ -120,6 +127,10 @@ func TestSettingsCalls(t *testing.T) {
 		{"skill on", func() (any, error) { return b.SetSkill(ctx, "explainer", true) }, rpc.Request{Op: rpc.OpSkillEnable, ID: "explainer"}},
 		{"models", func() (any, error) { return b.Models(ctx) }, rpc.Request{Op: rpc.OpModels}},
 		{"use model", func() (any, error) { return b.UseModel(ctx, "qwen3.6:35b") }, rpc.Request{Op: rpc.OpModelSet, ID: "qwen3.6:35b"}},
+		{"use a model set", func() (any, error) { return b.UseModelSet(ctx, " gemma-moe ", false) }, rpc.Request{Op: rpc.OpModelUse, ID: "gemma-moe"}},
+		{"use a set with rebuild", func() (any, error) { return b.UseModelSet(ctx, "new-embed", true) },
+			rpc.Request{Op: rpc.OpModelUse, ID: "new-embed", Rebuild: true}},
+		{"save the models", func() (any, error) { return b.SaveModels(ctx) }, rpc.Request{Op: rpc.OpModelSave}},
 		{"activity", func() (any, error) { return b.Activity(ctx) }, rpc.Request{Op: rpc.OpLog, Limit: defaultActivity}},
 		{"usage", func() (any, error) { return b.Usage(ctx) }, rpc.Request{Op: rpc.OpUsage}},
 	}
@@ -209,6 +220,65 @@ func TestUseModel(t *testing.T) {
 	}
 	if len(m.Choices) != 1 || m.Choices[0].Capabilities == nil || m.Choices[0].Tiers == nil {
 		t.Errorf("choices = %+v; want capabilities and tiers as [], not null", m.Choices)
+	}
+}
+
+// TestUseModelSet checks /model <name> through the Bridge: the status
+// block names the set's model, a refusal comes back as merud's words, a
+// name is required, and the sets reach the page as [] rather than null.
+func TestUseModelSet(t *testing.T) {
+	f := &fakeMerud{}
+	b, _ := newBridge(startServer(t, f.handler))
+	ctx := context.Background()
+	info, err := b.UseModelSet(ctx, "gemma-moe", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Active != "gemma-moe" || info.Sets[0].Capabilities == nil || info.Choices == nil {
+		t.Errorf("info = %+v; want gemma-moe in use and no null lists", info)
+	}
+	if got := b.Status(ctx).Model; got != "gemma4:26b-mxfp8" {
+		t.Errorf("the status block names %q, want the set's model", got)
+	}
+	if _, err := b.UseModelSet(ctx, "new-embed", false); err == nil || !strings.Contains(err.Error(), "--rebuild") {
+		t.Errorf("err = %v, want merud's word on --rebuild", err)
+	}
+	if _, err := b.UseModelSet(ctx, "  ", false); err == nil || !strings.Contains(err.Error(), "name a model set") {
+		t.Errorf("err = %v, want a name asked for", err)
+	}
+	m, err := b.Models(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := json.Marshal(m); strings.Contains(string(raw), `"sets":null`) {
+		t.Errorf("models reach the page with null sets: %s", raw)
+	}
+}
+
+// TestModelCommandRouting checks the composer's /model in commands.js: a
+// bare /model opens Library, Models, save and a set's name reach the
+// Bridge's SaveModels and UseModelSet, and a switch waits for a running
+// turn, as in meru chat. The page runs no tests of its own, so this reads
+// the source.
+func TestModelCommandRouting(t *testing.T) {
+	src := ownFiles(t)["web/js/commands.js"]
+	for _, want := range []string{
+		`case "/model":`,
+		`act.openLibrary("models")`,
+		`bridge.saveModels()`,
+		`bridge.useModelSet(name, rebuild)`,
+		`words[1] === "--rebuild"`,
+		`if (act.running())`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("commands.js lacks %q", want)
+		}
+	}
+	api := ownFiles(t)["web/js/api.js"]
+	for _, want := range []string{`call("UseModelSet", name, rebuild)`, `call("SaveModels")`} {
+		if !strings.Contains(api, want) {
+			t.Errorf("api.js lacks %q", want)
+		}
 	}
 }
 

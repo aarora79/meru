@@ -243,6 +243,10 @@ exactly the lists asked for and that the servers and agents are the same ones, i
 the same order, and runs `CheckServers`; `SetTableLists` runs the caller's
 `check`. On any failure the file stays as it was.
 
+`SetTableStrings` sets several string keys of one plain table in one write, such
+as `main` and `fast` in `[models]` for `merud`'s `model_save`, so a reader never
+sees one changed without the other. `SetTableString` calls it with one key.
+
 ### searxng.go
 
 `CheckSearXNG(ctx, baseURL)` answers one question: does SearXNG answer JSON at

@@ -24,6 +24,7 @@ var commandList = []Command{
 	{Name: "/usage", Description: "How much Meru has been used"},
 	{Name: "/me", Description: "What Meru knows about you"},
 	{Name: "/mcp", Description: "Your connections and their tools"},
+	{Name: "/model", Args: "[name | save]", Description: "Switch to a model set, save it as the default, or show the sets"},
 	{Name: "/copy", Args: "[N]", Description: "Copy code block N, or the newest answer's last block"},
 	{Name: "/exit", Description: "Close Meru"},
 }

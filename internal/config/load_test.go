@@ -64,7 +64,7 @@ func TestLoadProfilesAndOverrides(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
-			if cfg.Models != tt.want {
+			if got := (Models{Fast: cfg.Models.Fast, Main: cfg.Models.Main, Embed: cfg.Models.Embed}); got.Fast != tt.want.Fast || got.Main != tt.want.Main || got.Embed != tt.want.Embed {
 				t.Errorf("models = %+v, want %+v", cfg.Models, tt.want)
 			}
 		})
@@ -262,6 +262,11 @@ func TestLoadErrors(t *testing.T) {
 		{"old web fetch key true", "[web]\nfetch = true", movedFetch},
 		{"builtin unknown tool", "[builtin]\ntools = [\"grep\", \"shell\"]", `builtin.tools: "shell" is not a built-in tool; the built-in tools are configure, datetime,`},
 		{"builtin confirm not in tools", "[builtin]\ntools = [\"grep\"]\nconfirm = [\"write_file\"]", `builtin.confirm: "write_file" isn't in builtin.tools`},
+		{"set without a name", "[[models.sets]]\nmain = \"m\"", "models.sets: entry 1 has no name"},
+		{"set name with a space", "[[models.sets]]\nname = \"my set\"\nmain = \"m\"", `models.sets: name "my set" may hold only`},
+		{"set name twice", "[[models.sets]]\nname = \"a\"\nmain = \"m\"\n[[models.sets]]\nname = \"a\"\nmain = \"n\"", `the name "a" is used twice`},
+		{"set with no model", "[[models.sets]]\nname = \"empty\"\nthink = false", `set "empty" names no model`},
+		{"set unknown key", "[[models.sets]]\nname = \"a\"\nmain = \"m\"\nmodel = \"x\"", "unknown keys: models.sets.model"},
 		{"builtin default confirm, tools empty", "[builtin]\ntools = []", `builtin.confirm: "write_file" isn't in builtin.tools`},
 	}
 	for _, tt := range tests {
@@ -450,15 +455,54 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
 	}
-	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 10 {
-		t.Errorf("samples hold %d servers, %d agents and %d commands, want 3, 1 and 10",
-			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands))
+	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 10 || len(cfg.Models.Sets) != 3 {
+		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 3, 1, 10 and 3",
+			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands), len(cfg.Models.Sets))
+	}
+}
+
+// TestLoadModelSets checks that [[models.sets]] entries load as written,
+// that think tells "off" from "left out", and that FindSet finds one by
+// name.
+func TestLoadModelSets(t *testing.T) {
+	body := `profile = "full"
+
+[[models.sets]]
+name  = "qwen-moe"
+main  = "qwen3.6:35b-a3b-mxfp8"
+think = false
+
+[[models.sets]]
+name  = "small"
+main  = "gemma3:12b"
+fast  = "gemma3:1b"
+`
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Models.Main != "qwen3.8:27b" {
+		t.Errorf("main = %q; a set must not change the default", cfg.Models.Main)
+	}
+	if len(cfg.Models.Sets) != 2 {
+		t.Fatalf("sets = %+v, want 2", cfg.Models.Sets)
+	}
+	moe, ok := FindSet(cfg.Models.Sets, "qwen-moe")
+	if !ok || moe.Main != "qwen3.6:35b-a3b-mxfp8" || !moe.ThinkOff() {
+		t.Errorf("qwen-moe = %+v, %v; want its main and thinking off", moe, ok)
+	}
+	small, _ := FindSet(cfg.Models.Sets, "small")
+	if small.ThinkOff() || small.Think != nil || small.Fast != "gemma3:1b" {
+		t.Errorf("small = %+v; want fast set and think left out", small)
+	}
+	if _, ok := FindSet(cfg.Models.Sets, "nope"); ok {
+		t.Error("FindSet found a set that isn't there")
 	}
 }
 
 // TestProfileModels checks the accessor meru setup uses.
 func TestProfileModels(t *testing.T) {
-	if m, ok := ProfileModels("full"); !ok || m != profiles["full"] {
+	if m, ok := ProfileModels("full"); !ok || m.Main != profiles["full"].Main || m.Fast != profiles["full"].Fast || m.Embed != profiles["full"].Embed {
 		t.Errorf("ProfileModels(full) = %+v, %v", m, ok)
 	}
 	if _, ok := ProfileModels("huge"); ok {

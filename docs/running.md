@@ -80,15 +80,54 @@ ollama run gemma3:12b
 gemma3:12b` lists what a model can do under Capabilities.
 
 **Switch the answer model** in the desktop app: Library, Models, "Use for
-answers" on the model's card. `merud` writes `[models] main` in
-`~/.meru/config.toml` and answers the next question with the new model, with no
-restart. The button stays off until Ollama has the model. Without the desktop
-app, set the name in `config.toml` and restart `merud`:
+answers" on the model's card. `merud` unloads the model that answers now, loads
+the new one, writes `[models] main` in `~/.meru/config.toml`, and answers the
+next question with the new model, with no restart. The button stays off until
+Ollama has the model. Without the desktop app, set the name in `config.toml` and
+restart `merud`:
 
 ```toml
 [models]
 main = "qwen3.6:35b"
 ```
+
+**Compare answer models with model sets.** Name each model you want to try in
+`config.toml`, then restart `merud`:
+
+```toml
+[[models.sets]]
+name  = "qwen-moe"
+main  = "qwen3.6:35b-a3b-mxfp8"
+think = false
+
+[[models.sets]]
+name  = "gemma-moe"
+main  = "gemma4:26b-mxfp8"
+think = false
+```
+
+`think = false` turns each model's hidden reasoning off, so none loses on time
+to first token for thinking alone. `merud` logs a warning at startup for a
+model Ollama doesn't have; pull it before you switch to its set.
+
+```sh
+meru model                  # the sets, which one is in use, and which Ollama holds
+meru model use gemma-moe    # switch until merud stops
+meru model save             # make the models in use the default in config.toml
+```
+
+In `meru chat`, `/model`, `/model gemma-moe` and `/model save` do the same. A
+switch unloads the old answer model, waits until Ollama has let it go, and
+loads the new one before it replies, so two large models never share memory. A
+switch that fails names the step that failed and keeps the old model. After
+some questions with each set, `/usage by model` in `meru chat` shows a row per
+model: questions, median time to first token, tokens per second, tool calls,
+bad calls and capped turns. A bad call is a tool call Meru couldn't run as the
+model wrote it; a capped turn used every round and wrote no answer.
+
+A set may also name `fast` and `embed` models. Those change only after `meru
+model save` and a restart of `merud`, and a set that changes `embed` needs
+`--rebuild`, because `merud` then embeds every file again.
 
 **A model without tools**, such as `gemma3:12b`, can't read your mail, notes or
 the web, or open your files: Ollama refuses tools to it. Meru answers those
@@ -241,7 +280,7 @@ meru chat                                   # a conversation in the terminal
 ```
 
 Quotes are optional unless the question starts with the word `ping`, `chat`,
-`index`, `tools`, `log`, `usage`, `setup`, `memory`, `skills` or `mcp`. Without quotes, `meru` reads that word as
+`index`, `tools`, `log`, `usage`, `model`, `setup`, `memory`, `skills` or `mcp`. Without quotes, `meru` reads that word as
 a command: write `meru "index cards or a notebook?"`, not `meru index cards or a
 notebook?`.
 
@@ -258,9 +297,13 @@ In `meru chat`:
 | Ctrl-Y | copy the last code block of the newest answer |
 | `/copy N`, then Enter | copy code block N; `/copy` alone works like Ctrl-Y |
 | `/usage`, then Enter | show how much you use Meru; Esc or q closes it |
+| `/usage by model`, then Enter | show a row per answer model: questions, time to first token, speed, tool calls, bad calls and capped turns |
 | `/new`, then Enter | start a new conversation: the screen clears, queued questions go, and the next question carries none of the earlier ones |
 | `/me`, then Enter | show what Meru knows about you; Esc or q closes it |
 | `/mcp`, then Enter | show each MCP server's state, the table `meru mcp` prints; Esc or q closes it |
+| `/model`, then Enter | show the model sets, the table `meru model` prints; Esc or q closes it |
+| `/model <name>`, then Enter | switch to that model set; add `--rebuild` for a set that changes the embed model. It waits while an answer streams |
+| `/model save`, then Enter | make the models in use the default in `config.toml` |
 | `/exit`, then Enter | quit, like Ctrl-D |
 
 The line at the top of `meru chat` shows the profile, the main model, the search
@@ -274,8 +317,9 @@ The index part counts the files Meru searches, the vectors it holds for them, an
 the size of `meru.db` on disk; `· indexing` follows while a scan runs. Then comes
 the number of memories, and `· no profile` while Meru knows nothing about you. On
 the right, a wide terminal shows the last hour's use, such as
-`1h: 4 questions · 18k in · 2.1k out`, then whether `merud` is running. A
-narrow one drops the last hour first, then the vectors, size and memory count.
+`1h: 4 questions · 18k in · 2.1k out`, then the model set in use, then whether
+`merud` is running. A narrow one drops the last hour first, then the vectors,
+size and memory count. The model set stays.
 
 Any other line that starts with `/` stays in the input box, and the bottom line
 lists the commands `meru chat` knows.

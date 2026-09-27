@@ -1,0 +1,20 @@
+Meru मेरु lite · qw… qwen-moe  ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ Model sets                         │
+  │                                    │
+  │   MODEL SET    MAIN              … │
+  │ → qwen-moe     qwen3.6:35b-a3b-mx… │
+  │   gemma-moe    gemma4:26b-mxfp8  … │
+  │   qwen-dense   qwen3.8:27b-mlx   … │
+  │                                    │
+  │ /model <name> to switch · /model   │
+  │ save to make the current one the   │
+  │ default                            │
+  ╰────────────────────────────────────╯
+
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+esc/q close · ctrl+c stop/quit

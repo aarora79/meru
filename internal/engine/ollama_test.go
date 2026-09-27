@@ -383,18 +383,18 @@ func TestInfo(t *testing.T) {
 	}
 }
 
-// TestPulled checks that Pulled lists the names /api/tags gives, and
-// fails when Ollama does.
+// TestPulled checks that Pulled lists the names and sizes /api/tags
+// gives, and fails when Ollama does.
 func TestPulled(t *testing.T) {
 	tests := []struct {
 		name    string
 		reply   route
-		want    []string
+		want    []PulledModel
 		wantErr bool
 	}{
 		{"two models", route{200, `{"models":[{"name":"gemma3:12b","size":8149190253,"capabilities":["completion","vision"]},{"name":"nomic-embed-text:latest"}]}`},
-			[]string{"gemma3:12b", "nomic-embed-text:latest"}, false},
-		{"none", route{200, `{"models":[]}`}, []string{}, false},
+			[]PulledModel{{"gemma3:12b", 8149190253}, {"nomic-embed-text:latest", 0}}, false},
+		{"none", route{200, `{"models":[]}`}, []PulledModel{}, false},
 		{"ollama fails", route{500, `{"error":"boom"}`}, nil, true},
 	}
 	for _, tt := range tests {
@@ -409,6 +409,34 @@ func TestPulled(t *testing.T) {
 				t.Errorf("Pulled = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestUnload checks that Unload sends the request Ollama's docs give for
+// unloading a model, whatever keep_alive config set, and fails when Ollama
+// refuses or no model is named.
+func TestUnload(t *testing.T) {
+	f := newFakeOllama(t, map[string]route{"/api/generate": {200, `{"model":"big","done":true,"done_reason":"unload"}`}})
+	// keep_alive "-1" in config must not leak into the unload call.
+	e := newTestEngine(t, f, "-1")
+	if err := e.Unload(context.Background(), "big"); err != nil {
+		t.Fatalf("Unload: %v", err)
+	}
+	b := f.body(t, "/api/generate")
+	if b["model"] != "big" || b["keep_alive"] != float64(0) || b["stream"] != false {
+		t.Errorf("unload body = %v, want model big, keep_alive 0 and stream false", b)
+	}
+	if _, ok := b["prompt"]; ok {
+		t.Errorf("unload body = %v, want no prompt", b)
+	}
+	if err := e.Unload(context.Background(), ""); err == nil {
+		t.Error("Unload with no model succeeded")
+	}
+
+	down := newFakeOllama(t, map[string]route{"/api/generate": {404, `{"error":"model 'big' not found"}`}})
+	if err := newTestEngine(t, down, "").Unload(context.Background(), "big"); err == nil ||
+		!strings.Contains(err.Error(), "not found") {
+		t.Errorf("Unload err = %v, want Ollama's not found", err)
 	}
 }
 

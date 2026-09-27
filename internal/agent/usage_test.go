@@ -126,6 +126,7 @@ func TestTurnRowAndAssistantLine(t *testing.T) {
 				Session: id, Time: row.Time, Source: "tui", Route: tt.wantRoute,
 				TokensIn: tokensIn, TokensOut: tokensOut, DurationMillis: answer.Ms,
 				ToolCalls: tt.wantCalls, Docs: tt.wantDocs, TraceID: answer.TraceID,
+				Model: cfg.Models.Main, EvalMillis: answer.EvalMs, TTFTMillis: answer.TTFTMs,
 			}
 			if !reflect.DeepEqual(row, want) {
 				t.Errorf("row = %+v\nwant %+v", row, want)

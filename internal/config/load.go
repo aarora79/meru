@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -295,6 +296,9 @@ func validate(cfg Config) error {
 		add("web.max_results is %d; it must be between 1 and %d", n, MaxWebResults)
 	}
 
+	for _, err := range checkSets(cfg.Models.Sets) {
+		add("%w", err)
+	}
 	for _, err := range checkIndex(cfg.Index) {
 		add("%w", err)
 	}
@@ -323,6 +327,44 @@ func checkKeepAlive(s string) error {
 		return nil
 	}
 	return fmt.Errorf("%q must be a number of seconds (\"-1\" keeps models loaded) or a duration such as \"30m\"", s)
+}
+
+// setName is what a [[models.sets]] name may hold. The name goes on a
+// command line and in the chat's header, so it keeps to characters that
+// need no quotes.
+var setName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// checkSets checks the [[models.sets]] entries and returns one error per
+// problem: a missing or odd name, a name used twice, and a set that names
+// no model. It doesn't ask Ollama whether each model is there; merud warns
+// about that at startup, since a model can be pulled later.
+func checkSets(sets []ModelSet) []error {
+	var errs []error
+	var seen []string
+	for i, s := range sets {
+		switch {
+		case s.Name == "":
+			errs = append(errs, fmt.Errorf("models.sets: entry %d has no name", i+1))
+		case !setName.MatchString(s.Name):
+			errs = append(errs, fmt.Errorf("models.sets: name %q may hold only letters, digits, \".\", \"-\" and \"_\"", s.Name))
+		case slices.Contains(seen, s.Name):
+			errs = append(errs, fmt.Errorf("models.sets: the name %q is used twice", s.Name))
+		}
+		seen = append(seen, s.Name)
+		if s.Main == "" && s.Fast == "" && s.Embed == "" {
+			errs = append(errs, fmt.Errorf("models.sets: set %q names no model; give it main, fast or embed", s.Name))
+		}
+	}
+	return errs
+}
+
+// FindSet returns the set called name from sets, and whether there is one.
+func FindSet(sets []ModelSet, name string) (ModelSet, bool) {
+	i := slices.IndexFunc(sets, func(s ModelSet) bool { return s.Name == name })
+	if i < 0 {
+		return ModelSet{}, false
+	}
+	return sets[i], true
 }
 
 // checkIndex checks the [index] section and returns one error per problem.

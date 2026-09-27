@@ -81,7 +81,8 @@ func TestToolCall(t *testing.T) {
 	for _, l := range lines {
 		types = append(types, l.Type)
 	}
-	want := []string{transcript.TypeUser, transcript.TypeToolCall, transcript.TypeToolResult, transcript.TypeAssistant}
+	want := []string{transcript.TypeUser, transcript.TypeToolCall, transcript.TypeToolResult,
+		transcript.TypeModelSwitch, transcript.TypeAssistant}
 	if strings.Join(types, ",") != strings.Join(want, ",") {
 		t.Fatalf("transcript line types = %v, want %v", types, want)
 	}

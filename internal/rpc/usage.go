@@ -1,7 +1,8 @@
 // This file holds the helpers both clients use to show a "usage" event:
-// UsageTable lays the windows out as rows of cells, and ShortCount and
-// ShortDuration write its numbers. `meru usage` prints the table as plain
-// text and `meru chat` draws it in a box, so both show the same cells.
+// UsageTable lays the windows out as rows of cells, ModelUsageTable does
+// the same for the per-model reply, and ShortCount and ShortDuration write
+// their numbers. `meru usage` prints the tables as plain text and `meru
+// chat` draws them in a box, so both show the same cells.
 
 package rpc
 
@@ -54,6 +55,59 @@ func UsageTable(windows []UsageWindow) [][]string {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// ModelUsageNote is the line both clients print under the per-model
+// table: what the numbers cover, and what counts as a bad call.
+const ModelUsageNote = "Every answered question, by the model that wrote the answer. " +
+	"CALLS counts tool calls, and BAD CALLS the ones Meru couldn't run as the model wrote them. " +
+	"CAPPED counts turns that used every round and wrote no answer."
+
+// unknownModel names the row of turns from before the transcripts named
+// their model.
+const unknownModel = "(not recorded)"
+
+// ModelUsageTable returns the per-model windows of an OpUsage reply with
+// Kind UsageByModel as rows of cells, a header row first:
+//
+//	"MODEL"                  "TURNS"  "TTFT p50"  "TOK/S"  "CALLS"  "BAD CALLS"  "CAPPED"
+//	"qwen3.6:35b-a3b-mxfp8"  "41"     "820ms"     "24.1"   "63"     "2"          "1"
+//
+// CALLS is short for tool calls, so the table fits a chat box 80 columns
+// wide.
+//
+// TTFT p50 shows "—" for a model with no turn that wrote text, and TOK/S
+// for one with no writing time; turns from before the transcripts named
+// their model come under "(not recorded)".
+func ModelUsageTable(windows []UsageWindow) [][]string {
+	rows := [][]string{{"MODEL", "TURNS", "TTFT p50", "TOK/S", "CALLS", "BAD CALLS", "CAPPED"}}
+	for _, w := range windows {
+		model := w.Model
+		if model == "" {
+			model = unknownModel
+		}
+		ttft := "—"
+		if w.TTFTp50Millis > 0 {
+			ttft = ShortMillis(w.TTFTp50Millis)
+		}
+		speed := "—"
+		if w.EvalMillis > 0 {
+			speed = fmt.Sprintf("%.1f", float64(w.TokensOut)/(float64(w.EvalMillis)/1000))
+		}
+		rows = append(rows, []string{model, ShortCount(int64(w.Turns)), ttft, speed,
+			ShortCount(int64(w.ToolCalls)), ShortCount(int64(w.BadCalls)), ShortCount(int64(w.Capped))})
+	}
+	return rows
+}
+
+// ShortMillis writes a time to first token: "820ms" under a second,
+// "1.2s" under ten seconds, and "14s" from there up. 9.96 seconds counts
+// as ten, as in oneDecimal.
+func ShortMillis(ms int64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", ms)
+	}
+	return oneDecimal(float64(ms)/1000) + "s"
 }
 
 // ShortCount writes n in at most four characters or so: as it is below a
