@@ -31,11 +31,11 @@ const MaxWebResults = 20
 // internal/builtin, which imports this package; a test there checks that
 // each name here is a tool it serves.
 var builtinTools = []string{
-	"configure", "datetime", "remember", "write_file",
+	"configure", "datetime", "about_meru", "remember", "write_file",
 	"read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch",
 }
 
-// BuiltinTools returns the names of all ten built-in tools, the default
+// BuiltinTools returns the names of all eleven built-in tools, the default
 // for [builtin] tools. It returns a copy, so a caller can't change the
 // list the defaults use.
 func BuiltinTools() []string { return slices.Clone(builtinTools) }

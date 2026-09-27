@@ -149,6 +149,8 @@ func TestToolsOfferedByRoute(t *testing.T) {
 		asks:  map[string]bool{"cmd.git-push": true},
 	}
 	onlyCmds := &fakeTools{specs: []engine.ToolSpec{spec("configure"), spec("cmd.git-log")}}
+	// datetime and about_meru ride along on every route, direct included.
+	everyRoute := &fakeTools{specs: []engine.ToolSpec{spec("notes.search"), spec("datetime"), spec("about_meru"), spec("read_file")}}
 	tests := []struct {
 		name  string
 		route string
@@ -157,6 +159,8 @@ func TestToolsOfferedByRoute(t *testing.T) {
 		note  string   // the tools note in the system prompt; "" for none
 	}{
 		{"direct offers none", "direct", all, nil, ""},
+		{"direct offers datetime and about_meru", "direct", everyRoute, []string{"datetime", "about_meru"}, toolsNote},
+		{"search offers datetime and about_meru", "search", everyRoute, []string{"datetime", "about_meru", "read_file"}, toolsNote + " " + fileToolsNote},
 		{"search offers the file tools", "search", all, []string{"read_file", "list_folder", "grep"}, fileToolsNote},
 		{"search with no file tools", "search", noFiles, nil, ""},
 		{"search offers commands that don't ask", "search", cmds, []string{"read_file", "cmd.git-log", "grep"}, fileToolsNote + " " + commandsNote},

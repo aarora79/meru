@@ -54,8 +54,9 @@ type Tools struct {
 	search     FileSearcher   // what search_files searches with; nil leaves it out
 	web        *webClients    // web_search and web_fetch, as [web] sets them
 	onChange   func(context.Context) error
-	onRemember func(context.Context) // runs after remember saves; nil for none
-	now        func() time.Time      // the clock datetime reads; time.Now outside tests
+	onRemember func(context.Context)       // runs after remember saves; nil for none
+	now        func() time.Time            // the clock datetime reads; time.Now outside tests
+	about      func(context.Context) About // gathers about_meru's facts; nil leaves about_meru out
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -160,7 +161,8 @@ func (t *Tools) Off() []Off {
 }
 
 // missing returns why the tool name can't run, or "" when it can. Only
-// remember, write_file, the file tools and web_search need a setting.
+// remember, write_file, the file tools, web_search and about_meru need a
+// setting.
 func (t *Tools) missing(name string) string {
 	switch name {
 	case Remember:
@@ -186,6 +188,10 @@ func (t *Tools) missing(name string) string {
 		if t.web.searxngURL == "" {
 			return "[web] searxng_url is empty"
 		}
+	case AboutMeru:
+		if t.about == nil {
+			return "merud gave it no facts to report"
+		}
 	}
 	return ""
 }
@@ -200,6 +206,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		Description: description(),
 		Parameters:  schema(),
 	}, datetimeSpec()}
+	if t.about != nil {
+		specs = append(specs, aboutSpec())
+	}
 	if t.memory != nil {
 		specs = append(specs, engine.ToolSpec{
 			Name:        Remember,
@@ -271,6 +280,13 @@ func (t *Tools) Status() []rpc.ServerInfo {
 		Description: "Reads the clock: the date, the time, a date's weekday, another time zone.",
 		Confirm:     t.Confirm(DateTime) != dispatch.ConfirmNever,
 	}}
+	if t.about != nil {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        AboutMeru,
+			Description: Summary(AboutMeru),
+			Confirm:     t.Confirm(AboutMeru) != dispatch.ConfirmNever,
+		})
+	}
 	if t.memory != nil {
 		tools = append(tools, rpc.ToolInfo{
 			Name:        Remember,
@@ -345,6 +361,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.configure(ctx, args)
 	case name == DateTime:
 		text, err = dateTime(t.now(), args)
+	case name == AboutMeru && t.about != nil:
+		text = t.aboutMeru(ctx)
 	case name == Remember && t.memory != nil:
 		text, err = t.remember(ctx, args)
 	case name == WriteFile && t.outputDir != "":
@@ -573,6 +591,15 @@ func (t *Tools) EditConfig(edit func() error) error {
 	return edit()
 }
 
+// EveryRoute reports whether the built-in tool name goes with every
+// route and every scope that offers tools, "direct" included: datetime,
+// because "what day is Christmas?" routes direct, and about_meru, because
+// "which model are you?" does too. Both only read, and their schemas are
+// short.
+func EveryRoute(name string) bool {
+	return name == DateTime || name == AboutMeru
+}
+
 // Summary says in one line what the built-in tool name does, for the
 // desktop app's list of tools, which shows the tools [builtin] tools
 // leaves out too. It returns "" for a name that isn't a built-in.
@@ -582,6 +609,8 @@ func Summary(name string) string {
 		return "Adds an MCP server to config.toml. It asks every time."
 	case DateTime:
 		return "Reads the clock: the date, the time, a date's weekday, another time zone."
+	case AboutMeru:
+		return "Tells the model which models, folders, tools and skills this setup has."
 	case Remember:
 		return "Saves one fact about you to ~/.meru/memory."
 	case WriteFile:

@@ -116,6 +116,18 @@ func (s *skillService) loadLocked(ctx context.Context) error {
 	return nil
 }
 
+// names returns the names of the skills that load, sorted, and of those
+// [skills] disabled turns off, for about_meru. It loads the registry
+// again first when the folder changed, as Registry does.
+func (s *skillService) names(ctx context.Context) (on, off []string) {
+	for _, sum := range s.Registry(ctx).List() {
+		on = append(on, sum.Name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return on, slices.Clone(s.disabled)
+}
+
 // handleList answers OpSkills with one "skills" event: every loaded skill
 // with its description and its built-in and edited marks, and in Text the
 // reasons merud skipped any folders, one per line. A built-in whose file

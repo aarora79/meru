@@ -84,7 +84,7 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	// merud reports about itself.
 	res := resource.NewWithAttributes(semconv.SchemaURL,
 		semconv.ServiceName("merud"),
-		semconv.ServiceVersion(buildVersion()),
+		semconv.ServiceVersion(BuildVersion()),
 	)
 
 	metricExporter, err := otlpmetrichttp.New(ctx, metricOptions(u)...)
@@ -220,11 +220,11 @@ func traceOptions(u *url.URL) []otlptracehttp.Option {
 	return opts
 }
 
-// buildVersion returns merud's version as the Go toolchain recorded it in
+// BuildVersion returns merud's version as the Go toolchain recorded it in
 // the binary: a tag such as "v0.1.0" for `go install …@v0.1.0`, or
 // "(devel)" for a local build. It avoids a version variable that someone
-// must remember to bump.
-func buildVersion() string {
+// must remember to bump. The traces carry it, and so does about_meru.
+func BuildVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info.Main.Version == "" {
 		return "(devel)"

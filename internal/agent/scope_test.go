@@ -21,7 +21,7 @@ func TestScopedTurns(t *testing.T) {
 	all := []engine.ToolSpec{
 		spec("google.search_gmail_messages"), spec("google.get_events"), spec("google.search_drive_files"),
 		spec("obsidian.obsidian_simple_search"), spec("web_search"), spec("web_fetch"),
-		spec("read_file"), spec("grep"), spec("datetime"), spec("remember"), spec("cmd.git-log"),
+		spec("read_file"), spec("grep"), spec("datetime"), spec("about_meru"), spec("remember"), spec("cmd.git-log"),
 	}
 	tests := []struct {
 		scope      string
@@ -29,9 +29,9 @@ func TestScopedTurns(t *testing.T) {
 		want       []string // tools offered, in order
 		wantSearch bool     // the turn searched the files first
 	}{
-		{rpc.ScopeFiles, "search", []string{"read_file", "grep", "datetime", "cmd.git-log"}, true},
-		{rpc.ScopeMail, "tools", []string{"google.search_gmail_messages", "google.get_events", "google.search_drive_files", "datetime"}, false},
-		{rpc.ScopeWeb, "tools", []string{"web_search", "web_fetch", "datetime"}, false},
+		{rpc.ScopeFiles, "search", []string{"read_file", "grep", "datetime", "about_meru", "cmd.git-log"}, true},
+		{rpc.ScopeMail, "tools", []string{"google.search_gmail_messages", "google.get_events", "google.search_drive_files", "datetime", "about_meru"}, false},
+		{rpc.ScopeWeb, "tools", []string{"web_search", "web_fetch", "datetime", "about_meru"}, false},
 		{rpc.ScopeTalk, "direct", nil, false},
 	}
 	for _, tt := range tests {

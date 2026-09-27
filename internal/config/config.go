@@ -244,7 +244,7 @@ type Skills struct {
 // whatever Confirm says.
 type Builtin struct {
 	// Tools lists the built-in tools the model may use. A tool left out
-	// isn't registered at all. Default: all ten, as BuiltinTools returns
+	// isn't registered at all. Default: all eleven, as BuiltinTools returns
 	// them. A listed tool whose setting is missing, such as the file tools
 	// with no [index] folders, still stays off.
 	Tools []string `toml:"tools"`

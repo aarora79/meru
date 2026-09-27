@@ -230,9 +230,10 @@ func userWords(question string, history []engine.Message) string {
 }
 
 // toolSpecs returns the tool schemas to offer on route: every tool the
-// ToolRunner allows on "tools" and "search+tools"; on "search", the three
-// file tools (read_file, list_folder, grep) and the local commands that
-// don't ask first; and nil on "direct" or when tools are off. A model can't
+// ToolRunner allows on "tools" and "search+tools"; on "search", the file
+// tools, the local commands that don't ask first, and datetime and
+// about_meru; on "direct", datetime and about_meru alone; and nil when
+// tools are off. A model can't
 // call a tool it hasn't seen, and the prompt stays shorter (ARCHITECTURE.md,
 // "Who decides what").
 //
@@ -253,22 +254,23 @@ func (a *Agent) toolSpecs(route string) []engine.ToolSpec {
 	case "search":
 		var specs []engine.ToolSpec
 		for _, s := range a.tools.Tools() {
-			if s.Name == builtin.DateTime || builtin.IsFileTool(s.Name) ||
+			if builtin.EveryRoute(s.Name) || builtin.IsFileTool(s.Name) ||
 				(toolKind(s.Name) == dispatch.KindCommand && !a.tools.Asks(s.Name)) {
 				specs = append(specs, s)
 			}
 		}
 		return specs
 	}
-	// Every other route, "direct" included, gets datetime alone: it reads
-	// the clock, costs a short schema, and "what time is it?" or "what day
-	// is Christmas?" routes direct.
+	// Every other route, "direct" included, gets datetime and about_meru
+	// alone. They only read, cost short schemas, and "what day is
+	// Christmas?" or "which model are you?" route direct.
+	var specs []engine.ToolSpec
 	for _, s := range a.tools.Tools() {
-		if s.Name == builtin.DateTime {
-			return []engine.ToolSpec{s}
+		if builtin.EveryRoute(s.Name) {
+			specs = append(specs, s)
 		}
 	}
-	return nil
+	return specs
 }
 
 // schemaChars returns the size of the tool schemas in characters: each

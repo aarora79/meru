@@ -123,6 +123,8 @@ capture_content  = false   # put question and answer text into spans
 # model never sees it, and `meru tools` doesn't list it.
 #   configure     adds an MCP server to this file when you ask in chat
 #   datetime      reads the clock and the calendar
+#   about_meru    tells the model which models, folders and tools this
+#                 setup has, so it doesn't guess from its training
 #   remember      saves a fact about you under memory/
 #   write_file    saves a file in [skills] output_dir
 #   read_file, list_folder, grep
@@ -133,7 +135,7 @@ capture_content  = false   # put question and answer text into spans
 #                 connects to sites off this machine, and they see your IP
 #                 address. It asks you first for a URL no search result or
 #                 question of yours gave, and before any download.
-tools = ["configure", "datetime", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch"]
+tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch"]
 # Tools that ask before each call; each must be in tools. configure always
 # asks, whatever this says. Add "remember" to approve each memory; take out
 # "write_file" to let it save without asking.
