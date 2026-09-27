@@ -135,77 +135,9 @@ from disk. So Meru has two programs:
 A daemon that keeps models warm can also run scheduled jobs for almost no extra
 work. That is why we build `merud` first and add the scheduler to it later.
 
-```mermaid
-flowchart TB
-    subgraph client["client processes (short-lived)"]
-        CLI["meru — one-shot"]
-        TUI["meru chat — terminal UI"]
-        DESK["meru-desktop — desktop app"]
-    end
+![System diagram. Three short-lived clients, meru for one question, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the socket server and the scheduler feed the agent loop, which uses the skill registry, dispatch and the Engine. The Engine reaches Ollama and its fast, main and embed models over HTTP on 127.0.0.1:11434. Dispatch reaches MCP servers such as google and obsidian through the MCP client pool, other agents through the A2A client, and a SearXNG you run for web_search. The loop reads and writes the files under ~/.meru: session transcripts, memory files, skills, config.toml and meru.db, the index Meru can rebuild. The OTel SDK sends metrics and traces to an optional OTLP endpoint on 127.0.0.1:4318, which feeds Grafana, Prometheus and Tempo.](docs/architecture/img/300-overview.png)
 
-    subgraph daemon["merud — always running"]
-        RPC["socket server<br/>~/.meru/merud.sock"]
-        LOOP["agent loop<br/>route → retrieve → tools → answer"]
-        SCHED["scheduler<br/>cron jobs, briefs"]
-        EP["Engine interface<br/>OllamaEngine"]
-        DISP["dispatch<br/>allowlist · confirm · audit · trace"]
-        MCPC["MCP client pool"]
-        A2AC["A2A client"]
-        SKILLS["skill registry"]
-        OTEL["OTel SDK<br/>metrics + traces"]
-    end
-
-    subgraph ollama["ollama — local, loopback only"]
-        FAST["fast"]
-        MAIN["main"]
-        EMB["embed"]
-    end
-
-    subgraph store["~/.meru/"]
-        SESS["sessions/*.jsonl<br/>transcripts (source of truth)"]
-        DB[("meru.db<br/>sqlite + fts5 + vec1<br/>(projection)")]
-        CFG["config.toml"]
-        SKD["skills/"]
-        MEMD["memory/"]
-    end
-
-    subgraph ext["MCP servers (separate processes)"]
-        S1["google"]
-        S3["obsidian"]
-    end
-
-    WEB["SearXNG<br/>127.0.0.1:8888, you run it"]
-
-    subgraph agents["other agents (A2A)"]
-        AG1["local agent"]
-    end
-
-    subgraph obs["observability — optional, loopback only"]
-        COL["OTLP endpoint<br/>127.0.0.1:4318"]
-        GRAF["Grafana · Prometheus · Tempo"]
-    end
-
-    CLI --> RPC
-    TUI --> RPC
-    DESK --> RPC
-    RPC --> LOOP
-    SCHED --> LOOP
-    LOOP --> EP
-    EP -- "HTTP 127.0.0.1:11434" --> FAST & MAIN & EMB
-    LOOP --> DISP
-    DISP --> MCPC & A2AC
-    DISP -- "web_search" --> WEB
-    MCPC --> S1 & S3
-    A2AC --> AG1
-    LOOP --> SKILLS
-    SKILLS --> SKD
-    LOOP --> SESS
-    SESS -. "indexed into" .-> DB
-    LOOP <--> DB
-    LOOP -.-> OTEL
-    OTEL -- "OTLP/HTTP" --> COL
-    COL --> GRAF
-```
+*Figure 1. Arrows leave `merud` for programs it doesn't own from two places: the engine, to Ollama, and `dispatch`, to MCP servers, A2A agents and SearXNG. Each is one guarded entry point, which is where the privacy rules live.*
 
 ### Terminal UI
 
@@ -669,68 +601,9 @@ your files and calls a read-only tool. The second turn builds on the first and c
 a tool that changes something, so Meru asks you before it runs. Later sections
 explain each step in detail.
 
-```mermaid
-sequenceDiagram
-    actor U as you
-    participant C as meru (client)
-    participant L as merud: agent loop
-    participant S as store
-    participant F as fast model
-    participant M as main model
-    participant D as dispatch
-    participant T as MCP server
+![Sequence diagram of two turns in one session, across you, the meru client, the merud agent loop, the store, the fast model, the main model, dispatch and an MCP server. In turn 1 you ask what you agreed on the launch date in email this week. The loop appends your line to the transcript, the fast model picks the search+tools route, hybrid search returns chunks and memories, and the client gets the numbered sources. In a loop of at most 8 rounds, the main model asks for google.search_gmail_messages, dispatch runs it without asking and logs it, and the main model answers from the messages. In turn 2 you ask Meru to reply to the thread and confirm. The router picks the tools route and the main model asks for google.send_gmail_message, which sits in the confirm list, so dispatch asks you through the client. You approve once, dispatch sends the message and logs the call with your approval, and the main model answers.](docs/architecture/img/300-end-to-end.png)
 
-    Note over U,T: Turn 1 starts a new session
-    U->>C: "what did we agree on the launch date in email this week?"
-    C->>L: new session + question
-    L->>S: append user line to session JSONL
-    L->>F: pick a route
-    F-->>L: route = search + tools
-    L->>S: hybrid search on the question: chunks, memories, session summaries
-    S-->>L: top chunks, relevant memories
-    L-->>C: sources: the excerpts, numbered [1], [2], …
-    L->>L: build context within budgets
-    L->>L: list MCP tools again; try missing servers once
-    L->>M: context + schemas of allowed tools
-    M-->>L: tool call google.search_gmail_messages
-    L->>D: dispatch
-    D->>D: allowlist ✓ · not in confirm list
-    D->>T: search_gmail_messages
-    T-->>D: matching messages
-    D->>S: tool_call + tool_result lines, tool_calls row
-    D-->>L: result
-    L->>M: context + tool result
-    M-->>L: answer, no tool call
-    L-->>C: stream tokens
-    C-->>U: answer, then the sources it cites
-    L->>S: append assistant line
-
-    Note over U,T: Turn 2 continues the same session
-    U->>C: "reply to that thread and confirm I can make it"
-    C->>L: same session + question
-    L->>S: load this session's recent messages
-    L->>F: pick a route, reading turn 1 too
-    F-->>L: route = tools
-    L->>S: search files, recall memories
-    S-->>L: top chunks, relevant memories
-    L->>M: context (with turn 1) + tool schemas
-    M-->>L: tool call google.send_gmail_message
-    L->>D: dispatch
-    D->>D: allowlist ✓ · send_gmail_message is in confirm list
-    D-->>C: ask: send_gmail_message(...)?
-    C-->>U: approve once · for this session · deny?
-    U->>C: approve once
-    C->>D: approved once
-    D->>T: send_gmail_message
-    T-->>D: message sent
-    D->>S: tool_call, approval + tool_result lines, tool_calls row
-    D-->>L: result
-    L->>M: context + tool result
-    M-->>L: answer, no tool call
-    L-->>C: stream tokens
-    C-->>U: answer
-    L->>S: append assistant line
-```
+*Figure 2. Each dashed frame is one run of the agent loop, and both turns go round it twice: `main` asks for a tool, gets the result, then answers. Turn 2 searches too: the `tools` route searches your files, because the router sends some questions about them there, and recall runs on every route. Only turn 2 stops for you, because `send_gmail_message` sits in the server's `confirm` list.*
 
 ### Who decides what
 
@@ -1476,6 +1349,10 @@ classification and reads the answer from the model's probabilities:
    and normalizes the four so they sum to 1.
 4. The most likely letter is the route, and its probability is the confidence.
 
+![Flow chart of the router. The prompt lists four lettered routes, A answer, B search, C tools and D search+tools, then examples and the turn, and ends with Answer:. The fast model in Ollama returns one token with log probabilities, with num_predict = 1, logprobs = true and top_logprobs = 20. The router keeps the letters A to D, applies the temperature and scales the four to sum to 1. When the top probability reaches min_confidence and at least two letters came back, the route is the most likely letter, with outcome ok. Otherwise the router falls back to search+tools, with outcome low_confidence, or degraded when fewer than two letters came back.](docs/architecture/img/300-routing.png)
+
+*Figure 3. The router reads a route instead of asking for one. It never parses text the model wrote, and when the four probabilities don't pick out one letter, it takes the route that can't leave a turn short of context.*
+
 A question sent with a scope other than `auto`, from the desktop app's "Where
 Meru looks" switch, skips the router: the scope sets the route and the tools (see
 [Desktop app](#desktop-app)).
@@ -1596,29 +1473,9 @@ The full design, with the prompt contract, tests and calibration results, is in
 Meru keeps two kinds of data, with one rule between them: **files hold the truth,
 and the database indexes them.** Delete `meru.db` and `merud` rebuilds it.
 
-```mermaid
-flowchart LR
-    subgraph truth["source of truth (files)"]
-        NOTES["your folders<br/>notes, docs, PDFs, repos"]
-        SESS["~/.meru/sessions/<br/>one JSONL file per session"]
-        MEM["~/.meru/memory/<br/>one Markdown file per memory"]
-        CFG["config.toml · skills/"]
-    end
+![Diagram with the files that hold the truth on the left and meru.db on the right. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec. Replaying the session transcripts fills tool_calls and, from v0.4, sessions, messages, message_fts and session_vec. The indexer embeds the memory files into memories, memory_fts and memory_vec. Reading config.toml and skills fills meta and, from v0.5, jobs and job_runs. Delete meru.db and merud rebuilds every table from the files.](docs/architecture/img/300-storage.png)
 
-    subgraph proj["projection (rebuildable)"]
-        DB[("~/.meru/meru.db")]
-        CH["chunks + chunk_fts + chunk_vec"]
-        MSG["messages + message_fts<br/>(v0.4)"]
-        TC["tool_calls"]
-        MM["memories + memory_fts + memory_vec"]
-    end
-
-    NOTES -- "indexer: chunk + embed" --> CH
-    SESS -- "replay" --> MSG
-    SESS -- "replay" --> TC
-    MEM -- "indexer: embed" --> MM
-    CH & MSG & TC & MM --- DB
-```
+*Figure 4. Every arrow runs left to right, and every table on the right has a file behind it, memories included. v0.2 built `documents`, `chunks`, `chunk_fts`, `chunk_vec` and `meta`, and v0.3 added `tool_calls`; the rest arrive with later milestones, as the table below marks. Edit a memory file by hand and the indexer picks up the change the same way it does for your notes.*
 
 ### Session transcripts
 
@@ -1898,16 +1755,9 @@ the context budget, so one busy source can't crowd out the others.
 | Similarity search, ranked by distance | every row of `chunk_vec`, with vec1's distance function (`ORDER BY vec1_l2_distance(vector, ?) / 2 LIMIT ?`) |
 | Merging the two lists | our Go code: reciprocal-rank fusion |
 
-```mermaid
-flowchart LR
-    Q["query"] --> E["embed<br/>(embed tier)"]
-    E --> V["vector query<br/>chunk_vec · top 50"]
-    Q --> K["keyword query<br/>chunk_fts · top 50"]
-    V --> R["rrf() in Go"]
-    K --> R
-    R --> T["top 10 chunk IDs"]
-    T --> C["load text + source path<br/>from chunks / documents"]
-```
+![Flow chart of hybrid search. The query goes two ways. The embed model turns it into a vector, and a vector query over every row of chunk_vec keeps the top 50. A keyword query over chunk_fts, ranked by BM25, keeps its own top 50. The two run one after the other inside merud. rrf() in Go merges the lists with k = 60 into the top 10 chunk IDs, and merud loads their text and paths from chunks and documents. Each stage reports its time in meru.retrieval.duration.](docs/architecture/img/300-hybrid.png)
+
+*Figure 5. Only the vector side needs a model call. The keyword side, the merge and the final lookup are all SQLite or plain Go inside `merud`.*
 
 The keyword query quotes every word of the query and joins them with `OR`, so text
 from the user can never reach FTS5 as query syntax. It keeps the first 32 distinct
@@ -3060,22 +2910,9 @@ remote  = false                      # true only if the agent isn't on loopback
 timeout = "60s"                      # the default
 ```
 
-```mermaid
-sequenceDiagram
-    participant M as main model
-    participant L as agent loop
-    participant D as dispatch
-    participant A as research agent (A2A)
+![Sequence diagram of one A2A call across the main model, the agent loop, dispatch and a research agent. The main model asks for the tool a2a.research.summarize with a message. The loop hands the call to dispatch, which checks the allowlist, asks you if the skill sits in the confirm list, and opens a span. Dispatch sends SendStreamingMessage to the agent, which streams task updates and then a final artifact. Dispatch writes a tool_calls row with kind a2a, closes the span and returns the result text, which the loop passes to the main model as the tool result.](docs/architecture/img/300-a2a.png)
 
-    M-->>L: tool call a2a.research.summarize {message}
-    L->>D: dispatch
-    D->>D: allowlist ✓ · confirm? · open span
-    D->>A: SendStreamingMessage
-    A-->>D: task updates … final artifact
-    D->>D: write tool_calls row (kind=a2a) · close span
-    D-->>L: result text
-    L->>M: tool result
-```
+*Figure 6. To the model, a remote agent is one more tool. Everything that makes the call safe to audit happens in the two boxes on the `dispatch` line, the same boxes an MCP call passes through.*
 
 Agents are deny-by-default too. Meru can reach only the agents in config, and only
 the skills in `allow` become tools. An agent on another machine may use a cloud
@@ -3165,27 +3002,9 @@ Each turn produces one trace. A question over the socket starts at `rpc.request`
 a scheduled job (v0.5) starts at `meru.turn`. In v0.3 a turn on the `search+tools`
 route with one round of tool calls looks like this:
 
-```text
-rpc.request                       op, source, question length
-└── meru.turn                     route, source, session, iterations, outcome
-    ├── meru.session              new or opened; history turns and messages
-    ├── meru.transcript.append    the user line
-    ├── meru.route                decision, confidence, outcome, meru.route.p.<route>
-    │   └── gen_ai.chat  fast     one token with log probabilities
-    │       └── POST /api/chat    HTTP status
-    ├── meru.search               results found
-    │   └── meru.retrieve         hits per list, fused count, time per stage
-    │       └── POST /api/embed   the query's vector
-    ├── meru.prompt               messages, characters, estimated tokens
-    ├── gen_ai.chat  main         round 1: text and tool calls; first_token event
-    │   └── POST /api/chat        HTTP status, thinking chunks
-    ├── meru.dispatch             one per call: tool, kind, server, outcome, approval
-    │   └── tools/call <tool>     MCP; an A2A call is invoke_agent <agent>
-    ├── meru.transcript.append    the call's tool_call, approval and tool_result lines
-    ├── gen_ai.chat  main         round 2: the answer
-    │   └── POST /api/chat
-    └── meru.transcript.append    the assistant line
-```
+![Trace tree for one v0.3 turn on the search+tools route with one tool round. rpc.request, with op, source and question length, holds meru.turn, with route, source, session, iterations and outcome. Under meru.turn, in order: meru.session; meru.transcript.append for the user line; meru.route, with a gen_ai.chat fast span and its POST /api/chat; meru.search, with meru.retrieve and its POST /api/embed; meru.prompt; gen_ai.chat main for round 1, with its POST /api/chat; meru.dispatch, one per call, holding a tools/call span for MCP or an invoke_agent span for A2A; meru.transcript.append for the call's lines; gen_ai.chat main for round 2, the answer, with its POST /api/chat; and meru.transcript.append for the assistant line. The same trace ID goes on the transcript lines, the messages and tool_calls rows, and every log line of the turn.](docs/architecture/img/300-trace.png)
+
+*Figure 7. One v0.3 turn on the `search+tools` route with one tool round. The router's one-token call and each round of the main model get a `gen_ai.chat` span with its HTTP request under it; the search sits before the first round, and each tool call gets a `meru.dispatch` span between the rounds. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in Grafana leads to the exact lines, and a line leads back to its timing.*
 
 A turn on the `direct` route has no `meru.search`, unless the question names an
 indexed folder. A turn on `direct` or `search` has no tool spans, and one

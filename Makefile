@@ -74,7 +74,7 @@ router-eval: ## Score the router on labelled questions against the local Ollama
 pick-eval: ## Score the skill pick on labelled questions against the local Ollama
 	go test -tags integration -count=1 -v -run TestPickEval ./internal/agent/
 
-figures: ## Redraw the 100.md and 200.md figures from the HTML pages (needs Chrome)
+figures: ## Redraw the figures in 100.md, 200.md and ARCHITECTURE.md from the HTML pages (needs Chrome)
 	sh docs/architecture/img/render.sh
 
 vuln: ## Report known vulnerabilities in code Meru calls

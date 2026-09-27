@@ -16,11 +16,14 @@ easier to review.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — the design contract (level 300), written ahead
   of the code. [docs/architecture/100.md](docs/architecture/100.md) and
   [200.md](docs/architecture/200.md) explain the same design at gentler levels.
-  **Change ARCHITECTURE.md first**, then carry the change into 200, 100 and their
-  HTML pages in the same PR: `docs/architecture/300.html` mirrors ARCHITECTURE.md,
-  `200.html` mirrors 200.md, and `100.html` mirrors 100.md.
-  The figures in 100.md and 200.md are PNG files in `docs/architecture/img/`,
-  drawn from the SVG in the HTML pages. After you change a figure's SVG, run
+  **Change ARCHITECTURE.md first**: its text is the contract. Its figures are
+  drawn in `docs/architecture/300.html` and rendered to PNG, so a figure change
+  starts in that page's SVG. Then carry the change into 200, 100 and their HTML
+  pages in the same PR: `300.html` mirrors ARCHITECTURE.md, `200.html` mirrors
+  200.md, and `100.html` mirrors 100.md.
+  The figures in ARCHITECTURE.md, 100.md and 200.md are PNG files in
+  `docs/architecture/img/`, drawn from the SVG in 300.html, 100.html and
+  200.html. After you change a figure's SVG in any of the three pages, run
   `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
@@ -239,7 +242,8 @@ scripts/             release.sh, which `make release` runs
 dist/                git-ignored; `make release` packs a release here
 docs/
   architecture/      100.md, 200.md and the HTML pages 100.html, 200.html and 300.html;
-                     index.html sends old links to 100.html
+                     index.html sends old links to 100.html; img/ holds the figures
+                     as PNG files and render.sh, which draws them
   coding-notes/      one note per package, and go-basics/ for Go concepts
   lld.md             the low-level design
   running.md         how to build and run Meru
@@ -416,7 +420,7 @@ make desktop-app      # wrap the desktop app in bin/Meru.app (macOS)
 make release VERSION=v0.4.1 DRY_RUN=1  # build and pack a release in dist/; drop DRY_RUN to publish
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama
-make figures          # redraw the 100.md and 200.md figures from the HTML (needs Chrome)
+make figures          # redraw the figures in ARCHITECTURE.md, 100.md and 200.md from the HTML (needs Chrome)
 go run ./cmd/merud    # run the daemon from source
 go run ./cmd/meru "..."
 ```
