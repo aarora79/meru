@@ -20,7 +20,7 @@ let box = null;
 let listbox = null;
 
 // setupCommands wires the menu to the question box. actions holds what
-// the commands do in the page: newChat(), openLibrary(section), blocks()
+// the commands do in the page: newChat(), openSettings(section), blocks()
 // (every numbered code block in the chat, oldest first), newestBlocks()
 // (the newest finished answer's, or null when none has finished),
 // textOf(block), copy(text) (a promise), notice(text), askQuit(), fit(),
@@ -177,16 +177,16 @@ export function runCommand(text) {
       act.showUsed();
       return true;
     case "/folders":
-      act.openLibrary("folders");
+      act.openSettings("folders");
       return true;
     case "/skills":
-      act.openLibrary("skills");
+      act.openSettings("skills");
       return true;
     case "/log":
-      act.openLibrary("activity");
+      act.openSettings("activity");
       return true;
     case "/about":
-      act.openLibrary("about");
+      act.openSettings("about");
       return true;
     case "/help":
       // The menu of every command is the app's help; it opens with the box
@@ -197,13 +197,13 @@ export function runCommand(text) {
       show("/");
       return false;
     case "/usage":
-      act.openLibrary("usage");
+      act.openSettings("usage");
       return true;
     case "/me":
-      act.openLibrary("you");
+      act.openSettings("you");
       return true;
     case "/mcp":
-      act.openLibrary("connections");
+      act.openSettings("connections");
       return true;
     case "/model":
       modelCommand(rest);
@@ -236,13 +236,13 @@ function scopeCommand(arg) {
 }
 
 // modelCommand runs /model with the words after it, as `meru chat` does:
-// none opens Library, Models; "save" makes the models in use the default;
+// none opens Settings, Models; "save" makes the models in use the default;
 // a set's name switches to it, with "--rebuild" after it for a set that
 // changes the embed model. merud does the work, and the notice line says
 // how it went, with merud's warning when it sends one.
 function modelCommand(words) {
   if (words.length === 0) {
-    act.openLibrary("models");
+    act.openSettings("models");
     return;
   }
   const done = (text) => (info) => {

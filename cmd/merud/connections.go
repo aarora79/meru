@@ -362,7 +362,7 @@ func (s *toolService) offers(kind, server, full string) bool {
 // It refuses a name the catalog doesn't have, a server config already
 // has, and an entry whose key secrets.toml lacks. Unlike `meru mcp add`
 // it doesn't try the server first: the catalog's lists name real tools,
-// and a url server may not be running yet; the Library shows the server's
+// and a url server may not be running yet; Settings shows the server's
 // state after the reload.
 func (s *toolService) handleMCPAdd(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
 	if req.Custom != nil {
@@ -409,7 +409,7 @@ func (s *toolService) handleMCPAdd(ctx context.Context, req rpc.Request, emit fu
 // secrets.toml, appends the server's block to config.toml with an empty
 // allow list, reloads the MCP servers and replies with the new
 // "connections" event. Deny-by-default holds: every tool the server offers
-// starts off, and the Library lists them after the reload so the user can
+// starts off, and Settings lists them after the reload so the user can
 // turn each one on.
 //
 // It refuses what customEntry refuses and a name config already has. The

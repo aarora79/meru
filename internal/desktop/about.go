@@ -1,4 +1,4 @@
-// This file holds the Bridge method behind the Library's About section:
+// This file holds the Bridge method behind the About section of Settings:
 // the one line that says what Meru is, the app's version, where Meru keeps
 // its files, and the links to the project on GitHub. internal/about holds
 // the line, the version and the links, for this app and for `meru chat`.
@@ -26,7 +26,7 @@ const WindowTitle = "Meru · " + Tagline
 // the top of the repository gives it.
 const License = about.License
 
-// About is what the Library's About section shows beside its own prose.
+// About is what the About section of Settings shows beside its own prose.
 type About struct {
 	// Tagline is the one line that says what Meru is.
 	Tagline string `json:"tagline"`

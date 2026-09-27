@@ -1,7 +1,7 @@
 // The page's state and wiring: the rail (new chat, search, the list of
-// past chats, merud's status, Library and Setup), the conversation, the
+// past chats, merud's status and Settings), the conversation, the
 // composer with its scope switch, attachments, slash commands and queue,
-// and the side panel. turns.js draws each turn, library.js the Library,
+// and the side panel. turns.js draws each turn, settings.js the Settings screen,
 // setup.js the Setup screen, commands.js the slash commands; api.js
 // reaches Go.
 //
@@ -15,7 +15,7 @@ import {
   appendToken, approvalCard, thumb,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
-import { openLibrary, libraryPanel, policyWords } from "./library.js";
+import { openSettings, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
 
 // How often the rail asks merud for its status, in milliseconds.
@@ -35,7 +35,7 @@ const SCOPES = [
 ];
 
 const state = {
-  view: "chat", // "chat", "library" or "setup"
+  view: "chat", // "chat", "settings" or "setup"
   session: "", // the open conversation's ID; "" for a new one
   title: "New chat",
   turns: [], // the open conversation's turns, oldest first
@@ -131,24 +131,23 @@ function notice(text, action) {
   if (action) p.append(" ", button(action.label, { className: "text-button", onClick: action.onClick }));
 }
 
-// ---- Views: the chat, the Library and Setup ----
+// ---- Views: the chat, Settings and Setup ----
 
 // showView shows one of the three screens in the middle column. The side
 // panel follows: what an answer used in the chat, "On this Mac" in the
-// Library, and nothing during Setup.
+// Settings, and nothing during Setup.
 function showView(view) {
   state.view = view;
   $("chat-view").hidden = view !== "chat";
-  $("library-view").hidden = view !== "library";
+  $("settings-view").hidden = view !== "settings";
   $("setup-view").hidden = view !== "setup";
   $("app").classList.toggle("no-panel", view === "setup");
-  $("open-library").setAttribute("aria-current", String(view === "library"));
-  $("open-setup").setAttribute("aria-current", String(view === "setup"));
+  $("open-settings").setAttribute("aria-current", String(view === "settings"));
   drawPanel();
   if (view === "chat") $("question").focus();
 }
 
-// pages is what library.js and setup.js call back into.
+// pages is what settings.js and setup.js call back into.
 const pages = {
   back: () => {
     showView("chat");
@@ -157,14 +156,15 @@ const pages = {
   notice,
   status: () => state.status,
   refreshStatus: () => loadStatus(),
-  openLibrary: (section, focus) => goLibrary(section, focus),
+  openSettings: (section, focus) => goSettings(section, focus),
+  openSetup: () => goSetup(),
 };
 
-// goLibrary opens the Library at section, and at the connection focus
+// goSettings opens Settings at section, and at the connection focus
 // when given.
-function goLibrary(section, focus) {
-  showView("library");
-  openLibrary($("library-view"), section || "connections", focus, pages);
+function goSettings(section, focus) {
+  showView("settings");
+  openSettings($("settings-view"), section || "connections", focus, pages);
 }
 
 // goSetup opens the Setup screen.
@@ -804,7 +804,7 @@ function loadStatus() {
       state.setupShown = true;
       goSetup();
     }
-    if (state.view === "library") drawPanel();
+    if (state.view === "settings") drawPanel();
   });
 }
 
@@ -857,14 +857,14 @@ function setRail(open) {
 // ---- The side panel ----
 
 // drawPanel draws the side panel for the screen and the moment: "On this
-// Mac" in the Library, "Why Meru is asking" while an approval card is
+// Mac" in Settings, "Why Meru is asking" while an approval card is
 // open, and otherwise what the selected answer used.
 function drawPanel() {
   const body = $("panel-body");
   body.replaceChildren();
-  if (state.view === "library") {
+  if (state.view === "settings") {
     $("panel-title").textContent = "On this Mac";
-    libraryPanel(body, state.status);
+    settingsPanel(body, state.status);
     return;
   }
   if (state.asking && state.asking.approval && !state.asking.approval.answered) {
@@ -931,7 +931,7 @@ function drawPanel() {
   }
   const profile = el("p", "panel-note");
   profile.append(document.createTextNode("What you told Meru about yourself goes into every answer. "));
-  profile.append(button("About you", { className: "text-button link", onClick: () => goLibrary("you") }));
+  profile.append(button("About you", { className: "text-button link", onClick: () => goSettings("you") }));
   body.append(profile);
 
   const privacy = el("p", "privacy");
@@ -974,12 +974,12 @@ function drawAsking(body, v) {
   const name = v.server || "Meru";
   body.append(button("Change what " + name + " may do", {
     className: "text-button link",
-    // The built-in web tools have a card of their own in the Library.
-    onClick: () => goLibrary("connections", v.server || (["web_search", "web_fetch"].includes(v.tool) ? "web" : "meru")),
+    // The built-in web tools have a card of their own in Settings.
+    onClick: () => goSettings("connections", v.server || (["web_search", "web_fetch"].includes(v.tool) ? "web" : "meru")),
   }));
   const log = el("p", "privacy");
   log.append(icon("lock", 14), document.createTextNode(" Every call, allowed or not, goes in the tool log. "));
-  log.append(button("Library › Activity", { className: "text-button link", onClick: () => goLibrary("activity") }));
+  log.append(button("Settings › Activity", { className: "text-button link", onClick: () => goSettings("activity") }));
   body.append(log);
 }
 
@@ -1049,9 +1049,8 @@ function wire() {
   $("mini-expand").append(icon("sidebar", 18));
   $("mini-new").append(icon("plus", 18));
   $("mini-chats").append(icon("chats", 18));
-  $("mini-library").append(icon("book", 18));
-  $("open-library").prepend(icon("book", 16), document.createTextNode(" "));
-  $("open-setup").prepend(icon("sliders", 16), document.createTextNode(" "));
+  $("mini-settings").append(icon("sliders", 18));
+  $("open-settings").prepend(icon("sliders", 16), document.createTextNode(" "));
   $("share").prepend(icon("share", 15), document.createTextNode(" "));
   $("attach").append(icon("clip", 17));
 
@@ -1063,11 +1062,10 @@ function wire() {
     setRail(true);
     $("search").focus();
   });
-  $("mini-library").addEventListener("click", () => goLibrary("connections"));
-  $("open-library").addEventListener("click", () => goLibrary("connections"));
-  $("open-setup").addEventListener("click", goSetup);
-  // The logo and the name at the top of the rail open the Library's About.
-  $("open-about").addEventListener("click", () => goLibrary("about"));
+  $("mini-settings").addEventListener("click", () => goSettings("connections"));
+  $("open-settings").addEventListener("click", () => goSettings("connections"));
+  // The logo and the name at the top of the rail open About in Settings.
+  $("open-about").addEventListener("click", () => goSettings("about"));
   // The version beside the logo: short in the rail, in full as its
   // tooltip. It stays empty when the build carries no useful version.
   bridge.about().then((a) => {
@@ -1088,7 +1086,7 @@ function wire() {
   const box = $("question");
   setupCommands(box, $("command-menu"), {
     newChat,
-    openLibrary: (section) => goLibrary(section),
+    openSettings: (section) => goSettings(section),
     blocks,
     newestBlocks,
     textOf: codeText,

@@ -1,4 +1,4 @@
-// The Library: the settings screen, with a back link and eight sections.
+// Settings: the settings screen, with a back link and eight sections.
 // Connections, Folders, About you, Skills, Models, Activity and Usage each
 // ask the Bridge for their data when they open, and every change goes to
 // merud, which writes config.toml or the memory folder and reloads. About,
@@ -10,7 +10,7 @@ import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import { el, button, seconds } from "./turns.js";
 
-// SECTIONS are the Library's sections, in the order its tabs show them.
+// SECTIONS are the sections of Settings, in the order its tabs show them.
 const SECTIONS = [
   { id: "connections", label: "Connections" },
   { id: "folders", label: "Folders" },
@@ -29,9 +29,10 @@ const TOOLS_SHOWN = 6;
 // built-ins go on the "Built into Meru" card.
 const WEB_TOOLS = ["web_search", "web_fetch"];
 
-// lib is the open Library: its root element, the section on show, the
-// connection to bring into view, and what it calls back into app.js.
-const lib = { root: null, section: "connections", focus: "", pages: null, expanded: new Set() };
+// current is the open Settings screen: its root element, the section on
+// show, the connection to bring into view, and what it calls back into
+// app.js.
+const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set() };
 
 // openable returns a <dd> holding text as a link-styled button that runs
 // open on a click, or as plain text when open is null. className adds a
@@ -46,18 +47,18 @@ function openable(text, className, open) {
   return dd;
 }
 
-// openLibrary draws the Library in root at section. focus names a
+// openSettings draws Settings in root at section. focus names a
 // connection to scroll to and mark, as "Change what google may do" asks.
-export function openLibrary(root, section, focus, pages) {
-  lib.root = root;
-  lib.section = SECTIONS.some((s) => s.id === section) ? section : "connections";
-  lib.focus = focus || "";
-  lib.pages = pages;
-  if (lib.focus) lib.expanded.add(lib.focus);
+export function openSettings(root, section, focus, pages) {
+  current.root = root;
+  current.section = SECTIONS.some((s) => s.id === section) ? section : "connections";
+  current.focus = focus || "";
+  current.pages = pages;
+  if (current.focus) current.expanded.add(current.focus);
   draw();
 }
 
-// policyWords says a policy the way the Library's switches do.
+// policyWords says a policy the way the switches in Settings do.
 export function policyWords(policy) {
   switch (policy) {
     case "off":
@@ -74,57 +75,57 @@ export function policyWords(policy) {
 
 // draw draws the header, the tabs and the open section.
 function draw() {
-  const root = lib.root;
+  const root = current.root;
   root.replaceChildren();
   const head = el("header", "page-head");
-  const back = button("Back to chat", { className: "text-button back", iconName: "back", onClick: lib.pages.back });
-  const title = el("h1", "", "Library");
-  title.id = "library-title";
+  const back = button("Back to chat", { className: "text-button back", iconName: "back", onClick: current.pages.back });
+  const title = el("h1", "", "Settings");
+  title.id = "settings-title";
   head.append(back, title);
   root.append(head);
 
   const tabs = el("div", "tabs");
   tabs.setAttribute("role", "tablist");
-  tabs.setAttribute("aria-label", "Library sections");
+  tabs.setAttribute("aria-label", "Settings sections");
   SECTIONS.forEach((s, i) => {
-    const on = s.id === lib.section;
+    const on = s.id === current.section;
     const t = button(s.label, { className: "tab" });
     t.id = "tab-" + s.id;
     t.setAttribute("role", "tab");
     t.setAttribute("aria-selected", String(on));
-    t.setAttribute("aria-controls", "library-section");
+    t.setAttribute("aria-controls", "settings-section");
     t.tabIndex = on ? 0 : -1;
     t.addEventListener("click", () => {
-      lib.section = s.id;
-      lib.focus = "";
+      current.section = s.id;
+      current.focus = "";
       draw();
     });
     t.addEventListener("keydown", (e) => {
       const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
       if (!step) return;
       e.preventDefault();
-      lib.section = SECTIONS[(i + step + SECTIONS.length) % SECTIONS.length].id;
+      current.section = SECTIONS[(i + step + SECTIONS.length) % SECTIONS.length].id;
       draw();
-      document.getElementById("tab-" + lib.section).focus();
+      document.getElementById("tab-" + current.section).focus();
     });
     tabs.append(t);
   });
   root.append(tabs);
 
   const body = el("section", "page-body");
-  body.id = "library-section";
+  body.id = "settings-section";
   body.setAttribute("role", "tabpanel");
-  body.setAttribute("aria-labelledby", "tab-" + lib.section);
+  body.setAttribute("aria-labelledby", "tab-" + current.section);
   root.append(body);
   body.append(el("p", "panel-note", "Loading…"));
   const drawers = { connections, folders, you, skills, models, activity, usage, about };
-  drawers[lib.section](body);
+  drawers[current.section](body);
 }
 
 // fail shows err in body, with a hint when merud isn't running.
 function fail(body, err) {
   body.replaceChildren(el("p", "error", errorText(err)));
-  body.append(el("p", "panel-note", "The Library needs merud. Start it in a terminal with: merud"));
+  body.append(el("p", "panel-note", "Settings needs merud. Start it in a terminal with: merud"));
 }
 
 // intro adds a short paragraph that says what a section is for.
@@ -165,7 +166,7 @@ function drawConnections(body, cv) {
   for (const e of add) body.append(catalogCard(e, () => connections(body)));
   body.append(customServer(body));
 
-  const focused = lib.focus && body.querySelector('[data-connection="' + CSS.escape(lib.focus) + '"]');
+  const focused = current.focus && body.querySelector('[data-connection="' + CSS.escape(current.focus) + '"]');
   if (focused) {
     focused.classList.add("focused");
     focused.scrollIntoView({ block: "center" });
@@ -198,7 +199,7 @@ function connectionCard(body, c, title, key) {
   if (c.note) card.append(el("p", "card-note", c.note));
 
   const list = el("ul", "tool-list");
-  const all = lib.expanded.has(key);
+  const all = current.expanded.has(key);
   const shown = all ? c.tools : c.tools.slice(0, TOOLS_SHOWN);
   for (const t of shown) list.append(toolRow(body, c, t));
   card.append(list);
@@ -206,8 +207,8 @@ function connectionCard(body, c, title, key) {
     card.append(button(all ? "Show fewer" : "Show all " + c.tools.length + " tools", {
       className: "text-button",
       onClick: () => {
-        if (all) lib.expanded.delete(key);
-        else lib.expanded.add(key);
+        if (all) current.expanded.delete(key);
+        else current.expanded.add(key);
         connections(body);
       },
     }));
@@ -248,11 +249,11 @@ function toolRow(body, c, t) {
       const policy = p === "always" ? "ask" : p;
       bridge.setPolicy(c.kind, c.kind === "builtin" ? "meru" : c.name, t.name, policy).then(
         (cv) => {
-          lib.focus = "";
+          current.focus = "";
           drawConnections(body, cv);
-          lib.pages.notice(t.name + " is now " + policyWords(policy).toLowerCase() + ".");
+          current.pages.notice(t.name + " is now " + policyWords(policy).toLowerCase() + ".");
         },
-        (err) => lib.pages.notice(errorText(err)),
+        (err) => current.pages.notice(errorText(err)),
       );
     });
     group.append(b);
@@ -278,9 +279,9 @@ function removeButton(body, name) {
           onClick: () => bridge.removeConnection(name).then(
             (cv) => {
               drawConnections(body, cv);
-              lib.pages.notice("Removed " + name + ".");
+              current.pages.notice("Removed " + name + ".");
             },
-            (err) => lib.pages.notice(errorText(err)),
+            (err) => current.pages.notice(errorText(err)),
           ),
         }),
         button("Keep it", { className: "text-button", onClick: () => box.replaceChildren(ask) }));
@@ -340,7 +341,7 @@ export function catalogCard(e, done) {
     ev.preventDefault();
     const key = keyInput ? keyInput.value : "";
     if (keyInput && !key.trim() && keyInput.dataset.saved !== "true") {
-      lib.pages.notice(e.title + " needs its key first.");
+      current.pages.notice(e.title + " needs its key first.");
       keyInput.focus();
       return;
     }
@@ -348,12 +349,12 @@ export function catalogCard(e, done) {
     bridge.addConnection(e.name, secret, key).then(
       () => {
         if (keyInput) keyInput.value = "";
-        lib.pages.notice("Added " + e.title + ".");
+        current.pages.notice("Added " + e.title + ".");
         done();
       },
       (err) => {
         add.disabled = false;
-        lib.pages.notice(errorText(err));
+        current.pages.notice(errorText(err));
       },
     );
   });
@@ -461,7 +462,7 @@ function customServer(body) {
     ev.preventDefault();
     const n = name.value.trim();
     if (!SERVER_NAME.test(n)) {
-      lib.pages.notice("Give the server a name of letters, digits, - and _.");
+      current.pages.notice("Give the server a name of letters, digits, - and _.");
       name.focus();
       return;
     }
@@ -482,14 +483,14 @@ function customServer(body) {
     add.disabled = true;
     bridge.addCustomServer(server).then(
       () => {
-        lib.focus = n;
-        lib.expanded.add(n);
-        lib.pages.notice("Added " + n + ". Its tools start Off; turn on the ones you want.");
+        current.focus = n;
+        current.expanded.add(n);
+        current.pages.notice("Added " + n + ". Its tools start Off; turn on the ones you want.");
         connections(body);
       },
       (err) => {
         add.disabled = false;
-        lib.pages.notice(errorText(err));
+        current.pages.notice(errorText(err));
       },
     );
   });
@@ -604,9 +605,9 @@ function drawFolders(body, fv) {
       onClick: () => bridge.removeFolder(f.path).then(
         (next) => {
           drawFolders(body, next);
-          lib.pages.notice("Removed " + f.path + ". Its files leave the index in a moment.");
+          current.pages.notice("Removed " + f.path + ". Its files leave the index in a moment.");
         },
-        (err) => lib.pages.notice(errorText(err)),
+        (err) => current.pages.notice(errorText(err)),
       ),
     }));
     ul.append(li);
@@ -641,7 +642,7 @@ function chooseAndAdd(done) {
     (path) => {
       if (path) addFolder(path, done);
     },
-    (err) => lib.pages && lib.pages.notice(errorText(err)),
+    (err) => current.pages && current.pages.notice(errorText(err)),
   );
 }
 
@@ -650,9 +651,9 @@ function addFolder(path, done) {
   bridge.addFolder(path).then(
     (next) => {
       done(next);
-      lib.pages.notice("Added " + path + ". Meru is indexing it now.");
+      current.pages.notice("Added " + path + ". Meru is indexing it now.");
     },
-    (err) => lib.pages.notice(errorText(err)),
+    (err) => current.pages.notice(errorText(err)),
   );
 }
 
@@ -706,7 +707,7 @@ function drawYou(body, mems) {
   form.lastChild.type = "submit";
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    bridge.addMemory(kind.value, text.value).then(() => you(body), (err) => lib.pages.notice(errorText(err)));
+    bridge.addMemory(kind.value, text.value).then(() => you(body), (err) => current.pages.notice(errorText(err)));
   });
   body.append(form);
 }
@@ -726,14 +727,14 @@ function memoryRow(body, m) {
         className: "button primary",
         onClick: () => bridge.addMemory(m.kind, input.value)
           .then(() => bridge.forgetMemory(m.id))
-          .then(() => you(body), (err) => lib.pages.notice(errorText(err))),
+          .then(() => you(body), (err) => current.pages.notice(errorText(err))),
       }), button("Cancel", { className: "text-button", onClick: () => you(body) }));
       input.focus();
     },
   }));
   li.append(button("Forget", {
     className: "text-button",
-    onClick: () => bridge.forgetMemory(m.id).then(() => you(body), (err) => lib.pages.notice(errorText(err))),
+    onClick: () => bridge.forgetMemory(m.id).then(() => you(body), (err) => current.pages.notice(errorText(err))),
   }));
   return li;
 }
@@ -768,7 +769,7 @@ function drawSkills(body, sv) {
     sw.setAttribute("aria-label", s.name);
     sw.addEventListener("click", () => bridge.setSkill(s.name, !!s.disabled).then(
       (next) => drawSkills(body, next),
-      (err) => lib.pages.notice(errorText(err)),
+      (err) => current.pages.notice(errorText(err)),
     ));
     li.append(sw);
     ul.append(li);
@@ -901,16 +902,16 @@ function setCard(body, s) {
     const b = button(label, { className: "button primary" });
     b.addEventListener("click", () => {
       b.disabled = true;
-      lib.pages.notice(label === "Use" ? "Switching to " + s.name + "…" : "Saving…");
+      current.pages.notice(label === "Use" ? "Switching to " + s.name + "…" : "Saving…");
       run().then(
         (next) => {
           drawModels(body, next);
-          lib.pages.refreshStatus();
-          lib.pages.notice(next.warning ? done + " " + next.warning : done);
+          current.pages.refreshStatus();
+          current.pages.notice(next.warning ? done + " " + next.warning : done);
         },
         (err) => {
           b.disabled = false;
-          lib.pages.notice(errorText(err));
+          current.pages.notice(errorText(err));
         },
       );
     });
@@ -984,13 +985,13 @@ function modelCard(body, c) {
     bridge.useModel(c.name).then(
       (next) => {
         drawModels(body, next);
-        lib.pages.refreshStatus();
+        current.pages.refreshStatus();
         const done = c.label + " writes the answers from the next question on.";
-        lib.pages.notice(next.warning ? done + " " + next.warning : done);
+        current.pages.notice(next.warning ? done + " " + next.warning : done);
       },
       (err) => {
         use.disabled = false;
-        lib.pages.notice(errorText(err));
+        current.pages.notice(errorText(err));
       },
     );
   });
@@ -1135,7 +1136,7 @@ function about(body) {
       // The license, the settings file and Meru's folder open on a click:
       // the license on GitHub, the file in its default app, the folder in
       // Finder. Each goes through the Bridge, which checks the URL first.
-      const fail = (err) => lib.pages.notice(errorText(err));
+      const fail = (err) => current.pages.notice(errorText(err));
       const license = a.links.find((l) => l.id === "license");
       dl.append(el("dt", "", "License"), openable(a.license, "",
         license ? () => bridge.openURL(license.url).catch(fail) : null));
@@ -1146,6 +1147,11 @@ function about(body) {
       body.append(dl);
       body.append(el("p", "card-note", "Meru's folder holds the settings, your keys in secrets.toml, " +
         "every chat, what Meru remembers and the search index."));
+      // Setup opens on its own only on a first run, so this link is the
+      // one way back to its four steps later.
+      const again = el("p", "");
+      again.append(button("Run setup again", { className: "text-button link", onClick: current.pages.openSetup }));
+      body.append(again);
 
       body.append(el("h2", "section-head", "The project"));
       const links = el("div", "about-links");
@@ -1153,7 +1159,7 @@ function about(body) {
         links.append(button(l.label, {
           className: "button secondary",
           iconName: "globe",
-          onClick: () => bridge.openURL(l.url).catch((err) => lib.pages.notice(errorText(err))),
+          onClick: () => bridge.openURL(l.url).catch((err) => current.pages.notice(errorText(err))),
         }));
       }
       body.append(links);
@@ -1173,9 +1179,9 @@ function list(lines) {
 
 // ---- The side panel: On this Mac ----
 
-// libraryPanel fills the side panel while the Library shows: the models,
+// settingsPanel fills the side panel while Settings shows: the models,
 // the search index, and the line that says nothing leaves this Mac.
-export function libraryPanel(body, status) {
+export function settingsPanel(body, status) {
   const s = status || {};
   const dl = el("dl", "facts");
   const fact = (label, value) => dl.append(el("dt", "", label), el("dd", "", value || "unknown"));

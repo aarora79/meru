@@ -114,15 +114,38 @@ from a later milestone.
 - [x] Approvals as a card inside the answer, with a mail's fields laid out
 - [x] "What this answer used": sources, tool calls and who they contacted
 - [x] `sessions` and `session_turns` ops, read from the transcripts
-- [x] The Library screen: each connection with Off, Ask and Allow
+- [x] The Settings screen: each connection with Off, Ask and Allow
 - [x] First run in the app: the Setup screen
 - [x] A switch for where Meru looks, sent to `merud` as the turn's scope
 - [x] Attachments through the attach button
-- [ ] Attachments by drag and drop
+- [x] Attachments by drag and drop: drop any file on the window, and `merud`'s
+  `attach_file` copies it to `~/meru-output/uploads/`; images go to a vision model
 - [ ] Linux (WebKitGTK) and Windows (WebView2) builds in CI
 
 **Done when:** you open the app, ask a question that uses a tool, approve it in
 the answer, and reopen the chat the next day to carry on.
+
+Each piece of that is in place: tool approvals in the answer, and past chats
+that reopen from their transcripts.
+
+## Shipped outside the milestones
+
+No milestone names these, and each is on `main`:
+
+- Model sets and switching at run time: `/model`, `meru model`, the old answer
+  model unloaded before the new one loads, `/usage by model`, counts of
+  malformed tool calls, and `model_switch` lines in the transcript (#42, with the
+  model picker from #37)
+- Web search first, the web tools on every turn, and web notes on follow-up
+  questions (#45, #50)
+- The built-in `about_meru` tool (#36)
+- GitHub through `gh`, as local commands (#36)
+- A warm-up in the background that loads the answer model with a real prompt (#50)
+- `meru chat` does what the desktop app does (#49)
+- Releases with `make release`, the one-line installer and the `meru-install`
+  skill (#38, #39)
+- The landing page (#41)
+- The Apache-2.0 license (#44)
 
 ## v0.5 — It acts unprompted
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
@@ -134,7 +157,8 @@ the answer, and reopen the chat the next day to carry on.
 ## Later, maybe
 - Voice: local speech-to-text, text-to-speech and a wake word
 - Menu-bar companion app, next to the desktop app
-- A larger escalation model loaded on demand, with clean eviction
+- Escalation to a larger model without asking: you can switch models by hand, and
+  the switch unloads the old one first, but Meru never picks the larger model itself
 - `LlamaCppEngine`: llama.cpp embedded via cgo, no Ollama needed
 - `MLXEngine`, if Go bindings become practical
 - Windows service and a Windows test pass

@@ -38,7 +38,7 @@ type modelDetailer interface {
 // already keeps, so the tool reports the setup as merud runs it.
 type aboutService struct {
 	cfg     config.Config           // profile and models, as merud started with them
-	main    func() string           // the answer model now, which the Library can change
+	main    func() string           // the answer model now, which Settings can change
 	eng     engine.Engine           // for Ollama's version and the main model's details
 	st      *store.Store            // what the search index holds
 	folders func() []string         // the [index] folders now, as the desktop app may change them

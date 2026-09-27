@@ -228,7 +228,7 @@ type Event struct {
 
 `meru index` sends `index`, and `meru index -status` sends `index_status`. The
 desktop app sends `sessions` for its list of past chats and `session_turns` to
-reopen one, and the settings ops for its Library and Setup screens:
+reopen one, and the settings ops for its Settings and Setup screens:
 `internal/rpc/settings.go` holds their types.
 `meru tools` sends `tools`, `meru mcp` sends `mcp_status`, and `meru log -n 5`
 sends `log` with `Limit` 5. A
@@ -808,7 +808,7 @@ span for each file, in traces of their own (ARCHITECTURE.md, "Traces").
    **`turnsOf`**, from the JSONL files alone.
 7. **`OpenURL`** and **`OpenSource`** pass links to **`opener.Open`**, which
    refuses anything but `http`, `https` and `file`.
-8. **The Library and Setup** (`library.js`, `setup.js`) call the methods in
+8. **Settings and Setup** (`settings.js`, `setup.js`) call the methods in
    `settings.go`, each of which sends one op through **`one`**, with a longer
    wait for an op that changes a setting. In `merud`, **`handleToolPolicy`**,
    **`handleMCPAdd`**, **`handleMCPRemove`** and **`handleSecretSet`**

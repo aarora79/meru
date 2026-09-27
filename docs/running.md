@@ -79,7 +79,7 @@ ollama run gemma3:12b
 `ollama run` opens a chat in the terminal; type `/bye` to leave it. `ollama show
 gemma3:12b` lists what a model can do under Capabilities.
 
-**Switch the answer model** in the desktop app: Library, Models, "Use for
+**Switch the answer model** in the desktop app: Settings, Models, "Use for
 answers" on the model's card. `merud` unloads the model that answers now, loads
 the new one, writes `[models] main` in `~/.meru/config.toml`, and answers the
 next question with the new model, with no restart. The button stays off until
@@ -136,7 +136,7 @@ under the answer:
 
 ```text
 gemma3:12b can't call tools, so Meru answered without them: no mail, calendar,
-notes, web or file tools. To use them, pick another answer model under Library,
+notes, web or file tools. To use them, pick another answer model under Settings,
 Models in the desktop app, or in [models] main in config.toml.
 ```
 
@@ -327,7 +327,7 @@ box a command opens. In a box with rows, ↑ and ↓ move the `›` marker.
 | `/exit` | quit, like Ctrl-D |
 
 Each change a box makes goes to `merud`, which writes `config.toml`,
-`secrets.toml` or the memory folder, as the desktop app's Library does.
+`secrets.toml` or the memory folder, as the desktop app's Settings does.
 
 The line at the top of `meru chat` shows the version beside the name, then the
 profile, the main model, the search index, the memories and the session on the
@@ -433,18 +433,18 @@ which you can drag to `/Applications` and open like any app. The app finds `meru
 
 The first time the app finds `merud` with no folders and nothing about you, it
 opens **Setup**: four steps for the models, your folders, your connections and a
-few facts about you. Skip any step; the Setup button at the foot of the rail opens
+few facts about you. Skip any step; "Run setup again" in Settings, About opens
 it again.
 
 The title bar reads "Meru · A personal AI assistant that runs entirely on your own
 computer". What you see:
 
-- **On the left**, the logo and name, which open Library, About, then New chat, a search box that filters your chats, and your past
+- **On the left**, the logo and name, which open Settings, About, then New chat, a search box that filters your chats, and your past
   chats grouped Today, Yesterday and Earlier. A click reopens one, and your next
   question carries it on. Below them, a block says whether `merud` runs, which
   model writes the answers, how many files Meru can search and which tools are
   connected; when `merud` isn't running, it says so and shows the command that
-  starts it. **Library** and **Setup** sit at the foot. The button beside the
+  starts it. **Settings** sits at the foot. The button beside the
   logo folds the rail to a column of icons.
 - **In the middle**, the conversation. Each answer opens with one line of what Meru
   did, such as "Searched mail · Read lisbon.md"; "Show steps" shows the raw tool
@@ -521,11 +521,11 @@ laid out to read, and the choices **Send**, **Edit first** and **Don't send**
 choice that runs nothing, so Enter alone runs nothing. **Edit first** puts the mail
 in the box as a draft: change it and send it, and Meru asks again before it does
 anything. The card says why Meru asks; "More in the side panel" opens the panel,
-which adds what else that server may do and links to the Library.
+which adds what else that server may do and links to Settings.
 
 **Saving.** Share as file and Save to a note write Markdown to `~/meru-output/chats/`
 or `~/meru-output/notes/`. Meru saves with its `write_file` tool, so it asks first,
-and the save shows in Library, Activity. After a yes, "Show in folder" opens the
+and the save shows in Settings, Activity. After a yes, "Show in folder" opens the
 folder.
 
 **Slash commands.** The box understands the commands `meru chat` has. Type "/" at
@@ -542,18 +542,18 @@ the list. They run at once, even while an answer runs, and never reach the model
 | `/save` | Save to a note on the newest answer; `/save chat` is Share as file |
 | `/used` | opens the side panel for the newest answer |
 | `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block, and `/copy answer` the whole answer |
-| `/usage` | opens Library, Usage |
-| `/me` | opens Library, About you |
-| `/mcp` | opens Library, Connections |
-| `/folders` | opens Library, Folders |
-| `/skills` | opens Library, Skills |
-| `/model` | opens Library, Models; `/model <name>` and `/model save` switch and save |
-| `/log` | opens Library, Activity |
-| `/about` | opens Library, About |
+| `/usage` | opens Settings, Usage |
+| `/me` | opens Settings, About you |
+| `/mcp` | opens Settings, Connections |
+| `/folders` | opens Settings, Folders |
+| `/skills` | opens Settings, Skills |
+| `/model` | opens Settings, Models; `/model <name>` and `/model save` switch and save |
+| `/log` | opens Settings, Activity |
+| `/about` | opens Settings, About |
 | `/help` | opens the list of commands |
 | `/exit` | closes the app, asking first while an answer runs |
 
-**The Library** holds the settings. Each change goes to `merud`, which writes
+**Settings** holds what you can change. Each change goes to `merud`, which writes
 `~/.meru/config.toml`, keeps your comments, and applies it at once:
 
 - **Connections**: a card per tool source, with an Off, Ask or Allow switch per
@@ -584,7 +584,7 @@ the list. They run at once, even while an answer runs, and never reach the model
   version, where its files live, and buttons that open the source code, the
   design and a new issue on GitHub in your browser. To ask for a feature or
   report a problem, open an issue: say what you tried, what you expected and what
-  happened, and leave out anything private.
+  happened, and leave out anything private. "Run setup again" opens Setup.
 
 Links in answers open in your browser; Meru opens only `http`, `https` and `file`
 links. The app loads nothing from the internet: its fonts and code ship inside it.
@@ -1121,7 +1121,7 @@ I'm qwen3.6:35b, the answer model, running in Ollama 0.34.0 on your computer.
 
 A config written before this tool existed names the built-ins one by one and
 leaves `about_meru` out, so the model never gets it. Add the name to `[builtin]
-tools`, or set `about_meru` to Allow under Library, Connections in the desktop
+tools`, or set `about_meru` to Allow under Settings, Connections in the desktop
 app:
 
 ```toml
@@ -1889,10 +1889,10 @@ obsidian_api_key = "..."
   it: `env = { OBSIDIAN_API_KEY = "secret:obsidian_api_key" }` or
   `headers = { Authorization = "secret:my_server_token" }`.
 - **Three ways to add a key.** `meru mcp add <name>` asks for it in the terminal
-  and doesn't echo it. In the desktop app, Library, Connections, Add your own MCP
+  and doesn't echo it. In the desktop app, Settings, Connections, Add your own MCP
   server, tick Secret beside the variable that holds the key. Or edit the file
   yourself and restart `merud`.
-- **Meru never shows a key back.** Not in `meru mcp`, the Library or
+- **Meru never shows a key back.** Not in `meru mcp`, Settings or
   `about_meru`. `dispatch` strips every value in the file from transcripts, the
   `tool_calls` table, logs and traces, and no key reaches the model: asked in
   chat to connect a server that needs one, `configure` sends you to

@@ -164,7 +164,7 @@ if command -v ollama >/dev/null 2>&1; then
   fi
   if [ "$mem_gb" -ge 48 ] && ask "Also download qwen3.6:35b (23 GB), a stronger answer model?"; then
     ollama pull qwen3.6:35b
-    echo "Pick it later in Meru.app under Library, Models, Use for answers."
+    echo "Pick it later in Meru.app under Settings, Models, Use for answers."
   fi
 fi
 

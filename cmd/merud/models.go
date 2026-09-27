@@ -228,7 +228,7 @@ func (m *modelService) info(ctx context.Context, active string) rpc.ModelsInfo {
 			row.Loaded = hasModel(info.Loaded, s.Main)
 		}
 		// A set whose main model is one we tried shows what it can do
-		// even before it is pulled, as its Library card does.
+		// even before it is pulled, as its Settings card does.
 		var known []string
 		if k, ok := config.FindKnownModel(s.Main); ok {
 			known = k.Capabilities
@@ -473,9 +473,9 @@ func (m *modelService) save(values map[string]string) error {
 
 // handleModelSet answers OpModelSet, the desktop app's "Use for answers":
 // it makes req.ID the answer model through switchMain, then writes it to
-// [models] main. A pick in the Library is a setting, and every setting
-// the Library changes lands in config.toml. It refuses a model that isn't
-// on the known list, since the Library offers only those, and a model
+// [models] main. A pick in Settings is a setting, and every setting
+// Settings changes lands in config.toml. It refuses a model that isn't
+// on the known list, since Settings offers only those, and a model
 // Ollama doesn't have, naming the `ollama pull` to run. A model that can't
 // call tools is allowed, with noToolsWarning in the reply.
 //
@@ -485,7 +485,7 @@ func (m *modelService) handleModelSet(ctx context.Context, req rpc.Request, emit
 	name := strings.TrimSpace(req.ID)
 	k, ok := config.FindKnownModel(name)
 	if !ok {
-		return fmt.Errorf("%q isn't one of the models the Library offers; to use it, set [models] main in %s and restart merud",
+		return fmt.Errorf("%q isn't one of the models Settings offers; to use it, set [models] main in %s and restart merud",
 			name, m.configPath)
 	}
 	running := m.models

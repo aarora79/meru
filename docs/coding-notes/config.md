@@ -309,7 +309,7 @@ with `==`, so the tests compare its three model names one by one.
 MiniCPM5-2B, `gemma3:12b` and `qwen3.6:35b`. Each `KnownModel` holds the name
 Ollama gives it, a label, its size on disk, one line on what it did well and one
 on what it did badly, and the capabilities Ollama's `/api/show` listed for it.
-`merud` sends the list to the desktop app's Library, Models, which offers each
+`merud` sends the list to the desktop app's Settings, Models, which offers each
 one with its `ollama pull` and `ollama run` commands and a "Use for answers"
 button. `FindKnownModel(name)` looks one up; `merud` refuses to switch to a name
 it doesn't find.
@@ -318,7 +318,7 @@ The list returns a new slice on each call, as `BuiltinTools()` does, so no
 caller can change it for the next. It names models in code, as the profiles do,
 because it records what we tested; `config.toml` still says which model runs.
 `TestKnownModels` checks every field is set, that the names are the three we
-tried, and that the lite profile's main model is one of them, so the Library can
+tried, and that the lite profile's main model is one of them, so Settings can
 always switch back to it.
 
 ### loopback.go

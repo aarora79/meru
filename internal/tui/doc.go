@@ -28,7 +28,7 @@
 // question looks, /attach adds a file or an image, /save saves an answer or
 // the chat, and /used shows what an answer used. /usage, /me, /mcp,
 // /folders, /skills, /model, /log and /about open boxes over the
-// conversation that match the app's Library (box.go). Every change goes to
+// conversation that match the app's Settings (box.go). Every change goes to
 // merud, which writes config.toml, secrets.toml and the memory folder; this
 // package writes no file of Meru's.
 //

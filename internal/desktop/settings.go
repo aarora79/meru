@@ -1,4 +1,4 @@
-// This file holds the Bridge methods behind the Library and Setup screens:
+// This file holds the Bridge methods behind the Settings and Setup screens:
 // connections and tool policies, folders, what Meru knows about you,
 // skills, models and the answer model, activity and usage. Each one sends
 // one request to merud and hands back its reply. merud makes every change;
@@ -17,21 +17,21 @@ import (
 // defaultActivity is how many tool calls the Activity section shows.
 const defaultActivity = 100
 
-// ConnectionsView is the Library's Connections section: every tool source
+// ConnectionsView is the Connections section of Settings: every tool source
 // with each tool's policy, and the catalog servers the user can add.
 type ConnectionsView struct {
 	Connections []rpc.Connection   `json:"connections"`
 	Catalog     []rpc.CatalogEntry `json:"catalog"`
 }
 
-// FoldersView is the Library's Folders section and the Setup screen's
+// FoldersView is the Folders section of Settings and the Setup screen's
 // folder step: the [index] folders, and the usual ones not indexed yet.
 type FoldersView struct {
 	Folders   []rpc.FolderInfo `json:"folders"`
 	Suggested []rpc.FolderInfo `json:"suggested"`
 }
 
-// SkillsView is the Library's Skills section. Warnings lists the skill
+// SkillsView is the Skills section of Settings. Warnings lists the skill
 // folders merud skipped, and why.
 type SkillsView struct {
 	Skills   []rpc.SkillInfo `json:"skills"`
@@ -68,7 +68,7 @@ func (b *Bridge) AddConnection(ctx context.Context, name, secret, key string) (C
 	return b.connections(ctx, rpc.Request{Op: rpc.OpMCPAdd, ID: name})
 }
 
-// AddCustomServer adds an MCP server of the user's own, from the Library's
+// AddCustomServer adds an MCP server of the user's own, from the Settings screen's
 // "Add your own MCP server" form, as `meru mcp add stdio` or `meru mcp add
 // http` would. merud checks everything, saves each secret variable in
 // secrets.toml, writes the entry with no tools allowed and reloads, so the
@@ -229,11 +229,11 @@ func (b *Bridge) Models(ctx context.Context) (rpc.ModelsInfo, error) {
 	return b.models(ctx, rpc.Request{Op: rpc.OpModels})
 }
 
-// UseModel asks merud to make name the answer model, the Library's "Use
+// UseModel asks merud to make name the answer model, the Settings screen's "Use
 // for answers" button. merud unloads the old answer model, loads the new
 // one, answers the next question with it and writes [models] main, with
-// no restart: a pick in the Library is a setting, and every setting the
-// Library changes lands in config.toml. The reply is the Models view
+// no restart: a pick in Settings is a setting, and every setting
+// Settings changes lands in config.toml. The reply is the Models view
 // after the change, with a Warning when the model can't call tools. It
 // fails with merud's reason when merud refuses, as it does for a model
 // Ollama doesn't have.
@@ -257,7 +257,7 @@ func (b *Bridge) UseModelSet(ctx context.Context, name string, rebuild bool) (rp
 }
 
 // SaveModels asks merud to write the models in use to [models] in
-// config.toml, so merud starts with them: /model save, and the Library's
+// config.toml, so merud starts with them: /model save, and the Settings screen's
 // "Make default" on the set in use.
 func (b *Bridge) SaveModels(ctx context.Context) (rpc.ModelsInfo, error) {
 	return b.models(ctx, rpc.Request{Op: rpc.OpModelSave})

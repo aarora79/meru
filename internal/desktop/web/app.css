@@ -281,7 +281,7 @@ pre {
   color: var(--pine);
 }
 
-/* The logo and the name are one button that opens the Library's About. */
+/* The logo and the name are one button that opens About in Settings. */
 .brand-link {
   display: flex;
   align-items: center;
@@ -1625,7 +1625,7 @@ pre {
   text-underline-offset: 2px;
 }
 
-/* ---- Library and Setup ---- */
+/* ---- Settings and Setup ---- */
 
 .page {
   min-width: 0;
@@ -1762,7 +1762,7 @@ pre {
   font-size: 13px;
 }
 
-/* A model card in Library, Models: its "Use for answers" button sits
+/* A model card in Settings, Models: its "Use for answers" button sits
    below the copy lines. */
 .card.model .button {
   margin-top: 10px;

@@ -236,7 +236,7 @@ meru tools
 asks their name, email and how they like answers, and saves each as a memory.
 
 **The answer model.** If they pulled `qwen3.6:35b`, open Meru.app, go to
-Library, Models, and click **Use for answers** on its card. `merud` takes the
+Settings, Models, and click **Use for answers** on its card. `merud` takes the
 new model with no restart. Without the app, set `main = "qwen3.6:35b"` under
 `[models]` in `~/.meru/config.toml` and restart `merud` with
 `launchctl kickstart -k gui/$(id -u)/com.meru.merud`.
@@ -295,7 +295,7 @@ lists the `cmd.gh-*` tools.
 
 - Ask the person to open Meru.app (or run `meru chat`) and ask "which model are
   you using?". The answer comes from the `about_meru` tool and should name the
-  model they chose. Library, About shows the version, such as `v0.4.1`.
+  model they chose. Settings, About shows the version, such as `v0.4.1`.
 - Ask them for a question whose answer sits in a file in one of the folders
   they indexed. `meru index -status` shows how far indexing got. The answer
   should list the file under Sources.
@@ -312,7 +312,7 @@ Run step 4 again with the new tag, then:
    one (remove `/Applications/Meru.app` first, with their yes, so no old file
    stays behind).
 3. Restart `merud`: `launchctl kickstart -k gui/$(id -u)/com.meru.merud`.
-4. Check with `meru ping`, and the version under Library, About.
+4. Check with `meru ping`, and the version under Settings, About.
 
 Meru never checks for updates on its own. The person decides when to update.
 

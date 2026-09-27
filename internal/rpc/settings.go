@@ -59,7 +59,7 @@ type PolicyChange struct {
 	Policy string `json:"policy"`
 }
 
-// CustomServer is an MCP server outside the catalog, as the Library's "Add
+// CustomServer is an MCP server outside the catalog, as the Settings screen's "Add
 // your own MCP server" form describes it for OpMCPAdd. Exactly one of
 // Command and URL is set: Command, with Args, is a program merud starts
 // (a stdio server), and URL is a Streamable HTTP server the user runs.
@@ -85,7 +85,7 @@ type EnvVar struct {
 	Secret bool   `json:"secret,omitempty"`
 }
 
-// Connection is one tool source as the app's Library shows it: an MCP
+// Connection is one tool source as the app's Settings shows it: an MCP
 // server, an A2A agent, merud's built-in tools, or the local commands.
 type Connection struct {
 	Name string `json:"name"`
@@ -127,7 +127,7 @@ type ToolPolicy struct {
 }
 
 // CatalogEntry is one server from Meru's catalog (internal/catalog), with
-// what it needs from the user, for the Library's "Add a connection".
+// what it needs from the user, for the Settings screen's "Add a connection".
 type CatalogEntry struct {
 	Name        string `json:"name"`
 	Title       string `json:"title"`

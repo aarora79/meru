@@ -158,8 +158,8 @@ skips every field `showResponse` doesn't name.
 `Pulled(ctx)` sends `GET /api/tags` and returns the names of the models Ollama
 has on disk, such as `gemma3:12b` and `nomic-embed-text:latest`. None of the
 three is one of the four `Engine` methods: only a question with images asks
-`Capabilities`, only `about_meru` and the Library's models ask `Details`, only
-the Library's models ask `Pulled`, and `merud` hands each caller the one method
+`Capabilities`, only `about_meru` and the models in Settings ask `Details`, only
+the models in Settings ask `Pulled`, and `merud` hands each caller the one method
 it needs. The answer for each model goes in a map, `shown`, so a
 second question about the same model doesn't wait on Ollama; a failed call
 stores nothing. Several turns can ask at once, so a `sync.Mutex`, `mu`, sits

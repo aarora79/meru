@@ -264,7 +264,7 @@ then builds the note and the names from it, through `currentFilesNote` and
 still reuses its work on the prompt's opening.
 
 The answer model can change while `merud` runs too: every switch, from
-`/model`, `meru model use` or the Library, ends in `SetMain(model, noThink)`.
+`/model`, `meru model use` or Settings, ends in `SetMain(model, noThink)`.
 So `New` copies `[models] main` into the field `main`, and every place that
 needs the answer model, `answer`, `checkVision` and the no-vision reply, reads
 it through `Main()`. `noThink`, from a model set's `think = false`, sits beside
@@ -632,7 +632,7 @@ web, it also puts the model's name in `t.noTools`, and `Handle` sends a
 
 ```text
 gemma3:12b can't call tools, so Meru answered without them: no mail, calendar,
-notes, web or file tools. To use them, pick another answer model under Library,
+notes, web or file tools. To use them, pick another answer model under Settings,
 Models in the desktop app, or in [models] main in config.toml.
 ```
 
