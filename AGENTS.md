@@ -250,6 +250,7 @@ docs/
   coding-notes/      one note per package, and go-basics/ for Go concepts
   lld.md             the low-level design
   running.md         how to build and run Meru
+  faq/               one page per "how do I…" question, listed in index.md
   observability.md   the local Grafana stack: setup, dashboards, command-line queries
   ci.md              what each check in CI does
   fast-router.md     how the one-token router works

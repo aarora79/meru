@@ -330,7 +330,9 @@ that the schema carries the anchored pattern. `TestExampleCommands` loads the
 `[[commands]]` samples in `config.example.toml`, the six GitHub ones included,
 checks that none of those asks first, renders `gh-prs` and `gh-pr` to the argv
 `gh` gets, and checks that `gh-prs` refuses a repository that isn't
-`owner/name` and `gh-repos` an owner with a slash.
+`owner/name` and `gh-repos` an owner with a slash. It also renders `csv-sum`
+and `file-lines` to check that `{{` and `}}` reach `awk` as single braces, and
+that a line number or a process name can't carry script text or a semicolon.
 
 To see it live, add the `git-log` entry above to `~/.meru/config.toml`, restart
 `merud`, and run:

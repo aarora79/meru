@@ -16,9 +16,11 @@ import (
 
 func TestExampleCommands(t *testing.T) {
 	home := testHome(t)
-	// The samples name ~/repos, which testHome made, and ~/notes.
-	if err := os.Mkdir(filepath.Join(home, "notes"), 0o700); err != nil {
-		t.Fatal(err)
+	// The samples name ~/repos, which testHome made, ~/notes and ~/Documents.
+	for _, dir := range []string{"notes", "Documents"} {
+		if err := os.Mkdir(filepath.Join(home, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// A sample starts at a "# [[commands]]" line and ends at the first line
 	// that isn't "# " plus text, as in config's own sample test.
@@ -52,6 +54,9 @@ func TestExampleCommands(t *testing.T) {
 		names = append(names, spec.Name)
 	}
 	if strings.Join(names, " ") != "cmd.git-log cmd.git-status cmd.search-notes cmd.disk-free "+
+		"cmd.system-load cmd.top-processes cmd.find-process cmd.memory-free "+
+		"cmd.kernel cmd.macos-version cmd.hardware-summary cmd.system-report cmd.battery cmd.disk-list cmd.uptime "+
+		"cmd.file-lines cmd.count-lines cmd.csv-column cmd.csv-sum "+
 		"cmd.gh-prs cmd.gh-pr cmd.gh-issues cmd.gh-issue cmd.gh-runs cmd.gh-repos" {
 		t.Errorf("samples give %v", names)
 	}
@@ -81,5 +86,29 @@ func TestExampleCommands(t *testing.T) {
 	repos, _ := s.lookup("cmd.gh-repos")
 	if _, err := repos.Render(map[string]string{"owner": "dana-reyes/garden"}); err == nil {
 		t.Error("gh-repos took an owner with a slash")
+	}
+
+	// The sed and awk samples take numbers, never script text, and their
+	// doubled braces reach awk as single ones.
+	csv := filepath.Join(home, "Documents", "costs.csv")
+	if err := os.WriteFile(csv, []byte("item,amount\nseeds,4\nsoil,12\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum, _ := s.lookup("cmd.csv-sum")
+	argv, err = sum.Render(map[string]string{"file": csv, "column": "2"})
+	if err != nil || argv[3] != "NR > 1 {sum += $2} END {print sum}" {
+		t.Errorf("csv-sum renders %q, %v", argv, err)
+	}
+	lines, _ := s.lookup("cmd.file-lines")
+	argv, err = lines.Render(map[string]string{"file": csv, "start": "2", "end": "3"})
+	if err != nil || argv[2] != "2,3p" {
+		t.Errorf("file-lines renders %q, %v", argv, err)
+	}
+	if _, err := lines.Render(map[string]string{"file": csv, "start": "2/w /tmp/x", "end": "3"}); err == nil {
+		t.Error("file-lines took script text for a line number")
+	}
+	find, _ := s.lookup("cmd.find-process")
+	if _, err := find.Render(map[string]string{"name": "ollama; rm"}); err == nil {
+		t.Error("find-process took a name with a semicolon")
 	}
 }
