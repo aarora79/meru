@@ -591,6 +591,10 @@ type LogEntry struct {
 	Approval       string `json:"approval,omitempty"`
 	DurationMillis int64  `json:"duration_ms"`
 	TraceID        string `json:"trace_id,omitempty"`
+	// Caller is "meru" for a call merud made on its own before the
+	// model's first round, such as the web search for a question that
+	// asks for the web, and "" for a call the model asked for.
+	Caller string `json:"caller,omitempty"`
 }
 
 // The usage windows, in the order a "usage" event lists them. Today, week

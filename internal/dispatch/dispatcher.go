@@ -215,7 +215,8 @@ func (d *Dispatcher) find(name string) Backend {
 // In order, it:
 //
 //  1. finds the backend that offers the tool; with none, the call is
-//     "denied" and doesn't run;
+//     "denied" and doesn't run, and the model reads c.Hint when the agent
+//     set one;
 //  2. writes the tool_call line to the transcript;
 //  3. asks the user when the tool, or this one call, needs a yes (see
 //     confirmFor and approve);
@@ -260,7 +261,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 	// lines the same way as any other call's.
 	appendErr := d.append(c, transcript.Line{
 		TS: start, Type: transcript.TypeToolCall, CallID: c.ID,
-		Kind: kind, Server: server, Tool: tool, Args: args, TraceID: c.TraceID,
+		Kind: kind, Server: server, Tool: tool, Args: args, TraceID: c.TraceID, Caller: c.Caller,
 	})
 
 	var res Result
@@ -271,6 +272,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		outcome = OutcomeDenied
 		res = Result{IsError: true, Text: fmt.Sprintf(
 			"The tool %q isn't available, so it didn't run. Use one of the tools you were given, or answer without one.", c.Name)}
+		if c.Hint != "" {
+			res.Text = c.Hint
+		}
 	case appendErr != nil:
 		// Every call must reach the transcript before it runs. A call
 		// that can't be logged doesn't run.
@@ -312,7 +316,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		row := store.ToolCall{
 			CallID: c.ID, Session: c.Session, Time: start, Kind: kind, Server: server, Tool: tool,
 			Args: args, Result: logged, Outcome: outcome, Approval: approval,
-			DurationMillis: ran.Milliseconds(), TraceID: c.TraceID,
+			DurationMillis: ran.Milliseconds(), TraceID: c.TraceID, Caller: c.Caller,
 		}
 		if err := d.rec.InsertToolCall(context.WithoutCancel(ctx), row); err != nil {
 			// The transcript holds the call, and replay can rebuild the row

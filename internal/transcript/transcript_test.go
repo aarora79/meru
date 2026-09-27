@@ -234,6 +234,17 @@ func TestHistory(t *testing.T) {
 			{Type: TypeUser, Text: "which shop are these from?", Images: []string{"/home/u/meru-output/uploads/receipt.jpg", "/home/u/meru-output/uploads/garden.png"}},
 			a("A garden centre."),
 		}, 10, msgs("which shop are these from?\n\n[image: receipt.jpg]\n[image: garden.png]", "A garden centre.")},
+		// An answer whose turn read the web gets one note per page or
+		// result, so a follow-up still knows what the web said.
+		{"web notes follow the answer", []Line{
+			u("what is Acme Flow?"),
+			{Type: TypeAssistant, Text: "It moves notes.", Web: []WebNote{
+				{URL: "https://acme.example/flow", Title: "Acme Flow", Gist: "Acme Flow moves notes between apps."},
+				{URL: "https://acme.example/blog"},
+			}},
+		}, 10, msgs("what is Acme Flow?", "It moves notes.\n\n"+
+			"[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]\n"+
+			"[from the web: https://acme.example/blog]")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

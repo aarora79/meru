@@ -40,6 +40,13 @@ It holds the warning the user read under the answer: "Meru didn't run any tool
 for this answer, so nothing changed on your computer." A client that reopens
 the session can show it again.
 
+An assistant line carries `web` when the turn read the web: up to five
+`WebNote` values, each a URL, a title and a gist of at most 300 characters.
+The agent builds them from the web calls' results (see
+[agent](agent.md#web-first-webfirstgo-webnotesgo)). A `tool_call` line carries
+`caller: "meru"` when `merud` made the call itself, before the model's first
+round, and no `caller` when the model asked for it.
+
 From v0.3 the assistant line also records the turn's facts: `route` is the
 route the turn took, `ms` how long it took from question to answer, and
 `sources` the full paths of the files whose excerpts went into the prompt, each
@@ -115,6 +122,21 @@ was cancelled, drops out, so the model never sees two questions in a row. It
 keeps the last `n` pairs. An answer with a `notice` gets it after its text, in
 square brackets, so on the next turn the model reads that its claim didn't
 happen instead of building on it.
+
+An answer with web notes gets one line per note after that, from `webNotes`:
+
+```text
+It moves notes between apps.
+
+[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]
+```
+
+A real session showed why. A turn read a product's page and answered well, and
+the next three answers, whose history held only the question and answer text,
+made up the product's features. With the notes, a follow-up knows what the page
+said without the page itself. The agent's history budget still applies: it
+drops the oldest turns, notes and all, when the history passes 8,000
+characters.
 
 A question with `images` gets one note per image after its text, from
 `imageNotes`:

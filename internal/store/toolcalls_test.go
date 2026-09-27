@@ -26,7 +26,7 @@ func TestInsertAndReadToolCalls(t *testing.T) {
 
 	rows := []ToolCall{
 		{CallID: "c1", Session: "s1", Time: at(10, 0, 0), Kind: "mcp", Server: "web", Tool: "search",
-			Args: json.RawMessage(`{"q":"go"}`), Result: "3 hits", Outcome: "ok", DurationMillis: 120, TraceID: "t1"},
+			Args: json.RawMessage(`{"q":"go"}`), Result: "3 hits", Outcome: "ok", DurationMillis: 120, TraceID: "t1", Caller: "meru"},
 		{CallID: "c2", Session: "s1", Time: at(10, 0, 5), Kind: "builtin", Server: "meru", Tool: "write_file",
 			Outcome: "declined", Approval: "deny"},
 		// Same second as c2: the later write comes back first.
@@ -68,10 +68,10 @@ func TestInsertAndReadToolCalls(t *testing.T) {
 	c1 := got[2]
 	if c1.Kind != "mcp" || c1.Server != "web" || c1.Tool != "search" || string(c1.Args) != `{"q":"go"}` ||
 		c1.Result != "3 hits" || c1.Outcome != "ok" || c1.DurationMillis != 120 || c1.TraceID != "t1" ||
-		!c1.Time.Equal(at(10, 0, 0)) || c1.ID == 0 {
+		!c1.Time.Equal(at(10, 0, 0)) || c1.ID == 0 || c1.Caller != "meru" {
 		t.Errorf("row c1 = %+v", c1)
 	}
-	if got[1].Approval != "deny" || got[1].Args != nil {
+	if got[1].Approval != "deny" || got[1].Args != nil || got[1].Caller != "" {
 		t.Errorf("row c2 = %+v, want approval deny and no args", got[1])
 	}
 	if n := len([]rune(got[0].Result)); n != MaxToolResult {
@@ -104,12 +104,13 @@ func writeSession(t *testing.T, dir, id string, lines []transcript.Line) string 
 
 func TestReplayToolCalls(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sessions")
-	// Session one: an ok call, an approved call interleaved with it, a
-	// call ID reused in a later turn, and a call merud never finished.
+	// Session one: an ok call merud made itself, an approved call
+	// interleaved with it, a call ID reused in a later turn, and a call
+	// merud never finished.
 	writeSession(t, dir, "2026-09-24T100000-aaaa", []transcript.Line{
 		{TS: at(10, 0, 0), Type: transcript.TypeUser, Text: "hi"},
 		{TS: at(10, 0, 1), Type: transcript.TypeToolCall, CallID: "a", Kind: "mcp", Server: "web", Tool: "search",
-			Args: json.RawMessage(`{"q":"x"}`), TraceID: "t1"},
+			Args: json.RawMessage(`{"q":"x"}`), TraceID: "t1", Caller: "meru"},
 		{TS: at(10, 0, 1), Type: transcript.TypeToolCall, CallID: "b", Kind: "builtin", Server: "meru", Tool: "write_file", TraceID: "t1"},
 		{TS: at(10, 0, 2), Type: transcript.TypeApproval, CallID: "b", Server: "meru", Tool: "write_file", Choice: "session", TraceID: "t1"},
 		{TS: at(10, 0, 3), Type: transcript.TypeToolResult, CallID: "a", Outcome: "ok", OK: true, Ms: 40, Result: "found", TraceID: "t1"},
@@ -160,7 +161,7 @@ func TestReplayToolCalls(t *testing.T) {
 			t.Errorf("row %d session = %q", i, got[i].Session)
 		}
 	}
-	if string(got[3].Args) != `{"q":"x"}` || got[3].DurationMillis != 40 || got[3].TraceID != "t1" {
+	if string(got[3].Args) != `{"q":"x"}` || got[3].DurationMillis != 40 || got[3].TraceID != "t1" || got[3].Caller != "meru" {
 		t.Errorf("row a/search = %+v", got[3])
 	}
 

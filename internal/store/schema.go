@@ -16,8 +16,8 @@ import (
 // database from schema_version i to i+1. To change the schema, append a
 // step; never edit one that has shipped, because existing databases have
 // already run it. Later milestones add messages and memories this way, as
-// v0.3 added tool_calls and turns, and step 6 added the answer model's
-// numbers to turns.
+// v0.3 added tool_calls and turns, step 6 added the answer model's
+// numbers to turns, and step 7 added the caller to tool_calls.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -199,6 +199,12 @@ func migrations() []string {
 		ALTER TABLE turns ADD COLUMN eval_ms INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE turns ADD COLUMN bad_calls INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE turns ADD COLUMN capped INTEGER NOT NULL DEFAULT 0;`,
+
+		// 7: who made each tool call. caller is "meru" for a web search or
+		// page fetch merud ran on its own before the model's first round,
+		// and "" for a call the model asked for, as on every row before
+		// this step.
+		`ALTER TABLE tool_calls ADD COLUMN caller TEXT NOT NULL DEFAULT '';`,
 	}
 }
 

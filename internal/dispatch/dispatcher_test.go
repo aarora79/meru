@@ -1,7 +1,7 @@
 // This file tests Dispatch with fake backends, a fake recorder and an
 // in-memory transcript: each outcome, the approval rules, redaction, the
-// cap on results, duplicate tool names, Replace, and calls running side by
-// side.
+// cap on results, duplicate tool names, Replace, calls running side by
+// side, and the caller and hint the agent sets.
 
 package dispatch
 
@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -808,5 +809,43 @@ func TestConcurrentDispatch(t *testing.T) {
 	wg.Wait()
 	if len(rec.rows) != 20 {
 		t.Errorf("rows = %d, want 20", len(rec.rows))
+	}
+}
+
+// TestCallerAndHint checks the two fields the agent's web-first step and
+// skill hint use: Caller reaches the tool_call line and the row, and Hint
+// replaces the refusal of a call no backend offers, which is still denied
+// and recorded. A hint on a call that runs changes nothing.
+func TestCallerAndHint(t *testing.T) {
+	b := &fakeBackend{kind: KindBuiltin, tools: []string{"web_search"}}
+	rec := &fakeRecorder{}
+	d := New([]Backend{b}, rec, Options{})
+	hint := "web-research is a skill, not a tool. Call web_search or web_fetch."
+
+	s := &sink{}
+	c := newCall("web_search", s, nil)
+	c.Caller, c.Hint = CallerMeru, hint
+	res, out := d.Dispatch(context.Background(), c)
+	if out.Outcome != OutcomeOK || res.Text != "ok from web_search" {
+		t.Errorf("merud's call: outcome %q, text %q; want ok from the tool", out.Outcome, res.Text)
+	}
+	if got := s.lines[0]; got.Type != transcript.TypeToolCall || got.Caller != CallerMeru {
+		t.Errorf("tool_call line = %+v, want caller %q", got, CallerMeru)
+	}
+
+	s = &sink{}
+	c = newCall("web-research", s, nil)
+	c.Hint = hint
+	res, out = d.Dispatch(context.Background(), c)
+	if out.Outcome != OutcomeDenied || res.Text != hint || !res.IsError {
+		t.Errorf("skill call: outcome %q, text %q; want denied with the hint", out.Outcome, res.Text)
+	}
+	if got := s.types(); !slices.Equal(got, []string{transcript.TypeToolCall, transcript.TypeToolResult}) {
+		t.Errorf("skill call lines = %v, want a tool_call and a tool_result", got)
+	}
+
+	rows := rec.rows
+	if len(rows) != 2 || rows[0].Caller != CallerMeru || rows[1].Caller != "" || rows[1].Outcome != OutcomeDenied {
+		t.Errorf("rows = %+v, want merud's call, then the model's denied one", rows)
 	}
 }

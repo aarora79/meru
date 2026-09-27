@@ -157,7 +157,21 @@ type Call struct {
 	Approve rpc.ApproveFunc
 	// TraceID is the turn's trace ID, for the transcript and the row.
 	TraceID string
+	// Caller is who made the call: CallerMeru when merud ran it on its
+	// own, before the model's first round, and "" when the model asked for
+	// it. It goes in the tool_call line and the row, so the audit log
+	// shows which calls no model chose.
+	Caller string
+	// Hint, when set, is what the model reads when no backend offers the
+	// tool, in place of the usual refusal. The agent sets it for a call
+	// named after a skill, such as "web-research", to point the model at
+	// the tools that skill uses. The call is still denied and recorded
+	// like any other.
+	Hint string
 }
+
+// CallerMeru is Call.Caller for a call merud made itself.
+const CallerMeru = "meru"
 
 // Outcome is how Dispatch ended a call: one of the Outcome constants, plus
 // how long it took.

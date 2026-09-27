@@ -101,7 +101,8 @@ returns an error, `write` rolls back and nothing changes.
 each step the file hasn't seen, one transaction per step. v0.3 appended step 2
 for `tool_calls` and step 3 for `turns`. v0.4 appended step 4 for the
 past-conversation tables and step 5 for `memories`, `memory_vec` and
-`memory_fts`. A shipped step never changes, because existing files have
+`memory_fts`. Step 6 added the answer model's numbers to `turns`, and step 7
+the `caller` column to `tool_calls`. A shipped step never changes, because existing files have
 already run it.
 
 The first step creates `documents`, `chunks`, `chunk_vec` and `chunk_fts`:
@@ -223,6 +224,11 @@ long it ran, and the turn's trace ID. The arguments are JSON text and the result
 plain text, cut to 4,000 characters (`MaxToolResult`), so a row reads well in the
 `sqlite3` shell. Indexes on `ts` and `session` serve `meru log` and a look at one
 session.
+
+Migration step 7 adds `caller`, `"meru"` for a call `merud` made itself before
+the model's first round and `""` for a call the model asked for, as on every
+row written before the step. `ReplayToolCalls` reads it from the `tool_call`
+line.
 
 `InsertToolCall` writes one row through `write`, like every other write.
 `ToolCalls(limit)` returns the newest rows first; a limit of zero or less returns

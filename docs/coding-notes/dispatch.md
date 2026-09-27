@@ -306,7 +306,17 @@ backend while the refresh runs. The backends go one after another; with one
 
 **A denied name.** When no backend offers a tool, `guessLocation` splits its name
 for the row: `a2a.` names an agent, `cmd.` a command, a dot an MCP server, and no
-dot a built-in.
+dot a built-in. The model reads "The tool ... isn't available", or `Call.Hint`
+when the agent set one. The agent sets it for a call named after a skill, such
+as "web-research is a skill, not a tool. Call web_search or web_fetch.", so the
+model can recover in its next round. The call is still denied, with the same
+lines and row as any other.
+
+**Who made the call.** `Call.Caller` is `CallerMeru` for a call `merud` made
+itself before the model's first round, such as the web search for a question
+that asks for the web, and `""` for a call the model asked for. `Dispatch`
+copies it to the `tool_call` line and the row, and changes nothing else: the
+call takes the same path, with the same allowlist, approval and audit.
 
 ### cmd/merud/backends.go: the MCP backend
 
