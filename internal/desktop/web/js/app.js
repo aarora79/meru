@@ -1082,6 +1082,8 @@ function wire() {
     notice,
     askQuit,
     fit: () => fit(box),
+    running: () => state.running !== 0,
+    refreshStatus: () => loadStatus(),
   });
   box.addEventListener("input", () => fit(box));
   box.addEventListener("keydown", (e) => {

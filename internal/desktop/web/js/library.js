@@ -824,10 +824,13 @@ function drawModels(body, m) {
   fact("Ollama", m.runtime_version ? m.runtime_version : "didn't answer", m.err || "");
   body.append(dl);
 
+  drawSets(body, m);
+
   body.append(el("h2", "section-head", "Models you can use for answers"));
   body.append(el("p", "", "We tried these three as the answer model in September 2026, on an M4 Max with 64 GB, " +
-    "with MiniCPM5-2B as the router. Any of them can write the answers. A switch takes effect on the next question, " +
-    "with no restart; the router and the embedding model stay as they are."));
+    "with MiniCPM5-2B as the router. Any of them can write the answers. Use for answers unloads the model that " +
+    "answers now, loads this one, and saves it in config.toml, so merud starts with it; the next question uses it, " +
+    "with no restart. The router and the embedding model stay as they are."));
   const cards = el("div", "cards");
   for (const c of m.choices || []) cards.append(modelCard(body, c));
   body.append(cards);
@@ -839,6 +842,99 @@ function drawModels(body, m) {
     ", then restart merud. The larger models need a longer context than Ollama gives by default; " +
     "run this before Ollama starts, and again after each restart of the Mac:"));
   body.append(copyBlock("launchctl setenv OLLAMA_CONTEXT_LENGTH 32768"));
+}
+
+// drawSets draws the Model sets part of the Models section: a card per
+// [[models.sets]] entry in config.toml, the set in use first marked, with
+// Use, which switches until merud stops, as /model <name> does, and Make
+// default on the set in use, which saves it, as /model save does.
+function drawSets(body, m) {
+  body.append(el("h2", "section-head", "Model sets"));
+  if (m.sets.length === 0) {
+    body.append(el("p", "", "Model sets name the models you switch between, so you can compare them. Add " +
+      "[[models.sets]] entries to " + m.config_path + " (config.example.toml shows how), then restart merud."));
+    return;
+  }
+  body.append(el("p", "", "Use switches the answer model until merud stops: merud unloads the one that answers now, " +
+    "then loads the set's. Make default saves the set in use in config.toml. In the chat, /model <name> and " +
+    "/model save do the same, and /usage by model in meru chat compares them."));
+  const cards = el("div", "cards");
+  for (const s of m.sets) cards.append(setCard(body, s));
+  body.append(cards);
+}
+
+// setCard draws one model set: its main model and size, where Ollama has
+// it, what it can do, its think setting, any fast or embed model it names,
+// and the button that fits: Use, or Make default for the set in use.
+function setCard(body, s) {
+  const card = el("article", "card model");
+  card.setAttribute("aria-label", s.name);
+  const head = el("div", "card-head");
+  head.append(el("h3", "", s.name));
+  let state = s.pulled ? "Downloaded" : "Not downloaded";
+  if (s.loaded) state = "Loaded";
+  if (s.active) state = "In use";
+  head.append(el("span", "pill " + (s.pulled ? "ok" : "down"), state));
+  card.append(head);
+
+  const sub = [s.main || "keeps the answer model", s.bytes ? diskSize(s.bytes) : "", s.think_off ? "thinking off" : ""];
+  card.append(el("p", "card-sub", sub.filter(Boolean).join(" · ")));
+  if (s.capabilities.length) {
+    const caps = el("div", "card-actions");
+    caps.setAttribute("aria-label", "What it can do");
+    for (const [name, words] of CAPABILITIES) {
+      if (s.capabilities.includes(name)) caps.append(el("span", "pill ok", words));
+    }
+    if (!s.capabilities.includes("tools")) caps.append(el("span", "pill down", "No tools"));
+    card.append(caps);
+  }
+  const also = [];
+  if (s.fast) also.push("fast model " + s.fast);
+  if (s.embed) also.push("embedding model " + s.embed);
+  if (also.length) {
+    card.append(el("p", "card-note", "Also sets the " + also.join(" and the ") +
+      ", which merud moves to only after Make default and a restart."));
+  }
+  if (!s.pulled && s.main) card.append(copyBlock("ollama pull " + s.main));
+
+  const act = (label, run, done) => {
+    const b = button(label, { className: "button primary" });
+    b.addEventListener("click", () => {
+      b.disabled = true;
+      lib.pages.notice(label === "Use" ? "Switching to " + s.name + "…" : "Saving…");
+      run().then(
+        (next) => {
+          drawModels(body, next);
+          lib.pages.refreshStatus();
+          lib.pages.notice(next.warning ? done + " " + next.warning : done);
+        },
+        (err) => {
+          b.disabled = false;
+          lib.pages.notice(errorText(err));
+        },
+      );
+    });
+    card.append(b);
+  };
+  if (s.active) {
+    act("Make default", () => bridge.saveModels(), s.name + " is the default now; merud starts with it.");
+  } else {
+    act("Use", () => bridge.useModelSet(s.name, false), s.name + " answers from the next question on.");
+  }
+  return card;
+}
+
+// diskSize writes a model's size as `ollama list` does, in units of 1,000,
+// as the chat's /model table does: "38 GB", "8.1 GB".
+function diskSize(n) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = n;
+  let i = 0;
+  while (v >= 999.5 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  return (i > 0 && v < 9.95 ? v.toFixed(1) : v.toFixed(0)) + " " + units[i];
 }
 
 // modelCard draws one model we tried: what it does well and badly, what

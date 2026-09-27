@@ -230,31 +230,45 @@ func (b *Bridge) Models(ctx context.Context) (rpc.ModelsInfo, error) {
 }
 
 // UseModel asks merud to make name the answer model, the Library's "Use
-// for answers" button. merud writes [models] main and answers the next
-// question with it, with no restart. The reply is the Models view after
-// the change, with a Warning when the model can't call tools. It fails
-// with merud's reason when merud refuses, as it does for a model Ollama
-// doesn't have.
-//
-// The status block names the answer model, so the Bridge keeps the new
-// name for it.
+// for answers" button. merud unloads the old answer model, loads the new
+// one, answers the next question with it and writes [models] main, with
+// no restart: a pick in the Library is a setting, and every setting the
+// Library changes lands in config.toml. The reply is the Models view
+// after the change, with a Warning when the model can't call tools. It
+// fails with merud's reason when merud refuses, as it does for a model
+// Ollama doesn't have.
 func (b *Bridge) UseModel(ctx context.Context, name string) (rpc.ModelsInfo, error) {
 	if strings.TrimSpace(name) == "" {
 		return rpc.ModelsInfo{}, errors.New("pick a model first")
 	}
-	info, err := b.models(ctx, rpc.Request{Op: rpc.OpModelSet, ID: name})
-	if err != nil {
-		return rpc.ModelsInfo{}, err
-	}
-	b.mu.Lock()
-	b.model = info.Main
-	b.mu.Unlock()
-	return info, nil
+	return b.models(ctx, rpc.Request{Op: rpc.OpModelSet, ID: name})
 }
 
-// models sends req and returns the "models" reply. Choices comes back as
-// [] rather than null, which the page's code can't loop over, and so does
-// each choice's Capabilities and Tiers.
+// UseModelSet asks merud to switch to the model set called name until
+// merud stops, as /model <name> does in the composer and in `meru chat`.
+// rebuild lets a set that changes the embed model through. The reply is
+// the Models view after the switch, with merud's Warning. It fails with
+// merud's reason, which names the step that failed.
+func (b *Bridge) UseModelSet(ctx context.Context, name string, rebuild bool) (rpc.ModelsInfo, error) {
+	if strings.TrimSpace(name) == "" {
+		return rpc.ModelsInfo{}, errors.New("name a model set, such as /model qwen-moe")
+	}
+	return b.models(ctx, rpc.Request{Op: rpc.OpModelUse, ID: strings.TrimSpace(name), Rebuild: rebuild})
+}
+
+// SaveModels asks merud to write the models in use to [models] in
+// config.toml, so merud starts with them: /model save, and the Library's
+// "Make default" on the set in use.
+func (b *Bridge) SaveModels(ctx context.Context) (rpc.ModelsInfo, error) {
+	return b.models(ctx, rpc.Request{Op: rpc.OpModelSave})
+}
+
+// models sends req and returns the "models" reply. Choices and Sets come
+// back as [] rather than null, which the page's code can't loop over, and
+// so does each one's Capabilities, and each choice's Tiers.
+//
+// The status block names the answer model, and any client can switch it,
+// so the Bridge keeps the name each reply gives.
 func (b *Bridge) models(ctx context.Context, req rpc.Request) (rpc.ModelsInfo, error) {
 	ev, err := b.one(ctx, req, rpc.EventModels)
 	if err != nil {
@@ -275,6 +289,19 @@ func (b *Bridge) models(ctx context.Context, req rpc.Request) (rpc.ModelsInfo, e
 		if c.Tiers == nil {
 			c.Tiers = []string{}
 		}
+	}
+	if info.Sets == nil {
+		info.Sets = []rpc.ModelSet{}
+	}
+	for i := range info.Sets {
+		if info.Sets[i].Capabilities == nil {
+			info.Sets[i].Capabilities = []string{}
+		}
+	}
+	if info.Main != "" {
+		b.mu.Lock()
+		b.model = info.Main
+		b.mu.Unlock()
 	}
 	return info, nil
 }

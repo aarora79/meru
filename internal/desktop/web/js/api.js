@@ -50,6 +50,8 @@ export const bridge = {
   setSkill: (name, on) => call("SetSkill", name, on),
   models: () => call("Models"),
   useModel: (name) => call("UseModel", name),
+  useModelSet: (name, rebuild) => call("UseModelSet", name, rebuild),
+  saveModels: () => call("SaveModels"),
   activity: () => call("Activity"),
   usage: () => call("Usage"),
   // The Library's About section (about.go).
