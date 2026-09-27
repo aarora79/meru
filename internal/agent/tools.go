@@ -363,7 +363,7 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			retry := a.retriesOutput(ctx, t)
 			// Ollama's own words go to the log, never to the chat. The
 			// model name comes from config, so it is one of a few values.
-			a.log.WarnContext(ctx, "ollama couldn't read the model's output", "model", a.models.Main,
+			a.log.WarnContext(ctx, "ollama couldn't read the model's output", "model", a.Main(),
 				"round", t.rounds, "retry", retry, "err", err)
 			if !retry {
 				return total, err

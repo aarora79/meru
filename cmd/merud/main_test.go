@@ -38,11 +38,15 @@ type fakeEngine struct {
 	// it to keep the startup scan busy.
 	hold chan struct{}
 
-	mu     sync.Mutex // guards models, embeds, system and route
-	models []string
-	embeds int
-	system string // the system prompt of the last Stream call
-	route  string // the last message of the last router call
+	// pulled is what Pulled reports Ollama has on disk.
+	pulled []string
+
+	mu          sync.Mutex // guards models, embeds, system, route and streamModel
+	models      []string
+	embeds      int
+	system      string // the system prompt of the last Stream call
+	route       string // the last message of the last router call
+	streamModel string // the model of the last Stream call
 }
 
 func (f *fakeEngine) Generate(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (engine.Completion, error) {
@@ -64,6 +68,7 @@ func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []
 	if len(msgs) > 0 {
 		f.system = msgs[0].Content
 	}
+	f.streamModel = opts.Model
 	f.mu.Unlock()
 	return func(yield func(engine.Delta, error) bool) {
 		if !yield(engine.Delta{Text: "pong"}, nil) {

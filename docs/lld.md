@@ -223,7 +223,7 @@ type Event struct {
 | `folders`, `folder_add`, `folder_remove` | one `folders`; `done` |
 | `skill_enable`, `skill_disable` | one `skills`; `done` |
 | `save_file` | an `approval` when `write_file` asks; one `saved`, whose `Text` is the path; `done` |
-| `models` | one `models`; `done` |
+| `models`, `model_set` | one `models`; `done` |
 
 `meru index` sends `index`, and `meru index -status` sends `index_status`. The
 desktop app sends `sessions` for its list of past chats and `session_turns` to

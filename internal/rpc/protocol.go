@@ -148,8 +148,15 @@ const (
 	OpSkillEnable  Op = "skill_enable"
 	OpSkillDisable Op = "skill_disable"
 	// OpModels asks which models config names and which ones Ollama holds
-	// in memory now. The reply is one "models" event and "done".
+	// in memory now, with the models we tried as the answer model. The
+	// reply is one "models" event and "done".
 	OpModels Op = "models"
+	// OpModelSet makes the model named Request.ID the answer model: merud
+	// writes it to [models] main and answers the next question with it.
+	// merud accepts only a model from the list OpModels sends, and only
+	// once Ollama has it. The reply is one "models" event, as OpModels
+	// sends, with a Warning when the model can't call tools, and "done".
+	OpModelSet Op = "model_set"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so

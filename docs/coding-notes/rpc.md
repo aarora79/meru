@@ -178,7 +178,12 @@ order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
 reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
 tool source tool by tool, `CatalogEntry` and `CatalogNeed` a catalog server and
 what it needs, `FolderInfo` one folder with its file count, and `ModelsInfo` the
-models. `CustomServer` is a server of the user's own for `mcp_add`, with its
+models. `ModelsInfo.Choices` lists a `ModelChoice` for each model we tried as the
+answer model: its name, label, size, a line on what it does well and one on what
+it does badly, its capabilities, whether Ollama has it, the tiers it fills now,
+and its `ollama pull` and `ollama run` commands. `model_set` takes a model's name
+in `Request.ID`, and its reply carries `Warning` when the new answer model can't
+call tools. `CustomServer` is a server of the user's own for `mcp_add`, with its
 `EnvVar` list; a variable marked `Secret` carries a value `merud` saves to
 `secrets.toml` and never sends back.
 

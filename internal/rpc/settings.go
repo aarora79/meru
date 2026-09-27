@@ -3,7 +3,7 @@
 // OpToolPolicy makes, the tool sources and catalog servers OpConnections
 // lists, the server of the user's own that OpMCPAdd adds, the folders
 // OpFolders lists, the two kinds of file OpSaveFile saves, and the models
-// OpModels reports. merud makes every change these
+// OpModels reports and OpModelSet picks from. merud makes every change these
 // ops ask for; a client only sends the request.
 
 package rpc
@@ -203,4 +203,39 @@ type ModelsInfo struct {
 	// the folder write_file saves in.
 	ConfigPath string `json:"config_path"`
 	OutputDir  string `json:"output_dir,omitempty"`
+	// Choices are the models we tried as the answer model, each with
+	// whether Ollama has it and which tier uses it now.
+	Choices []ModelChoice `json:"choices,omitempty"`
+	// Warning, in the reply to OpModelSet, says what the new answer model
+	// can't do, such as call tools. It is empty otherwise.
+	Warning string `json:"warning,omitempty"`
+}
+
+// ModelChoice is one model we tried as the answer model, as OpModels
+// reports it. merud fills it from its list of known models and from
+// Ollama.
+type ModelChoice struct {
+	// Name is the model as Ollama names it, and Label a short name for
+	// people.
+	Name  string `json:"name"`
+	Label string `json:"label"`
+	// Size is the download's size on disk, such as "8.1 GB".
+	Size string `json:"size"`
+	// Good and Bad say in one line each what the model did well and
+	// badly in our tests.
+	Good string `json:"good"`
+	Bad  string `json:"bad"`
+	// Capabilities are what the model can do, such as "vision" and
+	// "tools": Ollama's own list when it has the model, and what it
+	// listed in our tests otherwise.
+	Capabilities []string `json:"capabilities"`
+	// Installed is true when Ollama has the model on disk.
+	Installed bool `json:"installed"`
+	// Tiers names the tiers the model fills now, "main" and "fast", or
+	// none.
+	Tiers []string `json:"tiers"`
+	// Pull fetches the model and Run tries it in a terminal, such as
+	// "ollama pull gemma3:12b" and "ollama run gemma3:12b".
+	Pull string `json:"pull"`
+	Run  string `json:"run"`
 }

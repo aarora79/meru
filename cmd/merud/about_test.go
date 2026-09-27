@@ -133,7 +133,7 @@ argv        = ["df", "-h"]
 	}
 	home, _ := os.UserHomeDir()
 	tools.bt.UseAbout(aboutService{
-		cfg: cfg, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
+		cfg: cfg, main: func() string { return cfg.Models.Main }, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
 		skills: sk, mem: mem, machine: "The user's computer: macOS 26.0 (arm64), Apple M4 Max, 64 GB memory.",
 		home: home, log: log,
 	}.facts)

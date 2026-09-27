@@ -582,7 +582,8 @@ Each fact comes from a place `merud` already keeps:
 
 | Fact | Source |
 | --- | --- |
-| profile, the three models | `cfg`, as `merud` started with it |
+| profile, the fast and embed models | `cfg`, as `merud` started with it |
+| the answer model | `main`, which is the agent's `Main`, since the Library can switch it |
 | Ollama's version | `eng.Info`, at most 3 seconds |
 | the main model's capabilities, size, quantization, context | `Details`, through the `modelDetailer` interface, at most 3 seconds |
 | the computer | the `machineLine` the prompt carries |
@@ -608,10 +609,36 @@ the plain env value nor the memory's text.
 
 ### merud: models.go
 
-`modelService.handleModels` answers `models` with the profile and the three models
-from config, and asks the engine's `Info` for the Ollama version and the models it
-holds, waiting at most 3 seconds. A runtime that doesn't answer leaves the list
-empty and says why in `Err`.
+This file answers the Library's two model ops. `modelService.handleModels`
+answers `models`, and `info` gathers the reply: the profile, the fast and embed
+models from config, and the answer model from the agent's `Main`, since
+`model_set` can change it. It asks the engine's `Info` for the Ollama version
+and the models it holds, and waits at most 3 seconds. A runtime that doesn't
+answer leaves the list empty and says why in `Err`.
+
+`info` also fills `Choices` from `config.KnownModels()`, the three models we
+tried as the answer model. For each, `Pulled` (GET `/api/tags`) says whether
+Ollama has it, and for one it has, `Details` gives Ollama's own list of what it
+can do; one it lacks keeps the list from `known.go`. `Tiers` names `main` and
+`fast` where the model fills them, and `Pull` and `Run` hold the two commands the
+page shows. Both engine methods sit outside the `Engine` interface, so
+`modelService` reaches them with a type assertion, `m.eng.(modelLister)`, as
+`about.go` does for `Details`.
+
+`handleModelSet` answers `model_set`, the Library's "Use for answers" button.
+When you pick `gemma3:12b` it:
+
+1. refuses a name that isn't on the known list, and one `Pulled` doesn't list,
+   with `ollama pull gemma3:12b` in the error;
+2. writes `main = "gemma3:12b"` with `catalog.SetTableString`, inside
+   `edit`, which is `builtin.Tools.EditConfig`: the lock every writer of
+   `config.toml` in `merud` holds;
+3. calls `SetMain` on the agent, so the next question goes to Gemma;
+4. replies with the new `info`, and `noToolsWarning` in `Warning`, since
+   Ollama lists no `tools` for Gemma.
+
+`answerModel` is the interface for step 3, with the two methods `Main` and
+`SetMain`. `*agent.Agent` has both; the tests pass a small struct.
 
 ### merud: handler
 

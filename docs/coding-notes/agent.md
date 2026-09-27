@@ -256,6 +256,15 @@ then builds the note and the names from it, through `currentFilesNote` and
 `currentFolderNames`. The note's text changes only when the folders do, so Ollama
 still reuses its work on the prompt's opening.
 
+The answer model can change while `merud` runs too: the Library's "Use for
+answers" button ends in `SetMain`. So `New` copies `[models] main` into the
+field `main`, and every place that needs the answer model, `answer`,
+`checkVision`, the no-vision reply and the bad-output log line, reads it
+through `Main()`. Turns run side by side and `SetMain` can land during one, so
+a `sync.Mutex`, `mainMu`, sits next to the field and both methods take it.
+`TestSetMain` switches the model twice and checks that each next turn asks
+the new one.
+
 ### The profile section (profile.go)
 
 `New` keeps the configured prompt with `whoIsWho` in `a.system`, and the files
@@ -1333,6 +1342,9 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   without a field name, so it gets `fakeEngine`'s methods and replaces only
   `Generate`.
 - **Pointer receivers** — `reply.add` changes the reply it is called on.
+- **A mutex** — `mainMu` guards the answer model, which `SetMain` changes
+  while turns read it. `defer a.mainMu.Unlock()` releases it when `Main`
+  returns. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
 - **`context`** — one context runs through the whole turn and stops it. More in
