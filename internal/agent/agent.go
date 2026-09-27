@@ -170,6 +170,12 @@ type Agent struct {
 	mainMu  sync.Mutex
 	main    string
 	noThink bool // true turns the answer model's thinking off; see SetMain
+
+	// warmMu guards warming, a channel that stays open while merud loads
+	// the answer model at startup and closes when the load ends; nil when
+	// merud started no load. See warm.go.
+	warmMu  sync.Mutex
+	warming chan struct{}
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -1336,7 +1342,9 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // honestyRule, today's date, the line on the user's computer, the user's
 // profile, filesNote, canDoNote, then toolsNote and skillList, the tools
 // note and the list of skills for the tools the turn offers. It returns
-// the profile on its own as well, for the memory metric.
+// the profile on its own as well, for the memory metric. prompt builds on
+// it, and so does the startup warm-up (see warm.go), so the warm-up
+// prompt starts the way a real one does.
 func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (system, profile string) {
 	system = a.system
 	// add appends one section, leaving out an empty one.
@@ -1363,6 +1371,11 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 // first_token event, and the model-call metrics. Each round of a turn calls
 // it once.
 func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
+	// A question that comes while merud still loads the answer model at
+	// startup waits for that load rather than start a second one.
+	if err := a.WaitWarm(ctx); err != nil {
+		return reply{}, fmt.Errorf("wait for the answer model to load: %w", err)
+	}
 	model, noThink := a.mainModel()
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()

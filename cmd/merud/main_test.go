@@ -40,23 +40,51 @@ type fakeEngine struct {
 
 	// pulled is what Pulled reports Ollama has on disk.
 	pulled []string
+	// slowModel and loaded, when set, make Generate for slowModel wait for
+	// loaded to close (or for ctx to end), as Ollama does while it loads a
+	// large model. Tests use them to ask a question during the load.
+	slowModel string
+	loaded    chan struct{}
 
-	mu          sync.Mutex // guards models, embeds, system, route and streamModel
+	mu          sync.Mutex // guards the fields below
 	models      []string
 	embeds      int
 	system      string // the system prompt of the last Stream call
 	route       string // the last message of the last router call
 	streamModel string // the model of the last Stream call
+	// events lists "generate <model>", "generated <model>" and "stream
+	// <model>" in the order the calls began and ended.
+	events []string
+	// slowCall is the last Generate call for slowModel.
+	slowCall struct {
+		msgs []engine.Message
+		opts engine.Options
+	}
 }
 
 func (f *fakeEngine) Generate(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, opts engine.Options) (engine.Completion, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.models = append(f.models, opts.Model)
+	f.events = append(f.events, "generate "+opts.Model)
 	// The router asks for one token with log probabilities; nothing else does.
 	if opts.MaxTokens == 1 && opts.LogProbs && len(msgs) > 0 {
 		f.route = msgs[len(msgs)-1].Content
 	}
+	slow := f.loaded != nil && opts.Model == f.slowModel
+	if slow {
+		f.slowCall.msgs, f.slowCall.opts = msgs, opts
+	}
+	f.mu.Unlock()
+	if slow {
+		select {
+		case <-f.loaded:
+		case <-ctx.Done():
+			return engine.Completion{}, ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, "generated "+opts.Model)
 	if opts.Model == f.failWarm {
 		return engine.Completion{}, errors.New("model not found")
 	}
@@ -69,6 +97,7 @@ func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []
 		f.system = msgs[0].Content
 	}
 	f.streamModel = opts.Model
+	f.events = append(f.events, "stream "+opts.Model)
 	f.mu.Unlock()
 	return func(yield func(engine.Delta, error) bool) {
 		if !yield(engine.Delta{Text: "pong"}, nil) {
@@ -179,9 +208,11 @@ func TestWarm(t *testing.T) {
 		wantModels []string
 		wantErr    string
 	}{
-		{"lite loads the shared model once", config.Models{Fast: "small", Main: "small", Embed: "emb"}, "", []string{"small"}, ""},
-		{"full loads both", config.Models{Fast: "small", Main: "big", Embed: "emb"}, "", []string{"small", "big"}, ""},
-		{"missing model", config.Models{Fast: "small", Main: "big", Embed: "emb"}, "big", []string{"small", "big"}, "ollama pull big"},
+		{"lite loads the shared model", config.Models{Fast: "small", Main: "small", Embed: "emb"}, "", []string{"small"}, ""},
+		// The answer model loads in the background later; see
+		// TestStartupWarmsAnswerModel.
+		{"full leaves the answer model", config.Models{Fast: "small", Main: "big", Embed: "emb"}, "", []string{"small"}, ""},
+		{"missing model", config.Models{Fast: "small", Main: "big", Embed: "emb"}, "small", []string{"small"}, "ollama pull small"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -200,6 +231,111 @@ func TestWarm(t *testing.T) {
 				t.Errorf("embed warmed %d times, want 1", eng.embeds)
 			}
 		})
+	}
+}
+
+// TestStartupWarmsAnswerModel runs merud with a model set whose answer
+// model loads slowly. merud answers a ping while the load runs, a
+// question asked during the load waits for it rather than load the model
+// again, and the load uses the set's think = false and a real system
+// prompt.
+func TestStartupWarmsAnswerModel(t *testing.T) {
+	dir := shortDir(t)
+	sock := filepath.Join(dir, "w.sock")
+	cfgPath := filepath.Join(dir, "config.toml")
+	cfg := "[models]\nfast = \"small\"\nmain = \"big\"\n\n" +
+		"[[models.sets]]\nname = \"big-set\"\nmain = \"big\"\nthink = false\n"
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded := make(chan struct{})
+	eng := &fakeEngine{version: "0.13.0", slowModel: "big", loaded: loaded}
+	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return eng, nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, []string{"-config", cfgPath, "-socket", sock}, io.Discard, build) }()
+
+	// merud answers a ping while the answer model still loads.
+	up := false
+	for range 100 {
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}, nil) {
+			up = err == nil && ev.Type == rpc.EventDone
+		}
+		if up {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !up {
+		t.Fatal("merud never answered a ping during the load")
+	}
+
+	// A question during the load waits for it.
+	answered := make(chan string, 1)
+	go func() {
+		var answer strings.Builder
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpAsk, Text: "ping?"}, nil) {
+			if err == nil && ev.Type == rpc.EventToken {
+				answer.WriteString(ev.Text)
+			}
+		}
+		answered <- answer.String()
+	}()
+	select {
+	case got := <-answered:
+		t.Fatalf("the question was answered (%q) before the answer model loaded", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(loaded)
+	select {
+	case got := <-answered:
+		if got != "pong" {
+			t.Errorf("answer = %q, want pong", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the question never got an answer after the load")
+	}
+
+	eng.mu.Lock()
+	events := slices.Clone(eng.events)
+	warmMsgs, warmOpts := eng.slowCall.msgs, eng.slowCall.opts
+	eng.mu.Unlock()
+	if n := slices.Index(events, "generated big"); n < 0 || slices.Index(events, "stream big") < n {
+		t.Errorf("events = %v, want the load to end before the answer streams", events)
+	}
+	var loads int
+	for _, ev := range events {
+		if ev == "generate big" {
+			loads++
+		}
+	}
+	if loads != 1 {
+		t.Errorf("the answer model loaded %d times, want 1: %v", loads, events)
+	}
+	if !warmOpts.NoThink || warmOpts.MaxTokens != 1 {
+		t.Errorf("warm-up options = %+v, want one token with thinking off", warmOpts)
+	}
+	if len(warmMsgs) != 2 || warmMsgs[0].Role != engine.RoleSystem || !strings.HasPrefix(warmMsgs[0].Content, agent.DefaultSystemPrompt) {
+		t.Errorf("warm-up messages = %+v, want the system prompt and one question", warmMsgs)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("run = %v, want nil after shutdown", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run didn't return after cancel")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "merud.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `msg="answer model warm" model=big`) {
+		t.Errorf("log lacks the answer model warm line:\n%s", raw)
 	}
 }
 
