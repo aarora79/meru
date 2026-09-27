@@ -60,8 +60,8 @@ func UsageTable(windows []UsageWindow) [][]string {
 // ModelUsageNote is the line both clients print under the per-model
 // table: what the numbers cover, and what counts as a bad call.
 const ModelUsageNote = "Every answered question, by the model that wrote the answer. " +
-	"Bad calls are tool calls the model wrote that Meru couldn't run as written; " +
-	"capped turns used every round and wrote no answer."
+	"CALLS counts tool calls, and BAD CALLS the ones Meru couldn't run as the model wrote them. " +
+	"CAPPED counts turns that used every round and wrote no answer."
 
 // unknownModel names the row of turns from before the transcripts named
 // their model.
@@ -70,14 +70,17 @@ const unknownModel = "(not recorded)"
 // ModelUsageTable returns the per-model windows of an OpUsage reply with
 // Kind UsageByModel as rows of cells, a header row first:
 //
-//	"MODEL"                  "TURNS"  "TTFT p50"  "TOK/S"  "TOOL CALLS"  "BAD CALLS"  "CAPPED"
-//	"qwen3.6:35b-a3b-mxfp8"  "41"     "820ms"     "24.1"   "63"          "2"          "1"
+//	"MODEL"                  "TURNS"  "TTFT p50"  "TOK/S"  "CALLS"  "BAD CALLS"  "CAPPED"
+//	"qwen3.6:35b-a3b-mxfp8"  "41"     "820ms"     "24.1"   "63"     "2"          "1"
+//
+// CALLS is short for tool calls, so the table fits a chat box 80 columns
+// wide.
 //
 // TTFT p50 shows "—" for a model with no turn that wrote text, and TOK/S
 // for one with no writing time; turns from before the transcripts named
 // their model come under "(not recorded)".
 func ModelUsageTable(windows []UsageWindow) [][]string {
-	rows := [][]string{{"MODEL", "TURNS", "TTFT p50", "TOK/S", "TOOL CALLS", "BAD CALLS", "CAPPED"}}
+	rows := [][]string{{"MODEL", "TURNS", "TTFT p50", "TOK/S", "CALLS", "BAD CALLS", "CAPPED"}}
 	for _, w := range windows {
 		model := w.Model
 		if model == "" {

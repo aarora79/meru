@@ -1,0 +1,20 @@
+Meru मेरु lite · minicpm5:2b · 2637 docs                               ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+  ╭────────────────────────────────────────────────────────────────────────────╮
+  │ Usage by model                                                             │
+  │                                                                            │
+  │ MODEL                  TURNS  TTFT p50  TOK/S  CALLS  BAD CALLS  CAPPED    │
+  │ qwen3.6:35b-a3b-mxfp8     41     820ms   24.1     63          2       1    │
+  │ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0    │
+  │ (not recorded)            12         —      —      4          0       0    │
+  │                                                                            │
+  │ Every answered question, by the model that wrote the answer. CALLS counts  │
+  │ tool calls, and BAD CALLS the ones Meru couldn't run as the model wrote    │
+  │ them. CAPPED counts turns that used every round and wrote no answer.       │
+  ╰────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+esc/q close · ctrl+c stop/quit

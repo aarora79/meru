@@ -1,0 +1,20 @@
+Meru मेरु lite · qwen3.6:35b-a3b-mxfp8 · 2637 docs           qwen-moe  ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+  ╭───────────────────────────────────────────────────────────────────────────╮
+  │ Model sets                                                                │
+  │                                                                           │
+  │   MODEL SET    MAIN                      SIZE   THINK     STATE           │
+  │ → qwen-moe     qwen3.6:35b-a3b-mxfp8    38 GB   off       loaded          │
+  │   gemma-moe    gemma4:26b-mxfp8         28 GB   off       on disk         │
+  │   qwen-dense   qwen3.8:27b-mlx              —   off       not pulled      │
+  │                                                                           │
+  │ /model <name> to switch · /model save to make the current one the default │
+  ╰───────────────────────────────────────────────────────────────────────────╯
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+esc/q close · ctrl+c stop/quit

@@ -51,6 +51,8 @@ func (m Model) View() string {
 		pane = m.meBoxView(m.width, m.conversation.Height)
 	case m.mcpBox != nil:
 		pane = m.mcpBoxView(m.width, m.conversation.Height)
+	case m.modelBox != nil:
+		pane = m.modelBoxView(m.width, m.conversation.Height)
 	}
 	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
 }
@@ -87,12 +89,14 @@ func (m Model) helpView(keys []key.Binding) string {
 
 // header draws the top line: the name, the setup details (profile, main
 // model, the index's size, the memory count, a "no profile" marker) and the
-// session on the left, and on the right the last hour's usage, dim, and
-// whether merud is reachable.
+// session on the left, and on the right the model set in use, the last
+// hour's usage, dim, and whether merud is reachable. The set's name sits
+// by the numbers so an answer is never put down to the wrong model.
 //
 // When the line is too narrow, parts go in order of how little they are
 // missed. The usage goes first: /usage shows it in full, and the left side
-// says what Meru is running. The index's vector count and size go next,
+// says what Meru is running. The set's name stays, as the status does:
+// the details shrink around it. The index's vector count and size go next,
 // with the memory count: cutting the bracket mid-way would leave it open,
 // and `meru index -status` and `meru memory list` show all three. Then the
 // details shrink with "…", from the session back, and last they disappear.
@@ -120,8 +124,11 @@ func (m Model) header() string {
 	}
 	details := m.details(true)
 	right := status
+	if set := m.activeSet(); set != "" {
+		right = m.style.brand.Render(set) + "  " + status
+	}
 	if u := lastHour(m.usage); u != "" {
-		if withUsage := m.style.dim.Render(u) + "  " + status; fits(details, withUsage) {
+		if withUsage := m.style.dim.Render(u) + "  " + right; fits(details, withUsage) {
 			right = withUsage
 		}
 	}
@@ -156,12 +163,22 @@ func (m Model) details(sizes bool) string {
 		noProfile = "no profile"
 	}
 	var parts []string
-	for _, p := range []string{m.info.Profile, m.info.Model, docCount(m.index, sizes), memoryCount(m.index, sizes), noProfile, shortSession(m.session)} {
+	for _, p := range []string{m.info.Profile, m.answerModel(), docCount(m.index, sizes), memoryCount(m.index, sizes), noProfile, shortSession(m.session)} {
 		if p != "" {
 			parts = append(parts, p)
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+// answerModel returns the model that answers now: merud's word when it
+// has sent its models, since a switch changes it, and config's main model
+// until then.
+func (m Model) answerModel() string {
+	if m.models != nil && m.models.Main != "" {
+		return m.models.Main
+	}
+	return m.info.Model
 }
 
 // shortSession trims a session ID for the header. IDs look like

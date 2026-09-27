@@ -157,6 +157,9 @@ type Model struct {
 	// usage is merud's last answer to OpUsage; nil until one answers, and
 	// when merud doesn't know the op. The header shows its 1h window.
 	usage []rpc.UsageWindow
+	// models is merud's last answer to a model op; nil until one answers.
+	// The header shows the answer model and the model set in use from it.
+	models *rpc.ModelsInfo
 
 	look look
 	// home is the home folder, for turning "~/..." source paths into
@@ -205,6 +208,8 @@ type Model struct {
 	meBox *meBox
 	// mcpBox is the open /mcp box, or nil, and works the same way.
 	mcpBox *mcpBox
+	// modelBox is the open /model box, or nil, and works the same way.
+	modelBox *modelBox
 	// notice is a dim line that takes the help line's place until the next
 	// key press, such as the answer to an unknown /command.
 	notice string
@@ -282,7 +287,7 @@ func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
 	}
-	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), refreshAfter(refreshScanning))
+	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), refreshAfter(refreshScanning))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -334,10 +339,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mcpMsg:
 		m.applyMCP(msg)
 		return m, nil
+	case modelsMsg:
+		m.applyModels(msg)
+		return m, nil
 	case refreshMsg:
 		// Check now, and book the next check. Only this branch books one,
 		// so there is one chain of checks however many answers arrive.
-		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), refreshAfter(nextRefresh(m.index)))
+		// The models come too: another client, such as the desktop app,
+		// may have switched the answer model.
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), refreshAfter(nextRefresh(m.index)))
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
@@ -395,7 +405,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.approvalKey(msg)
 		return m, nil
 	case m.boxOpen():
-		// So do the /usage, /me and /mcp boxes, until Esc or q closes them.
+		// So do the /usage, /me, /mcp and /model boxes, until Esc or q
+		// closes them.
 		m.boxKey(msg)
 		return m, nil
 	case key.Matches(msg, m.keys.Send):

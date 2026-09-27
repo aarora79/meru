@@ -109,7 +109,7 @@ func TestModelUsageTable(t *testing.T) {
 		{Turns: 3},
 	}
 	want := [][]string{
-		{"MODEL", "TURNS", "TTFT p50", "TOK/S", "TOOL CALLS", "BAD CALLS", "CAPPED"},
+		{"MODEL", "TURNS", "TTFT p50", "TOK/S", "CALLS", "BAD CALLS", "CAPPED"},
 		{"qwen3.6:35b-a3b-mxfp8", "41", "820ms", "24.1", "63", "2", "1"},
 		{"qwen3.8:27b-mlx", "35", "12s", "14.2", "51", "4", "3"},
 		{"(not recorded)", "3", "—", "—", "0", "0", "0"},

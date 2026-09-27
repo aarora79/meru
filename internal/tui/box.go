@@ -1,7 +1,8 @@
 // This file holds what the boxes that open over the conversation share:
-// the /usage box, the /me box and the /mcp box. Each takes the conversation's place at
-// the same size, holds the keys until Esc or q closes it, and draws a
-// title, a body and a dim note inside a teal border.
+// the /usage box, the /me box, the /mcp box and the /model box. Each takes
+// the conversation's place at the same size, holds the keys until Esc or q
+// closes it, and draws a title, a body and a dim note inside a teal
+// border.
 
 package tui
 
@@ -12,9 +13,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// boxOpen reports whether the /usage, /me or /mcp box is open.
+// boxOpen reports whether the /usage, /me, /mcp or /model box is open.
 func (m *Model) boxOpen() bool {
-	return m.usageBox != nil || m.meBox != nil || m.mcpBox != nil
+	return m.usageBox != nil || m.meBox != nil || m.mcpBox != nil || m.modelBox != nil
 }
 
 // closeBox closes whichever box is open and gives the input its cursor
@@ -23,6 +24,7 @@ func (m *Model) closeBox() {
 	m.usageBox = nil
 	m.meBox = nil
 	m.mcpBox = nil
+	m.modelBox = nil
 	m.input.Focus()
 }
 

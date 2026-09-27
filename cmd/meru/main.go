@@ -13,6 +13,7 @@
 //	meru [-socket path] tools            list the tools the model may use
 //	meru [-socket path] log [-n N] [-v]  show the latest tool calls
 //	meru [-socket path] usage            show how much you use Meru
+//	meru [-socket path] model            the model sets; also model use <name>, model save
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] setup user       tell Meru who you are
 //	meru config template                 print every config key with its default
@@ -23,8 +24,8 @@
 //	meru [-socket path] mcp add ...      add an MCP server; also remove
 //	meru [-socket path] check [file]     rerun your own questions and grade the answers
 //
-// A question whose first word is ping, chat, index, tools, log, usage, setup,
-// memory, skills, mcp or check needs quotes, so meru reads it as a question and not
+// A question whose first word is ping, chat, index, tools, log, usage, model,
+// setup, memory, skills, mcp or check needs quotes, so meru reads it as a question and not
 // as a command. So does the question "config template".
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
@@ -81,6 +82,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru tools            list the tools the model may use
   meru log [-n N] [-v]  show the latest tool calls, newest first
   meru usage            show how much you use Meru
+  meru model            show the model sets and which one is in use
+  meru model use <name> [--rebuild]
+                        switch to a model set until merud stops
+  meru model save       make the models in use the default in config.toml
   meru setup            set up Ollama, the models, config and tools
   meru setup user       tell Meru who you are
   meru config template  print every config key with its default
@@ -141,6 +146,8 @@ flags:`)
 		err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	case flags.NArg() == 1 && flags.Arg(0) == "usage":
 		err = usageCmd(ctx, *socket, stdout)
+	case flags.Arg(0) == "model":
+		err = modelCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "setup":
 		err = setupCmd(ctx, *socket, terminal(stdout))
 	case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
