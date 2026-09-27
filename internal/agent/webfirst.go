@@ -226,8 +226,8 @@ var quotedPattern = regexp.MustCompile(`["“]([^"”\n]{2,60})["”]`)
 //   - a term of one to maxQuotedWords words in double quotes: `what is
 //     "Acme Flow"?` gives "Acme Flow". A longer quote is a sentence, such
 //     as a message to rewrite or send, and doesn't count;
-//   - a run of capitalised words, such as "Amazon Quick" in "tell me about
-//     Amazon Quick". A single capitalised word that starts a sentence
+//   - a run of capitalised words, such as "Contoso Relay" in "tell me about
+//     Contoso Relay". A single capitalised word that starts a sentence
 //     doesn't count, since every sentence starts with one; a run of two or
 //     more does ("Acme Flow is new"). A single word needs three characters
 //     or more, so "Q3" and "Go" don't count;

@@ -1012,7 +1012,7 @@ words, or one word of three or more characters that doesn't start a sentence.
 they sit.
 
 ```text
-"tell me about Amazon Quick"   ->  "Amazon Quick"
+"tell me about Contoso Relay"   ->  "Contoso Relay"
 "Kubernetes is hard to learn"  ->  ""  (one word at the start of a sentence)
 "I'm planning a trip in May"   ->  ""  ("I" and "May" are in the stop list)
 ```

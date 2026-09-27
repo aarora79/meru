@@ -109,7 +109,7 @@ func TestNamedThing(t *testing.T) {
 		want     string
 	}{
 		// Runs of capitalised words.
-		{"tell me about Amazon Quick", "Amazon Quick"},
+		{"tell me about Contoso Relay", "Contoso Relay"},
 		{"How does Acme Flow compare with Meru?", "Acme Flow"},
 		{"What Is Acme Flow", "Acme Flow"}, // a title's question words don't count
 		{"Acme Flow is new, what does it do?", "Acme Flow"},
@@ -174,7 +174,7 @@ func TestAboutTheUser(t *testing.T) {
 		{"when is my Lisbon trip?", true},
 		{"is the Lisbon flat ours for the week?", true},
 		{"what is Acme Flow", false},
-		{"tell me about Amazon Quick", false},
+		{"tell me about Contoso Relay", false},
 		{"myopia and Acme Lenses", false}, // "myopia" isn't "my"
 	}
 	for _, tt := range tests {
