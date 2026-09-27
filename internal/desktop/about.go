@@ -33,7 +33,7 @@ const (
 
 // License names the license Meru's code is under, as the LICENSE file at
 // the top of the repository gives it.
-const License = "GNU Affero General Public License v3.0 (AGPL-3.0)"
+const License = "Apache License 2.0"
 
 // About is what the Library's About section shows beside its own prose.
 type About struct {

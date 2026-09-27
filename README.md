@@ -258,17 +258,14 @@ call.
 
 ## License
 
-Meru is free software under the GNU Affero General Public License, version 3
-(AGPL-3.0). [LICENSE](LICENSE) holds the full text. You may use, study, change and
-share Meru. If you share a changed copy, or let people use a changed copy over a
-network, you must offer them its source code under the same license.
+Apache License 2.0. [LICENSE](LICENSE) holds the full text, and [NOTICE](NOTICE)
+the copyright line. You may use, change and ship Meru, in your own products
+included, as long as you keep the notices.
 
-A company that wants to ship Meru inside a closed product, or change it without
-publishing the changes, can buy a commercial license instead. Ask through the
-author's GitHub profile, [@aarora79](https://github.com/aarora79).
+Meru is a personal project. It is not affiliated with, endorsed by, or supported by
+my employer.
 
-Copies of Meru taken before 26 September 2026 came under the MIT license, and they
-keep it. Contributions need the agreement in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions come under the agreement in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## The name
 
