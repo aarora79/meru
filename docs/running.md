@@ -127,9 +127,15 @@ Install a release, or build Meru from source. A release needs no Go.
 
 Each release on GitHub holds `meru` and `merud` for five platforms and
 `Meru.app` for a Mac with Apple silicon, with a `SHA256SUMS` file.
-[releasing.md](releasing.md) lists the files. The repository is private for
-now, so download with `gh`, GitHub's command-line tool, signed in with an
-account that can see it (`brew install gh`, then `gh auth login`).
+[releasing.md](releasing.md) lists the files. The quickest way in is the install
+script, which downloads the latest release, checks it and asks before each step:
+
+```sh
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
+```
+
+To install by hand instead, follow the steps below; `curl -LO` or `gh release
+download` both fetch the files.
 
 On a Mac with Apple silicon (use `darwin-amd64` on an Intel Mac, which gets
 the command-line programs only):

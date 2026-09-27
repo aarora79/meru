@@ -31,6 +31,18 @@ first for any address that no search or question of yours gave.
 
 ---
 
+## Install on a Mac
+
+```sh
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
+```
+
+The script downloads the latest release and checks it against `SHA256SUMS`. It
+puts `meru` and `merud` in `~/.local/bin` and Meru.app in `/Applications`, then
+offers Ollama, the models, `meru setup` and starting `merud` at login, asking
+before each step. [docs/running.md](docs/running.md) covers Linux, Windows and
+building from source.
+
 ## What it is
 
 Meru is two Go programs. `merud` is a daemon: it runs in the background, keeps the

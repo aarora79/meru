@@ -86,8 +86,8 @@ password:
 The installer prints two lines that put `brew` on the `PATH`; ask the person to
 run them too. Check with `brew --version`.
 
-**gh**, GitHub's command-line tool. The Meru repository is private for now, so
-downloads need `gh` signed in to an account that can see it. Ask, then:
+**gh**, GitHub's command-line tool. The Meru repository is public, so the
+downloads work without it, but the GitHub step later uses it. Ask, then:
 
 ```sh
 brew install gh

@@ -206,6 +206,6 @@ gh release create "$version" \
   --title "Meru $version" \
   --verify-tag \
   "${notes_args[@]}" \
-  dist/*.tar.gz dist/*.zip dist/SHA256SUMS
+  dist/*.tar.gz dist/*.zip dist/SHA256SUMS scripts/install.sh
 
 echo "release: published https://github.com/$repo/releases/tag/$version"
