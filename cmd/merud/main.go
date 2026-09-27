@@ -231,7 +231,10 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	a.UseFolders(idx.currentFolders)
 	// A question's images come from the uploads folder through the
 	// built-in tools' Image, which refuses any other path.
-	a.UseImages(tools.bt.Image, visionCheck(eng))
+	a.UseImages(tools.bt.Image, capabilityCheck(eng, engine.Vision))
+	// An answer model that can't call tools, such as gemma3:12b, answers
+	// with none; see internal/agent/notools.go.
+	a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))
 	machine := machineLine(ctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)
@@ -247,7 +250,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// about_meru reads every source above, so merud hands it them last. It
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
-		cfg: cfg, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
+		cfg: cfg, main: a.Main, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
 		skills: sk, mem: mem, machine: machine, home: home, log: log,
 	}.facts)
 	// config.Load has checked output_dir, so expandHome fails only when
@@ -255,8 +258,11 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	outputDir, _ := expandHome(cfg.Skills.OutputDir)
 	svc := services{
 		agent: a, idx: idx, tools: tools, mems: mems, skills: sk, hist: hist, st: st, configPath: configPath,
-		save:   saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
-		models: modelService{models: cfg.Models, profile: cfg.Profile, configPath: configPath, outputDir: outputDir, eng: eng},
+		save: saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
+		models: modelService{
+			models: cfg.Models, profile: cfg.Profile, configPath: configPath, outputDir: outputDir,
+			eng: eng, answer: a, edit: tools.bt.EditConfig, log: log,
+		},
 	}
 	log.Info("listening", "socket", socketPath)
 
@@ -344,7 +350,7 @@ type services struct {
 // connection ops to the tool service, the memory ops to the memory
 // service, the skill ops to the skill service, the session ops to the
 // history service, save_file to the save service, attach_file to the
-// tool service, which holds the built-in tools, the models op to the
+// tool service, which holds the built-in tools, the two model ops to the
 // model service, and the usage op to the store. The rpc server answers
 // pings itself.
 func handler(svc services) rpc.Handler {
@@ -409,6 +415,8 @@ func handler(svc services) rpc.Handler {
 			return sk.handleSetDisabled(ctx, req, req.Op == rpc.OpSkillDisable, svc.configPath, tools.bt.EditConfig, emit)
 		case rpc.OpModels:
 			return svc.models.handleModels(ctx, emit)
+		case rpc.OpModelSet:
+			return svc.models.handleModelSet(ctx, req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

@@ -44,6 +44,81 @@ ollama pull qwen3.8:27b
 ollama pull qwen3-embedding:0.6b
 ```
 
+### Models we tried for answers
+
+The answer model, `[models] main`, writes every answer and picks the tools. In
+September 2026 we tried three on an M4 Max with 64 GB and Ollama 0.34.0, with
+MiniCPM5-2B kept as the router. The test question asked how to use `btop`, and
+made the model search the web and read pages over several rounds.
+
+| Model | Size | What Ollama lists | What we saw |
+| --- | --- | --- | --- |
+| MiniCPM5-2B, the `lite` default | 1.6 GB | tools, thinking | fast, about 55 s, but it made up command flags and misread what the tools sent back; a good router |
+| `qwen3.6:35b` | 23 GB | vision, tools, thinking | about 26 s at about 78 tokens a second; now and then a tool call Ollama can't read, or a reply with thinking and no text, which `merud` retries; the one we use now |
+| `gemma3:12b` | 8.1 GB | vision | reads pictures and answers from what it knows; Ollama gives it no tools |
+
+We also tried `qwen3.8:27b` (17 GB), the `full` profile's answer model. Its
+answer was the best grounded, with real flags from the man page, but the
+question took about five minutes: it read 80,000 tokens of web pages, and a dense
+27B model takes a long time to read a prompt. `qwen3.6:35b` is a mixture of experts: about 3B
+of its 36B parameters work on each token, so it runs faster.
+
+To download a model, and to try it in a terminal before Meru uses it:
+
+```sh
+ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+ollama run hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+
+ollama pull qwen3.6:35b
+ollama run qwen3.6:35b
+
+ollama pull gemma3:12b
+ollama run gemma3:12b
+```
+
+`ollama run` opens a chat in the terminal; type `/bye` to leave it. `ollama show
+gemma3:12b` lists what a model can do under Capabilities.
+
+**Switch the answer model** in the desktop app: Library, Models, "Use for
+answers" on the model's card. `merud` writes `[models] main` in
+`~/.meru/config.toml` and answers the next question with the new model, with no
+restart. The button stays off until Ollama has the model. Without the desktop
+app, set the name in `config.toml` and restart `merud`:
+
+```toml
+[models]
+main = "qwen3.6:35b"
+```
+
+**A model without tools**, such as `gemma3:12b`, can't read your mail, notes or
+the web, or open your files: Ollama refuses tools to it. Meru answers those
+questions from the model alone, with any excerpts the search found, and says so
+under the answer:
+
+```text
+gemma3:12b can't call tools, so Meru answered without them: no mail, calendar,
+notes, web or file tools. To use them, pick another answer model under Library,
+Models in the desktop app, or in [models] main in config.toml.
+```
+
+**Give the larger models more context.** `OLLAMA_CONTEXT_LENGTH` sets how many
+tokens of context Ollama loads a model with, and the `CONTEXT` column of `ollama
+ps` shows what each loaded model got. For `qwen3.6:35b` and `qwen3.8:27b` we set
+it to 32768. On macOS, where the Ollama app starts the server, run this, then
+quit and start Ollama:
+
+```sh
+launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
+```
+
+`launchctl setenv` lasts until the Mac restarts, so run it again after each
+restart. On Linux, or to start the server yourself, set the variable in the
+shell that runs it:
+
+```sh
+OLLAMA_CONTEXT_LENGTH=32768 ollama serve
+```
+
 ## 3. Build Meru
 
 ```sh
@@ -358,8 +433,12 @@ the list. They run at once, even while an answer runs, and never reach the model
   dialog, or remove one; Meru indexes or drops its files right away.
 - **About you**: what Meru knows about you, to add, edit or forget.
 - **Skills**: each skill, on or off.
-- **Models**: the models and what Ollama holds now. To change a model, edit
-  `config.toml`, run `ollama pull`, and restart `merud`.
+- **Models**: the models and what Ollama holds now, and a card for each answer
+  model we tried (see [Models we tried for answers](#models-we-tried-for-answers)):
+  its size, what it can do, what it did well and badly, and its `ollama pull`
+  and `ollama run` commands with Copy buttons. "Use for answers" switches the
+  answer model with no restart. To change the router or the embedding model,
+  edit `config.toml`, run `ollama pull`, and restart `merud`.
 - **Activity**: every tool call, with its arguments and result behind Details.
 - **Usage**: the numbers `meru usage` prints.
 - **About**: what Meru is and where its name comes from, what it does, the app's

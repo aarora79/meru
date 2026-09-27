@@ -148,8 +148,15 @@ const (
 	OpSkillEnable  Op = "skill_enable"
 	OpSkillDisable Op = "skill_disable"
 	// OpModels asks which models config names and which ones Ollama holds
-	// in memory now. The reply is one "models" event and "done".
+	// in memory now, with the models we tried as the answer model. The
+	// reply is one "models" event and "done".
 	OpModels Op = "models"
+	// OpModelSet makes the model named Request.ID the answer model: merud
+	// writes it to [models] main and answers the next question with it.
+	// merud accepts only a model from the list OpModels sends, and only
+	// once Ollama has it. The reply is one "models" event, as OpModels
+	// sends, with a Warning when the model can't call tools, and "done".
+	OpModelSet Op = "model_set"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -248,8 +255,10 @@ const (
 	// EventNotice carries a warning about the answer, in Text, for the
 	// client to show under it. merud sends it after the last "token" and
 	// before "done", when the answer claims an action, such as "I've moved
-	// the folder", and no tool call in the turn succeeded. A client that
-	// doesn't know the type skips it, as it does any unknown type.
+	// the folder", and no tool call in the turn succeeded, or when the
+	// answer model can't call tools and the turn had to go without them. A
+	// client that doesn't know the type skips it, as it does any unknown
+	// type.
 	EventNotice EventType = "notice"
 	// EventToolCall says the model asked for a tool, in Tool, before
 	// dispatch decides whether it runs.

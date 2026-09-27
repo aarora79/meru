@@ -36,7 +36,9 @@ flowchart LR
 The interface and the types that pass through it: `Message`, `Options`,
 `Completion`, `Delta`, `Usage`, and the log-probability types the router reads.
 `Message.Images` holds the raw bytes of each image on a user message, and the
-constant `Vision` names the capability a model needs to read them. A
+constant `Vision` names the capability a model needs to read them. `ToolUse`
+names the one it needs to take a list of tools; Ollama refuses tools to a model
+without it, such as `gemma3:12b`. A
 Go *interface* is a list of method signatures; any type with those methods counts
 as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 
@@ -143,10 +145,13 @@ length under the model's architecture, as `qwen35moe.context_length`, so
 license and the list of tensors, over 100 KB for a large model; the decoder
 skips every field `showResponse` doesn't name.
 
-`Capabilities(ctx, model)` returns `Details(ctx, model).Capabilities`. Neither
-is one of the four `Engine` methods: only a question with images asks
-`Capabilities`, only `about_meru` asks `Details`, and `merud` hands each caller
-the one method it needs. The answer for each model goes in a map, `shown`, so a
+`Capabilities(ctx, model)` returns `Details(ctx, model).Capabilities`.
+`Pulled(ctx)` sends `GET /api/tags` and returns the names of the models Ollama
+has on disk, such as `gemma3:12b` and `nomic-embed-text:latest`. None of the
+three is one of the four `Engine` methods: only a question with images asks
+`Capabilities`, only `about_meru` and the Library's models ask `Details`, only
+the Library's models ask `Pulled`, and `merud` hands each caller the one method
+it needs. The answer for each model goes in a map, `shown`, so a
 second question about the same model doesn't wait on Ollama; a failed call
 stores nothing. Several turns can ask at once, so a `sync.Mutex`, `mu`, sits
 next to the map and every read and write takes it. `clone` hands the caller a

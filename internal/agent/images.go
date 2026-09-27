@@ -88,11 +88,12 @@ func (a *Agent) loadImages(req rpc.Request) ([]string, [][]byte, error) {
 // fails when the check itself fails, as when Ollama is down or the model
 // isn't pulled, or when emit fails.
 func (a *Agent) checkVision(ctx context.Context, t *turn) error {
-	ok, err := a.vision(ctx, a.models.Main)
+	model := a.Main()
+	ok, err := a.vision(ctx, model)
 	if err != nil {
-		return fmt.Errorf("check whether %s can look at images: %w", a.models.Main, err)
+		return fmt.Errorf("check whether %s can look at images: %w", model, err)
 	}
-	a.log.DebugContext(ctx, "vision checked", "model", a.models.Main, "vision", ok, "images", len(t.images))
+	a.log.DebugContext(ctx, "vision checked", "model", model, "vision", ok, "images", len(t.images))
 	if ok {
 		return nil
 	}

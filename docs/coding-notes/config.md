@@ -285,6 +285,24 @@ blocks can't come from `catalog.Block` here, because `catalog` imports
 `config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
 the catalog package checks it against `Block`'s output.
 
+### known.go
+
+`KnownModels()` lists the three models we tried as the answer model:
+MiniCPM5-2B, `gemma3:12b` and `qwen3.6:35b`. Each `KnownModel` holds the name
+Ollama gives it, a label, its size on disk, one line on what it did well and one
+on what it did badly, and the capabilities Ollama's `/api/show` listed for it.
+`merud` sends the list to the desktop app's Library, Models, which offers each
+one with its `ollama pull` and `ollama run` commands and a "Use for answers"
+button. `FindKnownModel(name)` looks one up; `merud` refuses to switch to a name
+it doesn't find.
+
+The list returns a new slice on each call, as `BuiltinTools()` does, so no
+caller can change it for the next. It names models in code, as the profiles do,
+because it records what we tested; `config.toml` still says which model runs.
+`TestKnownModels` checks every field is set, that the names are the three we
+tried, and that the lite profile's main model is one of them, so the Library can
+always switch back to it.
+
 ### loopback.go
 
 `checkLoopbackURL` refuses any Ollama or OTLP address that could reach another

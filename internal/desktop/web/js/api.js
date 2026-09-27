@@ -49,6 +49,7 @@ export const bridge = {
   skills: () => call("Skills"),
   setSkill: (name, on) => call("SetSkill", name, on),
   models: () => call("Models"),
+  useModel: (name) => call("UseModel", name),
   activity: () => call("Activity"),
   usage: () => call("Usage"),
   // The Library's About section (about.go).

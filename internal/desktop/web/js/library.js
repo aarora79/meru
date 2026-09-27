@@ -769,34 +769,124 @@ function drawSkills(body, sv) {
 
 // ---- Models ----
 
-// models draws the models config names and what Ollama holds.
+// CAPABILITIES are the capabilities a model card shows, in this order, and
+// the words for each. "completion" is every chat model's, so it says
+// nothing.
+const CAPABILITIES = [
+  ["vision", "Reads pictures"],
+  ["tools", "Calls tools"],
+  ["thinking", "Thinks first"],
+];
+
+// NO_TOOLS says what a model without tools means for Meru.
+const NO_TOOLS = "Meru can't use tools with this model; questions that need mail, files or the web will fail. " +
+  "Meru answers them from the model alone and says so under the answer.";
+
+// models draws the models config names, what Ollama holds, and the models
+// we tried as the answer model.
 function models(body) {
   bridge.models().then(
-    (m) => {
-      body.replaceChildren();
-      intro(body, "The open-weight models Meru runs in Ollama on this Mac. Nothing goes to a model anywhere else.");
-      const loaded = new Set(m.loaded || []);
-      const dl = el("dl", "facts");
-      const fact = (label, value, note) => {
-        dl.append(el("dt", "", label));
-        const dd = el("dd", "", value);
-        if (note) dd.append(el("span", "dim", " · " + note));
-        dl.append(dd);
-      };
-      const state = (name) => (loaded.has(name) ? "loaded" : "not loaded now; Ollama loads it when needed");
-      fact("Profile", m.profile);
-      fact("Answer model", m.main, state(m.main));
-      fact("Fast model (router)", m.fast, state(m.fast));
-      fact("Embedding model", m.embed, state(m.embed));
-      fact("Ollama", m.runtime_version ? m.runtime_version : "didn't answer", m.err || "");
-      body.append(dl);
-      body.append(el("h2", "section-head", "To change them"));
-      body.append(el("p", "", "Set profile, or the models under [models], in " + m.config_path +
-        ", then restart merud. Fetch a model first with ollama pull, for example:"));
-      body.append(copyBlock("ollama pull " + m.main));
-    },
+    (m) => drawModels(body, m),
     (err) => fail(body, err),
   );
+}
+
+// drawModels draws the Models section from m, merud's models reply.
+function drawModels(body, m) {
+  body.replaceChildren();
+  intro(body, "The open-weight models Meru runs in Ollama on this Mac. Nothing goes to a model anywhere else.");
+  const loaded = new Set(m.loaded || []);
+  const dl = el("dl", "facts");
+  const fact = (label, value, note) => {
+    dl.append(el("dt", "", label));
+    const dd = el("dd", "", value);
+    if (note) dd.append(el("span", "dim", " · " + note));
+    dl.append(dd);
+  };
+  const state = (name) => (loaded.has(name) ? "loaded" : "not loaded now; Ollama loads it when needed");
+  fact("Profile", m.profile);
+  fact("Answer model", m.main, state(m.main));
+  fact("Fast model (router)", m.fast, state(m.fast));
+  fact("Embedding model", m.embed, state(m.embed));
+  fact("Ollama", m.runtime_version ? m.runtime_version : "didn't answer", m.err || "");
+  body.append(dl);
+
+  body.append(el("h2", "section-head", "Models you can use for answers"));
+  body.append(el("p", "", "We tried these three as the answer model in September 2026, on an M4 Max with 64 GB, " +
+    "with MiniCPM5-2B as the router. Any of them can write the answers. A switch takes effect on the next question, " +
+    "with no restart; the router and the embedding model stay as they are."));
+  const cards = el("div", "cards");
+  for (const c of m.choices || []) cards.append(modelCard(body, c));
+  body.append(cards);
+  body.append(el("p", "card-note", "We also tried qwen3.8:27b (17 GB, dense). Its answers were the best grounded, " +
+    "but a question that read web pages took about five minutes, so it isn't offered here."));
+
+  body.append(el("h2", "section-head", "To change them by hand"));
+  body.append(el("p", "", "Set profile, or the models under [models], in " + m.config_path +
+    ", then restart merud. The larger models need a longer context than Ollama gives by default; " +
+    "run this before Ollama starts, and again after each restart of the Mac:"));
+  body.append(copyBlock("launchctl setenv OLLAMA_CONTEXT_LENGTH 32768"));
+}
+
+// modelCard draws one model we tried: what it does well and badly, what
+// it can do, whether Ollama has it, the commands to fetch it and try it,
+// and the "Use for answers" button.
+function modelCard(body, c) {
+  const card = el("article", "card model");
+  card.setAttribute("aria-label", c.label);
+  const head = el("div", "card-head");
+  head.append(el("h3", "", c.label));
+  const answering = c.tiers.includes("main");
+  let state = c.installed ? "Downloaded" : "Not downloaded";
+  if (answering) state = "Answering now";
+  head.append(el("span", "pill " + (c.installed ? "ok" : "down"), state));
+  card.append(head);
+
+  const sub = [c.name, c.size];
+  if (c.tiers.includes("fast")) sub.push("the router uses it");
+  card.append(el("p", "card-sub", sub.join(" · ")));
+
+  const caps = el("div", "card-actions");
+  caps.setAttribute("aria-label", "What it can do");
+  for (const [name, words] of CAPABILITIES) {
+    if (c.capabilities.includes(name)) caps.append(el("span", "pill ok", words));
+  }
+  const tools = c.capabilities.includes("tools");
+  if (!tools) caps.append(el("span", "pill down", "No tools"));
+  card.append(caps);
+
+  card.append(el("p", "", c.good));
+  card.append(el("p", "card-note", c.bad));
+  if (!tools) card.append(el("p", "card-error", NO_TOOLS));
+
+  card.append(el("p", "card-sub", c.installed ? "Downloaded. To fetch it again:" : "Download it first:"));
+  card.append(copyBlock(c.pull));
+  card.append(el("p", "card-sub", "Try it in a terminal:"));
+  card.append(copyBlock(c.run));
+
+  if (answering) return card;
+  const use = button("Use for answers", { className: "button primary" });
+  if (!c.installed) {
+    use.disabled = true;
+    use.title = "Run " + c.pull + " first";
+  }
+  use.addEventListener("click", () => {
+    use.disabled = true;
+    bridge.useModel(c.name).then(
+      (next) => {
+        drawModels(body, next);
+        lib.pages.refreshStatus();
+        const done = c.label + " writes the answers from the next question on.";
+        lib.pages.notice(next.warning ? done + " " + next.warning : done);
+      },
+      (err) => {
+        use.disabled = false;
+        lib.pages.notice(errorText(err));
+      },
+    );
+  });
+  card.append(use);
+  return card;
 }
 
 // ---- Activity ----

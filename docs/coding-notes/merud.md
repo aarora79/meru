@@ -559,16 +559,20 @@ The event's `Kind` passes on what `Upload` found, `image` or `file`. The copy is
 the user's act, not the model's, so it skips `dispatch`; the `read_file` call
 that later reads a file's copy goes through it.
 
-The same file holds `visionCheck`, which `run` hands the agent with
-`a.UseImages(tools.bt.Image, visionCheck(eng))`. The agent reads a question's
-images through the built-in tools' `Image`, which refuses any path outside the
-uploads folder, and asks `visionCheck` whether the main model can look at them.
-`visionCheck` needs `OllamaEngine.Capabilities`, which sits outside the
+The same file holds `capabilityCheck(eng, capability)`, which `run` hands the
+agent twice: `a.UseImages(tools.bt.Image, capabilityCheck(eng, engine.Vision))`
+and `a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))`. The agent reads a
+question's images through the built-in tools' `Image`, which refuses any path
+outside the uploads folder, and asks the vision check whether the main model
+can look at them. It asks the tools check whether the main model can take a
+list of tools at all (see [agent](agent.md), "Answer models without tools").
+`capabilityCheck` needs `OllamaEngine.Capabilities`, which sits outside the
 `Engine` interface, so it asks with a *type assertion*:
 `oe, ok := eng.(*engine.OllamaEngine)` gives the concrete engine and `ok`
-true when `eng` holds one. The tests' fake engine isn't one, so `visionCheck`
-returns nil, and the agent then refuses questions with images rather than
-send them to a model that might not see them.
+true when `eng` holds one. The tests' fake engine isn't one, so
+`capabilityCheck` returns nil: the agent then refuses questions with images
+rather than send them to a model that might not see them, and offers tools
+without a check.
 
 ### merud: about.go
 
@@ -582,7 +586,8 @@ Each fact comes from a place `merud` already keeps:
 
 | Fact | Source |
 | --- | --- |
-| profile, the three models | `cfg`, as `merud` started with it |
+| profile, the fast and embed models | `cfg`, as `merud` started with it |
+| the answer model | `main`, which is the agent's `Main`, since the Library can switch it |
 | Ollama's version | `eng.Info`, at most 3 seconds |
 | the main model's capabilities, size, quantization, context | `Details`, through the `modelDetailer` interface, at most 3 seconds |
 | the computer | the `machineLine` the prompt carries |
@@ -608,10 +613,36 @@ the plain env value nor the memory's text.
 
 ### merud: models.go
 
-`modelService.handleModels` answers `models` with the profile and the three models
-from config, and asks the engine's `Info` for the Ollama version and the models it
-holds, waiting at most 3 seconds. A runtime that doesn't answer leaves the list
-empty and says why in `Err`.
+This file answers the Library's two model ops. `modelService.handleModels`
+answers `models`, and `info` gathers the reply: the profile, the fast and embed
+models from config, and the answer model from the agent's `Main`, since
+`model_set` can change it. It asks the engine's `Info` for the Ollama version
+and the models it holds, and waits at most 3 seconds. A runtime that doesn't
+answer leaves the list empty and says why in `Err`.
+
+`info` also fills `Choices` from `config.KnownModels()`, the three models we
+tried as the answer model. For each, `Pulled` (GET `/api/tags`) says whether
+Ollama has it, and for one it has, `Details` gives Ollama's own list of what it
+can do; one it lacks keeps the list from `known.go`. `Tiers` names `main` and
+`fast` where the model fills them, and `Pull` and `Run` hold the two commands the
+page shows. Both engine methods sit outside the `Engine` interface, so
+`modelService` reaches them with a type assertion, `m.eng.(modelLister)`, as
+`about.go` does for `Details`.
+
+`handleModelSet` answers `model_set`, the Library's "Use for answers" button.
+When you pick `gemma3:12b` it:
+
+1. refuses a name that isn't on the known list, and one `Pulled` doesn't list,
+   with `ollama pull gemma3:12b` in the error;
+2. writes `main = "gemma3:12b"` with `catalog.SetTableString`, inside
+   `edit`, which is `builtin.Tools.EditConfig`: the lock every writer of
+   `config.toml` in `merud` holds;
+3. calls `SetMain` on the agent, so the next question goes to Gemma;
+4. replies with the new `info`, and `noToolsWarning` in `Warning`, since
+   Ollama lists no `tools` for Gemma.
+
+`answerModel` is the interface for step 3, with the two methods `Main` and
+`SetMain`. `*agent.Agent` has both; the tests pass a small struct.
 
 ### merud: handler
 
@@ -1139,7 +1170,7 @@ that says why.
 `image` back, then sends `ask` requests that name the original outside
 uploads, a symbolic link inside it, six images, and the good copy on a merud
 whose fake engine can't check for vision. Each fails with its reason, and none
-starts a session. `TestVisionCheck` runs `visionCheck` against the fake
+starts a session. `TestCapabilityCheck` runs both checks against the fake
 Ollama's `/api/show`.
 
 `skills_test.go` checks the skill service: the first-run install, a skill added

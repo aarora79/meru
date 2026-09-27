@@ -133,7 +133,7 @@ argv        = ["df", "-h"]
 	}
 	home, _ := os.UserHomeDir()
 	tools.bt.UseAbout(aboutService{
-		cfg: cfg, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
+		cfg: cfg, main: func() string { return cfg.Models.Main }, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
 		skills: sk, mem: mem, machine: "The user's computer: macOS 26.0 (arm64), Apple M4 Max, 64 GB memory.",
 		home: home, log: log,
 	}.facts)
@@ -147,7 +147,7 @@ argv        = ["df", "-h"]
 	t.Logf("about_meru said:\n%s", text)
 	for _, want := range []string{
 		"Profile: lite.",
-		"Ollama 0.34.0 runs every model on this computer",
+		"Ollama runs every model on this computer; no model runs in the cloud.\nOllama version: 0.34.0\n",
 		"Answer model (main): qwen3.6:35b.",
 		"36.0B parameters, Q4_K_M, a context of 262144 tokens. It can: vision, tools, thinking.",
 		"Fast model: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M.",

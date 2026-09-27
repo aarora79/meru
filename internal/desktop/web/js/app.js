@@ -156,6 +156,7 @@ const pages = {
   },
   notice,
   status: () => state.status,
+  refreshStatus: () => loadStatus(),
   openLibrary: (section, focus) => goLibrary(section, focus),
 };
 
@@ -196,7 +197,7 @@ function newTurn(fields) {
     stats: null,
     error: "",
     outcome: "",
-    notice: "", // merud's warning under an answer that claims an action no tool performed
+    notice: "", // merud's warning under an answer: a claim no tool backs, or a model without tools
     approval: null,
     contacted: [],
     showSteps: false,

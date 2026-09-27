@@ -207,6 +207,12 @@ Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tie
 - **`full`:** Qwen 3.8 27B and `qwen3-embedding:0.6b`. Needs Apple silicon with
   32 GB (64 GB is comfortable), or a GPU with about 24 GB of memory.
 
+For the answer model we tried three: MiniCPM5-2B, `qwen3.6:35b`, the one we use
+now, and `gemma3:12b`, which can't call tools. The desktop app's Library, Models
+lists them with their `ollama pull` and `ollama run` commands and switches
+between them without a restart. [docs/running.md](docs/running.md#models-we-tried-for-answers)
+has what we measured.
+
 On a cloud server, Meru still sends no prompt to a model provider, but your data
 lives on that server. The promise is "a machine you control"; where it sits is your
 call.

@@ -70,9 +70,14 @@ type Message struct {
 	Images [][]byte `json:"images,omitempty"`
 }
 
-// Vision is the capability a model needs to look at Message.Images, as
-// Ollama's /api/show lists it.
-const Vision = "vision"
+// Vision is the capability a model needs to look at Message.Images, and
+// ToolUse the one it needs to take a list of tools, as Ollama's /api/show
+// lists them. Ollama refuses a request that offers tools to a model
+// without ToolUse.
+const (
+	Vision  = "vision"
+	ToolUse = "tools"
+)
 
 // ToolSpec describes one tool the model may call: its name, what it does, and
 // a JSON Schema for its arguments. v0.1 sends no tools; the type exists so the

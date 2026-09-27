@@ -1,7 +1,7 @@
 // This file tests images over the socket, against a whole merud: attach_file
 // copies an image with no [index] folders and says it is one, and an ask
 // that names an image outside the uploads folder, or a link inside it, fails
-// before any turn starts. It also checks visionCheck against the fake
+// before any turn starts. It also checks capabilityCheck against the fake
 // Ollama's /api/show.
 
 package main
@@ -79,9 +79,11 @@ func TestAttachImageAndAsk(t *testing.T) {
 	}
 }
 
-func TestVisionCheck(t *testing.T) {
-	if visionCheck(&fakeEngine{}) != nil {
-		t.Error("visionCheck gave a check for an engine that can't answer one")
+// TestCapabilityCheck checks the vision and tools checks merud hands the
+// agent, against the fake Ollama's /api/show.
+func TestCapabilityCheck(t *testing.T) {
+	if capabilityCheck(&fakeEngine{}, engine.Vision) != nil {
+		t.Error("capabilityCheck gave a check for an engine that can't answer one")
 	}
 	srv := fakeollama.Start(t, fakeollama.Config{Capabilities: map[string][]string{
 		"seer": {"completion", engine.Vision}, "reader": {"completion", "tools"},
@@ -90,11 +92,19 @@ func TestVisionCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check := visionCheck(eng)
-	for model, want := range map[string]bool{"seer": true, "reader": false} {
-		got, err := check(context.Background(), model)
-		if err != nil || got != want {
-			t.Errorf("vision(%s) = %v, %v; want %v", model, got, err, want)
+	tests := []struct {
+		capability, model string
+		want              bool
+	}{
+		{engine.Vision, "seer", true},
+		{engine.Vision, "reader", false},
+		{engine.ToolUse, "seer", false},
+		{engine.ToolUse, "reader", true},
+	}
+	for _, tt := range tests {
+		got, err := capabilityCheck(eng, tt.capability)(context.Background(), tt.model)
+		if err != nil || got != tt.want {
+			t.Errorf("%s(%s) = %v, %v; want %v", tt.capability, tt.model, got, err, tt.want)
 		}
 	}
 }

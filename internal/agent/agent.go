@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -142,8 +143,8 @@ type Agent struct {
 	maxTokens   int           // tokens one main-model call may write, thinking included
 	turnTimeout time.Duration // how long one turn may run; see Handle
 	agentic     bool          // [index] retrieval = "agentic": no search before the answer
-	models      config.Models
-	folderNames []string // last part of each [index] folder, lower case; see namesFolder
+	models      config.Models // the models as config named them at startup; Main says which model answers now
+	folderNames []string      // last part of each [index] folder, lower case; see namesFolder
 	// folders, when set by UseFolders, returns the [index] folders as they
 	// are now, and a turn builds folderNames and filesNote from it.
 	folders     func() []string
@@ -158,6 +159,16 @@ type Agent struct {
 	// and say whether a model can look at them; see images.go.
 	readImage func(path string) ([]byte, error)
 	vision    func(ctx context.Context, model string) (bool, error)
+	// canCallTools, set by UseToolCheck, says whether a model can call
+	// tools; see notools.go.
+	canCallTools func(ctx context.Context, model string) (bool, error)
+
+	// mainMu guards main, the answer model, which can change while turns
+	// run: the desktop app's Library switches it through SetMain. A
+	// sync.Mutex lets one
+	// goroutine at a time hold it, so a read never sees half a write.
+	mainMu sync.Mutex
+	main   string
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -208,6 +219,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		turnTimeout: timeout,
 		agentic:     agentic,
 		models:      cfg.Models,
+		main:        cfg.Models.Main,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
 		system:      system,
@@ -217,6 +229,26 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		home:        home,
 		log:         log,
 	}
+}
+
+// Main returns the answer model, the one that writes every answer: config's
+// [models] main at startup, or the model SetMain named last.
+func (a *Agent) Main() string {
+	a.mainMu.Lock()
+	// defer runs Unlock when Main returns, after it has read a.main.
+	defer a.mainMu.Unlock()
+	return a.main
+}
+
+// SetMain makes model the answer model from the next model call on, so a
+// switch in the desktop app takes effect without a restart. merud calls
+// it after it has written the name to [models] main. A turn that is
+// running when the switch lands may answer its next round with the new
+// model; a turn is short, so that is rare and does no harm.
+func (a *Agent) SetMain(model string) {
+	a.mainMu.Lock()
+	defer a.mainMu.Unlock()
+	a.main = model
 }
 
 // Handle runs one turn for req and sends its events through emit, in this
@@ -297,6 +329,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
 			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
+			attribute.Bool("meru.turn.no_tools", t.noTools != ""),
 			attribute.Int("meru.turn.images", len(images)),
 			attribute.String("meru.turn.outcome", outcome),
 		)
@@ -384,10 +417,18 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// the warning. See honest.go. A turn that ended without a full answer
 	// (ended != "") gets no check: its text ends in Meru's own message,
 	// such as badOutputAnswer, and claims nothing.
+	//
+	// A turn whose answer model can't call tools ran none (see
+	// notools.go), and says so in the same notice, first.
 	var notice string
 	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 		notice = unbackedNotice
 		unbacked = true
+	}
+	if t.noTools != "" {
+		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
+	}
+	if notice != "" {
 		if err := emit(rpc.Event{Type: rpc.EventNotice, Text: notice}); err != nil {
 			return err
 		}
@@ -564,6 +605,8 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 // the rounds.
 func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
 	picked pickedSkills, files string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
+	// An answer model that can't call tools gets none; see notools.go.
+	specs = a.offerable(ctx, t, specs)
 	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
 	if len(recalled) > 0 {
 		if err := t.emit(rpc.Event{Type: rpc.EventMemories, Memories: recalled}); err != nil {
@@ -657,7 +700,7 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	var add string
 	switch {
 	case ended == endNoVision:
-		add = noVisionAnswer(a.models.Main)
+		add = noVisionAnswer(a.Main())
 	case ended == endBadOutput:
 		add = badOutputOnce
 		if t.outputRetry {
@@ -1195,7 +1238,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // first_token event, and the model-call metrics. Each round of a turn calls
 // it once.
 func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
-	model := a.models.Main
+	model := a.Main()
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()
 

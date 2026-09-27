@@ -38,6 +38,7 @@ type modelDetailer interface {
 // already keeps, so the tool reports the setup as merud runs it.
 type aboutService struct {
 	cfg     config.Config           // profile and models, as merud started with them
+	main    func() string           // the answer model now, which the Library can change
 	eng     engine.Engine           // for Ollama's version and the main model's details
 	st      *store.Store            // what the search index holds
 	folders func() []string         // the [index] folders now, as the desktop app may change them
@@ -60,7 +61,7 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 	a := builtin.About{
 		Version: obs.BuildVersion(),
 		Profile: s.cfg.Profile,
-		Fast:    s.cfg.Models.Fast, Main: s.cfg.Models.Main, Embed: s.cfg.Models.Embed,
+		Fast:    s.cfg.Models.Fast, Main: s.main(), Embed: s.cfg.Models.Embed,
 		Machine: s.machine,
 	}
 
@@ -74,7 +75,7 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 	}
 	// A type assertion with ", ok" asks whether eng also has Details.
 	if d, ok := s.eng.(modelDetailer); ok {
-		if details, err := d.Details(octx, s.cfg.Models.Main); err == nil {
+		if details, err := d.Details(octx, a.Main); err == nil {
 			a.MainDetails = details
 		} else {
 			s.log.DebugContext(ctx, "about_meru: no details for the main model", "err", err)

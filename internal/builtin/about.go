@@ -24,7 +24,8 @@ const AboutMeru = "about_meru"
 const aboutDescription = "Gives the facts about you and this Meru setup: the exact name of each model and what it does, " +
 	"the Ollama version, the computer, the folders Meru reads, the connected tools, skills and memories. " +
 	"Call it for any question about yourself, such as which model you are or what you can reach; " +
-	"don't answer those from what you learned in training."
+	"don't answer those from what you learned in training. " +
+	"Quote model names, versions and numbers exactly as this tool gives them."
 
 // maxAboutChars caps the tool's text. It goes into the model's context on
 // every call, so it stays short; 2,000 characters is about 500 tokens.
@@ -116,11 +117,13 @@ func aboutText(a About) string {
 	}
 
 	line("You are Meru, a personal assistant that runs on the user's own computer. Meru build: %s. Profile: %s.", a.Version, a.Profile)
-	where := "Ollama runs every model on this computer; no model runs in the cloud."
+	line("Ollama runs every model on this computer; no model runs in the cloud.")
+	// The version gets a labelled line of its own. Inside a sentence, as
+	// "Ollama 0.34.0 runs every model", a model once quoted it as "Ollama
+	// 0.44".
 	if a.RuntimeVersion != "" {
-		where = "Ollama " + a.RuntimeVersion + " runs every model on this computer; no model runs in the cloud."
+		line("Ollama version: %s", a.RuntimeVersion)
 	}
-	line("%s", where)
 	line("Answer model (main): %s. It writes every answer, so it is the model the user talks to.%s", a.Main, mainDetails(a.MainDetails))
 	line("Fast model: %s. It picks each question's route and skills, and summarizes quiet sessions.", a.Fast)
 	line("Embedding model: %s. It turns text into vectors for search.", a.Embed)

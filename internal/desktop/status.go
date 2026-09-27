@@ -56,7 +56,11 @@ type Status struct {
 // with Up false and the reason in Problem. A merud too old to know
 // mcp_status still reports its index.
 func (b *Bridge) Status(ctx context.Context) Status {
-	s := Status{Socket: b.socket, Machine: machineName(runtime.GOOS), Model: b.model, Fast: b.fast, Embed: b.embed,
+	// The Library can change the answer model, so b.model sits under b.mu.
+	b.mu.Lock()
+	model := b.model
+	b.mu.Unlock()
+	s := Status{Socket: b.socket, Machine: machineName(runtime.GOOS), Model: model, Fast: b.fast, Embed: b.embed,
 		Connections: []string{}}
 	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpIndexStatus}, rpc.EventStatus)
 	if err != nil {

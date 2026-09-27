@@ -605,6 +605,21 @@
 
 <p><code>merud</code> loads every tier at startup and asks Ollama to keep them loaded, so no question waits for a model. Switching embedding models makes every stored embedding useless, since each model makes lists of a different length. The index records which model made its embeddings. When config names a different one, <code>merud</code> drops the old embeddings, keeps keyword search working, and embeds your files again.</p>
 
+<h3 id="models-we-tried">Models we tried for answers</h3>
+
+<p>In September 2026 we tried three models as the answer model on an M4 Max with 64 GB, with MiniCPM5-2B as the router, and asked each a question that made it search the web over several rounds:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Model</th><th>Size</th><th>What we saw</th></tr></thead>
+  <tbody>
+    <tr><td>MiniCPM5-2B</td><td>1.6 GB</td><td>fast, about 55 s, but it made up command flags and misread tool results</td></tr>
+    <tr><td><code>qwen3.6:35b</code></td><td>23 GB</td><td>about 26 s; reads images, calls tools and thinks; the answer model we use now</td></tr>
+    <tr><td><code>gemma3:12b</code></td><td>8.1 GB</td><td>reads images, but Ollama won't give it tools, so it can't reach mail, notes, the web or files</td></tr>
+  </tbody>
+</table></div>
+
+<p>We also tried <code>qwen3.8:27b</code>: its answer was the best grounded, but it took about five minutes. The desktop app's Library, Models shows the three with their <code>ollama pull</code> and <code>ollama run</code> commands. "Use for answers" switches the answer model with no restart. With a model that can't call tools, Meru answers from the model alone and says so under the answer.</p>
+
 <!-- ============================================================ -->
 <h2 id="where-data-lives">Where data lives</h2>
 

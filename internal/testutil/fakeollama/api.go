@@ -1,4 +1,4 @@
-// This file holds the fake's Ollama endpoints: version, ps, show, chat,
+// This file holds the fake's Ollama endpoints: version, ps, tags, show, chat,
 // generate and embed. Chat and generate share one reply writer, because the two differ
 // only in where the text goes ("message.content" or "response").
 
@@ -38,6 +38,23 @@ func (f *Fake) servePS(w http.ResponseWriter, _ *http.Request, _ []byte, _ int) 
 			SizeVRAM:      1 << 30,
 			ContextLength: 8192,
 		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
+// serveTags answers GET /api/tags with the models on disk: Config.Models,
+// the names the fake accepts. A fake that accepts every name has no list
+// to give, so it reports the models loaded so far instead.
+func (f *Fake) serveTags(w http.ResponseWriter, _ *http.Request, _ []byte, _ int) {
+	names := f.cfg.Models
+	if len(names) == 0 {
+		f.mu.Lock()
+		names = append([]string(nil), f.loaded...)
+		f.mu.Unlock()
+	}
+	models := []map[string]any{} // an empty list, not null, when there are none
+	for _, name := range names {
+		models = append(models, map[string]any{"name": name, "model": name, "size": 1 << 30, "digest": digest(name)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }

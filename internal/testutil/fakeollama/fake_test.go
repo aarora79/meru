@@ -352,7 +352,7 @@ func TestErrors(t *testing.T) {
 		{"unknown model", nil, http.MethodPost, "/api/chat", map[string]any{"model": "nope"}, 404, `model "nope" not found, try pulling it first`},
 		{"missing model", nil, http.MethodPost, "/api/chat", map[string]any{}, 400, "model is required"},
 		{"wrong method", nil, http.MethodGet, "/api/chat", nil, 405, "method not allowed"},
-		{"unknown path", nil, http.MethodGet, "/api/tags", nil, 404, "404 page not found"},
+		{"unknown path", nil, http.MethodGet, "/api/pull", nil, 404, "404 page not found"},
 		{"bad embed input", nil, http.MethodPost, "/api/embed", map[string]any{"model": "e", "input": 7}, 400, "input must be a string or a list of strings"},
 	}
 	for _, tt := range tests {
@@ -452,6 +452,36 @@ func TestVersionAndPS(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(step.want, ",") {
 			t.Errorf("%s: loaded = %v, want %v", step.name, got, step.want)
 		}
+	}
+}
+
+// TestTags checks /api/tags: the accepted models when Config names them,
+// and the loaded ones when it doesn't.
+func TestTags(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  fakeollama.Config
+		want []string
+	}{
+		{"accepted models", fakeollama.Config{Models: []string{"main", "embed"}, Loaded: []string{"embed"}}, []string{"main", "embed"}},
+		{"any name", fakeollama.Config{Loaded: []string{"embed"}}, []string{"embed"}},
+		{"nothing", fakeollama.Config{}, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := fakeollama.Start(t, tt.cfg)
+			var tags struct {
+				Models []struct{ Name string } `json:"models"`
+			}
+			getJSON(t, srv.URL+"/api/tags", &tags)
+			got := []string{}
+			for _, m := range tags.Models {
+				got = append(got, m.Name)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("tags = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

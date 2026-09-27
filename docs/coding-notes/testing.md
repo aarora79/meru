@@ -83,7 +83,10 @@ with an empty `content` and a `thinking` field. The fake honours a request's
 counts as one token, and a reply cut short loses its tool calls and ends with
 `done_reason` `"length"`.
 `FailNext` makes the next request to a path fail, and `SetLatency` slows every
-response. Unscripted calls get "Hello from fake Ollama."
+response. Unscripted calls get "Hello from fake Ollama." `/api/tags` lists
+`Config.Models` as the models on disk, or, when the fake accepts every name, the
+models loaded so far; `/api/show` answers a 404 for a model not in
+`Config.Models`, as Ollama does for one that isn't pulled.
 
 The fake speaks the same JSON as Ollama. A streamed reply is NDJSON
 (newline-delimited JSON): one object per line, the last with `"done": true`

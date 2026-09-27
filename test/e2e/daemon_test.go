@@ -231,7 +231,9 @@ func TestNoTelemetryByDefault(t *testing.T) {
 	if n := hits.Load(); n != 0 {
 		t.Errorf("merud sent %d requests past loopback Ollama:\n%s", n, paths.String())
 	}
-	ollamaAPI := map[string]bool{"/api/version": true, "/api/ps": true, "/api/chat": true, "/api/embed": true}
+	// /api/show answers whether the answer model can call tools, which a
+	// turn asks before it offers any.
+	ollamaAPI := map[string]bool{"/api/version": true, "/api/ps": true, "/api/chat": true, "/api/embed": true, "/api/show": true}
 	for _, r := range f.requests(t) {
 		if !ollamaAPI[r.Path] {
 			t.Errorf("fake got %s %s, which isn't an Ollama API call merud needs", r.Method, r.Path)

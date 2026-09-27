@@ -256,6 +256,15 @@ then builds the note and the names from it, through `currentFilesNote` and
 `currentFolderNames`. The note's text changes only when the folders do, so Ollama
 still reuses its work on the prompt's opening.
 
+The answer model can change while `merud` runs too: the Library's "Use for
+answers" button ends in `SetMain`. So `New` copies `[models] main` into the
+field `main`, and every place that needs the answer model, `answer`,
+`checkVision`, the no-vision reply and the bad-output log line, reads it
+through `Main()`. Turns run side by side and `SetMain` can land during one, so
+a `sync.Mutex`, `mainMu`, sits next to the field and both methods take it.
+`TestSetMain` switches the model twice and checks that each next turn asks
+the new one.
+
 ### The profile section (profile.go)
 
 `New` keeps the configured prompt with `whoIsWho` in `a.system`, and the files
@@ -547,6 +556,37 @@ obsidian doesn't.
 
 Both paths end in `finishPrompt`: recall, the `memories` event, the prompt,
 the question's images (see below), and the rounds.
+
+### Answer models without tools (notools.go)
+
+Ollama refuses any request that offers tools to a model whose `/api/show`
+lacks `tools`, with a 400: `registry.ollama.ai/library/gemma3:12b does not
+support tools`. Every route offers some tool, `datetime` and `about_meru` at
+least, so with `gemma3:12b` as the answer model every turn failed with that
+line as its error.
+
+`merud` hands the agent a check with `UseToolCheck`, and `finishPrompt` runs
+`offerable` on the turn's tools before it builds the prompt. When the answer
+model can't call tools, `offerable` returns nil, so the prompt holds no tools
+note and the model call carries no tools, and the model answers from what it
+knows and any excerpts search put in the prompt. When the tools it dropped
+held more than the two every route offers, it also puts the model's name in
+`t.noTools`, and `Handle` sends a `notice` under the answer:
+
+```text
+gemma3:12b can't call tools, so Meru answered without them: no mail, calendar,
+notes, web or file tools. To use them, pick another answer model under Library,
+Models in the desktop app, or in [models] main in config.toml.
+```
+
+A plain question on the `direct` route drops only `datetime` and `about_meru`
+and gets no notice, which would otherwise sit under every answer. The notice
+goes in the assistant line's `notice` field, before the unbacked-claim warning
+when both apply, and the turn span records `meru.turn.no_tools`. A check that
+fails, as when Ollama is down, leaves the tools in, and the model call then
+fails with Ollama's own reason. `TestNoToolsModel` covers a model with tools,
+one without on a tools route and on a direct question, a check that fails, and
+no check.
 
 ### Images (images.go)
 
@@ -1333,6 +1373,9 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
   without a field name, so it gets `fakeEngine`'s methods and replaces only
   `Generate`.
 - **Pointer receivers** — `reply.add` changes the reply it is called on.
+- **A mutex** — `mainMu` guards the answer model, which `SetMain` changes
+  while turns read it. `defer a.mainMu.Unlock()` releases it when `Main`
+  returns. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 - **Named results with `defer`** — record the outcome once, whatever path
   returns. More in [go-basics/defer.md](go-basics/defer.md).
 - **`context`** — one context runs through the whole turn and stops it. More in

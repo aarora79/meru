@@ -1714,6 +1714,12 @@ pre {
   font-size: 13px;
 }
 
+/* A model card in Library, Models: its "Use for answers" button sits
+   below the copy lines. */
+.card.model .button {
+  margin-top: 10px;
+}
+
 .pill {
   padding: 1px 9px;
   border-radius: 999px;

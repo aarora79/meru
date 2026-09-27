@@ -64,9 +64,9 @@ that neither a search result nor your own question showed asks you first.
 
 When you ask "which model are you using?", the model calls `about_meru` with
 no arguments and gets back what `merud` knows about itself, such as `Answer
-model (main): qwen3.6:35b` and `Ollama 0.34.0 runs every model on this
-computer`. Before this tool, a model asked that question answered from its
-training and named another company's model.
+model (main): qwen3.6:35b` and `Ollama version: 0.34.0`. Before this tool, a
+model asked that question answered from its training and named another
+company's model.
 
 Two functions here are no tools. When you drop `~/Downloads/garden-plan.pdf` on
 the desktop app, `merud` calls `Upload`, which copies the file to
@@ -264,7 +264,10 @@ the output folder, which `Tools` knows better than `merud`, and hands the lot to
 
 `aboutText` writes one short line per fact. A fact `merud` couldn't read, such
 as Ollama's version while Ollama is down, drops its part of the line instead of
-guessing. Each list stops at 12 names and says how many more there are, and the
+guessing. The version sits on a labelled line of its own, `Ollama version:
+0.34.0`: written inside a sentence, as `Ollama 0.34.0 runs every model`, it came
+back from one model as "Ollama 0.44". For the same reason the tool's description
+ends "Quote model names, versions and numbers exactly as this tool gives them." Each list stops at 12 names and says how many more there are, and the
 whole text stops at 2,000 characters, about 500 tokens, because it lands in the
 model's context on every call.
 
@@ -878,7 +881,8 @@ reason.
 `about_test.go` feeds `aboutText` a setup like the one behind the tool:
 `qwen3.6:35b` as the main model, the lite fast model, one folder and two MCP
 servers. `TestAboutText` checks each line, `TestAboutTextWithoutOllama` checks
-that missing facts drop out, and `TestAboutTextCap` gives it 200 commands and
+that missing facts drop out, `TestAboutDescription` checks the line that asks
+the model to quote names and numbers as given, and `TestAboutTextCap` gives it 200 commands and
 200 agents and checks the lists shrink and the text stays under 2,000
 characters. `TestAboutMeruTool` checks the tool is off until `UseAbout`, then
 offered, never asks, and lists the built-ins and the output folder.

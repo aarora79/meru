@@ -519,8 +519,14 @@ differs from `meru chat`'s.
 - **Skills** lists every skill with an on and off switch, which edits `[skills]
   disabled`.
 - **Models** shows the profile, the three models, the Ollama version and which
-  models it holds in memory, and how to change them: in `config.toml`, then a
-  restart. The app changes no model.
+  models it holds in memory. Under them, **Models you can use for answers** has a
+  card for each model in [Models we tried](#models-we-tried): its size, what it
+  can do, a line on what it did well and one on what it did badly, whether
+  Ollama has it, and its `ollama pull` and `ollama run` commands, each with a Copy
+  button. **Use for answers** switches the answer model with no restart; it stays
+  off until Ollama has the model, and a model without tools carries a warning.
+  The router, the embedding model and the profile change in `config.toml`, then
+  a restart.
 - **Activity** lists the `tool_calls` log, the data `meru log` prints: time,
   tool, outcome and duration, with the arguments and result behind a button.
 - **Usage** shows the usage windows the chat's `/usage` box shows.
@@ -555,7 +561,8 @@ add` and `configure` use, and applies it at once:
 | `folder_add`, `folder_remove` | edits `[index] folders`, hands the indexer the new list, restarts the watcher and scans |
 | `skill_enable`, `skill_disable` | edits `[skills] disabled` and loads the skills again |
 | `save_file` | saves the chat or an answer as Markdown through `write_file` |
-| `models` | names the models and asks Ollama which it holds |
+| `models` | names the models, asks Ollama which it holds, and lists the models we tried with whether Ollama has each |
+| `model_set` | writes `[models] main` for a model on that list that Ollama has, and hands it to the agent for the next question |
 
 A change to a list edits only that list's lines in `config.toml`: every comment
 and every other key stays. `merud` writes a temporary file, loads it, checks that
@@ -566,6 +573,9 @@ the tool against what the source offers or config already names, and refuses
 anything else; a new tool a server starts to offer shows Off. The key a user
 pastes goes to `merud` over the socket, which only that user can open, and never
 comes back in any reply.
+
+An answer model change takes effect without a restart too; see [Models we
+tried](#models-we-tried).
 
 A folder change takes effect without a restart. The indexer takes the new list,
 the watcher starts again over it, and a scan adds the new folder's files or drops
@@ -796,7 +806,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
-  | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. |
+  | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it. |
 
@@ -916,6 +926,77 @@ keyword search keeps working while the indexer re-embeds your files (see
 A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
 no room and makes it swap. Meru won't support models that size.
 
+### Models we tried
+
+In September 2026 we tried four models as the `main` model, on the development
+machine, an M4 Max with 64 GB, with Ollama 0.34.0 and MiniCPM5-2B as `fast`. The
+test question asked how to use `btop`, and made the model search the web and
+read pages over several rounds.
+
+| Model | Size | What Ollama lists | What we saw |
+| --- | --- | --- | --- |
+| `hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M` | 1.6 GB | tools, thinking | about 55 s; made up command flags and misread what tools sent back |
+| `qwen3.8:27b` (dense) | 17 GB | vision, tools, thinking | the best-grounded answer, with real flags from the man page, but about 5 minutes: 80,000 input tokens, and slow prompt reading |
+| `qwen3.6:35b` (mixture of experts, about 3B of 36B parameters per token) | 23 GB | vision, tools, thinking | about 26 s, about 78 tokens a second; now and then a tool call Ollama can't read, or thinking and no text, which `merud` retries |
+| `gemma3:12b` (12.2B parameters, 131,072-token context) | 8.1 GB | vision | answers direct and image questions; Ollama refuses it tools |
+
+MiniCPM5-2B stays the `fast` model: it routes well and fast. `qwen3.6:35b` is the
+answer model we use now. We didn't keep `qwen3.8:27b`, since a web question took
+five minutes.
+
+`config.KnownModels` lists the three we offer, MiniCPM5-2B, `gemma3:12b` and
+`qwen3.6:35b`, with their sizes and a line each on what they did well and badly.
+The desktop app's Library, Models shows each one with its commands, which also
+work in a terminal:
+
+```sh
+ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+ollama run hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+ollama pull gemma3:12b
+ollama run gemma3:12b
+ollama pull qwen3.6:35b
+ollama run qwen3.6:35b
+```
+
+`ollama run` opens a chat with the model in the terminal, to try it before Meru
+uses it.
+
+**Switching the answer model.** "Use for answers" on a model's card sends
+`model_set` (see [Desktop app](#desktop-app)). `merud` refuses a model off the
+list, and one `GET /api/tags` doesn't show, with the `ollama pull` to run. It
+writes `[models] main` with the same safe write and lock as the other settings,
+then hands the name to the agent, which reads the answer model on every model
+call. The next question uses the new model, with no restart. The `fast` and
+`embed` models stay as they are. Ollama loads the new model on that first
+question and keeps the old one loaded, since `merud` asks for `keep_alive: -1`,
+until Ollama stops or `ollama stop <model>` unloads it. To set any other model,
+edit `[models] main` in `config.toml` and restart `merud`.
+
+**A model without tools.** Ollama refuses a request that offers tools to a model
+whose `/api/show` lacks `tools`, with a 400 that says the model "does not
+support tools". Every route offers some tool, `datetime` and `about_meru` at
+least, so with such a model every turn would fail. Before it builds the prompt,
+the agent asks whether the answer model lists `tools`, through the engine's
+cached `Details`. When it doesn't, the turn offers no tools, and when the route
+would have offered more than those two, a `notice` under the answer names the
+model and says how to pick another. So `gemma3:12b` answers direct questions,
+questions about images, and search questions from the excerpts search puts in
+the prompt, and can't read mail, notes, the web or files on its own. The
+Library says so on its card, and `model_set` replies with a warning.
+
+**Context length.** `OLLAMA_CONTEXT_LENGTH` sets how many tokens of context
+Ollama loads each model with, and the `CONTEXT` column of `ollama ps` shows what
+each loaded model got. For the 27B and 35B models we set it to 32768. On macOS,
+where the Ollama app starts the server:
+
+```sh
+launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
+```
+
+then quit and start Ollama. `launchctl setenv` lasts until the Mac restarts, so
+run it again after each restart, or start `ollama serve` from a shell that
+exports the variable.
+
 ---
 
 ## Engine layer
@@ -960,10 +1041,12 @@ capabilities, such as `["completion", "vision", "tools", "thinking"]`.
 `OllamaEngine.Details` asks it for the capabilities, the size in parameters,
 the quantization and the context length, and keeps each model's answer for the
 life of the engine; a failed call keeps nothing. `Capabilities` reads the list
-through `Details`. Both sit outside the interface, which keeps its four methods:
-only image turns need `Capabilities`, and `merud` hands the agent that one
-method; only `about_meru` needs `Details`, and `merud` asks it for that tool. The "ollama http" debug line counts a request's
-images; no log line or span holds their bytes.
+through `Details`, and `Pulled` reads `GET /api/tags`, the models Ollama has on
+disk. All three sit outside the interface, which keeps its four methods: `merud`
+hands the agent a check built on `Capabilities` for image turns and another for
+whether the answer model can take tools; `about_meru` and the Library's models
+need `Details`, and only the Library's models need `Pulled`. The "ollama http"
+debug line counts a request's images; no log line or span holds their bytes.
 
 Two engines may come later, behind the same interface:
 

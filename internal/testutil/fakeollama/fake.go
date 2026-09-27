@@ -269,6 +269,7 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}{
 		"/api/version":  {http.MethodGet, f.serveVersion},
 		"/api/ps":       {http.MethodGet, f.servePS},
+		"/api/tags":     {http.MethodGet, f.serveTags},
 		"/api/chat":     {http.MethodPost, f.serveChat},
 		"/api/generate": {http.MethodPost, f.serveGenerate},
 		"/api/embed":    {http.MethodPost, f.serveEmbed},

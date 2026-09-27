@@ -368,6 +368,25 @@ func (e *OllamaEngine) Info(ctx context.Context) (ModelInfo, error) {
 	return info, nil
 }
 
+// Pulled lists the models Ollama has on disk (GET /api/tags), by the
+// names Ollama gives them, such as "gemma3:12b" or
+// "nomic-embed-text:latest". It fails when the request fails.
+//
+// Like Capabilities, Pulled isn't part of the Engine interface. Only
+// merud's models op asks it, to say which of the models we tried are
+// ready to use.
+func (e *OllamaEngine) Pulled(ctx context.Context) ([]string, error) {
+	var tags tagsResponse
+	if err := e.getJSON(ctx, "/api/tags", &tags); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(tags.Models))
+	for _, m := range tags.Models {
+		names = append(names, m.Name)
+	}
+	return names, nil
+}
+
 // Capabilities returns what model can do, as POST /api/show lists it, such
 // as ["completion", "vision", "tools", "thinking"]. A model can look at
 // pictures when the list holds Vision. It reads Details, so it shares that

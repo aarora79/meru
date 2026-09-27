@@ -177,7 +177,10 @@ the OpenTelemetry environment variables and the proxy variables
 (`HTTP_PROXY`, `HTTPS_PROXY`) at it. Go's HTTP client sends any request for a
 non-loopback host through the proxy, so a stray request from Meru's code or a
 library would land on the canary. After one question and a clean shutdown,
-which flushes any exporter, the canary must have seen nothing. Setting
+which flushes any exporter, the canary must have seen nothing, and the fake
+Ollama only the calls `merud` needs: `/api/version`, `/api/ps`, `/api/show`,
+which says whether the answer model can call tools, `/api/chat` and
+`/api/embed`. Setting
 `otlp_endpoint` to the canary makes the test fail with `POST /v1/metrics` and
 `POST /v1/traces`, which shows the trap works.
 
