@@ -1,13 +1,14 @@
-// This file tests the About section's data: the paths, the links, the
-// version read from the build, and that the window, the page and the
-// Bridge all show the same one-line tagline.
+// This file tests the About section's data: the paths, the links, that
+// it carries a version, and that the window, the page and the
+// Bridge all show the same one-line tagline. internal/about tests the
+// version itself.
 
 package desktop
 
 import (
 	"os"
 	"path/filepath"
-	"runtime/debug"
+
 	"strings"
 	"testing"
 
@@ -49,29 +50,6 @@ func TestAbout(t *testing.T) {
 	}
 }
 
-func TestBuildVersion(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		info *debug.BuildInfo
-		ok   bool
-		want string
-	}{
-		{"no build info", nil, false, "unknown"},
-		{"release", &debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}}, true, "v0.3.0"},
-		{"local build", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"},
-			Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "9b7be92abcdef"}, {Key: "vcs.modified", Value: "false"}}}, true, "(devel) 9b7be92"},
-		{"local build with changes", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"},
-			Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "9b7be92abcdef"}, {Key: "vcs.modified", Value: "true"}}}, true, "(devel) 9b7be92, modified"},
-		{"no version, no revision", &debug.BuildInfo{}, true, "(devel)"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := buildVersion(tt.info, tt.ok); got != tt.want {
-				t.Errorf("buildVersion = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestTilde(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator), "Users", "dana")
 	for _, tt := range []struct{ path, home, want string }{
@@ -107,38 +85,5 @@ func TestTaglineEverywhere(t *testing.T) {
 	}
 	if !strings.HasPrefix(WindowTitle, "Meru ") {
 		t.Errorf("WindowTitle = %q; the name must come first", WindowTitle)
-	}
-}
-
-// TestAppVersion checks that a version `make release` stamps in wins over
-// the build information. It sets the variable the linker sets, and puts it
-// back when the test ends; no test in this package runs in parallel.
-func TestAppVersion(t *testing.T) {
-	// t.Cleanup runs the function after the test, pass or fail.
-	t.Cleanup(func() { releaseVersion = "" })
-	releaseVersion = "v0.4.1"
-	if got := appVersion(); got != "v0.4.1" {
-		t.Errorf("appVersion = %q, want v0.4.1", got)
-	}
-	releaseVersion = ""
-	if got := appVersion(); got == "v0.4.1" || got == "" {
-		t.Errorf("appVersion without a stamp = %q, want the build's own version", got)
-	}
-}
-
-// TestShortVersion checks the version the rail shows beside the logo.
-func TestShortVersion(t *testing.T) {
-	for _, tt := range []struct{ in, want string }{
-		{"v0.4.1", "v0.4.1"},
-		{"v0.4.2-0.20260927021103-5325b3ef94cb", "dev 5325b3e"},
-		{"v0.5.0-20260927021103-5325b3ef94cb", "dev 5325b3e"},
-		{"(devel) 5325b3e", "dev 5325b3e"},
-		{"(devel) 5325b3e, modified", "dev 5325b3e"},
-		{"(devel)", ""},
-		{"unknown", ""},
-	} {
-		if got := shortVersion(tt.in); got != tt.want {
-			t.Errorf("shortVersion(%q) = %q, want %q", tt.in, got, tt.want)
-		}
 	}
 }

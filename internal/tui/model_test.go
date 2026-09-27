@@ -98,6 +98,9 @@ func plainLook() look {
 // copy_test.go swaps in fakes that record what they get.
 func testModel(ask askFunc, send sender) Model {
 	m := newModel(ask, send, Info{Profile: "lite", Model: "minicpm5:2b"}, plainLook())
+	// The version comes from the test binary's build, which differs from
+	// one machine to the next; a fixed one keeps the goldens the same.
+	m.version, m.fullVersion = "v0.4.3", "v0.4.3"
 	m.copy = func(string) (string, error) { return "", errors.New("no clipboard in tests") }
 	m.open = func(string) error { return errors.New("no browser in tests") }
 	return m
@@ -620,7 +623,7 @@ func TestEnterWhileStreamingQueues(t *testing.T) {
 	m, _ := startStreaming(t, merud, newFakeSender())
 	m = queue(t, m, "second", "  third  ")
 
-	if want := []string{"second", "third"}; !reflect.DeepEqual(m.queue, want) {
+	if want := []outgoing{{text: "second"}, {text: "third"}}; !reflect.DeepEqual(m.queue, want) {
 		t.Errorf("queue = %q, want %q", m.queue, want)
 	}
 	if m.input.Value() != "" {

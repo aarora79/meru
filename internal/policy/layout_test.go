@@ -30,7 +30,7 @@ type forbiddenPackage struct {
 // forbiddenClientPackages lists the module's packages that hold daemon-side
 // logic, with the reason no client may reach each one.
 //
-// `meru` may import rpc, config, tui and loopback, plus catalog and
+// `meru` may import rpc, config, tui, about and loopback, plus catalog and
 // secrets for `meru setup` and `meru mcp add`: those two read and write
 // config.toml and secrets.toml and talk to no model and no store.
 var forbiddenClientPackages = []forbiddenPackage{

@@ -1,0 +1,24 @@
+Meru मेरु v0.4.3 lite · minic… ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ Connections                        │
+  │                                    │
+  │ ↑ more                             │
+  │   Ask         backup               │
+  │                                    │
+  │   Add a connection                 │
+  │ ›   search · Brave Search · needs… │
+  │     obsidian · Obsidian notes      │
+  │                                    │
+  │ Brave Search API key               │
+  │ key:                               │
+  │                                    │
+  │ The key goes to merud, which saves │
+  │ it in secrets.toml; it never shows │
+  │ again.                             │
+  ╰────────────────────────────────────╯
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+enter save key · esc cancel

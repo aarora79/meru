@@ -1,0 +1,24 @@
+Meru मेरु v0.4.3 lite · minicpm5:2b                                    ● connected
+────────────────────────────────────────────────────────────────────────────────
+
+  ╭────────────────────────────────────────────────────────────────────────────╮
+  │ Tool calls                                                                 │
+  │                                                                            │
+  │   09-27 10:17  google.search_gmail_messages  ok  -  420 ms                 │
+  │ › 09-27 10:16  web_search  ok  by meru  1.2s                               │
+  │     args: {"query":"tomato spacing"}                                       │
+  │     result: (no result)                                                    │
+  │   09-27 10:12  google.send_gmail_message  declined  deny  3 ms             │
+  │                                                                            │
+  │ Every tool call, allowed or not, lands here. meru log -v prints each       │
+  │ result in full.                                                            │
+  ╰────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Ask Meru anything…                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+↑/↓ move · esc/q close · ctrl+c stop/quit

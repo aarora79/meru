@@ -402,6 +402,24 @@ func TestCommandsMatchChat(t *testing.T) {
 	}
 }
 
+// TestEveryCommandRuns fails when the composer's command list names a
+// command that commands.js has no case for, which would answer it as
+// unknown.
+func TestEveryCommandRuns(t *testing.T) {
+	src := ownFiles(t)["web/js/commands.js"]
+	for _, c := range commandList {
+		if !strings.Contains(src, `case "`+c.Name+`":`) {
+			t.Errorf("commands.js has no case for %s", c.Name)
+		}
+	}
+	app := ownFiles(t)["web/js/app.js"]
+	for _, want := range []string{"findChats:", "retry:", "setScope,", "attach,", "save: (what)", "showUsed:", "newestAnswer:"} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.js gives the commands no %s", want)
+		}
+	}
+}
+
 func TestSendScope(t *testing.T) {
 	var got rpc.Request
 	b, r := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {

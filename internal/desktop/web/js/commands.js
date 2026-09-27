@@ -1,5 +1,6 @@
-// The slash commands in the composer: the same seven `meru chat` has, from
+// The slash commands in the composer: the same ones `meru chat` has, from
 // the Bridge's list (internal/desktop/commands.go), so the two can't drift.
+// Each opens the app's own screen for what the chat shows in a box.
 // Typing "/" at the start of the box opens a menu of them; a line that
 // starts with "/" runs here and never reaches the model. Every command
 // runs at once, even while a turn runs; /new stops that turn first, as it
@@ -23,7 +24,9 @@ let listbox = null;
 // (every numbered code block in the chat, oldest first), newestBlocks()
 // (the newest finished answer's, or null when none has finished),
 // textOf(block), copy(text) (a promise), notice(text), askQuit(), fit(),
-// running() (true while a turn runs) and refreshStatus().
+// running() (true while a turn runs), refreshStatus(), findChats(words),
+// retry(), setScope(value), attach(), save(what) with "note" or "chat",
+// showUsed() and newestAnswer() (its text, or "" when none has finished).
 export function setupCommands(question, menuList, actions) {
   box = question;
   listbox = menuList;
@@ -35,8 +38,7 @@ export function setupCommands(question, menuList, actions) {
   box.addEventListener("blur", () => setTimeout(close, 100));
 }
 
-// names writes the command list as the "unknown command" line does in
-// `meru chat`: "/new, /usage, /me, /mcp, /model, /copy, /exit".
+// names writes the command list: "/new, /chats, /retry, …, /exit".
 function names() {
   return list.map((c) => c.name).join(", ");
 }
@@ -44,7 +46,12 @@ function names() {
 // update shows the menu while the box holds "/" and a partial name, and
 // hides it otherwise.
 function update() {
-  const v = box.value;
+  show(box.value);
+}
+
+// show fills the menu with the commands that start with v, "/" for all of
+// them, when v looks like the start of one.
+function show(v) {
   if (!/^\/\S*$/.test(v)) {
     close();
     return;
@@ -148,6 +155,47 @@ export function runCommand(text) {
     case "/new":
       act.newChat();
       return true;
+    case "/chats":
+      act.findChats(arg);
+      return true;
+    case "/retry":
+      act.retry();
+      return true;
+    case "/scope":
+      return scopeCommand(arg);
+    case "/attach":
+      act.attach();
+      return true;
+    case "/save":
+      if (arg !== "" && arg !== "chat") {
+        act.notice("/save takes nothing, for the newest answer, or chat");
+        return false;
+      }
+      act.save(arg === "chat" ? "chat" : "note");
+      return true;
+    case "/used":
+      act.showUsed();
+      return true;
+    case "/folders":
+      act.openLibrary("folders");
+      return true;
+    case "/skills":
+      act.openLibrary("skills");
+      return true;
+    case "/log":
+      act.openLibrary("activity");
+      return true;
+    case "/about":
+      act.openLibrary("about");
+      return true;
+    case "/help":
+      // The menu of every command is the app's help; it opens with the box
+      // left holding "/", so the arrow keys can pick one.
+      box.value = "/";
+      act.fit();
+      box.focus();
+      show("/");
+      return false;
     case "/usage":
       act.openLibrary("usage");
       return true;
@@ -169,6 +217,22 @@ export function runCommand(text) {
   }
   act.notice("unknown command " + name + " · commands: " + names());
   return false;
+}
+
+// SCOPES are the values /scope takes, merud's scopes (internal/rpc).
+const SCOPES = ["auto", "files", "mail", "web", "talk"];
+
+// scopeCommand runs /scope: with a scope's name it flips the "Where Meru
+// looks" switch to it, as `meru chat` does. It returns false, keeping the
+// text in the box, for anything else.
+function scopeCommand(arg) {
+  if (!SCOPES.includes(arg)) {
+    act.notice("/scope takes one of " + SCOPES.join(", "));
+    return false;
+  }
+  act.setScope(arg);
+  act.notice("Meru looks in: " + arg);
+  return true;
 }
 
 // modelCommand runs /model with the words after it, as `meru chat` does:
@@ -211,8 +275,22 @@ function modelCommand(words) {
 }
 
 // copyCommand runs /copy: with a number it copies that block, alone the
-// newest answer's last block. The notices match `meru chat`'s.
+// newest answer's last block, and with "answer" the newest answer's whole
+// text. The notices match `meru chat`'s.
 function copyCommand(arg) {
+  if (arg === "answer") {
+    const text = act.newestAnswer();
+    if (!text) {
+      act.notice("no answer to copy yet");
+      return;
+    }
+    const lines = text.split("\n").length;
+    act.copy(text).then(
+      () => act.notice("copied the answer (" + lines + (lines === 1 ? " line)" : " lines)")),
+      (err) => act.notice("couldn't copy the answer: " + errorText(err)),
+    );
+    return;
+  }
   const blocks = act.blocks();
   if (arg === "") {
     const newest = act.newestBlocks();
@@ -229,7 +307,7 @@ function copyCommand(arg) {
   }
   const n = Number(arg);
   if (!Number.isInteger(n)) {
-    act.notice("/copy takes a block number, such as /copy 2");
+    act.notice("/copy takes a block number, such as /copy 2, or answer");
     return;
   }
   copyBlock(n, blocks);

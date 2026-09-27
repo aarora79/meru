@@ -1,0 +1,24 @@
+Meru मेरु v0.4.3 lite · minic… ● connected
+────────────────────────────────────────
+
+  ╭────────────────────────────────────╮
+  │ Keys and commands                  │
+  │                                    │
+  │ Keys                               │
+  │ enter    send                      │
+  │ ctrl+j   newline                   │
+  │ ctrl+c   stop/quit                 │
+  │ ctrl+d   quit                      │
+  │ ↑        recall                    │
+  │ pgup/dn  scroll                    │
+  │ ctrl+y   copy code                 │
+  │ ↓ more                             │
+  │                                    │
+  │ Esc or q closes a box. Commands    │
+  │ run at once, even while an answer  │
+  │ streams.                           │
+  ╰────────────────────────────────────╯
+╭──────────────────────────────────────╮
+│ Ask Meru anything…                   │
+╰──────────────────────────────────────╯
+↑/↓ scroll · esc/q close …

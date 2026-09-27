@@ -1,4 +1,4 @@
-Meru मेरु lite · minicpm5:2b · session 101500-ab12                     ● connected
+Meru मेरु v0.4.3 lite · minicpm5:2b · session 101500-ab12              ● connected
 ────────────────────────────────────────────────────────────────────────────────
 
 You
@@ -7,16 +7,16 @@ You
 Meru  tools · 0.82
   ✓ notes.search · 120 ms
   → mail.send
-  ╭──────────────────────────────────────────────╮
-  │ Run mail.send?  mcp                          │
-  │ {                                            │
-  │   "to": "sam@example.com",                   │
-  │   "subject": "Garden plan",                  │
-  │   "body": "We sow the tomatoes on 12 April." │
-  │ }                                            │
-  │                                              │
-  │  o once   s this session  [d deny]           │
-  ╰──────────────────────────────────────────────╯
+  ╭───────────────────────────────────────────────────╮
+  │ Run mail.send?  mcp                               │
+  │ {                                                 │
+  │   "to": "sam@example.com",                        │
+  │   "subject": "Garden plan",                       │
+  │   "body": "We sow the tomatoes on 12 April."      │
+  │ }                                                 │
+  │                                                   │
+  │  o once   s this session  [d deny]  e edit first  │
+  ╰───────────────────────────────────────────────────╯
 
 
 
@@ -27,4 +27,4 @@ Meru  tools · 0.82
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-o once · s this session · d deny · ←/→ enter choose · ctrl+c stop
+o once · s this session · d deny · e edit first · ←/→ enter choose · ctrl+c stop

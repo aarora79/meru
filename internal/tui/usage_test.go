@@ -144,8 +144,8 @@ func TestUnknownCommand(t *testing.T) {
 	}
 	lines := strings.Split(m.View(), "\n")
 	last := lines[len(lines)-1]
-	if !strings.Contains(last, "unknown command /usag") || !strings.Contains(last, "/usage") {
-		t.Errorf("help line = %q, want the unknown command and the list", last)
+	if !strings.Contains(last, "unknown command /usag") || !strings.Contains(last, "/help") {
+		t.Errorf("help line = %q, want the unknown command and /help", last)
 	}
 	// The next key brings the help line back.
 	m, _ = update(t, m, press(tea.KeyBackspace))

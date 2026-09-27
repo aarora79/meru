@@ -60,7 +60,7 @@ type turnDoneMsg struct {
 func streamCmd(ctx context.Context, ask askFunc, send sender, turn int, req rpc.Request) tea.Cmd {
 	return func() tea.Msg {
 		// range over an iterator runs the loop body once per yielded pair.
-		for ev, err := range ask(ctx, req, approveVia(send, turn)) {
+		for ev, err := range ask(ctx, req, approveVia(send, turn, false)) {
 			if err != nil {
 				return turnDoneMsg{turn: turn, err: err}
 			}
@@ -72,16 +72,19 @@ func streamCmd(ctx context.Context, ask askFunc, send sender, turn int, req rpc.
 
 // approvalRequestMsg asks Update to show an approval box for one tool call.
 // reply takes the user's choice back to the goroutine that waits for it.
-// turn names the question it belongs to, like eventMsg's.
+// turn names the question it belongs to, like eventMsg's; for a save,
+// save is true and turn holds the save's number.
 type approvalRequestMsg struct {
 	turn     int
+	save     bool
 	approval rpc.Approval
 	// reply has room for one choice, so Update can send the answer without
 	// waiting, even when the goroutine has already given up.
 	reply chan rpc.Choice
 }
 
-// approveVia returns the ApproveFunc for one turn. rpc.Do calls it from the
+// approveVia returns the ApproveFunc for one turn, or for save number
+// turn when save is true. rpc.Do calls it from the
 // stream goroutine each time merud asks about a tool call.
 //
 // The goroutine can't draw anything or read keys; only Update can. So the
@@ -91,10 +94,10 @@ type approvalRequestMsg struct {
 // the user pressed Ctrl-C or quit. select waits for whichever comes first.
 // While it blocks, the turn waits too: merud holds the tool call until the
 // Reply arrives.
-func approveVia(send sender, turn int) rpc.ApproveFunc {
+func approveVia(send sender, turn int, save bool) rpc.ApproveFunc {
 	return func(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
 		reply := make(chan rpc.Choice, 1)
-		send.Send(approvalRequestMsg{turn: turn, approval: a, reply: reply})
+		send.Send(approvalRequestMsg{turn: turn, save: save, approval: a, reply: reply})
 		select {
 		case c := <-reply:
 			return c, nil

@@ -1,8 +1,8 @@
-Meru मेरु lite · qwen3.6:35b-a3b-mxfp8 · 2637 docs (11698 vectors, 84 MB) · 7 memories        1h: 4 questions · 18k in · 2.1k out  qwen-moe  ● connected
+Meru मेरु v0.4.3 lite · qwen3.6:35b-a3b-mxfp8 · 2637 docs (11698 vectors, 84 MB) · 7 memories 1h: 4 questions · 18k in · 2.1k out  qwen-moe  ● connected
 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   Ask a question below. The answer comes from models on this machine.
 ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                                                                                                 │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /new /usage /me /mcp
+enter send · ctrl+c stop/quit · ↑ recall · pgup/dn scroll · /help commands

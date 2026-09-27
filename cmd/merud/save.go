@@ -90,7 +90,7 @@ func (s saveService) handleSave(ctx context.Context, req rpc.Request, emit func(
 		Name:    builtin.WriteFile,
 		Args:    args,
 		Session: sess.ID(),
-		Source:  rpc.SourceDesktop,
+		Source:  saveSource(req.Source),
 		Append:  sess.Append,
 		Approve: approve,
 	})
@@ -100,9 +100,20 @@ func (s saveService) handleSave(ctx context.Context, req rpc.Request, emit func(
 	case dispatch.OutcomeDeclined:
 		return errors.New("not saved: you didn't allow write_file")
 	case dispatch.OutcomeDenied:
-		return errors.New("not saved: write_file is off; turn it on in the Library under Connections")
+		return errors.New("not saved: write_file is off; turn it on in the Library under Connections, or with /mcp in meru chat")
 	}
 	return fmt.Errorf("not saved: %s", res.Text)
+}
+
+// saveSource returns the client a save came from, for the tool call's
+// audit line and metrics: `meru chat` says so, and any other request is
+// the desktop app's, as every save was before the chat had /save. The
+// value stays one of a small fixed set, as a metric attribute must.
+func saveSource(s rpc.Source) rpc.Source {
+	if s == rpc.SourceTUI {
+		return rpc.SourceTUI
+	}
+	return rpc.SourceDesktop
 }
 
 // freeName returns folder/base.md, or folder/base-2.md and so on when that

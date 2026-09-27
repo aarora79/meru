@@ -123,7 +123,7 @@ func TestApprovalKeys(t *testing.T) {
 			if m.input.Value() != "" {
 				t.Errorf("input = %q, want the keys kept out of it", m.input.Value())
 			}
-			want := []toolCall{{id: "1", name: "mail.send", outcome: "ok", millis: 80}}
+			want := []toolCall{{id: "1", name: "mail.send", kind: "mcp", outcome: "ok", millis: 80}}
 			if got := m.turns[0].tools; !reflect.DeepEqual(got, want) {
 				t.Errorf("tools = %+v, want %+v", got, want)
 			}

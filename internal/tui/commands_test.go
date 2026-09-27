@@ -58,7 +58,7 @@ func TestNewSession(t *testing.T) {
 }
 
 // TestExit checks /exit: it quits the chat, stopping an answer that is
-// still streaming, and the line for an unknown command lists it.
+// still streaming, and the line for an unknown command points at /help.
 func TestExit(t *testing.T) {
 	merud := &fakeMerud{block: true}
 	m := testModel(merud.ask, newFakeSender())
@@ -81,8 +81,8 @@ func TestExit(t *testing.T) {
 
 	m = testModel(nil, newFakeSender())
 	m, _ = update(t, m, typeText("/quit"), press(tea.KeyEnter))
-	if !strings.Contains(m.notice, "/exit") {
-		t.Errorf("unknown-command notice %q doesn't list /exit", m.notice)
+	if !strings.Contains(m.notice, "/help") || !strings.Contains(commandList, "/exit") {
+		t.Errorf("unknown-command notice %q doesn't point at /help, or /exit isn't listed", m.notice)
 	}
 }
 

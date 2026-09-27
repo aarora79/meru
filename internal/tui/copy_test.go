@@ -214,7 +214,7 @@ func TestCopyCommands(t *testing.T) {
 		{"out of range", []string{threeBlocks}, []tea.Msg{typeText("/copy 7"), press(tea.KeyEnter)},
 			nil, "no code block 7 · blocks go from 1 to 3"},
 		{"not a number", []string{threeBlocks}, []tea.Msg{typeText("/copy two"), press(tea.KeyEnter)},
-			nil, "/copy takes a block number, such as /copy 2"},
+			nil, "/copy takes a block number, such as /copy 2, or answer"},
 		{"no blocks", []string{"No code here."}, []tea.Msg{typeText("/copy 1"), press(tea.KeyEnter)},
 			nil, "no code block to copy yet"},
 		{"no answer yet", nil, []tea.Msg{press(tea.KeyCtrlY)},
@@ -257,16 +257,6 @@ func TestCopyNotices(t *testing.T) {
 		if got := tt.msg.notice(); got != tt.want {
 			t.Errorf("notice = %q, want %q", got, tt.want)
 		}
-	}
-}
-
-// TestUnknownCommandListsCopy checks that the notice for an unknown
-// command names /copy.
-func TestUnknownCommandListsCopy(t *testing.T) {
-	m := testModel(nil, newFakeSender())
-	m, _ = update(t, m, typeText("/cpy"), press(tea.KeyEnter))
-	if !strings.Contains(m.notice, "/copy") {
-		t.Errorf("notice = %q, want it to list /copy", m.notice)
 	}
 }
 

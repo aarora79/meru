@@ -54,7 +54,8 @@ allows only code inside this repo to import.
 | `internal/transcript` | reads and writes session files (JSONL), and lists them | `transcript.go`: `New`, `Append`, `History`, then `list.go`: `List` |
 | `internal/rpc` | the socket protocol between `meru` and `merud` | `protocol.go`, then `client.go` and `server.go` |
 | `internal/obs` | OpenTelemetry metrics and traces | `obs.go` |
-| `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour) | `run.go`: `Run`, then `model.go` and `view.go` |
+| `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour), with the desktop app's features as slash commands and boxes | `run.go`: `Run`, then `model.go`, `view.go`, `commands.go` and `box.go` |
+| `internal/about` | the tagline, the version and the project's links, for the desktop app and `meru chat` | `about.go`: `Version`, `ShortVersion`, `Links` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
 | `internal/mcp` | the MCP client pool: starts or connects to servers, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
 | `internal/skills` | loads `SKILL.md` folders, installs the built-in skills, and stamps the folder so `merud` sees edits | `skills.go`: `Load`, then `builtin.go` and `stamp.go` |
@@ -80,8 +81,8 @@ flowchart TD
     merud --> memory & skills & summarize
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     desktopapp["cmd/meru-desktop"] --> desktop
-    desktop --> rpc & config & opener
-    tui --> rpc & opener
+    desktop --> rpc & config & opener & about
+    tui --> rpc & opener & about
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
     builtin --> dispatch & catalog & secrets & config & memory & index
@@ -121,7 +122,7 @@ Three things to notice:
   `internal/policy` fails the build if this ever changes.
 - **The desktop app stays smaller still.** `cmd/meru-desktop` imports Wails and
   `internal/desktop`, which reaches only `rpc`, `config` (read, to name the
-  answer model) and `opener`. The same policy test checks both, forbids them
+  answer model), `opener` and `about`. The same policy test checks both, forbids them
   `catalog`, `secrets` and `tui` as well, and fails on any use of Wails'
   self-updater.
 - **`loopback` imports nothing of Meru's.** It sits at the bottom so every package
@@ -749,8 +750,9 @@ the probe and writes the catalog's lists.
 
 1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows.
    With `--json` it prints them as a JSON array; otherwise it prints
-   `tui.MCPTable(rows)`. In `meru chat`, `/mcp` opens a box that asks the same
-   op (`internal/tui/mcp.go`, `mcpCmd`) and draws the same `MCPTable`.
+   `tui.MCPTable(rows)`. In `meru chat`, `/mcp` opens the app's Connections
+   instead: it sends `connections` and changes a tool with `tool_policy`
+   (`internal/tui/mcp.go`, `mcpKey`).
 2. **`cmd/merud/tools.go` → `handleMCPStatus`** reads `mcp.Pool.Status` and
    emits one `mcp_status` event. It sends nothing to any server, so it answers at
    once while one is down.

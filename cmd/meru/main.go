@@ -185,13 +185,16 @@ flags:`)
 }
 
 // chatInfo reads the profile and main model from the default config file for
-// the chat screen's header, and the [chat] settings. A config that doesn't
-// load leaves the header without them and the settings at their defaults,
-// instead of stopping the chat; merud reports config errors when it starts.
+// the chat screen's header, the [chat] settings, and Meru's folder for the
+// /about box. A config that doesn't load leaves the header without them
+// and the settings at their defaults, instead of stopping the chat; merud
+// reports config errors when it starts.
 func chatInfo() tui.Info {
+	// A home folder that can't be found leaves the folder out of /about.
+	dir, _ := config.DefaultDir()
 	// fallback is what the chat gets when the config can't be read: no
 	// profile or model in the header, and mouse copying on, its default.
-	fallback := tui.Info{MouseCopy: true}
+	fallback := tui.Info{MouseCopy: true, Dir: dir}
 	path, err := config.DefaultPath()
 	if err != nil {
 		return fallback
@@ -200,7 +203,7 @@ func chatInfo() tui.Info {
 	if err != nil {
 		return fallback
 	}
-	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy}
+	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy, Dir: dir}
 }
 
 // ping asks merud whether it is up and prints the answer.

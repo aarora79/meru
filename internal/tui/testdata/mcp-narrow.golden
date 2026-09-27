@@ -1,20 +1,20 @@
-Meru मेरु lite · minicpm5:2b … ● connected
+Meru मेरु v0.4.3 lite · minic… ● connected
 ────────────────────────────────────────
 
   ╭────────────────────────────────────╮
-  │ MCP servers                        │
+  │ Connections                        │
   │                                    │
-  │ SERVER     TRANSPORT  STATE      … │
-  │ google     http       connected  … │
-  │ obsidian   stdio      connected  … │
-  │ notes      stdio      not connect… │
+  │   meru · built in · 3 of 3 tools … │
+  │ ›   Always asks configure          │
+  │     Allow       web_search         │
+  │     Ask         write_file         │
+  │ ↓ more                             │
   │                                    │
-  │ meru tools lists each tool; meru   │
-  │ mcp list shows the catalog and     │
-  │ meru mcp add adds a server.        │
+  │ Ask means Meru asks before each    │
+  │ call. meru mcp add stdio|http adds │
+  │ a server of your own.              │
   ╰────────────────────────────────────╯
-
 ╭──────────────────────────────────────╮
 │ Ask Meru anything…                   │
 ╰──────────────────────────────────────╯
-esc/q close · ctrl+c stop/quit
+↑/↓ move · ←/→ policy · enter add …

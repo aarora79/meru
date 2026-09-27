@@ -220,30 +220,25 @@ save it before it writes the entry, or the reload that follows would fail on a
 ### about.go
 
 `Tagline` holds the one line that says what Meru is: "A personal AI assistant
-that runs entirely on your own computer". `WindowTitle` puts "Meru · " in front
-of it for the title bar; the name comes first, because macOS cuts a long title
-from the end. `index.html` repeats the line as the logo's tooltip, and
+that runs entirely on your own computer". It comes from `internal/about` (see
+[about](about.md)), which `meru chat` reads too. `WindowTitle` puts "Meru · " in
+front of it for the title bar; the name comes first, because macOS cuts a long
+title from the end. `index.html` repeats the line as the logo's tooltip, and
 `TestTaglineEverywhere` fails when the page or `main.go` drifts from it.
 
 `About` returns what the Library's About section needs from Go: the tagline, the
-version, the license (`License`, the Apache License 2.0 as `LICENSE` gives it), where
-`config.toml` and Meru's folder are, written with `~`, and the project's four links
-on GitHub: the source, the design, a new issue and the license. `merud` reports no version over the socket, so
-`appVersion` reads the app's own. `make release` stamps the version into
-`releaseVersion` with the Go linker's `-X` flag, which sets a package variable
-while it links the binary, and `appVersion` returns that when it isn't empty.
-Otherwise `buildVersion` reads `debug.ReadBuildInfo`, what the Go toolchain
-wrote into the binary: a tag such as `v0.3.0` for `go install …@v0.3.0`, or
-`(devel)` plus the git commit for a local build. The app and `merud` build from
-the same tree, so the app's version stands in. `shortVersion` cuts it to fit under the
-wordmark in the rail: a release tag such as `v0.4.1` stays, and a build between tags,
-whose Go pseudo-version names a release that doesn't exist yet, shows as `dev`
-and the commit, such as `dev 5325b3e`. The rail shows the full version as the
-label's tooltip. In the About section, the license, the settings
-file and Meru's folder are link-styled buttons (`openable` in `library.js`):
-the license opens on GitHub through `OpenURL`, and the two paths open through
-`OpenSource`, the file in its default app and the folder in Finder. [releasing.md](../releasing.md)
-shows the flag.
+version and its short form, the license, where `config.toml` and Meru's folder
+are, written with `~`, and the project's four links on GitHub. `internal/about`
+supplies all but the paths. `merud` reports no version over the socket, so the
+app shows its own build's: the one `make release` stamps in, or what Go recorded
+in the binary. The short form sits under the wordmark in the rail: a release tag
+such as `v0.4.1` stays, and a build between tags shows as `dev` and the commit,
+such as `dev 5325b3e`. The rail shows the full version as the label's tooltip.
+`type Link = about.Link` gives the package's link type a second name here, so the
+page gets the same JSON as before. In the About section, the license, the settings
+file and Meru's folder are link-styled buttons (`openable` in `library.js`): the
+license opens on GitHub through `OpenURL`, and the two paths open through
+`OpenSource`, the file in its default app and the folder in Finder.
 
 The links live in Go on purpose. `assets_test.go` fails when the page's own files
 name any host, so the page asks `About` for the links and opens each through
@@ -314,9 +309,16 @@ the user deleted keeps its name and loses its preview.
 
 ### commands.go
 
-`commandList` holds the seven slash commands, `/new`, `/usage`, `/me`, `/mcp`,
-`/model [name | save]`, `/copy [N]` and `/exit`, with a line on each for the
-menu. In the page, `/model` alone opens Library, Models; `/model save` calls
+`commandList` holds the slash commands `meru chat` has, from `/new` to `/exit`,
+with a line on each for the menu. Each runs through the app's own screen or
+button: `/chats` opens the rail with the words in its search box, `/retry` is Try
+again on the newest answer, `/scope` flips the Where Meru looks switch, `/attach`
+opens the file dialog, `/save` is Save to a note (`/save chat` is Share as file),
+`/used` opens the side panel on the newest answer, `/copy answer` copies the whole
+answer, `/folders`, `/skills`, `/log` and `/about` open their Library sections, and
+`/help` opens the command menu. `app.js` hands `commands.js` the functions these
+need. `TestEveryCommandRuns` fails when a listed command has no case in
+`commands.js`. In the page, `/model` alone opens Library, Models; `/model save` calls
 `SaveModels` and `/model <name>` calls `UseModelSet`, and both say on the
 notice line how it went. A switch waits while a turn runs, as in `meru chat`.
 `TestModelCommandRouting` reads `commands.js` and checks that each form reaches

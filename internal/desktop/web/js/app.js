@@ -1022,6 +1022,20 @@ function panelOpen() {
   return $("toggle-panel").getAttribute("aria-expanded") === "true";
 }
 
+// newestTurn returns the newest turn of the open chat, or null.
+function newestTurn() {
+  return state.turns.length ? state.turns[state.turns.length - 1] : null;
+}
+
+// newestAnswered returns the newest turn with a finished answer, or null.
+function newestAnswered() {
+  for (let i = state.turns.length - 1; i >= 0; i--) {
+    const t = state.turns[i];
+    if (t.state === "done" && t.answer) return t;
+  }
+  return null;
+}
+
 // ---- Wiring ----
 
 function wire() {
@@ -1084,6 +1098,50 @@ function wire() {
     fit: () => fit(box),
     running: () => state.running !== 0,
     refreshStatus: () => loadStatus(),
+    // The commands below match `meru chat`'s /chats, /retry, /scope,
+    // /attach, /save and /used, each through the button that does the same.
+    findChats: (words) => {
+      setRail(true);
+      $("search").value = words;
+      state.filter = words;
+      drawSessions();
+      $("search").focus();
+    },
+    retry: () => {
+      const t = newestTurn();
+      if (!t) {
+        notice("Nothing to ask again yet.");
+        return;
+      }
+      handlers.onRetry(t);
+    },
+    setScope,
+    attach,
+    save: (what) => {
+      if (what === "chat") {
+        save(() => bridge.saveChat(state.session), "chat");
+        return;
+      }
+      const t = newestAnswered();
+      if (!t) {
+        notice("Ask something first; there is nothing to save yet.");
+        return;
+      }
+      handlers.onSaveNote(t);
+    },
+    showUsed: () => {
+      const t = newestTurn();
+      if (!t) {
+        notice("Ask something first; no answer has used anything yet.");
+        return;
+      }
+      select(t);
+      setPanel(true);
+    },
+    newestAnswer: () => {
+      const t = newestAnswered();
+      return t ? t.answer : "";
+    },
   });
   box.addEventListener("input", () => fit(box));
   box.addEventListener("keydown", (e) => {

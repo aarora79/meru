@@ -21,11 +21,22 @@ type Command struct {
 // lists differ, so a command added to one can't go missing from the other.
 var commandList = []Command{
 	{Name: "/new", Description: "Start a new chat; the queued questions go too"},
+	{Name: "/chats", Args: "[words]", Description: "Find a past chat in the sidebar"},
+	{Name: "/retry", Description: "Ask the newest question again"},
+	{Name: "/scope", Args: "<auto | files | mail | web | talk>", Description: "Set where Meru looks"},
+	{Name: "/attach", Description: "Attach files or images"},
+	{Name: "/save", Args: "[chat]", Description: "Save the newest answer as a note, or share the chat as a file"},
+	{Name: "/used", Description: "What the newest answer used"},
+	{Name: "/copy", Args: "[N | answer]", Description: "Copy code block N, the newest answer's last block, or the whole answer"},
 	{Name: "/usage", Description: "How much Meru has been used"},
 	{Name: "/me", Description: "What Meru knows about you"},
 	{Name: "/mcp", Description: "Your connections and their tools"},
+	{Name: "/folders", Description: "The folders Meru searches"},
+	{Name: "/skills", Description: "Turn skills on or off"},
 	{Name: "/model", Args: "[name | save]", Description: "Switch to a model set, save it as the default, or show the sets"},
-	{Name: "/copy", Args: "[N]", Description: "Copy code block N, or the newest answer's last block"},
+	{Name: "/log", Description: "The latest tool calls"},
+	{Name: "/about", Description: "Version, license and links"},
+	{Name: "/help", Description: "Every command"},
 	{Name: "/exit", Description: "Close Meru"},
 }
 

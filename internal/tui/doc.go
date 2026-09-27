@@ -22,10 +22,15 @@
 // turn at a time; the queue lives here.
 //
 // A line typed with a leading "/" is a command for the chat itself and never
-// reaches the model. /usage opens a box with merud's usage numbers, and the
-// header shows the last hour of them. /me shows what Meru knows about the
-// user, and /mcp the state of each MCP server, the same table `meru mcp`
-// prints (MCPTable).
+// reaches the model (commands.go names them all, and /help lists them). The
+// commands give the chat what the desktop app has, through the ops the app
+// sends: /chats reopens a past chat, /retry asks again, /scope sets where a
+// question looks, /attach adds a file or an image, /save saves an answer or
+// the chat, and /used shows what an answer used. /usage, /me, /mcp,
+// /folders, /skills, /model, /log and /about open boxes over the
+// conversation that match the app's Library (box.go). Every change goes to
+// merud, which writes config.toml, secrets.toml and the memory folder; this
+// package writes no file of Meru's.
 //
 // Each code block in a finished answer gets a "⧉ copy N" label. /copy N and
 // Ctrl-Y put a block on the system clipboard, and so does a click on its

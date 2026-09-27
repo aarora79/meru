@@ -7,6 +7,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -35,26 +36,47 @@ func (m Model) View() string {
 	helpLine := m.helpView(m.shortHelp())
 	switch {
 	case m.approval != nil:
-		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices))
-	case m.boxOpen():
-		helpLine = m.helpView(newBoxKeys())
+		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices, !m.approval.save))
+	case m.boxOpen() && m.notice == "":
+		helpLine = m.helpView(m.boxKeys())
 	case m.notice != "":
 		helpLine = m.style.dim.Render(ansi.Truncate(m.notice, m.width, "…"))
 	}
 	// A box takes the conversation's place, at the same size, so the
 	// conversation underneath keeps its scroll position.
+	h := m.conversation.Height
 	pane := m.conversation.View()
 	switch {
+	case m.approval != nil && m.approval.save:
+		pane = m.savePaneView(m.width, h)
 	case m.usageBox != nil:
-		pane = m.usageBoxView(m.width, m.conversation.Height)
+		pane = m.usageBoxView(m.width, h)
 	case m.meBox != nil:
-		pane = m.meBoxView(m.width, m.conversation.Height)
+		pane = m.meBoxView(m.width, h)
 	case m.mcpBox != nil:
-		pane = m.mcpBoxView(m.width, m.conversation.Height)
+		pane = m.mcpBoxView(m.width, h)
 	case m.modelBox != nil:
-		pane = m.modelBoxView(m.width, m.conversation.Height)
+		pane = m.modelBoxView(m.width, h)
+	case m.chatsBox != nil:
+		pane = m.chatsBoxView(m.width, h)
+	case m.usedBox != nil:
+		pane = m.usedBoxView(m.width, h)
+	case m.foldersBox != nil:
+		pane = m.foldersBoxView(m.width, h)
+	case m.skillsBox != nil:
+		pane = m.skillsBoxView(m.width, h)
+	case m.logBox != nil:
+		pane = m.logBoxView(m.width, h)
+	case m.aboutBox != nil:
+		pane = m.aboutBoxView(m.width, h)
+	case m.helpBox != nil:
+		pane = m.helpBoxView(m.width, h)
 	}
-	return strings.Join([]string{m.header(), rule, pane, input, helpLine}, "\n")
+	parts := []string{m.header(), rule, pane}
+	if len(m.attached) > 0 {
+		parts = append(parts, m.attachLine())
+	}
+	return strings.Join(append(parts, input, helpLine), "\n")
 }
 
 // shortHelp returns the keys the help line shows. While a turn runs, Enter
@@ -103,8 +125,17 @@ func (m Model) helpView(keys []key.Binding) string {
 // The "no profile" marker sits before the session so it outlasts it: it
 // asks the user to do something, and the session ID only labels the chat.
 // The status stays.
+//
+// The short version sits beside the name, as the desktop app's rail shows
+// it, and goes when the details have no room left. A scope other than
+// auto, from /scope, shows in amber before the set's name: it narrows
+// what the next answer may touch, so it asks for a second look.
 func (m Model) header() string {
-	brand := m.style.brand.Render("Meru मेरु")
+	name := m.style.brand.Render("Meru मेरु")
+	brand := name
+	if m.version != "" {
+		brand += " " + m.style.dim.Render(m.version)
+	}
 
 	var status string
 	switch m.link {
@@ -127,6 +158,9 @@ func (m Model) header() string {
 	if set := m.activeSet(); set != "" {
 		right = m.style.brand.Render(set) + "  " + status
 	}
+	if s := scopeLabel(m.scope); s != "" {
+		right = m.style.notice.Render("scope: "+s) + "  " + right
+	}
 	if u := lastHour(m.usage); u != "" {
 		if withUsage := m.style.dim.Render(u) + "  " + right; fits(details, withUsage) {
 			right = withUsage
@@ -139,6 +173,12 @@ func (m Model) header() string {
 	// The details get what is left after the name, the right side, one
 	// space after the name and at least one before the right side.
 	room := m.width - 2 - lipgloss.Width(brand) - lipgloss.Width(right)
+	if room < 6 && brand != name {
+		// Too narrow for the details beside the version: the version
+		// goes first, since /about shows it.
+		room += lipgloss.Width(brand) - lipgloss.Width(name)
+		brand = name
+	}
 	if room < 6 {
 		details = "" // too narrow to say anything useful
 	} else {
@@ -224,10 +264,20 @@ func (m *Model) renderConversation() string {
 // the "You" label with a dim "queued" beside it, and the question in its
 // box, as a sent question looks. When merud takes it, the same question
 // shows again as a turn, without the mark.
-func (m *Model) renderQueued(q string) string {
+func (m *Model) renderQueued(q outgoing) string {
 	width := max(m.width-answerIndent, 10)
 	return m.style.you.Render("You") + "  " + m.style.dim.Render("queued") + "\n" +
-		m.style.question.Render(ansi.Wrap(q, width-2, ""))
+		m.style.question.Render(ansi.Wrap(withImages(q.text, q.images), width-2, ""))
+}
+
+// withImages returns a question as the screen shows it: its text, then
+// one "image: garden-bed.png" line per image it carries, since the
+// terminal can't show the picture.
+func withImages(text string, images []string) string {
+	for _, p := range images {
+		text += "\nimage: " + filepath.Base(p)
+	}
+	return text
 }
 
 // renderTurn draws one turn: the "You" label and the question, then the
@@ -244,7 +294,7 @@ func (m *Model) renderTurn(t *exchange) string {
 	lines := []string{
 		m.style.you.Render("You"),
 		// The question box draws a bar and one space of padding.
-		m.style.question.Render(ansi.Wrap(t.question, width-2, "")),
+		m.style.question.Render(ansi.Wrap(withImages(t.question, t.images), width-2, "")),
 		"",
 		m.style.meru.Render("Meru") + m.badge(t),
 	}

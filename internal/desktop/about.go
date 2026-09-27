@@ -1,39 +1,30 @@
-// This file holds the one line that says what Meru is, and the Bridge
-// method behind the Library's About section: that line, the app's version,
-// where Meru keeps its files, and the links to the project on GitHub.
+// This file holds the Bridge method behind the Library's About section:
+// the one line that says what Meru is, the app's version, where Meru keeps
+// its files, and the links to the project on GitHub. internal/about holds
+// the line, the version and the links, for this app and for `meru chat`.
 
 package desktop
 
 import (
 	"path/filepath"
-	"regexp"
-	"runtime/debug"
 	"strings"
+
+	"github.com/aarora79/meru/internal/about"
 )
 
 // Tagline says in one line what Meru is. The window's title bar, the
-// rail's logo and the About section all show it, so it lives here once;
-// index.html repeats it for the logo's tooltip, and a test keeps the two
-// the same.
-const Tagline = "A personal AI assistant that runs entirely on your own computer"
+// rail's logo and the About section all show it; it comes from
+// internal/about, which the chat's /about box reads too. index.html
+// repeats it for the logo's tooltip, and a test keeps the two the same.
+const Tagline = about.Tagline
 
 // WindowTitle is the title bar's text: the name first, as macOS cuts a
 // long title from the end, then the tagline.
 const WindowTitle = "Meru · " + Tagline
 
-// The project's pages on GitHub. They live in Go, not in the page, so the
-// page's own files name no host at all (assets_test.go checks that); the
-// page gets them from About and opens each through OpenURL.
-const (
-	sourceURL  = "https://github.com/aarora79/meru"
-	designURL  = sourceURL + "/blob/main/ARCHITECTURE.md"
-	featureURL = sourceURL + "/issues/new"
-	licenseURL = sourceURL + "/blob/main/LICENSE"
-)
-
 // License names the license Meru's code is under, as the LICENSE file at
 // the top of the repository gives it.
-const License = "Apache License 2.0"
+const License = about.License
 
 // About is what the Library's About section shows beside its own prose.
 type About struct {
@@ -45,7 +36,7 @@ type About struct {
 	Version string `json:"version"`
 	// ShortVersion is Version cut to fit beside the logo in the rail:
 	// "v0.4.1" for a release, "dev 5325b3e" for any other build. See
-	// shortVersion.
+	// about.ShortVersion.
 	ShortVersion string `json:"short_version"`
 	// License is the License constant.
 	License string `json:"license"`
@@ -58,13 +49,11 @@ type About struct {
 	Links []Link `json:"links"`
 }
 
-// Link is one of the project's pages: a button's label and the page's
-// URL. ID lets the page put its own words beside a link.
-type Link struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	URL   string `json:"url"`
-}
+// Link is one of the project's pages, as internal/about lists them: a
+// button's label and the page's URL, with an ID that lets the page put
+// its own words beside a link. "type Link = about.Link" makes Link a
+// second name for that type, not a new type, so nothing needs copying.
+type Link = about.Link
 
 // About returns what the About section shows. It asks merud for nothing,
 // so it works while merud is down.
@@ -75,95 +64,15 @@ func (b *Bridge) About() About {
 		// holds the socket is the best guess left.
 		dir = filepath.Dir(b.socket)
 	}
-	v := appVersion()
 	return About{
 		Tagline:      Tagline,
-		Version:      v,
-		ShortVersion: shortVersion(v),
+		Version:      about.Version(),
+		ShortVersion: about.ShortVersion(),
 		License:      License,
 		ConfigPath:   tilde(filepath.Join(dir, "config.toml"), b.home),
 		DataDir:      tilde(dir, b.home),
-		Links: []Link{
-			{ID: "source", Label: "Source code on GitHub", URL: sourceURL},
-			{ID: "design", Label: "Read the design", URL: designURL},
-			{ID: "feature", Label: "Request a feature", URL: featureURL},
-			{ID: "license", Label: "Read the license", URL: licenseURL},
-		},
+		Links:        about.Links(),
 	}
-}
-
-// releaseVersion holds the version `make release` writes into the app
-// with the linker flag -X, such as "v0.4.1". Every other build leaves it
-// empty. The linker sets it before main starts and nothing changes it
-// after, so it acts as a constant. docs/releasing.md shows the flag.
-var releaseVersion string
-
-// appVersion returns the version the About section shows: the one
-// `make release` stamped in, else the one buildVersion reads from the
-// binary's build information.
-func appVersion() string {
-	if releaseVersion != "" {
-		return releaseVersion
-	}
-	return buildVersion(debug.ReadBuildInfo())
-}
-
-// pseudoVersion matches the version Go gives a build made between tags,
-// such as "v0.4.2-0.20260927021103-5325b3ef94cb": the next patch, then a
-// time and the commit's first twelve characters.
-var pseudoVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:0\.)?\d{14}-([0-9a-f]{12})$`)
-
-// shortVersion cuts v, as appVersion returns it, to fit in the rail. A
-// release tag such as "v0.4.1" stays as it is. A pseudo-version or a
-// "(devel) 5325b3e" build becomes "dev" and the commit's first seven
-// characters, since the version Go guesses for a build between tags names
-// a release that doesn't exist yet. It returns "" when v says nothing
-// useful, such as "unknown".
-func shortVersion(v string) string {
-	if m := pseudoVersion.FindStringSubmatch(v); m != nil {
-		return "dev " + m[1][:7]
-	}
-	if rest, ok := strings.CutPrefix(v, "(devel) "); ok {
-		// rest is "5325b3e" or "5325b3e, modified"; keep the commit.
-		sha, _, _ := strings.Cut(rest, ",")
-		return "dev " + sha
-	}
-	if v == "(devel)" || v == "unknown" {
-		return ""
-	}
-	return v
-}
-
-// buildVersion turns what the Go toolchain recorded in the binary into a
-// version: the module's tag for a release build, and for a local build
-// "(devel)" with the first seven characters of the git commit, and
-// "modified" when the tree had changes. ok is false when the binary
-// carries no build information, as in some test binaries.
-func buildVersion(info *debug.BuildInfo, ok bool) string {
-	if !ok || info == nil {
-		return "unknown"
-	}
-	v := info.Main.Version
-	if v == "" {
-		v = "(devel)"
-	}
-	var rev, modified string
-	for _, s := range info.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			rev = s.Value
-		case "vcs.modified":
-			modified = s.Value
-		}
-	}
-	if v != "(devel)" || rev == "" {
-		return v
-	}
-	v += " " + rev[:min(7, len(rev))]
-	if modified == "true" {
-		v += ", modified"
-	}
-	return v
 }
 
 // tilde writes path with ~ in place of the home folder, as the rest of

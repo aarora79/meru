@@ -174,7 +174,7 @@ func TestViewGolden(t *testing.T) {
 				m, _ = update(t, m, typeText("/me"), press(tea.KeyEnter), meMsg{memories: profileFixture})
 			}
 			if tt.mcpBox {
-				m, _ = update(t, m, typeText("/mcp"), press(tea.KeyEnter), mcpMsg{rows: mcpFixture})
+				m, _ = update(t, m, typeText("/mcp"), press(tea.KeyEnter), connsReply)
 			}
 			if tt.models != nil {
 				m, _ = update(t, m, modelsMsg{action: actionList, info: tt.models})

@@ -121,9 +121,10 @@ make check
 
 # -X tells the Go linker to set a string variable in a package. Both
 # variables stay empty in every other build; internal/obs reports the
-# version for merud and about_meru, internal/desktop for the app's About.
+# version for merud and about_meru, internal/about for the app's About
+# and for meru chat.
 module="$(go list -m)"
-ldflags="-X $module/internal/obs.releaseVersion=$version -X $module/internal/desktop.releaseVersion=$version"
+ldflags="-X $module/internal/obs.releaseVersion=$version -X $module/internal/about.releaseVersion=$version"
 
 # Start from empty folders, so nothing from an earlier build slips in.
 rm -rf bin dist
