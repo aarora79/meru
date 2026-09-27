@@ -557,7 +557,7 @@
 
   <li><b>Skills</b> lists every skill with an on and off switch, which edits <code>[skills] disabled</code>.</li>
 
-  <li><b>Models</b> shows the profile, the three models, the Ollama version and which models it holds in memory, and how to change them: in <code>config.toml</code>, then a restart. The app changes no model.</li>
+  <li><b>Models</b> shows the profile, the three models, the Ollama version and which models it holds in memory. Under them, <b>Models you can use for answers</b> has a card for each model in <a href="#models-we-tried">Models we tried</a>: its size, what it can do, a line on what it did well and one on what it did badly, whether Ollama has it, and its <code>ollama pull</code> and <code>ollama run</code> commands, each with a Copy button. <b>Use for answers</b> switches the answer model with no restart; it stays off until Ollama has the model, and a model without tools carries a warning. The router, the embedding model and the profile change in <code>config.toml</code>, then a restart.</li>
 
   <li><b>Activity</b> lists the <code>tool_calls</code> log, the data <code>meru log</code> prints: time, tool, outcome and duration, with the arguments and result behind a button.</li>
 
@@ -595,13 +595,16 @@
 
     <tr><td><code>save_file</code></td><td>saves the chat or an answer as Markdown through <code>write_file</code></td></tr>
 
-    <tr><td><code>models</code></td><td>names the models and asks Ollama which it holds</td></tr>
+    <tr><td><code>models</code></td><td>names the models, asks Ollama which it holds, and lists the models we tried with whether Ollama has each</td></tr>
+    <tr><td><code>model_set</code></td><td>writes <code>[models] main</code> for a model on that list that Ollama has, and hands it to the agent for the next question</td></tr>
 
   </tbody>
 
 </table></div>
 
 <p>A change to a list edits only that list's lines in <code>config.toml</code>: every comment and every other key stays. <code>merud</code> writes a temporary file, loads it, checks that the list came out as asked, and renames it over the old one, so a change that would break config leaves the file as it was. One lock covers every write to <code>config.toml</code> in <code>merud</code>, the <code>configure</code> tool's included. A tool policy checks the tool against what the source offers or config already names, and refuses anything else; a new tool a server starts to offer shows Off. The key a user pastes goes to <code>merud</code> over the socket, which only that user can open, and never comes back in any reply.</p>
+
+<p>An answer model change takes effect without a restart too; see <a href="#models-we-tried">Models we tried</a>.</p>
 
 <p>A folder change takes effect without a restart. The indexer takes the new list, the watcher starts again over it, and a scan adds the new folder's files or drops the removed folder's. The file tools, the prompt's note on the user's folders and the router's prompt read the list on every turn, so the first folder added turns the file tools on. A folder op refuses the whole disk, the home folder itself, Meru's own home, and a folder inside or around one already indexed.</p>
 
@@ -959,6 +962,43 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>A 120B model at 4-bit needs about 60 GB, which leaves even the 64 GB development machine no room and makes it swap. Meru won't support models that size.</p>
 
+<h3 id="models-we-tried">Models we tried</h3>
+
+<p>In September 2026 we tried four models as the <code>main</code> model, on the development machine, an M4 Max with 64 GB, with Ollama 0.34.0 and MiniCPM5-2B as <code>fast</code>. The test question asked how to use <code>btop</code>, and made the model search the web and read pages over several rounds.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Model</th><th>Size</th><th>What Ollama lists</th><th>What we saw</th></tr></thead>
+  <tbody>
+    <tr><td><code>hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M</code></td><td>1.6 GB</td><td>tools, thinking</td><td>about 55 s; made up command flags and misread what tools sent back</td></tr>
+    <tr><td><code>qwen3.8:27b</code> (dense)</td><td>17 GB</td><td>vision, tools, thinking</td><td>the best-grounded answer, with real flags from the man page, but about 5 minutes: 80,000 input tokens, and slow prompt reading</td></tr>
+    <tr><td><code>qwen3.6:35b</code> (mixture of experts, about 3B of 36B parameters per token)</td><td>23 GB</td><td>vision, tools, thinking</td><td>about 26 s, about 78 tokens a second; now and then a tool call Ollama can't read, or thinking and no text, which <code>merud</code> retries</td></tr>
+    <tr><td><code>gemma3:12b</code> (12.2B parameters, 131,072-token context)</td><td>8.1 GB</td><td>vision</td><td>answers direct and image questions; Ollama refuses it tools</td></tr>
+  </tbody>
+</table></div>
+
+<p>MiniCPM5-2B stays the <code>fast</code> model: it routes well and fast. <code>qwen3.6:35b</code> is the answer model we use now. We didn't keep <code>qwen3.8:27b</code>, since a web question took five minutes.</p>
+
+<p><code>config.KnownModels</code> lists the three we offer, MiniCPM5-2B, <code>gemma3:12b</code> and <code>qwen3.6:35b</code>, with their sizes and a line each on what they did well and badly. The desktop app's Library, Models shows each one with its commands, which also work in a terminal:</p>
+
+<pre><code>ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+ollama run hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
+ollama pull gemma3:12b
+ollama run gemma3:12b
+ollama pull qwen3.6:35b
+ollama run qwen3.6:35b</code></pre>
+
+<p><code>ollama run</code> opens a chat with the model in the terminal, to try it before Meru uses it.</p>
+
+<p><b>Switching the answer model.</b> "Use for answers" on a model's card sends <code>model_set</code> (see <a href="#desktop-app">Desktop app</a>). <code>merud</code> refuses a model off the list, and one <code>GET /api/tags</code> doesn't show, with the <code>ollama pull</code> to run. It writes <code>[models] main</code> with the same safe write and lock as the other settings, then hands the name to the agent, which reads the answer model on every model call. The next question uses the new model, with no restart. The <code>fast</code> and <code>embed</code> models stay as they are. Ollama loads the new model on that first question and keeps the old one loaded, since <code>merud</code> asks for <code>keep_alive: -1</code>, until Ollama stops or <code>ollama stop &lt;model&gt;</code> unloads it. To set any other model, edit <code>[models] main</code> in <code>config.toml</code> and restart <code>merud</code>.</p>
+
+<p><b>A model without tools.</b> Ollama refuses a request that offers tools to a model whose <code>/api/show</code> lacks <code>tools</code>, with a 400 that says the model "does not support tools". Every route offers some tool, <code>datetime</code> and <code>about_meru</code> at least, so with such a model every turn would fail. Before it builds the prompt, the agent asks whether the answer model lists <code>tools</code>, through the engine's cached <code>Details</code>. When it doesn't, the turn offers no tools, and when the route would have offered more than those two, a <code>notice</code> under the answer names the model and says how to pick another. So <code>gemma3:12b</code> answers direct questions, questions about images, and search questions from the excerpts search puts in the prompt, and can't read mail, notes, the web or files on its own. The Library says so on its card, and <code>model_set</code> replies with a warning.</p>
+
+<p><b>Context length.</b> <code>OLLAMA_CONTEXT_LENGTH</code> sets how many tokens of context Ollama loads each model with, and the <code>CONTEXT</code> column of <code>ollama ps</code> shows what each loaded model got. For the 27B and 35B models we set it to 32768. On macOS, where the Ollama app starts the server:</p>
+
+<pre><code>launchctl setenv OLLAMA_CONTEXT_LENGTH 32768</code></pre>
+
+<p>then quit and start Ollama. <code>launchctl setenv</code> lasts until the Mac restarts, so run it again after each restart, or start <code>ollama serve</code> from a shell that exports the variable.</p>
+
 <!-- ============================================================ -->
 <h2 id="engine">The engine: four methods, one runtime</h2>
 
@@ -977,7 +1017,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>For <a href="#routing">routing</a>, <code>Options</code> gains two fields, <code>LogProbs</code> and <code>TopLogProbs</code>, and <code>Completion</code> gains <code>LogProbs</code>: for each generated position, the chosen token and the alternatives the model weighed, each with its log probability. Both default to off, so other callers see no change, and the interface keeps its four methods.</p>
 
-<p>For images, <code>Message</code> gains <code>Images</code>, the raw bytes of each image on a user message. <code>OllamaEngine</code> sends them as the message's <code>images</code> array in <code>/api/chat</code>, which Ollama documents as base64 strings; Go's <code>encoding/json</code> writes a <code>[]byte</code> that way with no code of ours. Only a model with the <code>vision</code> capability can read them, and Ollama's <code>POST /api/show</code> lists a model's capabilities, such as <code>["completion", "vision", "tools", "thinking"]</code>. <code>OllamaEngine.Details</code> asks it for the capabilities, the size in parameters, the quantization and the context length, and keeps each model's answer for the life of the engine; a failed call keeps nothing. <code>Capabilities</code> reads the list through <code>Details</code>. Both sit outside the interface, which keeps its four methods: only image turns need <code>Capabilities</code>, and <code>merud</code> hands the agent that one method; only <code>about_meru</code> needs <code>Details</code>, and <code>merud</code> asks it for that tool. The "ollama http" debug line counts a request's images; no log line or span holds their bytes.</p>
+<p>For images, <code>Message</code> gains <code>Images</code>, the raw bytes of each image on a user message. <code>OllamaEngine</code> sends them as the message's <code>images</code> array in <code>/api/chat</code>, which Ollama documents as base64 strings; Go's <code>encoding/json</code> writes a <code>[]byte</code> that way with no code of ours. Only a model with the <code>vision</code> capability can read them, and Ollama's <code>POST /api/show</code> lists a model's capabilities, such as <code>["completion", "vision", "tools", "thinking"]</code>. <code>OllamaEngine.Details</code> asks it for the capabilities, the size in parameters, the quantization and the context length, and keeps each model's answer for the life of the engine; a failed call keeps nothing. <code>Capabilities</code> reads the list through <code>Details</code>, and <code>Pulled</code> reads <code>GET /api/tags</code>, the models Ollama has on disk. All three sit outside the interface, which keeps its four methods: <code>merud</code> hands the agent a check built on <code>Capabilities</code> for image turns and another for whether the answer model can take tools; <code>about_meru</code> and the Library's models need <code>Details</code>, and only the Library's models need <code>Pulled</code>. The "ollama http" debug line counts a request's images; no log line or span holds their bytes.</p>
 
 <p>Two engines may come later, behind the same interface:</p>
 <ul>
