@@ -265,6 +265,7 @@
   <ol>
     <li><a href="#what">What Meru is</a></li>
     <li><a href="#shape">Two programs: a daemon and a thin client</a></li>
+    <li><a href="#harness"><code>merud</code> as an agent harness</a></li>
     <li><a href="#end-to-end">A question, end to end</a></li>
     <li><a href="#tiers">Three model jobs, two profiles</a></li>
     <li><a href="#engine">The engine: four methods, one runtime</a></li>
@@ -740,6 +741,30 @@
 </table></div>
 
 <p>On a cloud server, Meru still sends no prompt to a model provider, but your notes, email and transcripts live on that server. Meru's promise is "a machine you control"; where that machine sits is your call. You'd run <code>meru</code> over SSH, because it reaches <code>merud</code> through a local socket.</p>
+
+<!-- ============================================================ -->
+<h2 id="harness"><code>merud</code> as an agent harness</h2>
+
+<p>An <b>agent harness</b> is the code that runs a model in a loop: it builds the prompt, runs the tools the model asks for, hands back the results and keeps a record. <code>merud</code> holds a whole one: a model loop with tool rounds, one gate for every tool call, an MCP client, skills with progressive disclosure, local commands and A2A agents as tools, a session record, a context budget and tracing. <code>meru</code>, <code>meru chat</code> and <code>meru-desktop</code> are clients of that harness. Meru the assistant sits on top of it and decides where to look, what to remember and how to catch a small model's mistakes.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Layer</th><th>Packages and files</th></tr></thead>
+  <tbody>
+    <tr><td>Harness core</td><td><code>engine</code>; the tool rounds in <code>agent/tools.go</code>; <code>dispatch</code>; <code>mcp</code>; <code>skills</code>, with the skill pick in <code>agent/skills.go</code>; <code>commands</code>; <code>a2a</code>; <code>transcript</code>; the budget in <code>agent/budget.go</code>; <code>obs</code></td></tr>
+    <tr><td>Meru the assistant</td><td><code>router</code>, with the route rules in <code>agent/toolnouns.go</code>; <code>retrieve</code>; <code>memory</code> and the profile (<code>agent/profile.go</code>, <code>agent/recall.go</code>); recall of earlier chats (<code>agent/earlier.go</code>, <code>summarize</code>); web first (<code>agent/webfirst.go</code>, <code>agent/webnotes.go</code>); the fixes for small-model failures: <code>agent/honest.go</code>, the retries after bad output and empty replies in <code>agent/tools.go</code> and <code>agent/agent.go</code>, and <code>agent/notools.go</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>Four places tie the loop to Meru today:</p>
+
+<ul>
+  <li><code>agent.New</code> takes the whole <code>config.Config</code>. It reads the assistant's settings, such as <code>cfg.Index.Folders</code>, next to the loop's own <code>cfg.Agent.MaxRounds</code>.</li>
+  <li><code>Agent.Handle</code> takes an <code>rpc.Request</code> and emits <code>rpc.Event</code>, the socket protocol's types, so the loop speaks Meru's wire format.</li>
+  <li>Both layers live in one package, <code>agent</code>, and run inside one <code>Handle</code> call: routing, search, recall and web first share the function that runs the tool rounds.</li>
+  <li><code>dispatch</code> asks for approval through <code>rpc.ApproveFunc</code> and writes each call to the store's <code>tool_calls</code> table as a <code>store.ToolCall</code>.</li>
+</ul>
+
+<p>A script can drive the harness with no one at the keyboard. <code>meru run --json "question"</code> writes each socket event as one JSON line on stdout and exits non-zero when the turn fails. The command denies a tool call that asks first, as any client with no one to ask does, and <code>dispatch</code> logs it as <code>declined</code>. The command also writes the approval event to stdout, so the script sees which call it refused. Every tool call still goes through <code>dispatch</code>; the mode adds no second path.</p>
 
 <!-- ============================================================ -->
 <h2 id="end-to-end">A question, end to end</h2>

@@ -10,6 +10,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -245,8 +246,13 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	if done.Type != rpc.EventDone || done.TokensIn != 42 || done.TokensOut != 3 || done.EvalMillis != 250 {
 		t.Errorf("last event = %+v, want done with 42 tokens in, 3 out and 250ms writing", done)
 	}
-	if done.TTFTMillis < 0 || done.DurationMillis < done.TTFTMillis {
-		t.Errorf("done times = ttft %dms, duration %dms; want 0 <= ttft <= duration", done.TTFTMillis, done.DurationMillis)
+	if done.TTFTMillis < 0 || done.TTLTMillis < done.TTFTMillis || done.DurationMillis < done.TTLTMillis {
+		t.Errorf("done times = ttft %dms, ttlt %dms, duration %dms; want 0 <= ttft <= ttlt <= duration",
+			done.TTFTMillis, done.TTLTMillis, done.DurationMillis)
+	}
+	// 250 ms of writing over 3 tokens.
+	if want := 250.0 / 3; math.Abs(done.TPOTMillis-want) > 1e-9 {
+		t.Errorf("done tpot = %vms, want %vms", done.TPOTMillis, want)
 	}
 
 	lines := readLines(t, cfg, id)
@@ -435,6 +441,43 @@ func TestOutcomeOf(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := outcomeOf(tt.ctx, tt.err); got != tt.want {
 				t.Errorf("outcomeOf = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDoneEvent(t *testing.T) {
+	start := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		rep       reply
+		wantTTFT  int64
+		wantTTLT  int64
+		wantTPOT  float64
+		wantToken int
+	}{
+		{
+			name: "answer",
+			rep: reply{
+				firstToken: start.Add(900 * time.Millisecond),
+				lastToken:  start.Add(2400 * time.Millisecond),
+				usage:      engine.Usage{PromptTokens: 2000, OutputTokens: 8, EvalDuration: 1482 * time.Millisecond},
+			},
+			wantTTFT: 900, wantTTLT: 2400, wantTPOT: 185.25, wantToken: 8,
+		},
+		{
+			name:     "no text and no tokens",
+			rep:      reply{usage: engine.Usage{PromptTokens: 2000}},
+			wantTTFT: 0, wantTTLT: 0, wantTPOT: 0, wantToken: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := doneEvent(start, tt.rep)
+			if ev.Type != rpc.EventDone || ev.TTFTMillis != tt.wantTTFT || ev.TTLTMillis != tt.wantTTLT ||
+				ev.TPOTMillis != tt.wantTPOT || ev.TokensOut != tt.wantToken {
+				t.Errorf("doneEvent = %+v, want ttft %d, ttlt %d, tpot %v, %d tokens out",
+					ev, tt.wantTTFT, tt.wantTTLT, tt.wantTPOT, tt.wantToken)
 			}
 		})
 	}

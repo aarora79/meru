@@ -251,6 +251,7 @@
   <ol>
     <li><a href="#what-meru-is">What Meru is</a></li>
     <li><a href="#two-programs">Two programs: merud and meru</a></li>
+    <li><a href="#harness"><code>merud</code> as an agent harness</a></li>
     <li><a href="#end-to-end">A question, end to end</a></li>
     <li><a href="#models">Models: three jobs, two profiles</a></li>
     <li><a href="#where-data-lives">Where data lives</a></li>
@@ -405,6 +406,18 @@
 <p>Settings shows each connection with an Off, Ask or Allow switch per tool, the folders Meru indexes, what Meru knows about you, the skills, the models, the tool log, the usage numbers, and an About page with the project's links. Under the catalog's servers, a form adds an MCP server of your own, with every tool Off until you turn it on. Setup walks a new user through four steps: the models, the folders, the connections and a few facts about you. The app changes no file itself. It asks <code>merud</code>, which writes <code>config.toml</code> with the same code <code>meru mcp add</code> uses, keeps every comment, and applies the change without a restart.</p>
 
 <p>Model output could hold HTML meant to run in the window, so the app sanitizes each answer before it shows it, sets a Content-Security-Policy that blocks inline scripts and anything from the network, and opens links only through Go, which allows <code>http</code>, <code>https</code> and <code>file</code>. Wails needs a C compiler and the WebView's headers, so the app builds on its own with <code>make desktop</code>, and the usual builds skip it. For now it builds on macOS; Linux and Windows come later.</p>
+
+<!-- ============================================================ -->
+<h2 id="harness"><code>merud</code> as an agent harness</h2>
+
+<p>An <b>agent harness</b> is the code that runs a model in a loop: it builds the prompt, runs the tools the model asks for, hands back the results and keeps a record of the turn. <code>merud</code> is one, and <code>meru</code>, <code>meru chat</code> and the desktop app are its clients. Its code falls into two layers:</p>
+
+<ul>
+  <li><b>The harness core</b> runs a model with tools: the engine that talks to Ollama, the loop of tool rounds, <code>dispatch</code>, the MCP and A2A clients, local commands, skills, the session transcripts, the context budget and tracing.</li>
+  <li><b>Meru the assistant</b> sits on top and adds what a personal assistant needs: the router, hybrid search, memory and your profile, recall of earlier chats, web first, and the checks that catch a small model's mistakes, such as an answer that claims an action no tool took.</li>
+</ul>
+
+<p>Today the two layers share one package, and the loop reads all of Meru's config and speaks the socket's own message types. A script can drive <code>merud</code> with <code>meru run --json "question"</code>, which prints each event as one line of JSON and exits non-zero when the turn fails. It refuses any tool call that would ask you first, and prints the approval request so the script sees it. <a href="300.html#harness">Level 300</a> names the packages in each layer.</p>
 
 <!-- ============================================================ -->
 <h2 id="end-to-end">A question, end to end</h2>

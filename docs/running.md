@@ -851,6 +851,37 @@ log` lists every tool call, so it shows what did run. The check reads a short li
 of English patterns, so now and then it misses a claim, or notes a "Done." that
 changed nothing and claimed nothing.
 
+### Drive Meru from a script
+
+`meru run --json` asks one question and writes each event `merud` sends back as
+one line of JSON: the route, the sources, each piece of the answer, each tool
+call and its outcome, and last a `done` line with the turn's stats. A script
+reads those lines with `jq` or a JSON parser, and needs none of Meru's code.
+
+```sh
+meru run --json "what changed in my notes this week?" | jq -c 'select(.type == "done")'
+```
+
+```text
+{"type":"done","ttft_ms":11739,"duration_ms":19973,"tokens_in":73020,"tokens_out":390,"eval_ms":5779,"ttlt_ms":19970,"tpot_ms":14.819407692307694}
+```
+
+The `done` line counts the main model's tokens in and out, and times the turn
+from when `merud` got the question: `ttft_ms` to the first token of the answer,
+`ttlt_ms` to its last token, and `duration_ms` to the end of the turn.
+`eval_ms` is the model's own writing time, and `tpot_ms`, the time per output
+token, is `eval_ms` divided by `tokens_out`.
+
+Nobody can approve a tool call in this mode, so a call that asks first is
+declined. Its `approval` line still comes out, so the script can see which
+call it was. `meru` exits with 1 when the turn fails, after the `error` line.
+To join the answer back together, keep the `token` lines after the last
+`tool_result`: the lines before it are what the model said between tool rounds.
+
+[docs/examples/vault-digest.sh](examples/vault-digest.sh) is a whole agent built
+this way: it writes a weekly digest of an Obsidian vault through the `obsidian`
+server.
+
 ### See how much you use Meru
 
 ```sh

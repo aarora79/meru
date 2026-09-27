@@ -6,6 +6,7 @@
 // Usage:
 //
 //	meru [-socket path] "question"      ask one question; the answer streams to stdout
+//	meru [-socket path] run --json "q"   ask one question; each event goes to stdout as a JSON line
 //	meru [-socket path] ping             check that merud is up
 //	meru [-socket path] chat             open the terminal UI
 //	meru [-socket path] index [folder]   rescan the [index] folders, or just one
@@ -26,7 +27,8 @@
 //
 // A question whose first word is ping, chat, index, tools, log, usage, model,
 // setup, memory, skills, mcp or check needs quotes, so meru reads it as a question and not
-// as a command. So does the question "config template".
+// as a command. So does the question "config template", and a question that
+// starts with "run --json".
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -75,6 +77,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, `usage:
   meru "question"       ask one question
+  meru run --json "question"
+                        ask one question and write each event as a JSON line,
+                        for scripts; a tool call that asks first is denied
   meru ping             check that merud is up
   meru chat             open the terminal UI
   meru index [folder]   rescan the [index] folders, or just one
@@ -133,6 +138,8 @@ flags:`)
 
 	var err error
 	switch {
+	case isRunCmd(flags.Args()):
+		err = runCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "ping":
 		err = ping(ctx, *socket, stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "chat":

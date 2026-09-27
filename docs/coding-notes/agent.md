@@ -1238,11 +1238,16 @@ built by `doneEvent`:
 return emit(doneEvent(start, rep))
 ```
 
-`doneEvent` measures time to first token and total time from `start`, when
-`merud` received the question, so both include routing. That is the wait the
-person at the terminal sees. It adds the token counts and Ollama's
-`eval_duration` (the model's own writing time), which `meru chat` shows under
-the answer. The rpc server holds this `done` back and sends it last, or drops
+`doneEvent` measures time to first token, time to last token and total time
+from `start`, when `merud` received the question, so all three include
+routing. That is the wait the person at the terminal sees. `answer` stamps
+`lastToken` on each piece of text, and `reply.add` keeps the latest round's, so
+time to last token ends at the answer's last token, after every tool round.
+`doneEvent` adds the token counts and Ollama's `eval_duration` (the model's own
+writing time), which `meru chat` shows under the answer. It divides that time
+by the output tokens for the time per output token, in milliseconds with the
+fraction kept: 1,482 ms over 8 tokens is 185.25 ms. A turn with no output
+tokens leaves it at zero rather than divide by zero. The rpc server holds this `done` back and sends it last, or drops
 it if `Handle` fails.
 
 The `route` event also says whether the router fell back: `Fallback` is true

@@ -461,6 +461,11 @@
 <p>Most questions skip the tool steps. When the model needs live information or an action, Meru calls the tool, and it only stops to ask you when the call would change something. The answer appears word by word as the model writes it.</p>
 
 <!-- ============================================================ -->
+<h2 id="harness">The harness underneath</h2>
+
+<p><code>merud</code> is an <b>agent harness</b>: the part that runs a model in a loop, hands it tools, checks each tool call and keeps the record. What makes Meru your assistant, such as searching your files, remembering you and going to the web first, sits on top of that harness. <code>meru</code>, <code>meru chat</code> and the desktop app talk to it, and so can a script, with <code>meru run --json</code>.</p>
+
+<!-- ============================================================ -->
 <h2 id="wont-do">What Meru won&rsquo;t do</h2>
 
 <ul>
