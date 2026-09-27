@@ -76,8 +76,9 @@ func ShortVersion() string {
 
 // pseudoVersion matches the version Go gives a build made between tags,
 // such as "v0.4.2-0.20260927021103-5325b3ef94cb": the next patch, then a
-// time and the commit's first twelve characters.
-var pseudoVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:0\.)?\d{14}-([0-9a-f]{12})$`)
+// time and the commit's first twelve characters. Go adds "+dirty" when
+// the tree had changes.
+var pseudoVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:0\.)?\d{14}-([0-9a-f]{12})(?:\+dirty)?$`)
 
 // short cuts v, as Version returns it, to fit beside the name. A release
 // tag such as "v0.4.1" stays as it is. A pseudo-version or a

@@ -56,6 +56,8 @@ func TestShort(t *testing.T) {
 		{"v0.4.1", "v0.4.1"},
 		{"v0.4.2-0.20260927021103-5325b3ef94cb", "dev 5325b3e"},
 		{"v0.5.0-20260927021103-5325b3ef94cb", "dev 5325b3e"},
+		{"v0.4.4-0.20260927021103-5325b3ef94cb+dirty", "dev 5325b3e"},
+		{"v0.4.3+dirty", "v0.4.3+dirty"},
 		{"(devel) 5325b3e", "dev 5325b3e"},
 		{"(devel) 5325b3e, modified", "dev 5325b3e"},
 		{"(devel)", ""},
