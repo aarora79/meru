@@ -324,4 +324,8 @@ type CommandParam struct {
 	Values []string `toml:"values"`
 	// MaxLen caps a string, in bytes. 0 means 4096.
 	MaxLen int `toml:"max_len"`
+	// Pattern is a regular expression, in Go's RE2 syntax, that a whole
+	// string must match, such as "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" for a
+	// GitHub owner/name. String only; empty means any text.
+	Pattern string `toml:"pattern"`
 }

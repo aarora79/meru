@@ -56,10 +56,11 @@ func ArgsFromJSON(raw json.RawMessage) (map[string]string, error) {
 //
 // The checks by type:
 //
-//   - string: not empty, no null byte, at most MaxLen bytes, and not
-//     starting with "-" when the placeholder is the whole element, since
-//     the program would read such a value as a flag. Inside a longer
-//     element, such as "--grep={pattern}", a leading "-" is safe.
+//   - string: not empty, no null byte, at most MaxLen bytes, the whole
+//     value a match for Pattern when one is set, and not starting with
+//     "-" when the placeholder is the whole element, since the program
+//     would read such a value as a flag. Inside a longer element, such as
+//     "--grep={pattern}", a leading "-" is safe.
 //   - int: a whole number within Min and Max.
 //   - enum: one of Values.
 //   - path: "~" expands to the home directory, and a relative path starts
@@ -138,6 +139,9 @@ func (p Param) check(v string) (string, error) {
 		}
 		if len(v) > p.MaxLen {
 			return "", fmt.Errorf("the value is %d bytes, over the %d-byte limit", len(v), p.MaxLen)
+		}
+		if p.Pattern != nil && !p.Pattern.MatchString(v) {
+			return "", fmt.Errorf("%q doesn't match the pattern %s", v, p.Pattern)
 		}
 		return v, nil
 	case TypeInt:

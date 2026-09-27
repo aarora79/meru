@@ -226,6 +226,12 @@ func (c Command) schema() json.RawMessage {
 			}
 		case TypeEnum:
 			prop["enum"] = p.Values
+		case TypeString:
+			// JSON Schema's pattern gets the same anchored form Render
+			// checks, so the model sees the rule its value must meet.
+			if p.Pattern != nil {
+				prop["pattern"] = p.Pattern.String()
+			}
 		case TypePath:
 			desc = strings.TrimSpace(desc + " A path inside " + p.Under +
 				"; a relative path starts there.")

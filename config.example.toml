@@ -233,7 +233,8 @@ mouse_copy = true
 # Parameter types:
 #
 #   string  text up to max_len bytes (default 4096); it can't start with
-#           "-" when it fills a whole element, so it can't be a flag
+#           "-" when it fills a whole element, so it can't be a flag.
+#           pattern, a regular expression, must match the whole value
 #   int     a whole number, within min and max when set
 #   enum    one of values
 #   path    must exist and lie inside under (required), links followed
@@ -271,6 +272,78 @@ mouse_copy = true
 # name        = "disk-free"
 # description = "Free space on each mounted disk"
 # argv        = ["df", "-h"]
+#
+# GitHub with the gh CLI. Install gh and run `gh auth login` once: gh
+# keeps its token in your keychain, so Meru never sees it. These commands
+# only read. Uncomment the ones you want and restart merud. If merud can't
+# find gh on its PATH, give argv[0] the full path `command -v gh` prints.
+# docs/running.md, "GitHub", shows how to add a command that writes.
+#
+# [[commands]]
+# name        = "gh-prs"
+# description = "Pull requests in a GitHub repository, newest first, as JSON"
+# argv        = ["gh", "pr", "list", "--repo", "{repo}", "--state", "{state}", "--limit", "20", "--json", "number,title,author,state,updatedAt,url"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#   [commands.params.state]
+#   type   = "enum"
+#   values = ["open", "closed", "merged", "all"]
+#
+# [[commands]]
+# name        = "gh-pr"
+# description = "One pull request in a GitHub repository, with its text, reviews and comments, as JSON"
+# argv        = ["gh", "pr", "view", "{number}", "--repo", "{repo}", "--json", "number,title,body,state,author,reviews,comments,url"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#   [commands.params.number]
+#   type = "int"
+#   min  = 1
+#
+# [[commands]]
+# name        = "gh-issues"
+# description = "Issues in a GitHub repository, newest first, as JSON"
+# argv        = ["gh", "issue", "list", "--repo", "{repo}", "--state", "{state}", "--limit", "20", "--json", "number,title,labels,state,updatedAt,url"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#   [commands.params.state]
+#   type   = "enum"
+#   values = ["open", "closed", "all"]
+#
+# [[commands]]
+# name        = "gh-issue"
+# description = "One issue in a GitHub repository, with its text and comments, as JSON"
+# argv        = ["gh", "issue", "view", "{number}", "--repo", "{repo}", "--json", "number,title,body,state,comments,url"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#   [commands.params.number]
+#   type = "int"
+#   min  = 1
+#
+# [[commands]]
+# name        = "gh-runs"
+# description = "The latest GitHub Actions runs in a repository and how each ended, as JSON"
+# argv        = ["gh", "run", "list", "--repo", "{repo}", "--limit", "10", "--json", "databaseId,displayTitle,status,conclusion,workflowName,createdAt,url"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#
+# [[commands]]
+# name        = "gh-repos"
+# description = "The repositories of a GitHub user or organization, as JSON"
+# argv        = ["gh", "repo", "list", "{owner}", "--limit", "30", "--json", "name,description,visibility,updatedAt,url"]
+#   [commands.params.owner]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9-]+"
+#   description = "The user or organization, such as dana-reyes"
 
 # Other agents Meru may hand a task to over A2A (Agent2Agent). None by
 # default. Each allowed skill, by the ID on the agent's card, becomes the

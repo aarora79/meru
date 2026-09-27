@@ -124,6 +124,13 @@ func TestNewRejects(t *testing.T) {
 		{"key on the wrong type", func(d *config.Command) {
 			d.Params["count"] = config.CommandParam{Type: TypeString, Under: "~/repos"}
 		}, "under applies only"},
+		{"pattern on an int", func(d *config.Command) {
+			d.Params["count"] = config.CommandParam{Type: TypeInt, Pattern: "[0-9]+"}
+		}, "pattern applies only"},
+		{"pattern that doesn't compile", func(d *config.Command) {
+			d.Argv = append(d.Argv, "{since}")
+			d.Params["since"] = config.CommandParam{Type: TypeString, Pattern: "[a-z"}
+		}, "pattern: error parsing regexp"},
 		{"brace with no close", func(d *config.Command) { d.Argv = append(d.Argv, "{repo") }, "no closing"},
 		{"brace that closes nothing", func(d *config.Command) { d.Argv = append(d.Argv, "a}b") }, "closes nothing"},
 		{"brace around a non-name", func(d *config.Command) { d.Argv = append(d.Argv, "{}") }, "not a placeholder"},

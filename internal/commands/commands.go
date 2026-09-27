@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -91,6 +92,9 @@ type Param struct {
 	Values []string
 	// MaxLen caps a string, in bytes.
 	MaxLen int
+	// Pattern, when not nil, is what a string must match from its first
+	// byte to its last. New builds it from the entry's pattern key.
+	Pattern *regexp.Regexp
 }
 
 // ToolName returns the name the model sees, "cmd.<name>".
@@ -104,8 +108,9 @@ func (c Command) ToolName() string { return "cmd." + c.Name }
 // of a placeholder or "{{" or "}}"; a placeholder with no parameter, or a
 // parameter no placeholder uses; an unknown type, or a key the type
 // doesn't take; a path parameter with no under, or an under or cwd that
-// isn't an existing folder; an enum with no values; a min above max; a bad
-// env_allowlist name; and a timeout that doesn't parse or is over 300s.
+// isn't an existing folder; an enum with no values; a min above max; a
+// pattern that isn't a valid regular expression; a bad env_allowlist
+// name; and a timeout that doesn't parse or is over 300s.
 //
 // A program that isn't on PATH is only a warning to log, not an error: it
 // may be installed later, and the call then fails with a clear message.
@@ -272,6 +277,9 @@ func checkParam(name string, p config.CommandParam, home string) (Param, []error
 	if p.MaxLen != 0 && p.Type != TypeString {
 		add("max_len applies only to type \"string\"")
 	}
+	if p.Pattern != "" && p.Type != TypeString {
+		add("pattern applies only to type \"string\"")
+	}
 
 	switch p.Type {
 	case TypeString:
@@ -280,6 +288,16 @@ func checkParam(name string, p config.CommandParam, home string) (Param, []error
 		}
 		if out.MaxLen <= 0 {
 			out.MaxLen = defaultMaxLen
+		}
+		if p.Pattern != "" {
+			// ^(?:...)$ makes the pattern match the whole value, not a
+			// piece of it: "a/b" alone, never "a/b --web".
+			re, err := regexp.Compile("^(?:" + p.Pattern + ")$")
+			if err != nil {
+				add("pattern: %v", err)
+				break
+			}
+			out.Pattern = re
 		}
 	case TypeInt:
 		if p.Min != nil && p.Max != nil && *p.Min > *p.Max {
