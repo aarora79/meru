@@ -2875,6 +2875,23 @@ and finds it with `HOME` alone, so Meru never holds a GitHub token. A command
 that writes, such as `gh issue comment`, stays out of the template; a user who
 adds one sets `confirm = true`.
 
+**Machine facts, snapshots, `sed` and `awk`.** The template also carries 15
+read-only commands for macOS, commented out. Seven report facts about the
+machine, each with a fixed argv: `kernel` (`uname -a`), `macos-version`
+(`sw_vers`), `hardware-summary` (`sysctl` with named keys), `system-report`
+(`system_profiler -detailLevel mini` and one section from an enum; the mini
+level leaves out the serial number), `battery` (`pmset -g batt`), `disk-list`
+(`diskutil list`) and `uptime`. Four take a snapshot of the machine:
+`system-load` and `top-processes` run `top -l`, which prints once and exits,
+`find-process` runs `pgrep`, and `memory-free` runs `memory_pressure -Q`. `htop`
+and a bare `top` redraw the screen until someone quits, so a command can't use
+them. The other four run `sed` or `awk` with the script in config: `file-lines`,
+`count-lines`, `csv-column` and `csv-sum`. The model fills in line numbers, a
+column number and a file, never script text, since a pattern of its own could
+end a `sed` address and add a `w` command that writes a file. `perl` stays
+refused. These commands don't skip secret files the way `read_file` does, so
+their `under` names `~/Documents`, not the home folder.
+
 ---
 
 ## Web search

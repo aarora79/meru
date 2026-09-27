@@ -297,6 +297,135 @@ mouse_copy = true
 # description = "Free space on each mounted disk"
 # argv        = ["df", "-h"]
 #
+# A snapshot of the machine, on macOS. Each program prints once and exits.
+# htop, and top without -l, redraw the screen until you quit, so a command
+# can't use them. The first sample top takes can't measure CPU use, so
+# top-processes takes two a second apart; the second table holds the real
+# figures.
+#
+# [[commands]]
+# name        = "system-load"
+# description = "Load average, CPU use and memory use for the whole machine, as one snapshot"
+# argv        = ["top", "-l", "1", "-n", "0"]
+#
+# [[commands]]
+# name        = "top-processes"
+# description = "The 15 processes using the most CPU or memory. Read the second table: the first table's CPU figures are wrong."
+# argv        = ["top", "-l", "2", "-s", "1", "-n", "15", "-o", "{sort}", "-stats", "pid,command,cpu,mem,time"]
+# timeout     = "10s"
+#   [commands.params.sort]
+#   type   = "enum"
+#   values = ["cpu", "mem"]
+#
+# [[commands]]
+# name        = "find-process"
+# description = "Running processes whose command line holds a name, with their process IDs"
+# argv        = ["pgrep", "-l", "-f", "{name}"]
+#   [commands.params.name]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9 ._-]+"
+#   description = "Part of the program's name, such as ollama"
+#
+# [[commands]]
+# name        = "memory-free"
+# description = "How much of the machine's memory is free, as a percentage"
+# argv        = ["memory_pressure", "-Q"]
+#
+# Facts about the machine, on macOS: the operating system, the hardware,
+# the disks and the battery. Each only reads. system_profiler's mini
+# detail level leaves out the serial number.
+#
+# [[commands]]
+# name        = "kernel"
+# description = "The kernel's name, version and CPU architecture, from uname"
+# argv        = ["uname", "-a"]
+#
+# [[commands]]
+# name        = "macos-version"
+# description = "The macOS version and build number"
+# argv        = ["sw_vers"]
+#
+# [[commands]]
+# name        = "hardware-summary"
+# description = "The Mac's model, chip, CPU count, memory in bytes, swap use and when it last started"
+# argv        = ["sysctl", "hw.model", "machdep.cpu.brand_string", "hw.ncpu", "hw.memsize", "vm.swapusage", "kern.boottime"]
+#
+# [[commands]]
+# name        = "system-report"
+# description = "One section of the Mac's system report"
+# argv        = ["system_profiler", "-detailLevel", "mini", "{section}"]
+#   [commands.params.section]
+#   type        = "enum"
+#   values      = ["SPHardwareDataType", "SPDisplaysDataType", "SPStorageDataType", "SPPowerDataType", "SPSoftwareDataType", "SPMemoryDataType"]
+#   description = "Hardware for the chip, cores and memory; Displays for the GPU and screens; Storage for volumes and free space; Power for the battery and charger; Software for the OS, computer name and user; Memory for the memory chips"
+#
+# [[commands]]
+# name        = "battery"
+# description = "Whether the Mac runs on battery or mains power, and the charge left"
+# argv        = ["pmset", "-g", "batt"]
+#
+# [[commands]]
+# name        = "disk-list"
+# description = "Every disk, partition and APFS volume, with sizes"
+# argv        = ["diskutil", "list"]
+#
+# [[commands]]
+# name        = "uptime"
+# description = "How long the machine has run since it started, and its load average"
+# argv        = ["uptime"]
+#
+# sed and awk, with the script written here. The model picks numbers and a
+# file and never writes script text: a pattern of its own could close the
+# sed address and add a w command that writes a file, or call system() in
+# awk. perl stays out, since merud refuses it. These commands read secret
+# files that read_file skips, so point under at a folder that holds none.
+#
+# [[commands]]
+# name        = "file-lines"
+# description = "Lines start to end of a text file, counting from 1"
+# argv        = ["sed", "-n", "{start},{end}p", "{file}"]
+#   [commands.params.file]
+#   type  = "path"
+#   under = "~/Documents"
+#   [commands.params.start]
+#   type = "int"
+#   min  = 1
+#   [commands.params.end]
+#   type = "int"
+#   min  = 1
+#
+# [[commands]]
+# name        = "count-lines"
+# description = "How many lines a text file holds"
+# argv        = ["awk", "END {{print NR}}", "{file}"]
+#   [commands.params.file]
+#   type  = "path"
+#   under = "~/Documents"
+#
+# [[commands]]
+# name        = "csv-column"
+# description = "One column of a comma-separated file, one value per line, header first"
+# argv        = ["awk", "-F", ",", "{{print ${column}}}", "{file}"]
+#   [commands.params.file]
+#   type  = "path"
+#   under = "~/Documents"
+#   [commands.params.column]
+#   type = "int"
+#   min  = 1
+#   max  = 1000
+#
+# [[commands]]
+# name        = "csv-sum"
+# description = "The total of one number column in a comma-separated file whose first line is a header"
+# argv        = ["awk", "-F", ",", "NR > 1 {{sum += ${column}}} END {{print sum}}", "{file}"]
+#   [commands.params.file]
+#   type  = "path"
+#   under = "~/Documents"
+#   [commands.params.column]
+#   type = "int"
+#   min  = 1
+#   max  = 1000
+#
 # GitHub with the gh CLI. Install gh and run `gh auth login` once: gh
 # keeps its token in your keychain, so Meru never sees it. These commands
 # only read. Uncomment the ones you want and restart merud. If merud can't

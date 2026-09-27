@@ -5,7 +5,8 @@ indexing your files, running it as a service, the dashboard, and fixing common
 problems. It describes v0.3: questions, streamed answers, session transcripts,
 routing, answers from your own files with citations, web search through a
 SearXNG you run, and tools from MCP servers and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
-([ROADMAP.md](../ROADMAP.md)).
+([ROADMAP.md](../ROADMAP.md)). For a short answer to one question, such as how
+to let Meru run a command, start at the [FAQ](faq/index.md).
 
 ## 1. Install the prerequisites
 
@@ -1786,9 +1787,39 @@ The rules:
 it: a duplicate name, a placeholder with no parameter, a parameter no placeholder
 uses, a `path` with no `under`, an `under` folder that doesn't exist, a timeout
 over `"300s"`, and so on. A program missing from `PATH` only gets a warning in
-`merud.log`. The config template (`meru config template`) has ten starters,
-commented out: `git-log`, `git-status`, `search-notes` and `disk-free`, and six
-for GitHub (see below).
+`merud.log`. The config template (`meru config template`) has 25 starters,
+commented out: `git-log`, `git-status`, `search-notes` and `disk-free`, 15
+for macOS machine facts, snapshots, `sed` and `awk` (see below), and six for
+GitHub.
+
+### Machine facts, snapshots, sed and awk
+
+These 15 commands only read, and all work on macOS as shipped:
+
+| Tool | What the model gets |
+| --- | --- |
+| `cmd.kernel` | the kernel's name, version and CPU architecture, from `uname -a` |
+| `cmd.macos-version` | the macOS version and build, from `sw_vers` |
+| `cmd.hardware-summary` | model, chip, CPU count, memory, swap use and boot time, from `sysctl` |
+| `cmd.system-report` | one `system_profiler` section: hardware, displays, storage, power, software or memory |
+| `cmd.battery` | the power source and charge left, from `pmset -g batt` |
+| `cmd.disk-list` | every disk, partition and volume, from `diskutil list` |
+| `cmd.uptime` | how long the machine has run, and its load average |
+| `cmd.system-load` | load average, CPU and memory use, from one `top -l 1` |
+| `cmd.top-processes` | the 15 processes using the most CPU or memory |
+| `cmd.find-process` | running processes whose command line holds a name |
+| `cmd.memory-free` | the share of memory free, from `memory_pressure -Q` |
+| `cmd.file-lines` | a range of lines from a text file, through `sed -n` |
+| `cmd.count-lines` | how many lines a file holds, through `awk` |
+| `cmd.csv-column` | one column of a comma-separated file |
+| `cmd.csv-sum` | the total of one number column, skipping the header |
+
+`htop` and a bare `top` redraw the screen until you quit, so a command can't
+run them; `top -l` prints once and exits. The `sed` and `awk` scripts live in
+config, and the model fills in only numbers and a file. `merud` refuses `perl`
+as a program. These commands read secret files that `read_file` skips, so the
+template points `under` at `~/Documents`; change it to a folder with no keys
+in it.
 
 ### GitHub
 
