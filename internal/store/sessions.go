@@ -70,9 +70,10 @@ type SessionHit struct {
 //
 // A session whose file is gone, because the user deleted the chat and
 // merud stopped before it dropped the rows, or someone removed the file by
-// hand, loses its rows here too: see DeleteSession. The files are the
-// source of truth, and a chat that isn't there shouldn't come back in
-// recall.
+// hand, goes here too, as DeleteSession deletes it: its content rows go,
+// and its tool_calls rows stay without arguments or results. The files
+// are the source of truth, and a chat that isn't there shouldn't come
+// back in recall.
 //
 // A missing sessionsDir means no sessions yet and returns 0. A file that
 // can't be read fails the replay; files replayed before it stay.
@@ -107,7 +108,7 @@ func (s *Store) ReplaySessions(ctx context.Context, sessionsDir string) (int, er
 	return total, nil
 }
 
-// pruneSessions deletes the rows of every session in the sessions table
+// pruneSessions runs DeleteSession for every session in the sessions table
 // whose ID isn't in seen, the transcripts the replay found.
 func (s *Store) pruneSessions(ctx context.Context, seen map[string]struct{}) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT id FROM sessions`)
@@ -136,12 +137,18 @@ func (s *Store) pruneSessions(ctx context.Context, seen map[string]struct{}) err
 	return nil
 }
 
-// DeleteSession deletes every row meru.db holds about one session: its
-// sessions row, its messages and their keyword entries, its summary's
-// keyword entry and vector, its turns rows and its tool_calls rows. merud
-// calls it after it deletes the chat's transcript, so the chat leaves
-// recall, search, `meru usage` and `meru log` along with the file. A
-// session with no rows is not an error. It fails when the database does.
+// DeleteSession deletes what meru.db holds about one session's content:
+// its sessions row, its messages and their keyword entries, its summary's
+// keyword entry and vector, and its turns rows. merud calls it after it
+// deletes the chat's transcript, so the chat leaves recall and search
+// along with the file.
+//
+// The session's tool_calls rows stay, stripped: each keeps its tool,
+// server, kind, time, duration, outcome and approval, and loses its
+// arguments and result, as an incognito chat's rows are stored. The audit
+// log still shows that each call happened (AGENTS.md, non-negotiable 4),
+// and nothing of what the chat said. A session with no rows is not an
+// error. It fails when the database does.
 func (s *Store) DeleteSession(ctx context.Context, id string) error {
 	err := s.write(ctx, func(tx *sql.Tx) error {
 		if err := forgetSession(ctx, tx, id); err != nil {
@@ -149,7 +156,7 @@ func (s *Store) DeleteSession(ctx context.Context, id string) error {
 		}
 		for _, q := range []string{
 			`DELETE FROM turns WHERE session = ?`,
-			`DELETE FROM tool_calls WHERE session = ?`,
+			`UPDATE tool_calls SET args = '', result = '' WHERE session = ?`,
 		} {
 			if _, err := tx.ExecContext(ctx, q, id); err != nil {
 				return err

@@ -90,7 +90,8 @@ func (b *Bridge) Sessions(ctx context.Context) ([]SessionView, error) {
 }
 
 // DeleteSession deletes the chat id for good: merud removes its
-// transcript and its rows in meru.db. For an incognito chat, merud forgets
+// transcript and its content in meru.db, and keeps its tool_calls rows
+// without arguments or results. For an incognito chat, merud forgets
 // the history it holds, and the Bridge stops tracking it. The page asks
 // the user first. It fails when merud can't be reached or refuses.
 func (b *Bridge) DeleteSession(ctx context.Context, id string) error {

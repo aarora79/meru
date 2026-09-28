@@ -140,7 +140,8 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
    built-in tools such as `configure` and `remember`. Never add a second path.
    An incognito chat has no transcript: its calls still go through `dispatch`,
    and each still gets a `tool_calls` row with the tool, server, kind, time,
-   duration, outcome and approval, but no arguments and no result.
+   duration, outcome and approval, but no arguments and no result. Deleting a
+   chat keeps its `tool_calls` rows and strips them the same way.
 5. **Nothing for sale, anywhere.** Meru comes under the Apache License 2.0 and
    offers nothing for sale: no offer of a paid licence, no pricing, no invitation
    to buy, no sponsor link. That holds for the README, `CONTRIBUTING.md`, the
@@ -156,8 +157,8 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
   Resist growing it.
 - Model names live in `config.toml`, never in code.
 - Files are the source of truth. Anything in `~/.meru/meru.db` must be rebuildable from
-  files and config. The one exception is an incognito chat's `tool_calls` rows,
-  which have no file behind them on purpose; a rebuild drops them.
+  files and config. The one exception is the `tool_calls` rows of an incognito or
+  deleted chat, which have no file behind them on purpose; a rebuild drops them.
 - Instrument new stages with OTel. Use GenAI/MCP semantic-convention names where they
   exist, `meru.*` otherwise. Metric attributes must be bounded sets (model, tier,
   server, tool, outcome); never IDs, paths or text.

@@ -380,15 +380,18 @@ rows by ID in the order asked, as `Chunks` does.
 
 ### Deleting a chat, and tags (sessions.go, schema.go)
 
-`DeleteSession` removes every row about one session in one write transaction:
-the `sessions` row, its messages and their `message_fts` entries (through
-`forgetSession`), the summary's keyword entry and vector, and its `turns` and
-`tool_calls` rows. merud calls it after it deletes the transcript.
+`DeleteSession` removes a session's content in one write transaction: the
+`sessions` row, its messages and their `message_fts` entries (through
+`forgetSession`), the summary's keyword entry and vector, and its `turns`
+rows. Its `tool_calls` rows stay, and an `UPDATE` sets their `args` and
+`result` to empty text, as an incognito chat's rows are stored: `meru log`
+still shows that each call happened, and nothing of what it carried. merud
+calls it after it deletes the transcript.
 
 `ReplaySessions` now keeps a set of the IDs it walked past, a
 `map[string]struct{}` (an empty struct takes no memory, so the map works as a
-set). After the walk, `pruneSessions` deletes the rows of every session the walk
-didn't find. A delete that stopped half way, or a file removed by hand, heals at
+set). After the walk, `pruneSessions` runs `DeleteSession` for every session
+the walk didn't find: content rows go, tool calls stay stripped. A delete that stopped half way, or a file removed by hand, heals at
 the next start.
 
 Migration 8 adds `sessions.tags`. `replayFile` reads a `meta` line's tags into

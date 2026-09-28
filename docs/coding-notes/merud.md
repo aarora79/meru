@@ -256,7 +256,8 @@ Both read the files, never `meru.db`, so deleting the database loses no chat.
 
 The chat list ops. `handleDelete` forgets an incognito chat through the agent's
 `ForgetIncognito`, or deletes a chat's file with `transcript.Delete` and then its
-rows with `store.DeleteSession`. A file that is already gone still loses its rows.
+content rows with `store.DeleteSession`, which keeps its `tool_calls` rows without
+arguments or results. A file that is already gone still gets the same.
 `handleMove` and `handleTag` go through `changeMeta`: open the chat, read its
 `Meta`, change it, `SetMeta`, replay the session so search sees new tags, and
 answer with the chat's row from `Session.Info`. The folder ops read and write

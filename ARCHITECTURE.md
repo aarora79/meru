@@ -26,8 +26,10 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
    search words through (see [MCP](#mcp) and [Web search](#web-search)).
 2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
    everything in the database from your files and config. Delete `meru.db` and it
-   re-indexes. The one exception is the tool log of an incognito chat, which has
-   no file behind it on purpose (see [Incognito chats](#incognito-chats)).
+   re-indexes. The one exception is the tool log of an incognito or deleted
+   chat, which has no file behind it on purpose (see
+   [Organizing past chats](#organizing-past-chats) and
+   [Incognito chats](#incognito-chats)).
 3. **You can inspect everything.** Memories and skills are Markdown files, and
    answers cite the files they drew on. Meru traces and times every turn, so you can
    find out why it said something and why it took so long.
@@ -918,11 +920,15 @@ op to `merud`, which changes the files first; `meru.db` follows.
   the ID against the session ID pattern, refuses anything but a regular file,
   removes the transcript, then deletes the session's rows: `sessions`,
   `messages` and their keyword entries, the summary's keyword entry and vector,
-  `turns` and `tool_calls`. The chat leaves the list, recall and `meru log` at
-  once, and nothing undoes it. If `merud` stops between the two steps, its next
-  start drops the rows of every session whose file is gone, which also covers a
-  file removed by hand. The uploads the chat's questions carried stay in
-  `~/meru-output/uploads/`, which is yours to clear.
+  and `turns`. The chat leaves the list and recall at once, and nothing undoes
+  it; usage counts that come from `turns` drop with it. Its `tool_calls` rows
+  stay, stored as an incognito chat's are: each keeps its tool, server, kind,
+  time, duration, outcome and approval, and loses its arguments and result, so
+  `meru log` still shows every call and nothing of what the chat said. If
+  `merud` stops between the two steps, its next start does the same for every
+  session whose file is gone, which also covers a file removed by hand. The
+  uploads the chat's questions carried stay in `~/meru-output/uploads/`, which
+  is yours to clear.
 - **Folders.** A chat folder is a name. `~/.meru/sessions/folders.json` lists
   them as a JSON array, so a folder that holds no chat yet survives, and each
   chat's own `meta` line says which folder holds it (see
@@ -976,8 +982,9 @@ no code that works on files accepts it.
   chat, and it takes no folder or tags. A file you attach is still copied into
   the uploads folder, since you picked it.
 - **The exception to rebuilding.** An incognito chat's `tool_calls` rows have no
-  transcript behind them, so a rebuild of `meru.db` loses them. That errs toward
-  keeping less, which is what an incognito chat asks for.
+  transcript behind them, so a rebuild of `meru.db` loses them, as it loses the
+  stripped rows of a deleted chat. That errs toward keeping less, which is what
+  an incognito chat asks for.
 
 The turn's span carries `meru.session.incognito`. The metrics count the turn as
 any other, since they hold no text and no ID.
@@ -1929,7 +1936,7 @@ files with mode `0600`, so only you can read them.
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
 | `summary_fts` (v0.4) | keyword index over session summaries and their tags | session summaries and `meta` lines |
-| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and `caller` (`meru` for a call `merud` made itself); an incognito chat's rows keep no args or result | `sessions/*.jsonl`; an incognito chat's rows have no file and don't come back |
+| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and `caller` (`meru` for a call `merud` made itself); the rows of an incognito or deleted chat keep no args or result | `sessions/*.jsonl`; the rows of an incognito or deleted chat have no file and don't come back |
 | `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
@@ -3761,10 +3768,11 @@ transcript lines hold. No level writes question or answer text. With
   sends no crash reports and never checks for updates.
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
-- Deleting a chat removes its transcript and every row `meru.db` holds about it.
-  An incognito chat writes no transcript, no session rows and no summary, and
-  saves no memory; `tool_calls` records each of its calls without arguments or
-  results (see [Incognito chats](#incognito-chats)).
+- Deleting a chat removes its transcript and its content in `meru.db`; its
+  `tool_calls` rows stay without arguments or results. An incognito chat writes
+  no transcript, no session rows and no summary, and saves no memory;
+  `tool_calls` records each of its calls without arguments or results (see
+  [Incognito chats](#incognito-chats)).
 - A file outside those folders reaches the model only when you attach it in the
   desktop app. `merud` copies that one file into `~/meru-output/uploads/`, and
   refuses a link, a folder and a file whose name looks like a secret's. An

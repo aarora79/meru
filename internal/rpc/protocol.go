@@ -90,8 +90,9 @@ const (
 	// and "done".
 	OpSessionTurns Op = "session_turns"
 	// OpSessionDelete deletes the chat named Request.Session for good: its
-	// transcript file and every row meru.db holds about it. For an
-	// incognito chat it makes merud forget the history it holds in memory.
+	// transcript file and its content in meru.db; its tool_calls rows stay,
+	// without arguments or results. For an incognito chat it makes merud
+	// forget the history it holds in memory.
 	// The reply is "done".
 	OpSessionDelete Op = "session_delete"
 	// OpSessionMove puts the chat named Request.Session in the chat folder

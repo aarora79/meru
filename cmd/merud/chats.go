@@ -20,10 +20,11 @@ import (
 
 // handleDelete answers OpSessionDelete. For an incognito chat it makes the
 // agent forget the history it holds; there is nothing else to delete. For
-// any other chat it deletes the transcript, then every row meru.db holds
-// about it. A file already gone still loses its rows, so a delete that
-// stopped half way can run again. It fails when id isn't a session ID, or
-// the file or the rows can't be deleted.
+// any other chat it deletes the transcript, then the chat's content in
+// meru.db; its tool_calls rows stay, without arguments or results (see
+// store.DeleteSession). A file already gone still loses its rows, so a
+// delete that stopped half way can run again. It fails when id isn't a
+// session ID, or the file or the rows can't be changed.
 func (h historyService) handleDelete(ctx context.Context, id string) error {
 	if id == "" {
 		return errors.New("session_delete needs a session ID")
