@@ -68,8 +68,8 @@ func TestSummarize(t *testing.T) {
 		"| t3 | 50% (1/2) | — |",
 		// The trade-off charts: a coloured point per set, and a key.
 		"```mermaid\nquadrantChart\n    title Passed by first token: 0 to 10 s, 0% to 100%\n",
-		"    1: [0.100, 0.750] color: #1f77b4, radius: 7\n",
-		"| 🔵 1 | qwen | 75% | 1.0 s |",
+		"    qwen: [0.100, 0.750] color: #1f77b4, radius: 7\n",
+		"| 🔵 | qwen | 75% | 1.0 s |",
 		// Time charts put the fastest set first: gemma:26b has no timings, so 0 s.
 		"title \"Median time to last token (s)\"\n    x-axis [\"gemma:26b\", \"qwen\"]\n    bar [0.0, 2.0]",
 	} {
@@ -95,5 +95,28 @@ func TestCheckReportCmd(t *testing.T) {
 	}
 	if code := run(t.Context(), []string{"check", "report"}, &out, &errOut); code != exitError {
 		t.Errorf("no files: exit code = %d, want %d", code, exitError)
+	}
+}
+
+// TestTradeoffChartMovesCrowdedNames checks that of two sets with the same
+// pass rate and close times, one name goes below its dot and the other
+// above: a blank-named dot and a hidden point that carries the name.
+func TestTradeoffChartMovesCrowdedNames(t *testing.T) {
+	sets := []setStats{
+		{Name: "fast", Total: 10, Passed: 9, TTFT: []float64{1}},
+		{Name: "faster", Total: 10, Passed: 9, TTFT: []float64{0.5}},
+		{Name: "slow", Total: 10, Passed: 6, TTFT: []float64{9}},
+	}
+	chart := tradeoffChart("T", "time", func(s setStats) float64 { return median(s.TTFT) }, sets)
+	for _, want := range []string{
+		"    fast: [0.100, 0.750] color: #1f77b4, radius: 7\n",
+		"    \u200b: [0.050, 0.750] color: #d62728, radius: 7\n",
+		"    faster: [0.050, 0.808] color: #d62728, radius: 0\n",
+		"    slow: [0.900, 0.000] color: #2ca02c, radius: 7\n",
+		"| 🔴 | faster | 90% | 0.5 s |",
+	} {
+		if !strings.Contains(chart, want) {
+			t.Errorf("chart lacks %q\n%s", want, chart)
+		}
 	}
 }

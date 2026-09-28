@@ -268,9 +268,9 @@ var (
 )
 
 // tradeoffChart writes one Mermaid quadrantChart block, a point per model
-// set with its pass rate up the side and a time along the bottom, labelled
-// with its number, then a key that names each number and colour with the
-// set's figures. Mermaid has no
+// set with its pass rate up the side and a time along the bottom, named
+// above or below its dot so names don't print over each other, then a key
+// that names each colour with the set's figures. Mermaid has no
 // plain scatter chart; a quadrant chart places coloured points on two
 // axes, which is what this needs. Its axes run from 0 to 1, so the chart
 // scales each value: time from 0 to the slowest set rounded up to 10 s,
@@ -291,21 +291,70 @@ func tradeoffChart(title, timeName string, seconds func(setStats) float64, sets 
 	fmt.Fprintf(&b, "    title %s: 0 to %g s, %g%% to 100%%\n", title, xTop, yLow)
 	fmt.Fprintf(&b, "    x-axis \"Sooner\" --> \"Later %s\"\n", timeName)
 	b.WriteString("    y-axis \"Fewer passed\" --> \"More passed\"\n")
-	for i, s := range sets {
+	// Names go below their dots, where Mermaid prints them. A name that
+	// would print over one already placed goes above its dot instead:
+	// Mermaid can't move a label, so the dot gets a blank name and a
+	// second point with radius 0, just above it, carries the real one.
+	// Blank names are runs of zero-width spaces, a different length for
+	// each, because Mermaid wants every point's name to differ.
+	// Names are placed from the rightmost point to the leftmost. The
+	// fastest sets crowd the left edge, and placing them last gives the
+	// leftmost the free room above its dot.
+	order := make([]int, len(sets))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return seconds(sets[order[a]]) > seconds(sets[order[b]]) })
+	var placed []labelBox
+	blanks := 0
+	for _, i := range order {
+		s := sets[i]
 		x := seconds(s) / xTop
 		y := (percent(s.Passed, s.Total) - yLow) / (100 - yLow)
-		// Each point carries its number, not the set's name: names of sets
-		// that sit close together print over each other, and the key below
-		// maps the number to the name.
-		fmt.Fprintf(&b, "    %d: [%.3f, %.3f] color: %s, radius: 7\n", i+1, x, y, pointColors[i%len(pointColors)])
+		color := pointColors[i%len(pointColors)]
+		below := labelBox{x: x, y: y - labelGap, width: labelWidth(s.Name)}
+		above := labelBox{x: x, y: y + labelGap, width: below.width}
+		if !below.hits(placed) || above.hits(placed) || y+2*labelGap > 1 {
+			placed = append(placed, below)
+			fmt.Fprintf(&b, "    %s: [%.3f, %.3f] color: %s, radius: 7\n", s.Name, x, y, color)
+			continue
+		}
+		placed = append(placed, above)
+		blanks++
+		fmt.Fprintf(&b, "    %s: [%.3f, %.3f] color: %s, radius: 7\n", strings.Repeat("\u200b", blanks), x, y, color)
+		fmt.Fprintf(&b, "    %s: [%.3f, %.3f] color: %s, radius: 0\n", s.Name, x, y+2*labelGap, color)
 	}
 	b.WriteString("```\n\n")
-	fmt.Fprintf(&b, "| Point | Model set | Passed | Median %s |\n| --- | --- | ---: | ---: |\n", timeName)
+	fmt.Fprintf(&b, "| | Model set | Passed | Median %s |\n| --- | --- | ---: | ---: |\n", timeName)
 	for i, s := range sets {
-		fmt.Fprintf(&b, "| %s %d | %s | %.0f%% | %.1f s |\n", pointDots[i%len(pointDots)], i+1, s.Name, percent(s.Passed, s.Total), seconds(s))
+		fmt.Fprintf(&b, "| %s | %s | %.0f%% | %.1f s |\n", pointDots[i%len(pointDots)], s.Name, percent(s.Passed, s.Total), seconds(s))
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// labelGap is how far, in the chart's 0-to-1 units, a name's middle sits
+// from its dot's middle. Mermaid draws a chart about 420 pixels tall and
+// prints a name about 14 pixels high, 5 pixels under its point.
+const labelGap = 0.029
+
+// labelBox is where a point's name prints, in the chart's 0-to-1 units: the
+// middle of the text, and its width.
+type labelBox struct{ x, y, width float64 }
+
+// labelWidth estimates how wide name prints: about 6 pixels a character on
+// a chart about 460 pixels wide.
+func labelWidth(name string) float64 { return float64(len(name)) * 6.0 / 460 }
+
+// hits reports whether l overlaps any box in placed: closer side to side
+// than half their widths added, and closer top to bottom than one line.
+func (l labelBox) hits(placed []labelBox) bool {
+	for _, p := range placed {
+		if math.Abs(l.x-p.x) < (l.width+p.width)/2 && math.Abs(l.y-p.y) < 2*labelGap {
+			return true
+		}
+	}
+	return false
 }
 
 // percent returns part of whole in percent, and 0 when whole is 0.
