@@ -1298,6 +1298,27 @@ web     0/1
   `xychart-beta` block, which GitHub draws, so the page needs no image files.
   It puts the best set first: the highest pass rate, and the lowest time. It
   sorts a copy, so the tables below each chart keep their own order.
+  `defaultsTable` opens the page with the answer model each size of Mac gets.
+  It reads `config.Recommendations`, the table the Mac installer picks from and
+  `install.sh` follows, so the page shows what the installers do. A row with no
+  answer model of its own takes its profile's, from `config.ProfileModels`. It
+  adds the pass rate and median times of the set here that ran that model, or
+  "not run".
+  `tradeoffChart` draws pass rate against a median time, once for the first
+  token and once for the last, so you can see both at once. Mermaid has no
+  plain scatter chart, so it writes a `quadrantChart`, whose axes run from 0
+  to 1: it scales time from 0 to the slowest set rounded up to 10 s, and pass
+  rate from the lowest set rounded down to 10% up to 100%, and puts both
+  ranges in the title. Each set keeps one colour from `pointColors` in both
+  charts. Mermaid prints each name just under its point and can't move it, so
+  two sets close together, such as the two Qwen sets, would print their names
+  over each other. `tradeoffChart` places names from the rightmost point to the
+  leftmost, and when a name below its dot would hit one already placed
+  (`labelBox.hits`), it puts the name above instead: the dot gets a blank name,
+  a run of zero-width spaces (`\u200b`), and a second point with radius 0, just
+  above it, carries the real name. A key under each chart names every colour,
+  with an emoji dot from `pointDots`, since a Markdown table can't colour its
+  text.
   The page opens with a notice that the numbers come from private data, since
   `make bench-report` writes it into `docs/benchmarks/results.md`.
 - `make bench` runs `scripts/bench.sh`, which runs `meru check` over

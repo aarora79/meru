@@ -146,6 +146,14 @@ program besides `merud` that starts other programs. Only
 `syscall` or call `os.StartProcess`; and `installer.Programs()`, the allowlist,
 may name no shell, interpreter or downloader, and only absolute paths.
 
+`models_test.go` keeps the installers on one model table. The Mac installer
+reads `config.Recommendations` itself, but `scripts/install.sh` and the
+`meru-install` skill can't read Go, so each holds a copy. One test reads the
+script's `-ge N` memory checks with a regular expression, and the other finds
+the skill's `| N GB` table rows; each fails when a copy names a different answer
+model from the table, or has a row too many or too few. Change the table in
+`internal/config/recommend.go`, and CI shows which copies to change with it.
+
 ## Go ideas used here
 
 - **The `testing` package** — how Go finds and runs tests. More in
