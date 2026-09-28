@@ -141,9 +141,12 @@ run "Install Meru.app", which walks through nine steps in a window
 To try the disk image before a release, `make dmg` builds
 `dist/Meru-dev-macos-arm64.dmg` from the working tree.
 
-**Meru.app and the installer aren't signed or notarized**, because the project
-has no Apple Developer account. The disk image's "Read me first.txt" explains
-the right-click, Open step for the installer, and the installer's Install Meru
+**Meru.app and the installer are signed ad hoc, not by Apple, and aren't
+notarized**, because the project has no Apple Developer account. `make
+desktop-app` and `make installer-app` sign each finished bundle with
+`codesign --sign -` and verify it: without that seal over `Info.plist` and the
+resources, macOS calls a downloaded copy "damaged" and won't open it. The disk
+image's "Read me first.txt" explains how to open the installer the first time, and the installer's Install Meru
 step offers to clear the quarantine mark from what it installs. A browser marks a downloaded file with the
 `com.apple.quarantine` attribute, and macOS then refuses to open the app,
 saying it can't check it for malicious software. The user can clear the mark

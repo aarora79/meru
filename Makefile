@@ -141,6 +141,15 @@ desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 	cp cmd/meru-desktop/Meru.icns bin/Meru.app/Contents/Resources/Meru.icns
 	cp bin/meru-desktop bin/Meru.app/Contents/MacOS/meru-desktop
 	@$(STAMP_VERSION) bin/Meru.app/Contents/Info.plist
+	$(SIGN_APP) bin/Meru.app
+
+# SIGN_APP signs a finished app bundle ad hoc: "-" means no certificate,
+# since Meru has no Apple developer account. Go's linker signs only the
+# program inside; a bundle needs a signature that seals its Info.plist and
+# resources too, or macOS calls a downloaded copy "damaged" and won't open
+# it. Signing comes last, after every file is in place: a later change
+# breaks the seal. --verify then fails the build on a bad signature.
+SIGN_APP = sign() { codesign --force --sign - "$$1" && codesign --verify --strict "$$1"; }; sign
 
 # STAMP_VERSION writes VERSION, without its v, into an Info.plist, so
 # Finder's Get Info shows it. It does nothing when VERSION is empty, as in
@@ -167,11 +176,12 @@ installer-app: desktop-app installer ## Wrap the installer, with meru, merud and
 	cp bin/darwin-arm64/meru bin/darwin-arm64/merud "$(INSTALLER_APP)/Contents/Resources/payload/"
 	ditto bin/Meru.app "$(INSTALLER_APP)/Contents/Resources/payload/Meru.app"
 	@$(STAMP_VERSION) "$(INSTALLER_APP)/Contents/Info.plist"
+	$(SIGN_APP) "$(INSTALLER_APP)"
 
 # hdiutil is the Mac's disk image tool. UDZO is a compressed, read-only
 # image, the usual kind for a download. Meru has no Apple developer
-# account, so the image and its apps are unsigned, and "Read me first.txt"
-# explains the right-click, Open step.
+# account, so its apps carry ad-hoc signatures, not Apple's, and "Read me
+# first.txt" explains how to open the installer the first time.
 dmg: installer-app ## Pack "Install Meru.app" in dist/Meru-VERSION-macos-arm64.dmg (a Mac with Apple silicon)
 	@[ "$$(uname -sm)" = "Darwin arm64" ] || { echo "make dmg runs on a Mac with Apple silicon: Meru.app builds for the machine that builds it"; exit 1; }
 	rm -rf dist/dmg "$(DMG)"

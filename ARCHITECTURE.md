@@ -2778,10 +2778,15 @@ checks before it changes anything: `settings.yml` keeps its secret, a command or
 server config already has stays as it is, and an unchanged answer keeps its memory
 file. Continue on Start Meru restarts `merud`, so it reads what this run wrote.
 
-**Unsigned.** Meru has no Apple developer account, so the disk image, the installer
-and the apps carry no Apple signature. "Read me first.txt" on the disk image
-explains the right-click, Open step, and the installer's first screen says why
-macOS asked. The Install Meru step clears the quarantine mark only from what it
+**Signed ad hoc, not by Apple.** Meru has no Apple developer account, so the
+installer and Meru.app carry ad-hoc signatures, with no certificate, and Apple
+doesn't notarize them. The build still signs each finished bundle, which seals
+its `Info.plist` and resources: with only the signature Go's linker puts on the
+program, macOS calls a downloaded copy "damaged" and offers no way to open it.
+An ad-hoc-signed app downloads as one Apple couldn't check, which the user can
+open once from System Settings, Privacy & Security, Open Anyway. "Read me
+first.txt" on the disk image explains that step, and the installer's first
+screen says why macOS asked. The Install Meru step clears the quarantine mark only from what it
 installed, and only when its box is ticked; the box says what the mark does.
 
 **What it doesn't do.** It doesn't uninstall, update itself or look for a newer
