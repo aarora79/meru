@@ -130,7 +130,10 @@ func TestModelChoices(t *testing.T) {
 		{miniCPM, true, []string{"fast"}, ollamaCaps[miniCPM]},
 		// Not pulled: the capabilities come from the known list.
 		{gemma, false, []string{}, []string{"completion", "vision"}},
+		{"gemma4:26b-a4b-it-qat", false, []string{}, ollamaCaps[qwen]},
 		{qwen, true, []string{"main"}, ollamaCaps[qwen]},
+		{gemmaMoE, false, []string{}, ollamaCaps[qwen]},
+		{qwenMoE, false, []string{}, ollamaCaps[qwen]},
 	}
 	if len(info.Choices) != len(tests) {
 		t.Fatalf("choices = %+v, want %d", info.Choices, len(tests))
