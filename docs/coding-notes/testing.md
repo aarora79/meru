@@ -147,8 +147,10 @@ program besides `merud` that starts other programs. Only
 may name no shell, interpreter or downloader, and only absolute paths.
 
 `models_test.go` keeps the installers on one model table. The Mac installer
-reads `config.Recommendations` itself, but `scripts/install.sh` and the
-`meru-install` skill can't read Go, so each holds a copy. One test reads the
+reads `config.Recommendations` itself, but `scripts/install.sh`, the
+`meru-install` skill and the README's benchmark table can't read Go, so each
+holds a copy. A third test checks that each README row names the table's model;
+the row's figures come from the results page and aren't checked. One test reads the
 script's `-ge N` memory checks with a regular expression, and the other finds
 the skill's `| N GB` table rows; each fails when a copy names a different answer
 model from the table, or has a row too many or too few. Change the table in
