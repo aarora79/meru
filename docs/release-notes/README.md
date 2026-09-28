@@ -1,0 +1,7 @@
+# Release notes
+
+One file per release, newest first. The `release-notes` skill in
+`.claude/skills/` writes each one, and `make release` uses it as the GitHub
+release's text ([releasing.md](../releasing.md)).
+
+- [v0.4.7](v0.4.7.md): benchmark charts of accuracy against time, and each Mac's default model

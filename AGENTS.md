@@ -267,13 +267,15 @@ docs/
   fast-router.md     how the one-token router works
   google-setup.md    setting up Gmail, Calendar and Drive for the `google` server
   releasing.md       how the owner builds and publishes a release
+  release-notes/     one file of release notes per version, from v0.4.7; the release-notes
+                     skill writes them and `make release` publishes each as the release's text
   examples/          a starter check file for `meru check`, and vault-digest.sh, a second
                      agent that drives `meru run --json`
   img/               the logo and the social preview image
   posters/           the one-page poster: HTML, PNGs and PDF
   index.html         the landing page GitHub Pages serves at aarora79.github.io/meru
 .claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review,
-                     meru-install
+                     meru-install, release-notes
 .github/             CI and security workflows, Dependabot, the pull-request template
 .scratchpad/         git-ignored; the design and review skills write here
 ```
@@ -425,6 +427,9 @@ In `.claude/skills/`:
 - **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
 - **`meru-install`** — walk a user through installing, updating or removing Meru
   on a Mac from a GitHub release, asking before each change.
+- **`release-notes`** — write `docs/release-notes/vX.Y.Z.md` for a new version
+  and open its pull request; `make release` then publishes it. Adapted from the
+  skill of the same name in agentic-community/mcp-gateway-registry.
 
 ## Commands
 
