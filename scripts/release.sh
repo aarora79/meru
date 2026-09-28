@@ -141,6 +141,12 @@ make build LDFLAGS="$ldflags"
 echo "release: build Meru.app and the installer's disk image"
 make dmg LDFLAGS="$ldflags"
 
+# A copy with no version in its name lets the README and the landing page
+# link to the newest disk image through GitHub's releases/latest/download/
+# address, which needs a file name that stays the same from one release to
+# the next.
+cp "dist/Meru-$version-macos-arm64.dmg" dist/Meru-macos-arm64.dmg
+
 # ---- 4. Pack ----
 
 # COPYFILE_DISABLE stops macOS tar from adding ._ files that hold Finder
