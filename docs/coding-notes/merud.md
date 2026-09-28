@@ -1289,6 +1289,8 @@ web     0/1
   3. A turn that failed before its `done` event has no stats and stays out of
   the timings, which would otherwise show a zero. `barChart` writes a Mermaid
   `xychart-beta` block, which GitHub draws, so the page needs no image files.
+  It puts the best set first: the highest pass rate, and the lowest time. It
+  sorts a copy, so the tables below each chart keep their own order.
   The page opens with a notice that the numbers come from private data, since
   `make bench-report` writes it into `docs/benchmarks/results.md`.
 - `make bench` runs `scripts/bench.sh`, which runs `meru check` over

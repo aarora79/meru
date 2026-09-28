@@ -66,6 +66,8 @@ func TestSummarize(t *testing.T) {
 		"```mermaid\nxychart-beta\n    title \"Questions passed (%)\"\n    x-axis [\"qwen\", \"gemma:26b\"]\n    y-axis 0 --> 100\n    bar [75.0, 0.0]\n```",
 		"| qwen | `qwen:35b` | 2 | 4 | 75% | 50% | 100% |",
 		"| t3 | 50% (1/2) | — |",
+		// Time charts put the fastest set first: gemma:26b has no timings, so 0 s.
+		"title \"Median time to last token (s)\"\n    x-axis [\"gemma:26b\", \"qwen\"]\n    bar [0.0, 2.0]",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q\n%s", want, page)

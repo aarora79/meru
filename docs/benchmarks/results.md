@@ -43,15 +43,15 @@ writing time per output token.
 ```mermaid
 xychart-beta
     title "Median time to last token (s)"
-    x-axis ["gemma-moe", "qwen-dense", "qwen-moe"]
-    bar [16.2, 54.2, 6.5]
+    x-axis ["qwen-moe", "gemma-moe", "qwen-dense"]
+    bar [6.5, 16.2, 54.2]
 ```
 
 ```mermaid
 xychart-beta
     title "Median time to first token (s)"
-    x-axis ["gemma-moe", "qwen-dense", "qwen-moe"]
-    bar [15.6, 34.6, 4.1]
+    x-axis ["qwen-moe", "gemma-moe", "qwen-dense"]
+    bar [4.1, 15.6, 34.6]
 ```
 
 | Model set | TTFT p50 | TTFT p95 | TTLT p50 | TTLT p95 | TPOT p50 | Tokens in, p50 | Tokens out, p50 |
