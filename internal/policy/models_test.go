@@ -1,7 +1,8 @@
 // This file holds the rule that every installer offers the same answer
-// model for a Mac's memory. The Mac installer reads config.Recommendations
-// itself; scripts/install.sh and the meru-install skill can't read Go, so
-// they carry copies of the table, and these tests fail when a copy drifts.
+// model for a Mac's memory, and that the README says so. The Mac installer
+// reads config.Recommendations itself; scripts/install.sh, the meru-install
+// skill and the README's table can't read Go, so they carry copies, and
+// these tests fail when a copy drifts.
 
 package policy
 
@@ -79,6 +80,32 @@ func TestInstallSkillFollowsTheModelTable(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("the skill's table has no %d GB row; config.Recommendations picks %q there", gb, model)
+		}
+	}
+}
+
+// TestReadmeFollowsTheModelTable checks that the README's table under "How
+// good are the local models?" has a row for each memory size in
+// config.Recommendations, such as "| 48 to 63 GB", that names the same
+// answer model. The row's figures come from docs/benchmarks/results.md and
+// aren't checked here.
+func TestReadmeFollowsTheModelTable(t *testing.T) {
+	text, err := os.ReadFile(filepath.Join(moduleRoot(t), "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(text), "\n")
+	for gb, model := range modelRows() {
+		// "| 48 " matches "| 48 to 63 GB" and "| 64 GB or more" alike.
+		prefix := "| " + strconv.Itoa(gb) + " "
+		found := false
+		for _, line := range lines {
+			if strings.HasPrefix(line, prefix) && strings.Contains(line, "`"+model+"`") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("README.md has no table row from %d GB naming %q, the model config.Recommendations picks", gb, model)
 		}
 	}
 }

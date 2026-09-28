@@ -60,6 +60,26 @@ offers Ollama, the models, `meru setup` and starting `merud` at login, asking
 before each step. [docs/running.md](docs/running.md) covers Linux, Windows and
 building from source.
 
+## How good are the local models?
+
+We ran six answer models through a benchmark of 50 tasks, each three times:
+direct questions, searches of your files, tasks that need one tool or several,
+conversations over several turns, and honesty checks. Each installer picks the
+answer model by your Mac's memory:
+
+| Mac memory | Answer model | Tasks passed | Time to first token | Time to last token |
+|------------|--------------|-------------:|--------------------:|-------------------:|
+| under 32 GB | MiniCPM5-2B, the `lite` model | 68% | 11.6 s | 13.1 s |
+| 32 to 47 GB | `gemma4:26b-a4b-it-qat` | 80% | 17.6 s | 18.3 s |
+| 48 to 63 GB | `qwen3.6:35b` | 89% | 5.6 s | 10.4 s |
+| 64 GB or more | `qwen3.6:35b-a3b-mxfp8` | 89% | 4.1 s | 6.5 s |
+
+Times are medians on a Mac Studio (M4 Max, 64 GB) and count from the question
+to the answer's first and last token, routing, search and tool calls included.
+The tasks use the author's own files and mail, so they stay private; [the
+benchmark results](docs/benchmarks/results.md) show every model we tried, pass
+rates by kind of task, and charts of accuracy against speed.
+
 ## What it is
 
 Meru is two Go programs. `merud` is a daemon: it runs in the background, keeps the
@@ -241,16 +261,12 @@ Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tie
 - **`full`:** `qwen3.6:35b-a3b-mxfp8`, a 38 GB mixture of experts, and
   `qwen3-embedding:0.6b`. Needs Apple silicon with 64 GB or more.
 
-We ran three answer models through a benchmark of 50 private tasks, three
-times each. `qwen3.6:35b-a3b-mxfp8` answered fastest, a median of 6.8 s a task,
-and passed 133 of 150; `gemma4:26b-mxfp8` passed 138 but took 16.3 s. A Mac
-with 48 GB can run `qwen3.6:35b` (23 GB), the same model at 4 bits, which passed
-as many; a Mac with 32 GB, `gemma4:26b-a4b-it-qat` (15 GB). Both installers pick
-the model for your Mac's memory and set it as the answer model. The desktop
-app's Settings, Models lists the models we tried with their `ollama pull` and
-`ollama run` commands and switches between them without a restart.
-[docs/running.md](docs/running.md#which-model-for-which-mac) says which model
-suits which Mac.
+[How good are the local models?](#how-good-are-the-local-models) gives the
+answer model each installer picks for your Mac's memory, with its benchmark
+results. The desktop app's Settings, Models lists the models we tried with
+their `ollama pull` and `ollama run` commands and switches between them without
+a restart. [docs/running.md](docs/running.md#which-model-for-which-mac) says
+which model suits which Mac.
 
 On a cloud server, Meru still sends no prompt to a model provider, but your data
 lives on that server. The promise is "a machine you control"; where it sits is your
