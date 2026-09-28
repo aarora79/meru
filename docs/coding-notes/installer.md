@@ -217,6 +217,20 @@ The tests start no real program and reach no real server: a fake Runner stands i
 for `brew`, `docker` and `launchctl`, `httptest` servers stand in for Ollama,
 SearXNG and the Google server, and a small socket server stands in for `merud`.
 
+`make installer-app` and `make desktop-app` sign each finished app with
+`codesign --sign -`, an ad-hoc signature with no certificate, and verify it.
+Go's linker signs only the program inside a bundle; without a signature that
+also seals `Info.plist` and the resources, macOS calls a downloaded copy
+"damaged" and won't open it. To see what a download gets, mark a copy of the
+disk image as downloaded and ask Gatekeeper, the macOS download check:
+
+```sh
+xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Chrome;" copy.dmg
+hdiutil attach -readonly copy.dmg
+codesign --verify --deep --strict "/Volumes/Install Meru/Install Meru.app"   # valid on disk
+spctl -a -vv "/Volumes/Install Meru/Install Meru.app"   # rejected: not notarized, opens with Open Anyway
+```
+
 ## Why it's built this way
 
 A shell script already installs Meru (`scripts/install.sh`), and it could have

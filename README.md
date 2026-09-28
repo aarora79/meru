@@ -40,8 +40,9 @@ first for any address that no search or question of yours gave.
 ## Install on a Mac
 
 **In a window:** [download the Mac installer](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg), a disk image for Macs with
-Apple silicon, open it, and
-right-click "Install Meru.app", then choose Open (Meru isn't signed by Apple).
+Apple silicon, open it, and open "Install Meru.app". Apple hasn't checked Meru,
+so the first time macOS refuses: click Done, then Open Anyway in System
+Settings, Privacy & Security.
 It walks you through nine steps: Meru, Ollama and the models, the folders Meru
 reads, web search in Docker, skills and commands, Gmail and Calendar, your name,
 and starting `merud`. Each step says what it downloads before it starts, and you
