@@ -1217,7 +1217,7 @@ or `-y` may sit before or after the name.
 `skills_test.go` runs the three words against an in-process server and feeds
 `skillsCmd` scripted answers, with and without a terminal.
 
-### meru: check.go and checkfile.go
+### meru: check.go, checkfile.go and checkreport.go
 
 `meru check` reruns a fixed set of your own questions and grades each answer,
 so you can see what a change made better or worse. The questions sit in
@@ -1256,12 +1256,20 @@ web     0/1
   question that needs an approved tool fails.
 - `grade` returns one reason per `want` field that fails, such as `route
   search, want direct` or `tool web_fetch not called`. An empty list is a pass.
+  `answer_none` fails an answer that holds any of its words, such as "I've
+  sent" after the send was declined, so a check can catch a claim of an
+  action no tool took.
   `toolMatches` accepts a full name, a server prefix ending at a dot, or the
   name after the prefix, so `"obsidian"` and `"git-log"` both work.
 - Each result prints as soon as `grade` returns, since a run of 17 questions
   takes minutes. `writeCheckLine` pads the id and category to the widest in
   the file, so the lines line up without a `tabwriter`, which needs every row
   before it can print one. PASS is green and FAIL red through `look`.
+- Before the first question, `activeModels` sends the `models` op and keeps
+  the set in use and its answer model. Each `checkResult` carries them, with
+  the `done` event's `ttft_ms`, `ttlt_ms`, `tpot_ms`, `tokens_in` and
+  `tokens_out`, so a saved run says which model produced it and how fast. A
+  `merud` that can't say leaves the two names empty.
 - `--json` prints each `checkResult` as one line of JSON instead of the table.
   `--save` appends the same records to `~/.meru/checks-results/<date>.jsonl`,
   with the run's start time in each, so two runs can be compared later.
@@ -1273,6 +1281,21 @@ web     0/1
 - `check_test.go` runs `meru check` against a fake `merud` over a real socket.
   It checks the session IDs each question sends, that approvals get a deny,
   the printed table, the saved records and the exit code.
+- `meru check report <file>...` (`checkreport.go`) reads saved results and
+  prints one Markdown page. `summarize` groups them by model set, in the order
+  they first appear, and counts passes overall, by category and by run, so the
+  page shows each set's lowest and highest run next to its total. `quantile`
+  takes the nearest-rank value from a sorted copy: the p50 of 1, 2, 3, 4, 5 is
+  3. A turn that failed before its `done` event has no stats and stays out of
+  the timings, which would otherwise show a zero. `barChart` writes a Mermaid
+  `xychart-beta` block, which GitHub draws, so the page needs no image files.
+  The page opens with a notice that the numbers come from private data, since
+  `make bench-report` writes it into `docs/benchmarks/results.md`.
+- `make bench` runs `scripts/bench.sh`, which runs `meru check` over
+  `bench/tasks.jsonl` in a Meru home of its own, `bench/home/`, once per model
+  set and pass. [docs/benchmarks/README.md](../benchmarks/README.md) explains
+  it. `bench/` is in `.gitignore`: the tasks quote the owner's own mail and
+  files.
 
 ## Go ideas used here
 

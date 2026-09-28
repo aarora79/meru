@@ -24,6 +24,7 @@
 //	meru [-socket path] mcp list         the MCP server catalog and your servers
 //	meru [-socket path] mcp add ...      add an MCP server; also remove
 //	meru [-socket path] check [file]     rerun your own questions and grade the answers
+//	meru check report <results>...       compare saved results across model sets, as Markdown
 //
 // A question whose first word is ping, chat, index, tools, log, usage, model,
 // setup, memory, skills, mcp or check needs quotes, so meru reads it as a question and not
@@ -111,6 +112,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru check [file] [--only id,category] [--json] [--save]
                         rerun your questions from ~/.meru/checks.jsonl
                         and grade the answers
+  meru check report <results.jsonl>...
+                        compare saved check results across model sets, as Markdown
 
 flags:`)
 		flags.PrintDefaults()
@@ -167,6 +170,8 @@ flags:`)
 		err = skillsCmd(ctx, *socket, flags.Args()[1:], os.Stdin, stdout, isTerminal(os.Stdin))
 	case flags.Arg(0) == "mcp":
 		err = mcpCmd(ctx, *socket, flags.Args()[1:], terminal(stdout))
+	case flags.NArg() >= 2 && flags.Arg(0) == "check" && flags.Arg(1) == "report":
+		err = checkReportCmd(flags.Args()[2:], stdout)
 	case flags.Arg(0) == "check":
 		err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	default:

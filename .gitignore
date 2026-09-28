@@ -27,6 +27,11 @@ config.local.toml
 # Design and review scratch space (skills write here)
 .scratchpad/
 
+# The private benchmark: tasks with ground truth from the owner's own files,
+# mail and calendar, its results, and the separate Meru home it runs in.
+# Only the report in docs/benchmarks/ is published.
+/bench/
+
 
 # Git worktrees that parallel agents work in
 .claude/worktrees/

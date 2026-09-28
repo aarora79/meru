@@ -2083,6 +2083,7 @@ passes. Text matches ignore case.
 | `no_tools` | the model asked for no tool at all | `"no_tools": true` |
 | `answer_any` | the answer holds at least one of these | `"answer_any": ["Canberra"]` |
 | `answer_all` | the answer holds every one of these | `"answer_all": ["go.dev", "1.27"]` |
+| `answer_none` | the answer holds none of these, such as a claim that it sent a mail it didn't | `"answer_none": ["i've sent", "has been sent"]` |
 | `sources_any` | a file the search or `search_files` found has one of these in its path | `"sources_any": ["coase", "firm"]` |
 | `sources_none` | no file the search or `search_files` found has any of these in its path | `"sources_none": ["lisbon-trip"]` |
 | `max_seconds` | the turn took less than this | `"max_seconds": 30` |

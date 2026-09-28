@@ -171,6 +171,31 @@ its events as JSON, and `meru log` shows its tool calls.
 searched it and read four notes through the `obsidian` server in 10.3 s, and
 `meru log` showed all six calls.
 
+## Benchmark
+
+The owner asked for this ahead of v0.5. It measures the model sets Meru already
+has, so it needs nothing from a later milestone.
+
+- [x] `meru check` records each turn's model set, time to first and last token,
+  time per output token and token counts, and `answer_none` fails an answer that
+  claims an action no tool took
+- [x] `meru check report` turns saved results into a Markdown page with Mermaid
+  charts
+- [x] `make bench` runs a private dataset in `bench/`, which git ignores, against
+  every model set in a Meru home of its own; `make bench-report` writes
+  `docs/benchmarks/results.md`
+- [x] `docs/benchmarks/README.md` says the results come from private data and how
+  to build a dataset of your own
+- [x] A first published run over all three model sets
+
+**Done when:** `docs/benchmarks/results.md` compares every model set on the
+private dataset, with pass rates by kind of question and the timings.
+
+**Measured:** on the development machine, three passes of the 50 questions per
+set passed 92% with `gemma-moe`, 90% with `qwen-dense` and 89% with `qwen-moe`.
+Chained tool calls split them most (78%, 67% and 61%), and `qwen-moe` answered
+fastest, with a median of 6.5 s to the last token.
+
 ## v0.5 — It acts unprompted
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
