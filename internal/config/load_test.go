@@ -49,7 +49,7 @@ func TestLoadProfilesAndOverrides(t *testing.T) {
 		{"lite", `profile = "lite"`, profiles["lite"]},
 		{"full", `profile = "full"`, Models{
 			Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
-			Main:  "qwen3.8:27b",
+			Main:  "qwen3.6:35b-a3b-mxfp8",
 			Embed: "qwen3-embedding:0.6b",
 		}},
 		{"full with main override", "profile = \"full\"\n[models]\nmain = \"my-model\"", Models{
@@ -468,8 +468,8 @@ func TestLoadModelSets(t *testing.T) {
 	body := `profile = "full"
 
 [[models.sets]]
-name  = "qwen-moe"
-main  = "qwen3.6:35b-a3b-mxfp8"
+name  = "gemma-moe"
+main  = "gemma4:26b-mxfp8"
 think = false
 
 [[models.sets]]
@@ -481,15 +481,15 @@ fast  = "gemma3:1b"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Models.Main != "qwen3.8:27b" {
+	if cfg.Models.Main != "qwen3.6:35b-a3b-mxfp8" {
 		t.Errorf("main = %q; a set must not change the default", cfg.Models.Main)
 	}
 	if len(cfg.Models.Sets) != 2 {
 		t.Fatalf("sets = %+v, want 2", cfg.Models.Sets)
 	}
-	moe, ok := FindSet(cfg.Models.Sets, "qwen-moe")
-	if !ok || moe.Main != "qwen3.6:35b-a3b-mxfp8" || !moe.ThinkOff() {
-		t.Errorf("qwen-moe = %+v, %v; want its main and thinking off", moe, ok)
+	moe, ok := FindSet(cfg.Models.Sets, "gemma-moe")
+	if !ok || moe.Main != "gemma4:26b-mxfp8" || !moe.ThinkOff() {
+		t.Errorf("gemma-moe = %+v, %v; want its main and thinking off", moe, ok)
 	}
 	small, _ := FindSet(cfg.Models.Sets, "small")
 	if small.ThinkOff() || small.Think != nil || small.Fast != "gemma3:1b" {

@@ -553,7 +553,7 @@ func ollamaVersion(ctx context.Context, baseURL string) (string, error) {
 // pickProfile asks for lite or full and returns it with its models.
 func (c *console) pickProfile() (string, config.Models, error) {
 	for {
-		a, err := c.ask("Profile: lite (16 GB of memory) or full (32 GB or more)? [lite]")
+		a, err := c.ask("Profile: lite (16 GB of memory) or full (64 GB or more)? [lite]")
 		if err != nil {
 			return "", config.Models{}, err
 		}

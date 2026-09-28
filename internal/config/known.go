@@ -32,10 +32,12 @@ type KnownModel struct {
 // first. It returns a new slice each call, so a caller can't change the
 // list for the next one.
 //
-// The list holds three models and grows only when we test another. We
-// also tried qwen3.8:27b, the full profile's main model: its answers were
-// the best grounded, but a question that fetched web pages took about
-// five minutes, so it isn't offered here.
+// The list grows only when we test another model. It holds the main
+// model of each profile, so Settings can always switch back to it. We
+// also tried qwen3.8:27b, a dense 27B: in our benchmark it passed about
+// as many tasks as the mixture-of-experts models but took about eight
+// times as long per question, so it isn't offered here. See
+// ARCHITECTURE.md, "Models we tried".
 func KnownModels() []KnownModel {
 	return []KnownModel{
 		{
@@ -58,6 +60,15 @@ func KnownModels() []KnownModel {
 			Capabilities: []string{"completion", "vision"},
 		},
 		{
+			Name:  "gemma4:26b-a4b-it-qat",
+			Label: "Gemma 4 26B QAT",
+			Size:  "15 GB",
+			Good:  "The Gemma 4 26B mixture of experts at 4 bits, small enough for a 32 GB Mac; it reads pictures, calls tools and thinks.",
+			Bad:   "We haven't run our benchmark on it; expect the slow first word of gemma4:26b-mxfp8 on questions that offer tools.",
+			// QAT: Google trained it to lose little when stored at 4 bits.
+			Capabilities: []string{"completion", "vision", "tools", "thinking"},
+		},
+		{
 			Name:  "qwen3.6:35b",
 			Label: "Qwen 3.6 35B",
 			Size:  "23 GB",
@@ -65,6 +76,26 @@ func KnownModels() []KnownModel {
 			Bad:   "Now and then it writes a tool call Ollama can't read, or thinks and writes nothing; merud retries both.",
 			// A mixture of experts: about 3B of its 36B parameters work on
 			// each token, which is why it runs faster than a dense 27B.
+			Capabilities: []string{"completion", "vision", "tools", "thinking"},
+		},
+		{
+			Name:  "gemma4:26b-mxfp8",
+			Label: "Gemma 4 26B MXFP8",
+			Size:  "28 GB",
+			Good:  "The most accurate in our benchmark: 138 of 150 tasks passed, and 28 of 36 that needed several tools.",
+			Bad:   "Slow to start: a median of 15.6 seconds to the first word, since Ollama reads the whole tool list again for each new question.",
+			// About 4B of its 26B parameters work on each token. Ollama
+			// runs the 8-bit MXFP8 weights on its MLX backend.
+			Capabilities: []string{"completion", "vision", "tools", "thinking"},
+		},
+		{
+			Name:  "qwen3.6:35b-a3b-mxfp8",
+			Label: "Qwen 3.6 35B-A3B MXFP8",
+			Size:  "38 GB",
+			Good:  "The fastest in our benchmark: a median of 6.8 seconds a question, 4.1 to the first word, and 133 of 150 tasks passed.",
+			Bad:   "It passed 22 of 36 tasks that needed several tools, fewer than gemma4:26b-mxfp8, and it needs a 64 GB Mac.",
+			// The full profile's main model: the 8-bit build of the same
+			// mixture of experts as qwen3.6:35b, on Ollama's MLX backend.
 			Capabilities: []string{"completion", "vision", "tools", "thinking"},
 		},
 	}

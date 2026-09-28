@@ -310,7 +310,7 @@
 <!-- ============================================================ -->
 <h2 id="shape">Two programs: a daemon and a thin client</h2>
 
-<p>A command-line tool that starts, loads a model, answers and exits would be too slow. Meru's largest model is about 18 GB at 4-bit, meaning each weight stored in four bits, and it takes many seconds to read from disk. Paying that on every question breaks principle 5, so Meru splits into two programs:</p>
+<p>A command-line tool that starts, loads a model, answers and exits would be too slow. The <code>full</code> profile's main model is 38 GB at 8-bit, meaning each weight stored in eight bits, and it takes many seconds to read from disk. Paying that on every question breaks principle 5, so Meru splits into two programs:</p>
 
 <ul>
   <li><b><code>merud</code></b> is a <b>daemon</b>, a program that keeps running in the background. It keeps models loaded in Ollama, owns the store, holds the MCP and A2A connections, runs the scheduler and the agent loop, and emits metrics and traces.</li>
@@ -1032,15 +1032,15 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <thead><tr><th>Tier</th><th><code>lite</code> (default)</th><th><code>full</code></th></tr></thead>
   <tbody>
     <tr><td><code>fast</code></td><td><code>hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M</code> (1.6 GB)</td><td>same</td></tr>
-    <tr><td><code>main</code></td><td>same model as <code>fast</code></td><td><code>qwen3.8:27b</code> (~18 GB, 4-bit)</td></tr>
+    <tr><td><code>main</code></td><td>same model as <code>fast</code></td><td><code>qwen3.6:35b-a3b-mxfp8</code> (38 GB, 8-bit)</td></tr>
     <tr><td><code>embed</code></td><td><code>nomic-embed-text</code> (~260 MB, 768 dims)</td><td><code>qwen3-embedding:0.6b</code> (1024 dims)</td></tr>
-    <tr><td>Hardware</td><td>16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon</td><td>Apple silicon with 32 GB (64 GB comfortable), or a GPU with ~24 GB of memory</td></tr>
+    <tr><td>Hardware</td><td>16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon</td><td>Apple silicon with 64 GB or more</td></tr>
   </tbody>
 </table></div>
 
 <ul>
   <li><b><code>lite</code></b> uses two small models. It downloads in a couple of minutes and runs on almost any computer. One model fills both <code>fast</code> and <code>main</code>, so only two models sit in memory.</li>
-  <li><b><code>full</code></b> swaps in Qwen 3.8 27B, a dense model built for agent and tool work, and a stronger embedding model. On Apple silicon, Ollama also offers the <code>qwen3.8:27b-mlx</code> tag, which runs the same model on its MLX backend; we'll measure which tag is faster.</li>
+  <li><b><code>full</code></b> swaps in Qwen 3.6 35B-A3B, a mixture of experts that runs about 3B of its 36B parameters per token, and a stronger embedding model. Its MXFP8 build runs on Ollama's MLX backend on Apple silicon. It was the fastest model in our benchmark (see <a href="#models-we-tried">Models we tried</a>), and Ollama held 36 to 52 GiB for it while it answered, so <code>full</code> needs a 64 GB Mac.</li>
 </ul>
 
 <p><code>merud</code> keeps each model loaded by asking Ollama for <code>keep_alive: -1</code>, and warms every tier at startup. Ollama must allow enough models in memory at once: <code>OLLAMA_MAX_LOADED_MODELS</code> set to 3 for <code>full</code>.</p>
@@ -1068,16 +1068,59 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   </tbody>
 </table></div>
 
-<p>MiniCPM5-2B stays the <code>fast</code> model: it routes well and fast. <code>qwen3.6:35b</code> is the answer model we use now. We didn't keep <code>qwen3.8:27b</code>, since a web question took five minutes.</p>
+<p>MiniCPM5-2B stays the <code>fast</code> model: it routes well and fast. One question can't rank the rest, so we built a benchmark.</p>
 
-<p><code>config.KnownModels</code> lists the three we offer, MiniCPM5-2B, <code>gemma3:12b</code> and <code>qwen3.6:35b</code>, with their sizes and a line each on what they did well and badly. The desktop app's Settings, Models shows each one with its commands, which also work in a terminal:</p>
+<p><b>The benchmark.</b> In September 2026 we ran three model sets through 50 tasks on the same Mac, with Ollama 0.34.0, MiniCPM5-2B as <code>fast</code>, <code>nomic-embed-text</code> as <code>embed</code>, and <code>think = false</code> in every set. The owner drew the tasks from their own files, mail, calendar and repositories, so we don't publish them; each task has a check that passes or fails the answer. Eight tasks go to the <code>direct</code> route, nine need a search of the files, thirteen need one tool call, twelve need several, four span several turns, and four test honesty. Each set ran every task three times, 150 runs per set.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Set</th><th>Answer model</th><th>Passed</th><th>Median time per task</th><th>90th percentile</th><th>Median time to first token</th><th>Tokens a second</th></tr></thead>
+  <tbody>
+    <tr><td><code>qwen-moe</code></td><td><code>qwen3.6:35b-a3b-mxfp8</code> (38 GB)</td><td>133 of 150 (89%)</td><td>6.8 s</td><td>19.4 s</td><td>4.1 s</td><td>63</td></tr>
+    <tr><td><code>gemma-moe</code></td><td><code>gemma4:26b-mxfp8</code> (28 GB)</td><td>138 of 150 (92%)</td><td>16.3 s</td><td>29.1 s</td><td>15.6 s</td><td>57</td></tr>
+    <tr><td><code>qwen-dense</code></td><td><code>qwen3.8:27b</code> (17 GB)</td><td>135 of 150 (90%)</td><td>55.9 s</td><td>121.1 s</td><td>34.6 s</td><td>17</td></tr>
+  </tbody>
+</table></div>
+
+<div class="tbl"><table>
+  <thead><tr><th>Kind of task (runs)</th><th><code>qwen-moe</code></th><th><code>gemma-moe</code></th><th><code>qwen-dense</code></th></tr></thead>
+  <tbody>
+    <tr><td>direct (24)</td><td>24</td><td>24</td><td>24</td></tr>
+    <tr><td>search of the files (27)</td><td>27</td><td>27</td><td>26</td></tr>
+    <tr><td>one tool (39)</td><td>37</td><td>37</td><td>37</td></tr>
+    <tr><td>several tools (36)</td><td>22</td><td>28</td><td>24</td></tr>
+    <tr><td>several turns (12)</td><td>11</td><td>12</td><td>12</td></tr>
+    <tr><td>honesty (12)</td><td>12</td><td>10</td><td>12</td></tr>
+  </tbody>
+</table></div>
+
+<p>The three pass about as often: a gap of five runs in 150 is too small to rank them. They part on tasks that need several tools, where <code>gemma4:26b-mxfp8</code> passed 28 of 36 and <code>qwen3.6:35b-a3b-mxfp8</code> 22, and on time. <code>qwen3.8:27b</code>, a dense model that runs all 27B parameters on every token, writes 17 tokens a second and took a median of 55.9 s a task, eight times as long as <code>qwen3.6:35b-a3b-mxfp8</code>. <code>qwen3.6:35b-a3b-mxfp8</code> answers fastest, so it fills <code>main</code> in the <code>full</code> profile and stays the answer model we use. <code>gemma4:26b-mxfp8</code> suits someone who asks for work across several tools and will wait for it.</p>
+
+<p><b>Why Gemma 4 starts slow.</b> Both mixture-of-experts models read a prompt at about 1,100 to 1,200 tokens a second, and Ollama honoured <code>think: false</code> for both: on <code>direct</code> tasks, which offer no tools, the first token came after a median of 0.5 s on Gemma 4 and 0.4 s on Qwen. The gap opens on turns that offer tools, whose schemas run to about 13,000 tokens. Ollama keeps the prompts it has read and reuses the longest opening a new prompt shares with one of them. Qwen's chat format writes the tool schemas first and the system prompt after them, so the schemas sit in the shared opening: a new question reused a median of 15,658 tokens and read 4,374 new ones. Gemma 4's format writes the system prompt first and the schemas after it, and Meru's system prompt changes from question to question (see <a href="#loop">The agent loop</a>, step 2), so every new question reads the schemas again: it reused a median of 1,278 tokens and read 13,778. Over the benchmark, Ollama read 2.2 million new prompt tokens for Gemma 4 against 0.8 million for Qwen, from about 6 million each. Meru sends both models the same request, so the cause sits in how Ollama lays out Gemma 4's prompt, and <code>merud</code> has no bug to fix here. Moving the parts that change out of the system prompt could let Gemma 4 reuse the schemas; we'd measure that on this benchmark before changing the prompt every model gets.</p>
+
+<p><b>Memory.</b> With a 32,768-token context, Ollama's log put the peak memory of a <code>qwen3.6:35b-a3b-mxfp8</code> call at 36 to 52 GiB, with a median of 46.6, and of a <code>gemma4:26b-mxfp8</code> call at 27 to 40 GiB, with a median of 37.0. On the 64 GB test Mac, Ollama let the GPU use 51.8 GiB. MiniCPM5-2B takes about 3 GB more beside the answer model.</p>
+
+<p><b>Which model for which Mac.</b> The installer offers an answer model only where its file, what Ollama holds for a 32,768-token context, and the router fit beside macOS and a few open apps:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Memory</th><th>Answer model</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>16 GB</td><td>MiniCPM5-2B, the <code>lite</code> profile (about 2 GB with <code>nomic-embed-text</code>)</td><td>the only answer model we tried that leaves room for the rest of the Mac</td></tr>
+    <tr><td>32 GB</td><td><code>lite</code>, or <code>gemma4:26b-a4b-it-qat</code> (15 GB)</td><td>Gemma 4 at 4 bits; Ollama lists tools for it; Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router</td></tr>
+    <tr><td>48 GB</td><td><code>gemma4:26b-a4b-it-qat</code></td><td><code>gemma4:26b-mxfp8</code> peaked at 40 GiB and <code>qwen3.6:35b-a3b-mxfp8</code> at 52, more than a 48 GB Mac can give them</td></tr>
+    <tr><td>64 GB or more</td><td><code>qwen3.6:35b-a3b-mxfp8</code>, the <code>full</code> profile; <code>gemma4:26b-mxfp8</code> for work across several tools</td><td>the benchmark's figures above</td></tr>
+  </tbody>
+</table></div>
+
+<p>We haven't run the benchmark on <code>gemma4:26b-a4b-it-qat</code>; its line in <code>config.KnownModels</code> says so.</p>
+
+<p><code>config.KnownModels</code> lists the six we offer, smallest first: MiniCPM5-2B, <code>gemma3:12b</code>, <code>gemma4:26b-a4b-it-qat</code>, <code>qwen3.6:35b</code>, <code>gemma4:26b-mxfp8</code> and <code>qwen3.6:35b-a3b-mxfp8</code>, with their sizes and a line each on what they did well and badly. It leaves out <code>qwen3.8:27b</code>, which took about eight times as long per task as <code>qwen3.6:35b-a3b-mxfp8</code>. The desktop app's Settings, Models shows each one with its commands, which also work in a terminal:</p>
 
 <pre><code>ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 ollama run hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
-ollama pull gemma3:12b
-ollama run gemma3:12b
-ollama pull qwen3.6:35b
-ollama run qwen3.6:35b</code></pre>
+ollama pull gemma4:26b-a4b-it-qat
+ollama run gemma4:26b-a4b-it-qat
+ollama pull qwen3.6:35b-a3b-mxfp8
+ollama run qwen3.6:35b-a3b-mxfp8</code></pre>
 
 <p><code>ollama run</code> opens a chat with the model in the terminal, to try it before Meru uses it.</p>
 
@@ -1741,7 +1784,7 @@ disabled = ["explainer"]   # the default is [], every skill on</code></pre>
 
 <ol>
   <li><b>Route.</b> The <code>fast</code> model picks one of four routes: answer directly, search your files first (RAG, retrieval-augmented generation), call tools, or search and call tools. It picks by classification, reading one decoded token's probabilities (see <a href="#routing">Routing</a>). On the search routes, <code>merud</code> then searches your files for the question, with an earlier question appended on a follow-up. No model rewrites the query. The <code>tools</code> route searches too: the router sends some questions about your files there, and an answer from the files beats one from the model alone. Rules then adjust the route (see <a href="#routing">Routing</a>): a <code>direct</code> question that names an indexed folder becomes <code>search</code>, a question that names a connected tool server gets tools, and so does a question that says "remember", asks for the web, gives a URL, or names what a connected server's tools act on ("email" for Gmail's tools). The same signs skip the search on a <code>tools</code> turn: a web, mail or notes-app question gets no excerpts, which crowd the answer and cost time, and the file tools stay on offer. <code>search</code> and <code>search+tools</code> always search. From v0.4, a separate short call picks the skills to load, beside the router. A picked skill brings the tools its <code>allowed-tools</code> key names (see <a href="#skills">Skills</a>): when the route lacks one that config allows, <code>direct</code> becomes <code>tools</code> and <code>search</code> becomes <code>search+tools</code>. The router alone can't catch this: "help me understand btop with some simple commands" gave <code>direct</code> 0.761 and <code>tools</code> 0.022, while the skill pick chose <code>web-research</code>, whose first step is <code>web_search</code>. Every route now offers the web tools while <code>web_search</code> is on, so <code>web-research</code> widens a route only when <code>web_search</code> is off and <code>web_fetch</code> isn't. A skill that adds only web tools leaves a <code>direct</code> turn unsearched; one that adds the file tools makes it a file turn. Last, some questions go to the web before the model's first round (see <a href="#web-first">Web first</a>): one that asks for the web or gives a URL, and, on a turn that searched your files, one that names a thing the files don't cover. <code>merud</code> runs <code>web_search</code> or <code>web_fetch</code> itself, through <code>dispatch</code>, and the route gains the tools when it lacked them.</li>
-  <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and, on the <code>tools</code> and <code>search+tools</code> routes, the allowed tools' schemas, each within its own token budget. Every turn's prompt also carries the rule that the model never claims an action no tool took, and a line on what Meru's own tools can change (see <a href="#claims">Claims no tool backs</a>). On <code>search</code> the model gets the four file tools' schemas and those of the local commands that don't ask, with a note that says it may run the <code>cmd.</code> tools. Every route gets the schemas of <code>datetime</code> and <code>about_meru</code>, and of <code>web_search</code> and <code>web_fetch</code> while <code>web_search</code> is on. A turn about your files (every turn that searches first, or would in <code>agentic</code> mode) also gets a note on the file tools: it may read whole files, list folders, grep and search again when the excerpts fall short. A turn that offers <code>web_search</code>, on any route, adds a line to the tools note: "When you aren't sure of a fact, such as a song, a film, a book, a person, a product, a place or anything that may have changed, call web_search before you answer, and cite the pages you use. Never tell the user you can't search the web." The skills list then names only the skills whose tools the turn offers, or that name no tools, so it never points the model at a tool it lacks. Both depend only on the tools offered, and in Auto every route offers the same web tools, so both keep their place among the parts that stay the same. A turn that offers both <code>web_search</code> and a file tool adds a second line: when the files don't answer, call <code>web_search</code> before answering from memory, and never make up a command's flags or a version number. On a turn that offers <code>web_search</code>, a search that finds nothing points the model at <code>web_search</code> for how to use a program and for facts that change. What the web-first step found goes last, among the parts each question changes, under "From the web", in at most 8,000 characters; a turn's web notes in the history take at most 1,500 of its 8,000. That note on the file tools sits after the parts every turn shares, so other turns share the whole opening with it and keep a shorter prompt. On the <code>tools</code> and <code>search+tools</code> routes, the loop first asks each connected MCP server for its tools again and gives each server that isn't connected one try, then lists the tools (see <a href="#mcp">MCP</a>).</li>
+  <li><b>Build the context.</b> System prompt, skill descriptions, relevant memories, retrieved chunks, this session's history and, on the <code>tools</code> and <code>search+tools</code> routes, the allowed tools' schemas, each within its own token budget. Every turn's prompt also carries the rule that the model never claims an action no tool took, and a line on what Meru's own tools can change (see <a href="#claims">Claims no tool backs</a>). On <code>search</code> the model gets the four file tools' schemas and those of the local commands that don't ask, with a note that says it may run the <code>cmd.</code> tools. Every route gets the schemas of <code>datetime</code> and <code>about_meru</code>, and of <code>web_search</code> and <code>web_fetch</code> while <code>web_search</code> is on. A turn about your files (every turn that searches first, or would in <code>agentic</code> mode) also gets a note on the file tools: it may read whole files, list folders, grep and search again when the excerpts fall short. A turn that offers <code>web_search</code>, on any route, adds a line to the tools note: "When you aren't sure of a fact, such as a song, a film, a book, a person, a product, a place or anything that may have changed, call web_search before you answer, and cite the pages you use. Never tell the user you can't search the web." The skills list then names only the skills whose tools the turn offers, or that name no tools, so it never points the model at a tool it lacks. Both depend only on the tools offered, and in Auto every route offers the same web tools, so both keep their place among the parts that stay the same. A turn that offers both <code>web_search</code> and a file tool adds a second line: when the files don't answer, call <code>web_search</code> before answering from memory, and never make up a command's flags or a version number. On a turn that offers <code>web_search</code>, a search that finds nothing points the model at <code>web_search</code> for how to use a program and for facts that change. What the web-first step found goes last, among the parts each question changes, under "From the web", in at most 8,000 characters; a turn's web notes in the history take at most 1,500 of its 8,000. That note on the file tools sits after the parts every turn shares, so other turns share the whole opening with it and keep a shorter prompt. Where the tool schemas land depends on the model's chat format: Qwen's puts them before the system prompt, so they stay in the shared opening, and Gemma 4's puts them after it, so a new question reads them again (see <a href="#models-we-tried">Models we tried</a>). On the <code>tools</code> and <code>search+tools</code> routes, the loop first asks each connected MCP server for its tools again and gives each server that isn't connected one try, then lists the tools (see <a href="#mcp">MCP</a>).</li>
   <li><b>Call <code>main</code>.</b> A turn that gets here while <code>merud</code> still loads the answer model at startup waits for that load (see <a href="#tiers">Model tiers</a>). Stream text to the client as it arrives. Ollama sends each tool call whole, in a chunk of its own, and the loop collects them. It tells the client about each call with a <code>tool_call</code> event. Each call carries <code>num_predict = [agent] max_output_tokens</code> (default 8,192). Ollama counts a thinking model's hidden reasoning against it, so a model that would think for minutes stops with <code>done_reason = "length"</code>. Ollama offers no separate budget for thinking: <code>think</code> only turns it on or off.</li>
   <li><b>Dispatch tools.</b> Every call goes through one function, <code>dispatch</code>, in this order:
     <ol>
@@ -2607,7 +2650,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers count as "a machine you control".</td></tr>
     <tr><td>Agent harness</td><td>Our own loop plus the official MCP and A2A Go SDKs. We looked at Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and neither saves much once the allowlist, audit and budget logic are ours.</td></tr>
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
-    <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 32 GB or more, or a ~24 GB GPU (<code>qwen3.8:27b</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>
+    <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 64 GB or more (<code>qwen3.6:35b-a3b-mxfp8</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>
     <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> as the index, with vectors in a plain table and vec1's distance function. No separate vector database.</td></tr>
     <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>). Temperature 1.25 and <code>min_confidence = 0.45</code>, fitted with <code>make router-eval</code>.</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus vector distance over every stored vector, merged in Go with reciprocal-rank fusion. The query is the question, plus on a short follow-up the session's latest earlier question that isn't only filler words; no model call rewrites it. List sizes are constants (50, 50, 10) until measurements say otherwise.</td></tr>

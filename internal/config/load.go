@@ -60,7 +60,7 @@ var profiles = map[string]Models{
 	},
 	"full": {
 		Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
-		Main:  "qwen3.8:27b",
+		Main:  "qwen3.6:35b-a3b-mxfp8",
 		Embed: "qwen3-embedding:0.6b",
 	},
 }

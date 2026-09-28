@@ -15,8 +15,8 @@
 # Which models fill the three tiers (see ARCHITECTURE.md, "Model tiers").
 #   "lite": MiniCPM5-2B for fast and main, nomic-embed-text for embed.
 #           Needs about 16 GB of memory.
-#   "full": MiniCPM5-2B for fast, qwen3.8:27b for main,
-#           qwen3-embedding:0.6b for embed. Needs 32 GB or more.
+#   "full": MiniCPM5-2B for fast, qwen3.6:35b-a3b-mxfp8 for main,
+#           qwen3-embedding:0.6b for embed. Needs 64 GB or more.
 profile = "lite"
 
 [models]
