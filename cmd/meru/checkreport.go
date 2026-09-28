@@ -217,6 +217,13 @@ func reportMarkdown(sets []setStats, cats []string, now time.Time) string {
 			median(s.TTFT), quantile(s.TTFT, 0.95), median(s.TTLT), quantile(s.TTLT, 0.95),
 			median(s.TPOT), median(s.TokensIn), median(s.TokensOut))
 	}
+	b.WriteString("\n## Accuracy against time\n\n")
+	b.WriteString("Each point is one model set: higher passed more questions, further left answered sooner, so the\n")
+	b.WriteString("best sets sit top left. A set keeps its colour in both charts.\n\n")
+	b.WriteString(tradeoffChart("Passed by first token", "time to first token",
+		func(s setStats) float64 { return median(s.TTFT) }, sets))
+	b.WriteString(tradeoffChart("Passed by last token", "time to last token",
+		func(s setStats) float64 { return median(s.TTLT) }, sets))
 	return b.String()
 }
 
@@ -248,6 +255,52 @@ func barChart(title string, top float64, ascending bool, value func(setStats) fl
 		fmt.Fprintf(&b, "    y-axis 0 --> %g\n", top)
 	}
 	fmt.Fprintf(&b, "    bar [%s]\n```\n\n", strings.Join(vals, ", "))
+	return b.String()
+}
+
+// pointColors gives each model set a colour of its own in the trade-off
+// charts, by its place in the list; the list repeats after eight sets.
+// pointDots are emoji of the same colours, for the key under each chart,
+// since a Markdown table can't colour text.
+var (
+	pointColors = []string{"#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8b5a2b", "#222222", "#e0b000"}
+	pointDots   = []string{"🔵", "🔴", "🟢", "🟠", "🟣", "🟤", "⚫", "🟡"}
+)
+
+// tradeoffChart writes one Mermaid quadrantChart block, a point per model
+// set with its pass rate up the side and a time along the bottom, then a
+// key that names each point's colour with its numbers. Mermaid has no
+// plain scatter chart; a quadrant chart places coloured points on two
+// axes, which is what this needs. Its axes run from 0 to 1, so the chart
+// scales each value: time from 0 to the slowest set rounded up to 10 s,
+// and pass rate from the lowest set rounded down to 10% up to 100%, which
+// spreads points that sit close. The title carries both ranges, because
+// Mermaid centres each axis label under half the chart, not at its end.
+func tradeoffChart(title, timeName string, seconds func(setStats) float64, sets []setStats) string {
+	maxTime, minPass := 0.0, 100.0
+	for _, s := range sets {
+		maxTime = math.Max(maxTime, seconds(s))
+		minPass = math.Min(minPass, percent(s.Passed, s.Total))
+	}
+	xTop := math.Max(10, math.Ceil(maxTime/10)*10)
+	yLow := math.Min(90, math.Floor(minPass/10)*10)
+
+	var b strings.Builder
+	b.WriteString("```mermaid\nquadrantChart\n")
+	fmt.Fprintf(&b, "    title %s: 0 to %g s, %g%% to 100%%\n", title, xTop, yLow)
+	fmt.Fprintf(&b, "    x-axis \"Sooner\" --> \"Later %s\"\n", timeName)
+	b.WriteString("    y-axis \"Fewer passed\" --> \"More passed\"\n")
+	for i, s := range sets {
+		x := seconds(s) / xTop
+		y := (percent(s.Passed, s.Total) - yLow) / (100 - yLow)
+		fmt.Fprintf(&b, "    %s: [%.3f, %.3f] color: %s, radius: 7\n", s.Name, x, y, pointColors[i%len(pointColors)])
+	}
+	b.WriteString("```\n\n")
+	fmt.Fprintf(&b, "| | Model set | Passed | Median %s |\n| --- | --- | ---: | ---: |\n", timeName)
+	for i, s := range sets {
+		fmt.Fprintf(&b, "| %s | %s | %.0f%% | %.1f s |\n", pointDots[i%len(pointDots)], s.Name, percent(s.Passed, s.Total), seconds(s))
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

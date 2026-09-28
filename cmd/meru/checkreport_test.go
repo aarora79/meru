@@ -66,6 +66,10 @@ func TestSummarize(t *testing.T) {
 		"```mermaid\nxychart-beta\n    title \"Questions passed (%)\"\n    x-axis [\"qwen\", \"gemma:26b\"]\n    y-axis 0 --> 100\n    bar [75.0, 0.0]\n```",
 		"| qwen | `qwen:35b` | 2 | 4 | 75% | 50% | 100% |",
 		"| t3 | 50% (1/2) | — |",
+		// The trade-off charts: a coloured point per set, and a key.
+		"```mermaid\nquadrantChart\n    title Passed by first token: 0 to 10 s, 0% to 100%\n",
+		"    qwen: [0.100, 0.750] color: #1f77b4, radius: 7\n",
+		"| 🔵 | qwen | 75% | 1.0 s |",
 		// Time charts put the fastest set first: gemma:26b has no timings, so 0 s.
 		"title \"Median time to last token (s)\"\n    x-axis [\"gemma:26b\", \"qwen\"]\n    bar [0.0, 2.0]",
 	} {

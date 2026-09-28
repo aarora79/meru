@@ -1298,6 +1298,15 @@ web     0/1
   `xychart-beta` block, which GitHub draws, so the page needs no image files.
   It puts the best set first: the highest pass rate, and the lowest time. It
   sorts a copy, so the tables below each chart keep their own order.
+  `tradeoffChart` draws pass rate against a median time, once for the first
+  token and once for the last, so you can see both at once. Mermaid has no
+  plain scatter chart, so it writes a `quadrantChart`, whose axes run from 0
+  to 1: it scales time from 0 to the slowest set rounded up to 10 s, and pass
+  rate from the lowest set rounded down to 10% up to 100%, and puts both
+  ranges in the title. Each set keeps one colour from `pointColors` in both
+  charts. Two sets close together can hide each other's labels, so a key
+  under each chart names every colour, with an emoji dot from `pointDots`,
+  since a Markdown table can't colour its text.
   The page opens with a notice that the numbers come from private data, since
   `make bench-report` writes it into `docs/benchmarks/results.md`.
 - `make bench` runs `scripts/bench.sh`, which runs `meru check` over
