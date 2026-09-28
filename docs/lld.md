@@ -225,6 +225,9 @@ type Event struct {
 | `mcp_status` | one `mcp_status`; `done` |
 | `sessions` | one `sessions`; `done` |
 | `session_turns` | one `turns`, for the session in `Session`; `done` |
+| `session_delete` | `done` |
+| `session_move`, `session_tag` | one `sessions`, holding the one chat; `done` |
+| `chat_folders`, `chat_folder_add`, `chat_folder_rename`, `chat_folder_remove` | one `chat_folders`; `done` |
 | `connections`, `tool_policy`, `mcp_add`, `mcp_remove` | one `connections`; `done` |
 | `secret_set` | `done` |
 | `folders`, `folder_add`, `folder_remove` | one `folders`; `done` |
@@ -812,6 +815,10 @@ span for each file, in traces of their own (ARCHITECTURE.md, "Traces").
    `session_turns` ops. In `merud`, **`historyService`**
    (`cmd/merud/history.go`) answers them with **`transcript.List`** and
    **`turnsOf`**, from the JSONL files alone.
+   The rail's right-click menu sends `session_delete`, `session_move`,
+   `session_tag` and the chat folder ops, which **`cmd/merud/chats.go`**
+   answers: the file changes first, through **`transcript.Delete`** or a meta
+   line from **`Session.SetMeta`**, then **`store.DeleteSession`** or a replay.
 7. **`OpenURL`** and **`OpenSource`** pass links to **`opener.Open`**, which
    refuses anything but `http`, `https` and `file`.
 8. **Settings and Setup** (`settings.js`, `setup.js`) call the methods in

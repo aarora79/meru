@@ -741,6 +741,9 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				TraceID:  t.traceID,
 				Caller:   caller,
 				Hint:     skillHint(t.skills, c.Name, t.offer, allowed),
+				// An incognito chat's calls get a tool_calls row without
+				// their arguments or results; see dispatch.Call.
+				Incognito: t.sess.Incognito(),
 			})
 			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
 			found[i] = res.Sources

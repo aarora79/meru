@@ -181,6 +181,24 @@ while to start. `done` is `one` for an op that `merud` answers with `done` alone
 `Status` also carries the folder and profile counts: with both at zero, the page
 opens Setup on its own.
 
+### The chat list (history.go, web/js/organize.js)
+
+`SessionView` carries each chat's `Folder` and `Tags`. `DeleteSession`,
+`MoveSession`, `TagSession`, `ChatFolders`, `AddChatFolder`, `RenameChatFolder`
+and `RemoveChatFolder` each send one op; `folderOp` returns an empty slice rather
+than nil, so the page always gets an array. `Send` and `Retry` take an `incognito`
+flag, which the Bridge puts on the first question of a new chat. When a `session`
+event says the chat is incognito, the Bridge remembers its ID, and
+`ServiceShutdown` sends `session_delete` for it as the app quits.
+
+In the page, `drawSessions` in `app.js` draws the folders first, each a group
+whose head folds it, then the day groups. `organize.js` holds the right-click
+menu, positioned at the pointer with `element.style`, which the page's policy
+allows because it isn't an inline `style` attribute, and one `<dialog>` for
+Delete, Move to folder, Tags, New folder, Rename and Delete folder. Delete asks
+with Cancel focused, so a stray Enter deletes nothing. The context-menu key and
+Shift+F10 open the same menus from the keyboard.
+
 ### settings.go
 
 One method per thing Settings and Setup show or change, each a single request:

@@ -168,6 +168,14 @@ type Call struct {
 	// the tools that skill uses. The call is still denied and recorded
 	// like any other.
 	Hint string
+	// Incognito is true for a call in an incognito chat. The call runs and
+	// is recorded as any other, but its tool_calls row keeps no arguments
+	// and no result, and its span carries neither even with
+	// capture_content on. The chat keeps nothing about what was asked; the
+	// row still says which tool ran, where, when and how it ended
+	// (AGENTS.md, non-negotiable 4). Append, for such a call, writes to
+	// the chat's memory, not to a file.
+	Incognito bool
 }
 
 // CallerMeru is Call.Caller for a call merud made itself.

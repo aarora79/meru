@@ -16,6 +16,7 @@ import (
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/secrets"
+	"github.com/aarora79/meru/internal/transcript"
 )
 
 // Remember is the remember tool's name, as the model sees it.
@@ -55,8 +56,14 @@ func (t *Tools) kinds() []string {
 // remember checks args and saves the fact as a new memory file. It returns
 // the text the model reads, naming the file. It fails, with text the model
 // reads, on a kind that isn't a memory folder, an empty or oversized text,
-// or a text that holds a value from secrets.toml.
+// or a text that holds a value from secrets.toml. It also refuses in an
+// incognito chat, which keeps nothing about what was asked. The agent
+// doesn't offer remember there, but a model can still call a tool it
+// wasn't offered, so the tool checks too.
 func (t *Tools) remember(ctx context.Context, raw json.RawMessage) (string, error) {
+	if transcript.IsIncognito(dispatch.SessionFrom(ctx)) {
+		return "", errors.New("remember: this is an incognito chat, and Meru keeps nothing from it. Nothing was saved")
+	}
 	var a rememberArgs
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()

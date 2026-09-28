@@ -219,6 +219,12 @@ pre {
   background: var(--card);
 }
 
+.button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
 .button.ask {
   background: var(--ask-ink);
   border-color: var(--ask-ink);
@@ -370,6 +376,14 @@ pre {
   width: 100%;
 }
 
+/* Incognito chat and New folder, under New chat. */
+.rail-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin: -4px 0 0;
+}
+
 .search {
   position: relative;
 }
@@ -417,7 +431,9 @@ pre {
 }
 
 .session {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   width: 100%;
   padding: 6px 8px;
   border: 0;
@@ -426,9 +442,82 @@ pre {
   color: var(--ink-2);
   text-align: left;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.session-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A chat's tags, small, after its title. */
+.session-tags {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-tag {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--caption);
+}
+
+/* A chat folder: a head that folds it, then its chats. */
+.folder-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
+}
+
+.folder-head:hover {
+  background: rgba(29, 35, 32, 0.06);
+}
+
+.folder-chevron {
+  flex: none;
+  transition: transform 0.12s;
+}
+
+.folder-head[aria-expanded="true"] .folder-chevron {
+  transform: rotate(90deg);
+}
+
+.folder-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.folder-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--caption);
+}
+
+.folder-group ul {
+  padding-left: 12px;
+}
+
+.folder-empty {
+  margin: 4px 8px 8px;
+  font-size: 12px;
 }
 
 .session:hover {
@@ -569,6 +658,34 @@ pre {
   gap: 12px;
   padding: 16px 32px 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.chat-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The badge beside an incognito chat's title, and the note under the header. */
+.incognito-badge {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ink-2);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.incognito-note {
+  margin: 0;
+  padding: 8px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--rail);
+  color: var(--ink-2);
+  font-size: 13px;
 }
 
 .chat-head h1 {
@@ -1521,6 +1638,117 @@ pre {
 .icon-button.small {
   width: 22px;
   height: 22px;
+}
+
+/* The rail's right-click menu. app.js places it at the pointer. */
+.menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(29, 35, 32, 0.16);
+}
+
+.menu-item {
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: rgba(29, 35, 32, 0.07);
+}
+
+/* The dialog the menu's items open: delete, move, tags and folders. */
+.dialog {
+  width: min(440px, 92vw);
+  padding: 20px 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.dialog::backdrop {
+  background: rgba(29, 35, 32, 0.35);
+}
+
+.dialog-title {
+  margin: 0 0 10px;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.dialog-text {
+  margin: 0 0 8px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.dialog-note {
+  margin: 0 0 8px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.dialog-error {
+  margin: 0 0 8px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.dialog-field label {
+  display: block;
+  margin: 10px 0 4px;
+  color: var(--caption);
+  font-size: 13px;
+}
+
+.dialog-field input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.dialog-choices,
+.dialog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--user);
+  font-size: 13px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .command-menu {

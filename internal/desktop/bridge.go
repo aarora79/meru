@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aarora79/meru/internal/opener"
 	"github.com/aarora79/meru/internal/rpc"
@@ -90,11 +91,17 @@ type Bridge struct {
 	// model is the answer model the status block names: config's at
 	// start, then the one UseModel picked last.
 	model   string
-	turn    *turn      // the running turn, or nil
-	last    int        // the number of the latest turn
-	session string     // the session the running and queued questions go to
-	scope   string     // where the running and queued questions may look
-	queue   []outgoing // questions waiting behind the running turn, oldest first
+	turn    *turn  // the running turn, or nil
+	last    int    // the number of the latest turn
+	session string // the session the running and queued questions go to
+	scope   string // where the running and queued questions may look
+	// newIncognito is true when a question with no session starts an
+	// incognito chat. incognito names the incognito chat merud last said
+	// a turn went to, or ""; when the app quits, the Bridge tells merud to
+	// forget it (see ServiceShutdown).
+	newIncognito bool
+	incognito    string
+	queue        []outgoing // questions waiting behind the running turn, oldest first
 	// attached holds the files the next question carries, at most
 	// maxAttachments; files.go adds and removes them.
 	attached []Attachment
@@ -144,8 +151,9 @@ func New(o Options) *Bridge {
 	}
 }
 
-// Send asks question in session: "" starts a new session, and an ID
-// continues that one. The files attached so far go with it, one "Read
+// Send asks question in session: "" starts a new session, an incognito
+// one when incognito is true, and an ID continues that one. The files
+// attached so far go with it, one "Read
 // this file" line each, and so do the images, in the request's Images;
 // all of them come off the composer. scope says where Meru may look, one of the
 // rpc.Scope constants, from the composer's "Where Meru looks" switch; ""
@@ -158,8 +166,8 @@ func New(o Options) *Bridge {
 // the turn must outlive the call that starts it. Stop ends it.
 //
 // It fails when question is blank, scope is unknown, or the queue is full.
-func (b *Bridge) Send(session, question, scope string) error {
-	return b.send(session, question, scope, nil)
+func (b *Bridge) Send(session, question, scope string, incognito bool) error {
+	return b.send(session, question, scope, incognito, nil)
 }
 
 // Retry is Send for Try again: it asks question once more, with the
@@ -168,7 +176,7 @@ func (b *Bridge) Send(session, question, scope string) error {
 // sit in the uploads folder, and merud checks them again. Without Retry,
 // Try again on a question about an image would ask it blind. It fails as
 // Send does, and when a path isn't in the uploads folder.
-func (b *Bridge) Retry(session, question, scope string, images []string) error {
+func (b *Bridge) Retry(session, question, scope string, images []string, incognito bool) error {
 	var extra []Attachment
 	for _, p := range images {
 		full := expandTilde(p, b.home)
@@ -180,12 +188,12 @@ func (b *Bridge) Retry(session, question, scope string, images []string) error {
 			Thumb: b.thumbnail(full), full: full,
 		})
 	}
-	return b.send(session, question, scope, extra)
+	return b.send(session, question, scope, incognito, extra)
 }
 
 // send does the work of Send and Retry. extra holds images to send beside
 // the ones attached in the composer.
-func (b *Bridge) send(session, question, scope string, extra []Attachment) error {
+func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment) error {
 	q := strings.TrimSpace(question)
 	if q == "" {
 		return errors.New("type a question first")
@@ -209,7 +217,7 @@ func (b *Bridge) send(session, question, scope string, extra []Attachment) error
 		b.emitQueue("")
 		return nil
 	}
-	b.session, b.scope = session, scope
+	b.session, b.scope, b.newIncognito = session, scope, incognito
 	b.start(next)
 	return nil
 }
@@ -277,10 +285,23 @@ func (b *Bridge) ServiceShutdown() error {
 		b.turn = nil
 	}
 	b.queue = nil
+	incognito := b.incognito
 	b.mu.Unlock()
 	b.wg.Wait()
+	// An incognito chat open at quit leaves nothing behind in merud
+	// either. merud would forget it an hour later anyway, so a failure
+	// here costs nothing worth reporting.
+	if incognito != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), quitTimeout)
+		defer cancel()
+		_, _ = b.done(ctx, rpc.Request{Op: rpc.OpSessionDelete, Session: incognito})
+	}
 	return nil
 }
+
+// quitTimeout bounds the one request the Bridge sends as the app quits.
+// The window waits for it, so it must be short.
+const quitTimeout = 2 * time.Second
 
 // start sends q to merud as a new turn in b.session, with the full paths
 // of its images. The page gets the images, previews included, to show in
@@ -292,7 +313,8 @@ func (b *Bridge) start(q outgoing) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &turn{n: b.last, cancel: cancel}
 	b.turn = t
-	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q.text, Source: rpc.SourceDesktop, Scope: b.scope}
+	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q.text, Source: rpc.SourceDesktop, Scope: b.scope,
+		Incognito: b.session == "" && b.newIncognito}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{}
 		for _, a := range q.images {
@@ -339,6 +361,9 @@ func (b *Bridge) event(t *turn, ev rpc.Event) {
 	case rpc.EventSession:
 		b.session = ev.Session
 		u.Session = ev.Session
+		if ev.Incognito {
+			b.incognito = ev.Session
+		}
 	case rpc.EventToken:
 		t.answer.WriteString(ev.Text)
 	case rpc.EventSources:

@@ -138,6 +138,10 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.
+   An incognito chat has no transcript: its calls still go through `dispatch`,
+   and each still gets a `tool_calls` row with the tool, server, kind, time,
+   duration, outcome and approval, but no arguments and no result. Deleting a
+   chat keeps its `tool_calls` rows and strips them the same way.
 5. **Nothing for sale, anywhere.** Meru comes under the Apache License 2.0 and
    offers nothing for sale: no offer of a paid licence, no pricing, no invitation
    to buy, no sponsor link. That holds for the README, `CONTRIBUTING.md`, the
@@ -153,7 +157,8 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
   Resist growing it.
 - Model names live in `config.toml`, never in code.
 - Files are the source of truth. Anything in `~/.meru/meru.db` must be rebuildable from
-  files and config.
+  files and config. The one exception is the `tool_calls` rows of an incognito or
+  deleted chat, which have no file behind them on purpose; a rebuild drops them.
 - Instrument new stages with OTel. Use GenAI/MCP semantic-convention names where they
   exist, `meru.*` otherwise. Metric attributes must be bounded sets (model, tier,
   server, tool, outcome); never IDs, paths or text.
@@ -181,8 +186,8 @@ go.mod, go.sum       one module, github.com/aarora79/meru
 
 cmd/
   merud/             the daemon: main.go wires config, engine, router, store, indexer, tools,
-                     socket and agent loop; one file per group of socket ops (history, memory,
-                     skills, tools, connections, folders, models, save, index); sessions.go
+                     socket and agent loop; one file per group of socket ops (history, chats,
+                     memory, skills, tools, connections, folders, models, save, index); sessions.go
                      replays transcripts and runs the summarizer;
                      backends.go joins the MCP pool to dispatch; runtime.go checks Ollama and
                      warms the models; machine.go describes the computer for the system prompt
@@ -228,7 +233,9 @@ internal/
   summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
   agent/             one turn: route, build the prompt within the budget (budget.go), pick a
                      skill, recall memories and earlier chats, run tool rounds, stream the answer
-  transcript/        append-only JSONL session files, and listing them
+  transcript/        append-only JSONL session files, and listing them; meta lines for a
+                     chat's folder and tags, folders.json, deleting a chat, and incognito
+                     sessions held in memory
   rpc/               newline-delimited JSON over the Unix socket: client, server, and the types
                      of every op and event
   obs/               OpenTelemetry metrics and traces, loopback only, and the slog handler

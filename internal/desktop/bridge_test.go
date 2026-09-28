@@ -157,7 +157,7 @@ func TestTurnUpdatesInOrder(t *testing.T) {
 	b, r := newBridge(sock)
 	defer b.ServiceShutdown()
 
-	if err := b.Send("", "  Which hotel did I book in Lisbon?  ", ""); err != nil {
+	if err := b.Send("", "  Which hotel did I book in Lisbon?  ", "", false); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	end := r.waitFor(t, "end", isEnd(1))
@@ -199,7 +199,7 @@ func TestTurnUpdatesInOrder(t *testing.T) {
 	// The session update carries the ID merud started, and the page sends
 	// it back with the next question to continue the chat.
 	sess := r.waitFor(t, "session", func(u Update) bool { return u.Session != "" })
-	if err := b.Send(sess.Session, "And the check-in time?", ""); err != nil {
+	if err := b.Send(sess.Session, "And the check-in time?", "", false); err != nil {
 		t.Fatal(err)
 	}
 	r.waitFor(t, "second end", isEnd(2))
@@ -211,7 +211,7 @@ func TestTurnUpdatesInOrder(t *testing.T) {
 // TestSendBlank checks that a blank question never reaches merud.
 func TestSendBlank(t *testing.T) {
 	b, r := newBridge("/nonexistent/merud.sock")
-	if err := b.Send("", " \n ", ""); err == nil {
+	if err := b.Send("", " \n ", "", false); err == nil {
 		t.Error("Send of a blank question = nil, want an error")
 	}
 	if len(r.all()) != 0 {
@@ -224,7 +224,7 @@ func TestSendBlank(t *testing.T) {
 func TestConnectionFailure(t *testing.T) {
 	b, r := newBridge(filepath.Join(t.TempDir(), "none.sock"))
 	defer b.ServiceShutdown()
-	if err := b.Send("", "hello", ""); err != nil {
+	if err := b.Send("", "hello", "", false); err != nil {
 		t.Fatal(err)
 	}
 	end := r.waitFor(t, "end", isEnd(1))
@@ -254,7 +254,7 @@ func TestApprovalRoundTrip(t *testing.T) {
 		t.Run(choice, func(t *testing.T) {
 			b, r := newBridge(approvalServer(t))
 			defer b.ServiceShutdown()
-			if err := b.Send("", "Tell Dana I booked the hotel", ""); err != nil {
+			if err := b.Send("", "Tell Dana I booked the hotel", "", false); err != nil {
 				t.Fatal(err)
 			}
 			card := r.waitFor(t, "approval", func(u Update) bool { return u.Kind == KindApproval })
@@ -288,7 +288,7 @@ func TestApprovalRoundTrip(t *testing.T) {
 func TestApproveRefusesBadAnswers(t *testing.T) {
 	b, r := newBridge(approvalServer(t))
 	defer b.ServiceShutdown()
-	if err := b.Send("", "Tell Dana", ""); err != nil {
+	if err := b.Send("", "Tell Dana", "", false); err != nil {
 		t.Fatal(err)
 	}
 	card := r.waitFor(t, "approval", func(u Update) bool { return u.Kind == KindApproval })
@@ -364,18 +364,18 @@ func TestQueue(t *testing.T) {
 	b, r := newBridge(startServer(t, g.handler))
 	defer b.ServiceShutdown()
 
-	if err := b.Send("", "first", ""); err != nil {
+	if err := b.Send("", "first", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := <-g.asked; got != "first" {
 		t.Fatalf("merud got %q first", got)
 	}
 	for _, q := range []string{"q1", "q2", "q3", "q4", "q5"} {
-		if err := b.Send("", q, ""); err != nil {
+		if err := b.Send("", q, "", false); err != nil {
 			t.Fatalf("Send(%s): %v", q, err)
 		}
 	}
-	if err := b.Send("", "q6", ""); err == nil {
+	if err := b.Send("", "q6", "", false); err == nil {
 		t.Error("a sixth queued question = nil, want the queue full")
 	}
 	if err := b.Unqueue(1); err != nil {
@@ -409,12 +409,12 @@ func TestStopDropsQueue(t *testing.T) {
 	b, r := newBridge(startServer(t, g.handler))
 	defer b.ServiceShutdown()
 
-	if err := b.Send("", "first", ""); err != nil {
+	if err := b.Send("", "first", "", false); err != nil {
 		t.Fatal(err)
 	}
 	<-g.asked
 	for _, q := range []string{"q1", "q2"} {
-		if err := b.Send("", q, ""); err != nil {
+		if err := b.Send("", q, "", false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -430,7 +430,7 @@ func TestStopDropsQueue(t *testing.T) {
 
 	// The next question starts at once, as turn 2, and nothing of turn 1
 	// follows its end.
-	if err := b.Send("", "again", ""); err != nil {
+	if err := b.Send("", "again", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := <-g.asked; got != "again" {

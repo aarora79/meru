@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,6 +33,10 @@ type Info struct {
 	Title string
 	// Turns counts the questions in the session.
 	Turns int
+	// Folder and Tags are the chat's folder and tags, from its newest meta
+	// line; "" and nil when it has none.
+	Folder string
+	Tags   []string
 }
 
 // List returns the sessions under dir that hold at least one question,
@@ -91,21 +96,46 @@ func List(dir string, limit int) ([]Info, error) {
 		if err != nil {
 			return nil, err
 		}
-		info := Info{ID: f.id, Updated: f.mod, Started: startOf(f.id)}
-		for _, l := range lines {
-			if l.Type != TypeUser {
-				continue
-			}
-			if info.Turns == 0 {
-				info.Title = title(l.Text)
-			}
-			info.Turns++
-		}
-		if info.Turns > 0 {
+		if info := infoOf(f.id, f.mod, lines); info.Turns > 0 {
 			out = append(out, info)
 		}
 	}
 	return out, nil
+}
+
+// Info describes the session as List would: its title, question count,
+// times, folder and tags. It fails for an incognito session, which List
+// never shows, and when the file can't be read.
+func (s *Session) Info() (Info, error) {
+	if s.mem != nil {
+		return Info{}, errors.New("an incognito chat isn't in the chat list")
+	}
+	st, err := os.Stat(s.path)
+	if err != nil {
+		return Info{}, fmt.Errorf("read session %s: %w", s.id, err)
+	}
+	lines, err := s.read()
+	if err != nil {
+		return Info{}, err
+	}
+	return infoOf(s.id, st.ModTime(), lines), nil
+}
+
+// infoOf builds the Info of session id from its lines and its file's
+// modification time.
+func infoOf(id string, mod time.Time, lines []Line) Info {
+	meta := MetaOf(lines)
+	info := Info{ID: id, Updated: mod, Started: startOf(id), Folder: meta.Folder, Tags: meta.Tags}
+	for _, l := range lines {
+		if l.Type != TypeUser {
+			continue
+		}
+		if info.Turns == 0 {
+			info.Title = title(l.Text)
+		}
+		info.Turns++
+	}
+	return info
 }
 
 // Lines returns every line of the session, oldest first, skipping lines

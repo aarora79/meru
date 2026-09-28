@@ -23,6 +23,11 @@
         <button type="button" class="icon-button rail-toggle" id="rail-toggle" aria-label="Collapse the sidebar" aria-expanded="true"></button>
       </div>
       <button type="button" class="button new-chat" id="new-chat">New chat</button>
+      <div class="rail-actions">
+        <button type="button" class="text-button" id="new-incognito"
+          title="A chat Meru keeps no record of">Incognito chat</button>
+        <button type="button" class="text-button" id="new-folder">New folder</button>
+      </div>
       <div class="search">
         <label for="search" class="visually-hidden">Search chats</label>
         <span class="search-icon" id="search-icon"></span>
@@ -47,12 +52,18 @@
 
     <main class="chat" id="chat-view" data-file-drop-target>
       <header class="chat-head">
-        <h1 id="chat-title">New chat</h1>
+        <div class="chat-title-row">
+          <h1 id="chat-title">New chat</h1>
+          <span class="incognito-badge" id="incognito-badge" hidden>Incognito</span>
+        </div>
         <div class="head-actions">
           <button type="button" class="text-button" id="share" hidden>Share as file</button>
           <button type="button" class="icon-button" id="toggle-panel" aria-controls="panel" aria-expanded="true" aria-label="Hide the side panel"></button>
         </div>
       </header>
+      <p class="incognito-note" id="incognito-note" hidden>Incognito: Meru writes no transcript, keeps no summary
+        and saves no memory from this chat, and it leaves the chat list when you leave it. The tool log still
+        records each tool call, without what went in or came back.</p>
       <div class="messages" id="messages"></div>
       <div class="drop-overlay" aria-hidden="true">
         <p class="drop-title">Drop to attach</p>
@@ -89,6 +100,9 @@
       </div>
       <div class="panel-body" id="panel-body"></div>
     </aside>
+
+    <div class="menu" id="context-menu" role="menu" hidden></div>
+    <dialog class="dialog" id="dialog" aria-labelledby="dialog-title"></dialog>
   </div>
 </body>
 </html>

@@ -21,7 +21,13 @@ type Command struct {
 // lists differ, so a command added to one can't go missing from the other.
 var commandList = []Command{
 	{Name: "/new", Description: "Start a new chat; the queued questions go too"},
+	{Name: "/incognito", Description: "Start an incognito chat: Meru keeps no record of it"},
 	{Name: "/chats", Args: "[words]", Description: "Find a past chat in the sidebar"},
+	{Name: "/delete", Description: "Delete this chat for good, after you confirm"},
+	{Name: "/folder", Args: "[new <name> | rename <old> -> <new> | delete <name>]", Description: "List, add, rename or delete chat folders"},
+	{Name: "/move", Args: "[folder]", Description: "Move this chat to a folder; alone, out of its folder"},
+	{Name: "/tag", Args: "<tags>", Description: "Tag this chat"},
+	{Name: "/untag", Args: "<tags>", Description: "Take tags off this chat"},
 	{Name: "/retry", Description: "Ask the newest question again"},
 	{Name: "/scope", Args: "<auto | files | mail | web | talk>", Description: "Set where Meru looks"},
 	{Name: "/attach", Description: "Attach files or images"},

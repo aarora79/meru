@@ -26,7 +26,10 @@ let listbox = null;
 // textOf(block), copy(text) (a promise), notice(text), askQuit(), fit(),
 // running() (true while a turn runs), refreshStatus(), findChats(words),
 // retry(), setScope(value), attach(), save(what) with "note" or "chat",
-// showUsed() and newestAnswer() (its text, or "" when none has finished).
+// showUsed() and newestAnswer() (its text, or "" when none has finished),
+// and for the chat list newIncognito(), deleteChat() (asks first),
+// session() (the open chat's ID), incognito() (true for an incognito
+// chat) and reloadChats().
 export function setupCommands(question, menuList, actions) {
   box = question;
   listbox = menuList;
@@ -155,9 +158,29 @@ export function runCommand(text) {
     case "/new":
       act.newChat();
       return true;
+    case "/incognito":
+      act.newIncognito();
+      return true;
     case "/chats":
       act.findChats(arg);
       return true;
+    case "/delete":
+      act.deleteChat();
+      return true;
+    case "/folder":
+      return folderCommand(rest);
+    case "/move":
+      return organize(() => bridge.moveSession(act.session(), arg), arg ? "Moved the chat to " + arg + "." : "Took the chat out of its folder.");
+    case "/tag":
+    case "/untag":
+      if (rest.length === 0) {
+        act.notice("Name a tag or more, such as " + name + " garden");
+        return false;
+      }
+      return organize(
+        () => (name === "/tag" ? bridge.tagSession(act.session(), rest, []) : bridge.tagSession(act.session(), [], rest)),
+        name === "/tag" ? "Tagged the chat." : "Took the tags off.",
+      );
     case "/retry":
       act.retry();
       return true;
@@ -216,6 +239,65 @@ export function runCommand(text) {
       return true;
   }
   act.notice("unknown command " + name + " · commands: " + names());
+  return false;
+}
+
+// organize runs /move, /tag or /untag on the open chat through run, a
+// Bridge call, and says done when merud has made the change. It returns
+// false, keeping the text, when the chat can't take a folder or tags.
+function organize(run, done) {
+  if (act.incognito()) {
+    act.notice("An incognito chat has no folder or tags.");
+    return false;
+  }
+  if (!act.session()) {
+    act.notice("Ask something first: this chat isn't saved yet.");
+    return false;
+  }
+  run().then(
+    () => {
+      act.notice(done);
+      act.reloadChats();
+    },
+    (err) => act.notice(errorText(err)),
+  );
+  return true;
+}
+
+// folderCommand runs /folder, as `meru chat` does: alone it lists the chat
+// folders; "new <name>" makes one, "rename <old> -> <new>" renames one
+// with its chats, and "delete <name>" takes one away and moves its chats
+// back to the main list.
+function folderCommand(words) {
+  const [verb, ...more] = words;
+  const rest = more.join(" ").trim();
+  let run;
+  if (!verb) {
+    run = bridge.chatFolders();
+  } else if (verb === "new" && rest) {
+    run = bridge.addChatFolder(rest);
+  } else if (verb === "delete" && rest) {
+    run = bridge.removeChatFolder(rest);
+  } else if (verb === "rename" && rest.includes("->")) {
+    const [from, to] = rest.split("->").map((x) => x.trim());
+    if (!from || !to) return folderUse();
+    run = bridge.renameChatFolder(from, to);
+  } else {
+    return folderUse();
+  }
+  run.then(
+    (folders) => {
+      act.notice(folders.length ? "Chat folders: " + folders.join(", ") : "No chat folders. /folder new <name> makes one.");
+      act.reloadChats();
+    },
+    (err) => act.notice(errorText(err)),
+  );
+  return true;
+}
+
+// folderUse says what /folder takes, and keeps the text to fix.
+function folderUse() {
+  act.notice("/folder new <name> · /folder rename <old> -> <new> · /folder delete <name>");
   return false;
 }
 

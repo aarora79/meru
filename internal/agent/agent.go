@@ -128,8 +128,9 @@ type Decision struct {
 	Outcome    string  // "ok", "low_confidence" or "degraded"
 }
 
-// Agent runs turns. Build one with New and share it: Handle keeps no state
-// between calls, so many turns can run at once.
+// Agent runs turns. Build one with New and share it: many turns can run at
+// once. Handle keeps no state between calls but the incognito chats, whose
+// history lives only in memory (see incognito.go).
 type Agent struct {
 	engine      engine.Engine
 	router      Router
@@ -176,6 +177,9 @@ type Agent struct {
 	// merud started no load. See warm.go.
 	warmMu  sync.Mutex
 	warming chan struct{}
+
+	// incognito holds the open incognito chats. It has a lock of its own.
+	incognito incognitoChats
 }
 
 // New returns an Agent that answers with eng, routes with router, and keeps
@@ -377,15 +381,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	tctx, cancel := context.WithTimeout(ctx, a.turnTimeout)
 	defer cancel()
 
-	sess, history, err := a.openSession(tctx, req.Session)
+	sess, history, err := a.openSession(tctx, req.Session, req.Incognito)
 	if err != nil {
 		return err
 	}
 	sessionID = sess.ID()
+	span.SetAttributes(attribute.Bool("meru.session.incognito", sess.Incognito()))
 	if req.Session == "" {
 		obs.RecordSession(ctx, source)
 	}
-	if err := emit(rpc.Event{Type: rpc.EventSession, Session: sessionID}); err != nil {
+	if err := emit(rpc.Event{Type: rpc.EventSession, Session: sessionID, Incognito: sess.Incognito()}); err != nil {
 		return err
 	}
 
@@ -489,7 +494,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err := a.appendLine(ctx, sess, answer); err != nil {
 		return err
 	}
-	a.recordUsage(ctx, sessionID, source, start, model, answer, t.calls)
+	a.recordUsage(ctx, sessionID, source, start, model, answer, t.calls, sess.Incognito())
 	return emit(doneEvent(start, rep))
 }
 
@@ -712,6 +717,9 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	picked pickedSkills, files, web string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
 	// An answer model that can't call tools gets none; see notools.go.
 	specs = a.offerable(ctx, t, specs)
+	if t.sess.Incognito() {
+		specs = withoutRemember(specs)
+	}
 	memories, recalled := a.memorySection(ctx, searchQuery(question, history))
 	if len(recalled) > 0 {
 		if err := t.emit(rpc.Event{Type: rpc.EventMemories, Memories: recalled}); err != nil {
@@ -830,18 +838,20 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 // recordUsage writes the turns row for an answered turn and records
 // meru.turn.tokens and meru.turn.docs. model is the main model that wrote
 // the answer, answer the assistant line just written, and calls the number
-// of tool calls the turn made.
+// of tool calls the turn made. An incognito turn records the metrics,
+// which hold counts only, and writes no row: the row names the session
+// and the files the prompt read.
 //
 // A failed insert only logs a warning: the transcript already holds the
 // turn, and the next rebuild of meru.db brings the row back. The insert
 // runs even when the client hung up after the answer: WithoutCancel keeps
 // ctx's values (the trace) and drops its cancel.
-func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, model string, answer transcript.Line, calls int) {
+func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, model string, answer transcript.Line, calls int, incognito bool) {
 	obs.RecordTurnUsage(ctx, obs.TurnUsage{
 		Route: answer.Route, Source: source,
 		TokensIn: answer.TokensIn, TokensOut: answer.TokensOut, Docs: len(answer.Sources),
 	})
-	if a.turns == nil {
+	if a.turns == nil || incognito {
 		return
 	}
 	err := a.turns.InsertTurn(context.WithoutCancel(ctx), store.Turn{
@@ -945,11 +955,14 @@ type reply struct {
 
 // openSession opens the session named id, or starts a new one when id is
 // empty, and reads its history, inside a meru.session span. It returns the
-// session and up to historyN earlier turns as model messages.
+// session and up to historyN earlier turns as model messages. A new
+// session with incognito true is an incognito chat, which writes no file;
+// an incognito ID continues one merud still holds, and fails with
+// errIncognitoGone for one it doesn't.
 //
 // It reads the history before the turn writes its question, so the
 // question isn't in it twice.
-func (a *Agent) openSession(ctx context.Context, id string) (*transcript.Session, []engine.Message, error) {
+func (a *Agent) openSession(ctx context.Context, id string, incognito bool) (*transcript.Session, []engine.Message, error) {
 	ctx, span := obs.Tracer().Start(ctx, "meru.session")
 	defer span.End()
 	start := time.Now()
@@ -957,10 +970,19 @@ func (a *Agent) openSession(ctx context.Context, id string) (*transcript.Session
 	var sess *transcript.Session
 	var err error
 	msg := "session opened"
-	if id == "" {
+	switch {
+	case id == "" && incognito:
+		msg = "incognito session created"
+		sess = a.incognito.start(start)
+	case id == "":
 		msg = "session created"
 		sess, err = transcript.New(a.sessionsDir)
-	} else {
+	case transcript.IsIncognito(id):
+		var ok bool
+		if sess, ok = a.incognito.get(id, start); !ok {
+			err = errIncognitoGone
+		}
+	default:
 		sess, err = transcript.Open(a.sessionsDir, id)
 	}
 	if err != nil {

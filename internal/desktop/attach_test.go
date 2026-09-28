@@ -151,7 +151,7 @@ func TestAttach(t *testing.T) {
 
 	// Send carries one line per file and clears the chips. The fake has
 	// no ask op, so the turn ends in an error, which is fine here.
-	if err := b.Send("", "What goes in the north bed?", ""); err != nil {
+	if err := b.Send("", "What goes in the north bed?", "", false); err != nil {
 		t.Fatal(err)
 	}
 	start := r.waitFor(t, "start", func(u Update) bool { return u.Kind == KindStart })

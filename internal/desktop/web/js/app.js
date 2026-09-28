@@ -1,9 +1,10 @@
-// The page's state and wiring: the rail (new chat, search, the list of
-// past chats, merud's status and Settings), the conversation, the
-// composer with its scope switch, attachments, slash commands and queue,
-// and the side panel. turns.js draws each turn, settings.js the Settings screen,
-// setup.js the Setup screen, commands.js the slash commands; api.js
-// reaches Go.
+// The page's state and wiring: the rail (new chat, incognito chat, new
+// folder, search, the list of past chats in their folders, merud's status
+// and Settings), the conversation, the composer with its scope switch,
+// attachments, slash commands and queue, and the side panel. turns.js
+// draws each turn, settings.js the Settings screen, setup.js the Setup
+// screen, commands.js the slash commands, organize.js the rail's
+// right-click menus and their dialogs; api.js reaches Go.
 //
 // The Bridge in Go owns the running turn and the queue. The page keeps
 // only what it draws, and redraws from each Update the Bridge sends.
@@ -17,6 +18,7 @@ import {
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
+import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
 
 // How often the rail asks merud for its status, in milliseconds.
 const STATUS_EVERY = 15000;
@@ -37,12 +39,18 @@ const SCOPES = [
 const state = {
   view: "chat", // "chat", "settings" or "setup"
   session: "", // the open conversation's ID; "" for a new one
+  // incognito is true while the open chat is an incognito one: merud
+  // keeps it in memory only, and the page tells merud to forget it when
+  // the user leaves it.
+  incognito: false,
   title: "New chat",
   turns: [], // the open conversation's turns, oldest first
   running: 0, // the running turn's number, or 0
   queue: [], // questions waiting behind it
   quietDrop: false, // the next queue notice is part of /new's own notice
   sessions: [], // the rail's list
+  folders: [], // the chat folders, in the rail's order
+  collapsed: new Set(), // the folders the user folded; until the window closes
   sessionsError: "",
   filter: "",
   selected: null, // the turn the side panel shows
@@ -208,7 +216,8 @@ function newTurn(fields) {
 // drawConversation redraws the title, every turn, or the empty state.
 function drawConversation() {
   $("chat-title").textContent = state.title;
-  $("share").hidden = !state.session;
+  $("share").hidden = !state.session || state.incognito;
+  drawIncognito();
   const list = $("messages");
   list.replaceChildren();
   if (state.turns.length === 0) {
@@ -220,6 +229,14 @@ function drawConversation() {
   numberBlocks();
   drawPanel();
   scrollDown(true);
+}
+
+// drawIncognito shows the Incognito badge beside the title, and the note
+// under the header that says what an incognito chat keeps, while the open
+// chat is one.
+function drawIncognito() {
+  $("incognito-badge").hidden = !state.incognito;
+  $("incognito-note").hidden = !state.incognito;
 }
 
 // emptyState is what a new chat shows: the logo beside "Ask Meru", a line
@@ -364,7 +381,9 @@ function onEvent(u) {
   const ev = u.event;
   if (ev.type === "session" && u.session) {
     state.session = u.session;
-    $("share").hidden = false;
+    if (ev.incognito) state.incognito = true;
+    $("share").hidden = state.incognito;
+    drawIncognito();
     drawSessions();
   }
   if (!t) return;
@@ -540,8 +559,8 @@ function send(question, scope, images) {
   // sends the images with the question, and clears the chips.
   const where = scope === "auto" ? "" : scope;
   const call = images && images.length > 0
-    ? bridge.retry(state.session, text, where, images)
-    : bridge.send(state.session, text, where);
+    ? bridge.retry(state.session, text, where, images, state.incognito)
+    : bridge.send(state.session, text, where, state.incognito);
   return call.then(
     () => true,
     (err) => {
@@ -681,11 +700,13 @@ function askQuit() {
 
 // ---- The rail ----
 
-// loadSessions asks merud for the list of past chats.
+// loadSessions asks merud for the list of past chats and the chat
+// folders, and returns a promise that settles once the rail is drawn.
 function loadSessions() {
-  bridge.sessions().then(
-    (list) => {
+  return Promise.all([bridge.sessions(), bridge.chatFolders()]).then(
+    ([list, folders]) => {
       state.sessions = list || [];
+      state.folders = folders || [];
       state.sessionsError = "";
       drawSessions();
     },
@@ -696,23 +717,35 @@ function loadSessions() {
   );
 }
 
-// drawSessions draws the list, filtered by the search box and grouped
-// Today, Yesterday and Earlier.
+// drawSessions draws the list, filtered by the search box: the folders
+// first, each a group the user can fold, then the chats in no folder,
+// grouped Today, Yesterday and Earlier. The search matches a chat's
+// title, its folder and its tags; while it holds words, a folder with no
+// match hides and every other one opens.
 function drawSessions() {
   const box = $("sessions");
   box.replaceChildren();
-  const f = state.filter.toLowerCase();
-  const shown = state.sessions.filter((s) => !f || s.title.toLowerCase().includes(f));
   if (state.sessionsError) {
     box.append(el("p", "rail-note", "Past chats need merud: " + state.sessionsError));
     return;
   }
-  if (shown.length === 0) {
-    box.append(el("p", "rail-note", f ? "No chat matches." : "No past chats yet."));
-    return;
+  const f = state.filter.toLowerCase();
+  const text = (s) => [s.title, s.folder || "", ...(s.tags || [])].join(" ").toLowerCase();
+  const shown = state.sessions.filter((s) => !f || text(s).includes(f));
+  // The folders merud lists, and any a chat names that the list lacks.
+  const folders = [...state.folders];
+  for (const s of state.sessions) {
+    if (s.folder && !folders.includes(s.folder)) folders.push(s.folder);
   }
+  let drawn = 0;
+  folders.forEach((name, i) => {
+    const rows = shown.filter((s) => s.folder === name);
+    if (f && rows.length === 0) return;
+    box.append(folderGroup(name, i, rows, !!f));
+    drawn++;
+  });
   for (const g of GROUPS) {
-    const rows = shown.filter((s) => s.group === g);
+    const rows = shown.filter((s) => !s.folder && s.group === g);
     if (rows.length === 0) continue;
     const section = el("section", "group");
     const headId = "group-" + g.toLowerCase();
@@ -720,17 +753,105 @@ function drawSessions() {
     head.id = headId;
     const ul = el("ul");
     ul.setAttribute("aria-labelledby", headId);
-    for (const s of rows) {
-      const li = el("li");
-      const b = button(s.title, { className: "session", onClick: () => openSession(s) });
-      b.title = s.title;
-      if (s.id === state.session) b.setAttribute("aria-current", "true");
-      li.append(b);
-      ul.append(li);
-    }
+    for (const s of rows) ul.append(sessionRow(s));
     section.append(head, ul);
     box.append(section);
+    drawn++;
   }
+  if (drawn === 0) box.append(el("p", "rail-note", f ? "No chat matches." : "No past chats yet."));
+}
+
+// folderGroup draws one chat folder: a head that folds and opens it, with
+// its name and how many chats it holds, and its chats. A right-click on
+// the head, or the context-menu key, opens Rename and Delete folder.
+function folderGroup(name, i, rows, searching) {
+  const section = el("section", "group folder-group");
+  const open = searching || !state.collapsed.has(name);
+  const head = button("", { className: "folder-head" });
+  head.id = "folder-" + i;
+  head.setAttribute("aria-expanded", String(open));
+  const chevron = icon("chevron", 13);
+  chevron.classList.add("folder-chevron");
+  head.append(chevron, icon("folder", 14), el("span", "folder-name", name), el("span", "folder-count", String(rows.length)));
+  head.title = name;
+  head.addEventListener("click", () => {
+    if (state.collapsed.has(name)) state.collapsed.delete(name);
+    else state.collapsed.add(name);
+    drawSessions();
+    document.getElementById(head.id).focus();
+  });
+  head.addEventListener("contextmenu", (e) => folderMenu(e, name));
+  head.addEventListener("keydown", (e) => {
+    if (rowMenuKey(e)) folderMenu(e, name);
+  });
+  section.append(head);
+  if (!open) return section;
+  const ul = el("ul");
+  ul.setAttribute("aria-labelledby", head.id);
+  if (rows.length === 0) ul.append(el("li", "rail-note folder-empty", "Right-click a chat to move it here."));
+  for (const s of rows) ul.append(sessionRow(s));
+  section.append(ul);
+  return section;
+}
+
+// sessionRow draws one chat of the rail: its title and its tags, small.
+// A click opens it; a right-click, or the context-menu key, opens its
+// menu: Move to folder, Tags and Delete.
+function sessionRow(s) {
+  const li = el("li");
+  const b = button("", { className: "session", onClick: () => openSession(s) });
+  b.append(el("span", "session-title", s.title));
+  const tags = s.tags || [];
+  if (tags.length) {
+    const box = el("span", "session-tags");
+    for (const t of tags) box.append(el("span", "session-tag", "#" + t));
+    b.append(box);
+  }
+  b.title = s.title + (tags.length ? " · " + tags.map((t) => "#" + t).join(" ") : "");
+  if (s.id === state.session) b.setAttribute("aria-current", "true");
+  b.addEventListener("contextmenu", (e) => chatMenu(e, s));
+  b.addEventListener("keydown", (e) => {
+    if (rowMenuKey(e)) chatMenu(e, s);
+  });
+  li.append(b);
+  return li;
+}
+
+// leaveIncognito tells merud to forget the open incognito chat, if it is
+// one, before the page leaves it. merud would forget it an hour later
+// anyway; this leaves nothing behind at once.
+function leaveIncognito() {
+  if (state.incognito && state.session) bridge.deleteSession(state.session).catch(() => {});
+  state.incognito = false;
+}
+
+// newIncognito starts an incognito chat, from its rail button or
+// /incognito: a new chat whose first question tells merud to keep it in
+// memory only.
+function newIncognito() {
+  newChat();
+  state.incognito = true;
+  state.title = "Incognito chat";
+  drawConversation();
+  notice("Incognito chat: Meru keeps no record of it. New chat ends it.");
+}
+
+// chatDeleted is what the page does once merud deleted chat id: when it
+// was the open chat, the chat screen starts a new one.
+function chatDeleted(id) {
+  if (id !== state.session) return;
+  state.session = ""; // gone already, so leaveIncognito has nothing to forget
+  newChat();
+}
+
+// deleteOpen runs /delete: it asks before the open chat goes for good.
+function deleteOpen() {
+  if (!state.session) {
+    notice("Nothing to delete: this chat has no questions yet.");
+    return;
+  }
+  const s = state.sessions.find((x) => x.id === state.session) || { id: state.session, title: state.title };
+  deleteDialog(s);
 }
 
 // newChat clears the conversation, from the New chat button or /new. A
@@ -742,6 +863,7 @@ function newChat() {
     state.quietDrop = true;
     bridge.stop();
   }
+  leaveIncognito();
   state.session = "";
   state.title = "New chat";
   state.turns = [];
@@ -763,6 +885,7 @@ function openSession(s) {
   if (state.running) bridge.stop();
   bridge.sessionTurns(s.id).then(
     (turns) => {
+      leaveIncognito();
       state.session = s.id;
       state.title = s.title;
       state.asking = null;
@@ -1055,6 +1178,17 @@ function wire() {
   $("attach").append(icon("clip", 17));
 
   $("new-chat").addEventListener("click", newChat);
+  $("new-incognito").prepend(icon("lock", 14), document.createTextNode(" "));
+  $("new-incognito").addEventListener("click", newIncognito);
+  $("new-folder").prepend(icon("folder", 14), document.createTextNode(" "));
+  $("new-folder").addEventListener("click", newFolderDialog);
+  setupOrganize({
+    state,
+    notice,
+    reload: loadSessions,
+    chatDeleted,
+    focus: () => $("question").focus(),
+  });
   $("mini-new").addEventListener("click", newChat);
   $("rail-toggle").addEventListener("click", () => setRail(false));
   $("mini-expand").addEventListener("click", () => setRail(true));
@@ -1086,6 +1220,11 @@ function wire() {
   const box = $("question");
   setupCommands(box, $("command-menu"), {
     newChat,
+    newIncognito,
+    deleteChat: deleteOpen,
+    session: () => state.session,
+    incognito: () => state.incognito,
+    reloadChats: loadSessions,
     openSettings: (section) => goSettings(section),
     blocks,
     newestBlocks,

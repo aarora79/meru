@@ -427,14 +427,14 @@ func TestSendScope(t *testing.T) {
 		return nil
 	}))
 	defer b.ServiceShutdown()
-	if err := b.Send("", "what's on Friday?", rpc.ScopeMail); err != nil {
+	if err := b.Send("", "what's on Friday?", rpc.ScopeMail, false); err != nil {
 		t.Fatal(err)
 	}
 	r.waitFor(t, "end", isEnd(1))
 	if got.Scope != rpc.ScopeMail {
 		t.Errorf("scope = %q, want mail", got.Scope)
 	}
-	if err := b.Send("", "hi", "everywhere"); err == nil {
+	if err := b.Send("", "hi", "everywhere", false); err == nil {
 		t.Error("an unknown scope went to merud")
 	}
 }

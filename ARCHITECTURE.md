@@ -26,7 +26,10 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
    search words through (see [MCP](#mcp) and [Web search](#web-search)).
 2. **Files are the source of truth; SQLite is a projection.** Meru can rebuild
    everything in the database from your files and config. Delete `meru.db` and it
-   re-indexes.
+   re-indexes. The one exception is the tool log of an incognito or deleted
+   chat, which has no file behind it on purpose (see
+   [Organizing past chats](#organizing-past-chats) and
+   [Incognito chats](#incognito-chats)).
 3. **You can inspect everything.** Memories and skills are Markdown files, and
    answers cite the files they drew on. Meru traces and times every turn, so you can
    find out why it said something and why it took so long.
@@ -226,7 +229,12 @@ own. The commands, in the order `/help` lists them:
 | Command | What it does | Op |
 | --- | --- | --- |
 | `/new` | start a new session | — |
-| `/chats [words]` | a box of past chats, filtered by the words; Enter reopens one, and the next question continues it | `sessions`, `session_turns` |
+| `/incognito` | start an incognito chat, which `merud` keeps in memory only (see [Incognito chats](#incognito-chats)); `meru chat --incognito` opens with one | `ask` with `incognito` |
+| `/chats [words]` | a box of past chats, each with its folder and tags, filtered by the words, which match a title, a folder or a tag; Enter reopens one, and the next question continues it; `d` twice deletes the marked one | `sessions`, `session_turns`, `session_delete` |
+| `/delete` | delete the open chat for good; the first `/delete` says what it will do, and a second one right after it deletes | `session_delete` |
+| `/folder [new <name>\|rename <old> -> <new>\|delete <name>]` | list, make, rename or delete chat folders | `chat_folders`, `chat_folder_add`, `chat_folder_rename`, `chat_folder_remove` |
+| `/move [folder]` | put the open chat in a folder, or, alone, take it out of its folder | `session_move` |
+| `/tag <tags>`, `/untag <tags>` | add tags to the open chat, or take them off | `session_tag` |
 | `/retry` | ask the newest question again, with its scope and images (the app's Try again) | `ask` |
 | `/scope [auto\|files\|mail\|web\|talk]` | set where the next questions look, as the app's switch does; the header names a scope other than auto | `ask` with `scope` |
 | `/attach [path]` | attach a file or an image to the next question; `/attach` alone takes them all off | `attach_file` |
@@ -249,8 +257,8 @@ In a box with rows, ↑ and ↓ move a marker and the box scrolls to keep it in 
 The keys that change something are the same everywhere: ← and → step a tool's
 policy through Off, Ask and Allow (a tool that always asks steps between Off and
 Always asks), Enter adds or toggles the marked row, and `d` removes a folder or an
-MCP server or forgets a memory, after a second `d`, since none of those can be
-undone from the chat. Adding a catalog server that needs an API key opens a field
+MCP server, forgets a memory or deletes a chat, after a second `d`, since none of
+those can be undone from the chat. Adding a catalog server that needs an API key opens a field
 that shows `•` for each character; Enter sends the key to `merud` with
 `secret_set`, then `mcp_add` adds the server. The key never comes back.
 
@@ -336,16 +344,25 @@ the line as its tooltip.
 **The chat screen** has three columns:
 
 - **The rail** holds the logo and wordmark, one button that opens About
-  in Settings, then New chat, a search box that filters the list, past chats grouped
-  Today, Yesterday and Earlier, a status block, and a Settings button at its
-  foot. The status block shows the answer
+  in Settings, then New chat, with **Incognito chat** and **New folder** under
+  it, a search box that filters the list by title, folder or tag, the past
+  chats, a status block, and a Settings button at its foot. The chat folders
+  come first, each a group with a head that folds it; the chats in no folder
+  follow, grouped Today, Yesterday and Earlier. Each chat's tags show small
+  after its title. A right-click on a chat, or the context-menu key, opens
+  Move to folder, Remove from its folder, Tags and Delete; on a folder's head,
+  Rename and Delete folder. Each opens a dialog in the page, and Delete asks
+  before anything goes (see [Organizing past chats](#organizing-past-chats)).
+  The status block shows the answer
   model, the file count and the connected MCP servers, or, when `merud` doesn't
   answer, that it isn't running and the command that starts it. A button folds
   the rail to a column of icons: the logo, New chat, chats, Settings and a status
   dot.
 - **The conversation** shows each question as a bubble and each answer as a card.
   The header holds the chat's title, **Share as file** and a button that shows
-  or hides the side panel. A one-line work strip says what the route did and lists
+  or hides the side panel. An incognito chat gets an **Incognito** badge beside
+  its title, a line under the header that says what it keeps, and no Share as
+  file. A one-line work strip says what the route did and lists
   each tool call by its label; "Show steps" opens the raw tool names, outcomes and
   times, and an amber "Waiting for you" chip marks an open approval. The answer
   streams as plain text and renders as Markdown when it ends, as in `meru chat`;
@@ -478,8 +495,11 @@ turn does with them.
 
 **Slash commands.** The composer understands the commands `meru chat` has, each
 mapped to the app's own screen: `/new` (as New chat: it stops a running turn and
-drops the queue, with the chat's notice), `/chats` (the rail, with the search box
-focused and filled with any words after the command), `/retry` (Try again on the
+drops the queue, with the chat's notice), `/incognito` (Incognito chat), `/chats`
+(the rail, with the search box focused and filled with any words after the
+command), `/delete` (the Delete dialog for the open chat), `/folder`, `/move`,
+`/tag` and `/untag` (the same ops as in the chat; the notice line says how each
+went), `/retry` (Try again on the
 newest answer), `/scope <name>` (the Where Meru looks switch), `/attach` (the file
 dialog), `/save` (Save to a note on the newest answer; `/save chat` is Share as
 file), `/used` (the side panel for the newest answer), `/copy N` (code block N of
@@ -629,11 +649,13 @@ see.
 
 **Past chats come from the transcripts.** Two ops serve the rail: `sessions` lists
 the sessions that hold a question, newest change first, with the first question as
-the title; `session_turns` returns one session's turns, each with its question,
+the title and the folder and tags from the newest `meta` line; `session_turns`
+returns one session's turns, each with its question,
 answer, route, sources, tool calls, time and token count. `merud` reads both from
 the JSONL files, never from `meru.db`, so they stay right after the database is
 deleted. Opening a past chat and asking again sends its session ID, so the
-conversation continues.
+conversation continues. `chat_folders` lists the chat folders, so the rail can
+show a folder that holds no chat yet.
 
 **Model output is untrusted.** A bad answer, or a page the model fetched, could
 hold HTML meant to run in the window. Three layers stop it:
@@ -888,6 +910,84 @@ and arguments and offers the choices `merud` sends, at most these three:
   history, which named the thread and the date agreed in it, and works out which
   thread "that thread" means. It reads answers, not the raw tool results behind
   them.
+
+### Organizing past chats
+
+Both clients can delete a chat, put it in a folder and tag it. Each change is an
+op to `merud`, which changes the files first; `meru.db` follows.
+
+- **Delete.** `session_delete` takes a session ID, never a path. `merud` checks
+  the ID against the session ID pattern, refuses anything but a regular file,
+  removes the transcript, then deletes the session's rows: `sessions`,
+  `messages` and their keyword entries, the summary's keyword entry and vector,
+  and `turns`. The chat leaves the list and recall at once, and nothing undoes
+  it; usage counts that come from `turns` drop with it. Its `tool_calls` rows
+  stay, stored as an incognito chat's are: each keeps its tool, server, kind,
+  time, duration, outcome and approval, and loses its arguments and result, so
+  `meru log` still shows every call and nothing of what the chat said. If
+  `merud` stops between the two steps, its next start does the same for every
+  session whose file is gone, which also covers a file removed by hand. The
+  uploads the chat's questions carried stay in `~/meru-output/uploads/`, which
+  is yours to clear.
+- **Folders.** A chat folder is a name. `~/.meru/sessions/folders.json` lists
+  them as a JSON array, so a folder that holds no chat yet survives, and each
+  chat's own `meta` line says which folder holds it (see
+  [Session transcripts](#session-transcripts)). `session_move` moves a chat and
+  adds a new name to the list. `chat_folder_rename` renames a folder and appends
+  a `meta` line to each chat in it, so every transcript still names its folder;
+  `chat_folder_remove` takes the name off the list and moves its chats back to
+  the main list. It deletes no chat. A name has at most 60 characters.
+- **Tags.** `session_tag` adds and removes tags. A tag is one word of letters,
+  digits, `-` and `_`, in lower case, of at most 32 characters, and a chat holds
+  12 at most. Replay copies a chat's tags into `sessions.tags` and into its
+  `summary_fts` entry, after the summary, so a keyword search for a tag finds
+  the chat when a turn recalls earlier conversations. The summary's vector
+  holds the summary alone. The `meta` line keeps the tags in the transcript,
+  where `grep` finds them.
+- **The list keeps its order.** Moving or tagging a chat isn't talking in it, so
+  after it appends a `meta` line `merud` puts the file's modification time back,
+  and a chat moved into a folder doesn't jump to Today.
+
+One lock in `merud` makes these ops take turns, so two clients can't write the
+folder list over each other.
+
+### Incognito chats
+
+An incognito chat keeps nothing about what was asked. The desktop app's
+Incognito chat button, `/incognito` in either client and `meru chat --incognito`
+start one. The first `ask` carries `incognito: true`, and `merud` answers with a
+session ID such as `incognito-7f3a09bc`, which fails the session ID pattern, so
+no code that works on files accepts it.
+
+- **History in memory.** `merud` keeps the chat's lines in a
+  `transcript.Session` with no file, so each turn reads the chat's history as
+  usual. Nothing reaches `~/.meru/sessions`, so the chat gets no `sessions`,
+  `messages` or `turns` row and no summary.
+- **No memory from it.** The turn doesn't offer `remember`, and `remember`
+  refuses a call from an incognito session, since a model can call a tool it
+  wasn't offered. Recall still reads your memories and earlier chats into the
+  prompt; reading keeps nothing.
+- **Tool calls stay on the record.** Every call still goes through `dispatch`
+  and gets a `tool_calls` row with its tool, server, kind, time, duration,
+  outcome and approval, under the chat's incognito ID, but no arguments and no
+  result. Its span leaves both out even with `capture_content = true`. The
+  transcript lines `dispatch` writes go to the chat's memory with the rest.
+- **It ends when you leave.** A client that leaves the chat, for a new chat,
+  another chat or quitting, sends `session_delete` with the chat's ID, and
+  `merud` drops the history. `merud` also drops an incognito chat after an hour
+  with no question, and holds 16 at most, so a chat a client forgot doesn't stay
+  in memory. A question in a chat `merud` dropped fails with a message to start
+  a new one.
+- **Not saved.** Share as file, Save to a note and `/save` refuse an incognito
+  chat, and it takes no folder or tags. A file you attach is still copied into
+  the uploads folder, since you picked it.
+- **The exception to rebuilding.** An incognito chat's `tool_calls` rows have no
+  transcript behind them, so a rebuild of `meru.db` loses them, as it loses the
+  stripped rows of a deleted chat. That errs toward keeping less, which is what
+  an incognito chat asks for.
+
+The turn's span carries `meru.session.incognito`. The metrics count the turn as
+any other, since they hold no text and no ID.
 
 ---
 
@@ -1414,7 +1514,9 @@ order.
       and any error text, then writes the `tool_result` line, the `tool_calls` row,
       the metrics and the `meru.dispatch` span. The model reads up to 16,000
       characters of the result, with a note when `dispatch` cut it; the transcript
-      and the row keep 4,000 of the same text, attachment included.
+      and the row keep 4,000 of the same text, attachment included. In an
+      incognito chat the row keeps neither the arguments nor the result (see
+      [Incognito chats](#incognito-chats)).
 
    No other code path reaches a server, agent, built-in tool or local command. The calls of one
    round run at the same time (`errgroup`), and each sends its `tool_result` event
@@ -1756,6 +1858,8 @@ and the database indexes them.** Delete `meru.db` and `merud` rebuilds it.
 
 Each session is one JSON Lines (JSONL) file: one JSON object per line, one line per
 event. `merud` appends a line as each event happens and never rewrites old ones.
+Deleting a chat removes its whole file (see
+[Organizing past chats](#organizing-past-chats)).
 
 ```text
 ~/.meru/sessions/2026/09/2026-09-23T101502-7f3a.jsonl
@@ -1777,6 +1881,14 @@ A `model_switch` line comes before the first answer a new main model writes in
 a session, so the transcript alone says which model wrote each answer. An
 assistant line also carries `ttft_ms`, `eval_ms`, `bad_calls` and `capped` (see
 [Model sets](#model-sets)).
+
+```json
+{"ts":"2026-09-27T09:20:11Z","type":"meta","folder":"Garden","tags":["bulbs","autumn"]}
+```
+
+A `meta` line holds the chat's folder and tags as the user set them last. Each
+one holds the whole state, so the newest wins, and one with no `folder` or no
+`tags` means the chat has none.
 
 A `tool_call` line gets `"caller":"meru"` when `merud` made the call itself
 before the model's first round (see [Web first](#web-first)); a call the model
@@ -1820,11 +1932,11 @@ files with mode `0600`, so only you can read them.
 | `chunks` | pieces of each file's text, plus metadata and the parent document | your folders |
 | `chunk_vec` | one vector per chunk, a blob of 32-bit floats scaled to length 1 | chunks, re-embedded |
 | `chunk_fts` | keyword index over chunks (FTS5) | chunks |
-| `sessions` / `messages` (v0.4) | every session and message, plus each session's summary, for context and `meru log` | `sessions/*.jsonl` |
+| `sessions` / `messages` (v0.4) | every session and message, plus each session's summary and tags, for context and `meru log` | `sessions/*.jsonl` |
 | `session_vec` (v0.4) | one vector per session summary, for "what did we decide last week" | session summaries |
 | `message_fts` (v0.4) | keyword index over messages, for "what did we say about X" | messages |
-| `summary_fts` (v0.4) | keyword index over session summaries | session summaries |
-| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and `caller` (`meru` for a call `merud` made itself) | `sessions/*.jsonl` |
+| `summary_fts` (v0.4) | keyword index over session summaries and their tags | session summaries and `meta` lines |
+| `tool_calls` | audit log: every MCP, A2A, built-in and local command call, with its call ID, session, `kind` (`mcp`, `a2a`, `builtin` or `command`), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and `caller` (`meru` for a call `merud` made itself); the rows of an incognito or deleted chat keep no args or result | `sessions/*.jsonl`; the rows of an incognito or deleted chat have no file and don't come back |
 | `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
@@ -3656,6 +3768,11 @@ transcript lines hold. No level writes question or answer text. With
   sends no crash reports and never checks for updates.
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
+- Deleting a chat removes its transcript and its content in `meru.db`; its
+  `tool_calls` rows stay without arguments or results. An incognito chat writes
+  no transcript, no session rows and no summary, and saves no memory;
+  `tool_calls` records each of its calls without arguments or results (see
+  [Incognito chats](#incognito-chats)).
 - A file outside those folders reaches the model only when you attach it in the
   desktop app. `merud` copies that one file into `~/meru-output/uploads/`, and
   refuses a link, a folder and a file whose name looks like a secret's. An

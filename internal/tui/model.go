@@ -58,6 +58,9 @@ type Info struct {
 	MouseCopy bool
 	// Dir is Meru's folder, ~/.meru, for the /about box; "" leaves it out.
 	Dir string
+	// Incognito starts the chat as an incognito one, for `meru chat
+	// --incognito`.
+	Incognito bool
 }
 
 // look is how the screen draws itself: a Lip Gloss renderer that knows the
@@ -213,6 +216,12 @@ type Model struct {
 	session      string // from merud's "session" event; empty until the first reply
 	lastQuestion string // what Up puts back in the input
 	link         link
+	// incognito is true while the chat on screen is an incognito one,
+	// which merud keeps in memory only; the header says so. deleteArmed is
+	// the session a first /delete armed, until a second one deletes it or
+	// any other line disarms it.
+	incognito   bool
+	deleteArmed string
 
 	// streaming is true from Enter until the turn ends or the user cancels.
 	streaming bool
@@ -329,6 +338,7 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 		open:         opener.Open,
 		version:      about.ShortVersion(),
 		fullVersion:  about.Version(),
+		incognito:    info.Incognito,
 	}
 	// The viewport's own keys would scroll on j, k, space and the arrows,
 	// which the user types into the input. Update scrolls it on PgUp and
@@ -502,6 +512,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	if strings.HasPrefix(text, "/") {
 		return m.command(text)
 	}
+	m.deleteArmed = "" // a question disarms a /delete
 	if text == "" {
 		return m, nil
 	}
@@ -551,6 +562,9 @@ func (m *Model) startTurn(q outgoing) tea.Cmd {
 		Text:    q.text,
 		Source:  rpc.SourceTUI,
 		Scope:   q.scope,
+		// Only the first question starts an incognito chat; the next ones
+		// continue it by the ID merud sent.
+		Incognito: m.session == "" && m.incognito,
 	}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{Paths: q.images}
@@ -570,6 +584,9 @@ func (m *Model) handleEvent(msg eventMsg) {
 	switch ev.Type {
 	case rpc.EventSession:
 		m.session = ev.Session
+		if ev.Incognito {
+			m.incognito = true
+		}
 	case rpc.EventRoute:
 		cur.route, cur.confidence, cur.fallback = ev.Route, ev.Confidence, ev.Fallback
 		cur.skills = nil

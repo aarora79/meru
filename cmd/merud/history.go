@@ -2,14 +2,18 @@
 // which the desktop app sends to list past conversations and show one
 // again. Both read the session transcripts, the source of truth, and never
 // meru.db. ARCHITECTURE.md, "Desktop app", says what the app shows.
+// chats.go holds the ops that delete, move and tag a chat.
 
 package main
 
 import (
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/store"
 	"github.com/aarora79/meru/internal/transcript"
 )
 
@@ -21,9 +25,33 @@ const defaultSessionLimit = 200
 // historyService answers the session ops from the transcripts in dir.
 // home is the user's home folder, for showing source paths as ~/...; it
 // is "" when unknown, and paths then stay whole.
+//
+// The ops in chats.go also need st, to drop a deleted chat's rows, and
+// forget, the agent's ForgetIncognito. mu makes those ops take turns, so
+// two clients that move chats at once can't write the folder list over
+// each other. It is a pointer because historyService is passed by value
+// and every copy must share one lock. Build one with newHistoryService.
 type historyService struct {
-	dir  string
-	home string
+	dir    string
+	home   string
+	st     *store.Store
+	forget func(id string) bool
+	log    *slog.Logger
+	mu     *sync.Mutex
+}
+
+// newHistoryService returns a historyService over the transcripts in dir.
+// st may be nil, which leaves meru.db alone, and so may forget and log.
+func newHistoryService(dir, home string, st *store.Store, forget func(string) bool, log *slog.Logger) historyService {
+	return historyService{dir: dir, home: home, st: st, forget: forget, log: log, mu: &sync.Mutex{}}
+}
+
+// logger returns h.log, or a logger that drops every line when h has none.
+func (h historyService) logger() *slog.Logger {
+	if h.log == nil {
+		return slog.New(slog.DiscardHandler)
+	}
+	return h.log
 }
 
 // handleSessions answers OpSessions with one "sessions" event: the
@@ -41,13 +69,7 @@ func (h historyService) handleSessions(limit int, emit func(rpc.Event) error) er
 	}
 	out := make([]rpc.SessionInfo, len(infos))
 	for i, s := range infos {
-		out[i] = rpc.SessionInfo{
-			ID:      s.ID,
-			Title:   s.Title,
-			Started: s.Started.UTC().Format(time.RFC3339),
-			Updated: s.Updated.UTC().Format(time.RFC3339),
-			Turns:   s.Turns,
-		}
+		out[i] = sessionInfo(s)
 	}
 	return emit(rpc.Event{Type: rpc.EventSessions, Sessions: out})
 }
