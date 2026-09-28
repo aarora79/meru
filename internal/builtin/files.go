@@ -274,8 +274,10 @@ func (t *Tools) listFolder(ctx context.Context, raw json.RawMessage) (string, er
 	return b.String(), nil
 }
 
-// listRoots lists the folders the file tools read, the [index] folders
-// then the output folder, for list_folder with no path.
+// listRoots lists the folders the file tools read, for list_folder with
+// no path: the [index] folders, then the output folder and the sessions
+// folder, which carries sessionsLabel so the model knows it holds the
+// past chats.
 func (t *Tools) listRoots() string {
 	roots := t.files.Roots()
 	if len(roots) == 0 {
@@ -284,7 +286,11 @@ func (t *Tools) listRoots() string {
 	var b strings.Builder
 	b.WriteString("The folders the file tools read. Pass one as path to see what it holds.\n")
 	for _, r := range roots {
-		b.WriteString(t.show(r) + "/\n")
+		line := t.show(r) + "/"
+		if t.isSessions(r) {
+			line += "  (" + sessionsLabel + ")"
+		}
+		b.WriteString(line + "\n")
 	}
 	return b.String()
 }
@@ -350,10 +356,10 @@ func (t *Tools) grep(ctx context.Context, raw json.RawMessage) (string, error) {
 	}
 
 	// Build the list of places to search: one checked path, or every
-	// [index] folder.
+	// folder the tools read but the sessions folder (see fileRoots).
 	var starts []index.Checked
 	if strings.TrimSpace(a.Path) == "" {
-		for _, r := range t.files.Roots() {
+		for _, r := range t.fileRoots() {
 			info, err := os.Lstat(r)
 			if err != nil {
 				continue
@@ -459,7 +465,7 @@ func (s *grepRun) file(ctx context.Context, p string) error {
 			if text.Kind == index.KindPDF {
 				where = fmt.Sprintf("%s (page %d)", shown, i+1)
 			}
-			s.lines = append(s.lines, where+": "+cut(strings.TrimSpace(line), maxLineChars))
+			s.lines = append(s.lines, where+": "+around(strings.TrimSpace(line), s.re, maxLineChars))
 			s.files[p] = true
 			if len(s.lines) >= s.max {
 				s.stop = fmt.Sprintf("max_results (%d)", s.max)
@@ -468,6 +474,48 @@ func (s *grepRun) file(ctx context.Context, p string) error {
 		}
 	}
 	return nil
+}
+
+// around returns line when it has at most n characters, and otherwise the
+// n characters around the first match of re, with "…" at each end it cut.
+//
+// A line of a chat's JSONL file holds a whole answer, often thousands of
+// characters. A cut from the start shows the line's opening fields and
+// can leave the match out; a window keeps the word the model asked for
+// and the text beside it. The window opens a third of
+// n before the match, so the match reads with what led up to it.
+func around(line string, re *regexp.Regexp, n int) string {
+	runes := []rune(line)
+	if len(runes) <= n {
+		return line
+	}
+	loc := re.FindStringIndex(line)
+	if loc == nil {
+		return cut(line, n)
+	}
+	// loc holds byte offsets; count the characters before the match, so
+	// the window never splits a character that takes more than one byte.
+	at := utf8.RuneCountInString(line[:loc[0]])
+	width := n - 2 // room for the two "…"
+	start := max(0, at-width/3)
+	end := min(len(runes), start+width)
+	start = max(0, end-width)
+	// A window at either end of the line needs only one "…", so it takes
+	// one more character.
+	switch {
+	case start == 0:
+		end = n - 1
+	case end == len(runes):
+		start = len(runes) - (n - 1)
+	}
+	out := string(runes[start:end])
+	if start > 0 {
+		out = "…" + out
+	}
+	if end < len(runes) {
+		out += "…"
+	}
+	return out
 }
 
 // report formats the result: a first line with the counts and any limit
@@ -667,6 +715,11 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 	where := "Paths may be absolute, start with \"~/\", or be relative to one of the folders below when only one holds them. " +
 		"The folders are: " + t.rootList() + ". " +
 		"Meru refuses paths outside them, and skips hidden, secret, ignored and binary files, as search does."
+	grepChats := ". "
+	if t.sessionsDir != "" {
+		where += " " + t.show(t.sessionsDir) + " holds your past chats with the user, one JSONL file per chat."
+		grepChats = " but the past chats; to search them, pass their folder as path. "
+	}
 	attachments := ""
 	if t.outputDir != "" {
 		attachments = "To read a mail attachment that a tool saved, pass the saved filename it reported as path. "
@@ -695,7 +748,7 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 			Name: Grep,
 			Description: "Finds every line that holds a word or pattern in the user's files, and returns \"path:line: text\" lines " +
 				"(\"path (page N): text\" for PDFs). Use it to find which files mention something. " +
-				"By default it matches plain text, ignoring case, in every folder it may read. " + where,
+				"By default it matches plain text, ignoring case, in every folder it may read" + grepChats + where,
 			Parameters: mustSchema(map[string]any{
 				"pattern":        prop("string", "The text to find, or a regular expression when regex is true."),
 				"path":           prop("string", "A folder or file to search. Leave it out to search every folder it may read."),

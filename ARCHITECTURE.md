@@ -719,7 +719,7 @@ explain each step in detail.
 
 | Decision | Made by | How |
 | --- | --- | --- |
-| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load |
+| Answer directly, search, call tools, or search and call tools | the `fast` model (the router) | It reads the probability of each route letter from one decoded token, and falls back to search and tools when unsure. `merud` searches anyway when a `direct` question names an indexed folder or asks about past chats, and adds tools when a question names a connected tool server. From v0.4, a separate short call picks the skills to load |
 | What to search for | `merud`, with no model | The question as you typed it. A question with three or more words that aren't filler names its own subject and is searched alone. A shorter one is a follow-up: `merud` appends the session's latest earlier question that names a subject, because "and the one after that?" finds nothing on its own. It skips a question made only of filler words, such as "try the last question again". With `[index] retrieval = "agentic"` no search runs first, and the `main` model writes its own `search_files` queries |
 | Which tools the model may use | you, in `config.toml` | Only tools in each server's or agent's `allow` list reach the model; the rest don't exist to it. Each `[[commands]]` entry is one tool. The built-in tools need no entry |
 | Which tool to call, with what arguments | the `main` model | It reads each allowed tool's name, description and argument schema, as the MCP server, agent card or `[[commands]]` entry wrote them, and picks. For a local command it picks only the parameter values; the program and its flags come from config |
@@ -808,26 +808,32 @@ and arguments and offers the choices `merud` sends, at most these three:
   | --- | --- |
   | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
-  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. |
+  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it: on every route while `web_search` is on too, and on the tools routes alone otherwise. |
 
-  The file tools reach only the `[index] folders` and `[skills] output_dir`
-  (`~/meru-output`), and they skip what the indexer skips (see
+  The file tools reach only the `[index] folders`, `[skills] output_dir`
+  (`~/meru-output`) and, for `read_file`, `list_folder` and `grep`, the session
+  transcripts in `~/.meru/sessions` (see [Facts and episodes](#facts-and-episodes)).
+  They skip what the indexer skips (see
   [What stays out](#what-stays-out)): they never follow a symlink, and they
   refuse secret, hidden, ignored, binary and oversized files with the
   indexer's reason. The output folder holds what `write_file` wrote, what
   `web_fetch` downloaded, the mail attachments the `google` server saves
   (see [Adding an MCP server](#adding-an-mcp-server)) and the copies of files
   the user attaches in the desktop app (see [Desktop app](#desktop-app)). The file tools only
-  read there; `write_file` keeps its own rules. Outside the output folder, they
-  read nothing that search couldn't already put in the prompt. The indexer
-  never indexes the output folder, so a web page or an attachment can't reach
-  a later turn through search. `merud` leaves the file tools out when no
-  `[index]` folder is listed.
+  read there; `write_file` keeps its own rules. Outside the output folder and
+  the transcripts, they read nothing that search couldn't already put in the
+  prompt. The indexer never indexes the output folder or the transcripts, so a
+  web page, an attachment or an old chat can't reach a later turn through
+  search. The skip rules apply from the folder a path sits in downwards: the
+  sessions folder sits under the hidden `~/.meru` and stays readable, a hidden
+  file inside it stays skipped, and the rest of `~/.meru`, `config.toml` and
+  `secrets.toml` among it, stays out of reach. `merud` leaves the file tools
+  out when no `[index]` folder is listed.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -1285,8 +1291,8 @@ order.
    rewrites the query. The `tools` route searches too: the router sends some
    questions about your files there, and an answer from the files beats one from
    the model alone. Four rules then adjust the route (see [Routing](#routing)):
-   a `direct` question that names an indexed folder becomes `search`, a
-   question that names a connected tool server gets tools, and so does a
+   a `direct` question that names an indexed folder or asks about past chats
+   becomes `search`, a question that names a connected tool server gets tools, and so does a
    question that says "remember", asks for the web, gives a URL, or names
    what a connected server's tools act on ("email" for Gmail's tools). The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
@@ -1319,7 +1325,8 @@ order.
    question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, a line on what
    Meru's own tools can change (with, when config allows `about_meru`, a line
    that sends questions about Meru itself, such as which model answers, to that
-   tool instead of the model's training), the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
+   tool instead of the model's training), a line that says where your past
+   chats are, the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, file excerpts with earlier conversations, and
    what the web-first step found.
    Ollama reuses its work on a prompt's opening until the first token that
@@ -1663,6 +1670,15 @@ record what the router chose. The rule matches the last part of each folder path
 any case, and skips names under three letters. "hey meru, what's the capital of
 France" searches too, because the assistant shares its name with the folder.
 
+The first rule also moves a `direct` question about past chats to `search`: one
+that names a chat, conversation or session along with "previous", "earlier",
+"past", "last", "before", "ago", "yesterday", "prior", "old", "older" or
+"history", or says "we" with "talked", "discussed" or "chatted". The router
+sent "check my previous conversations with you, what were they all about" to
+`direct`, which offers neither the recalled sessions nor the file tools, and the
+model said it had no access to past conversations. `search` offers both (see
+[Facts and episodes](#facts-and-episodes)).
+
 The second: when the question names a connected MCP server or A2A agent as a whole
 word, and the route is `direct` or `search`, the agent loop adds the rest. `direct` becomes
 `tools`, and `search` becomes `search+tools`. The names come from the tools
@@ -1999,7 +2015,7 @@ With `[index] retrieval = "auto"`, the default, a search runs before the answer
 on the `search`, `tools` and `search+tools` routes. `tools` searches
 because the router sends some questions about your files there. It also runs on a
 `direct` question that
-names an indexed folder (see [Routing](#routing)). Its query is the question, with an earlier
+names an indexed folder or asks about past chats (see [Routing](#routing)). Its query is the question, with an earlier
 question appended on a follow-up (see
 [How a conversation continues](#how-a-conversation-continues)).
 
@@ -2308,7 +2324,22 @@ Meru keeps no index file. The database already indexes the files, and
   newest wins. `merud` embeds each summary into `session_vec`, so "what did we
   decide about the garden beds last week?" finds the right session. On the routes that
   search files, the prompt gets up to three past sessions under "From earlier
-  conversations", each with its date, summary and best-matching message.
+  conversations", each with its date, summary and best-matching message. Its
+  header tells the model these are its own past chats with you, only the best
+  matches, and never to say it has no access to past chats.
+- **Every chat stays in reach.** Three matches can't answer "what were my
+  previous conversations with you about?". A real turn showed it: with three
+  lines in its prompt out of more than two hundred sessions, the model said it
+  had no access to its past conversations. So `read_file`, `list_folder` and
+  `grep` also read `~/.meru/sessions`, one JSONL file per chat, and a line in
+  the system prompt says so, while the file tools are on. `grep` with no path
+  leaves the chats out, since a chat holds the start of each file its tools read;
+  the model passes the sessions folder as the path. The indexer never indexes
+  the transcripts: search and recall keep to the summaries and messages in
+  `meru.db`. A `direct` question that names a chat or conversation with a word
+  that points back in time, such as "previous" or "last", or says "we talked"
+  or "we discussed", moves to the `search` route, which offers the file tools
+  and the recalled sessions.
 
 ### How Meru uses them
 
@@ -3631,7 +3662,8 @@ transcript lines hold. No level writes question or answer text. With
 - The indexer reads only the folders you list, never follows a symlink, and never
   indexes a file that looks like a secret. The file tools, `read_file`,
   `list_folder`, `grep` and `search_files`, apply the same rules through the
-  indexer's own code, so the model can read no file that search couldn't reach.
+  indexer's own code, so outside the output folder and your own session
+  transcripts the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
 - The Mac installer downloads only what a step names, after you press Continue:
   Ollama and uv through Homebrew, the models through Ollama, the SearXNG image

@@ -272,7 +272,15 @@ downloaded and the mail attachments the `google` server saved, under the same
 rules: no symlinks, no hidden or secret files, the size cap. Nothing in the
 folder reaches the store or search, so a web page or an attachment can't reach
 a later turn through search. `New` runs once at startup, before any tool call,
-because the methods read the list without a lock.
+because the methods read the list without a lock. `builtin.ReadSessions` adds
+`~/.meru/sessions` the same way, so the file tools can read the past chats.
+That folder sits under the hidden `~/.meru`, and it stays readable: `Check`
+and `Walk` apply the skip rules from the folder a path sits in downwards, never
+to the folders above it. A hidden file inside it is still skipped, and the
+rest of `~/.meru` sits in no folder, so `Check` refuses it. `.jsonl`, JSON
+Lines, is in `kinds` as code, like `.json`, so the chats read as text.
+`TestReadAlsoUnderHiddenFolder` checks all of this, and that `Scan` and
+`IndexPaths` store nothing from the folder.
 
 **`Folders()`** returns the `[index] folders` alone, without what `ReadAlso`
 added. `search_files` names these in its description, since search reaches

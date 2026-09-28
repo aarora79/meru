@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -318,7 +318,8 @@ hotel booking and guessed that you were the other guest it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`,
 `honestyRule`, today's date (`today`), the profile, `filesNote`, the line from
-`canDoNote`, `toolsNote` on a turn that offers tools, and the list of skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
+`canDoNote`, `chatsNote` while the file tools are on, `toolsNote` on a turn
+that offers tools, and the list of skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
 file tools; then the recalled memories, the picked skills' instructions, and last
 the files section, which holds the numbered excerpts and then the earlier
 conversations. `prompt` takes the changing parts in one `sections` struct and
@@ -881,6 +882,13 @@ its name with the folder. The `route` event, the turn's log line and its span
 show `search`, with a debug line that says why; the router's own `meru.route`
 span and metric keep what the router chose.
 
+The same gap hits a question about past chats. The router sent "check my
+previous conversations with you, what were they all about" to `direct`, which
+offers neither the recalled sessions nor the file tools that read every chat,
+and the model said it had no access to past conversations. So a `direct`
+question that `aboutPastChats` accepts becomes `search` too, while search or
+the file tools are on (see [Earlier conversations](#earlier-conversations-earliergo)).
+
 A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
 five signs that a question points at a connected tool, and returns the first
 it finds as words for the log line, or `""` for none:
@@ -1156,8 +1164,16 @@ them to `formatEarlier`, which writes one line per session under the header
   Each summary is cut to 400 characters and each message to 300, so one session
   can't take the whole budget, and a line that would pass the cap is left out
   with every line after it.
-- **No numbers.** These aren't files, so they get no citation number and no
-  `sources` event, and the header tells the model not to cite them.
+- **No numbers.** They get no citation number and no `sources` event, and the
+  header tells the model not to cite them.
+- **The header.** `earlierHeader` tells the model these are its own past
+  chats with the user, only the few that best match the question, and never
+  to say it has no access to past chats. While the file tools are on, it adds
+  where every chat is and which tools read them. A real turn showed the need:
+  with three lines out of more than two hundred sessions, a model told the
+  user it had no access to its past conversations, then listed the three. The
+  header stays one line under the title, since `formatEarlier`'s callers and
+  tests count on it.
 - **Failure.** A failed recall logs a warning and the turn goes on without the
   section, as a failed file search does.
 - **The metric.** `meru.context.tokens` with `section = "sessions"`.
@@ -1166,6 +1182,29 @@ them to `formatEarlier`, which writes one line per session under the header
 leaves out an empty one. Adding the section to `files` keeps `prompt` as it
 was: the section lands after the file excerpts, at the end of the system
 prompt.
+
+Three lines can't answer "what were all my chats about?", so the model reads
+the rest with the file tools. `merud` lets `list_folder`, `grep` and
+`read_file` read `~/.meru/sessions` (see [builtin](builtin.md)), and three
+functions here tell the model and route the question:
+
+- **`chatsFolder`** returns the sessions folder as the model reads it, such as
+  `~/.meru/sessions`, or `""` when the file tools are off. It checks for
+  `read_file` among the tools config allows on each call, since the desktop
+  app can add the first `[index]` folder while `merud` runs.
+- **`chatsNote`** is the line `stablePart` adds after `canDoNote`: "Your past
+  chats with the user are in ~/.meru/sessions: one JSONL file per chat, named
+  by the UTC time it started, …, with one JSON object per line for each
+  question, answer and tool call. To answer about earlier conversations, use
+  list_folder, grep and read_file there." It depends only on config, so it
+  sits with the parts Ollama reuses, and it costs about 80 tokens.
+- **`aboutPastChats`** accepts a question that names a chat, conversation or
+  session along with a word that points back in time ("previous", "last",
+  "ago" and the rest of `pastWords`), or says "we" with "talked", "discussed"
+  or "chatted". `respond` then moves a `direct` turn to `search`, which offers
+  the file tools and adds this section. "What is a chat protocol?" names a
+  chat but no time, so it stays `direct`. A wrong guess costs one search and
+  the file tools' schemas.
 
 ### answer
 
@@ -1755,7 +1794,14 @@ by meaning.
 
 `earlier_test.go` checks `formatEarlier` (dates, "The user said" and "You
 said", the cap), which routes add the section, that the asking session is left
-out, and that a failed recall still answers. `TestRecallsLastWeekWithoutAReminder`
+out, and that a failed recall still answers. `chats_test.go` pins
+`aboutPastChats` and `earlierHeader` in tables, and `TestPastChatsTurn` runs
+the question from the real turn over the real file tools: a router that says
+`direct`, a made-up chat about a raised garden bed, and a fake model that
+greps the sessions folder. The route must become `search`, the prompt must
+hold `chatsNote`, and grep's result must hold the past chat's question.
+`TestNoChatsNoteWithoutFileTools` checks that with the file tools off the note
+stays out and the route stays `direct`. `TestRecallsLastWeekWithoutAReminder`
 is the v0.4 "Done when" line: it writes a garden-beds session dated seven
 days ago and one about the library, lets the real summarizer summarize both over a
 fake model, and asks "what did we decide about the garden beds?" in a new

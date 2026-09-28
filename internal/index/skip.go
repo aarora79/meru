@@ -73,6 +73,9 @@ var kinds = map[string]string{
 	".cs": KindCode, ".swift": KindCode, ".kt": KindCode, ".sh": KindCode,
 	".sql": KindCode, ".yaml": KindCode, ".yml": KindCode, ".toml": KindCode,
 	".json": KindCode,
+	// JSON Lines, one JSON object per line: Meru's own session transcripts,
+	// which the file tools read, and data files people keep beside code.
+	".jsonl": KindCode,
 }
 
 // mediaExts are images, audio, video and archives. Only the reason differs

@@ -1,10 +1,10 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
-`about.go`, `remember.go`, `writefile.go`, `files.go`, `search.go`, `web.go`,
-`webguard.go`, `webdownload.go`, `upload.go`, `images.go`, and the tests
-`builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
-`search_test.go`, `web_test.go`, `webfetch_test.go`, `upload_test.go` and
+`about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
+`web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, and the
+tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
+`chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`, `upload_test.go` and
 `images_test.go`, with the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
@@ -14,7 +14,8 @@
 [Memory](../../ARCHITECTURE.md#memory),
 [Built-in skills](../../ARCHITECTURE.md#built-in-skills),
 [Web search](../../ARCHITECTURE.md#web-search),
-[Retrieval](../../ARCHITECTURE.md#retrieval)
+[Retrieval](../../ARCHITECTURE.md#retrieval),
+[Facts and episodes](../../ARCHITECTURE.md#facts-and-episodes)
 
 ## What it does
 
@@ -42,7 +43,10 @@ Search hands the model ten excerpts, which can't cover a folder. When you ask
 "write about everything in my work folder", the model can call `list_folder` to
 see what the folder holds, `read_file` to read each file whole, and `grep` to
 find every file that names a customer. These three only read, and only inside
-the `[index] folders`, with the indexer's own skip rules.
+the `[index] folders`, the output folder and your past chats, with the
+indexer's own skip rules. Asked "what were my previous conversations with you
+about?", the model lists `~/.meru/sessions` with `list_folder`, greps it for a
+topic and opens a chat with `read_file`.
 
 `search_files` is the fourth file tool. It runs the same search a turn runs
 before the answer, by meaning and by keyword, for whatever query the model
@@ -415,7 +419,14 @@ can fix it.
 A `grepRun` holds one search's state. `search` walks each start folder with
 `Walk`, and `file` reads each kept file with `ReadText` and tests it line by
 line. A PDF line reports its page, `path (page N): text`; any other file reports
-its line number, `path:12: text`. Each line is cut to 200 characters. Three
+its line number, `path:12: text`. `around` keeps each line to 200
+characters: a longer line shows the 200 around its first match, with `…` at
+each end it cut. A chat's JSONL line holds a whole answer, thousands of
+characters, and a cut from the start would show its `ts` and `type` fields and
+drop the match. The window opens a third of the way before the match, so the
+match reads with what led up to it. It counts runes, not bytes, so it never
+splits an "é". With no path, `grep` searches every folder but the past chats
+(see chats.go below). Three
 limits stop the search: `max_results` lines (default 50, at most 200), 5
 seconds, or 20,000 files. The first line of the result gives the counts and
 names the limit that stopped it. It comes first so a long result that
@@ -435,6 +446,46 @@ read, and only what search could already put in the prompt.
 agent offers them, with `datetime` and the commands that don't ask, on the
 `search` route. It also uses `IsFileTool` to decide when the prompt gets the
 note on using them: only on a turn about the user's files that offers one.
+
+### chats.go
+
+`read_file`, `list_folder` and `grep` also read the past chats: the session
+transcripts in `~/.meru/sessions`, one JSON Lines file per chat, named by the
+time it started, such as `2026/09/2026-09-17T141502-7f3a.jsonl`. A model asked
+"check my previous conversations with you" saw only the three sessions that
+recall put in its prompt, out of more than two hundred, and told the user it
+had no access to past conversations.
+
+`merud` calls `ReadSessions` once at startup with the folder. It hands the
+folder to `index.Indexer.ReadAlso`, as `New` does with the output folder, so
+the tools read it under every indexer rule and `Scan` and the watcher never
+see it. Nothing in it reaches the store or search. It is a method rather than
+a parameter of `New`, like `UseSearch`, so the tests that build `Tools`
+without a sessions folder don't change.
+
+The folder sits under the hidden `~/.meru`, and the hidden rule refuses a
+name that starts with a dot. The indexer applies its rules from the folder a
+path sits in downwards, though, never to the folders above it. So the
+sessions folder is readable as a folder of its own, a hidden file inside it,
+such as `.draft.jsonl`, is still skipped, and `~/.meru/config.toml`, outside
+every folder the tools read, stays refused. The indexer reads `.jsonl` as
+code, the way it reads `.json`.
+
+`isSessions` tells the sessions folder apart among `index.Indexer.Roots`. The
+roots come with symbolic links resolved, so it resolves the folder too before
+it compares them. `listRoots` puts a label after it, "past chats with the
+user, one JSONL file per chat", and each file tool's description names it.
+`fileRoots` is every root but the sessions folder: `grep` with no path
+searches those. A chat holds the first 4,000 characters of each tool result,
+the text of the files its tools read included, so a grep of the user's files
+would match many lines twice and the copies would use up `max_results`. The model greps the chats by passing their
+folder as path.
+
+`read_file` needs no change for a chat: it pages through the file 12,000
+characters at a time, as it does any file. It refuses a chat over `[index]
+max_file_mb` (5 MB by default) as too large. `dispatch` writes at most 4,000
+characters of each tool result to a transcript, so a chat grows that large
+only after more than a thousand tool calls.
 
 ### attachments.go
 
@@ -868,6 +919,17 @@ still refuses an absolute path and `..` and still asks first, that
 `search_files` doesn't name the output folder, and that `read_file`'s
 description mentions the saved filename.
 
+`chats_test.go` builds an `[index]` folder and a sessions folder under a
+hidden `.meru` in a temp folder, with made-up chats about raised garden beds.
+`TestChatsListed` checks `list_folder` names the sessions folder with its label
+and lists the chats but not a hidden file. `TestChatsGrepAndRead` greps the
+chats, finds a word deep in a long answer line, checks that `grep` with no path
+leaves the chats out, reads a chat with `read_file`, and checks
+`~/.meru/config.toml` stays refused. `TestChatsInDescriptions` checks the
+descriptions, `TestReadSessionsWithoutFiles` checks `ReadSessions` does nothing
+without an indexer, and `TestAround` pins the window: a short line, a match in
+the middle, at either end, and characters of more than one byte.
+
 `TestAttachmentText` sends a fake MCP tool's call through a real
 `dispatch.Dispatcher` with `AttachmentText` wired in. The tool saves files in
 the attachments folder during the call and names them in its result. The table
@@ -992,6 +1054,12 @@ tool stays off without a searcher or without `[index] folders`.
 - **The indexer's rules, not a copy.** The file tools call `index.Check`,
   `Walk` and `ReadText`, so a new skip rule reaches search and the tools at
   once, and the model can never read a file search would refuse.
+- **The chats as files, not a new tool.** Two tools that list and read chats
+  would each add a schema to every prompt that offers them, and code to keep in
+  step with the transcript format. The file tools already read, list, grep and
+  page, under the indexer's rules; one more folder costs a line in their
+  descriptions. The chats stay out of the index, so no old chat crowds a
+  file's excerpts in search.
 - **Web search built in, not an MCP server.** SearXNG answers one GET with JSON.
   The MCP wrapper for it would add Node.js, an npm package and a child process
   per start; `web.go` is one file of Go.
