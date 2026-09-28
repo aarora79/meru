@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/aarora79/meru/internal/config"
 )
@@ -54,6 +55,36 @@ func (ix *Indexer) Folders() []string {
 // that the file tool methods read without a lock.
 func (ix *Indexer) ReadAlso(dir string) {
 	ix.readOnly = append(ix.readOnly, filepath.Clean(dir))
+}
+
+// chatsExt is the extension of Meru's session transcripts, JSON Lines.
+const chatsExt = ".jsonl"
+
+// ReadChats adds dir, the folder of Meru's session transcripts, as
+// ReadAlso does, and lets Check, Walk and ReadText read the .jsonl files in
+// it as text. The file tools read the past chats this way.
+//
+// .jsonl stays off the kinds list, so Scan and the watcher skip it
+// everywhere, and so do the file tools in every other folder: people keep
+// large JSON Lines data sets beside their notes and code, and the owner
+// wants none of them in the index. Only this one folder, which Scan never
+// sees, reads them. Call it before any file tool call, as ReadAlso asks.
+func (ix *Indexer) ReadChats(dir string) {
+	ix.ReadAlso(dir)
+	ix.chats = filepath.Clean(dir)
+}
+
+// kindIn returns the kind of the file at p, found under root, as kindOf
+// does, except that a .jsonl file under the ReadChats folder is code. root
+// comes from Roots, with symlinks resolved, so the chats folder is
+// resolved too before the two are compared.
+func (ix *Indexer) kindIn(root, p string) (kind, reason string) {
+	if ix.chats != "" && strings.EqualFold(filepath.Ext(p), chatsExt) {
+		if r, err := filepath.EvalSymlinks(ix.chats); err == nil && r == root {
+			return KindCode, ""
+		}
+	}
+	return kindOf(p)
 }
 
 // Checked is what Check learns about one path.
@@ -249,7 +280,7 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error) {
 	if err != nil || reason != "" {
 		return Text{}, reason, err
 	}
-	kind, why := kindOf(p)
+	kind, why := ix.kindIn(root, p)
 	if why != "" {
 		return Text{}, why, nil
 	}

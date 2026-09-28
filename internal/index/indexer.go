@@ -94,6 +94,7 @@ type Indexer struct {
 	folders   []string // the configured folders, "~" expanded, cleaned
 
 	readOnly []string      // folders the file tools may read but Scan never indexes; see ReadAlso
+	chats    string        // the read-only folder of session transcripts, where .jsonl reads as text; see ReadChats
 	ignore   []pattern     // [index] ignore, compiled
 	maxBytes int64         // max_file_mb in bytes
 	lim      limits        // chunk size and overlap in characters

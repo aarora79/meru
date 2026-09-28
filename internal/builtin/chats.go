@@ -21,15 +21,18 @@ const sessionsLabel = "past chats with the user, one JSONL file per chat"
 // ReadSessions lets list_folder, grep and read_file read dir, the folder
 // that holds the session transcripts, under the same rules as the other
 // folders they read: no symlink followed, secret and binary files skipped,
-// and the [index] max_file_mb cap. The indexer's ReadAlso adds it, so Scan
+// and the [index] max_file_mb cap. The indexer's ReadChats adds it, so Scan
 // and the watcher never see it and nothing in it reaches the store.
+// ReadChats also lets the tools read .jsonl files, but in this folder
+// alone: in every other folder they stay skipped, as the indexer skips
+// them.
 //
 // dir sits under the hidden ~/.meru, and the hidden rule would refuse it
 // inside an [index] folder. The rules apply from the folder a path sits in
 // downwards, though, so as a folder of its own dir is readable, and a
 // hidden file inside it is still skipped.
 //
-// merud calls it once at startup, before any tool call, as ReadAlso asks.
+// merud calls it once at startup, before any tool call, as ReadChats asks.
 // Without it, or with no indexer, the tools don't reach the chats. It is
 // a method rather than a parameter of New, as UseSearch is, so the tests
 // that build Tools without a sessions folder don't change.
@@ -38,7 +41,7 @@ func (t *Tools) ReadSessions(dir string) {
 		return
 	}
 	t.sessionsDir = filepath.Clean(dir)
-	t.files.ReadAlso(t.sessionsDir)
+	t.files.ReadChats(t.sessionsDir)
 }
 
 // isSessions reports whether root, a folder as the indexer's Roots gives

@@ -272,15 +272,26 @@ downloaded and the mail attachments the `google` server saved, under the same
 rules: no symlinks, no hidden or secret files, the size cap. Nothing in the
 folder reaches the store or search, so a web page or an attachment can't reach
 a later turn through search. `New` runs once at startup, before any tool call,
-because the methods read the list without a lock. `builtin.ReadSessions` adds
-`~/.meru/sessions` the same way, so the file tools can read the past chats.
+because the methods read the list without a lock. **`ReadChats(dir)`** adds a folder the same way,
+and `builtin.ReadSessions` calls it with `~/.meru/sessions`, so the file tools
+can read the past chats.
 That folder sits under the hidden `~/.meru`, and it stays readable: `Check`
 and `Walk` apply the skip rules from the folder a path sits in downwards, never
 to the folders above it. A hidden file inside it is still skipped, and the
-rest of `~/.meru` sits in no folder, so `Check` refuses it. `.jsonl`, JSON
-Lines, is in `kinds` as code, like `.json`, so the chats read as text.
-`TestReadAlsoUnderHiddenFolder` checks all of this, and that `Scan` and
-`IndexPaths` store nothing from the folder.
+rest of `~/.meru` sits in no folder, so `Check` refuses it.
+
+The chats are JSON Lines files, `.jsonl`, and `kinds` leaves that extension
+out, so `Scan`, `IndexPaths` and the watcher skip it in every `[index]`
+folder: people keep large JSON Lines data sets beside their notes and code,
+and none of them should reach the index. `ReadChats` records its folder in
+`ix.chats`, and `kindIn` reads a `.jsonl` file as code only when its root is
+that folder; for any other path it returns what `kindOf` does. `skipReason`
+and `ReadText` call `kindIn`, since both know the root. So the file tools read
+`.jsonl` in the chats folder alone, and skip it as unsupported everywhere else,
+the output folder included. One field and one function do it, with no
+per-folder table of file types. `TestReadChats` checks all of this: a chat
+reads, a `.jsonl` file in an `[index]` folder or a plain `ReadAlso` folder
+stays skipped, and `Scan` and `IndexPaths` store no `.jsonl` file.
 
 **`Folders()`** returns the `[index] folders` alone, without what `ReadAlso`
 added. `search_files` names these in its description, since search reaches

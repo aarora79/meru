@@ -457,9 +457,9 @@ recall put in its prompt, out of more than two hundred, and told the user it
 had no access to past conversations.
 
 `merud` calls `ReadSessions` once at startup with the folder. It hands the
-folder to `index.Indexer.ReadAlso`, as `New` does with the output folder, so
-the tools read it under every indexer rule and `Scan` and the watcher never
-see it. Nothing in it reaches the store or search. It is a method rather than
+folder to `index.Indexer.ReadChats`, which adds it as `ReadAlso` adds the
+output folder, so the tools read it under every indexer rule and `Scan` and
+the watcher never see it. Nothing in it reaches the store or search. It is a method rather than
 a parameter of `New`, like `UseSearch`, so the tests that build `Tools`
 without a sessions folder don't change.
 
@@ -468,8 +468,10 @@ name that starts with a dot. The indexer applies its rules from the folder a
 path sits in downwards, though, never to the folders above it. So the
 sessions folder is readable as a folder of its own, a hidden file inside it,
 such as `.draft.jsonl`, is still skipped, and `~/.meru/config.toml`, outside
-every folder the tools read, stays refused. The indexer reads `.jsonl` as
-code, the way it reads `.json`.
+every folder the tools read, stays refused. The chats are `.jsonl` files,
+which the indexer skips as unsupported; `ReadChats` makes that one folder the
+exception, so a `.jsonl` file in an `[index]` folder stays skipped by search
+and the file tools alike (see [index](index.md)).
 
 `isSessions` tells the sessions folder apart among `index.Indexer.Roots`. The
 roots come with symbolic links resolved, so it resolves the folder too before
@@ -920,7 +922,9 @@ still refuses an absolute path and `..` and still asks first, that
 description mentions the saved filename.
 
 `chats_test.go` builds an `[index]` folder and a sessions folder under a
-hidden `.meru` in a temp folder, with made-up chats about raised garden beds.
+hidden `.meru` in a temp folder, with made-up chats about raised garden beds
+and a `.jsonl` file in the `[index]` folder, which `grep` and `read_file` must
+skip.
 `TestChatsListed` checks `list_folder` names the sessions folder with its label
 and lists the chats but not a hidden file. `TestChatsGrepAndRead` greps the
 chats, finds a word deep in a long answer line, checks that `grep` with no path

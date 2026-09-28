@@ -47,6 +47,9 @@ func newChatTree(t *testing.T) (*Tools, chatTree) {
 		`Add a layer of compost each spring.` + strings.Repeat(" Mulch keeps the soil damp.", 40) + `"}`
 	files := map[string]string{
 		"notes/beds.md": "# Beds\n\nTwo raised beds by the fence.\n",
+		// A JSON Lines file in an [index] folder: the tools skip it there,
+		// as the indexer does, and read .jsonl in the sessions folder alone.
+		"notes/harvest.jsonl": `{"bed":"raised bed one","kg":2}` + "\n",
 		".meru/sessions/2026/09/2026-09-17T141502-7f3a.jsonl": `{"ts":"2026-09-17T14:15:02Z","type":"user","text":"how deep should a raised bed be?"}` + "\n" + long + "\n",
 		".meru/sessions/2026/09/2026-09-20T081000-b2c4.jsonl": `{"ts":"2026-09-20T08:10:00Z","type":"user","text":"which raised bed gets the most sun?"}` + "\n",
 		".meru/sessions/2026/09/.draft.jsonl":                 `{"type":"user","text":"compost draft"}` + "\n",
@@ -146,6 +149,20 @@ func TestChatsGrepAndRead(t *testing.T) {
 			args:    `{"pattern":"raised bed"}`,
 			want:    []string{"1 matching line in 1 file", "beds.md:3: "},
 			notWant: []string{".jsonl"},
+		},
+		{
+			name:    "grep in the [index] folder skips its .jsonl file",
+			tool:    Grep,
+			args:    `{"pattern":"raised bed","path":` + jsonPath(tr.notes) + `}`,
+			want:    []string{"1 matching line in 1 file", "beds.md:3: "},
+			notWant: []string{"harvest.jsonl"},
+		},
+		{
+			name:    "read_file refuses a .jsonl file in the [index] folder",
+			tool:    ReadFile,
+			args:    `{"path":` + jsonPath(filepath.Join(tr.notes, "harvest.jsonl")) + `}`,
+			isError: true,
+			want:    []string{"file type Meru doesn't read"},
 		},
 		{
 			name: "read_file opens a chat",
