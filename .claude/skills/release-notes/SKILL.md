@@ -291,6 +291,9 @@ Once the user confirms:
 - **Follow the repo's writing rules** (AGENTS.md): the `writing` skill, no AI
   or assistant credit anywhere, no emojis, no cloud vendor names, nothing
   offered for sale, and no personal data from the owner's files or benchmark.
+- **Use full GitHub links** (`https://github.com/aarora79/meru/blob/vX.Y.Z/...`),
+  never relative ones: the same file is the GitHub release's text, where a
+  relative link doesn't resolve.
 - **Publish benchmark numbers only as totals**, as `docs/benchmarks/results.md`
   does; never a task's text.
 - **Never build a GitHub login from a display name.** Take it from a pull
