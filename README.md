@@ -4,7 +4,7 @@
 
 **A personal AI assistant that runs entirely on your own machine.**
 
-[![Download for macOS](https://img.shields.io/badge/Download-macOS-2F6B4F?logo=apple&style=for-the-badge)](https://aarora79.github.io/meru/#install)
+[![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
 Meru.app needs `merud` and Ollama running beside it. Either installer below sets
@@ -39,8 +39,8 @@ first for any address that no search or question of yours gave.
 
 ## Install on a Mac
 
-**In a window:** download `Meru-vX.Y.Z-macos-arm64.dmg` from the
-[latest release](https://github.com/aarora79/meru/releases/latest), open it, and
+**In a window:** [download the Mac installer](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg), a disk image for Macs with
+Apple silicon, open it, and
 right-click "Install Meru.app", then choose Open (Meru isn't signed by Apple).
 It walks you through nine steps: Meru, Ollama and the models, the folders Meru
 reads, web search in Docker, skills and commands, Gmail and Calendar, your name,

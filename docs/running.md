@@ -203,7 +203,7 @@ Install a release, or build Meru from source. A release needs no Go.
 
 On a Mac with Apple silicon, the easiest way in is the disk image on the
 [latest release](https://github.com/aarora79/meru/releases/latest):
-`Meru-vX.Y.Z-macos-arm64.dmg`. Open it and run "Install Meru.app". Meru isn't
+`Meru-vX.Y.Z-macos-arm64.dmg`, which [this link](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg) downloads. Open it and run "Install Meru.app". Meru isn't
 signed by Apple, so the first time, right-click the app, choose Open, then Open
 again; "Read me first.txt" on the disk image says the same.
 
