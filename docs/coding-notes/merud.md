@@ -648,7 +648,7 @@ switch can change it. It asks the engine's `Info` for the Ollama version
 and the models it holds, and waits at most 3 seconds. A runtime that doesn't
 answer leaves the list empty and says why in `Err`.
 
-`info` also fills `Choices` from `config.KnownModels()`, the three models we
+`info` also fills `Choices` from `config.KnownModels()`, the models we
 tried as the answer model. For each, `Pulled` (GET `/api/tags`) says whether
 Ollama has it, and for one it has, `Details` gives Ollama's own list of what it
 can do; one it lacks keeps the list from `known.go`. `Tiers` names `main` and

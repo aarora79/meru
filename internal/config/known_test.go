@@ -8,7 +8,8 @@ import (
 )
 
 // TestKnownModels checks that each known model has every field the
-// Settings shows, that the names are the three we tried, and that a
+// Settings shows, that the names are the ones we tried, smallest first,
+// that each profile's main model is on the list, and that a
 // caller's change to the list doesn't reach the next caller.
 func TestKnownModels(t *testing.T) {
 	list := KnownModels()
@@ -22,14 +23,17 @@ func TestKnownModels(t *testing.T) {
 			t.Errorf("%s: capabilities %v lack completion", m.Name, m.Capabilities)
 		}
 	}
-	want := []string{"hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M", "gemma3:12b", "qwen3.6:35b"}
+	want := []string{"hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M", "gemma3:12b", "gemma4:26b-a4b-it-qat",
+		"qwen3.6:35b", "gemma4:26b-mxfp8", "qwen3.6:35b-a3b-mxfp8"}
 	if !slices.Equal(names, want) {
 		t.Errorf("names = %v, want %v", names, want)
 	}
-	// The lite profile's main model must stay on the list, so Settings
-	// can switch back to it.
-	if !slices.Contains(names, profiles["lite"].Main) {
-		t.Errorf("the lite main model %q isn't known", profiles["lite"].Main)
+	// Each profile's main model must stay on the list, so Settings can
+	// switch back to it.
+	for _, p := range []string{"lite", "full"} {
+		if !slices.Contains(names, profiles[p].Main) {
+			t.Errorf("the %s main model %q isn't known", p, profiles[p].Main)
+		}
 	}
 
 	list[0].Name = "changed"
@@ -47,6 +51,9 @@ func TestFindKnownModel(t *testing.T) {
 		tools bool
 	}{
 		{"qwen3.6:35b", true, true},
+		{"qwen3.6:35b-a3b-mxfp8", true, true},
+		{"gemma4:26b-mxfp8", true, true},
+		{"gemma4:26b-a4b-it-qat", true, true},
 		{"gemma3:12b", true, false},
 		{"hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M", true, true},
 		{"qwen3.8:27b", false, false},

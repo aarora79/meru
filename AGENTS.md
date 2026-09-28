@@ -69,7 +69,7 @@ Decided (details in ARCHITECTURE.md):
 
 - **Agent loop:** hand-written. No agent framework.
 - **Models:** Ollama on loopback. `lite` profile by default (MiniCPM5-2B +
-  `nomic-embed-text`); `full` profile uses `qwen3.8:27b` + `qwen3-embedding:0.6b`.
+  `nomic-embed-text`); `full` profile uses `qwen3.6:35b-a3b-mxfp8` + `qwen3-embedding:0.6b`.
 - **Storage:** JSONL session transcripts are the source of truth; SQLite via
   `ncruces/go-sqlite3` (no cgo) is the rebuildable index. Vectors sit in a plain
   table and vec1, bundled with the driver, supplies the distance function.

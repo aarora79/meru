@@ -39,9 +39,9 @@ func TestCheckMachine(t *testing.T) {
 	}{
 		{8, 1, "", true},
 		{16, 1, "", false},
-		{32, 1, "", false},
-		{48, 2, "qwen3.6:35b-a3b-mxfp8", false},
-		{64, 2, "qwen3.6:35b-a3b-mxfp8", false},
+		{32, 2, "gemma4:26b-a4b-it-qat", false},
+		{48, 2, "gemma4:26b-a4b-it-qat", false},
+		{64, 3, "qwen3.6:35b-a3b-mxfp8", false},
 	}
 	for _, tt := range tests {
 		t.Run(strconv.FormatInt(tt.memGB, 10)+" GB", func(t *testing.T) {

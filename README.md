@@ -238,14 +238,17 @@ Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tie
 
 - **`lite` (default):** MiniCPM5-2B and `nomic-embed-text`, about 2 GB of downloads.
   Needs 16 GB of RAM and runs on a CPU, faster with a GPU or Apple silicon.
-- **`full`:** Qwen 3.8 27B and `qwen3-embedding:0.6b`. Needs Apple silicon with
-  32 GB (64 GB is comfortable), or a GPU with about 24 GB of memory.
+- **`full`:** `qwen3.6:35b-a3b-mxfp8`, a 38 GB mixture of experts, and
+  `qwen3-embedding:0.6b`. Needs Apple silicon with 64 GB or more.
 
-For the answer model we tried three: MiniCPM5-2B, `qwen3.6:35b`, the one we use
-now, and `gemma3:12b`, which can't call tools. The desktop app's Settings, Models
-lists them with their `ollama pull` and `ollama run` commands and switches
-between them without a restart. [docs/running.md](docs/running.md#models-we-tried-for-answers)
-has what we measured.
+We ran three answer models through a benchmark of 50 private tasks, three
+times each. `qwen3.6:35b-a3b-mxfp8` answered fastest, a median of 6.8 s a task,
+and passed 133 of 150; `gemma4:26b-mxfp8` passed 138 but took 16.3 s. A Mac
+with 32 or 48 GB can run `gemma4:26b-a4b-it-qat` (15 GB) instead. The desktop
+app's Settings, Models lists the models we tried with their `ollama pull` and
+`ollama run` commands and switches between them without a restart.
+[docs/running.md](docs/running.md#which-model-for-which-mac) says which model
+suits which Mac.
 
 On a cloud server, Meru still sends no prompt to a model provider, but your data
 lives on that server. The promise is "a machine you control"; where it sits is your

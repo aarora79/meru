@@ -828,15 +828,15 @@ function drawModels(body, m) {
   drawSets(body, m);
 
   body.append(el("h2", "section-head", "Models you can use for answers"));
-  body.append(el("p", "", "We tried these three as the answer model in September 2026, on an M4 Max with 64 GB, " +
+  body.append(el("p", "", "We tried these as the answer model in September 2026, on an M4 Max with 64 GB, " +
     "with MiniCPM5-2B as the router. Any of them can write the answers. Use for answers unloads the model that " +
     "answers now, loads this one, and saves it in config.toml, so merud starts with it; the next question uses it, " +
     "with no restart. The router and the embedding model stay as they are."));
   const cards = el("div", "cards");
   for (const c of m.choices || []) cards.append(modelCard(body, c));
   body.append(cards);
-  body.append(el("p", "card-note", "We also tried qwen3.8:27b (17 GB, dense). Its answers were the best grounded, " +
-    "but a question that read web pages took about five minutes, so it isn't offered here."));
+  body.append(el("p", "card-note", "We also tried qwen3.8:27b (17 GB, dense). In our benchmark it passed about as " +
+    "many tasks as the models above but took about eight times as long per question, so it isn't offered here."));
 
   body.append(el("h2", "section-head", "To change them by hand"));
   body.append(el("p", "", "Set profile, or the models under [models], in " + m.config_path +

@@ -27,9 +27,10 @@ type Recommendation struct {
 // Recommendations returns the table, smallest Mac first. It builds a new
 // slice on each call, so a caller can't change the table.
 //
-// TODO(model-defaults): 32 GB Macs get lite for now. A smaller Gemma 4
-// build may fit there once we confirm Ollama lists tools for it; the
-// model-defaults work settles which one.
+// The memory lines come from the benchmark in ARCHITECTURE.md, "Models we
+// tried": Qwen 3.6 35B in MXFP8 peaked at about 47 GB, more than a 48 GB
+// Mac lets the GPU use, so it starts at 64 GB. The 15 GB Gemma 4 build
+// fits from 32 GB.
 func Recommendations() []Recommendation {
 	return []Recommendation{
 		{
@@ -40,12 +41,20 @@ func Recommendations() []Recommendation {
 			Download:    "about 2 GB",
 		},
 		{
-			MinMemoryGB: 48,
+			MinMemoryGB: 32,
+			Profile:     "lite",
+			Main:        "gemma4:26b-a4b-it-qat",
+			Label:       "Lite with Gemma 4 26B for answers",
+			Why:         "Gemma 4 26B writes the answers and calls tools. This 4-bit build takes about 15 GB, so it fits on 32 GB beside your other apps.",
+			Download:    "about 2 GB for lite, plus about 15 GB for the answer model",
+		},
+		{
+			MinMemoryGB: 64,
 			Profile:     "lite",
 			Main:        "qwen3.6:35b-a3b-mxfp8",
 			Label:       "Lite with Qwen 3.6 35B for answers",
-			Why:         "Qwen 3.6 35B writes the answers: it calls tools, reads pictures and thinks. Only about 3B of its parameters work on each token, so it answers fast on 48 GB or more.",
-			Download:    "about 2 GB for lite, plus the answer model; the screen shows its size once the download starts",
+			Why:         "Qwen 3.6 35B writes the answers: it calls tools, reads pictures and thinks. Only about 3B of its parameters work on each token, so it answers fast, but it needs 64 GB.",
+			Download:    "about 2 GB for lite, plus about 38 GB for the answer model",
 		},
 	}
 }

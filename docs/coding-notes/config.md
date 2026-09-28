@@ -305,8 +305,12 @@ with `==`, so the tests compare its three model names one by one.
 
 ### known.go
 
-`KnownModels()` lists the three models we tried as the answer model:
-MiniCPM5-2B, `gemma3:12b` and `qwen3.6:35b`. Each `KnownModel` holds the name
+`KnownModels()` lists the six models we offer as the answer model, smallest
+first: MiniCPM5-2B, `gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`,
+`gemma4:26b-mxfp8` and `qwen3.6:35b-a3b-mxfp8`. The good and bad lines of the
+last two quote our September 2026 benchmark (ARCHITECTURE.md, "Models we
+tried"); `gemma4:26b-a4b-it-qat`'s bad line says we haven't benchmarked it.
+`qwen3.8:27b` stays off the list: it took several times as long per task. Each `KnownModel` holds the name
 Ollama gives it, a label, its size on disk, one line on what it did well and one
 on what it did badly, and the capabilities Ollama's `/api/show` listed for it.
 `merud` sends the list to the desktop app's Settings, Models, which offers each
@@ -317,9 +321,9 @@ it doesn't find.
 The list returns a new slice on each call, as `BuiltinTools()` does, so no
 caller can change it for the next. It names models in code, as the profiles do,
 because it records what we tested; `config.toml` still says which model runs.
-`TestKnownModels` checks every field is set, that the names are the three we
-tried, and that the lite profile's main model is one of them, so Settings can
-always switch back to it.
+`TestKnownModels` checks every field is set, that the names are the six we
+offer in order, and that the main model of each profile, `lite` and `full`, is
+one of them, so Settings can always switch back to it.
 
 ### recommend.go
 
@@ -327,8 +331,9 @@ always switch back to it.
 memory. Each `Recommendation` names a profile, an optional answer model that
 overrides the profile's, as `[models] main` does, a label, one line on why it fits,
 and about how much it downloads. `Recommend(memGB)` returns the last row whose
-`MinMemoryGB` the Mac meets: today every Mac gets `lite`, and 48 GB or more adds
-`qwen3.6:35b-a3b-mxfp8` for answers. `Models()` lists the models a row needs, each
+`MinMemoryGB` the Mac meets. Every Mac gets `lite`; 32 GB or more adds
+`gemma4:26b-a4b-it-qat` for answers, and 64 GB or more `qwen3.6:35b-a3b-mxfp8`
+instead. `Models()` lists the models a row needs, each
 once, which is the list the installer pulls.
 
 ```go
@@ -345,8 +350,8 @@ func Recommend(memGB int) Recommendation {
 ```
 
 The table sits here, next to `profiles`, so a change of default models changes
-one file and the installer follows. A TODO marks the 32 GB row, which waits for a
-smaller model that calls tools. `TestRecommend` checks each size of Mac.
+one file and the installer follows. The memory lines come from the benchmark's
+peak memory. `TestRecommend` checks each size of Mac.
 
 ### loopback.go
 

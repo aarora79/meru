@@ -56,16 +56,31 @@ Then recommend models by memory. The figures come from ARCHITECTURE.md,
 
 | Memory | Recommend | Download |
 | --- | --- | --- |
-| under 48 GB, 16 GB included | the `lite` profile: MiniCPM5-2B answers and routes, `nomic-embed-text` searches your files | about 2 GB |
-| 48 GB or more | `lite`, plus `qwen3.6:35b` as the answer model | about 25 GB |
+| under 32 GB, 16 GB included | the `lite` profile: MiniCPM5-2B answers and routes, `nomic-embed-text` searches your files | about 2 GB |
+| 32 GB | `lite`, or `lite` plus `gemma4:26b-a4b-it-qat` as the answer model | about 2 GB, or about 17 GB |
+| 48 GB | `lite`, plus `gemma4:26b-a4b-it-qat` as the answer model | about 17 GB |
+| 64 GB or more | the `full` profile: `qwen3.6:35b-a3b-mxfp8` answers, MiniCPM5-2B routes, `qwen3-embedding:0.6b` searches | about 40 GB |
 
-Tell the person what each choice costs:
+The model's file, what Ollama holds for a 32,768-token context, and the router
+must fit beside macOS and the person's apps. On the 64 GB test Mac, Ollama held
+36 to 52 GiB for `qwen3.6:35b-a3b-mxfp8` and 27 to 40 GiB for
+`gemma4:26b-mxfp8`, so neither suits a 48 GB Mac. Ollama loaded
+`gemma4:26b-a4b-it-qat` in 15 GB with a 32,768-token context, about 18 GB with
+the router, which leaves a 32 GB Mac room for its apps.
 
-- **MiniCPM5-2B** (1.6 GB) is fast and routes questions well, but in our test it
-  made up command flags and misread what tools sent back.
-- **`qwen3.6:35b`** (23 GB) answered the test question in about 26 seconds at
-  about 78 tokens a second, with tools. It now and then writes a tool call
-  Ollama can't read; `merud` retries.
+Tell the person what each choice costs. The figures come from a benchmark of
+50 private tasks, run three times per model:
+
+- **MiniCPM5-2B** (1.6 GB) is fast and routes questions well, but in an earlier
+  test it made up command flags and misread what tools sent back.
+- **`qwen3.6:35b-a3b-mxfp8`** (38 GB) answered fastest: a median of 6.8 seconds
+  a task, and 133 of 150 passed.
+- **`gemma4:26b-mxfp8`** (28 GB), for 64 GB or more, passed 138 of 150 and the
+  most tasks that need several tools, but took a median of 16.3 seconds a task.
+  Offer it to someone who asks Meru for work across mail, calendar and files and
+  will wait.
+- **`gemma4:26b-a4b-it-qat`** (15 GB) is Gemma 4 at 4 bits. It calls tools, but
+  we haven't benchmarked it.
 - **`gemma3:12b`** (8.1 GB) reads pictures and answers from what it knows, but
   Ollama gives it no tools, so it can't read mail, notes, the web or files.
   Offer it only to someone who wants that.
@@ -130,14 +145,17 @@ Pull the models chosen in step 1. Ask first, and say how large each is:
 ```sh
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 ollama pull nomic-embed-text
-ollama pull qwen3.6:35b          # only for 48 GB or more
-ollama pull gemma3:12b           # only if they asked for it
+ollama pull gemma4:26b-a4b-it-qat   # 32 or 48 GB, if they chose it
+ollama pull qwen3.6:35b-a3b-mxfp8   # 64 GB or more: the full profile
+ollama pull qwen3-embedding:0.6b    # 64 GB or more: the full profile
+ollama pull gemma3:12b              # only if they asked for it
 ```
 
 Check with `ollama list`.
 
-**More context for `qwen3.6:35b`.** Ollama loads each model with the context
-length in `OLLAMA_CONTEXT_LENGTH`, and we run the 35B model with 32768. With
+**More context for the larger models.** Ollama loads each model with the
+context length in `OLLAMA_CONTEXT_LENGTH`, and we run the models of 15 GB and
+more with 32768. With
 the Ollama app, ask first, then:
 
 ```sh
@@ -218,8 +236,9 @@ in System Settings, Privacy & Security.
 ## 5. Configure and start
 
 **First setup.** Ask the person to run `meru setup` in their Terminal. It checks
-Ollama, pulls the models of the profile they pick (answer `lite`; the models are
-already there, so it finishes fast), asks which folders to index, and writes
+Ollama, pulls the models of the profile they pick (answer `lite`, or `full` on
+64 GB or more; the models are already there, so it finishes fast), asks which
+folders to index, and writes
 `~/.meru/config.toml`. Its web-search step wants SearXNG in Docker; type `s` to
 skip it if they don't run Docker. It offers the tool servers one at a time;
 they can skip all of them now.
@@ -240,9 +259,11 @@ meru tools
 **About you.** Offer `meru setup user`, run by the person in their Terminal. It
 asks their name, email and how they like answers, and saves each as a memory.
 
-**The answer model.** If they pulled `qwen3.6:35b`, open Meru.app, go to
-Settings, Models, and click **Use for answers** on its card. `merud` takes the
-new model with no restart. Without the app, set `main = "qwen3.6:35b"` under
+**The answer model.** On 64 GB or more, the person answers `full` at `meru
+setup`'s Profile question, and `qwen3.6:35b-a3b-mxfp8` answers from the start.
+If they pulled `gemma4:26b-a4b-it-qat`, open Meru.app, go to Settings, Models,
+and click **Use for answers** on its card. `merud` takes the new model with no
+restart. Without the app, set `main = "gemma4:26b-a4b-it-qat"` under
 `[models]` in `~/.meru/config.toml` and restart `merud` with
 `launchctl kickstart -k gui/$(id -u)/com.meru.merud`.
 

@@ -38,31 +38,67 @@ ollama pull nomic-embed-text                         # embeddings, for searching
 
 `meru setup` (step 8) can run these downloads for you once Meru is built.
 
-For the `full` profile (32 GB of RAM or more, or a GPU with about 24 GB), also pull:
+For the `full` profile (Apple silicon with 64 GB or more), also pull:
 
 ```sh
-ollama pull qwen3.8:27b
+ollama pull qwen3.6:35b-a3b-mxfp8   # 38 GB, writes the answers
 ollama pull qwen3-embedding:0.6b
 ```
 
+### Which model for which Mac
+
+The answer model, `[models] main`, writes every answer and picks the tools.
+Pick it by the Mac's memory. The model's file, what Ollama holds for a
+32,768-token context, and the router (about 3 GB) must fit beside macOS and
+your apps:
+
+| Memory | Answer model | Download |
+| --- | --- | --- |
+| 16 GB | MiniCPM5-2B, the `lite` default | about 2 GB with `nomic-embed-text` |
+| 32 GB | `lite`, or `gemma4:26b-a4b-it-qat` | 15 GB more |
+| 48 GB | `gemma4:26b-a4b-it-qat` | 15 GB more |
+| 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | 38 GB, or 28 GB |
+
+Ollama loaded `gemma4:26b-a4b-it-qat` in 15 GB with a 32,768-token context,
+about 18 GB with the router, which leaves a 32 GB Mac room for its apps. On the
+64 GB test Mac, Ollama held 36 to 52 GiB for a `qwen3.6:35b-a3b-mxfp8` call
+and 27 to 40 GiB for a `gemma4:26b-mxfp8` call, and let the GPU use 51.8 GiB,
+so neither fits a 48 GB Mac. The installer offers the model for your Mac's
+memory.
+
 ### Models we tried for answers
 
-The answer model, `[models] main`, writes every answer and picks the tools. In
-September 2026 we tried three on an M4 Max with 64 GB and Ollama 0.34.0, with
-MiniCPM5-2B kept as the router. The test question asked how to use `btop`, and
-made the model search the web and read pages over several rounds.
+In September 2026 we ran a benchmark of 50 tasks on an M4 Max with 64 GB and
+Ollama 0.34.0, with MiniCPM5-2B as the router and thinking off. The tasks come
+from the owner's own files, mail, calendar and repositories, so they aren't
+published. Each model ran every task three times:
+
+| Answer model | Passed | Median time per task | Median time to first token | Tokens a second |
+| --- | --- | --- | --- | --- |
+| `qwen3.6:35b-a3b-mxfp8` (38 GB) | 133 of 150 | 6.8 s | 4.1 s | 63 |
+| `gemma4:26b-mxfp8` (28 GB) | 138 of 150 | 16.3 s | 15.6 s | 57 |
+| `qwen3.8:27b` (17 GB) | 135 of 150 | 55.9 s | 34.6 s | 17 |
+
+`gemma4:26b-mxfp8` passed the most tasks that need several tools, 28 of 36
+against 22 for `qwen3.6:35b-a3b-mxfp8`, but on a question that offers tools
+Ollama reads Gemma 4's whole tool list again, so its first word comes about
+11 s later. ARCHITECTURE.md, "Models we tried", has the figures per kind of
+task and the reason.
+
+An earlier test asked one question, how to use `btop`, which made the model
+search the web and read pages over several rounds:
 
 | Model | Size | What Ollama lists | What we saw |
 | --- | --- | --- | --- |
 | MiniCPM5-2B, the `lite` default | 1.6 GB | tools, thinking | fast, about 55 s, but it made up command flags and misread what the tools sent back; a good router |
-| `qwen3.6:35b` | 23 GB | vision, tools, thinking | about 26 s at about 78 tokens a second; now and then a tool call Ollama can't read, or a reply with thinking and no text, which `merud` retries; the one we use now |
+| `qwen3.6:35b` | 23 GB | vision, tools, thinking | about 26 s at about 78 tokens a second; now and then a tool call Ollama can't read, or a reply with thinking and no text, which `merud` retries |
 | `gemma3:12b` | 8.1 GB | vision | reads pictures and answers from what it knows; Ollama gives it no tools |
 
-We also tried `qwen3.8:27b` (17 GB), the `full` profile's answer model. Its
-answer was the best grounded, with real flags from the man page, but the
-question took about five minutes: it read 80,000 tokens of web pages, and a dense
-27B model takes a long time to read a prompt. `qwen3.6:35b` is a mixture of experts: about 3B
-of its 36B parameters work on each token, so it runs faster.
+`qwen3.8:27b` (17 GB, dense) gave the best-grounded answer to that question,
+with real flags from the man page, but took about five minutes: it read 80,000
+tokens of web pages, and a dense 27B model reads a prompt slowly. The
+mixture-of-experts models run about 3B of their parameters on each token, so
+they run faster.
 
 To download a model, and to try it in a terminal before Meru uses it:
 
@@ -70,15 +106,15 @@ To download a model, and to try it in a terminal before Meru uses it:
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 ollama run hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 
-ollama pull qwen3.6:35b
-ollama run qwen3.6:35b
+ollama pull gemma4:26b-a4b-it-qat
+ollama run gemma4:26b-a4b-it-qat
 
-ollama pull gemma3:12b
-ollama run gemma3:12b
+ollama pull qwen3.6:35b-a3b-mxfp8
+ollama run qwen3.6:35b-a3b-mxfp8
 ```
 
 `ollama run` opens a chat in the terminal; type `/bye` to leave it. `ollama show
-gemma3:12b` lists what a model can do under Capabilities.
+gemma4:26b-a4b-it-qat` lists what a model can do under Capabilities.
 
 **Switch the answer model** in the desktop app: Settings, Models, "Use for
 answers" on the model's card. `merud` unloads the model that answers now, loads
@@ -89,7 +125,7 @@ restart `merud`:
 
 ```toml
 [models]
-main = "qwen3.6:35b"
+main = "gemma4:26b-a4b-it-qat"
 ```
 
 **Compare answer models with model sets.** Name each model you want to try in
@@ -143,7 +179,7 @@ Models in the desktop app, or in [models] main in config.toml.
 
 **Give the larger models more context.** `OLLAMA_CONTEXT_LENGTH` sets how many
 tokens of context Ollama loads a model with, and the `CONTEXT` column of `ollama
-ps` shows what each loaded model got. For `qwen3.6:35b` and `qwen3.8:27b` we set
+ps` shows what each loaded model got. For the models of 15 GB and more we set
 it to 32768. On macOS, where the Ollama app starts the server, run this, then
 quit and start Ollama:
 
@@ -177,7 +213,7 @@ step that fails says why and offers Retry and Skip.
 
 | Step | What it does |
 | --- | --- |
-| Check this Mac | reads the chip, macOS, memory and free disk, and suggests models: `lite` on every Mac, plus `qwen3.6:35b-a3b-mxfp8` for answers with 48 GB or more |
+| Check this Mac | reads the chip, macOS, memory and free disk, and suggests models: `lite` on every Mac, plus `gemma4:26b-a4b-it-qat` for answers with 32 GB or more, or `qwen3.6:35b-a3b-mxfp8` with 64 GB or more |
 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`; clears macOS's quarantine mark from them if you tick the box; adds `~/.local/bin` to `PATH` in `~/.zshrc` if you tick that box |
 | Ollama and the models | installs Ollama with Homebrew, or from Ollama's site when there is no Homebrew, starts it, and downloads the models with a progress bar |
 | Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |

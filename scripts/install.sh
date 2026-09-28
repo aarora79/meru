@@ -59,6 +59,17 @@ fi
 case "$version" in v[0-9]*.[0-9]*.[0-9]*) ;; *) fail "couldn't find the release to install (got '$version')" ;; esac
 # What this Mac will get, so the banner can list it before anything starts.
 mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+# The answer model to offer for this much memory, from docs/running.md,
+# "Which model for which Mac": the model's file plus what Ollama holds for
+# a 32,768-token context must fit beside the router, macOS and your apps.
+# 64 GB or more gets the full profile's answer model and embedding model;
+# 32 to 63 GB gets Gemma 4 at 4 bits; less gets the lite models alone.
+answer_model=""; answer_size=""; embed_model=""; pulled_answer=0
+if [ "$mem_gb" -ge 64 ]; then
+  answer_model="qwen3.6:35b-a3b-mxfp8"; answer_size="38 GB"; embed_model="qwen3-embedding:0.6b"
+elif [ "$mem_gb" -ge 32 ]; then
+  answer_model="gemma4:26b-a4b-it-qat"; answer_size="15 GB"
+fi
 has_ollama=0; command -v ollama >/dev/null 2>&1 && has_ollama=1
 has_brew=0; command -v brew >/dev/null 2>&1 && has_brew=1
 
@@ -78,7 +89,12 @@ else
   echo "    - Ollama: install it yourself from https://ollama.com/download"
 fi
 echo "    - the lite models, about 2 GB: MiniCPM5-2B and nomic-embed-text"
-[ "$mem_gb" -ge 48 ] && echo "    - qwen3.6:35b, 23 GB, a stronger answer model (this Mac has $mem_gb GB)"
+if [ -n "$embed_model" ]; then
+  echo "    - the full profile's models for this Mac's $mem_gb GB: $answer_model, $answer_size,"
+  echo "      to write the answers, and $embed_model, about 0.6 GB, for search"
+elif [ -n "$answer_model" ]; then
+  echo "    - $answer_model, $answer_size, a stronger answer model for this Mac's $mem_gb GB"
+fi
 echo "    - meru setup, which asks its own questions: your folders and about you"
 echo "    - merud, started now and at every login"
 echo
@@ -162,11 +178,28 @@ if command -v ollama >/dev/null 2>&1; then
     ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
     ollama pull nomic-embed-text
   fi
-  if [ "$mem_gb" -ge 48 ] && ask "Also download qwen3.6:35b (23 GB), a stronger answer model?"; then
-    ollama pull qwen3.6:35b
-    echo "Pick it later in Meru.app under Settings, Models, Use for answers."
+  if [ -n "$embed_model" ] && ask "Also download the full profile's models, $answer_model ($answer_size) and $embed_model (about 0.6 GB)?"; then
+    ollama pull "$answer_model"
+    ollama pull "$embed_model"
+    pulled_answer=1
+  elif [ -z "$embed_model" ] && [ -n "$answer_model" ] && ask "Also download $answer_model ($answer_size), a stronger answer model?"; then
+    ollama pull "$answer_model"
+    pulled_answer=1
   fi
 fi
+
+# how_to_use says how to make the downloaded model the one that answers.
+# The full profile names it, so meru setup sets it; any other model is a
+# pick in Settings, which writes [models] main in config.toml.
+how_to_use() {
+  if [ -n "$embed_model" ]; then
+    echo "To answer with $answer_model, pick the full profile: answer 'full' at meru setup's Profile question."
+  else
+    echo "To answer with $answer_model: open Meru.app, Settings, Models, and click Use for answers on its card,"
+    echo "or set main = \"$answer_model\" under [models] in ~/.meru/config.toml and restart merud."
+  fi
+}
+if [ "$pulled_answer" = 1 ]; then how_to_use; fi
 
 say "Setting up Meru"
 # meru setup asks its own questions, so it needs a terminal even when every
@@ -195,3 +228,4 @@ echo "Ask a question:   meru \"what can you do?\""
 echo "Chat:             meru chat"
 [ "$arch" = "arm64" ] && echo "Desktop app:      open Meru.app"
 echo "Gmail, Calendar and Drive: https://github.com/$repo/blob/main/docs/google-setup.md"
+if [ "$pulled_answer" = 1 ]; then how_to_use; fi

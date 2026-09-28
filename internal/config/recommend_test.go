@@ -15,9 +15,10 @@ func TestRecommend(t *testing.T) {
 	}{
 		{8, ""},
 		{16, ""},
-		{32, ""}, // lite until the model-defaults work picks a model for 32 GB
-		{47, ""},
-		{48, "qwen3.6:35b-a3b-mxfp8"},
+		{31, ""},
+		{32, "gemma4:26b-a4b-it-qat"},
+		{48, "gemma4:26b-a4b-it-qat"},
+		{63, "gemma4:26b-a4b-it-qat"},
 		{64, "qwen3.6:35b-a3b-mxfp8"},
 		{128, "qwen3.6:35b-a3b-mxfp8"},
 	}
