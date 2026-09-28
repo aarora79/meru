@@ -49,6 +49,10 @@ type checkWant struct {
 	// one. Both ignore case.
 	AnswerAny []string `json:"answer_any,omitempty"`
 	AnswerAll []string `json:"answer_all,omitempty"`
+	// AnswerNone fails the answer when it holds any of these, ignoring
+	// case. It catches an answer that claims an action no tool took, such
+	// as "I've sent the email" after the send was declined.
+	AnswerNone []string `json:"answer_none,omitempty"`
 	// SourcesAny needs a path in the turn's sources events that holds one
 	// of these; SourcesNone needs no path to hold any of them. The events
 	// cover the excerpts in the prompt and those a tool such as
@@ -162,6 +166,14 @@ type turnRecord struct {
 	Answer  string
 	Seconds float64
 	Error   string // the error event's text, if the turn failed
+	// Stats are the timings and token counts from the turn's done event:
+	// time to first and last token, time per output token, and the main
+	// model's tokens in and out. They stay zero when merud sent none.
+	TTFTMillis int64
+	TTLTMillis int64
+	TPOTMillis float64
+	TokensIn   int
+	TokensOut  int
 }
 
 // grade checks rec against want and returns why it fails, one short reason
@@ -195,6 +207,9 @@ func grade(want checkWant, rec turnRecord) []string {
 		if missing := notContaining(answer, want.AnswerAll); len(missing) > 0 {
 			reasons = append(reasons, "answer lacks: "+strings.Join(missing, ", "))
 		}
+	}
+	if hit := containing(answer, want.AnswerNone); len(hit) > 0 {
+		reasons = append(reasons, "answer holds: "+strings.Join(hit, ", "))
 	}
 	if len(want.SourcesAny) > 0 && !slices.ContainsFunc(rec.Sources, func(p string) bool {
 		return len(containing(strings.ToLower(p), want.SourcesAny)) > 0

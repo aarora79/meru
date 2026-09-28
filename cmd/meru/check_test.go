@@ -129,6 +129,9 @@ func TestGrade(t *testing.T) {
 		{"answer any fail", checkWant{AnswerAny: []string{"1.27.1", "price"}}, rec, []string{"answer lacks all of: 1.27.1, price"}},
 		{"answer all pass", checkWant{AnswerAll: []string{"FIRM", "go.dev"}}, rec, nil},
 		{"answer all fail", checkWant{AnswerAll: []string{"firm", "http", "Amit"}}, rec, []string{"answer lacks: http, Amit"}},
+		{"answer none pass", checkWant{AnswerNone: []string{"i've sent", "has been sent"}}, rec, nil},
+		{"answer none fail", checkWant{AnswerNone: []string{"nope", "Transaction costs", "GO.DEV"}}, rec,
+			[]string{"answer holds: Transaction costs, GO.DEV"}},
 		{"sources any pass", checkWant{SourcesAny: []string{"coase"}}, rec, nil},
 		{"sources any fail", checkWant{SourcesAny: []string{"naur", "theory"}}, rec, []string{"no source matches any of: naur, theory"}},
 		{"sources any, no sources", checkWant{SourcesAny: []string{"x"}}, turnRecord{}, []string{"no source matches any of: x"}},
@@ -160,6 +163,10 @@ type fakeTurns struct {
 }
 
 func (f *fakeTurns) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
+	// meru check asks once which model set is in use; that isn't a question.
+	if req.Op == rpc.OpModels {
+		return emit(rpc.Event{Type: rpc.EventModels, Models: &rpc.ModelsInfo{Active: "test-set", Main: "test-model"}})
+	}
 	f.requests = append(f.requests, req)
 	session := req.Session
 	if session == "" {
@@ -361,7 +368,8 @@ func TestCheckReadsToolSources(t *testing.T) {
 
 func TestCheckJSONAndOnly(t *testing.T) {
 	f := &fakeTurns{answers: map[string][]rpc.Event{
-		"q1": {{Type: rpc.EventRoute, Route: "direct"}, {Type: rpc.EventToken, Text: "yes"}},
+		"q1": {{Type: rpc.EventRoute, Route: "direct"}, {Type: rpc.EventToken, Text: "yes"},
+			{Type: rpc.EventDone, DurationMillis: 1500, TTFTMillis: 400, TTLTMillis: 1450, TPOTMillis: 12.5, TokensIn: 900, TokensOut: 3}},
 	}}
 	sock := startServer(t, f.handle)
 	path := writeChecks(t,
@@ -380,8 +388,13 @@ func TestCheckJSONAndOnly(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
 		t.Fatalf("stdout %q isn't one JSON record: %v", out.String(), err)
 	}
-	if r.ID != "one" || !r.Pass || r.Answer != "yes" || r.Seconds <= 0 {
+	if r.ID != "one" || !r.Pass || r.Answer != "yes" || r.Seconds != 1.5 {
 		t.Errorf("record = %+v", r)
+	}
+	// The record carries the model set in use and the done event's stats.
+	if r.ModelSet != "test-set" || r.Model != "test-model" || r.TTFTMillis != 400 || r.TTLTMillis != 1450 ||
+		r.TPOTMillis != 12.5 || r.TokensIn != 900 || r.TokensOut != 3 {
+		t.Errorf("record stats = %+v, want test-set, test-model and the done event's numbers", r)
 	}
 }
 

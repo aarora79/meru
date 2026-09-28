@@ -37,7 +37,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app installer installer-app dmg router-eval pick-eval figures check release clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app installer installer-app dmg router-eval pick-eval bench bench-report figures check release clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -73,6 +73,12 @@ router-eval: ## Score the router on labelled questions against the local Ollama
 
 pick-eval: ## Score the skill pick on labelled questions against the local Ollama
 	go test -tags integration -count=1 -v -run TestPickEval ./internal/agent/
+
+bench: ## Run the private benchmark in bench/ against each model set (docs/benchmarks/README.md)
+	SETS="$(SETS)" REPEATS="$(REPEATS)" ONLY="$(ONLY)" bash scripts/bench.sh
+
+bench-report: ## Write docs/benchmarks/results.md from the results in bench/results/
+	go run ./cmd/meru check report bench/results/*.jsonl > docs/benchmarks/results.md
 
 figures: ## Redraw the figures in 100.md, 200.md and ARCHITECTURE.md from the HTML pages (needs Chrome)
 	sh docs/architecture/img/render.sh

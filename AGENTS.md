@@ -190,8 +190,8 @@ cmd/
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
                      `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
-                     `check` (check.go, checkfile.go), `run --json` (run.go), the approval
-                     prompt (approve.go) and the terminal styles (look.go)
+                     `check` and `check report` (check.go, checkfile.go, checkreport.go), `run --json`
+                     (run.go), the approval prompt (approve.go) and the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
                      Info.plist and Meru.icns for Meru.app
   meru-installer/    the Mac installer's window, "Install Meru.app" (Wails v3, build tag
@@ -248,8 +248,10 @@ test/e2e/            end-to-end tests: real binaries against the fake Ollama and
 deploy/              launchd/ and systemd/ service files; observability/ holds the local
                      Grafana stack (compose.yaml), its provisioning and the dashboards
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
-                     installer; dmg-readme.txt, the read-me on the installer's disk image
+                     installer; dmg-readme.txt, the read-me on the installer's disk image;
+                     bench.sh, which `make bench` runs
 dist/                git-ignored; `make release` packs a release here
+bench/               git-ignored; the private benchmark: tasks.jsonl, results/ and home/
 docs/
   architecture/      100.md, 200.md and the HTML pages 100.html, 200.html and 300.html;
                      index.html sends old links to 100.html; img/ holds the figures
@@ -258,6 +260,8 @@ docs/
   lld.md             the low-level design
   running.md         how to build and run Meru
   faq/               one page per "how do I…" question, listed in index.md
+  benchmarks/        the benchmark: README.md (how it works, how to build your own dataset) and
+                     results.md, which `make bench-report` writes; the dataset stays in bench/
   observability.md   the local Grafana stack: setup, dashboards, command-line queries
   ci.md              what each check in CI does
   fast-router.md     how the one-token router works
@@ -441,6 +445,7 @@ make installer-app    # the Mac installer, with its payload, in "bin/Install Mer
 make dmg              # pack the installer in dist/Meru-dev-macos-arm64.dmg (Apple silicon)
 make release VERSION=v0.4.1 DRY_RUN=1  # build and pack a release in dist/; drop DRY_RUN to publish
 make router-eval      # score the router on labelled questions against local Ollama
+make bench            # the private benchmark in bench/, each model set; make bench-report writes the page
 make pick-eval        # score the skill pick on labelled questions against local Ollama
 make figures          # redraw the figures in ARCHITECTURE.md, 100.md and 200.md from the HTML (needs Chrome)
 go run ./cmd/merud    # run the daemon from source
