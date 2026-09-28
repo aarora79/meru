@@ -39,7 +39,10 @@ switch or a config change, and compare with the last run.
    ```
 
 `--save` appends the results to `~/.meru/checks-results/<date>.jsonl`, with each
-whole answer, so you can compare runs.
+whole answer, its timings and the model set in use, so you can compare runs.
+`meru check report` turns saved results into a page of tables and charts, one
+column per model set. To compare every model set on a set of your own
+questions, see [the benchmark](../benchmarks/README.md).
 
 `meru check` declines every tool call that would ask first, since nobody
 watches it. A question that needs such a tool fails.

@@ -50,6 +50,18 @@ type checkResult struct {
 	Sources []string `json:"sources,omitempty"`
 	Seconds float64  `json:"seconds"`
 	Answer  string   `json:"answer"`
+	// ModelSet and Model name the model set in use and its answer model
+	// when the run started, as merud's models op reported them; both are
+	// empty when merud didn't say.
+	ModelSet string `json:"model_set,omitempty"`
+	Model    string `json:"model,omitempty"`
+	// The turn's stats from its done event: time to first token, time to
+	// last token, time per output token, and the main model's tokens.
+	TTFTMillis int64   `json:"ttft_ms,omitempty"`
+	TTLTMillis int64   `json:"ttlt_ms,omitempty"`
+	TPOTMillis float64 `json:"tpot_ms,omitempty"`
+	TokensIn   int     `json:"tokens_in,omitempty"`
+	TokensOut  int     `json:"tokens_out,omitempty"`
 }
 
 // checkCmd runs `meru check [file] [--only id,category] [--json] [--save]`.
@@ -160,6 +172,7 @@ func readChecks(path string, named bool) ([]checkQuestion, error) {
 func runChecks(ctx context.Context, socket string, questions []checkQuestion, started time.Time,
 	report func(checkResult) error) ([]checkResult, error) {
 	sessions := map[string]string{} // session group → merud's session ID
+	set, model := activeModels(ctx, socket)
 	var results []checkResult
 	for _, q := range questions {
 		rec, sessionID, denied, err := askCheck(ctx, socket, q.Question, sessions[q.Session])
@@ -174,7 +187,9 @@ func runChecks(ctx context.Context, socket string, questions []checkQuestion, st
 			Run: started.Format(time.RFC3339), ID: q.ID, Category: q.Category, Question: q.Question,
 			Group: q.Session, Session: sessionID, Pass: len(reasons) == 0, Reasons: reasons,
 			Denied: denied, Route: rec.Route, Tools: rec.Tools, Sources: rec.Sources,
-			Seconds: rec.Seconds, Answer: rec.Answer,
+			Seconds: rec.Seconds, Answer: rec.Answer, ModelSet: set, Model: model,
+			TTFTMillis: rec.TTFTMillis, TTLTMillis: rec.TTLTMillis, TPOTMillis: rec.TPOTMillis,
+			TokensIn: rec.TokensIn, TokensOut: rec.TokensOut,
 		}
 		results = append(results, r)
 		if err := report(r); err != nil {
@@ -182,6 +197,22 @@ func runChecks(ctx context.Context, socket string, questions []checkQuestion, st
 		}
 	}
 	return results, nil
+}
+
+// activeModels asks merud which model set is in use and which model
+// answers, so each result says what produced it. A merud that can't say,
+// such as one older than the models op, gives two empty strings: the
+// results still count, with no model on them.
+func activeModels(ctx context.Context, socket string) (set, model string) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpModels}, nil) {
+		if err != nil {
+			return "", ""
+		}
+		if ev.Type == rpc.EventModels && ev.Models != nil {
+			set, model = ev.Models.Active, ev.Models.Main
+		}
+	}
+	return set, model
 }
 
 // askCheck asks merud one question, in the session named by session or in
@@ -233,6 +264,8 @@ func askCheck(ctx context.Context, socket, question, session string) (turnRecord
 			answer.WriteString(ev.Text)
 		case rpc.EventDone:
 			tookMillis = ev.DurationMillis
+			rec.TTFTMillis, rec.TTLTMillis, rec.TPOTMillis = ev.TTFTMillis, ev.TTLTMillis, ev.TPOTMillis
+			rec.TokensIn, rec.TokensOut = ev.TokensIn, ev.TokensOut
 		case rpc.EventError:
 			rec.Error = ev.Error
 		}
