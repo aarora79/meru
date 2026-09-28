@@ -66,6 +66,10 @@ func TestSummarize(t *testing.T) {
 		"```mermaid\nxychart-beta\n    title \"Questions passed (%)\"\n    x-axis [\"qwen\", \"gemma:26b\"]\n    y-axis 0 --> 100\n    bar [75.0, 0.0]\n```",
 		"| qwen | `qwen:35b` | 2 | 4 | 75% | 50% | 100% |",
 		"| t3 | 50% (1/2) | — |",
+		// The defaults table follows the installer's table; no set here
+		// ran those models.
+		"## Default model for each Mac\n",
+		"| 64 GB or more | `qwen3.6:35b-a3b-mxfp8` | not run | — | — | — |\n",
 		// The trade-off charts: a coloured point per set, and a key.
 		"```mermaid\nquadrantChart\n    title Passed by first token: 0 to 10 s, 0% to 100%\n",
 		"    qwen: [0.100, 0.750] color: #1f77b4, radius: 7\n",

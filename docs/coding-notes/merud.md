@@ -1298,6 +1298,12 @@ web     0/1
   `xychart-beta` block, which GitHub draws, so the page needs no image files.
   It puts the best set first: the highest pass rate, and the lowest time. It
   sorts a copy, so the tables below each chart keep their own order.
+  `defaultsTable` opens the page with the answer model each size of Mac gets.
+  It reads `config.Recommendations`, the table the Mac installer picks from and
+  `install.sh` follows, so the page shows what the installers do. A row with no
+  answer model of its own takes its profile's, from `config.ProfileModels`. It
+  adds the pass rate and median times of the set here that ran that model, or
+  "not run".
   `tradeoffChart` draws pass rate against a median time, once for the first
   token and once for the last, so you can see both at once. Mermaid has no
   plain scatter chart, so it writes a `quadrantChart`, whose axes run from 0
