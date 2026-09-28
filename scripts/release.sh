@@ -6,8 +6,8 @@
 # What it does, in order:
 #   1. refuses to start unless the repo and the version are ready;
 #   2. runs `make check`;
-#   3. builds meru and merud for five platforms, and Meru.app for this Mac,
-#      with the version stamped in;
+#   3. builds meru and merud for five platforms, and Meru.app and the Mac
+#      installer's disk image for this Mac, with the version stamped in;
 #   4. packs them into dist/ with a SHA256SUMS file;
 #   5. tags the commit, pushes the tag and creates the GitHub release.
 #
@@ -70,7 +70,7 @@ if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
   fail "run releases on a Mac with Apple silicon; Meru.app builds only for the machine that builds it"
 fi
 
-for tool in git go gh ditto shasum zip plutil; do
+for tool in git go gh ditto shasum zip plutil hdiutil; do
   command -v "$tool" >/dev/null || fail "$tool isn't installed"
 done
 
@@ -133,13 +133,13 @@ mkdir -p dist/stage
 echo "release: build meru and merud for $platforms"
 make build LDFLAGS="$ldflags"
 
-echo "release: build Meru.app"
-make desktop-app LDFLAGS="$ldflags"
-
-# Finder's Get Info reads the version from Info.plist, which says 0.4 in
-# the repo. ${version#v} drops the leading v: v0.4.1 becomes 0.4.1.
-plutil -replace CFBundleShortVersionString -string "${version#v}" bin/Meru.app/Contents/Info.plist
-plutil -replace CFBundleVersion -string "${version#v}" bin/Meru.app/Contents/Info.plist
+# make dmg builds Meru.app, then the Mac installer with Meru.app, meru and
+# merud inside it, and packs the installer in
+# dist/Meru-$version-macos-arm64.dmg. VERSION reaches make from the
+# environment, and the Makefile writes it into each app's Info.plist,
+# which says 0.4 in the repo, so Finder's Get Info shows the release.
+echo "release: build Meru.app and the installer's disk image"
+make dmg LDFLAGS="$ldflags"
 
 # ---- 4. Pack ----
 
@@ -180,7 +180,7 @@ rm -rf dist/stage
 
 # One line per file: its SHA-256 and its name. Installers check the files
 # they download with: shasum -a 256 -c SHA256SUMS --ignore-missing
-(cd dist && shasum -a 256 *.tar.gz *.zip > SHA256SUMS)
+(cd dist && shasum -a 256 *.tar.gz *.zip *.dmg > SHA256SUMS)
 
 echo "release: built in dist/:"
 ls -l dist
@@ -207,6 +207,6 @@ gh release create "$version" \
   --title "Meru $version" \
   --verify-tag \
   "${notes_args[@]}" \
-  dist/*.tar.gz dist/*.zip dist/SHA256SUMS scripts/install.sh
+  dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh
 
 echo "release: published https://github.com/$repo/releases/tag/$version"
