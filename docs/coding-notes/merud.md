@@ -1304,9 +1304,10 @@ web     0/1
   to 1: it scales time from 0 to the slowest set rounded up to 10 s, and pass
   rate from the lowest set rounded down to 10% up to 100%, and puts both
   ranges in the title. Each set keeps one colour from `pointColors` in both
-  charts. Two sets close together can hide each other's labels, so a key
-  under each chart names every colour, with an emoji dot from `pointDots`,
-  since a Markdown table can't colour its text.
+  charts. Each point is labelled with its number, since the names of two sets
+  close together print over each other, and a key under each chart maps the
+  number to the set, with an emoji dot from `pointDots` for its colour, since a
+  Markdown table can't colour its text.
   The page opens with a notice that the numbers come from private data, since
   `make bench-report` writes it into `docs/benchmarks/results.md`.
 - `make bench` runs `scripts/bench.sh`, which runs `meru check` over

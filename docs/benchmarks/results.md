@@ -76,42 +76,42 @@ quadrantChart
     title Passed by first token: 0 to 40 s, 60% to 100%
     x-axis "Sooner" --> "Later time to first token"
     y-axis "Fewer passed" --> "More passed"
-    gemma-moe: [0.391, 0.800] color: #1f77b4, radius: 7
-    qwen-dense: [0.865, 0.750] color: #d62728, radius: 7
-    qwen-moe: [0.102, 0.717] color: #2ca02c, radius: 7
-    gemma-moe-q4: [0.440, 0.500] color: #ff7f0e, radius: 7
-    qwen-moe-q4: [0.139, 0.717] color: #9467bd, radius: 7
-    minicpm-lite: [0.289, 0.200] color: #8b5a2b, radius: 7
+    1: [0.391, 0.800] color: #1f77b4, radius: 7
+    2: [0.865, 0.750] color: #d62728, radius: 7
+    3: [0.102, 0.717] color: #2ca02c, radius: 7
+    4: [0.440, 0.500] color: #ff7f0e, radius: 7
+    5: [0.139, 0.717] color: #9467bd, radius: 7
+    6: [0.289, 0.200] color: #8b5a2b, radius: 7
 ```
 
-| | Model set | Passed | Median time to first token |
+| Point | Model set | Passed | Median time to first token |
 | --- | --- | ---: | ---: |
-| 🔵 | gemma-moe | 92% | 15.6 s |
-| 🔴 | qwen-dense | 90% | 34.6 s |
-| 🟢 | qwen-moe | 89% | 4.1 s |
-| 🟠 | gemma-moe-q4 | 80% | 17.6 s |
-| 🟣 | qwen-moe-q4 | 89% | 5.6 s |
-| 🟤 | minicpm-lite | 68% | 11.6 s |
+| 🔵 1 | gemma-moe | 92% | 15.6 s |
+| 🔴 2 | qwen-dense | 90% | 34.6 s |
+| 🟢 3 | qwen-moe | 89% | 4.1 s |
+| 🟠 4 | gemma-moe-q4 | 80% | 17.6 s |
+| 🟣 5 | qwen-moe-q4 | 89% | 5.6 s |
+| 🟤 6 | minicpm-lite | 68% | 11.6 s |
 
 ```mermaid
 quadrantChart
     title Passed by last token: 0 to 60 s, 60% to 100%
     x-axis "Sooner" --> "Later time to last token"
     y-axis "Fewer passed" --> "More passed"
-    gemma-moe: [0.270, 0.800] color: #1f77b4, radius: 7
-    qwen-dense: [0.903, 0.750] color: #d62728, radius: 7
-    qwen-moe: [0.109, 0.717] color: #2ca02c, radius: 7
-    gemma-moe-q4: [0.305, 0.500] color: #ff7f0e, radius: 7
-    qwen-moe-q4: [0.174, 0.717] color: #9467bd, radius: 7
-    minicpm-lite: [0.218, 0.200] color: #8b5a2b, radius: 7
+    1: [0.270, 0.800] color: #1f77b4, radius: 7
+    2: [0.903, 0.750] color: #d62728, radius: 7
+    3: [0.109, 0.717] color: #2ca02c, radius: 7
+    4: [0.305, 0.500] color: #ff7f0e, radius: 7
+    5: [0.174, 0.717] color: #9467bd, radius: 7
+    6: [0.218, 0.200] color: #8b5a2b, radius: 7
 ```
 
-| | Model set | Passed | Median time to last token |
+| Point | Model set | Passed | Median time to last token |
 | --- | --- | ---: | ---: |
-| 🔵 | gemma-moe | 92% | 16.2 s |
-| 🔴 | qwen-dense | 90% | 54.2 s |
-| 🟢 | qwen-moe | 89% | 6.5 s |
-| 🟠 | gemma-moe-q4 | 80% | 18.3 s |
-| 🟣 | qwen-moe-q4 | 89% | 10.4 s |
-| 🟤 | minicpm-lite | 68% | 13.1 s |
+| 🔵 1 | gemma-moe | 92% | 16.2 s |
+| 🔴 2 | qwen-dense | 90% | 54.2 s |
+| 🟢 3 | qwen-moe | 89% | 6.5 s |
+| 🟠 4 | gemma-moe-q4 | 80% | 18.3 s |
+| 🟣 5 | qwen-moe-q4 | 89% | 10.4 s |
+| 🟤 6 | minicpm-lite | 68% | 13.1 s |
 

@@ -268,8 +268,9 @@ var (
 )
 
 // tradeoffChart writes one Mermaid quadrantChart block, a point per model
-// set with its pass rate up the side and a time along the bottom, then a
-// key that names each point's colour with its numbers. Mermaid has no
+// set with its pass rate up the side and a time along the bottom, labelled
+// with its number, then a key that names each number and colour with the
+// set's figures. Mermaid has no
 // plain scatter chart; a quadrant chart places coloured points on two
 // axes, which is what this needs. Its axes run from 0 to 1, so the chart
 // scales each value: time from 0 to the slowest set rounded up to 10 s,
@@ -293,12 +294,15 @@ func tradeoffChart(title, timeName string, seconds func(setStats) float64, sets 
 	for i, s := range sets {
 		x := seconds(s) / xTop
 		y := (percent(s.Passed, s.Total) - yLow) / (100 - yLow)
-		fmt.Fprintf(&b, "    %s: [%.3f, %.3f] color: %s, radius: 7\n", s.Name, x, y, pointColors[i%len(pointColors)])
+		// Each point carries its number, not the set's name: names of sets
+		// that sit close together print over each other, and the key below
+		// maps the number to the name.
+		fmt.Fprintf(&b, "    %d: [%.3f, %.3f] color: %s, radius: 7\n", i+1, x, y, pointColors[i%len(pointColors)])
 	}
 	b.WriteString("```\n\n")
-	fmt.Fprintf(&b, "| | Model set | Passed | Median %s |\n| --- | --- | ---: | ---: |\n", timeName)
+	fmt.Fprintf(&b, "| Point | Model set | Passed | Median %s |\n| --- | --- | ---: | ---: |\n", timeName)
 	for i, s := range sets {
-		fmt.Fprintf(&b, "| %s | %s | %.0f%% | %.1f s |\n", pointDots[i%len(pointDots)], s.Name, percent(s.Passed, s.Total), seconds(s))
+		fmt.Fprintf(&b, "| %s %d | %s | %.0f%% | %.1f s |\n", pointDots[i%len(pointDots)], i+1, s.Name, percent(s.Passed, s.Total), seconds(s))
 	}
 	b.WriteString("\n")
 	return b.String()
