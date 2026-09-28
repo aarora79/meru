@@ -32,10 +32,12 @@ the commit first, and the script runs `make check` again before it builds.
 - Pick the version. The first release is `v0.4.1`: `v0.4.0` is a tag with no
   release, and `v0.5.0` belongs to the scheduler milestone in
   [ROADMAP.md](../ROADMAP.md).
-- To open the notes with a few lines of your own, write them in
-  `.scratchpad/release/v0.4.1.md`. Git ignores `.scratchpad/`, so the file
-  doesn't dirty the tree. GitHub adds the list of merged pull requests below
-  your lines. Without the file, the release gets GitHub's list alone.
+- Write the release notes with the `release-notes` skill in `.claude/skills/`.
+  It writes `docs/release-notes/v0.4.1.md`: what changed, what an upgrade
+  needs, the pull requests and the closed issues. Merge its pull request
+  before you run `make release`, which uses that file as the GitHub release's
+  text. Without the file, the release gets GitHub's list of merged pull
+  requests alone.
 
 ## What `make release` does
 
@@ -67,8 +69,8 @@ fails:
 
    Each archive opens to one folder named after the archive.
 5. **Publishing.** It makes an annotated tag, pushes it, and runs
-   `gh release create` with the files, your notes and GitHub's generated
-   notes.
+   `gh release create` with the files and `docs/release-notes/v0.4.1.md` as
+   the release's text.
 
 ### Try it first
 
@@ -114,7 +116,8 @@ strings bin/darwin-arm64/merud | grep -x v0.4.1
 
   ```sh
   gh release create v0.4.1 --repo aarora79/meru --title "Meru v0.4.1" \
-    --verify-tag --generate-notes dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS
+    --verify-tag --notes-file docs/release-notes/v0.4.1.md \
+    dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh
   ```
 
   To start over instead, delete the tag in both places with

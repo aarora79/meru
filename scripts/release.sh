@@ -102,14 +102,15 @@ if [ -z "$dry_run" ]; then
   gh auth status >/dev/null 2>&1 || fail "gh isn't signed in; run gh auth login"
 fi
 
-# The hand-written summary that opens the release notes. .scratchpad/ is
-# ignored by git, so writing it doesn't dirty the tree.
-notes=".scratchpad/release/$version.md"
+# The release notes, which the release-notes skill in .claude/skills/
+# writes and a pull request merges before the release. The same file is the
+# GitHub release's text, so the notes in the repository and on GitHub match.
+notes="docs/release-notes/$version.md"
 if [ -f "$notes" ]; then
-  echo "release: notes: $notes, then the notes GitHub generates"
+  echo "release: notes: $notes"
 else
-  echo "release: no summary at $notes; the release gets GitHub's generated notes only"
-  echo "release: to add one, write a few lines there and run this again"
+  echo "release: no notes at $notes; the release gets GitHub's generated notes"
+  echo "release: to add them, run the release-notes skill, merge its pull request, and run this again"
 fi
 
 # ---- 2. Run every check CI runs ----
@@ -202,11 +203,12 @@ git tag -a "$version" -m "Meru $version"
 git push origin "$version"
 echo "release: pushed tag $version; if the next step fails, docs/releasing.md says how to finish"
 
-# --verify-tag stops gh if the tag didn't reach GitHub. Notes from the file
-# come first; --generate-notes adds the list of merged pull requests.
+# --verify-tag stops gh if the tag didn't reach GitHub. The notes file
+# already lists the merged pull requests, so GitHub's generated list comes
+# in only when there is no file.
 notes_args=(--generate-notes)
 if [ -f "$notes" ]; then
-  notes_args+=(--notes-file "$notes")
+  notes_args=(--notes-file "$notes")
 fi
 gh release create "$version" \
   --repo "$repo" \
