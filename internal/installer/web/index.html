@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install Meru</title>
+  <!-- app.css comes from Meru.app's page: the fonts, the colours and the
+       buttons. installer.css lays out this page and adds dark mode. -->
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/installer.css">
+  <script type="module" src="/installer.js"></script>
+</head>
+<body>
+  <div class="installer">
+    <nav class="steps-rail" aria-label="Steps">
+      <div class="brand">
+        <img class="brand-logo" src="img/meru-logo.svg" alt="" width="30" height="30">
+        <span class="brand-text">
+          <span class="wordmark">Install Meru</span>
+          <span class="brand-version">A personal AI assistant that runs on your own computer</span>
+        </span>
+      </div>
+      <ol class="step-list" id="step-list"></ol>
+      <p class="rail-note" id="config-note"></p>
+    </nav>
+
+    <main class="stage" id="stage">
+      <header class="stage-head">
+        <p class="step-count" id="step-count"></p>
+        <h1 id="title">Welcome</h1>
+      </header>
+      <div class="stage-body" id="body"></div>
+      <section class="progress" id="progress" aria-live="polite" hidden>
+        <div class="bar" id="bar" hidden><div class="bar-fill" id="bar-fill"></div></div>
+        <pre class="log" id="log"></pre>
+      </section>
+      <p class="outcome" id="outcome" role="status" hidden></p>
+      <footer class="stage-foot" id="foot"></footer>
+    </main>
+  </div>
+</body>
+</html>

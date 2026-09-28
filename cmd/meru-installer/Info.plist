@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The bundle description `make installer-app` puts in bin/Install Meru.app. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Install Meru</string>
+  <key>CFBundleDisplayName</key>
+  <string>Install Meru</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.meru.installer</string>
+  <key>CFBundleIconFile</key>
+  <string>Meru</string>
+  <key>CFBundleExecutable</key>
+  <string>meru-installer</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.4</string>
+  <key>CFBundleVersion</key>
+  <string>0.4</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
+  <!-- macOS shows these when the Folders step counts the files in
+       Documents or Desktop. -->
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>The installer counts the files in Documents, so you can choose whether Meru reads them.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>The installer counts the files on the Desktop, so you can choose whether Meru reads them.</string>
+</dict>
+</plist>

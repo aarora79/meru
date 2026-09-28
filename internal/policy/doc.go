@@ -3,7 +3,7 @@
 // AGENTS.md, so the rules hold on every run, not only when a reviewer spots a
 // problem.
 //
-// The tests check four things:
+// The tests check five things:
 //
 //   - No Go file imports a cloud-model SDK, and go.mod requires none
 //     (non-negotiable 1, ARCHITECTURE.md "Privacy boundary").
@@ -17,6 +17,10 @@
 //     the store, the agent loop or any other package that runs in merud,
 //     and never set up the OpenTelemetry SDK. The desktop app also leaves
 //     out catalog, secrets and tui, and never uses Wails' updater.
+//   - The Mac installer (cmd/meru-installer with internal/installer) never
+//     reaches the engine, the store, the agent loop or the tool packages,
+//     starts programs only in internal/installer/run.go, and its allowlist
+//     names no shell, interpreter or downloader.
 //
 // The deny-lists live in testdata/*.txt, one entry per line, so that no Go
 // string literal in this package names a provider host. The URL check reads
