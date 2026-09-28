@@ -318,6 +318,15 @@ that asks for the web, and `""` for a call the model asked for. `Dispatch`
 copies it to the `tool_call` line and the row, and changes nothing else: the
 call takes the same path, with the same allowlist, approval and audit.
 
+### Incognito calls
+
+`Call.Incognito` marks a call from an incognito chat. `Dispatch` runs it like any
+other: allowlist, approval, the call, the metrics. Its `Append` writes to the
+chat's memory, since the chat has no file. When it builds the `tool_calls` row,
+it clears `Args` and `Result`, so the audit log says which tool ran, where, when,
+how long and how it ended, and nothing about what went in or came back. The span
+leaves both out even with `capture_content` on.
+
 ### cmd/merud/backends.go: the MCP backend
 
 `mcpBackend` wraps `*mcp.Pool` so it satisfies `Backend`. Each method is a line or

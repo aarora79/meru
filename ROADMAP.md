@@ -120,6 +120,8 @@ from a later milestone.
 - [x] Attachments through the attach button
 - [x] Attachments by drag and drop: drop any file on the window, and `merud`'s
   `attach_file` copies it to `~/meru-output/uploads/`; images go to a vision model
+- [x] The chat list, in both clients: delete a chat for good, chat folders, tags
+  that recall searches, and incognito chats that leave no transcript
 - [ ] Linux (WebKitGTK) and Windows (WebView2) builds in CI
 
 **Done when:** you open the app, ask a question that uses a tool, approve it in

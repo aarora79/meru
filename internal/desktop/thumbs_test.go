@@ -195,7 +195,7 @@ func TestAttachImages(t *testing.T) {
 	}
 
 	// The file gets its line; the image goes in Images, by full path.
-	if err := b.Send("", "Which plant is this?", ""); err != nil {
+	if err := b.Send("", "Which plant is this?", "", false); err != nil {
 		t.Fatal(err)
 	}
 	start := r.waitFor(t, "start", func(u Update) bool { return u.Kind == KindStart })
@@ -215,7 +215,7 @@ func TestAttachImages(t *testing.T) {
 	}
 
 	// Try again sends the same image, by the path the page got.
-	if err := b.Retry("", "Which plant is this?", "", []string{"~/meru-output/uploads/garden-bed.png"}); err != nil {
+	if err := b.Retry("", "Which plant is this?", "", []string{"~/meru-output/uploads/garden-bed.png"}, false); err != nil {
 		t.Fatal(err)
 	}
 	r.waitFor(t, "end", isEnd(2))
@@ -225,7 +225,7 @@ func TestAttachImages(t *testing.T) {
 	if len(asked) != 2 || asked[1].Images == nil || len(asked[1].Images.Paths) != 1 || asked[1].Images.Paths[0] != want {
 		t.Errorf("retry asked = %+v, want the question carrying %s again", asked, want)
 	}
-	if err := b.Retry("", "Which plant is this?", "", []string{"~/Downloads/garden-bed.png"}); err == nil {
+	if err := b.Retry("", "Which plant is this?", "", []string{"~/Downloads/garden-bed.png"}, false); err == nil {
 		t.Error("Retry took an image outside the uploads folder")
 	}
 

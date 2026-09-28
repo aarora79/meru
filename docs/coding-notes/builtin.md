@@ -314,6 +314,13 @@ has no session parameter, so `remember` reads it from the context with
 memory saves without asking, as ARCHITECTURE.md says. The call still goes through
 `dispatch`, so it lands in `tool_calls` and the transcript like any other.
 
+### remember in an incognito chat
+
+`remember` checks the call's session first, with `transcript.IsIncognito`, and
+refuses: an incognito chat keeps nothing. The agent doesn't offer `remember` in
+such a chat, but a model can still call a tool it wasn't offered, so the tool
+checks too.
+
 ### writefile.go
 
 `write_file` takes `path`, `content` and an optional `overwrite`. Its checks run

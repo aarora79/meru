@@ -9,10 +9,10 @@ Meru मेरु v0.4.3 lite · minic… ● connected
   │ The next question continues the    │
   │ chat you open. /chats <words>      │
   │ lists the chats whose first        │
-  │ question holds them.               │
+  │ question, folder or tags hold      │
+  │ them. d twice deletes a chat for   │
+  │ good.                              │
   ╰────────────────────────────────────╯
-
-
 
 
 
@@ -21,4 +21,4 @@ Meru मेरु v0.4.3 lite · minic… ● connected
 ╭──────────────────────────────────────╮
 │ Ask Meru anything…                   │
 ╰──────────────────────────────────────╯
-↑/↓ move · enter open · esc/q close …
+↑/↓ move · enter open · d delete …

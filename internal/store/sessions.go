@@ -68,10 +68,19 @@ type SessionHit struct {
 // since its last replay (see replayFile), so a second call reads nothing
 // but each file's size.
 //
+// A session whose file is gone, because the user deleted the chat and
+// merud stopped before it dropped the rows, or someone removed the file by
+// hand, loses its rows here too: see DeleteSession. The files are the
+// source of truth, and a chat that isn't there shouldn't come back in
+// recall.
+//
 // A missing sessionsDir means no sessions yet and returns 0. A file that
 // can't be read fails the replay; files replayed before it stay.
 func (s *Store) ReplaySessions(ctx context.Context, sessionsDir string) (int, error) {
 	total := 0
+	// seen holds the ID of every transcript the walk finds. A struct{}
+	// value takes no memory, so the map works as a set.
+	seen := map[string]struct{}{}
 	err := filepath.WalkDir(sessionsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if path == sessionsDir && errors.Is(err, fs.ErrNotExist) {
@@ -83,14 +92,75 @@ func (s *Store) ReplaySessions(ctx context.Context, sessionsDir string) (int, er
 		if !d.Type().IsRegular() || filepath.Ext(path) != ".jsonl" {
 			return nil
 		}
-		n, err := s.replayFile(ctx, strings.TrimSuffix(d.Name(), ".jsonl"), path)
+		id := strings.TrimSuffix(d.Name(), ".jsonl")
+		seen[id] = struct{}{}
+		n, err := s.replayFile(ctx, id, path)
 		total += n
 		return err
 	})
 	if err != nil {
 		return total, fmt.Errorf("replay sessions: %w", err)
 	}
+	if err := s.pruneSessions(ctx, seen); err != nil {
+		return total, fmt.Errorf("replay sessions: %w", err)
+	}
 	return total, nil
+}
+
+// pruneSessions deletes the rows of every session in the sessions table
+// whose ID isn't in seen, the transcripts the replay found.
+func (s *Store) pruneSessions(ctx context.Context, seen map[string]struct{}) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM sessions`)
+	if err != nil {
+		return fmt.Errorf("list sessions: %w", err)
+	}
+	var gone []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close() // the scan error is the one worth reporting
+			return fmt.Errorf("list sessions: %w", err)
+		}
+		if _, ok := seen[id]; !ok {
+			gone = append(gone, id)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("list sessions: %w", err)
+	}
+	for _, id := range gone {
+		if err := s.DeleteSession(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteSession deletes every row meru.db holds about one session: its
+// sessions row, its messages and their keyword entries, its summary's
+// keyword entry and vector, its turns rows and its tool_calls rows. merud
+// calls it after it deletes the chat's transcript, so the chat leaves
+// recall, search, `meru usage` and `meru log` along with the file. A
+// session with no rows is not an error. It fails when the database does.
+func (s *Store) DeleteSession(ctx context.Context, id string) error {
+	err := s.write(ctx, func(tx *sql.Tx) error {
+		if err := forgetSession(ctx, tx, id); err != nil {
+			return err
+		}
+		for _, q := range []string{
+			`DELETE FROM turns WHERE session = ?`,
+			`DELETE FROM tool_calls WHERE session = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, q, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete session %s: %w", id, err)
+	}
+	return nil
 }
 
 // ReplaySession brings the tables up to date with one session's transcript
@@ -115,6 +185,7 @@ func (s *Store) ReplaySession(ctx context.Context, sessionsDir, id string) (int,
 // stay as RFC 3339 text, the form the table holds.
 type sessionRow struct {
 	started, last, summary, summaryTS string
+	tags                              string // space-separated, from the newest meta line
 	turns                             int
 	bytes                             int64
 }
@@ -131,7 +202,10 @@ type sessionRow struct {
 //
 // User and assistant lines become messages. A summary line replaces the
 // session's summary and drops its vector, so the summarizer embeds the new
-// text. Tool lines stay out: tool_calls holds them.
+// text. A meta line replaces the session's tags. summary_fts indexes the
+// summary and the tags together, so a search for a tag finds the session
+// by keyword; the vector holds the summary alone. Tool lines stay out:
+// tool_calls holds them.
 //
 // The read and the writes share one write transaction, so two replays of
 // one file, such as the one after a turn and the one after a summary,
@@ -175,7 +249,7 @@ func (s *Store) replayFile(ctx context.Context, id, path string) (int, error) {
 			return nil // another replay got here first, or only a partial line is new
 		}
 
-		newSummary := false
+		newSummary, newTags := false, false
 		for _, l := range lines {
 			ts := l.TS.UTC().Format(time.RFC3339)
 			if row.started == "" {
@@ -198,22 +272,31 @@ func (s *Store) replayFile(ctx context.Context, id, path string) (int, error) {
 				row.summary, row.summaryTS = strings.TrimSpace(l.Text), ts
 				newSummary = true
 				added++
+			case transcript.TypeMeta:
+				row.tags = strings.Join(l.Tags, " ")
+				newTags = true
+				added++
 			}
 		}
-		if newSummary {
-			if err := replaceSummary(ctx, tx, id, row.summary); err != nil {
+		switch {
+		case newSummary:
+			if err := replaceSummary(ctx, tx, id, row.summary, row.tags); err != nil {
+				return err
+			}
+		case newTags:
+			if err := indexSummary(ctx, tx, id, row.summary, row.tags); err != nil {
 				return err
 			}
 		}
 		row.bytes = next
 		// The upsert covers a new row and an old one alike.
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO sessions (id, started, last, turns, summary, summary_ts, path, bytes)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO sessions (id, started, last, turns, summary, summary_ts, path, bytes, tags)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT (id) DO UPDATE SET last = excluded.last, turns = excluded.turns,
 			   summary = excluded.summary, summary_ts = excluded.summary_ts,
-			   path = excluded.path, bytes = excluded.bytes`,
-			id, row.started, row.last, row.turns, row.summary, row.summaryTS, path, row.bytes)
+			   path = excluded.path, bytes = excluded.bytes, tags = excluded.tags`,
+			id, row.started, row.last, row.turns, row.summary, row.summaryTS, path, row.bytes, row.tags)
 		if err != nil {
 			return fmt.Errorf("write session: %w", err)
 		}
@@ -229,8 +312,8 @@ func (s *Store) replayFile(ctx context.Context, id, path string) (int, error) {
 // session has no row yet.
 func loadSessionRow(ctx context.Context, tx *sql.Tx, id string) (row sessionRow, found bool, err error) {
 	err = tx.QueryRowContext(ctx,
-		`SELECT started, last, turns, summary, summary_ts, bytes FROM sessions WHERE id = ?`, id).
-		Scan(&row.started, &row.last, &row.turns, &row.summary, &row.summaryTS, &row.bytes)
+		`SELECT started, last, turns, summary, summary_ts, bytes, tags FROM sessions WHERE id = ?`, id).
+		Scan(&row.started, &row.last, &row.turns, &row.summary, &row.summaryTS, &row.bytes, &row.tags)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sessionRow{}, false, nil
 	}
@@ -260,18 +343,33 @@ func insertMessage(ctx context.Context, tx *sql.Tx, session, ts string, l transc
 	return nil
 }
 
-// replaceSummary puts a session's new summary into summary_fts and drops
-// the vector of the old one.
-func replaceSummary(ctx context.Context, tx *sql.Tx, session, summary string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM summary_fts WHERE session = ?`, session); err != nil {
-		return fmt.Errorf("index summary: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO summary_fts (session, summary) VALUES (?, ?)`, session, summary); err != nil {
-		return fmt.Errorf("index summary: %w", err)
+// replaceSummary puts a session's new summary, with its tags, into
+// summary_fts and drops the vector of the old summary.
+func replaceSummary(ctx context.Context, tx *sql.Tx, session, summary, tags string) error {
+	if err := indexSummary(ctx, tx, session, summary, tags); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM session_vec WHERE session = ?`, session); err != nil {
 		return fmt.Errorf("drop summary vector: %w", err)
+	}
+	return nil
+}
+
+// indexSummary replaces the session's summary_fts entry with its summary
+// and its tags on the next line, or leaves none when both are empty. A tag
+// change alone comes here and keeps the vector, which holds the summary
+// only.
+func indexSummary(ctx context.Context, tx *sql.Tx, session, summary, tags string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM summary_fts WHERE session = ?`, session); err != nil {
+		return fmt.Errorf("index summary: %w", err)
+	}
+	text := strings.TrimSpace(summary + "\n" + tags)
+	if text == "" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO summary_fts (session, summary) VALUES (?, ?)`, session, text); err != nil {
+		return fmt.Errorf("index summary: %w", err)
 	}
 	return nil
 }

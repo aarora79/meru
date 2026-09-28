@@ -170,6 +170,18 @@ report.
 Adding a slice field (`Sources`) made `Event` a type Go can't compare with
 `==`, so tests compare events with `reflect.DeepEqual`.
 
+### The chat list ops
+
+`OpSessionDelete`, `OpSessionMove` and `OpSessionTag` act on one chat, named by
+`Request.Session`. Move puts the folder name in `Text`; tag uses `Request.Tags`, a
+`*TagChange` with `Add` and `Remove`. It is a pointer for the same reason as
+`Policy`: a slice field would stop `Request` from comparing with `==`. Both answer
+with a `sessions` event holding the one chat. `OpChatFolders`,
+`OpChatFolderAdd`, `OpChatFolderRename` and `OpChatFolderRemove` answer with a
+`chat_folders` event, `Event.ChatFolders`. `Request.Incognito` on an `OpAsk` with
+no session starts an incognito chat, and `Event.Incognito` on the `session` event
+says it is one. `SessionInfo` gained `Folder` and `Tags`.
+
 ### settings.go
 
 The types of the desktop app's settings ops. `Scope` values name where a question

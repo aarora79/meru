@@ -1,7 +1,9 @@
 // This file holds the Bridge methods that read past conversations from
 // merud, Sessions and SessionTurns, and turn merud's replies into the
 // views the page draws: the rail's list grouped by day, and each past turn
-// in the same shape as a live one.
+// in the same shape as a live one. It also holds the methods behind the
+// rail's right-click menu: delete a chat, move it to a chat folder, tag
+// it, and manage the folders.
 
 package desktop
 
@@ -30,6 +32,11 @@ type SessionView struct {
 	// calendar.
 	Updated string `json:"updated"`
 	Group   string `json:"group"`
+	// Folder is the chat folder it sits in, "" for none, and Tags its
+	// tags. The rail shows a chat in a folder under that folder, not
+	// under its day.
+	Folder string   `json:"folder,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
 }
 
 // TurnView is one past turn, in the shape the page draws a live one.
@@ -77,9 +84,77 @@ func (b *Bridge) Sessions(ctx context.Context) ([]SessionView, error) {
 		if err != nil {
 			updated = time.Time{} // an unreadable time sorts into Earlier
 		}
-		out = append(out, SessionView{ID: s.ID, Title: s.Title, Updated: s.Updated, Group: groupOf(updated, now)})
+		out = append(out, SessionView{ID: s.ID, Title: s.Title, Updated: s.Updated, Group: groupOf(updated, now), Folder: s.Folder, Tags: s.Tags})
 	}
 	return out, nil
+}
+
+// DeleteSession deletes the chat id for good: merud removes its
+// transcript and its rows in meru.db. For an incognito chat, merud forgets
+// the history it holds, and the Bridge stops tracking it. The page asks
+// the user first. It fails when merud can't be reached or refuses.
+func (b *Bridge) DeleteSession(ctx context.Context, id string) error {
+	_, err := b.done(ctx, rpc.Request{Op: rpc.OpSessionDelete, Session: id})
+	if err == nil {
+		b.mu.Lock()
+		if b.incognito == id {
+			b.incognito = ""
+		}
+		b.mu.Unlock()
+	}
+	return err
+}
+
+// MoveSession puts chat id in the chat folder named folder, or in none
+// when folder is "". merud adds a new folder to the list. It fails when
+// merud can't be reached or refuses, as for a name that is too long.
+func (b *Bridge) MoveSession(ctx context.Context, id, folder string) error {
+	_, err := b.one(ctx, rpc.Request{Op: rpc.OpSessionMove, Session: id, Text: folder}, rpc.EventSessions)
+	return err
+}
+
+// TagSession adds the tags in add to chat id and takes out the ones in
+// remove. It fails when merud can't be reached or refuses a tag, which
+// must be one word of letters, digits, "-" and "_".
+func (b *Bridge) TagSession(ctx context.Context, id string, add, remove []string) error {
+	req := rpc.Request{Op: rpc.OpSessionTag, Session: id, Tags: &rpc.TagChange{Add: add, Remove: remove}}
+	_, err := b.one(ctx, req, rpc.EventSessions)
+	return err
+}
+
+// ChatFolders returns the chat folders, in the order the rail shows them.
+func (b *Bridge) ChatFolders(ctx context.Context) ([]string, error) {
+	return b.folderOp(ctx, rpc.Request{Op: rpc.OpChatFolders})
+}
+
+// AddChatFolder adds an empty chat folder and returns the new list.
+func (b *Bridge) AddChatFolder(ctx context.Context, name string) ([]string, error) {
+	return b.folderOp(ctx, rpc.Request{Op: rpc.OpChatFolderAdd, ID: name})
+}
+
+// RenameChatFolder renames the chat folder from to to, chats and all, and
+// returns the new list.
+func (b *Bridge) RenameChatFolder(ctx context.Context, from, to string) ([]string, error) {
+	return b.folderOp(ctx, rpc.Request{Op: rpc.OpChatFolderRename, ID: from, Text: to})
+}
+
+// RemoveChatFolder takes the chat folder name away and returns the new
+// list. Its chats go back to the day groups; merud deletes none of them.
+func (b *Bridge) RemoveChatFolder(ctx context.Context, name string) ([]string, error) {
+	return b.folderOp(ctx, rpc.Request{Op: rpc.OpChatFolderRemove, ID: name})
+}
+
+// folderOp sends a chat folder op and returns the list merud answers
+// with, never nil, so the page always gets an array.
+func (b *Bridge) folderOp(ctx context.Context, req rpc.Request) ([]string, error) {
+	ev, err := b.one(ctx, req, rpc.EventChatFolders)
+	if err != nil {
+		return nil, err
+	}
+	if ev.ChatFolders == nil {
+		return []string{}, nil
+	}
+	return ev.ChatFolders, nil
 }
 
 // SessionTurns returns every turn of session id, oldest first. It fails
@@ -191,7 +266,10 @@ func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
 		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile,
-		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave:
+		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave,
+		// Renaming or removing a chat folder rewrites every chat in it.
+		rpc.OpSessionDelete, rpc.OpSessionMove, rpc.OpSessionTag,
+		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove:
 		return true
 	}
 	return false

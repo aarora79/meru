@@ -58,6 +58,11 @@ func (s saveService) handleSave(ctx context.Context, req rpc.Request, emit func(
 	if s.outputDir == "" {
 		return errors.New("there is no output folder: set [skills] output_dir in config.toml")
 	}
+	// An incognito chat has no transcript to save from, and saving it
+	// would keep what it promised not to.
+	if transcript.IsIncognito(req.Session) {
+		return errors.New("an incognito chat can't be saved; copy what you need instead")
+	}
 	sess, err := transcript.Open(s.sessionsDir, req.Session)
 	if err != nil {
 		return err

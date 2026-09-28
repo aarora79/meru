@@ -15,13 +15,21 @@ function call(method, ...args) {
 
 export const bridge = {
   // The chat (bridge.go, history.go, status.go).
-  send: (session, question, scope) => call("Send", session, question, scope),
-  retry: (session, question, scope, images) => call("Retry", session, question, scope, images),
+  send: (session, question, scope, incognito) => call("Send", session, question, scope, !!incognito),
+  retry: (session, question, scope, images, incognito) => call("Retry", session, question, scope, images, !!incognito),
   stop: () => call("Stop"),
   unqueue: (index) => call("Unqueue", index),
   approve: (id, choice) => call("Approve", id, choice),
   sessions: () => call("Sessions"),
   sessionTurns: (id) => call("SessionTurns", id),
+  // The rail's right-click menu (history.go).
+  deleteSession: (id) => call("DeleteSession", id),
+  moveSession: (id, folder) => call("MoveSession", id, folder),
+  tagSession: (id, add, remove) => call("TagSession", id, add, remove),
+  chatFolders: () => call("ChatFolders"),
+  addChatFolder: (name) => call("AddChatFolder", name),
+  renameChatFolder: (from, to) => call("RenameChatFolder", from, to),
+  removeChatFolder: (name) => call("RemoveChatFolder", name),
   status: () => call("Status"),
   openURL: (url) => call("OpenURL", url),
   openSource: (path) => call("OpenSource", path),

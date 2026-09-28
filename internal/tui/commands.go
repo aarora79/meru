@@ -18,7 +18,7 @@ import (
 // app's composer has the same commands in the same order;
 // TestCommandsMatchChat in internal/desktop reads this line and fails when
 // the two differ.
-const commandList = "/new, /chats, /retry, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /model, /log, /about, /help, /exit"
+const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /model, /log, /about, /help, /exit"
 
 // commandHelp is the /help box's line for each command, in commandList's
 // order: what to type, and what it does. TestCommandHelp fails when a
@@ -27,7 +27,13 @@ const commandList = "/new, /chats, /retry, /scope, /attach, /save, /used, /copy,
 // Each line stays short enough that the two columns fit 80 columns.
 var commandHelp = []struct{ use, what string }{
 	{"/new", "start a new session; the queue goes"},
+	{"/incognito", "a new chat Meru keeps no record of"},
 	{"/chats [words]", "past chats; enter reopens one"},
+	{"/delete", "delete this chat; twice to confirm"},
+	{"/folder [new|rename|delete]", "chat folders: list, add, rename, delete"},
+	{"/move [folder]", "move this chat; alone, out of its folder"},
+	{"/tag <tags>", "tag this chat"},
+	{"/untag <tags>", "take tags off this chat"},
 	{"/retry", "ask the newest question again"},
 	{"/scope [name]", "look in auto, files, mail, web or talk"},
 	{"/attach [path]", "attach a file or image; alone, clear"},
@@ -63,14 +69,30 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 	// before it, and its argument, if any, after it.
 	name, arg, _ := strings.Cut(text, " ")
 	arg = strings.TrimSpace(arg)
+	if name != "/delete" {
+		m.deleteArmed = "" // only a second /delete in a row deletes
+	}
 	switch name {
 	case "/new":
 		m.input.Reset()
+		leave := m.leaveCmd()
 		m.newSession()
 		m.layout()
-		return m, nil
+		return m, leave
+	case "/incognito":
+		return m.incognitoCommand()
 	case "/chats":
 		return m.chatsCommand(arg)
+	case "/delete":
+		return m.deleteCommand()
+	case "/folder":
+		return m.folderCommand(arg)
+	case "/move":
+		return m.moveCommand(arg)
+	case "/tag":
+		return m.tagCommand(arg, false)
+	case "/untag":
+		return m.tagCommand(arg, true)
 	case "/retry":
 		return m.retryCommand()
 	case "/scope":
@@ -123,7 +145,9 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 // new one with the next question. A conversation that went wrong, such as
 // a model that keeps saying it knows nothing, otherwise carries on into
 // every later answer, because each turn's prompt holds the ones before it.
-// The old session stays on disk; only this screen lets go of it.
+// The old session stays on disk; only this screen lets go of it. An
+// incognito chat has nothing on disk, and the caller's leaveCmd tells
+// merud to forget what it holds.
 //
 // A streaming answer stops first. Counting up m.turn makes the events it
 // may still send belong to no turn, so a late "session" event can't bring
@@ -136,6 +160,8 @@ func (m *Model) newSession() {
 	m.turns = nil
 	m.blockCount = 0 // the code blocks went with the turns
 	m.session = ""
+	m.incognito = false // /incognito sets it again after this
+	m.deleteArmed = ""
 	m.attached = nil // as the app's New chat takes the chips off
 	m.notice = "new session: the next question starts fresh"
 	if dropped := m.dropQueue(); dropped != "" {

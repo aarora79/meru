@@ -252,6 +252,22 @@ sessions folder and the home folder.
 
 Both read the files, never `meru.db`, so deleting the database loses no chat.
 
+### merud: chats.go
+
+The chat list ops. `handleDelete` forgets an incognito chat through the agent's
+`ForgetIncognito`, or deletes a chat's file with `transcript.Delete` and then its
+rows with `store.DeleteSession`. A file that is already gone still loses its rows.
+`handleMove` and `handleTag` go through `changeMeta`: open the chat, read its
+`Meta`, change it, `SetMeta`, replay the session so search sees new tags, and
+answer with the chat's row from `Session.Info`. The folder ops read and write
+`folders.json`; rename and remove call `refile`, which appends a meta line to each
+chat in the folder.
+
+`historyService` gained the store, the forget function, a logger and `mu`, a
+`*sync.Mutex`. It is a pointer because `historyService` is passed by value and all
+copies must share one lock; `newHistoryService` builds it. `save.go` refuses an
+incognito chat before it opens anything.
+
 ### merud: memory.go
 
 `memoryService` answers the three ops that `meru memory` and `meru setup user`

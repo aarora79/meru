@@ -203,6 +203,46 @@ for `[agent] summary_idle` (see [summarize](summarize.md)):
 A session that goes on after its summary gets another one later. The file
 keeps both, and the newest wins.
 
+### Meta lines, folders and Delete (meta.go, folders.go)
+
+A chat's folder and tags live in the chat's own file, in a `meta` line such as
+`{"type":"meta","folder":"Garden","tags":["bulbs"]}`. Each line holds the whole
+state, so `MetaOf` walks the lines and keeps the last one it sees. There is no
+"remove tag" line to replay: the newest line says what is true now.
+
+`SetMeta` appends the line through `Append`, then calls `os.Chtimes` to put the
+file's modification time back. `List` sorts chats by that time, and moving a chat
+into a folder isn't talking in it, so the chat keeps its place. A zero
+`time.Time` for the first argument tells `Chtimes` to leave the access time alone.
+
+`CleanFolder`, `CleanTag` and `WithTags` check what a client sends before it
+reaches a file: a folder name of 1 to 60 characters with no control characters,
+and tags of one word each, lower case. `WithTags` takes the old list, the tags to
+add and the tags to remove, and uses `slices.DeleteFunc`, which drops every
+element a function says yes to.
+
+`folders.go` keeps the list of folder names in `folders.json` in the sessions
+folder, so an empty folder survives. `SaveFolders` writes a temporary file and
+`os.Rename`s it over the old one: a rename on one disk happens in one step, so a
+crash leaves the old list or the new one, never half of each. The name ends in
+`.json`, not `.jsonl`, so nothing that walks the sessions takes it for a chat.
+
+`Delete` takes an ID, never a path. The ID must match `idPattern`, and
+`os.Lstat` (which looks at a symbolic link itself instead of following it) must
+report a regular file, so a client can't delete anything outside the sessions
+folder.
+
+### Incognito sessions (incognito.go)
+
+`NewIncognito` returns a `Session` whose `mem` field holds its lines in memory.
+`Append` and `read` check `mem` first, so `History`, `Model` and `Lines` work on
+an incognito session with no change, and the agent runs a turn in it like any
+other. Its ID, `incognito-` and eight hex digits, fails `idPattern`, so `Open`,
+`Delete` and every replay refuse it. `memLines` guards its slice with a
+`sync.Mutex`, since the tool calls of one round append from several goroutines,
+and `all` hands back a copy (`slices.Clone`) so a reader never sees the slice
+change under it.
+
 ### ReadFrom
 
 `ReadFrom(path, offset)` reads only the lines that start at byte `offset` and

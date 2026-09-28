@@ -17,7 +17,8 @@ import (
 // step; never edit one that has shipped, because existing databases have
 // already run it. Later milestones add messages and memories this way, as
 // v0.3 added tool_calls and turns, step 6 added the answer model's
-// numbers to turns, and step 7 added the caller to tool_calls.
+// numbers to turns, step 7 added the caller to tool_calls, and step 8
+// added the tags to sessions.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -205,6 +206,13 @@ func migrations() []string {
 		// and "" for a call the model asked for, as on every row before
 		// this step.
 		`ALTER TABLE tool_calls ADD COLUMN caller TEXT NOT NULL DEFAULT '';`,
+
+		// 8: a session's tags, from the newest meta line of its
+		// transcript, as one space-separated string. Replay keeps them
+		// here so a later summary line can put them back into
+		// summary_fts beside the new summary. Rows written before this
+		// step get '': no transcript had a meta line then.
+		`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '';`,
 	}
 }
 

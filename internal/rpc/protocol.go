@@ -89,6 +89,32 @@ const (
 	// tool calls, read from the transcript. The reply is one "turns" event
 	// and "done".
 	OpSessionTurns Op = "session_turns"
+	// OpSessionDelete deletes the chat named Request.Session for good: its
+	// transcript file and every row meru.db holds about it. For an
+	// incognito chat it makes merud forget the history it holds in memory.
+	// The reply is "done".
+	OpSessionDelete Op = "session_delete"
+	// OpSessionMove puts the chat named Request.Session in the chat folder
+	// named Request.Text, adding the folder to the list when it is new, or
+	// takes it out of any folder when Text is empty. The reply is one
+	// "sessions" event holding that chat, and "done".
+	OpSessionMove Op = "session_move"
+	// OpSessionTag adds the tags in Request.Tags.Add to the chat named
+	// Request.Session and takes out the ones in Request.Tags.Remove. The
+	// reply is one "sessions" event holding that chat, and "done".
+	OpSessionTag Op = "session_tag"
+	// OpChatFolders lists the chat folders. The reply is one
+	// "chat_folders" event and "done". Chat folders group past chats;
+	// they have nothing to do with the [index] folders of OpFolders.
+	OpChatFolders Op = "chat_folders"
+	// OpChatFolderAdd adds the chat folder named Request.ID;
+	// OpChatFolderRename renames the one named Request.ID to Request.Text,
+	// and moves its chats with it; OpChatFolderRemove takes the one named
+	// Request.ID away and moves its chats back to the main list, deleting
+	// none. The reply is one "chat_folders" event and "done".
+	OpChatFolderAdd    Op = "chat_folder_add"
+	OpChatFolderRename Op = "chat_folder_rename"
+	OpChatFolderRemove Op = "chat_folder_remove"
 
 	// The ops below are the desktop app's settings. Each one changes
 	// config.toml, secrets.toml or the output folder in merud, never in
@@ -227,6 +253,21 @@ type Request struct {
 	// model, which makes merud re-embed every file once the set is saved
 	// and merud restarts.
 	Rebuild bool `json:"rebuild,omitempty"`
+	// Incognito starts an incognito chat, on an OpAsk with no Session:
+	// merud keeps its history in memory only and writes nothing about it
+	// to disk but the tool_calls rows, which keep no arguments or results.
+	// A later question continues it by the ID the "session" event gave.
+	Incognito bool `json:"incognito,omitempty"`
+	// Tags is the change OpSessionTag makes. A pointer, as Policy is.
+	Tags *TagChange `json:"tags,omitempty"`
+}
+
+// TagChange says which tags OpSessionTag adds to a chat and which it
+// takes out. A tag is one word of letters, digits, "-" and "_"; merud
+// makes it lower case and drops a leading "#".
+type TagChange struct {
+	Add    []string `json:"add,omitempty"`
+	Remove []string `json:"remove,omitempty"`
 }
 
 // Images names the images a question carries, at most MaxImages. Each
@@ -314,6 +355,8 @@ const (
 	EventSessions EventType = "sessions"
 	// EventTurns answers OpSessionTurns, in Turns.
 	EventTurns EventType = "turns"
+	// EventChatFolders answers the chat folder ops, in ChatFolders.
+	EventChatFolders EventType = "chat_folders"
 	// EventConnections answers the connection ops, in Connections and
 	// Catalog.
 	EventConnections EventType = "connections"
@@ -384,6 +427,11 @@ type Event struct {
 	// Sessions is set on a "sessions" event and Turns on a "turns" event.
 	Sessions []SessionInfo `json:"sessions,omitempty"`
 	Turns    []TurnInfo    `json:"turns,omitempty"`
+	// ChatFolders names the chat folders, in the order the user sees them,
+	// on a "chat_folders" event.
+	ChatFolders []string `json:"chat_folders,omitempty"`
+	// Incognito is true on the "session" event of an incognito chat.
+	Incognito bool `json:"incognito,omitempty"`
 	// Connections and Catalog are set on a "connections" event, Folders
 	// and Suggested on a "folders" event, and Models on a "models" event.
 	Connections []Connection   `json:"connections,omitempty"`

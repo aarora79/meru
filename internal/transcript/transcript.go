@@ -38,6 +38,11 @@ const (
 	// session's last one, so a session's first answer gets one with an
 	// empty From. The turns table reads it to split usage by model.
 	TypeModelSwitch = "model_switch"
+	// TypeMeta holds the chat's folder and tags, in Folder and Tags. merud
+	// appends one each time the user moves or tags the chat. Each line
+	// holds the whole state, so the newest one wins, and a line with no
+	// folder or no tags means the chat has none. See MetaOf.
+	TypeMeta = "meta"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type
@@ -106,6 +111,10 @@ type Line struct {
 	To   string `json:"to,omitempty"`
 	// Result is what the tool returned, as text, secrets redacted.
 	Result string `json:"result,omitempty"`
+	// Folder and Tags belong to a meta line: the chat folder the chat sits
+	// in, "" for none, and its tags, lower case. See Meta.
+	Folder string   `json:"folder,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
 	// Caller is who made a call, on a tool_call line: "meru" when merud
 	// ran it before the model's first round (see the agent's web-first
 	// step), and "" when the model asked for it.
@@ -131,9 +140,13 @@ type WebNote struct {
 // Session is one open transcript file. It holds only the file's path, so
 // copying it or keeping many is cheap, and there is nothing to close: each
 // Append opens the file, writes one line and closes it again.
+//
+// An incognito session (see NewIncognito) has no file: mem holds its lines
+// in memory instead, and path is "".
 type Session struct {
 	id   string
 	path string
+	mem  *memLines // nil for a session on disk
 }
 
 // idPattern matches a session ID: the UTC start time to the second, a dash,
@@ -197,7 +210,8 @@ func Open(dir, id string) (*Session, error) {
 // ID returns the session's ID, which clients send back to continue it.
 func (s *Session) ID() string { return s.id }
 
-// Path returns the session file's path.
+// Path returns the session file's path, or "" for an incognito session,
+// which has no file.
 func (s *Session) Path() string { return s.path }
 
 // Append writes l as one line at the end of the session file. A zero TS
@@ -215,6 +229,10 @@ func (s *Session) Append(l Line) error {
 		l.TS = time.Now()
 	}
 	l.TS = l.TS.UTC().Truncate(time.Second)
+	if s.mem != nil {
+		s.mem.add(l) // an incognito session writes no file
+		return nil
+	}
 
 	b, err := json.Marshal(l)
 	if err != nil {
@@ -367,6 +385,9 @@ func imageNotes(paths []string) string {
 // in the file, not only at the end. Skipping it loses that one event and
 // keeps the rest of the session readable.
 func (s *Session) read() ([]Line, error) {
+	if s.mem != nil {
+		return s.mem.all(), nil
+	}
 	return readFile(s.path, s.id)
 }
 

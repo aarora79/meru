@@ -247,6 +247,7 @@ func TestRemember(t *testing.T) {
 			wantText: "Saved to preferences/likes-short-answers.md.",
 			wantKind: "preferences",
 		},
+		{"an incognito chat", `{"kind":"me","text":"Likes tea."}`, "incognito-0123abcd", "incognito chat", "", "", ""},
 		{"unknown kind", `{"kind":"secrets","text":"x"}`, "", `kind "secrets" is unknown`, "", "", ""},
 		{"a path as the kind", `{"kind":"../me","text":"x"}`, "", "is unknown", "", "", ""},
 		{"no kind", `{"text":"x"}`, "", "is unknown", "", "", ""},

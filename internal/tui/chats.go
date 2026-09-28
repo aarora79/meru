@@ -2,11 +2,14 @@
 // merud lists the sessions from their transcripts (rpc.OpSessions), and
 // Enter reopens one (rpc.OpSessionTurns). The reopened chat's next question
 // carries its session ID, so the conversation goes on where it stopped.
+// Each row shows the chat's folder and tags, and d, twice, deletes the
+// marked chat (rpc.OpSessionDelete).
 
 package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,18 +23,22 @@ import (
 const chatsLimit = 100
 
 // chatsNote closes the /chats box.
-const chatsNote = "The next question continues the chat you open. /chats <words> lists the chats whose first question holds them."
+const chatsNote = "The next question continues the chat you open. /chats <words> lists the chats whose first question, folder or tags hold them. d twice deletes a chat for good."
 
 // chatsBox is the open /chats box. It opens at once with loading set, and
 // merud's reply fills in rows or err. words filters the list, at is the
 // marked row, and opening names the session whose turns Enter asked for.
+// armed is the ID of the chat a first d marked for deleting, and
+// deleting the one a second d asked merud to delete.
 type chatsBox struct {
-	loading bool
-	words   []string
-	rows    []rpc.SessionInfo
-	at      int
-	err     string
-	opening string
+	loading  bool
+	words    []string
+	rows     []rpc.SessionInfo
+	at       int
+	err      string
+	opening  string
+	armed    string
+	deleting string
 }
 
 // chatsCommand runs /chats: it opens the box and asks merud for the past
@@ -43,12 +50,17 @@ func (m Model) chatsCommand(arg string) (tea.Model, tea.Cmd) {
 	return m, requestCmd(m.ask, tagSessions, rpc.Request{Op: rpc.OpSessions, Limit: chatsLimit}, rpc.EventSessions, readTimeout)
 }
 
-// chatsKey handles a key in the /chats box: ↑ and ↓ move the marker, and
-// Enter asks merud for the marked chat's turns. A chat can't open while a
-// turn runs, since the answer would land in the wrong conversation.
+// chatsKey handles a key in the /chats box: ↑ and ↓ move the marker,
+// Enter asks merud for the marked chat's turns, and d, pressed twice on
+// the same row, deletes the marked chat. A chat can't open or be deleted
+// while a turn runs, since the answer would land in the wrong place.
 func (m *Model) chatsKey(msg tea.KeyMsg) tea.Cmd {
 	b := m.chatsBox
 	b.at = moveMark(msg, b.at, len(b.rows))
+	if isKey(msg, "d") {
+		return m.chatsDelete()
+	}
+	b.armed = "" // any other key disarms a d
 	if msg.Type != tea.KeyEnter || len(b.rows) == 0 || b.opening != "" {
 		return nil
 	}
@@ -61,37 +73,83 @@ func (m *Model) chatsKey(msg tea.KeyMsg) tea.Cmd {
 	return requestCmd(m.ask, tagTurns, req, rpc.EventTurns, readTimeout)
 }
 
-// applyChats takes in merud's reply to the list or to one chat's turns. A
-// reply that comes after the box closed changes nothing.
-func (m *Model) applyChats(msg replyMsg) {
+// chatsDelete handles d in the /chats box: the first arms the marked
+// chat, and a second d on the same chat asks merud to delete it.
+func (m *Model) chatsDelete() tea.Cmd {
+	b := m.chatsBox
+	if len(b.rows) == 0 || b.deleting != "" {
+		return nil
+	}
+	if m.streaming {
+		m.notice = "wait for the answer to finish, or press ctrl+c, before you delete a chat"
+		return nil
+	}
+	id := b.rows[b.at].ID
+	if b.armed != id {
+		b.armed = id
+		m.notice = "d again deletes this chat for good"
+		return nil
+	}
+	b.armed, b.deleting = "", id
+	req := rpc.Request{Op: rpc.OpSessionDelete, Session: id}
+	return requestCmd(m.ask, tagBoxDelete, req, rpc.EventDone, changeTimeout)
+}
+
+// applyBoxDelete takes the chat merud deleted off the /chats box. When it
+// was the chat on screen, the screen starts a new one, as after /delete.
+func (m *Model) applyBoxDelete() {
 	b := m.chatsBox
 	if b == nil {
 		return
+	}
+	id := b.deleting
+	b.deleting = ""
+	// slices.DeleteFunc drops every row the function returns true for.
+	b.rows = slices.DeleteFunc(b.rows, func(s rpc.SessionInfo) bool { return s.ID == id })
+	b.at = max(min(b.at, len(b.rows)-1), 0)
+	if id == m.session {
+		m.newSession()
+	}
+	m.notice = "deleted the chat for good"
+}
+
+// applyChats takes in merud's reply to the list or to one chat's turns. A
+// reply that comes after the box closed changes nothing. It returns the
+// command that tells merud to forget an incognito chat the screen leaves
+// for the one it reopens, or nil.
+func (m *Model) applyChats(msg replyMsg) tea.Cmd {
+	b := m.chatsBox
+	if b == nil {
+		return nil
 	}
 	if msg.tag == tagSessions {
 		b.loading = false
 		if msg.err != nil {
 			b.err = msg.err.Error()
-			return
+			return nil
 		}
 		for _, s := range msg.ev.Sessions {
-			if hasWords(strings.ToLower(s.Title), b.words) {
+			// The words find a chat by its title, its folder or its tags.
+			text := strings.ToLower(s.Title + " " + s.Folder + " " + strings.Join(s.Tags, " "))
+			if hasWords(text, b.words) {
 				b.rows = append(b.rows, s)
 			}
 		}
-		return
+		return nil
 	}
 	id := b.opening
 	b.opening = ""
 	if msg.err != nil {
 		m.notice = "couldn't open that chat: " + msg.err.Error()
-		return
+		return nil
 	}
 	if m.streaming {
-		return // a question went out while the turns were on their way
+		return nil // a question went out while the turns were on their way
 	}
+	leave := m.leaveCmd()
 	m.reopen(id, msg.ev.Turns)
 	m.closeBox()
+	return leave
 }
 
 // hasWords reports whether s holds every word in words.
@@ -119,6 +177,7 @@ func (m *Model) reopen(id string, turns []rpc.TurnInfo) {
 	m.turns = nil
 	m.blockCount = 0
 	m.session = id
+	m.incognito = false // only a saved chat reopens
 	for _, t := range turns {
 		e := exchange{question: t.Question, images: t.Images, answer: t.Answer, route: t.Route, notice: t.Notice, state: stateDone, past: true}
 		for i, p := range t.Sources {
@@ -169,9 +228,14 @@ func (m *Model) chatsBoxView(width, height int) string {
 		if t, err := time.Parse(time.RFC3339, s.Updated); err == nil {
 			when = t.Format("2006-01-02 15:04")
 		}
-		row := fmt.Sprintf("%s  %s  %s", when, s.Title, m.style.dim.Render(fmt.Sprintf("(%d)", s.Turns)))
-		if s.ID == b.opening {
+		row := fmt.Sprintf("%s  %s  %s", when, chatLabel(s), m.style.dim.Render(fmt.Sprintf("(%d)", s.Turns)))
+		switch s.ID {
+		case b.opening:
 			row += m.style.dim.Render("  opening…")
+		case b.deleting:
+			row += m.style.dim.Render("  deleting…")
+		case b.armed:
+			row += m.style.notice.Render("  d again deletes it")
 		}
 		body = append(body, m.markRow(i == b.at, row))
 	}

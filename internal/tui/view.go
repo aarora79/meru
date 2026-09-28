@@ -161,6 +161,9 @@ func (m Model) header() string {
 	if s := scopeLabel(m.scope); s != "" {
 		right = m.style.notice.Render("scope: "+s) + "  " + right
 	}
+	if m.incognito {
+		right = m.style.notice.Render("incognito") + "  " + right
+	}
 	if u := lastHour(m.usage); u != "" {
 		if withUsage := m.style.dim.Render(u) + "  " + right; fits(details, withUsage) {
 			right = withUsage

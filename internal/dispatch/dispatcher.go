@@ -227,7 +227,8 @@ func (d *Dispatcher) find(name string) Backend {
 //     attachment it saved (see Options.Attachments);
 //  5. cuts the result for the model and removes secrets from it;
 //  6. writes the tool_result line, for every call, whatever its outcome;
-//  7. writes the tool_calls row;
+//  7. writes the tool_calls row, without the arguments and the result
+//     for a call in an incognito chat (see Call.Incognito);
 //  8. records the metrics and the meru.dispatch span.
 //
 // Outcome.Duration is the time the tool ran, without the wait for the
@@ -318,6 +319,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 			Args: args, Result: logged, Outcome: outcome, Approval: approval,
 			DurationMillis: ran.Milliseconds(), TraceID: c.TraceID, Caller: c.Caller,
 		}
+		if c.Incognito {
+			row.Args, row.Result = nil, ""
+		}
 		if err := d.rec.InsertToolCall(context.WithoutCancel(ctx), row); err != nil {
 			// The transcript holds the call, and replay can rebuild the row
 			// from it, so a failed row doesn't fail the call.
@@ -333,7 +337,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		attribute.String("meru.tool.outcome", outcome),
 		attribute.String("meru.tool.approval", approval),
 	)
-	if obs.CaptureContent() {
+	if obs.CaptureContent() && !c.Incognito {
 		span.SetAttributes(
 			attribute.String("gen_ai.tool.call.arguments", string(args)),
 			attribute.String("gen_ai.tool.call.result", logged),

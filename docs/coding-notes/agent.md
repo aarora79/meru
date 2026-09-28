@@ -1587,6 +1587,25 @@ A hang-up during a tool call works the same way. `gctx` ends, dispatch
 records each open call as `cancelled`, and `runTools` returns `ctx.Err()`
 once every call has returned. The model isn't called again.
 
+### Incognito chats (incognito.go)
+
+The Agent keeps one piece of state between turns: `incognitoChats`, a map from
+session ID to an open incognito chat, guarded by a `sync.Mutex`. Its zero value
+works, because `start` makes the map on first use. `openSession` starts a chat
+when the request has `Incognito` and no session, finds one by an incognito ID, and
+fails with `errIncognitoGone` for an ID it no longer holds.
+
+The map forgets on its own. `prune` runs at every `start` and `get` and drops
+chats quiet for `incognitoIdle` (an hour); `dropOldest` keeps at most
+`maxIncognito`. No goroutine watches the clock. `ForgetIncognito` drops a chat
+when a client sends `session_delete` for it.
+
+In an incognito turn, `finishPrompt` offers no `remember` (`withoutRemember`
+works on a copy, with `slices.Clone`, because the tool list is shared),
+`runCalls` sets `dispatch.Call.Incognito`, and `recordUsage` records the metrics
+but writes no `turns` row. The `session` event carries `Incognito`, and the turn
+span gets `meru.session.incognito`.
+
 ### The transcript
 
 The agent writes two lines per turn: the question and the final answer, with a

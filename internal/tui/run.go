@@ -46,6 +46,8 @@ func Run(ctx context.Context, socket string, info Info) error {
 	// holds a Model, and ok reports whether it did.
 	if m, ok := final.(Model); ok {
 		m.stopTurn()
+		// An incognito chat on screen at quit leaves nothing in merud.
+		m.forgetIncognito()
 	}
 	if err != nil {
 		return fmt.Errorf("chat: %w", err)

@@ -1,7 +1,8 @@
-// This file holds the types of the two session ops, OpSessions and
+// This file holds the types of the session ops, OpSessions and
 // OpSessionTurns, which let a client list past conversations and show one
-// again. merud reads both from the session transcripts, the source of
-// truth, so the answers never depend on meru.db.
+// again, and which OpSessionMove and OpSessionTag answer with. merud reads
+// them from the session transcripts, the source of truth, so the answers
+// never depend on meru.db.
 
 package rpc
 
@@ -20,6 +21,10 @@ type SessionInfo struct {
 	Updated string `json:"updated"`
 	// Turns counts the questions asked in it.
 	Turns int `json:"turns"`
+	// Folder is the chat folder it sits in, "" for none, and Tags its
+	// tags, from the transcript's newest meta line.
+	Folder string   `json:"folder,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
 }
 
 // TurnInfo is one question of a past session and what came of it, as

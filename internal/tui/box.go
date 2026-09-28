@@ -113,7 +113,7 @@ func (m *Model) boxKeys() keyList {
 	case m.meBox != nil, m.usedBox != nil:
 		k = keyList{move, bind("d", "forget")}
 	case m.chatsBox != nil:
-		k = keyList{move, bind("enter", "open")}
+		k = keyList{move, bind("enter", "open"), bind("d", "delete")}
 	case m.foldersBox != nil:
 		k = keyList{move, bind("enter", "add"), bind("d", "remove")}
 	case m.skillsBox != nil:
@@ -303,7 +303,9 @@ func requestCmd(ask askFunc, tag string, req rpc.Request, want rpc.EventType, ti
 func (m *Model) applyReply(msg replyMsg) tea.Cmd {
 	switch msg.tag {
 	case tagSessions, tagTurns:
-		m.applyChats(msg)
+		return m.applyChats(msg)
+	case tagDelete, tagBoxDelete, tagLeave, tagChatMeta, tagChatFolders:
+		m.applyOrganize(msg)
 	case tagAttach:
 		m.applyAttach(msg)
 	case tagForget, tagMemoryAdd:

@@ -1177,6 +1177,21 @@ a past turn (`past`). `reopen` counts up `m.turn`, as `/new` does, numbers the c
 blocks afresh, and sets `m.session`, so the next question continues that chat. A
 chat can't open while a turn runs.
 
+### organize.go
+
+`/incognito`, `/delete`, `/folder`, `/move`, `/tag` and `/untag`. Each builds one
+request and hands it to `requestCmd`; `applyOrganize` reads the reply onto the
+notice line. `/delete` asks by arming: the first sets `deleteArmed`, and only a
+second `/delete` with no other line between sends `session_delete`. `command`
+clears the arm for any other command, and `submit` for a question. `/incognito`
+starts a new chat with `incognito` set, and `startTurn` puts `Incognito` on the
+first question. Leaving an incognito chat, by `/new`, a reopened chat or quitting,
+sends `session_delete` so merud forgets it: `leaveCmd` returns that request as a
+command, and `forgetIncognito` sends it before `Run` returns. `meru chat
+--incognito` sets `Info.Incognito`. The `/chats` box shows each chat's folder and
+tags, matches its words against them too, and deletes the marked chat after a
+second `d`.
+
 ### folders.go, skills.go and logbox.go
 
 `/folders` sends `OpFolders`, which lists the `[index]` folders with their file

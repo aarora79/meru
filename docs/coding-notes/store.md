@@ -378,6 +378,25 @@ get each hit's session, so it ranks with `bm25(message_fts)`, the function that
 `rank` stands for on a query of one FTS5 table. `Sessions` and `Messages` load
 rows by ID in the order asked, as `Chunks` does.
 
+### Deleting a chat, and tags (sessions.go, schema.go)
+
+`DeleteSession` removes every row about one session in one write transaction:
+the `sessions` row, its messages and their `message_fts` entries (through
+`forgetSession`), the summary's keyword entry and vector, and its `turns` and
+`tool_calls` rows. merud calls it after it deletes the transcript.
+
+`ReplaySessions` now keeps a set of the IDs it walked past, a
+`map[string]struct{}` (an empty struct takes no memory, so the map works as a
+set). After the walk, `pruneSessions` deletes the rows of every session the walk
+didn't find. A delete that stopped half way, or a file removed by hand, heals at
+the next start.
+
+Migration 8 adds `sessions.tags`. `replayFile` reads a `meta` line's tags into
+it, then `indexSummary` rewrites the session's `summary_fts` entry as the summary
+with the tags on the next line. A search for a tag then finds the session through
+`SearchSummaryKeyword`, which recall already runs. A tag change alone keeps the
+summary's vector; a new summary still drops it, through `replaceSummary`.
+
 ### memories.go: memories and recall
 
 One row in `memories` per memory file, keyed by the memory ID

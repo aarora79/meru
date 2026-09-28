@@ -248,7 +248,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// so does about_meru. A home folder merud can't find leaves the paths
 	// whole.
 	home, _ := os.UserHomeDir()
-	hist := historyService{dir: sessionsDir, home: home}
+	hist := newHistoryService(sessionsDir, home, st, a.ForgetIncognito, log)
 	// about_meru reads every source above, so merud hands it them last. It
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
@@ -360,11 +360,11 @@ type services struct {
 // handler returns the rpc.Handler merud serves: questions go to the agent,
 // the index and folder ops to the index service, the tools, log, MCP and
 // connection ops to the tool service, the memory ops to the memory
-// service, the skill ops to the skill service, the session ops to the
-// history service, save_file to the save service, attach_file to the
-// tool service, which holds the built-in tools, the model ops to the
-// model service, and the usage op to the store. The rpc server answers
-// pings itself.
+// service, the skill ops to the skill service, the session ops and the
+// chat folder ops to the history service, save_file to the save service,
+// attach_file to the tool service, which holds the built-in tools, the
+// model ops to the model service, and the usage op to the store. The rpc
+// server answers pings itself.
 func handler(svc services) rpc.Handler {
 	a, idx, tools, mems, sk, hist, st := svc.agent, svc.idx, svc.tools, svc.mems, svc.skills, svc.hist, svc.st
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
@@ -403,6 +403,20 @@ func handler(svc services) rpc.Handler {
 			return hist.handleSessions(req.Limit, emit)
 		case rpc.OpSessionTurns:
 			return hist.handleTurns(req.Session, emit)
+		case rpc.OpSessionDelete:
+			return hist.handleDelete(ctx, req.Session)
+		case rpc.OpSessionMove:
+			return hist.handleMove(ctx, req, emit)
+		case rpc.OpSessionTag:
+			return hist.handleTag(ctx, req, emit)
+		case rpc.OpChatFolders:
+			return hist.handleChatFolders(emit)
+		case rpc.OpChatFolderAdd:
+			return hist.handleChatFolderAdd(req, emit)
+		case rpc.OpChatFolderRename:
+			return hist.handleChatFolderRename(ctx, req, emit)
+		case rpc.OpChatFolderRemove:
+			return hist.handleChatFolderRemove(ctx, req, emit)
 		case rpc.OpConnections:
 			return tools.handleConnections(emit)
 		case rpc.OpToolPolicy:

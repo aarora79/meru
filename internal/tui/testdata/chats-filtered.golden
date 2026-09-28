@@ -7,9 +7,9 @@ Meru मेरु v0.4.3 lite · minicpm5:2b                                    
   │ › 2026-09-26 18:44  Summarize the garden notes  (1)                        │
   │                                                                            │
   │ The next question continues the chat you open. /chats <words> lists the    │
-  │ chats whose first question holds them.                                     │
+  │ chats whose first question, folder or tags hold them. d twice deletes a    │
+  │ chat for good.                                                             │
   ╰────────────────────────────────────────────────────────────────────────────╯
-
 
 
 
@@ -21,4 +21,4 @@ Meru मेरु v0.4.3 lite · minicpm5:2b                                    
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-↑/↓ move · enter open · esc/q close · ctrl+c stop/quit
+↑/↓ move · enter open · d delete · esc/q close · ctrl+c stop/quit

@@ -8,7 +8,7 @@
 //	meru [-socket path] "question"      ask one question; the answer streams to stdout
 //	meru [-socket path] run --json "q"   ask one question; each event goes to stdout as a JSON line
 //	meru [-socket path] ping             check that merud is up
-//	meru [-socket path] chat             open the terminal UI
+//	meru [-socket path] chat             open the terminal UI; chat --incognito keeps no record
 //	meru [-socket path] index [folder]   rescan the [index] folders, or just one
 //	meru [-socket path] index -status    show what the search index holds
 //	meru [-socket path] tools            list the tools the model may use
@@ -82,7 +82,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
                         ask one question and write each event as a JSON line,
                         for scripts; a tool call that asks first is denied
   meru ping             check that merud is up
-  meru chat             open the terminal UI
+  meru chat [--incognito]
+                        open the terminal UI; --incognito starts a chat
+                        Meru keeps no record of
   meru index [folder]   rescan the [index] folders, or just one
   meru index -status    show what the search index holds
   meru tools            list the tools the model may use
@@ -147,9 +149,11 @@ flags:`)
 		err = runCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "ping":
 		err = ping(ctx, *socket, stdout)
-	case flags.NArg() == 1 && flags.Arg(0) == "chat":
+	case flags.Arg(0) == "chat" && isChatArgs(flags.Args()[1:]):
 		// tui.Run starts the Bubble Tea terminal UI (internal/tui).
-		err = tui.Run(ctx, *socket, chatInfo())
+		info := chatInfo()
+		info.Incognito = len(flags.Args()) == 2
+		err = tui.Run(ctx, *socket, info)
 	case flags.Arg(0) == "index":
 		err = indexCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	case flags.Arg(0) == "tools":
@@ -220,6 +224,13 @@ func chatInfo() tui.Info {
 		return fallback
 	}
 	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy, Dir: dir}
+}
+
+// isChatArgs reports whether args, the words after "chat", are ones the
+// chat takes: none, or "--incognito" (one dash works too). Anything else
+// reads as a question that starts with "chat".
+func isChatArgs(args []string) bool {
+	return len(args) == 0 || (len(args) == 1 && (args[0] == "--incognito" || args[0] == "-incognito"))
 }
 
 // ping asks merud whether it is up and prints the answer.
