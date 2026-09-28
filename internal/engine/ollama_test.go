@@ -87,6 +87,7 @@ const chatReply = `{"model":"m","message":{"role":"assistant","content":"C"},"do
 func TestGenerate(t *testing.T) {
 	f := newFakeOllama(t, map[string]route{"/api/chat": {200, chatReply}})
 	e := newTestEngine(t, f, "-1")
+	e.ContextLength = 32768
 	temp := 0.2
 
 	got, err := e.Generate(context.Background(),
@@ -135,8 +136,8 @@ func TestGenerate(t *testing.T) {
 		}
 	}
 	opts, _ := body["options"].(map[string]any)
-	if opts["num_predict"] != float64(1) || opts["temperature"] != 0.2 {
-		t.Errorf("request options = %v, want num_predict 1 and temperature 0.2", opts)
+	if opts["num_predict"] != float64(1) || opts["temperature"] != 0.2 || opts["num_ctx"] != float64(32768) {
+		t.Errorf("request options = %v, want num_predict 1, temperature 0.2 and num_ctx 32768", opts)
 	}
 }
 

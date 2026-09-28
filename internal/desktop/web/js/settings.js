@@ -840,9 +840,8 @@ function drawModels(body, m) {
 
   body.append(el("h2", "section-head", "To change them by hand"));
   body.append(el("p", "", "Set profile, or the models under [models], in " + m.config_path +
-    ", then restart merud. The larger models need a longer context than Ollama gives by default; " +
-    "run this before Ollama starts, and again after each restart of the Mac:"));
-  body.append(copyBlock("launchctl setenv OLLAMA_CONTEXT_LENGTH 32768"));
+    ", then restart merud. merud asks Ollama for 32,768 tokens of context on every call, " +
+    "from [ollama] context_length, so the larger models need no Ollama setting."));
 }
 
 // drawSets draws the Model sets part of the Models section: a card per

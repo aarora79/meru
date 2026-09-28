@@ -178,7 +178,8 @@ func TestModelSetRows(t *testing.T) {
 }
 
 // TestNewModelServiceFindsTheSet checks that merud starts with the first
-// set whose models match config's, and passes on its think setting.
+// set whose models match config's, and passes on its think setting, and
+// that with no set, [models] think decides, off by default.
 func TestNewModelServiceFindsTheSet(t *testing.T) {
 	answer := &fixedAnswer{main: qwenMoE}
 	cfg := config.Config{Models: config.Models{Fast: miniCPM, Main: qwenMoE, Embed: "nomic-embed-text", Sets: testSets}}
@@ -187,9 +188,17 @@ func TestNewModelServiceFindsTheSet(t *testing.T) {
 		t.Errorf("active %q, think off %v; want qwen-moe with thinking off", m.activeSet(), answer.noThink)
 	}
 	cfg.Models.Main = "some-other-model"
-	m = newModelService(cfg, "", "", &fakeEngine{}, &fixedAnswer{}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if m.activeSet() != "" {
-		t.Errorf("active %q, want none for a main model no set names", m.activeSet())
+	other := &fixedAnswer{}
+	m = newModelService(cfg, "", "", &fakeEngine{}, other, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if m.activeSet() != "" || !other.noThink {
+		t.Errorf("active %q, think off %v; want no set, and thinking off by default", m.activeSet(), other.noThink)
+	}
+	// think = true under [models] turns thinking on when no set is in use.
+	cfg.Models.Think = true
+	thinking := &fixedAnswer{}
+	newModelService(cfg, "", "", &fakeEngine{}, thinking, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if thinking.noThink {
+		t.Error("think = true: thinking is off, want on")
 	}
 }
 

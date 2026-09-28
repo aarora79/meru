@@ -55,15 +55,17 @@ your apps:
 | Memory | Answer model | Download |
 | --- | --- | --- |
 | 16 GB | MiniCPM5-2B, the `lite` default | about 2 GB with `nomic-embed-text` |
-| 32 GB | `lite`, or `gemma4:26b-a4b-it-qat` | 15 GB more |
-| 48 GB | `gemma4:26b-a4b-it-qat` | 15 GB more |
+| 32 GB | `gemma4:26b-a4b-it-qat` | 15 GB more |
+| 48 GB | `qwen3.6:35b`, the same Qwen model at 4 bits | 23 GB more |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | 38 GB, or 28 GB |
 
 Ollama loaded `gemma4:26b-a4b-it-qat` in 15 GB with a 32,768-token context,
-about 18 GB with the router, which leaves a 32 GB Mac room for its apps. On the
-64 GB test Mac, Ollama held 36 to 52 GiB for a `qwen3.6:35b-a3b-mxfp8` call
-and 27 to 40 GiB for a `gemma4:26b-mxfp8` call, and let the GPU use 51.8 GiB,
-so neither fits a 48 GB Mac. The installer offers the model for your Mac's
+about 18 GB with the router, which leaves a 32 GB Mac room for its apps.
+`qwen3.6:35b` loaded in 23 GB, about 27 GB with the router, and passed as many
+benchmark tasks as the 8-bit build. On the 64 GB test Mac, Ollama held 36 to
+52 GiB for a `qwen3.6:35b-a3b-mxfp8` call and 27 to 40 GiB for a
+`gemma4:26b-mxfp8` call, and let the GPU use 51.8 GiB, so neither fits a 48 GB
+Mac. We measured memory on the 64 GB Mac only. The installer offers the model for your Mac's
 memory.
 
 ### Models we tried for answers
@@ -144,7 +146,8 @@ think = false
 ```
 
 `think = false` turns each model's hidden reasoning off, so none loses on time
-to first token for thinking alone. `merud` logs a warning at startup for a
+to first token for thinking alone. Outside a set, `[models] think` decides, and
+it is off by default. `merud` logs a warning at startup for a
 model Ollama doesn't have; pull it before you switch to its set.
 
 ```sh
@@ -177,23 +180,10 @@ notes, web or file tools. To use them, pick another answer model under Settings,
 Models in the desktop app, or in [models] main in config.toml.
 ```
 
-**Give the larger models more context.** `OLLAMA_CONTEXT_LENGTH` sets how many
-tokens of context Ollama loads a model with, and the `CONTEXT` column of `ollama
-ps` shows what each loaded model got. For the models of 15 GB and more we set
-it to 32768. On macOS, where the Ollama app starts the server, run this, then
-quit and start Ollama:
-
-```sh
-launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
-```
-
-`launchctl setenv` lasts until the Mac restarts, so run it again after each
-restart. On Linux, or to start the server yourself, set the variable in the
-shell that runs it:
-
-```sh
-OLLAMA_CONTEXT_LENGTH=32768 ollama serve
-```
+**Context.** `merud` asks Ollama for 32,768 tokens of context on every chat
+call, from `[ollama] context_length`, so you don't need to set
+`OLLAMA_CONTEXT_LENGTH`. The `CONTEXT` column of `ollama ps` shows what each
+loaded model got.
 
 ## 3. Install Meru
 
@@ -213,7 +203,7 @@ step that fails says why and offers Retry and Skip.
 
 | Step | What it does |
 | --- | --- |
-| Check this Mac | reads the chip, macOS, memory and free disk, and suggests models: `lite` on every Mac, plus `gemma4:26b-a4b-it-qat` for answers with 32 GB or more, or `qwen3.6:35b-a3b-mxfp8` with 64 GB or more |
+| Check this Mac | reads the chip, macOS, memory and free disk, and suggests models: `lite` on every Mac, plus `gemma4:26b-a4b-it-qat` for answers with 32 GB or more, `qwen3.6:35b` with 48 GB or more, or `qwen3.6:35b-a3b-mxfp8` with 64 GB or more |
 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`; clears macOS's quarantine mark from them if you tick the box; adds `~/.local/bin` to `PATH` in `~/.zshrc` if you tick that box |
 | Ollama and the models | installs Ollama with Homebrew, or from Ollama's site when there is no Homebrew, starts it, and downloads the models with a progress bar |
 | Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |

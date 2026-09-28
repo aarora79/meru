@@ -637,8 +637,10 @@ the plain env value nor the memory's text.
 This file answers the four model ops: `models`, `model_use`, `model_save` and
 `model_set`. `newModelService` builds the service once at startup. It finds the
 model set in use, the first `[[models.sets]]` entry whose models match the ones
-`merud` started with, and when that set has `think = false`, it tells the agent
-with `SetMain`. The service is a pointer, `*modelService`, because it holds a
+`merud` started with, and tells the agent that set's think setting with
+`SetMain`. When no set matches, `[models] think` decides, off unless it says
+`true`, so a fresh install answers without thinking, as the benchmark ran.
+`handleModelSet` follows the same rule for a model picked in Settings. The service is a pointer, `*modelService`, because it holds a
 mutex and the name of the set in use, and a copy of either would be a bug.
 
 `modelService.handleModels`
@@ -1022,16 +1024,21 @@ skips. `doIt` goes in this order:
    restart, and print its state as `meru tools` would.
 
 `setupCmd` runs the seven steps from ARCHITECTURE.md "First run and setup". It
-writes `config.toml` only when none exists. Rewriting an existing one would
+writes `config.toml` only when none exists. Its last parameter, `main`, comes
+from `meru setup --main <model>`: `scripts/install.sh` passes the answer model it
+picked for the Mac's memory and downloaded. Setup then skips the profile
+question, uses `lite` with that model as `[models] main`, and writes it into the
+new config, so Meru answers with it from the first question. Rewriting an existing one would
 drop your comments, so setup tells you what to change instead, and points at
 `meru config template`.
 
 Step 3 writes the config template with your answers in it. `firstConfig`
-replaces two whole lines of `config.Template()`: `profile = "lite"` and
-`folders = []`. Matching `"\n" + line + "\n"` hits the line itself, never the
+replaces whole lines of `config.Template()`: `profile = "lite"`,
+`folders = []`, and, when setup picked an answer model, the `[models] main`
+line, `mainLine`. Matching `"\n" + line + "\n"` hits the line itself, never the
 same words inside a comment, and every comment stays. When either line isn't
 there exactly once, `firstConfig` fails; `TestFirstConfig` catches that in CI,
-and checks that exactly those two lines change. `writeNewConfig` then loads the
+and checks that only those lines change and that the result loads. `writeNewConfig` then loads the
 text through `config.Load` before it renames it into place, as before.
 `configTemplateCmd` prints the same template for `meru config template`.
 

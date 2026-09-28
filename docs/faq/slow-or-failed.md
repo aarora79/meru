@@ -27,7 +27,8 @@ grep be9e7312 ~/.meru/merud.log
 ```
 
 A large `thinking_chunks` count means the model spent the wait reasoning before
-its first word. Set `think = false` on its model set to turn that off.
+its first word. Thinking is off unless `[models] think = true`, or a model set
+you switched to leaves `think` out; set `think = false` on that set.
 
 **The first answer is slow** because Ollama is still loading the answer model.
 `merud` loads it in the background at startup; the log says

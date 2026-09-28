@@ -92,8 +92,9 @@ func defaults() Config {
 	return Config{
 		Profile: "lite",
 		Ollama: Ollama{
-			BaseURL:   "http://127.0.0.1:11434",
-			KeepAlive: "-1",
+			BaseURL:       "http://127.0.0.1:11434",
+			KeepAlive:     "-1",
+			ContextLength: 32768,
 		},
 		Agent: Agent{
 			MaxRounds:       8,
@@ -224,6 +225,10 @@ func validate(cfg Config) error {
 	}
 	if err := checkKeepAlive(cfg.Ollama.KeepAlive); err != nil {
 		add("ollama.keep_alive: %w", err)
+	}
+	// Below 2048 tokens not even the system prompt fits.
+	if n := cfg.Ollama.ContextLength; n != 0 && n < 2048 {
+		add("ollama.context_length is %d; it must be 0, for Ollama's own setting, or 2048 or more", n)
 	}
 
 	if cfg.Agent.MaxRounds < 1 {

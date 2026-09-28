@@ -55,6 +55,13 @@ type OllamaEngine struct {
 	client     *http.Client
 	log        *slog.Logger // debug lines for each call; never message text
 
+	// ContextLength, when above 0, goes to Ollama as num_ctx on every chat
+	// call, so each model loads with room for Meru's long prompts. Set it
+	// before the first call; merud sets it from [ollama] context_length.
+	// Every call sends the same value, since Ollama reloads a model whose
+	// num_ctx changes.
+	ContextLength int
+
 	mu    sync.Mutex              // guards shown
 	shown map[string]ModelDetails // what /api/show said about each model, by model name
 }
@@ -513,10 +520,10 @@ func (e *OllamaEngine) chatBody(msgs []Message, tools []ToolSpec, opts Options, 
 		LogProbs:    opts.LogProbs,
 		TopLogProbs: opts.TopLogProbs,
 	}
-	if opts.Temperature != nil || opts.MaxTokens > 0 {
+	if opts.Temperature != nil || opts.MaxTokens > 0 || e.ContextLength > 0 {
 		// &chatOptions{...} builds the struct and takes its address, which
 		// is what the pointer field wants.
-		req.Options = &chatOptions{Temperature: opts.Temperature, NumPredict: opts.MaxTokens}
+		req.Options = &chatOptions{Temperature: opts.Temperature, NumPredict: opts.MaxTokens, NumCtx: e.ContextLength}
 	}
 	// A thinking model asked for log probabilities would spend its tokens
 	// on hidden reasoning, so LogProbs turns thinking off too.

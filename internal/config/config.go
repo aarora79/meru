@@ -55,10 +55,21 @@ type Config struct {
 // Fast, Main and Embed stay the default: they are what merud starts with,
 // and what `/model save` writes.
 type Models struct {
-	Fast  string     `toml:"fast"`
-	Main  string     `toml:"main"`
-	Embed string     `toml:"embed"`
+	Fast  string `toml:"fast"`
+	Main  string `toml:"main"`
+	Embed string `toml:"embed"`
+	// Think set to true lets the main model reason before it answers when
+	// no set is in use. Left out or false, thinking stays off: the
+	// benchmark ran every model that way, and a thinking model takes far
+	// longer to answer. A set's own think setting wins while it is in use.
+	Think bool       `toml:"think"`
 	Sets  []ModelSet `toml:"sets"`
+}
+
+// ThinkOff reports whether the main model's thinking is off when no set is
+// in use: true unless think = true.
+func (m Models) ThinkOff() bool {
+	return !m.Think
 }
 
 // ModelSet is one [[models.sets]] entry: a name for a choice of models, so
@@ -91,6 +102,12 @@ type Ollama struct {
 	// KeepAlive is passed to Ollama on every call. "-1" keeps models loaded
 	// for as long as Ollama runs, which is what makes answers start fast.
 	KeepAlive string `toml:"keep_alive"`
+	// ContextLength is how many tokens of prompt and answer Ollama makes
+	// room for, sent as num_ctx on every chat call. Default 32768: Meru's
+	// prompts with tool schemas run to about 20,000 tokens, the benchmark
+	// ran at 32768, and Ollama's own default can be far smaller, which cuts
+	// the prompt short. 0 leaves Ollama's own setting.
+	ContextLength int `toml:"context_length"`
 }
 
 // Agent tunes the agent loop.

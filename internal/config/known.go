@@ -63,8 +63,8 @@ func KnownModels() []KnownModel {
 			Name:  "gemma4:26b-a4b-it-qat",
 			Label: "Gemma 4 26B QAT",
 			Size:  "15 GB",
-			Good:  "The Gemma 4 26B mixture of experts at 4 bits, small enough for a 32 GB Mac; it reads pictures, calls tools and thinks.",
-			Bad:   "We haven't run our benchmark on it; expect the slow first word of gemma4:26b-mxfp8 on questions that offer tools.",
+			Good:  "The Gemma 4 26B mixture of experts at 4 bits, small enough for a 32 GB Mac: 120 of 150 benchmark tasks passed.",
+			Bad:   "Weak across several tools (13 of 36) and slow to start: a median of 17.6 seconds to the first word.",
 			// QAT: Google trained it to lose little when stored at 4 bits.
 			Capabilities: []string{"completion", "vision", "tools", "thinking"},
 		},
@@ -72,8 +72,8 @@ func KnownModels() []KnownModel {
 			Name:  "qwen3.6:35b",
 			Label: "Qwen 3.6 35B",
 			Size:  "23 GB",
-			Good:  "About 26 seconds on the same web question, at about 78 tokens a second; it reads pictures, calls tools and thinks.",
-			Bad:   "Now and then it writes a tool call Ollama can't read, or thinks and writes nothing; merud retries both.",
+			Good:  "The 8-bit model's accuracy at 4 bits: 133 of 150 benchmark tasks passed, with a median of 5.7 seconds to the first word. It fits a 48 GB Mac.",
+			Bad:   "About 4 seconds slower per task than the 8-bit build. Now and then it writes a tool call Ollama can't read; merud retries.",
 			// A mixture of experts: about 3B of its 36B parameters work on
 			// each token, which is why it runs faster than a dense 27B.
 			Capabilities: []string{"completion", "vision", "tools", "thinking"},

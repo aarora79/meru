@@ -57,16 +57,17 @@ Then recommend models by memory. The figures come from ARCHITECTURE.md,
 | Memory | Recommend | Download |
 | --- | --- | --- |
 | under 32 GB, 16 GB included | the `lite` profile: MiniCPM5-2B answers and routes, `nomic-embed-text` searches your files | about 2 GB |
-| 32 GB | `lite`, or `lite` plus `gemma4:26b-a4b-it-qat` as the answer model | about 2 GB, or about 17 GB |
-| 48 GB | `lite`, plus `gemma4:26b-a4b-it-qat` as the answer model | about 17 GB |
-| 64 GB or more | the `full` profile: `qwen3.6:35b-a3b-mxfp8` answers, MiniCPM5-2B routes, `qwen3-embedding:0.6b` searches | about 40 GB |
+| 32 GB | `lite`, plus `gemma4:26b-a4b-it-qat` as the answer model | about 17 GB |
+| 48 GB | `lite`, plus `qwen3.6:35b` (Qwen 3.6 35B at 4 bits) as the answer model | about 25 GB |
+| 64 GB or more | `lite`, plus `qwen3.6:35b-a3b-mxfp8` as the answer model | about 40 GB |
 
 The model's file, what Ollama holds for a 32,768-token context, and the router
 must fit beside macOS and the person's apps. On the 64 GB test Mac, Ollama held
 36 to 52 GiB for `qwen3.6:35b-a3b-mxfp8` and 27 to 40 GiB for
-`gemma4:26b-mxfp8`, so neither suits a 48 GB Mac. Ollama loaded
-`gemma4:26b-a4b-it-qat` in 15 GB with a 32,768-token context, about 18 GB with
-the router, which leaves a 32 GB Mac room for its apps.
+`gemma4:26b-mxfp8`, so neither suits a 48 GB Mac. Ollama loaded `qwen3.6:35b`
+in 23 GB with a 32,768-token context, about 27 GB with the router, and
+`gemma4:26b-a4b-it-qat` in 15 GB, about 18 GB with the router, which leaves a
+32 GB Mac room for its apps.
 
 Tell the person what each choice costs. The figures come from a benchmark of
 50 private tasks, run three times per model:
@@ -79,8 +80,11 @@ Tell the person what each choice costs. The figures come from a benchmark of
   most tasks that need several tools, but took a median of 16.3 seconds a task.
   Offer it to someone who asks Meru for work across mail, calendar and files and
   will wait.
-- **`gemma4:26b-a4b-it-qat`** (15 GB) is Gemma 4 at 4 bits. It calls tools, but
-  we haven't benchmarked it.
+- **`qwen3.6:35b`** (23 GB) is the same Qwen model at 4 bits. It passed 133 of
+  150, as many as the 8-bit build, with a median of 10.6 seconds a task.
+- **`gemma4:26b-a4b-it-qat`** (15 GB) is Gemma 4 at 4 bits. It passed 120 of
+  150 but only 13 of 36 tasks that need several tools, and took a median of
+  17.6 seconds to its first word.
 - **`gemma3:12b`** (8.1 GB) reads pictures and answers from what it knows, but
   Ollama gives it no tools, so it can't read mail, notes, the web or files.
   Offer it only to someone who wants that.
@@ -145,29 +149,17 @@ Pull the models chosen in step 1. Ask first, and say how large each is:
 ```sh
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 ollama pull nomic-embed-text
-ollama pull gemma4:26b-a4b-it-qat   # 32 or 48 GB, if they chose it
-ollama pull qwen3.6:35b-a3b-mxfp8   # 64 GB or more: the full profile
-ollama pull qwen3-embedding:0.6b    # 64 GB or more: the full profile
+ollama pull gemma4:26b-a4b-it-qat   # 32 to 47 GB
+ollama pull qwen3.6:35b             # 48 to 63 GB
+ollama pull qwen3.6:35b-a3b-mxfp8   # 64 GB or more
 ollama pull gemma3:12b              # only if they asked for it
 ```
 
 Check with `ollama list`.
 
-**More context for the larger models.** Ollama loads each model with the
-context length in `OLLAMA_CONTEXT_LENGTH`, and we run the models of 15 GB and
-more with 32768. With
-the Ollama app, ask first, then:
-
-```sh
-launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
-```
-
-and ask the person to quit Ollama from its menu bar icon and open it again.
-`launchctl setenv` lasts until the Mac restarts. To keep it, offer the small
-login job in reference.md, "Keep OLLAMA_CONTEXT_LENGTH after a restart". With
-Homebrew's service, run `brew services restart ollama` after the `setenv`
-instead. Once the model has answered a question, `ollama ps` shows 32768 in
-its `CONTEXT` column.
+`merud` asks Ollama for 32,768 tokens of context on every call, so Ollama
+needs no setting for the larger models. Once a model has answered a question,
+`ollama ps` shows 32768 in its `CONTEXT` column.
 
 ## 4. Meru: download, check, install
 
@@ -235,11 +227,13 @@ in System Settings, Privacy & Security.
 
 ## 5. Configure and start
 
-**First setup.** Ask the person to run `meru setup` in their Terminal. It checks
-Ollama, pulls the models of the profile they pick (answer `lite`, or `full` on
-64 GB or more; the models are already there, so it finishes fast), asks which
-folders to index, and writes
-`~/.meru/config.toml`. Its web-search step wants SearXNG in Docker; type `s` to
+**First setup.** Ask the person to run `meru setup --main <model>` in their
+Terminal, with the answer model from step 1, for example
+`meru setup --main qwen3.6:35b` on 48 GB. On a Mac that gets `lite` alone, plain
+`meru setup` and the answer `lite` do. It checks Ollama, pulls the models (they
+are already there, so it finishes fast), asks which folders to index, and
+writes `~/.meru/config.toml` with that model as `[models] main`, so Meru answers
+with it from the first question. Its web-search step wants SearXNG in Docker; type `s` to
 skip it if they don't run Docker. It offers the tool servers one at a time;
 they can skip all of them now.
 
@@ -259,13 +253,13 @@ meru tools
 **About you.** Offer `meru setup user`, run by the person in their Terminal. It
 asks their name, email and how they like answers, and saves each as a memory.
 
-**The answer model.** On 64 GB or more, the person answers `full` at `meru
-setup`'s Profile question, and `qwen3.6:35b-a3b-mxfp8` answers from the start.
-If they pulled `gemma4:26b-a4b-it-qat`, open Meru.app, go to Settings, Models,
-and click **Use for answers** on its card. `merud` takes the new model with no
-restart. Without the app, set `main = "gemma4:26b-a4b-it-qat"` under
-`[models]` in `~/.meru/config.toml` and restart `merud` with
-`launchctl kickstart -k gui/$(id -u)/com.meru.merud`.
+**The answer model.** `meru setup --main` already wrote it. If they had a
+`config.toml` before, setup leaves it alone: open Meru.app, go to Settings,
+Models, and click **Use for answers** on the model's card, and `merud` takes it
+with no restart. Without the app, set `main = "<model>"` under `[models]` in
+`~/.meru/config.toml` and restart `merud` with
+`launchctl kickstart -k gui/$(id -u)/com.meru.merud`. Thinking stays off unless
+`[models] think = true`, as in the benchmark.
 
 ## 6. Optional: Gmail, Calendar and Drive
 

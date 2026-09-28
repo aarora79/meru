@@ -1045,12 +1045,12 @@ router fit beside macOS and a few open apps:
 | Memory | Answer model | Why |
 | --- | --- | --- |
 | 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac |
-| 32 GB | `lite`, or `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits; Ollama lists tools for it; Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
-| 48 GB | `gemma4:26b-a4b-it-qat` | `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
+| 32 GB | `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
+| 48 GB | `qwen3.6:35b` (23 GB) | Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | the benchmark's figures above |
 
-We haven't run the benchmark on `gemma4:26b-a4b-it-qat`; its line in
-`config.KnownModels` says so.
+We checked the 48 GB and 32 GB lines against memory measured on the 64 GB
+Mac, not on a 48 GB or a 32 GB Mac.
 
 `config.KnownModels` lists the six we offer, smallest first: MiniCPM5-2B,
 `gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
@@ -1102,7 +1102,10 @@ think = false
 A set names `main`, and may name `fast` and `embed`. `think = false` sends
 Ollama `think: false` with every answer call, so a model that reasons before
 it answers doesn't lose on time to first token for that reason alone; left
-out, each model does what it does by default. `config.Load` checks that each
+out, each model does what it does by default. Outside a set, `[models] think`
+decides, and it defaults to `false`: the benchmark ran every model with
+thinking off, and a fresh install should answer as fast as those numbers say.
+`think = true` there turns thinking back on. `config.Load` checks that each
 set has a name of letters, digits, `.`, `-` and `_`, that no name repeats, and
 that each set names a model. At startup `merud` logs a warning for each model
 a set names that `GET /api/tags` doesn't list, and starts anyway: the model
@@ -1175,18 +1178,14 @@ questions about images, and search questions from the excerpts search puts in
 the prompt, and can't read mail, notes, the web or files on its own. The
 Settings says so on its card, and `model_set` replies with a warning.
 
-**Context length.** `OLLAMA_CONTEXT_LENGTH` sets how many tokens of context
-Ollama loads each model with, and the `CONTEXT` column of `ollama ps` shows what
-each loaded model got. For the 27B and 35B models we set it to 32768. On macOS,
-where the Ollama app starts the server:
-
-```sh
-launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
-```
-
-then quit and start Ollama. `launchctl setenv` lasts until the Mac restarts, so
-run it again after each restart, or start `ollama serve` from a shell that
-exports the variable.
+**Context length.** `merud` sends `num_ctx` with every chat call, from
+`[ollama] context_length`, 32768 by default. Meru's prompts with tool schemas
+run to about 20,000 tokens, the benchmark ran at 32768, and Ollama's own
+default can be far smaller, which would cut the prompt short on a fresh
+install. Every call sends the same value, because Ollama reloads a model whose
+`num_ctx` changes. The `CONTEXT` column of `ollama ps` shows what each loaded
+model got. `context_length = 0` leaves the choice to Ollama and
+`OLLAMA_CONTEXT_LENGTH`.
 
 ---
 
@@ -2753,8 +2752,9 @@ About you is done. On a second run the form shows what Meru already knows.
 **The model table.** `config.Recommend` picks from one table in
 `internal/config/recommend.go`, next to the profiles, so a change of default models
 changes one Go file. Every Mac gets `lite`. With 32 GB or more the installer
-suggests `gemma4:26b-a4b-it-qat` as `[models] main` too, and with 64 GB or more
-`qwen3.6:35b-a3b-mxfp8`, following the table in "Models we tried". You can pick
+suggests `gemma4:26b-a4b-it-qat` as `[models] main` too, with 48 GB or more
+`qwen3.6:35b`, and with 64 GB or more `qwen3.6:35b-a3b-mxfp8`, following the
+table in "Models we tried". You can pick
 any row that fits, `lite` alone included.
 
 **Running it again.** Each step first looks for its own work: the same programs in

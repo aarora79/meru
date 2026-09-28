@@ -17,8 +17,9 @@ func TestRecommend(t *testing.T) {
 		{16, ""},
 		{31, ""},
 		{32, "gemma4:26b-a4b-it-qat"},
-		{48, "gemma4:26b-a4b-it-qat"},
-		{63, "gemma4:26b-a4b-it-qat"},
+		{47, "gemma4:26b-a4b-it-qat"},
+		{48, "qwen3.6:35b"},
+		{63, "qwen3.6:35b"},
 		{64, "qwen3.6:35b-a3b-mxfp8"},
 		{128, "qwen3.6:35b-a3b-mxfp8"},
 	}

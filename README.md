@@ -244,7 +244,9 @@ Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tie
 We ran three answer models through a benchmark of 50 private tasks, three
 times each. `qwen3.6:35b-a3b-mxfp8` answered fastest, a median of 6.8 s a task,
 and passed 133 of 150; `gemma4:26b-mxfp8` passed 138 but took 16.3 s. A Mac
-with 32 or 48 GB can run `gemma4:26b-a4b-it-qat` (15 GB) instead. The desktop
+with 48 GB can run `qwen3.6:35b` (23 GB), the same model at 4 bits, which passed
+as many; a Mac with 32 GB, `gemma4:26b-a4b-it-qat` (15 GB). Both installers pick
+the model for your Mac's memory and set it as the answer model. The desktop
 app's Settings, Models lists the models we tried with their `ollama pull` and
 `ollama run` commands and switches between them without a restart.
 [docs/running.md](docs/running.md#which-model-for-which-mac) says which model
