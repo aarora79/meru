@@ -1073,7 +1073,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>MiniCPM5-2B stays the <code>fast</code> model: it routes well and fast. One question can't rank the rest, so we built a benchmark.</p>
 
-<p><b>The benchmark.</b> In September 2026 we ran three model sets through 50 tasks on the same Mac, with Ollama 0.34.0, MiniCPM5-2B as <code>fast</code>, <code>nomic-embed-text</code> as <code>embed</code>, and <code>think = false</code> in every set. The owner drew the tasks from their own files, mail, calendar and repositories, so we don't publish them; each task has a check that passes or fails the answer. Eight tasks go to the <code>direct</code> route, nine need a search of the files, thirteen need one tool call, twelve need several, four span several turns, and four test honesty. Each set ran every task three times, 150 runs per set.</p>
+<p><b>The benchmark.</b> In September 2026 we ran six model sets through 50 tasks on the same Mac, with Ollama 0.34.0, MiniCPM5-2B as <code>fast</code>, <code>nomic-embed-text</code> as <code>embed</code>, and <code>think = false</code> in every set. The owner drew the tasks from their own files, mail, calendar and repositories, so we don't publish them; each task has a check that passes or fails the answer. Eight tasks go to the <code>direct</code> route, nine need a search of the files, thirteen need one tool call, twelve need several, four span several turns, and four test honesty. Each set ran every task three times, 150 runs per set.</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Set</th><th>Answer model</th><th>Passed</th><th>Median time per task</th><th>90th percentile</th><th>Median time to first token</th><th>Tokens a second</th></tr></thead>
@@ -1081,22 +1081,27 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
     <tr><td><code>qwen-moe</code></td><td><code>qwen3.6:35b-a3b-mxfp8</code> (38 GB)</td><td>133 of 150 (89%)</td><td>6.8 s</td><td>19.4 s</td><td>4.1 s</td><td>63</td></tr>
     <tr><td><code>gemma-moe</code></td><td><code>gemma4:26b-mxfp8</code> (28 GB)</td><td>138 of 150 (92%)</td><td>16.3 s</td><td>29.1 s</td><td>15.6 s</td><td>57</td></tr>
     <tr><td><code>qwen-dense</code></td><td><code>qwen3.8:27b</code> (17 GB)</td><td>135 of 150 (90%)</td><td>55.9 s</td><td>121.1 s</td><td>34.6 s</td><td>17</td></tr>
+    <tr><td><code>qwen-moe-q4</code></td><td><code>qwen3.6:35b</code> (23 GB)</td><td>133 of 150 (89%)</td><td>10.6 s</td><td>28.4 s</td><td>5.7 s</td><td>80</td></tr>
+    <tr><td><code>gemma-moe-q4</code></td><td><code>gemma4:26b-a4b-it-qat</code> (15 GB)</td><td>120 of 150 (80%)</td><td>18.7 s</td><td>29.8 s</td><td>17.6 s</td><td>92</td></tr>
+    <tr><td><code>minicpm-lite</code></td><td>MiniCPM5-2B, the <code>lite</code> answer model (1.6 GB)</td><td>102 of 150 (68%)</td><td>13.1 s</td><td>28.8 s</td><td>11.8 s</td><td>130</td></tr>
   </tbody>
 </table></div>
 
 <div class="tbl"><table>
-  <thead><tr><th>Kind of task (runs)</th><th><code>qwen-moe</code></th><th><code>gemma-moe</code></th><th><code>qwen-dense</code></th></tr></thead>
+  <thead><tr><th>Kind of task (runs)</th><th><code>qwen-moe</code></th><th><code>gemma-moe</code></th><th><code>qwen-dense</code></th><th><code>qwen-moe-q4</code></th><th><code>gemma-moe-q4</code></th><th><code>minicpm-lite</code></th></tr></thead>
   <tbody>
-    <tr><td>direct (24)</td><td>24</td><td>24</td><td>24</td></tr>
-    <tr><td>search of the files (27)</td><td>27</td><td>27</td><td>26</td></tr>
-    <tr><td>one tool (39)</td><td>37</td><td>37</td><td>37</td></tr>
-    <tr><td>several tools (36)</td><td>22</td><td>28</td><td>24</td></tr>
-    <tr><td>several turns (12)</td><td>11</td><td>12</td><td>12</td></tr>
-    <tr><td>honesty (12)</td><td>12</td><td>10</td><td>12</td></tr>
+    <tr><td>direct (24)</td><td>24</td><td>24</td><td>24</td><td>24</td><td>24</td><td>23</td></tr>
+    <tr><td>search of the files (27)</td><td>27</td><td>27</td><td>26</td><td>27</td><td>27</td><td>25</td></tr>
+    <tr><td>one tool (39)</td><td>37</td><td>37</td><td>37</td><td>35</td><td>33</td><td>24</td></tr>
+    <tr><td>several tools (36)</td><td>22</td><td>28</td><td>24</td><td>24</td><td>13</td><td>6</td></tr>
+    <tr><td>several turns (12)</td><td>11</td><td>12</td><td>12</td><td>12</td><td>12</td><td>12</td></tr>
+    <tr><td>honesty (12)</td><td>12</td><td>10</td><td>12</td><td>11</td><td>11</td><td>12</td></tr>
   </tbody>
 </table></div>
 
 <p>The three pass about as often: a gap of five runs in 150 is too small to rank them. They part on tasks that need several tools, where <code>gemma4:26b-mxfp8</code> passed 28 of 36 and <code>qwen3.6:35b-a3b-mxfp8</code> 22, and on time. <code>qwen3.8:27b</code>, a dense model that runs all 27B parameters on every token, writes 17 tokens a second and took a median of 55.9 s a task, eight times as long as <code>qwen3.6:35b-a3b-mxfp8</code>. <code>qwen3.6:35b-a3b-mxfp8</code> answers fastest, so it fills <code>main</code> in the <code>full</code> profile and stays the answer model we use. <code>gemma4:26b-mxfp8</code> suits someone who asks for work across several tools and will wait for it.</p>
+
+<p>The last three rows are the smaller Macs' choices, run the same way. <code>qwen3.6:35b</code>, the same Qwen model at 4 bits, passed as many tasks as the 8-bit build and 24 of 36 across several tools, at 10.6 s a task against 6.8 s. <code>gemma4:26b-a4b-it-qat</code> passed 120 and only 13 of 36 across several tools, and starts as slow as its 8-bit build. MiniCPM5-2B, the <code>lite</code> answer model, passed 102: it handles direct questions, file searches and honesty tasks, but only 24 of 39 one-tool tasks and 6 of 36 across several. It writes 130 tokens a second, yet takes a median of 11.8 s to its first token, most of it reading a prompt of about 20,000 tokens.</p>
 
 <p><b>Why Gemma 4 starts slow.</b> Both mixture-of-experts models read a prompt at about 1,100 to 1,200 tokens a second, and Ollama honoured <code>think: false</code> for both: on <code>direct</code> tasks, which offer no tools, the first token came after a median of 0.5 s on Gemma 4 and 0.4 s on Qwen. The gap opens on turns that offer tools, whose schemas run to about 13,000 tokens. Ollama keeps the prompts it has read and reuses the longest opening a new prompt shares with one of them. Qwen's chat format writes the tool schemas first and the system prompt after them, so the schemas sit in the shared opening: a new question reused a median of 15,658 tokens and read 4,374 new ones. Gemma 4's format writes the system prompt first and the schemas after it, and Meru's system prompt changes from question to question (see <a href="#loop">The agent loop</a>, step 2), so every new question reads the schemas again: it reused a median of 1,278 tokens and read 13,778. Over the benchmark, Ollama read 2.2 million new prompt tokens for Gemma 4 against 0.8 million for Qwen, from about 6 million each. Meru sends both models the same request, so the cause sits in how Ollama lays out Gemma 4's prompt, and <code>merud</code> has no bug to fix here. Moving the parts that change out of the system prompt could let Gemma 4 reuse the schemas; we'd measure that on this benchmark before changing the prompt every model gets.</p>
 
@@ -1107,7 +1112,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <div class="tbl"><table>
   <thead><tr><th>Memory</th><th>Answer model</th><th>Why</th></tr></thead>
   <tbody>
-    <tr><td>16 GB</td><td>MiniCPM5-2B, the <code>lite</code> profile (about 2 GB with <code>nomic-embed-text</code>)</td><td>the only answer model we tried that leaves room for the rest of the Mac</td></tr>
+    <tr><td>16 GB</td><td>MiniCPM5-2B, the <code>lite</code> profile (about 2 GB with <code>nomic-embed-text</code>)</td><td>the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools</td></tr>
     <tr><td>32 GB</td><td><code>gemma4:26b-a4b-it-qat</code> (15 GB)</td><td>Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router</td></tr>
     <tr><td>48 GB</td><td><code>qwen3.6:35b</code> (23 GB)</td><td>Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. <code>gemma4:26b-mxfp8</code> peaked at 40 GiB and <code>qwen3.6:35b-a3b-mxfp8</code> at 52, more than a 48 GB Mac can give them</td></tr>
     <tr><td>64 GB or more</td><td><code>qwen3.6:35b-a3b-mxfp8</code>, the <code>full</code> profile; <code>gemma4:26b-mxfp8</code> for work across several tools</td><td>the benchmark's figures above</td></tr>

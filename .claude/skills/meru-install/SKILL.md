@@ -72,8 +72,9 @@ in 23 GB with a 32,768-token context, about 27 GB with the router, and
 Tell the person what each choice costs. The figures come from a benchmark of
 50 private tasks, run three times per model:
 
-- **MiniCPM5-2B** (1.6 GB) is fast and routes questions well, but in an earlier
-  test it made up command flags and misread what tools sent back.
+- **MiniCPM5-2B** (1.6 GB) routes every question and answers on `lite`. It
+  passed 102 of 150, nearly all the direct questions and file searches, but
+  only 6 of 36 tasks that need several tools.
 - **`qwen3.6:35b-a3b-mxfp8`** (38 GB) answered fastest: a median of 6.8 seconds
   a task, and 133 of 150 passed.
 - **`gemma4:26b-mxfp8`** (28 GB), for 64 GB or more, passed 138 of 150 and the

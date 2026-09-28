@@ -980,7 +980,7 @@ read pages over several rounds.
 MiniCPM5-2B stays the `fast` model: it routes well and fast. One question can't
 rank the rest, so we built a benchmark.
 
-**The benchmark.** In September 2026 we ran three model sets through 50 tasks
+**The benchmark.** In September 2026 we ran six model sets through 50 tasks
 on the same Mac, with Ollama 0.34.0, MiniCPM5-2B as `fast`, `nomic-embed-text`
 as `embed`, and `think = false` in every set. The owner drew the tasks from
 their own files, mail, calendar and repositories, so we don't publish them;
@@ -994,15 +994,18 @@ ran every task three times, 150 runs per set.
 | `qwen-moe` | `qwen3.6:35b-a3b-mxfp8` (38 GB) | 133 of 150 (89%) | 6.8 s | 19.4 s | 4.1 s | 63 |
 | `gemma-moe` | `gemma4:26b-mxfp8` (28 GB) | 138 of 150 (92%) | 16.3 s | 29.1 s | 15.6 s | 57 |
 | `qwen-dense` | `qwen3.8:27b` (17 GB) | 135 of 150 (90%) | 55.9 s | 121.1 s | 34.6 s | 17 |
+| `qwen-moe-q4` | `qwen3.6:35b` (23 GB) | 133 of 150 (89%) | 10.6 s | 28.4 s | 5.7 s | 80 |
+| `gemma-moe-q4` | `gemma4:26b-a4b-it-qat` (15 GB) | 120 of 150 (80%) | 18.7 s | 29.8 s | 17.6 s | 92 |
+| `minicpm-lite` | MiniCPM5-2B, the `lite` answer model (1.6 GB) | 102 of 150 (68%) | 13.1 s | 28.8 s | 11.8 s | 130 |
 
-| Kind of task (runs) | `qwen-moe` | `gemma-moe` | `qwen-dense` |
-| --- | --- | --- | --- |
-| direct (24) | 24 | 24 | 24 |
-| search of the files (27) | 27 | 27 | 26 |
-| one tool (39) | 37 | 37 | 37 |
-| several tools (36) | 22 | 28 | 24 |
-| several turns (12) | 11 | 12 | 12 |
-| honesty (12) | 12 | 10 | 12 |
+| Kind of task (runs) | `qwen-moe` | `gemma-moe` | `qwen-dense` | `qwen-moe-q4` | `gemma-moe-q4` | `minicpm-lite` |
+| --- | --- | --- | --- | --- | --- | --- |
+| direct (24) | 24 | 24 | 24 | 24 | 24 | 23 |
+| search of the files (27) | 27 | 27 | 26 | 27 | 27 | 25 |
+| one tool (39) | 37 | 37 | 37 | 35 | 33 | 24 |
+| several tools (36) | 22 | 28 | 24 | 24 | 13 | 6 |
+| several turns (12) | 11 | 12 | 12 | 12 | 12 | 12 |
+| honesty (12) | 12 | 10 | 12 | 11 | 11 | 12 |
 
 The three pass about as often: a gap of five runs in 150 is too small to rank
 them. They part on tasks that need several tools, where `gemma4:26b-mxfp8`
@@ -1012,6 +1015,16 @@ second and took a median of 55.9 s a task, eight times as long as
 `qwen3.6:35b-a3b-mxfp8`. `qwen3.6:35b-a3b-mxfp8` answers fastest, so it fills `main` in the `full`
 profile and stays the answer model we use. `gemma4:26b-mxfp8` suits someone who
 asks for work across several tools and will wait for it.
+
+The last three rows are the smaller Macs' choices, run the same way.
+`qwen3.6:35b`, the same Qwen model at 4 bits, passed as many tasks as the 8-bit
+build and 24 of 36 across several tools, at 10.6 s a task against 6.8 s.
+`gemma4:26b-a4b-it-qat` passed 120 and only 13 of 36 across several tools, and
+starts as slow as its 8-bit build. MiniCPM5-2B, the `lite` answer model, passed
+102: it handles direct questions, file searches and honesty tasks, but only 24
+of 39 one-tool tasks and 6 of 36 across several. It writes 130 tokens a second,
+yet takes a median of 11.8 s to its first token, most of it reading a prompt of
+about 20,000 tokens.
 
 **Why Gemma 4 starts slow.** Both mixture-of-experts models read a prompt at
 about 1,100 to 1,200 tokens a second, and Ollama honoured `think: false` for
@@ -1044,7 +1057,7 @@ router fit beside macOS and a few open apps:
 
 | Memory | Answer model | Why |
 | --- | --- | --- |
-| 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac |
+| 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools |
 | 32 GB | `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
 | 48 GB | `qwen3.6:35b` (23 GB) | Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | the benchmark's figures above |

@@ -44,8 +44,8 @@ func KnownModels() []KnownModel {
 			Name:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
 			Label: "MiniCPM5-2B",
 			Size:  "1.6 GB",
-			Good:  "Fast: about 55 seconds for a question that searched the web over many rounds. Meru's router uses it.",
-			Bad:   "As the answer model it made up command flags and misread what tools sent back.",
+			Good:  "Small and fast: 102 of 150 benchmark tasks passed, nearly all the direct questions, file searches and honesty tasks. Meru's router uses it.",
+			Bad:   "Weak with tools: 24 of 39 tasks that need one tool, and 6 of 36 that need several.",
 			// Ollama lists no vision for it, so it can't look at pictures.
 			Capabilities: []string{"completion", "tools", "thinking"},
 		},
