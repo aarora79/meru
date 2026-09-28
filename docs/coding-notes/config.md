@@ -40,10 +40,15 @@ the TOML parser which key fills it:
 
 ```go
 type Ollama struct {
-    BaseURL   string `toml:"base_url"`
-    KeepAlive string `toml:"keep_alive"`
+    BaseURL       string `toml:"base_url"`
+    KeepAlive     string `toml:"keep_alive"`
+    ContextLength int    `toml:"context_length"`
 }
 ```
+
+`ContextLength` defaults to 32768, the context the benchmark ran with; `Load`
+refuses a value from 1 to 2047, too small for even the system prompt, and 0
+leaves Ollama's own setting.
 
 A **struct** is a named group of fields, like a Python dataclass. The text in
 backticks is the tag. More in [go-basics/struct-tags.md](go-basics/struct-tags.md).
@@ -293,6 +298,11 @@ starts one entry of an array of tables, so each block becomes one element of
 the slice. `Think` is a `*bool`, a pointer to a bool, so that a key left out
 (`nil`) differs from `think = false`; `ThinkOff` reports the second. A test
 writes `new(false)`, which since Go 1.26 makes a `*bool` that points at `false`.
+
+`Models.Think` is the same switch for the answer model when no set is in use,
+from `[models] think`. It is a plain `bool`, since there left out and `false`
+mean the same thing: thinking off, as the benchmark ran every model.
+`Models.ThinkOff` returns `!Think`.
 
 `checkSets` refuses an entry with no name, a name with anything but letters,
 digits, `.`, `-` and `_`, a name used twice, and a set that names no model. It

@@ -3,33 +3,6 @@
 The files and longer commands SKILL.md points to. Show each command to the
 person and get a yes before you run anything that writes or deletes.
 
-## Keep OLLAMA_CONTEXT_LENGTH after a restart
-
-The repository has no launchd file for this, so write one. It runs
-`launchctl setenv` once at each login:
-
-```sh
-cat > ~/Library/LaunchAgents/com.meru.ollama-context.plist <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.meru.ollama-context</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/launchctl</string><string>setenv</string>
-    <string>OLLAMA_CONTEXT_LENGTH</string><string>32768</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-</dict>
-</plist>
-EOF
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.meru.ollama-context.plist
-```
-
-The Ollama app may start before the job runs at login. If `ollama ps` shows a
-smaller `CONTEXT` after a restart, quit Ollama and open it again.
-
 ## Start merud at login
 
 The release holds only the programs, so fetch the launchd file from the
@@ -178,6 +151,7 @@ launchctl bootout gui/$(id -u)/com.meru.merud
 rm ~/Library/LaunchAgents/com.meru.merud.plist
 launchctl unload ~/Library/LaunchAgents/com.meru.workspace-mcp.plist
 rm ~/Library/LaunchAgents/com.meru.workspace-mcp.plist
+# An older install may have added this login job for Ollama's context.
 launchctl bootout gui/$(id -u)/com.meru.ollama-context
 rm ~/Library/LaunchAgents/com.meru.ollama-context.plist
 
@@ -189,8 +163,9 @@ rm -rf /Applications/Meru.app
 ollama rm hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
 ollama rm nomic-embed-text
 ollama rm gemma4:26b-a4b-it-qat     # if they pulled it
-ollama rm qwen3.6:35b-a3b-mxfp8     # the full profile, if they pulled it
-ollama rm qwen3-embedding:0.6b
+ollama rm qwen3.6:35b               # if they pulled it
+ollama rm qwen3.6:35b-a3b-mxfp8     # if they pulled it
+ollama rm qwen3-embedding:0.6b      # if they used the full profile
 ```
 
 Only after an explicit yes to a question that names what goes:

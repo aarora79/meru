@@ -37,6 +37,7 @@ type chatRequest struct {
 type chatOptions struct {
 	Temperature *float64 `json:"temperature,omitempty"`
 	NumPredict  int      `json:"num_predict,omitempty"`
+	NumCtx      int      `json:"num_ctx,omitempty"`
 }
 
 // chatMessage is one message in Ollama's format.

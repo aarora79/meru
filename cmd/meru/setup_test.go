@@ -163,6 +163,40 @@ func TestMCPAddAlreadyThere(t *testing.T) {
 	}
 }
 
+// TestSetupWithMain checks `meru setup --main <model>`, the way
+// scripts/install.sh runs it: no profile question, lite's router and
+// embedding model plus the given answer model, and a new config.toml that
+// names it with thinking off.
+func TestSetupWithMain(t *testing.T) {
+	dir := t.TempDir()
+	input := "\n" + // download: yes, the default
+		"\n" + // no folders
+		strings.Repeat("k\n", len(catalog.Entries())) // skip each catalog server
+	c, out, ran := scripted(input)
+	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.34.0", nil }
+
+	if err := setupCmd(context.Background(), filepath.Join(dir, "merud.sock"), c, "qwen3.6:35b"); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	lite, _ := config.ProfileModels("lite")
+	wantRan := []string{"ollama pull " + lite.Fast, "ollama pull qwen3.6:35b", "ollama pull " + lite.Embed}
+	if !slices.Equal(*ran, wantRan) {
+		t.Errorf("ran %q, want %q", *ran, wantRan)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Profile != "lite" || cfg.Models.Main != "qwen3.6:35b" || cfg.Models.Fast != lite.Fast ||
+		!cfg.Models.ThinkOff() || cfg.Ollama.ContextLength != 32768 {
+		t.Errorf("config = profile %q, models %+v, context %d; want lite with qwen3.6:35b, thinking off, 32768",
+			cfg.Profile, cfg.Models, cfg.Ollama.ContextLength)
+	}
+	if strings.Contains(out.String(), "Profile: lite") {
+		t.Errorf("setup asked for a profile:\n%s", out)
+	}
+}
+
 // TestSetupFirstRun walks setup with no config and no merud: Ollama is down
 // at first, the user picks full, downloads, gives one bad folder then good
 // ones, and skips every server.
@@ -184,7 +218,7 @@ func TestSetupFirstRun(t *testing.T) {
 		return "0.12.11", nil
 	}
 
-	if err := setupCmd(context.Background(), filepath.Join(dir, "merud.sock"), c); err != nil {
+	if err := setupCmd(context.Background(), filepath.Join(dir, "merud.sock"), c, ""); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 
@@ -234,7 +268,7 @@ func TestSetupExistingConfig(t *testing.T) {
 
 	// No download, skip each server, and no to setup user.
 	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "n\n")
-	if err := setupCmd(context.Background(), sock, c); err != nil {
+	if err := setupCmd(context.Background(), sock, c, ""); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	if len(*ran) != 0 {
@@ -342,7 +376,7 @@ func TestSetupWebSearchReal(t *testing.T) {
 func TestSetupStopsWithoutOllama(t *testing.T) {
 	c, _, _ := scripted("q\n")
 	c.ollamaVersion = func(context.Context, string) (string, error) { return "", errors.New("down") }
-	err := setupCmd(context.Background(), filepath.Join(t.TempDir(), "merud.sock"), c)
+	err := setupCmd(context.Background(), filepath.Join(t.TempDir(), "merud.sock"), c, "")
 	if err == nil || !strings.Contains(err.Error(), "Ollama isn't running") {
 		t.Errorf("error = %v", err)
 	}
@@ -376,19 +410,35 @@ func TestOllamaInstallHint(t *testing.T) {
 }
 
 // TestFirstConfig checks the template setup fills in: with the defaults
-// it is the template itself, and otherwise exactly two lines change.
+// it is the template itself, and otherwise only the lines it fills in
+// change, and the result loads with the answer model it names.
 func TestFirstConfig(t *testing.T) {
-	same, err := firstConfig("lite", nil)
+	same, err := firstConfig("lite", "", nil)
 	if err != nil || same != config.Template() {
 		t.Fatalf("firstConfig(lite, none) changed the template: %v", err)
 	}
-	got, err := firstConfig("full", []string{"~/notes", `C:\Users\me "quoted"`})
+	got, err := firstConfig("lite", "qwen3.6:35b", []string{"~/notes", `C:\Users\me "quoted"`})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		`profile = "full"`: true,
-		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`: true,
+		`main  = "qwen3.6:35b"   # picked for this Mac's memory; writes the answer`: true,
+		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`:                         true,
+	}
+	// The Windows path above isn't valid on every system, so load a copy
+	// with a plain folder.
+	loadable, err := firstConfig("lite", "qwen3.6:35b", []string{"~/notes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(loadable), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil || cfg.Models.Main != "qwen3.6:35b" || cfg.Profile != "lite" || !cfg.Models.ThinkOff() {
+		t.Errorf("loaded %q main %q, think off %v, err %v; want lite, qwen3.6:35b, thinking off",
+			cfg.Profile, cfg.Models.Main, cfg.Models.ThinkOff(), err)
 	}
 	tmpl, lines := strings.Split(config.Template(), "\n"), strings.Split(got, "\n")
 	if len(tmpl) != len(lines) {

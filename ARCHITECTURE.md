@@ -980,7 +980,7 @@ read pages over several rounds.
 MiniCPM5-2B stays the `fast` model: it routes well and fast. One question can't
 rank the rest, so we built a benchmark.
 
-**The benchmark.** In September 2026 we ran three model sets through 50 tasks
+**The benchmark.** In September 2026 we ran six model sets through 50 tasks
 on the same Mac, with Ollama 0.34.0, MiniCPM5-2B as `fast`, `nomic-embed-text`
 as `embed`, and `think = false` in every set. The owner drew the tasks from
 their own files, mail, calendar and repositories, so we don't publish them;
@@ -994,15 +994,18 @@ ran every task three times, 150 runs per set.
 | `qwen-moe` | `qwen3.6:35b-a3b-mxfp8` (38 GB) | 133 of 150 (89%) | 6.8 s | 19.4 s | 4.1 s | 63 |
 | `gemma-moe` | `gemma4:26b-mxfp8` (28 GB) | 138 of 150 (92%) | 16.3 s | 29.1 s | 15.6 s | 57 |
 | `qwen-dense` | `qwen3.8:27b` (17 GB) | 135 of 150 (90%) | 55.9 s | 121.1 s | 34.6 s | 17 |
+| `qwen-moe-q4` | `qwen3.6:35b` (23 GB) | 133 of 150 (89%) | 10.6 s | 28.4 s | 5.7 s | 80 |
+| `gemma-moe-q4` | `gemma4:26b-a4b-it-qat` (15 GB) | 120 of 150 (80%) | 18.7 s | 29.8 s | 17.6 s | 92 |
+| `minicpm-lite` | MiniCPM5-2B, the `lite` answer model (1.6 GB) | 102 of 150 (68%) | 13.1 s | 28.8 s | 11.8 s | 130 |
 
-| Kind of task (runs) | `qwen-moe` | `gemma-moe` | `qwen-dense` |
-| --- | --- | --- | --- |
-| direct (24) | 24 | 24 | 24 |
-| search of the files (27) | 27 | 27 | 26 |
-| one tool (39) | 37 | 37 | 37 |
-| several tools (36) | 22 | 28 | 24 |
-| several turns (12) | 11 | 12 | 12 |
-| honesty (12) | 12 | 10 | 12 |
+| Kind of task (runs) | `qwen-moe` | `gemma-moe` | `qwen-dense` | `qwen-moe-q4` | `gemma-moe-q4` | `minicpm-lite` |
+| --- | --- | --- | --- | --- | --- | --- |
+| direct (24) | 24 | 24 | 24 | 24 | 24 | 23 |
+| search of the files (27) | 27 | 27 | 26 | 27 | 27 | 25 |
+| one tool (39) | 37 | 37 | 37 | 35 | 33 | 24 |
+| several tools (36) | 22 | 28 | 24 | 24 | 13 | 6 |
+| several turns (12) | 11 | 12 | 12 | 12 | 12 | 12 |
+| honesty (12) | 12 | 10 | 12 | 11 | 11 | 12 |
 
 The three pass about as often: a gap of five runs in 150 is too small to rank
 them. They part on tasks that need several tools, where `gemma4:26b-mxfp8`
@@ -1012,6 +1015,16 @@ second and took a median of 55.9 s a task, eight times as long as
 `qwen3.6:35b-a3b-mxfp8`. `qwen3.6:35b-a3b-mxfp8` answers fastest, so it fills `main` in the `full`
 profile and stays the answer model we use. `gemma4:26b-mxfp8` suits someone who
 asks for work across several tools and will wait for it.
+
+The last three rows are the smaller Macs' choices, run the same way.
+`qwen3.6:35b`, the same Qwen model at 4 bits, passed as many tasks as the 8-bit
+build and 24 of 36 across several tools, at 10.6 s a task against 6.8 s.
+`gemma4:26b-a4b-it-qat` passed 120 and only 13 of 36 across several tools, and
+starts as slow as its 8-bit build. MiniCPM5-2B, the `lite` answer model, passed
+102: it handles direct questions, file searches and honesty tasks, but only 24
+of 39 one-tool tasks and 6 of 36 across several. It writes 130 tokens a second,
+yet takes a median of 11.8 s to its first token, most of it reading a prompt of
+about 20,000 tokens.
 
 **Why Gemma 4 starts slow.** Both mixture-of-experts models read a prompt at
 about 1,100 to 1,200 tokens a second, and Ollama honoured `think: false` for
@@ -1044,13 +1057,13 @@ router fit beside macOS and a few open apps:
 
 | Memory | Answer model | Why |
 | --- | --- | --- |
-| 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac |
-| 32 GB | `lite`, or `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits; Ollama lists tools for it; Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
-| 48 GB | `gemma4:26b-a4b-it-qat` | `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
+| 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools |
+| 32 GB | `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
+| 48 GB | `qwen3.6:35b` (23 GB) | Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | the benchmark's figures above |
 
-We haven't run the benchmark on `gemma4:26b-a4b-it-qat`; its line in
-`config.KnownModels` says so.
+We checked the 48 GB and 32 GB lines against memory measured on the 64 GB
+Mac, not on a 48 GB or a 32 GB Mac.
 
 `config.KnownModels` lists the six we offer, smallest first: MiniCPM5-2B,
 `gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
@@ -1102,7 +1115,10 @@ think = false
 A set names `main`, and may name `fast` and `embed`. `think = false` sends
 Ollama `think: false` with every answer call, so a model that reasons before
 it answers doesn't lose on time to first token for that reason alone; left
-out, each model does what it does by default. `config.Load` checks that each
+out, each model does what it does by default. Outside a set, `[models] think`
+decides, and it defaults to `false`: the benchmark ran every model with
+thinking off, and a fresh install should answer as fast as those numbers say.
+`think = true` there turns thinking back on. `config.Load` checks that each
 set has a name of letters, digits, `.`, `-` and `_`, that no name repeats, and
 that each set names a model. At startup `merud` logs a warning for each model
 a set names that `GET /api/tags` doesn't list, and starts anyway: the model
@@ -1175,18 +1191,14 @@ questions about images, and search questions from the excerpts search puts in
 the prompt, and can't read mail, notes, the web or files on its own. The
 Settings says so on its card, and `model_set` replies with a warning.
 
-**Context length.** `OLLAMA_CONTEXT_LENGTH` sets how many tokens of context
-Ollama loads each model with, and the `CONTEXT` column of `ollama ps` shows what
-each loaded model got. For the 27B and 35B models we set it to 32768. On macOS,
-where the Ollama app starts the server:
-
-```sh
-launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
-```
-
-then quit and start Ollama. `launchctl setenv` lasts until the Mac restarts, so
-run it again after each restart, or start `ollama serve` from a shell that
-exports the variable.
+**Context length.** `merud` sends `num_ctx` with every chat call, from
+`[ollama] context_length`, 32768 by default. Meru's prompts with tool schemas
+run to about 20,000 tokens, the benchmark ran at 32768, and Ollama's own
+default can be far smaller, which would cut the prompt short on a fresh
+install. Every call sends the same value, because Ollama reloads a model whose
+`num_ctx` changes. The `CONTEXT` column of `ollama ps` shows what each loaded
+model got. `context_length = 0` leaves the choice to Ollama and
+`OLLAMA_CONTEXT_LENGTH`.
 
 ---
 
@@ -2753,8 +2765,9 @@ About you is done. On a second run the form shows what Meru already knows.
 **The model table.** `config.Recommend` picks from one table in
 `internal/config/recommend.go`, next to the profiles, so a change of default models
 changes one Go file. Every Mac gets `lite`. With 32 GB or more the installer
-suggests `gemma4:26b-a4b-it-qat` as `[models] main` too, and with 64 GB or more
-`qwen3.6:35b-a3b-mxfp8`, following the table in "Models we tried". You can pick
+suggests `gemma4:26b-a4b-it-qat` as `[models] main` too, with 48 GB or more
+`qwen3.6:35b`, and with 64 GB or more `qwen3.6:35b-a3b-mxfp8`, following the
+table in "Models we tried". You can pick
 any row that fits, `lite` alone included.
 
 **Running it again.** Each step first looks for its own work: the same programs in

@@ -71,6 +71,13 @@ copies the HTTP client so it can refuse redirects. A redirect could bounce a
 prompt to another host. Its last argument is a `*slog.Logger` for debug lines;
 nil means no lines.
 
+`ContextLength` is an exported field, not an argument, so the many tests that
+build an engine didn't change. `merud` sets it once, from
+`[ollama] context_length`, before the first call. When it is above 0, every
+chat call sends it as `num_ctx` in `options`, so each model loads with room for
+Meru's prompts of about 20,000 tokens whatever Ollama's own default is. Every
+call sends the same value, since Ollama reloads a model when `num_ctx` changes.
+
 ```go
 if n, err := strconv.Atoi(s); err == nil {
     return json.RawMessage(strconv.Itoa(n)), nil // "-1" goes out as the number -1

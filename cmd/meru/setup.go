@@ -354,7 +354,12 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 // config.toml if there is none, check SearXNG for web search, offer the
 // catalog servers, offer `meru setup user`, and ask merud a test question
 // when it runs.
-func setupCmd(ctx context.Context, socket string, c *console) error {
+//
+// main, when not "", is the answer model for a new config.toml, in place of
+// the profile question: scripts/install.sh passes the model it picked for
+// the Mac's memory (`meru setup --main <model>`), so a fresh install answers
+// with it from the start. An existing config.toml stays as it is.
+func setupCmd(ctx context.Context, socket string, c *console, main string) error {
 	configPath := configPathFor(socket)
 	_, statErr := os.Stat(configPath)
 	haveConfig := statErr == nil
@@ -370,10 +375,24 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 
 	fmt.Fprintln(c.out, "\n2. Models")
 	profile, models := cfg.Profile, cfg.Models
-	if haveConfig {
+	switch {
+	case haveConfig:
 		fmt.Fprintf(c.out, "Profile %q, from %s.\n", profile, configPath)
-	} else if profile, models, err = c.pickProfile(); err != nil {
-		return err
+		if main != "" && main != models.Main {
+			fmt.Fprintf(c.out, "To answer with %s, set main = %s under [models] there and restart merud.\n",
+				main, tomlString(main))
+		}
+	case main != "":
+		// The lite profile fills the router and embedding tiers; main
+		// replaces its answer model, as [models] main does.
+		profile = "lite"
+		models, _ = config.ProfileModels(profile)
+		models.Main = main
+		fmt.Fprintf(c.out, "Answer model: %s, picked for this Mac's memory.\n", main)
+	default:
+		if profile, models, err = c.pickProfile(); err != nil {
+			return err
+		}
 	}
 	if err := c.pullModels(ctx, models); err != nil {
 		return err
@@ -386,7 +405,7 @@ func setupCmd(ctx context.Context, socket string, c *console) error {
 		// that Meru doesn't have. Saying what to change is simpler.
 		fmt.Fprintf(c.out, "Setup leaves %s as it is. To index folders, list them under [index] folders there and restart merud.\n"+
 			"meru config template prints every key with its default, to compare with your file.\n", configPath)
-	} else if err := c.writeFirstConfig(configPath, profile); err != nil {
+	} else if err := c.writeFirstConfig(configPath, profile, main); err != nil {
 		return err
 	}
 
@@ -589,10 +608,10 @@ func (c *console) pullModels(ctx context.Context, m config.Models) error {
 }
 
 // writeFirstConfig asks which folders to index and writes a new
-// config.toml: the config template, with the profile and the folders filled
-// in. It asks again when a folder isn't an absolute path or a path under
+// config.toml: the config template, with the profile, the answer model
+// when main isn't "", and the folders filled in. It asks again when a folder isn't an absolute path or a path under
 // ~/.
-func (c *console) writeFirstConfig(configPath, profile string) error {
+func (c *console) writeFirstConfig(configPath, profile, main string) error {
 	for {
 		a, err := c.ask("Folders to index, separated by commas (for example ~/notes), or Enter for none:")
 		if err != nil {
@@ -604,7 +623,7 @@ func (c *console) writeFirstConfig(configPath, profile string) error {
 				folders = append(folders, f)
 			}
 		}
-		text, err := firstConfig(profile, folders)
+		text, err := firstConfig(profile, main, folders)
 		if err != nil {
 			return err
 		}
@@ -617,19 +636,28 @@ func (c *console) writeFirstConfig(configPath, profile string) error {
 	}
 }
 
-// firstConfig returns the config template with two lines changed: the
-// profile line and the [index] folders line. Replacing whole lines keeps
+// mainLine is the template's [models] main line, which firstConfig
+// replaces when setup picks the answer model.
+const mainLine = `main  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; writes the answer`
+
+// firstConfig returns the config template with the profile line and the
+// [index] folders line changed, and the [models] main line too when main
+// isn't "". Replacing whole lines keeps
 // every comment, and needs no TOML editor. It fails when the template no
 // longer holds each line exactly once; TestFirstConfig catches that before
 // a user can.
-func firstConfig(profile string, folders []string) (string, error) {
+func firstConfig(profile, main string, folders []string) (string, error) {
 	text := config.Template()
 	// A slice of anonymous structs: each pairs a template line with the
 	// line that replaces it.
-	for _, r := range []struct{ old, new string }{
+	edits := []struct{ old, new string }{
 		{`profile = "lite"`, "profile = " + tomlString(profile)},
 		{"folders = []", "folders = " + tomlList(folders)},
-	} {
+	}
+	if main != "" {
+		edits = append(edits, struct{ old, new string }{mainLine, "main  = " + tomlString(main) + "   # picked for this Mac's memory; writes the answer"})
+	}
+	for _, r := range edits {
 		// The newlines on both sides match a whole line, never the same
 		// words inside a comment.
 		old := "\n" + r.old + "\n"

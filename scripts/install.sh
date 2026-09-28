@@ -62,11 +62,14 @@ mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 ))
 # The answer model to offer for this much memory, from docs/running.md,
 # "Which model for which Mac": the model's file plus what Ollama holds for
 # a 32,768-token context must fit beside the router, macOS and your apps.
-# 64 GB or more gets the full profile's answer model and embedding model;
-# 32 to 63 GB gets Gemma 4 at 4 bits; less gets the lite models alone.
-answer_model=""; answer_size=""; embed_model=""; pulled_answer=0
+# The same table as the Mac installer's (internal/config/recommend.go):
+# 64 GB or more gets Qwen 3.6 35B at 8 bits, 48 to 63 GB the same model at
+# 4 bits, 32 to 47 GB Gemma 4 at 4 bits, and less the lite models alone.
+answer_model=""; answer_size=""; pulled_answer=0
 if [ "$mem_gb" -ge 64 ]; then
-  answer_model="qwen3.6:35b-a3b-mxfp8"; answer_size="38 GB"; embed_model="qwen3-embedding:0.6b"
+  answer_model="qwen3.6:35b-a3b-mxfp8"; answer_size="38 GB"
+elif [ "$mem_gb" -ge 48 ]; then
+  answer_model="qwen3.6:35b"; answer_size="23 GB"
 elif [ "$mem_gb" -ge 32 ]; then
   answer_model="gemma4:26b-a4b-it-qat"; answer_size="15 GB"
 fi
@@ -89,10 +92,7 @@ else
   echo "    - Ollama: install it yourself from https://ollama.com/download"
 fi
 echo "    - the lite models, about 2 GB: MiniCPM5-2B and nomic-embed-text"
-if [ -n "$embed_model" ]; then
-  echo "    - the full profile's models for this Mac's $mem_gb GB: $answer_model, $answer_size,"
-  echo "      to write the answers, and $embed_model, about 0.6 GB, for search"
-elif [ -n "$answer_model" ]; then
+if [ -n "$answer_model" ]; then
   echo "    - $answer_model, $answer_size, a stronger answer model for this Mac's $mem_gb GB"
 fi
 echo "    - meru setup, which asks its own questions: your folders and about you"
@@ -178,36 +178,39 @@ if command -v ollama >/dev/null 2>&1; then
     ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
     ollama pull nomic-embed-text
   fi
-  if [ -n "$embed_model" ] && ask "Also download the full profile's models, $answer_model ($answer_size) and $embed_model (about 0.6 GB)?"; then
-    ollama pull "$answer_model"
-    ollama pull "$embed_model"
-    pulled_answer=1
-  elif [ -z "$embed_model" ] && [ -n "$answer_model" ] && ask "Also download $answer_model ($answer_size), a stronger answer model?"; then
+  if [ -n "$answer_model" ] && ask "Also download $answer_model ($answer_size), a stronger answer model?"; then
     ollama pull "$answer_model"
     pulled_answer=1
   fi
 fi
 
-# how_to_use says how to make the downloaded model the one that answers.
-# The full profile names it, so meru setup sets it; any other model is a
-# pick in Settings, which writes [models] main in config.toml.
+# how_to_use says how to make the downloaded model the one that answers,
+# for a Mac that already had a config.toml, which this script leaves alone.
 how_to_use() {
-  if [ -n "$embed_model" ]; then
-    echo "To answer with $answer_model, pick the full profile: answer 'full' at meru setup's Profile question."
-  else
-    echo "To answer with $answer_model: open Meru.app, Settings, Models, and click Use for answers on its card,"
-    echo "or set main = \"$answer_model\" under [models] in ~/.meru/config.toml and restart merud."
-  fi
+  echo "To answer with $answer_model: open Meru.app, Settings, Models, and click Use for answers on its card,"
+  echo "or set main = \"$answer_model\" under [models] in ~/.meru/config.toml and restart merud."
 }
-if [ "$pulled_answer" = 1 ]; then how_to_use; fi
 
 say "Setting up Meru"
+config="$HOME/.meru/config.toml"
+had_config=0; [ -f "$config" ] && had_config=1
 # meru setup asks its own questions, so it needs a terminal even when every
-# step says yes.
+# step says yes. --main makes the answer model just downloaded the one a
+# new config.toml names, so Meru answers with it from the first question.
+setup_args=(setup)
+[ "$pulled_answer" = 1 ] && setup_args+=(--main "$answer_model")
 if { : </dev/tty; } 2>/dev/null && ask "Run meru setup now (config, folders, and questions about you)?"; then
-  "$bin_dir/meru" setup </dev/tty
+  "$bin_dir/meru" "${setup_args[@]}" </dev/tty
 else
   echo "Run 'meru setup' when you're ready."
+fi
+# Without meru setup there is no config.toml yet. Write one from the
+# template with the answer model filled in, so merud still starts with it.
+if [ "$pulled_answer" = 1 ] && [ ! -f "$config" ]; then
+  mkdir -p "$HOME/.meru"
+  "$bin_dir/meru" config template |
+    sed "s|^main  = \"\".*|main  = \"$answer_model\"   # picked for this Mac's memory; writes the answer|" >"$config"
+  echo "Wrote $config with $answer_model as the answer model."
 fi
 
 plist="$HOME/Library/LaunchAgents/com.meru.merud.plist"
@@ -228,4 +231,4 @@ echo "Ask a question:   meru \"what can you do?\""
 echo "Chat:             meru chat"
 [ "$arch" = "arm64" ] && echo "Desktop app:      open Meru.app"
 echo "Gmail, Calendar and Drive: https://github.com/$repo/blob/main/docs/google-setup.md"
-if [ "$pulled_answer" = 1 ]; then how_to_use; fi
+if [ "$pulled_answer" = 1 ] && [ "$had_config" = 1 ]; then how_to_use; fi

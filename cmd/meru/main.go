@@ -92,7 +92,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru model use <name> [--rebuild]
                         switch to a model set until merud stops
   meru model save       make the models in use the default in config.toml
-  meru setup            set up Ollama, the models, config and tools
+  meru setup [--main <model>]
+                        set up Ollama, the models, config and tools; --main
+                        names the answer model for a new config.toml
   meru setup user       tell Meru who you are
   meru config template  print every config key with its default
   meru memory list [kind] | add <kind> <text...> | forget <id>
@@ -159,7 +161,9 @@ flags:`)
 	case flags.Arg(0) == "model":
 		err = modelCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "setup":
-		err = setupCmd(ctx, *socket, terminal(stdout))
+		err = setupCmd(ctx, *socket, terminal(stdout), "")
+	case flags.NArg() == 3 && flags.Arg(0) == "setup" && flags.Arg(1) == "--main":
+		err = setupCmd(ctx, *socket, terminal(stdout), flags.Arg(2))
 	case flags.NArg() == 2 && flags.Arg(0) == "setup" && flags.Arg(1) == "user":
 		err = setupUserCmd(ctx, *socket, terminal(stdout))
 	case flags.NArg() == 2 && flags.Arg(0) == "config" && flags.Arg(1) == "template":

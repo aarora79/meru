@@ -76,6 +76,7 @@ func TestLoadKeepsExplicitValues(t *testing.T) {
 [ollama]
 base_url = "http://localhost:11434"
 keep_alive = "30m"
+context_length = 8192
 
 [agent]
 max_rounds = 3
@@ -154,7 +155,7 @@ remote  = false
 	want := Config{
 		Profile: "lite",
 		Models:  profiles["lite"],
-		Ollama:  Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m"},
+		Ollama:  Ollama{BaseURL: "http://localhost:11434", KeepAlive: "30m", ContextLength: 8192},
 		Agent:   Agent{MaxRounds: 3, MaxOutputTokens: 2048, TurnTimeout: "90s", HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
 		Router: Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct",
@@ -210,6 +211,7 @@ func TestLoadErrors(t *testing.T) {
 		{"ollama scheme", "[ollama]\nbase_url = \"ftp://127.0.0.1\"", "scheme must be http or https"},
 		{"ollama empty", "[ollama]\nbase_url = \"\"", "ollama.base_url"},
 		{"keep_alive", "[ollama]\nkeep_alive = \"forever\"", "ollama.keep_alive"},
+		{"context_length", "[ollama]\ncontext_length = 100", "ollama.context_length"},
 		{"max_rounds", "[agent]\nmax_rounds = 0", "agent.max_rounds"},
 		{"max_output_tokens", "[agent]\nmax_output_tokens = 0", "agent.max_output_tokens"},
 		{"turn_timeout", "[agent]\nturn_timeout = \"soon\"", "agent.turn_timeout"},

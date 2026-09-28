@@ -53,9 +53,8 @@ In `meru chat`, `/model gemma-moe` and `/model save` do the same, and
   the web or your files, and says so under each answer.
 - `vision`, if you want to attach images.
 
-**A larger model needs more context.** On macOS, run
-`launchctl setenv OLLAMA_CONTEXT_LENGTH 32768`, then quit and start Ollama. It
-lasts until the Mac restarts.
+**Context.** `merud` asks Ollama for 32,768 tokens of context on every call,
+from `[ollama] context_length`, so a larger model needs no Ollama setting.
 
 **Changing the embedding model** (`[models] embed`) makes `merud` embed every
 file again: set it, `ollama pull` it, and restart `merud`.

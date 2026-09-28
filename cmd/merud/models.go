@@ -112,9 +112,10 @@ type modelService struct {
 }
 
 // newModelService returns the service for the models merud started with.
-// The set in use at startup is the first whose models match those; when
-// that set turns thinking off, newModelService tells the agent so, as a
-// switch to the set would. Every later change goes through switchMain.
+// The set in use at startup is the first whose models match those, and its
+// think setting holds; when none matches, [models] think decides, off by
+// default. newModelService tells the agent, as a switch would. Every later
+// change goes through switchMain.
 func newModelService(cfg config.Config, configPath, outputDir string, eng engine.Engine, answer answerModel,
 	edit func(func() error) error, log *slog.Logger) *modelService {
 	m := &modelService{
@@ -124,6 +125,9 @@ func newModelService(cfg config.Config, configPath, outputDir string, eng engine
 	if s, ok := matchingSet(cfg.Models.Sets, cfg.Models); ok {
 		m.active = s.Name
 		answer.SetMain(cfg.Models.Main, s.ThinkOff())
+	} else {
+		// No set: [models] think decides, and it defaults to off.
+		answer.SetMain(cfg.Models.Main, cfg.Models.ThinkOff())
 	}
 	return m
 }
@@ -494,7 +498,12 @@ func (m *modelService) handleModelSet(ctx context.Context, req rpc.Request, emit
 
 	m.switchMu.Lock()
 	defer m.switchMu.Unlock()
-	if err := m.switchMain(ctx, name, inSet && set.ThinkOff()); err != nil {
+	// A set's think setting wins; outside a set, [models] think decides.
+	noThink := m.models.ThinkOff()
+	if inSet {
+		noThink = set.ThinkOff()
+	}
+	if err := m.switchMain(ctx, name, noThink); err != nil {
 		return err
 	}
 	active := ""

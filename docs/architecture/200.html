@@ -636,7 +636,7 @@
   </tbody>
 </table></div>
 
-<p>The three pass about as often. <code>qwen3.6:35b-a3b-mxfp8</code> answers fastest, so the <code>full</code> profile uses it. <code>gemma4:26b-mxfp8</code> passed the most tasks that need several tools, but starts slow: on a question that offers tools, Ollama reads Gemma 4's whole tool list again, about 13,000 tokens, where Qwen reuses it from the last question. A Mac with 32 or 48 GB can run <code>gemma4:26b-a4b-it-qat</code> (15 GB), Gemma 4 at 4 bits; below that, <code>lite</code> stays the choice.</p>
+<p>The three pass about as often. <code>qwen3.6:35b-a3b-mxfp8</code> answers fastest, so the <code>full</code> profile uses it. <code>gemma4:26b-mxfp8</code> passed the most tasks that need several tools, but starts slow: on a question that offers tools, Ollama reads Gemma 4's whole tool list again, about 13,000 tokens, where Qwen reuses it from the last question. A Mac with 48 GB can run <code>qwen3.6:35b</code> (23 GB), the same Qwen model at 4 bits, which passed as many tasks. A Mac with 32 GB can run <code>gemma4:26b-a4b-it-qat</code> (15 GB), Gemma 4 at 4 bits, which passed 120 of 150; below that, <code>lite</code> stays the choice.</p>
 
 <p>The desktop app's Settings, Models shows the models we tried with their <code>ollama pull</code> and <code>ollama run</code> commands. "Use for answers" switches the answer model with no restart and saves it in the config file. With a model that can't call tools, Meru answers from the model alone and says so under the answer.</p>
 

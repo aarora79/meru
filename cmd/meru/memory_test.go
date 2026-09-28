@@ -233,7 +233,7 @@ func TestSetupOffersProfile(t *testing.T) {
 	writeConfig(t, sock)
 	// No download, skip the servers, yes to the profile, a name, skip the rest.
 	c, out, _ := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "\nDana\n\n\n\n\n\n")
-	if err := setupCmd(context.Background(), sock, c); err != nil {
+	if err := setupCmd(context.Background(), sock, c, ""); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	if got := f.texts(); !slices.Equal(got, []string{"me Name: Dana"}) {

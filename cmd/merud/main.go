@@ -463,9 +463,16 @@ type engineBuilder func(config.Config, *slog.Logger) (engine.Engine, error)
 
 // newEngine builds the engine merud answers with: an OllamaEngine on the
 // loopback address from config, which also knows the embed model for Embed.
-// A nil *http.Client makes the engine use its own default client.
+// A nil *http.Client makes the engine use its own default client. The
+// engine asks Ollama for [ollama] context_length tokens of room on every
+// chat call.
 func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
-	return engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil, log)
+	e, err := engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil, log)
+	if err != nil {
+		return nil, err
+	}
+	e.ContextLength = cfg.Ollama.ContextLength
+	return e, nil
 }
 
 // newRouter builds the router the agent asks for each turn's route: the

@@ -29,8 +29,9 @@ type Recommendation struct {
 //
 // The memory lines come from the benchmark in ARCHITECTURE.md, "Models we
 // tried": Qwen 3.6 35B in MXFP8 peaked at about 47 GB, more than a 48 GB
-// Mac lets the GPU use, so it starts at 64 GB. The 15 GB Gemma 4 build
-// fits from 32 GB.
+// Mac lets the GPU use, so it starts at 64 GB. Its 23 GB Q4 build passed
+// as many tasks and loads in about 27 GB with the router, so it fills the
+// 48 GB row. The 15 GB Gemma 4 build fits from 32 GB.
 func Recommendations() []Recommendation {
 	return []Recommendation{
 		{
@@ -47,6 +48,14 @@ func Recommendations() []Recommendation {
 			Label:       "Lite with Gemma 4 26B for answers",
 			Why:         "Gemma 4 26B writes the answers and calls tools. This 4-bit build takes about 15 GB, so it fits on 32 GB beside your other apps.",
 			Download:    "about 2 GB for lite, plus about 15 GB for the answer model",
+		},
+		{
+			MinMemoryGB: 48,
+			Profile:     "lite",
+			Main:        "qwen3.6:35b",
+			Label:       "Lite with Qwen 3.6 35B (4-bit) for answers",
+			Why:         "Qwen 3.6 35B at 4 bits writes the answers: it passed as many benchmark tasks as the 8-bit build and takes about 23 GB, so it fits on 48 GB.",
+			Download:    "about 2 GB for lite, plus about 23 GB for the answer model",
 		},
 		{
 			MinMemoryGB: 64,
