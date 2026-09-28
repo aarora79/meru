@@ -136,7 +136,15 @@ nothing can't pass unnoticed.
 `layout_test.go` checks that `cmd/meru` stays thin in two ways. It reads the
 client's import lines, and it runs `go list -deps ./cmd/meru` to see every
 package the client pulls in, however indirectly. When it finds the engine, it
-prints the chain: `cmd/meru -> internal/rpc -> internal/engine`.
+prints the chain: `cmd/meru -> internal/rpc -> internal/engine`. The desktop app
+and the Mac installer get the same two checks, each with its own list of
+packages it must not reach.
+
+`installer_test.go` holds the installer's own rules, because it is the one
+program besides `merud` that starts other programs. Only
+`internal/installer/run.go` may import `os/exec`; no installer file may import
+`syscall` or call `os.StartProcess`; and `installer.Programs()`, the allowlist,
+may name no shell, interpreter or downloader, and only absolute paths.
 
 ## Go ideas used here
 

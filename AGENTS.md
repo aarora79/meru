@@ -58,7 +58,9 @@ change. `meru chat` does the same things in a terminal. The headless mode,
 as an agent harness, one JSON event per line. Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
-through `make release` and a one-line installer. Work goes milestone by milestone
+through `make release`, a one-line installer, and a Mac installer on a disk image
+(`cmd/meru-installer`), which sets up Ollama, web search, folders and `merud` in
+a window. Work goes milestone by milestone
 ([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features (the
 scheduler) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
@@ -192,6 +194,8 @@ cmd/
                      prompt (approve.go) and the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
                      Info.plist and Meru.icns for Meru.app
+  meru-installer/    the Mac installer's window, "Install Meru.app" (Wails v3, build tag
+                     `desktop`), with its Info.plist
   fakeollama/        a fake Ollama server for end-to-end tests
   fakemcp/           a small MCP server over stdio for end-to-end tests
 internal/
@@ -235,13 +239,16 @@ internal/
                      web/ (index.html, app.css, js/, vendored marked and DOMPurify in vendor/,
                      fonts/)
   opener/            opens a clicked http, https or file link with the system opener, no shell
+  installer/         the Mac installer minus the window: its nine steps, the Bridge, the
+                     allowlist of programs it runs (run.go), and the page in web/
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
 deploy/              launchd/ and systemd/ service files; observability/ holds the local
                      Grafana stack (compose.yaml), its provisioning and the dashboards
-scripts/             release.sh, which `make release` runs
+scripts/             release.sh, which `make release` runs; install.sh, the one-line
+                     installer; dmg-readme.txt, the read-me on the installer's disk image
 dist/                git-ignored; `make release` packs a release here
 docs/
   architecture/      100.md, 200.md and the HTML pages 100.html, 200.html and 300.html;
@@ -276,8 +283,14 @@ or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
 and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
-`internal/policy` fails the build if either changes, directly or through another
-package. `loopback` and `about` import only the standard library, so any package
+The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
+`merud` exists, so it may write config through `catalog`, the profile through
+`memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
+`index`, `dispatch`, `mcp`, `a2a`, `builtin` or `commands`. It starts programs
+only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
+with no shell.
+`internal/policy` fails the build if any of this changes, directly or through
+another package. `loopback` and `about` import only the standard library, so any package
 can use them.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
@@ -424,6 +437,8 @@ make cover            # tests with coverage, and the total
 make build            # binaries for five platforms in bin/
 make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
 make desktop-app      # wrap the desktop app in bin/Meru.app (macOS)
+make installer-app    # the Mac installer, with its payload, in "bin/Install Meru.app"
+make dmg              # pack the installer in dist/Meru-dev-macos-arm64.dmg (Apple silicon)
 make release VERSION=v0.4.1 DRY_RUN=1  # build and pack a release in dist/; drop DRY_RUN to publish
 make router-eval      # score the router on labelled questions against local Ollama
 make pick-eval        # score the skill pick on labelled questions against local Ollama

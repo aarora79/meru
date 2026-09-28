@@ -14,6 +14,11 @@ Macs get the command-line programs `meru` and `merud` only; the release has no
 lists, the Google start script, and the commands behind the optional steps.
 Read the section you need when you reach it.
 
+On a Mac with Apple silicon, the release also has a disk image,
+`Meru-vX.Y.Z-macos-arm64.dmg`, holding "Install Meru.app", which does these
+steps in a window. Mention it once at the start: a person who'd rather click
+than type can use it instead, and you stop there.
+
 ## How to run each step
 
 - **Ask first.** Before any command that installs, downloads, writes or deletes

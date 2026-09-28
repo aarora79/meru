@@ -1,7 +1,8 @@
 # catalog
 
 **Code:** `internal/catalog/` (`doc.go`, `catalog.go`, `block.go`, `append.go`,
-`remove.go`, `searxng.go`, and the tests `catalog_test.go`, `remove_test.go` and
+`remove.go`, `edit.go`, `commands.go`, `searxng.go`, and the tests
+`catalog_test.go`, `remove_test.go`, `edit_test.go`, `commands_test.go` and
 `searxng_test.go`)
 **Milestone:** v0.3
 **Architecture:** [Adding an MCP server](../../ARCHITECTURE.md#adding-an-mcp-server),
@@ -246,6 +247,17 @@ the same order, and runs `CheckServers`; `SetTableLists` runs the caller's
 `SetTableStrings` sets several string keys of one plain table in one write, such
 as `main` and `fast` in `[models]` for `merud`'s `model_save`, so a reader never
 sees one changed without the other. `SetTableString` calls it with one key.
+
+### commands.go
+
+`AppendCommand(configPath, block)` adds one `[[commands]]` entry to the end of
+`config.toml`, the way `AppendServer` adds a server. The Mac installer uses it for
+the sample commands the user ticks (see [installer](installer.md)). It parses the
+block on its own first and refuses one that holds no command, or two, or a name
+config already has. Then it writes through `writeChecked`, whose check compares the
+command names before and after: the result must hold the old commands, in order,
+plus this one. A block that closed the entry early, or broke the file, leaves
+`config.toml` as it was.
 
 ### searxng.go
 

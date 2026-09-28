@@ -7,8 +7,8 @@
 [![Download for macOS](https://img.shields.io/badge/Download-macOS-2F6B4F?logo=apple&style=for-the-badge)](https://aarora79.github.io/meru/#install)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
-Meru.app needs `merud` and Ollama running beside it. The one-line installer
-below sets up all three, so use it rather than copying the app by hand.
+Meru.app needs `merud` and Ollama running beside it. Either installer below sets
+up all three, so use one rather than copying the app by hand.
 
 Meru runs local models only. Its code has no path to a cloud AI model, not even a
 disabled one. It loads open-weight models into your computer's memory and keeps them
@@ -38,6 +38,17 @@ first for any address that no search or question of yours gave.
 ---
 
 ## Install on a Mac
+
+**In a window:** download `Meru-vX.Y.Z-macos-arm64.dmg` from the
+[latest release](https://github.com/aarora79/meru/releases/latest), open it, and
+right-click "Install Meru.app", then choose Open (Meru isn't signed by Apple).
+It walks you through nine steps: Meru, Ollama and the models, the folders Meru
+reads, web search in Docker, skills and commands, Gmail and Calendar, your name,
+and starting `merud`. Each step says what it downloads before it starts, and you
+can skip any but your name. [The Mac installer](docs/running.md#the-mac-installer)
+lists what each step does.
+
+**In Terminal:**
 
 ```sh
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
