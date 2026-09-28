@@ -48,7 +48,9 @@ fails:
 2. **`make check`**, every check CI runs.
 3. **Builds.** `make build` writes `meru` and `merud` for macOS (Apple silicon
    and Intel), Linux (x86-64 and ARM) and Windows (x86-64) to `bin/`, and
-   `make desktop-app` writes `bin/Meru.app`. The script sets the app's
+   `make dmg` writes `bin/Meru.app`, then `bin/Install Meru.app`, the Mac
+   installer, with `meru`, `merud` and `Meru.app` inside it, and packs the
+   installer in a disk image with `hdiutil`. The Makefile sets both apps'
    `Info.plist` version to `0.4.1`, so Finder's Get Info shows it.
 4. **Packing.** Into `dist/`, which git ignores:
 
@@ -59,6 +61,7 @@ fails:
    | `meru-v0.4.1-linux-amd64.tar.gz`, `meru-v0.4.1-linux-arm64.tar.gz` | the same for Linux |
    | `meru-v0.4.1-windows-amd64.zip` | `meru.exe`, `merud.exe`, `LICENSE` and `README.md` |
    | `Meru-v0.4.1-macos-arm64.zip` | `Meru.app`, for Apple silicon only |
+   | `Meru-v0.4.1-macos-arm64.dmg` | the Mac installer, "Install Meru.app", with `meru`, `merud` and `Meru.app` inside, and "Read me first.txt"; about 60 MB |
    | `SHA256SUMS` | the SHA-256 of each file above |
 
    Each archive opens to one folder named after the archive.
@@ -110,7 +113,7 @@ strings bin/darwin-arm64/merud | grep -x v0.4.1
 
   ```sh
   gh release create v0.4.1 --repo aarora79/meru --title "Meru v0.4.1" \
-    --verify-tag --generate-notes dist/*.tar.gz dist/*.zip dist/SHA256SUMS
+    --verify-tag --generate-notes dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS
   ```
 
   To start over instead, delete the tag in both places with
@@ -126,10 +129,18 @@ curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh 
 ```
 
 `make release` attaches `scripts/install.sh` to every release, so that URL always
-serves the latest copy. A plain `curl -LO` of any file's URL works too.
+serves the latest copy. A plain `curl -LO` of any file's URL works too. People
+who'd rather not use Terminal download `Meru-v0.4.1-macos-arm64.dmg`, open it and
+run "Install Meru.app", which walks through nine steps in a window
+([running.md](running.md#the-mac-installer)).
 
-**Meru.app isn't signed or notarized**, because the project has no Apple
-Developer account. A browser marks a downloaded file with the
+To try the disk image before a release, `make dmg` builds
+`dist/Meru-dev-macos-arm64.dmg` from the working tree.
+
+**Meru.app and the installer aren't signed or notarized**, because the project
+has no Apple Developer account. The disk image's "Read me first.txt" explains
+the right-click, Open step for the installer, and the installer's Install Meru
+step offers to clear the quarantine mark from what it installs. A browser marks a downloaded file with the
 `com.apple.quarantine` attribute, and macOS then refuses to open the app,
 saying it can't check it for malicious software. The user can clear the mark
 once they trust the file:

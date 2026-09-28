@@ -110,6 +110,8 @@ jobs:
           go-version-file: go.mod
       - name: make desktop
         run: make desktop
+      - name: make installer
+        run: make installer
       - name: vet, staticcheck and govulncheck with the desktop tags
         run: make desktop-check
 

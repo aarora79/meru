@@ -3,8 +3,11 @@
 #
 # Only documentation links belong here: a URL that Meru prints for a person to
 # open, such as a help link in an error message. Meru must never fetch one.
-# Links in comments don't need an entry, because the test reads string
-# literals only.
+# The one exception is the Mac installer's download of Ollama.app, listed
+# below with its reason: the installer is not merud and not a client, and it
+# fetches that file only when the user presses Continue on a screen that
+# shows the URL. Links in comments don't need an entry, because the test
+# reads string literals only.
 #
 # One URL prefix per line. A literal URL passes when it starts with an entry.
 # Give every entry a reason after "#", for the reviewer who has to accept it.
@@ -36,3 +39,11 @@ https://docs.astral.sh/uv/getting-started/installation/      # how to install uv
 # project on GitHub (internal/about). The user clicks them and the system
 # browser opens them; neither client fetches them.
 https://github.com/aarora79/meru  # the source, the design and new issues
+
+# The Mac installer (internal/installer). Every link opens in the user's
+# browser when they click it, except Ollama-darwin.zip.
+https://ollama.com/download/Ollama-darwin.zip  # FETCHED by the installer, once, after the user presses Continue on a Mac with no Homebrew; the screen shows this URL first
+https://www.docker.com/products/docker-desktop/  # where to get Docker, for web search; the Web search screen links it
+https://console.cloud.google.com/  # the Google Cloud pages the Google screens link, steps 1 to 5 of docs/google-setup.md
+https://github.com/aarora79/meru/blob/main/docs/google-setup.md  # the full Google guide, linked from the Google screens
+http://www.apple.com/DTDs/PropertyList-1.0.dtd  # the DOCTYPE line of a launchd plist; launchd never fetches it

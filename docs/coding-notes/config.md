@@ -1,6 +1,6 @@
 # config
 
-**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `loopback.go`)
+**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `recommend.go`, `loopback.go`)
 **Milestone:** v0.1
 **Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
 
@@ -324,6 +324,34 @@ because it records what we tested; `config.toml` still says which model runs.
 `TestKnownModels` checks every field is set, that the names are the six we
 offer in order, and that the main model of each profile, `lite` and `full`, is
 one of them, so Settings can always switch back to it.
+
+### recommend.go
+
+`Recommendations()` is the table the Mac installer suggests models from, by
+memory. Each `Recommendation` names a profile, an optional answer model that
+overrides the profile's, as `[models] main` does, a label, one line on why it fits,
+and about how much it downloads. `Recommend(memGB)` returns the last row whose
+`MinMemoryGB` the Mac meets. Every Mac gets `lite`; 32 GB or more adds
+`gemma4:26b-a4b-it-qat` for answers, and 64 GB or more `qwen3.6:35b-a3b-mxfp8`
+instead. `Models()` lists the models a row needs, each
+once, which is the list the installer pulls.
+
+```go
+func Recommend(memGB int) Recommendation {
+    table := Recommendations()
+    best := table[0]
+    for _, r := range table {
+        if memGB >= r.MinMemoryGB {
+            best = r
+        }
+    }
+    return best
+}
+```
+
+The table sits here, next to `profiles`, so a change of default models changes
+one file and the installer follows. The memory lines come from the benchmark's
+peak memory. `TestRecommend` checks each size of Mac.
 
 ### loopback.go
 

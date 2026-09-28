@@ -132,6 +132,9 @@ from disk. So Meru has two programs:
 - **`meru`** is a thin client. It connects to `merud` over a Unix socket at
   `~/.meru/merud.sock`, starts in ~50 ms, streams the answer back and exits.
 
+The desktop app is a second thin client. One more program, the Mac installer, runs
+once, before `merud` exists, to set the Mac up (see [Installer](#installer)).
+
 A daemon that keeps models warm can also run scheduled jobs for almost no extra
 work. That is why we build `merud` first and add the scheduler to it later.
 
@@ -2497,6 +2500,10 @@ steps cover the models, your folders, connections and about you, and every chang
 goes through `merud` (see [Desktop app](#desktop-app)). Writing the first
 `config.toml` and pulling models stay with `meru setup`.
 
+On a Mac, the installer in each release's disk image does all of this in a window,
+before `merud` exists, and more: it installs Ollama, starts SearXNG in Docker, sets
+up the Google server and starts `merud` at login (see [Installer](#installer)).
+
 ### Adding an MCP server
 
 Meru carries a small catalog of known servers in the binary, one for each kind of
@@ -2651,6 +2658,124 @@ to start when group or other users can read `secrets.toml` (it says to run
 writes a transcript line, a `tool_calls` row, a log line or a span, it replaces each
 stored value of 8 or more characters with `[secret:<name>]`; shorter values would
 match ordinary words. A config file you share or commit holds names only.
+
+---
+
+## Installer
+
+The Mac installer, "Install Meru.app", takes a Mac with Apple silicon from nothing
+to a running Meru in nine steps: Ollama and the models, web search, folders in the
+index, skills and commands, Google if you want it, your profile, and `merud` started
+at login. Each release carries it in a disk image, `Meru-vX.Y.Z-macos-arm64.dmg`,
+beside the zip files. `scripts/install.sh` and the `meru-install` skill stay for
+people who prefer a terminal.
+
+**Why it is its own program.** The clients never run a program. The desktop app
+changes config only by asking `merud`, and `meru setup` writes it only through
+`catalog`. The installer has to install Ollama, pull models, start a container and
+load launchd jobs before any `merud` exists, so it can't ask `merud`. It is a
+fourth program, `cmd/meru-installer`: a Wails window with Meru.app's fonts, colours
+and logo, which it borrows from Meru.app's page, and a dark palette that follows the
+Mac's setting. Its logic lives in `internal/installer`, which doesn't import Wails,
+so CI tests every step with fakes.
+
+What runs where:
+
+| Part | Runs as | Does |
+| --- | --- | --- |
+| `cmd/meru-installer` | the window | serves the page, binds the Bridge, shows the folder dialog |
+| `internal/installer` | the installer's process | the nine steps, the Bridge the page calls, the allowlist of programs |
+| programs from the allowlist | child processes, no shell | `brew`, `docker`, `launchctl`, `open`, `ditto`, `xattr`, `codesign`, `sysctl`, `sw_vers`, `df` |
+| Ollama | Ollama.app, or a Homebrew service | answers `POST /api/pull`, whose stream gives each download's progress |
+| SearXNG | the Docker container `meru-searxng` | web search on `127.0.0.1:8888` |
+| `workspace-mcp` | the launchd job `com.meru.workspace-mcp` | the Google server, when you set it up |
+| `merud` | the launchd job `com.meru.merud` | everything after the last step |
+
+**The rules it keeps.** `internal/policy` checks each one:
+
+- It starts programs only in `internal/installer/run.go`, which holds a fixed map
+  from each program's name to the absolute paths it may live at. No other installer
+  file imports `os/exec` or `syscall`, and the map holds no shell, interpreter or
+  downloader. The code builds each argument as its own string, so no argument can
+  grow into a second command. It never searches `PATH`: an app opened from Finder
+  gets a short one, and with fixed paths no file dropped on `PATH` can stand in for
+  a program.
+- It never imports the engine, the agent loop, the store, `index`, `dispatch`, the
+  MCP or A2A clients or `commands`, and never talks to a model. It pulls models
+  through Ollama's HTTP API on loopback, which carries no prompt.
+- It changes `config.toml` only through `catalog`: `SetTableLists`,
+  `SetTableString`, `AppendServer` and `AppendCommand`. Each edits lines of text,
+  keeps every comment, and replaces the file only after the result loads. A missing
+  `config.toml` starts as the template. The profile goes into memory files through
+  `memory`, the same files `merud` reads, and the installer talks to `merud` only
+  over the socket.
+- It reaches the internet only after you press Continue on a step that says what it
+  downloads: through Homebrew for Ollama and uv, through `docker pull` for the
+  SearXNG image, and, on a Mac with no Homebrew, straight to
+  `https://ollama.com/download/Ollama-darwin.zip`, whose address the screen shows
+  first. `codesign --verify` then checks Ollama.app's signature, and the installer
+  deletes the app when the check fails. It sends no telemetry and never checks for
+  updates.
+- Each link on its screens is a name that the Bridge maps to a fixed `https`
+  address. The page can't open an address of its own.
+
+**The steps.** Each screen says what the step does, why Meru needs it, and what it
+downloads and how long it takes. Continue runs it and shows its progress line by
+line, with a bar while a model downloads. A failed step shows the reason with Retry
+and Skip. You can skip every step but About you.
+
+| # | Step | What it does | What it writes |
+| --- | --- | --- | --- |
+| 1 | Check this Mac | reads the chip, macOS, memory and free disk with `sysctl`, `sw_vers` and `df`, and offers the model sets that fit | nothing |
+| 2 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`, or `~/Applications` when that isn't writable, with `ditto`; clears the quarantine mark with `xattr` when its box is ticked; adds the `PATH` line to `~/.zshrc` when asked | the three programs; `config.toml` from the template when missing |
+| 3 | Ollama and the models | installs Ollama when missing, starts it, and pulls each model of the chosen set that Ollama lacks | `[models] main`, when the set names one |
+| 4 | Folders to search | lists the folders config has, then Documents, Desktop and Notes with file counts; the system's folder dialog adds more | `[index] folders` |
+| 5 | Web search | keeps a SearXNG that already answers JSON on `127.0.0.1:8888`. Otherwise it checks `docker version`, writes `~/.meru/searxng/settings.yml` (JSON on, a random `secret_key`, the limiter off), pulls `searxng/searxng`, runs `meru-searxng` published on `127.0.0.1:8888` only with `--restart unless-stopped`, and sends one test search | `[web] searxng_url`; `web_search` and `web_fetch` in `[builtin] tools` |
+| 6 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
+| 7 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, installs uv with Homebrew, and waits for the server to answer | `~/.config/workspace-mcp/start.sh` (mode `0700`), its launchd job, the `google` entry |
+| 8 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
+| 9 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, and follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job |
+
+The last screen lists what each step did, or that you skipped it. It names
+`~/.meru/config.toml`, with a button that opens it in your text editor, and says
+that Meru.app's Settings and `/help` in `meru chat` change most settings. A button
+opens Meru.
+
+**About you can't be skipped.** Meru reads files and mail that name many people.
+Without your name, the model can't tell who "I" and "my" mean, and mixes you up
+with someone in your files. The screen says so, and says the answers stay in
+`~/.meru/memory/` as files you can edit, or change in Settings, About you, or with
+`/me` in `meru chat`. The name is required. The email is required only after the
+Google step, because every Google tool takes the address; the screen fills it in
+from that step. How you like answers stays optional. Start Meru refuses to run until
+About you is done. On a second run the form shows what Meru already knows.
+
+**The model table.** `config.Recommend` picks from one table in
+`internal/config/recommend.go`, next to the profiles, so a change of default models
+changes one Go file. Every Mac gets `lite`. With 32 GB or more the installer
+suggests `gemma4:26b-a4b-it-qat` as `[models] main` too, and with 64 GB or more
+`qwen3.6:35b-a3b-mxfp8`, following the table in "Models we tried". You can pick
+any row that fits, `lite` alone included.
+
+**Running it again.** Each step first looks for its own work: the same programs in
+`~/.local/bin`, Ollama answering with the models, folders in config, SearXNG
+answering, commands in config, the start script and the `google` entry, a saved
+name, `merud` answering. The screen says what it found and offers Skip. Each write
+checks before it changes anything: `settings.yml` keeps its secret, a command or a
+server config already has stays as it is, and an unchanged answer keeps its memory
+file. Continue on Start Meru restarts `merud`, so it reads what this run wrote.
+
+**Unsigned.** Meru has no Apple developer account, so the disk image, the installer
+and the apps carry no Apple signature. "Read me first.txt" on the disk image
+explains the right-click, Open step, and the installer's first screen says why
+macOS asked. The Install Meru step clears the quarantine mark only from what it
+installed, and only when its box is ticked; the box says what the mark does.
+
+**What it doesn't do.** It doesn't uninstall, update itself or look for a newer
+Meru. It doesn't install Docker, whose licence terms and size are yours to weigh;
+it links the download page and offers Skip. It can't do Google's console steps for
+you, and it doesn't sign you in to Google: the first Google question does, with a
+link from the server.
 
 ---
 
@@ -3490,6 +3615,12 @@ transcript lines hold. No level writes question or answer text. With
   `list_folder`, `grep` and `search_files`, apply the same rules through the
   indexer's own code, so the model can read no file that search couldn't reach.
 - `meru log` and the `tool_calls` table let you review every external action.
+- The Mac installer downloads only what a step names, after you press Continue:
+  Ollama and uv through Homebrew, the models through Ollama, the SearXNG image
+  through Docker, and Ollama.app from Ollama's site on a Mac with no Homebrew. It
+  runs only the programs on its allowlist, with no shell, and keeps the Google
+  client secret in the start script, readable only by you (see
+  [Installer](#installer)).
 - The desktop app loads nothing from the network. Its page, fonts and libraries
   ship inside the binary, its Content-Security-Policy blocks remote scripts,
   images and connections, and its Wails updater stays unconfigured, so it never

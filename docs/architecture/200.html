@@ -1042,6 +1042,24 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 
 <p>API keys go in <code>~/.meru/secrets.toml</code>, and config names them as <code>secret:&lt;name&gt;</code>. <code>merud</code> refuses to start if other users can read that file, and strips the keys from transcripts, the tool log, logs and traces.</p>
 
+<h3 id="installer">The Mac installer</h3>
+
+<p>On a Mac, each release's disk image holds "Install Meru.app", a window that does all of the above and more, before <code>merud</code> exists. It is a program of its own, because it has to run other programs, and the clients never do. It walks through nine steps and says for each what it does, why, and what it downloads:</p>
+
+<ol>
+  <li><b>Check this Mac</b>: the chip, macOS, memory and free disk, and the models that fit. Every Mac gets <code>lite</code>; with 32 GB or more it suggests a bigger answer model too, from one table in <code>internal/config</code>.</li>
+  <li><b>Install Meru</b>: <code>meru</code> and <code>merud</code> into <code>~/.local/bin</code>, Meru.app into Applications, and, when you tick its box, clears the quarantine mark macOS puts on downloads, since Meru isn't signed by Apple.</li>
+  <li><b>Ollama and the models</b>: installs Ollama with Homebrew, or from Ollama's own download when there is no Homebrew, starts it, and pulls the models with a progress bar read from Ollama's API.</li>
+  <li><b>Folders to search</b>: Documents, Desktop and Notes with their file counts, and any folder you pick.</li>
+  <li><b>Web search</b>: starts SearXNG in Docker, listening on <code>127.0.0.1:8888</code> only, with its settings in <code>~/.meru/searxng/</code>, and checks it with one test search.</li>
+  <li><b>Skills and commands</b>: turns the built-in skills on, and turns on the sample read-only commands you tick.</li>
+  <li><b>Gmail, Calendar and Drive</b>: walks through Google's console, saves the start script with your client secret where only you can read it, and starts the server at login.</li>
+  <li><b>About you</b>: your name, which you must give, so Meru knows who "I" means, and your email and how you like answers.</li>
+  <li><b>Start Meru</b>: starts <code>merud</code> now and at login, and shows its first scan.</li>
+</ol>
+
+<p>You can skip any step but About you, retry one that fails, and run the installer again: each step looks for its own work first and offers to skip it. It changes <code>config.toml</code> through the same code as <code>meru setup</code>, so your comments stay, and the last screen shows where the file is. It runs only a fixed list of programs, never through a shell, and never checks for updates.</p>
+
 <!-- ============================================================ -->
 <h2 id="what-you-can-see">What you can see</h2>
 

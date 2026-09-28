@@ -71,9 +71,32 @@ var forbiddenClientSDKs = []string{
 	"github.com/wailsapp/wails/v3/pkg/updater",
 }
 
+// forbiddenInstallerPackages lists what the Mac installer (cmd/meru-installer
+// with internal/installer) must not reach. It runs before merud exists, so
+// unlike the clients it may write config through catalog and the profile
+// through memory, and run a fixed list of programs (installer_test.go).
+// It never talks to a model, touches the store or runs a tool.
+var forbiddenInstallerPackages = []forbiddenPackage{
+	{"internal/engine", "the installer pulls models through Ollama's HTTP API, and never talks to a model"},
+	{"internal/transcript", "merud owns the session transcripts"},
+	{"internal/agent", "the agent loop runs in merud"},
+	{"internal/store", "merud owns the store"},
+	{"internal/retrieve", "retrieval runs in merud next to the store"},
+	{"internal/index", "merud indexes the folders; the installer only lists them in config"},
+	{"internal/summarize", "merud writes the session summaries"},
+	{"internal/mcp", "merud owns the MCP clients"},
+	{"internal/dispatch", "every tool call goes through dispatch in merud"},
+	{"internal/builtin", "the built-in tools run in merud"},
+	{"internal/commands", "merud runs the local commands; the installer only lists them in config"},
+	{"internal/a2a", "merud owns the A2A clients"},
+	{"internal/scheduler", "the scheduler runs in merud"},
+	{"internal/tui", "the terminal UI belongs to meru chat"},
+}
+
 // thinClient is one client the tests check: the directories that hold its
 // code, the package go list starts from, the build tags that package
-// needs, and what it must not reach.
+// needs, and what it must not reach. The Mac installer gets the same
+// checks with its own list.
 type thinClient struct {
 	name      string
 	dirs      []string
@@ -92,6 +115,9 @@ func thinClients() []thinClient {
 		{name: "the desktop app", dirs: []string{"cmd/meru-desktop", "internal/desktop"}, pkg: "cmd/meru-desktop",
 			tags: "desktop,production", forbidden: desktop},
 		{name: "internal/desktop", dirs: []string{"internal/desktop"}, pkg: "internal/desktop", forbidden: desktop},
+		{name: "the Mac installer", dirs: []string{"cmd/meru-installer", "internal/installer"}, pkg: "cmd/meru-installer",
+			tags: "desktop,production", forbidden: forbiddenInstallerPackages},
+		{name: "internal/installer", dirs: []string{"internal/installer"}, pkg: "internal/installer", forbidden: forbiddenInstallerPackages},
 	}
 }
 

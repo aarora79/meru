@@ -37,7 +37,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app router-eval pick-eval bench bench-report figures check release clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app installer installer-app dmg router-eval pick-eval bench bench-report figures check release clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -129,10 +129,10 @@ endif
 desktop: ## Build the desktop app for this machine into bin/meru-desktop (needs cgo)
 	$(DESKTOP_CGO) go build -trimpath -tags "$(DESKTOP_TAGS)" -ldflags "$(LDFLAGS)" -o bin/meru-desktop ./cmd/meru-desktop
 
-desktop-check: ## Vet, lint and vuln-check cmd/meru-desktop with its tags (needs cgo)
-	$(DESKTOP_CGO) go vet -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
-	$(DESKTOP_CGO) go run $(STATICCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
-	$(DESKTOP_CGO) go run $(GOVULNCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop
+desktop-check: ## Vet, lint and vuln-check cmd/meru-desktop and cmd/meru-installer with their tags (needs cgo)
+	$(DESKTOP_CGO) go vet -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop ./cmd/meru-installer
+	$(DESKTOP_CGO) go run $(STATICCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop ./cmd/meru-installer
+	$(DESKTOP_CGO) go run $(GOVULNCHECK) -tags "$(DESKTOP_TAGS)" ./cmd/meru-desktop ./cmd/meru-installer
 
 desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 	rm -rf bin/Meru.app
@@ -140,6 +140,47 @@ desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 	cp cmd/meru-desktop/Info.plist bin/Meru.app/Contents/Info.plist
 	cp cmd/meru-desktop/Meru.icns bin/Meru.app/Contents/Resources/Meru.icns
 	cp bin/meru-desktop bin/Meru.app/Contents/MacOS/meru-desktop
+	@$(STAMP_VERSION) bin/Meru.app/Contents/Info.plist
+
+# STAMP_VERSION writes VERSION, without its v, into an Info.plist, so
+# Finder's Get Info shows it. It does nothing when VERSION is empty, as in
+# every build but a release.
+STAMP_VERSION = stamp() { [ -z "$(VERSION)" ] || { plutil -replace CFBundleShortVersionString -string "$(VERSION:v%=%)" "$$1" && plutil -replace CFBundleVersion -string "$(VERSION:v%=%)" "$$1"; }; }; stamp
+
+# The Mac installer is a second Wails app, built like the desktop app.
+# `make installer-app` puts it in "bin/Install Meru.app" with its payload,
+# the files it installs, in Contents/Resources/payload: meru and merud for
+# Apple silicon, and Meru.app. `make dmg` packs that app in a disk image.
+INSTALLER_APP := bin/Install Meru.app
+DMG := dist/Meru-$(if $(VERSION),$(VERSION),dev)-macos-arm64.dmg
+
+installer: ## Build the Mac installer for this machine into bin/meru-installer (needs cgo)
+	$(DESKTOP_CGO) go build -trimpath -tags "$(DESKTOP_TAGS)" -ldflags "$(LDFLAGS)" -o bin/meru-installer ./cmd/meru-installer
+
+installer-app: desktop-app installer ## Wrap the installer, with meru, merud and Meru.app inside, in "bin/Install Meru.app" (macOS)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/darwin-arm64/ ./cmd/meru ./cmd/merud
+	rm -rf "$(INSTALLER_APP)"
+	mkdir -p "$(INSTALLER_APP)/Contents/MacOS" "$(INSTALLER_APP)/Contents/Resources/payload"
+	cp cmd/meru-installer/Info.plist "$(INSTALLER_APP)/Contents/Info.plist"
+	cp cmd/meru-desktop/Meru.icns "$(INSTALLER_APP)/Contents/Resources/Meru.icns"
+	cp bin/meru-installer "$(INSTALLER_APP)/Contents/MacOS/meru-installer"
+	cp bin/darwin-arm64/meru bin/darwin-arm64/merud "$(INSTALLER_APP)/Contents/Resources/payload/"
+	ditto bin/Meru.app "$(INSTALLER_APP)/Contents/Resources/payload/Meru.app"
+	@$(STAMP_VERSION) "$(INSTALLER_APP)/Contents/Info.plist"
+
+# hdiutil is the Mac's disk image tool. UDZO is a compressed, read-only
+# image, the usual kind for a download. Meru has no Apple developer
+# account, so the image and its apps are unsigned, and "Read me first.txt"
+# explains the right-click, Open step.
+dmg: installer-app ## Pack "Install Meru.app" in dist/Meru-VERSION-macos-arm64.dmg (a Mac with Apple silicon)
+	@[ "$$(uname -sm)" = "Darwin arm64" ] || { echo "make dmg runs on a Mac with Apple silicon: Meru.app builds for the machine that builds it"; exit 1; }
+	rm -rf dist/dmg "$(DMG)"
+	mkdir -p dist/dmg
+	ditto "$(INSTALLER_APP)" "dist/dmg/Install Meru.app"
+	cp scripts/dmg-readme.txt "dist/dmg/Read me first.txt"
+	hdiutil create -quiet -volname "Install Meru" -srcfolder dist/dmg -fs HFS+ -format UDZO -ov "$(DMG)"
+	rm -rf dist/dmg
+	@ls -lh "$(DMG)"
 
 check: fmt-check vet lint tidy-check test e2e build vuln sec secrets actionlint ## Run every check CI runs, in CI's order
 

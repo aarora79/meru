@@ -37,6 +37,8 @@ allows only code inside this repo to import.
 | `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go`, `mcp.go`, `probe.go` |
 | `cmd/meru-desktop` | the desktop app's window (Wails v3, build tag `desktop`): opens it, serves the page, binds the Bridge | `main.go`: `run` |
 | `internal/desktop` | everything in the desktop app that needs no window: the Bridge the page calls, the views it sends, and the page (`web/`) | `bridge.go`: `Send`, `run`, then `views.go`, `history.go`, `status.go`, `settings.go`, `files.go`, `commands.go`, `assets.go` |
+| `cmd/meru-installer` | the Mac installer's window (Wails v3, build tag `desktop`): opens it, serves the page with Meru.app's styles behind it, binds the Bridge | `main.go`: `run` |
+| `internal/installer` | the Mac installer's nine steps, its Bridge, and the one allowlist of programs it runs (see [Installer](../ARCHITECTURE.md#installer)) | `bridge.go`: `Run`, `run`, then `steps.go`, `run.go` and one file per step |
 | `internal/opener` | hands an `http`, `https` or `file` URL to the system's opener, with no shell | `opener.go`: `Check`, `Open` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
@@ -82,6 +84,8 @@ flowchart TD
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     desktopapp["cmd/meru-desktop"] --> desktop
     desktop --> rpc & config & opener & about
+    installerapp["cmd/meru-installer"] --> installer & desktop
+    installer --> rpc & config & catalog & memory & skills
     tui --> rpc & opener & about
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin

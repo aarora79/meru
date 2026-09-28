@@ -27,7 +27,7 @@ CI builds no releases. The owner builds each one on a Mac with
 | Tests with race detector | ci / test (Linux and macOS) | Failing tests, including the policy tests below; two goroutines touching the same memory without a lock | `make test` |
 | Coverage | ci / test | Nothing fails on it; the job summary shows the total and the profile is kept as an artifact for 14 days | `make cover` |
 | Cross-compile | ci / build | Code that builds on your OS but not on another; accidental cgo | `make build` |
-| Desktop app | ci / desktop (macOS) | The desktop app failing to build with cgo and the WebView, or failing vet, staticcheck or govulncheck with its build tags | `make desktop desktop-check` (needs cgo) |
+| Desktop app and installer | ci / desktop (macOS) | The desktop app or the Mac installer failing to build with cgo and the WebView, or failing vet, staticcheck or govulncheck with their build tags | `make desktop installer desktop-check` (needs cgo) |
 | End-to-end | ci / e2e | A real `merud` and `meru` failing together against the fake Ollama | `make e2e` |
 | actionlint | ci / actionlint | Mistakes in the workflow files themselves | `make actionlint` |
 | govulncheck | security / govulncheck | Known vulnerabilities in the Go toolchain or a module, reported only when Meru's code can reach them | `make vuln` |
@@ -48,7 +48,8 @@ job builds it on a macOS runner with `make desktop`, then runs `make
 desktop-check`: go vet, staticcheck and govulncheck with the same tags, since the
 usual jobs never see its code. The rest of the app, `internal/desktop`, has no
 tag and runs in the test job. Linux (WebKitGTK) and Windows (WebView2) jobs come
-later.
+later. The Mac installer, `cmd/meru-installer`, is built the same way in the
+same job with `make installer`, and `internal/installer` runs in the test job.
 
 The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. They build
 the real `merud`, `meru` and `fakeollama` binaries and drive them as separate
@@ -80,6 +81,9 @@ violation blocks a merge like any failing test.
 | `TestNoNonLoopbackURLLiterals` | A string literal in shipped code holds an `http`, `https`, `ws` or `wss` URL whose host isn't loopback |
 | `TestClientImports` | A client (`cmd/meru`, `cmd/meru-desktop` or `internal/desktop`) imports a daemon-side package such as engine, transcript, agent or store, the OpenTelemetry SDK or Wails' updater, calls `obs.Setup`, or uses an `Updater`; the desktop app may not import `catalog`, `secrets` or `tui` either |
 | `TestClientDependencies` | A client reaches one of those packages through another package; the message shows the import chain. The desktop app is listed with `-tags desktop,production` |
+| `TestClientImports`, `TestClientDependencies` for the installer | The Mac installer (`cmd/meru-installer`, `internal/installer`) reaches the engine, the agent loop, the store, `index`, `dispatch`, the MCP or A2A clients, `builtin` or `commands` |
+| `TestInstallerRunsOnlyThroughRun` | An installer file other than `internal/installer/run.go` imports `os/exec`, or any installer file imports `syscall` or calls `os.StartProcess` |
+| `TestInstallerAllowlist` | The installer's allowlist names a shell, an interpreter or a downloader, or a path that isn't absolute |
 
 Each failure names the file and line. A few rules decide what counts:
 

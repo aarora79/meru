@@ -199,6 +199,37 @@ OLLAMA_CONTEXT_LENGTH=32768 ollama serve
 
 Install a release, or build Meru from source. A release needs no Go.
 
+### The Mac installer
+
+On a Mac with Apple silicon, the easiest way in is the disk image on the
+[latest release](https://github.com/aarora79/meru/releases/latest):
+`Meru-vX.Y.Z-macos-arm64.dmg`. Open it and run "Install Meru.app". Meru isn't
+signed by Apple, so the first time, right-click the app, choose Open, then Open
+again; "Read me first.txt" on the disk image says the same.
+
+The installer walks through nine steps. Each screen says what the step does, why,
+and what it downloads, and waits for Continue. It shows progress as it goes, and a
+step that fails says why and offers Retry and Skip.
+
+| Step | What it does |
+| --- | --- |
+| Check this Mac | reads the chip, macOS, memory and free disk, and suggests models: `lite` on every Mac, plus `gemma4:26b-a4b-it-qat` for answers with 32 GB or more, or `qwen3.6:35b-a3b-mxfp8` with 64 GB or more |
+| Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`; clears macOS's quarantine mark from them if you tick the box; adds `~/.local/bin` to `PATH` in `~/.zshrc` if you tick that box |
+| Ollama and the models | installs Ollama with Homebrew, or from Ollama's site when there is no Homebrew, starts it, and downloads the models with a progress bar |
+| Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |
+| Web search | starts SearXNG in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only, with its settings in `~/.meru/searxng/settings.yml`. Needs Docker Desktop, OrbStack or colima; without one, the screen links Docker's download page and you can skip |
+| Skills and commands | turns the built-in skills on and adds the sample commands you tick, all read-only |
+| Gmail, Calendar and Drive | the steps in [google-setup.md](google-setup.md), in three screens: it links each Google Cloud page, takes your client ID and secret, and does steps 6 to 11 for you |
+| About you | your name, which Meru needs to tell you apart from people in your files; your email, needed after the Google step; how you like answers |
+| Start Meru | starts `merud` now and at every login, and shows its first scan of your folders |
+
+You can skip any step but About you, and run the installer again later: each step
+checks what is already done and offers to skip it. The last screen shows where
+your settings live, `~/.meru/config.toml`, with a button that opens it. Meru.app's
+Settings and `/help` in `meru chat` change most of them for you; after you edit
+the file by hand, restart `merud` with
+`launchctl kickstart -k gui/$(id -u)/com.meru.merud`.
+
 ### Install from a release
 
 Each release on GitHub holds `meru` and `merud` for five platforms and
@@ -1286,7 +1317,11 @@ Meru searches the web through SearXNG, a search engine you run yourself. It hold
 no index: it passes your query to Google, Bing, DuckDuckGo and others, drops the
 parts that identify you, and merges the results. No account, no API key.
 
-You run it once, in Docker, and Meru uses it from then on.
+You run it once, in Docker, and Meru uses it from then on. On a Mac, the
+installer's Web search step does all of this for you (see
+[The Mac installer](#the-mac-installer)); it runs SearXNG as the container
+`meru-searxng`, with its settings in `~/.meru/searxng/settings.yml`. The steps
+below do it by hand, on a Mac or on Linux.
 
 ```sh
 mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
