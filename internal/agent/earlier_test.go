@@ -37,8 +37,8 @@ func TestFormatEarlier(t *testing.T) {
 		pastSession(now, "Asked about the library.", nil),
 		pastSession(now, "", nil), // nothing to show
 	}
-	got, n := formatEarlier(results, now, maxEarlierChars)
-	want := earlierHeader +
+	got, n := formatEarlier(earlierHeader(""), results, now, maxEarlierChars)
+	want := earlierHeader("") +
 		"\n- " + lastWeek.Format("2006-01-02") + ` (7 days ago): Chose two raised beds for the garden. The user said: "how many beds for the garden?"` +
 		"\n- " + now.AddDate(0, 0, -1).Format("2006-01-02") + ` (yesterday): You said: "Seeds come next week."` +
 		"\n- " + now.Format("2006-01-02") + " (today): Asked about the library."
@@ -47,21 +47,21 @@ func TestFormatEarlier(t *testing.T) {
 	}
 
 	// The cap drops the lines that don't fit.
-	limit := len([]rune(earlierHeader)) + 120
-	got, n = formatEarlier(results, now, limit)
+	limit := len([]rune(earlierHeader(""))) + 120
+	got, n = formatEarlier(earlierHeader(""), results, now, limit)
 	if n != 1 || len([]rune(got)) > limit || strings.Contains(got, "Seeds") {
 		t.Errorf("formatEarlier under a cap of %d = %q (%d lines), want the first line only", limit, got, n)
 	}
 
 	// Nothing to show gives no section at all.
-	if got, n := formatEarlier(nil, now, maxEarlierChars); got != "" || n != 0 {
+	if got, n := formatEarlier(earlierHeader(""), nil, now, maxEarlierChars); got != "" || n != 0 {
 		t.Errorf("formatEarlier(nil) = %q, %d", got, n)
 	}
 
 	// A long summary is cut.
 	long := strings.Repeat("garden ", 200)
-	got, _ = formatEarlier([]retrieve.SessionResult{pastSession(now, long, nil)}, now, maxEarlierChars)
-	if !strings.HasSuffix(got, "…") || len([]rune(got)) > len([]rune(earlierHeader))+maxEarlierSummary+40 {
+	got, _ = formatEarlier(earlierHeader(""), []retrieve.SessionResult{pastSession(now, long, nil)}, now, maxEarlierChars)
+	if !strings.HasSuffix(got, "…") || len([]rune(got)) > len([]rune(earlierHeader("")))+maxEarlierSummary+40 {
 		t.Errorf("long summary not cut: %d characters", len([]rune(got)))
 	}
 }

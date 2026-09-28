@@ -1,7 +1,7 @@
 // This file holds Tools, the dispatch.Backend for merud's built-in tools,
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
-// AttachmentText in attachments.go, search_files in search.go, and
+// the past chats those three read in chats.go, AttachmentText in attachments.go, search_files in search.go, and
 // web_search and web_fetch in web.go, webguard.go and webdownload.go.
 
 package builtin
@@ -57,6 +57,10 @@ type Tools struct {
 	onRemember func(context.Context)       // runs after remember saves; nil for none
 	now        func() time.Time            // the clock datetime reads; time.Now outside tests
 	about      func(context.Context) About // gathers about_meru's facts; nil leaves about_meru out
+
+	// sessionsDir is the folder of past chats the file tools also read,
+	// set by ReadSessions; "" when they don't read it. See chats.go.
+	sessionsDir string
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.

@@ -226,3 +226,78 @@ func TestCountFiles(t *testing.T) {
 		t.Error("CountFiles of a missing folder succeeded")
 	}
 }
+
+// TestReadChats checks the folder added with ReadChats, which sits under a
+// hidden folder, as merud adds ~/.meru/sessions for the file tools: Check
+// and ReadText reach its .jsonl files, a hidden file inside it stays
+// skipped, and the hidden folder above it stays out of reach. A .jsonl file
+// anywhere else, in an [index] folder or a plain ReadAlso folder, stays
+// skipped as unsupported, and neither Scan nor IndexPaths puts any .jsonl
+// file in the store.
+func TestReadChats(t *testing.T) {
+	home := tempRoot(t)
+	notes := filepath.Join(home, "notes")
+	sessions := filepath.Join(home, ".meru", "sessions")
+	chat := filepath.Join(sessions, "2026", "09", "2026-09-17T141502-7f3a.jsonl")
+	writeFiles(t, home, map[string]string{
+		"notes/beds.md":       "# Beds\n\nTwo raised beds.",
+		"notes/harvest.jsonl": `{"crop":"beans","kg":2}` + "\n",
+		"output/rows.jsonl":   `{"row":1}` + "\n",
+		".meru/sessions/2026/09/2026-09-17T141502-7f3a.jsonl": `{"type":"user","text":"how deep should a raised bed be?"}` + "\n",
+		".meru/sessions/2026/09/.draft.jsonl":                 `{"type":"user","text":"draft"}` + "\n",
+		".meru/config.toml":                                   "[index]\n",
+	})
+	ix, sink, _ := newTestIndexer(t, testConfig(notes))
+	ix.ReadAlso(filepath.Join(home, "output"))
+	ix.ReadChats(sessions)
+	ctx := t.Context()
+
+	tests := []struct {
+		name   string
+		path   string
+		reason string
+		err    error
+	}{
+		{"the folder itself", sessions, "", nil},
+		{"a month folder", filepath.Join(sessions, "2026", "09"), "", nil},
+		{"a chat", chat, "", nil},
+		{"a hidden file inside", filepath.Join(sessions, "2026", "09", ".draft.jsonl"), ReasonHidden, nil},
+		{"the hidden folder above", filepath.Join(home, ".meru", "config.toml"), "", ErrOutsideFolders},
+		{"a .jsonl file in an [index] folder", filepath.Join(notes, "harvest.jsonl"), ReasonUnsupported, nil},
+		{"a .jsonl file in another ReadAlso folder", filepath.Join(home, "output", "rows.jsonl"), ReasonUnsupported, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := ix.Check(tt.path)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("Check error = %v, want %v", err, tt.err)
+			}
+			if c.Reason != tt.reason {
+				t.Errorf("Check reason = %q, want %q", c.Reason, tt.reason)
+			}
+		})
+	}
+
+	text, reason, err := ix.ReadText(chat)
+	if err != nil || reason != "" || !strings.Contains(strings.Join(text.Pages, ""), "raised bed") {
+		t.Errorf("ReadText = %+v, %q, %v; want the chat's line", text, reason, err)
+	}
+
+	if _, reason, err := ix.ReadText(filepath.Join(notes, "harvest.jsonl")); err != nil || reason != ReasonUnsupported {
+		t.Errorf("ReadText of a .jsonl file in an [index] folder = %q, %v; want %q", reason, err, ReasonUnsupported)
+	}
+
+	if _, err := ix.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ix.IndexPaths(ctx, []string{filepath.Join(notes, "harvest.jsonl")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ix.IndexPaths(ctx, []string{chat}); !errors.Is(err, ErrOutsideFolders) {
+		t.Errorf("IndexPaths on a chat = %v, want ErrOutsideFolders", err)
+	}
+	paths, _ := sink.Paths(ctx, "")
+	if len(paths) != 1 || paths[0] != filepath.Join(notes, "beds.md") {
+		t.Errorf("stored paths = %v, want notes/beds.md alone", paths)
+	}
+}

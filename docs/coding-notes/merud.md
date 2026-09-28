@@ -404,6 +404,10 @@ s.dispatcher = dispatch.New(
 )
 ```
 
+Before it builds the dispatcher, it calls `bt.ReadSessions` with the sessions
+folder under the Meru home, so `list_folder`, `grep` and `read_file` read the
+past chats; the indexer never indexes them (see [builtin](builtin.md)).
+
 The first backend to offer a name keeps it, so no MCP server can shadow
 `configure`, and one named `cmd` can't shadow a command. The commands don't
 reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides

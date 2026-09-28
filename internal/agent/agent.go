@@ -564,6 +564,15 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			"confidence", dec.Confidence)
 		dec.Route = "search"
 	}
+	// The same gap for past chats: "what were my previous conversations
+	// about?" looks like general knowledge, and the direct route offers
+	// neither the recalled sessions nor the file tools that read every
+	// chat. See aboutPastChats.
+	if dec.Route == "direct" && (a.search != nil || a.chatsFolder() != "") && aboutPastChats(question) {
+		a.log.DebugContext(ctx, "route changed to search: the question asks about past chats",
+			"confidence", dec.Confidence)
+		dec.Route = "search"
+	}
 	// The same gap for tools: "search my obsidian vault" can route to
 	// search, which offers only the file tools. When the question points at
 	// a connected tool (toolTarget in toolnouns.go lists the five signs) and
@@ -1352,10 +1361,10 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // stablePart returns the opening of the system prompt, the parts that stay
 // the same from turn to turn: the configured prompt with whoIsWho and
 // honestyRule, today's date, the line on the user's computer, the user's
-// profile, filesNote, canDoNote, then toolsNote and skillList, the tools
-// note and the list of skills for the tools the turn offers. It returns
-// the profile on its own as well, for the memory metric. prompt builds on
-// it, and so does the startup warm-up (see warm.go), so the warm-up
+// profile, filesNote, canDoNote, chatsNote, then toolsNote and skillList,
+// the tools note and the list of skills for the tools the turn offers. It
+// returns the profile on its own as well, for the memory metric. prompt
+// builds on it, and so does the startup warm-up (see warm.go), so the warm-up
 // prompt starts the way a real one does.
 func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (system, profile string) {
 	system = a.system
@@ -1371,6 +1380,7 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 	add(profile)
 	add(a.currentFilesNote())
 	add(a.canDo())
+	add(a.chatsNote())
 	add(toolsNote)
 	add(skillList)
 	return system, profile

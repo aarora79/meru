@@ -173,7 +173,7 @@ func (ix *Indexer) skipReason(root, p string, mode fs.FileMode) string {
 		return ReasonUnsupported
 	}
 	if !isDir {
-		if _, reason := kindOf(name); reason != "" {
+		if _, reason := ix.kindIn(root, name); reason != "" {
 			return reason
 		}
 	}
