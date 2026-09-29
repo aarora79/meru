@@ -169,8 +169,13 @@ the page draws both with the same code; each past turn carries its `Cited`
 sources and its `Notice` too. Both go through `one`, which sends a
 request and waits, at most five seconds, for the one event that answers it.
 
-`Status` asks for `index_status` and `mcp_status`. It never fails: a `merud` that
-doesn't answer gives `Up: false` with the reason and the command that starts it.
+`Status` asks for `index_status` and `mcp_status`. It never fails. When nothing
+listens on the socket, the connection fails at once and `Status` gives `Up: false`
+with the reason and the command that starts `merud`. When `merud` takes the
+connection but doesn't answer within the five seconds `one` allows, the error
+wraps `context.DeadlineExceeded`, and `Status` sets `Busy` instead, with no start
+hint: `merud` runs, but a long answer or a Mac short of memory slowed it. Before
+this, a busy `merud` showed as "merud isn't running" while it answered questions.
 
 `OpenURL` checks the link with `opener.Check`; `OpenSource` turns a source's
 `~/Notes/lisbon.md` into a `file://` URL with `rpc.FileURL` first.

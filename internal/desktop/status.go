@@ -5,6 +5,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -19,8 +20,11 @@ const StartHint = "Start it in a terminal with: merud"
 // Status is what the rail's status block shows.
 type Status struct {
 	// Up is true when merud answered. Problem says why it didn't, and
-	// Hint how to start it.
+	// Hint how to start it. Busy is true when merud took the connection
+	// but didn't answer in time: it runs, but a long answer or a Mac short
+	// of memory slowed it, so the page mustn't tell the user to start it.
 	Up      bool   `json:"up"`
+	Busy    bool   `json:"busy,omitempty"`
 	Problem string `json:"problem,omitempty"`
 	Hint    string `json:"hint,omitempty"`
 	// Socket is where the app looks for merud, and Machine names this
@@ -64,6 +68,15 @@ func (b *Bridge) Status(ctx context.Context) Status {
 		Connections: []string{}}
 	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpIndexStatus}, rpc.EventStatus)
 	if err != nil {
+		// A timeout means merud took the connection and then didn't answer
+		// in time; nothing listening fails the connection at once instead.
+		// errors.Is looks through the wrapped errors for the timeout.
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.Busy = true
+			s.Problem = "merud didn't answer within a few seconds. It may be busy with a long answer, " +
+				"or the Mac may be short of memory. Meru checks again every 15 seconds."
+			return s
+		}
 		s.Problem = fmt.Sprintf("merud isn't answering at %s.", b.socket)
 		s.Hint = StartHint
 		return s
