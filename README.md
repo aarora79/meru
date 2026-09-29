@@ -26,6 +26,11 @@ Meru answering from a folder of garden notes, recorded in real time on a Mac
 Studio with the answer model for 64 GB Macs. The notes are invented;
 [docs/demo/](docs/demo/README.md) holds them and shows how to record it again.
 
+<p align="center"><img src="docs/img/desktop-app.png" width="760" alt="Meru.app: a rail with New chat, Incognito chat, New folder, chat search, folders and the chats of today and yesterday, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with three example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk."></p>
+
+Meru.app, the desktop app, is a window onto the same `merud`. The chat titles
+are blurred.
+
 ## How good are the local models?
 
 We ran six answer models through a benchmark of 50 tasks, each three times:
