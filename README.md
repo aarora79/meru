@@ -4,37 +4,47 @@
 
 **A personal AI assistant that runs entirely on your own machine.**
 
+You have years of notes, a full inbox and a folder of repositories. The
+assistants that could help with them want to read all of it in somebody else's
+data center.
+
+Meru reads it on your machine. Its code has no path to a cloud AI model, not even
+a disabled one. It keeps open-weight models loaded in your computer's memory, so a
+question needs no API key and costs only electricity, and the installer picks the
+model that fits your Mac's memory.
+
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
-Meru.app needs `merud` and Ollama running beside it. Either installer below sets
-up all three, so use one rather than copying the app by hand.
+> **Status: pre-alpha, v0.4.9.** Answers from local models, your own files and
+> tools you allow, with every tool call logged. Scheduled jobs come in v0.5.
+> [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 
-Meru runs local models only. Its code has no path to a cloud AI model, not even a
-disabled one. It loads open-weight models into your computer's memory and keeps them
-there, so a question needs no API key and costs only electricity.
+<p align="center"><img src="docs/img/demo-terminal.svg" width="760" alt="A terminal: meru is asked when to sow the tomatoes, answers 1 March indoors and planting out after 15 April, and lists the two notes it used as sources."></p>
 
-Two kinds of program can reach beyond your machine, and only once you add them to
-config: MCP (Model Context Protocol) servers, such as Gmail and Calendar or your
-Obsidian notes, and other agents over A2A (Agent2Agent). Meru allows none of their
-tools until you name them, and logs every call. Web search goes through SearXNG, a
-search engine you run on your machine, so only the search words leave it. When the
-model needs what a page says, `merud` fetches that public page itself, and asks you
-first for any address that no search or question of yours gave.
+Meru answering from a folder of garden notes, recorded in real time on a Mac
+Studio with the answer model for 64 GB Macs. The notes are invented;
+[docs/demo/](docs/demo/README.md) holds them and shows how to record it again.
 
-> **Status: pre-alpha, v0.4.9.** Every item of milestones v0.1 to v0.4 has landed.
-> `merud` answers with local models, picks a route with a one-token router, and
-> searches the folders you list by keyword and by meaning, citing the files it
-> used. It calls tools you allow, from MCP servers, A2A agents, local commands and
-> the web, through one `dispatch` path that asks before risky calls and logs every
-> call. It keeps memories about you, recalls past conversations, and loads skills
-> when a turn calls for one. Meru.app and `meru chat` share one feature set: you
-> can find past chats by asking, and file, tag, delete or start incognito chats.
-> A Mac installer on a disk image sets it all up. Scheduled jobs come in v0.5.
-> [ROADMAP.md](ROADMAP.md) lists the milestones in order, and
-> [the release notes](docs/release-notes/README.md) list what each release changed.
+## How good are the local models?
 
----
+We ran six answer models through a benchmark of 50 tasks, each three times:
+direct questions, searches of your files, tasks that need one tool or several,
+conversations over several turns, and honesty checks. Each installer picks the
+answer model by your Mac's memory:
+
+| Mac memory | Answer model | Tasks passed | Time to first token | Time to last token |
+|------------|--------------|-------------:|--------------------:|-------------------:|
+| under 32 GB | MiniCPM5-2B, the `lite` model | 68% | 11.6 s | 13.1 s |
+| 32 to 47 GB | `gemma4:26b-a4b-it-qat` | 80% | 17.6 s | 18.3 s |
+| 48 to 63 GB | `qwen3.6:35b` | 89% | 5.6 s | 10.4 s |
+| 64 GB or more | `qwen3.6:35b-a3b-mxfp8` | 89% | 4.1 s | 6.5 s |
+
+Times are medians on a Mac Studio (M4 Max, 64 GB) and count from the question
+to the answer's first and last token, routing, search and tool calls included.
+The tasks use the author's own files and mail, so they stay private; [the
+benchmark results](docs/benchmarks/results.md) show every model we tried, pass
+rates by kind of task, and charts of accuracy against speed.
 
 ## Install on a Mac
 
@@ -58,134 +68,11 @@ The script downloads the latest release and checks it against `SHA256SUMS`. It
 puts `meru` and `merud` in `~/.local/bin` and Meru.app in `/Applications`, then
 offers Ollama, the models, `meru setup` and starting `merud` at login, asking
 before each step. [docs/running.md](docs/running.md) covers Linux, Windows and
-building from source.
+[building from source](docs/running.md#build-from-source).
 
-## How good are the local models?
-
-We ran six answer models through a benchmark of 50 tasks, each three times:
-direct questions, searches of your files, tasks that need one tool or several,
-conversations over several turns, and honesty checks. Each installer picks the
-answer model by your Mac's memory:
-
-| Mac memory | Answer model | Tasks passed | Time to first token | Time to last token |
-|------------|--------------|-------------:|--------------------:|-------------------:|
-| under 32 GB | MiniCPM5-2B, the `lite` model | 68% | 11.6 s | 13.1 s |
-| 32 to 47 GB | `gemma4:26b-a4b-it-qat` | 80% | 17.6 s | 18.3 s |
-| 48 to 63 GB | `qwen3.6:35b` | 89% | 5.6 s | 10.4 s |
-| 64 GB or more | `qwen3.6:35b-a3b-mxfp8` | 89% | 4.1 s | 6.5 s |
-
-Times are medians on a Mac Studio (M4 Max, 64 GB) and count from the question
-to the answer's first and last token, routing, search and tool calls included.
-The tasks use the author's own files and mail, so they stay private; [the
-benchmark results](docs/benchmarks/results.md) show every model we tried, pass
-rates by kind of task, and charts of accuracy against speed.
-
-## What it is
-
-Meru is two Go programs. `merud` is a daemon: it runs in the background, keeps the
-models loaded, owns your index and memory, talks to MCP servers and runs scheduled
-jobs. `meru` is the command-line client; it connects to the daemon over a local
-socket and starts in milliseconds. Go builds each program into one file that runs on
-macOS, Linux and Windows ([why Go](ARCHITECTURE.md#why-go)).
-
-Working now:
-
-```
-$ meru setup                               # Ollama, models, folders, web search, MCP servers
-$ meru "what is the capital of France?"   # one question, answer streamed as text
-$ meru "when do I sow the tomatoes?"      # searches your folders, then lists Sources:
-$ meru "search my obsidian vault for AI"  # calls the tools you allowed; asks first when config says so
-$ meru "search the web for the latest Go release"  # web_search, through the SearXNG you run
-$ meru chat                                # interactive terminal UI
-$ meru ping                                # is merud running?
-$ meru index                               # rescan the folders under [index] folders
-$ meru index ~/notes/work                  # rescan one folder or file inside them
-$ meru index -status                       # what the index holds
-$ meru mcp                                 # each MCP server: connected or not, and its tool counts
-$ meru mcp list                            # the server catalog, and your servers with their state
-$ meru mcp add obsidian                    # add a catalog server: do it for me, or show me how
-$ meru mcp add google                      # a server you run; Meru prints the command that starts it
-$ meru mcp add stdio notes -- npx -y some-mcp  # any other server: Meru tries it and proposes its tools
-$ meru mcp remove notes                    # take a server out of config.toml
-$ meru tools                               # each server, its allowed tools, which ask first
-$ meru log -n 20 -v                        # the latest tool calls, with results
-$ meru check --save                        # rerun your own questions from ~/.meru/checks.jsonl, grade them
-$ meru usage                               # sessions and questions, from the last hour to all time
-$ meru config template                     # every config key with its default, as setup writes it
-$ meru setup user                          # a few questions about you, saved as memories
-$ meru memory list                         # what it knows about you, in plain text
-$ meru memory forget <id>                  # delete one memory file
-$ meru skills list                         # what it knows how to do
-$ meru skills reset writing                # put a built-in skill back as shipped
-```
-
-`meru setup` writes `~/.meru/config.toml` from the config template: every key,
-with the defaults uncommented and what is off, such as the catalog's MCP
-servers, in comments ready to uncomment. `[builtin] tools` lists the built-in
-tools the model may use and `[skills] disabled` the skills it skips. `merud`
-reads the file when it starts, so restart it after a change. API keys go in
-`~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
-`[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
-a pipe. Quote a question that starts with the word `ping`, `chat`, `index`,
-`tools`, `log`, `usage`, `setup`, `config`, `memory`, `skills`, `mcp` or `check`,
-or `meru` may read that word as a command.
-[docs/running.md](docs/running.md#7-index-your-files) shows the setup and the
-`Sources:` output.
-
-Planned for v0.5:
-
-```
-$ meru brief                       # today's digest, prepared in advance
-```
-
-## Quick start
-
-You need [Go](https://go.dev/dl/) 1.26 or later and [Ollama](https://ollama.com)
-0.12.11 or later, running on this machine.
-
-```
-$ ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # the lite profile's chat model
-$ ollama pull nomic-embed-text                         # the lite profile's embedding model
-$ git clone https://github.com/aarora79/meru.git && cd meru
-$ go install ./cmd/merud ./cmd/meru                    # into ~/go/bin; silent on success
-$ merud &                                              # loads the models and listens
-$ meru "what is the capital of France?"
-$ meru chat                                            # a conversation in the terminal
-```
-
-To update to the latest code, rebuild both programs and restart `merud`, so the
-daemon and the client match. `-v` writes a line for each stage of every question
-to `~/.meru/merud.log`:
-
-```
-$ git pull
-$ go install ./cmd/merud ./cmd/meru
-$ pkill merud; merud -v &
-$ meru chat
-```
-
-`go install` prints nothing when it works. Add `-v` to list each package as it
-compiles, or `-a -x` to rebuild everything and print each command.
-
-On a Mac, `make desktop && ./bin/meru-desktop` builds and opens the desktop app, a
-window onto the same `merud`. It needs the Xcode command line tools.
-
-To skip Go, install a release instead: each one on GitHub holds `meru` and `merud`
-for macOS, Linux and Windows, and `Meru.app` for Apple silicon.
-[Install from a release](docs/running.md#install-from-a-release) shows how, and
-in Claude Code the `meru-install` skill walks you through it.
-
-[docs/running.md](docs/running.md) is the full guide: settings, the `full` profile,
-`meru chat`, running `merud` as a service, the local dashboard, troubleshooting and
-uninstalling.
-
-## Development
-
-`make check` runs everything CI runs: formatting, `go vet`, staticcheck, the race
-detector over every test, builds for five platforms, govulncheck, gosec, gitleaks
-and actionlint. `make e2e` runs the end-to-end tests against a fake Ollama.
-[docs/ci.md](docs/ci.md) explains each check, and [AGENTS.md](AGENTS.md) holds the
-rules for changing the code.
+Meru.app talks to `merud`, and `merud` to Ollama, so all three run together.
+Either installer sets up all three; copying Meru.app by hand gives you a window
+with nothing behind it.
 
 ## What it does
 
@@ -198,7 +85,7 @@ rules for changing the code.
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
 | **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer`, `web-research` and `file-research`; `[skills] disabled` turns one off. |
-| **Scheduled jobs** | Meru runs briefs and other jobs on a schedule, so it can tell you things before you ask. |
+| **Scheduled jobs** (v0.5) | Meru will run briefs and other jobs on a schedule, so it can tell you things before you ask. |
 | **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces, and shows them in Grafana on your machine. |
 
 ## Why your own machine
@@ -217,6 +104,36 @@ Four reasons, most important first:
 
 Many assistants offer local models as one option next to cloud ones. Meru supports
 local models only.
+
+Two kinds of program can reach beyond your machine, and only once you add them to
+config: MCP (Model Context Protocol) servers, such as Gmail and Calendar or your
+Obsidian notes, and other agents over A2A (Agent2Agent). Meru allows none of their
+tools until you name them, and logs every call. Web search goes through SearXNG, a
+search engine you run on your machine, so only the search words leave it. When the
+model needs what a page says, `merud` fetches that public page itself, and asks you
+first for any address that no search or question of yours gave.
+
+## What it is
+
+Meru is two Go programs. `merud` is a daemon: it runs in the background, keeps the
+models loaded, owns your index and memory, and talks to MCP servers and other
+agents. `meru` is the command-line client; it connects to the daemon over a local
+socket and starts in milliseconds, and Meru.app is a window onto the same daemon.
+Go builds each program into one file that runs on macOS, Linux and Windows
+([why Go](ARCHITECTURE.md#why-go)).
+
+```
+$ meru setup                               # Ollama, models, folders, tools
+$ meru "what is the capital of France?"    # answered from the model alone
+$ meru "when do I sow the tomatoes?"       # answered from your files, with Sources:
+$ meru "search my obsidian vault for AI"   # calls a tool you allowed
+$ meru chat                                # the terminal UI
+$ meru log -n 20 -v                        # every tool call, with results
+```
+
+Config lives in `~/.meru/config.toml` and API keys in `~/.meru/secrets.toml`;
+`meru setup` writes both. [Every command](docs/running.md#every-command) and
+[every setting](docs/running.md#6-change-settings) are in docs/running.md.
 
 ## Why an enterprise would care
 
@@ -289,6 +206,13 @@ call.
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order
 - [AGENTS.md](AGENTS.md) — repo rules for AI coding agents
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to report a problem or send a change, and the contributor agreement
+
+## Development
+
+`make check` runs everything CI runs, and `make e2e` the end-to-end tests against a
+fake Ollama. [CONTRIBUTING.md](CONTRIBUTING.md) says how to send a change,
+[docs/ci.md](docs/ci.md) explains each check, and
+[building from source](docs/running.md#build-from-source) is in docs/running.md.
 
 ## License
 
