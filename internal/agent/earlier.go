@@ -202,14 +202,20 @@ func (a *Agent) chatsNote() string {
 	return "Your past chats with the user are in " + dir + ": one JSONL file per chat, " +
 		"named by the UTC time it started, such as 2026/09/2026-09-17T141502-7f3a.jsonl, " +
 		"with one JSON object per line for each question, answer and tool call. " +
-		"To answer about earlier conversations, use list_folder, grep and read_file there."
+		"A chat's folder and tags are in its meta lines, such as " +
+		`{"type":"meta","folder":"Garden","tags":["bulbs"]}` + "; the newest one wins, " +
+		`so to find chats tagged bulbs, grep there for "tags" and bulbs. ` +
+		"To answer about earlier conversations, use list_folder, grep and read_file there yourself; " +
+		"don't offer to search, search."
 }
 
 // chatNouns, pastWords and pastVerbs are the words aboutPastChats looks
 // for.
 var (
 	chatNouns = []string{"chat", "chats", "conversation", "conversations", "session", "sessions"}
-	pastWords = []string{"previous", "earlier", "past", "last", "before", "ago", "yesterday", "prior", "old", "older", "history"}
+	pastWords = []string{"previous", "earlier", "past", "last", "before", "ago", "yesterday", "prior", "old", "older", "history",
+		// A chat's tags and folder, which only the chat files hold.
+		"tag", "tags", "tagged", "folder"}
 	pastVerbs = []string{"talked", "discussed", "chatted"}
 )
 

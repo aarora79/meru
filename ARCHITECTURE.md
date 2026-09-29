@@ -2444,14 +2444,18 @@ Meru keeps no index file. The database already indexes the files, and
   lines in its prompt out of more than two hundred sessions, the model said it
   had no access to its past conversations. So `read_file`, `list_folder` and
   `grep` also read `~/.meru/sessions`, one JSONL file per chat, and a line in
-  the system prompt says so, while the file tools are on. The indexer skips
+  the system prompt says so, while the file tools are on. The line also shows a
+  `meta` line, which holds a chat's folder and tags, and how to grep for a tag,
+  and tells the model to search itself rather than offer to: without it, the
+  model said it had no way to find chats by tag. The indexer skips
   `.jsonl` files, and the file tools read them in that folder alone: a JSON
   Lines file in an `[index]` folder stays out of search and out of the tools. `grep` with no path
   leaves the chats out, since a chat holds the start of each file its tools read;
   the model passes the sessions folder as the path. The indexer never indexes
   the transcripts: search and recall keep to the summaries and messages in
   `meru.db`. A `direct` question that names a chat or conversation with a word
-  that points back in time, such as "previous" or "last", or says "we talked"
+  that points back in time, such as "previous" or "last", or a tag or folder,
+  or says "we talked"
   or "we discussed", moves to the `search` route, which offers the file tools
   and the recalled sessions.
 
