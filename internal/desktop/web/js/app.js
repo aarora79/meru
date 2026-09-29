@@ -399,15 +399,19 @@ function onEvent(u) {
       // The line under the answer waits for the end, when the Bridge
       // says which of these the answer cites.
       t.sources = ev.sources || [];
+      drawStrip(t, handlers); // the strip now says the turn searched the files
       break;
     case "memories":
       t.memories = ev.memories || [];
       break;
-    case "token":
-      if (!t.answer) drawStrip(t, handlers); // drop "Working…"
+    case "token": {
+      const first = !t.answer;
       appendToken(t, ev.text || "");
+      // On the first text, the strip drops "Working…" and says "Answering".
+      if (first) drawStrip(t, handlers);
       scrollDown(false);
       return; // the panel doesn't change
+    }
     case "tool_call":
     case "tool_result":
       if (u.step) {

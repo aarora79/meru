@@ -313,6 +313,43 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 	return msgs, nil
 }
 
+// CalledTools returns the tool of each tool_call line in the last maxTurns
+// turns of the session, oldest first, where a turn starts at a user line.
+// The names are as dispatch recorded them: "datetime" for a built-in, and
+// the server's own name for an MCP tool, such as "search" for
+// notes.search. The agent reads them to tell whether an answer that says
+// it called a tool has a call behind it. maxTurns of zero or less returns
+// nothing. It fails only when the file can't be read.
+func (s *Session) CalledTools(maxTurns int) ([]string, error) {
+	if maxTurns <= 0 {
+		return nil, nil
+	}
+	lines, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	// Walk back from the end, counting user lines, until maxTurns turns
+	// have started.
+	start := 0
+	turns := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].Type == TypeUser {
+			turns++
+			if turns == maxTurns {
+				start = i
+				break
+			}
+		}
+	}
+	var tools []string
+	for _, l := range lines[start:] {
+		if l.Type == TypeToolCall && l.Tool != "" {
+			tools = append(tools, l.Tool)
+		}
+	}
+	return tools, nil
+}
+
 // Model returns the main model the session's answers come from now: the
 // To of its last model_switch line for the main tier, or "" when it has
 // none, as a new session or one written before the line existed has. It

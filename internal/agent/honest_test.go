@@ -202,3 +202,156 @@ func TestNoticeInHistory(t *testing.T) {
 		t.Errorf("earlier answer = %+v, want %q", got, want)
 	}
 }
+
+func TestToolClaims(t *testing.T) {
+	tools := []string{builtin.DateTime, builtin.Grep, builtin.SearchFiles, "notes.search", "cmd.du"}
+	tests := []struct {
+		text  string
+		want  bool
+		names []string // the tools the first claim names
+	}{
+		// Claims.
+		{"I called the `datetime` tool — it queries your computer's clock.", true, []string{"datetime"}},
+		{"I called the datetime tool.", true, []string{"datetime"}},
+		{"I ran date.", true, []string{"date"}},
+		{"I just ran `date` on your Mac.", true, []string{"date"}},
+		{"I found three notes using the grep tool.", true, []string{"grep"}},
+		{"I’ve used the search_files tool to look.", true, []string{"search_files"}},
+		{"I used a tool to check the clock.", true, nil},
+		{"I checked with the notes.search tool.", true, []string{"search"}},
+		{"The datetime tool returned 15:25.", true, []string{"datetime"}},
+		{"According to the `datetime` tool, it's 15:25.", true, []string{"datetime"}},
+		{"I called `datetime`.", true, []string{"datetime"}},
+		// Not claims.
+		{"I can call the datetime tool for you.", false, nil},
+		{"Want me to run grep?", false, nil},
+		{"I didn't call any tool; the time is in my prompt.", false, nil},
+		{"You can search your notes using the grep tool.", false, nil},
+		{"I used your notes to answer.", false, nil},
+		{"I used `strings.Builder` in the example.", false, nil},
+		{"I ran the numbers again.", false, nil},
+		{"If you like, I'll run the datetime tool.", false, nil},
+		{"It's 20:02 EDT.", false, nil},
+		{"```\n# I ran date here\n$ date\n```", false, nil},
+		// A miss the rules accept: no rule reads "by calling".
+		{"I got it by calling the datetime tool.", false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			got := toolClaims(tt.text, tools)
+			if (len(got) > 0) != tt.want {
+				t.Fatalf("toolClaims = %v, want a claim: %v", got, tt.want)
+			}
+			if tt.want && !slices.Equal(got[0].names, tt.names) {
+				t.Errorf("names = %q, want %q", got[0].names, tt.names)
+			}
+		})
+	}
+}
+
+func TestUnbackedCall(t *testing.T) {
+	tests := []struct {
+		name     string
+		claims   []toolClaim
+		called   []string
+		wantTool string
+		want     bool
+	}{
+		{"named tool never ran", []toolClaim{{names: []string{"datetime"}}}, nil, "datetime", true},
+		{"named tool ran", []toolClaim{{names: []string{"datetime"}}}, []string{"datetime"}, "", false},
+		{"another tool ran", []toolClaim{{names: []string{"datetime"}}}, []string{"grep"}, "datetime", true},
+		{"model name against the recorded name", []toolClaim{{names: []string{"search"}}}, []string{"notes.search"}, "", false},
+		{"no name, nothing ran", []toolClaim{{}}, nil, "", true},
+		{"no name, a tool ran", []toolClaim{{}}, []string{"grep"}, "", false},
+		{"a program Meru never runs", []toolClaim{{names: []string{"date"}}}, []string{"datetime"}, "date", true},
+		{"the second claim fails", []toolClaim{{names: []string{"grep"}}, {names: []string{"datetime"}}}, []string{"grep"}, "datetime", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool, got := unbackedCall(tt.claims, tt.called)
+			if got != tt.want || tool != tt.wantTool {
+				t.Errorf("unbackedCall = %q, %v; want %q, %v", tool, got, tt.wantTool, tt.want)
+			}
+		})
+	}
+}
+
+// TestMadeUpTime replays a failure seen on a real turn, with invented
+// words. Asked the time, the model called no tool and answered with a
+// time; asked how it knew, it said it had called the datetime tool. The
+// first answer's prompt must now end with the time, and the second answer
+// must get the notice.
+func TestMadeUpTime(t *testing.T) {
+	cfg := testConfig(t)
+	tools := &fakeTools{specs: []engine.ToolSpec{spec(builtin.DateTime), spec(builtin.AboutMeru)}}
+	eng := &fakeEngine{rounds: []fakeRound{
+		{pieces: []string{"It's 3:25 PM on Monday."}},
+		{pieces: []string{"I called the `datetime` tool — it queries your computer's clock."}},
+	}}
+	router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
+	a := New(cfg, eng, router, nil, tools, nil, nil, quietLog())
+
+	evs, err := run(context.Background(), a, rpc.Request{Text: "whats the date and time right now"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if system := eng.calls[0].msgs[0].Content; !clockLine.MatchString(system) {
+		t.Errorf("system prompt doesn't end with the time:\n%s", system)
+	}
+	if slices.ContainsFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventNotice }) {
+		t.Errorf("first answer got a notice, but it claims no call")
+	}
+
+	evs, err = run(context.Background(), a, rpc.Request{Text: "did you run date or how did you get this time", Session: evs[0].Session})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	i := slices.IndexFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventNotice })
+	if i < 0 {
+		t.Fatalf("no notice; events %v", types(evs))
+	}
+	if want := callNotice("datetime"); evs[i].Text != want {
+		t.Errorf("notice = %q, want %q", evs[i].Text, want)
+	}
+	lines := readLines(t, cfg, evs[0].Session)
+	if answer := lines[len(lines)-1]; answer.Notice != callNotice("datetime") {
+		t.Errorf("assistant line notice = %q, want the call notice", answer.Notice)
+	}
+}
+
+// TestToolClaimBackedByHistory checks that a follow-up answer that names
+// a tool an earlier turn called gets no notice, and that one that names a
+// tool no turn called does.
+func TestToolClaimBackedByHistory(t *testing.T) {
+	tests := []struct {
+		name   string
+		second string
+		want   bool
+	}{
+		{"names the tool the first turn called", "I called the datetime tool in my last answer.", false},
+		{"names a tool no turn called", "I used the grep tool to find it.", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tools := &fakeTools{specs: []engine.ToolSpec{spec(builtin.DateTime), spec(builtin.Grep)}}
+			eng := &fakeEngine{rounds: []fakeRound{
+				{calls: []engine.ToolCall{call(builtin.DateTime, `{}`)}},
+				{pieces: []string{"It's 09:15."}},
+				{pieces: []string{tt.second}},
+			}}
+			a := toolsAgent(t, "tools", eng, tools)
+			evs, err := run(context.Background(), a, rpc.Request{Text: "what time is it"})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			evs, err = run(context.Background(), a, rpc.Request{Text: "how do you know", Session: evs[0].Session})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			got := slices.ContainsFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventNotice })
+			if got != tt.want {
+				t.Errorf("notice sent = %v, want %v; events %v", got, tt.want, types(evs))
+			}
+		})
+	}
+}

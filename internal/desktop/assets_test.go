@@ -165,3 +165,29 @@ func TestMarkdownIsSanitized(t *testing.T) {
 		t.Error("turns.js should render Markdown in one place, the finished answer")
 	}
 }
+
+// TestWorkLabelReadsWhatHappened checks that the work strip's label comes
+// from what the turn did, its tool calls and the files it searched, and
+// never from the route. A real turn on the "tools" route called no tool,
+// and the strip said "Used tools" anyway. The page has no test runner, so
+// the test reads workLabel's source.
+func TestWorkLabelReadsWhatHappened(t *testing.T) {
+	turns := ownFiles(t)["web/js/turns.js"]
+	// strings.Cut splits the text at the first match: body is what follows.
+	_, body, ok := strings.Cut(turns, "export function workLabel(t) {")
+	if !ok {
+		t.Fatal("turns.js has no workLabel")
+	}
+	body, _, _ = strings.Cut(body, "\n}\n")
+	for _, want := range []string{"t.steps.length > 0", "t.sources.length > 0", `"Used tools"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workLabel lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "t.route") {
+		t.Errorf("workLabel reads t.route; the label must say what the turn did:\n%s", body)
+	}
+	if !strings.Contains(turns, "const label = workLabel(t);") {
+		t.Error("drawStrip doesn't take its label from workLabel")
+	}
+}

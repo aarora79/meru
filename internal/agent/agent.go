@@ -450,6 +450,19 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		notice = unbackedNotice
 		unbacked = true
 	}
+	// An answer that says it called a tool, such as "I called the datetime
+	// tool", needs a call of that tool in this turn or in the earlier turns
+	// the history holds. See toolClaims.
+	if ended == "" {
+		if tool, ok := a.unbackedToolClaim(ctx, t, sess, rep.text); ok {
+			unbacked = true
+			// unbackedNotice already says no tool ran on a turn that made
+			// no call, so the second line would repeat it.
+			if notice == "" || t.calls > 0 {
+				notice = strings.TrimSpace(notice + " " + callNotice(tool))
+			}
+		}
+	}
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
 	}
@@ -1329,7 +1342,8 @@ func (a *Agent) canDo() string {
 //     turn shares and before the parts each question changes;
 //   - the parts each question changes: the recalled memories, the picked
 //     skills' instructions, the excerpts from the user's files with any
-//     earlier conversations, and what the web-first step found.
+//     earlier conversations, and what the web-first step found;
+//   - last, the time of day (see clock), which changes every minute.
 //
 // The profile sits right after whoIsWho, so the rule that "I" means the user
 // and the facts about who the user is read together. The recalled memories
@@ -1354,6 +1368,8 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	add(sec.skillBodies)
 	add(sec.files)
 	add(sec.web)
+	// The time of day goes last, because it changes every minute; see clock.
+	add(clock(time.Now()))
 	recordMemoryTokens(ctx, profile, sec.memories)
 
 	history, dropped := trimHistory(history, maxHistoryChars)

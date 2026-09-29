@@ -419,7 +419,16 @@ bundler.
   `pages.openSetup`.
 - `js/turns.js` draws one turn. Each part (work strip, approval card, body,
   sources line, footer) has its own draw function, so a token redraws only the
-  body. The sources line shows only the cited sources, closed, as "3 sources"
+  body. The strip's first chip comes from `workLabel`, which reads what the turn
+  did: "Used tools" once a `tool_call` event came, "Searched your files" once a
+  `sources` event came, both together, "Answered from the model" for a finished
+  turn with neither, and "Answering" while text streams. It never reads the
+  route: the router's pick says what the turn could do, and a `tools` turn
+  whose model called no tool once said "Used tools". `app.js` redraws the strip
+  on `sources`, on each tool event and on the first token. The route and the
+  router's confidence stay behind Show steps. `TestWorkLabelReadsWhatHappened`
+  in `assets_test.go` reads `workLabel`'s source, since the page has no test
+  runner, and fails if it reads `t.route`. The sources line shows only the cited sources, closed, as "3 sources"
   with a chevron; the button, with `aria-expanded`, opens a chip per source. An
   answer that cites nothing shows no line. `drawNotice` draws `merud`'s `notice`
   event, sent when the answer claims an action no tool performed, as an amber
