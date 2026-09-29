@@ -32,6 +32,8 @@ func TestAboutPastChats(t *testing.T) {
 		{"what did we talk about in our last chat?", true},
 		{"list my past sessions", true},
 		{"what have we discussed this month?", true},
+		{"find me chats that are tagged garden", true},
+		{"which conversations are in my recipes folder?", true},
 		{"what is a chat protocol?", false},
 		{"what was the last film to win the prize?", false},
 		{"what did we decide about the garden beds?", false},

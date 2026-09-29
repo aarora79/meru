@@ -1195,12 +1195,16 @@ functions here tell the model and route the question:
 - **`chatsNote`** is the line `stablePart` adds after `canDoNote`: "Your past
   chats with the user are in ~/.meru/sessions: one JSONL file per chat, named
   by the UTC time it started, …, with one JSON object per line for each
-  question, answer and tool call. To answer about earlier conversations, use
-  list_folder, grep and read_file there." It depends only on config, so it
-  sits with the parts Ollama reuses, and it costs about 80 tokens.
+  question, answer and tool call." It goes on to show a `meta` line, where a
+  chat's folder and tags live, and how to grep for a tag, and it tells the
+  model to run list_folder, grep and read_file itself rather than offer to.
+  Without the meta line the model said it had no way to find a chat by tag.
+  It depends only on config, so it sits with the parts Ollama reuses, and it
+  costs about 130 tokens.
 - **`aboutPastChats`** accepts a question that names a chat, conversation or
   session along with a word that points back in time ("previous", "last",
-  "ago" and the rest of `pastWords`), or says "we" with "talked", "discussed"
+  "ago" and the rest of `pastWords`, which also holds "tag", "tagged" and
+  "folder", since only the chat files know those), or says "we" with "talked", "discussed"
   or "chatted". `respond` then moves a `direct` turn to `search`, which offers
   the file tools and adds this section. "What is a chat protocol?" names a
   chat but no time, so it stays `direct`. A wrong guess costs one search and
