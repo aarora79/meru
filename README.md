@@ -22,18 +22,17 @@ search engine you run on your machine, so only the search words leave it. When t
 model needs what a page says, `merud` fetches that public page itself, and asks you
 first for any address that no search or question of yours gave.
 
-> **Status: pre-alpha, v0.3.** `merud` and `meru` answer questions with local models,
-> stream the answer, keep session transcripts and pick a route with the one-token
-> router. `merud` indexes the folders you list, searches them by keyword and by
-> meaning, and the answer cites the files it used. v0.3 adds tools: MCP servers and
-> A2A agents you allow, one `dispatch` path that asks you before risky calls and logs
-> every call, `meru setup`, and a catalog of starter servers. In the v0.3 acceptance
-> test, Meru on the 2B `lite` model answered a question from an Obsidian vault by
-> calling the vault's own MCP server twice over three rounds, in 8.3 s, and
-> `meru log` showed both calls. Every v0.4 item has landed too: Meru keeps what you
-> tell it about yourself as memory files, recalls them and past conversations when
-> a question needs them, and loads skills when a turn calls for one. Scheduled jobs
-> come in v0.5. [ROADMAP.md](ROADMAP.md) lists the milestones in order.
+> **Status: pre-alpha, v0.4.9.** Every item of milestones v0.1 to v0.4 has landed.
+> `merud` answers with local models, picks a route with a one-token router, and
+> searches the folders you list by keyword and by meaning, citing the files it
+> used. It calls tools you allow, from MCP servers, A2A agents, local commands and
+> the web, through one `dispatch` path that asks before risky calls and logs every
+> call. It keeps memories about you, recalls past conversations, and loads skills
+> when a turn calls for one. Meru.app and `meru chat` share one feature set: you
+> can find past chats by asking, and file, tag, delete or start incognito chats.
+> A Mac installer on a disk image sets it all up. Scheduled jobs come in v0.5.
+> [ROADMAP.md](ROADMAP.md) lists the milestones in order, and
+> [the release notes](docs/release-notes/README.md) list what each release changed.
 
 ---
 

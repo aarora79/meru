@@ -260,19 +260,23 @@ Once the user confirms:
 
 1. Add a line for the version at the top of the list in
    `docs/release-notes/README.md`.
-2. Commit on a branch and open a pull request:
+2. Bring the version lines up to date in the same pull request: the
+   "Status: pre-alpha, vX.Y.Z" note near the top of `README.md`, which should
+   also say in a sentence or two what Meru does as of this release, and "with
+   releases up to" in AGENTS.md's Status section.
+3. Commit on a branch and open a pull request:
    ```bash
    git checkout -b release-notes-vX.Y.Z
-   git add docs/release-notes/
+   git add docs/release-notes/ README.md AGENTS.md
    git commit -m "Add the vX.Y.Z release notes"
    git push -u origin release-notes-vX.Y.Z
    gh pr create --title "Add the vX.Y.Z release notes" --body "..."
    ```
-3. Merge it only when the user says to, after CI passes.
-4. **A new release:** tell the user the notes are on `main` and the release is
+4. Merge it only when the user says to, after CI passes.
+5. **A new release:** tell the user the notes are on `main` and the release is
    ready: `make release VERSION=vX.Y.Z`, which tags, publishes and uses the
    file as the release's text. Don't run it unless they ask.
-5. **A release already published:** after the merge, make the GitHub release's
+6. **A release already published:** after the merge, make the GitHub release's
    text match the file:
    ```bash
    gh release edit vX.Y.Z --repo aarora79/meru --notes-file docs/release-notes/vX.Y.Z.md
