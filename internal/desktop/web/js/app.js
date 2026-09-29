@@ -940,7 +940,17 @@ function drawStatus() {
   const s = state.status;
   if (!s) return;
   $("mini-status").classList.toggle("down", !s.up);
-  $("mini-status").setAttribute("aria-label", s.up ? "merud is running" : "merud isn't running");
+  $("mini-status").setAttribute("aria-label", s.up ? "merud is running" : s.busy ? "merud is busy" : "merud isn't running");
+  // A busy merud runs but didn't answer the check in time, so the block
+  // says so without telling the user to start it.
+  if (s.busy) {
+    box.classList.add("down");
+    const head = el("p", "status-head");
+    head.append(icon("alert", 14), document.createTextNode(" merud is busy"));
+    box.append(head, el("p", "", s.problem || ""));
+    box.append(button("Check again", { className: "text-button", onClick: loadStatus }));
+    return;
+  }
   if (!s.up) {
     box.classList.add("down");
     const head = el("p", "status-head");

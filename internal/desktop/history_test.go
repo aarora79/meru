@@ -131,6 +131,23 @@ func TestStatus(t *testing.T) {
 	if s.Up || s.Problem == "" || s.Hint != StartHint {
 		t.Errorf("Status with no merud = %+v, want down with the reason and the hint", s)
 	}
+	if s.Busy {
+		t.Error("Status with no merud says busy; nothing listens, so it isn't running")
+	}
+
+	// A merud that takes the connection but doesn't answer in time is
+	// busy, not stopped: no advice to start it. The short deadline stands
+	// in for the five seconds a real check waits.
+	slow, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	s = slow.Status(ctx)
+	if s.Up || !s.Busy || s.Hint != "" || s.Problem == "" {
+		t.Errorf("Status with a slow merud = %+v, want busy, a reason and no start hint", s)
+	}
 	if s.Connections == nil {
 		t.Error("Connections is nil; the page wants an empty list")
 	}
