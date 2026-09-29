@@ -434,6 +434,51 @@ full URL as plain text instead.
 `meru` exits with 0 on success, 1 on an error, and 130 when you press Ctrl-C, so
 scripts can check what happened.
 
+### Every command
+
+`meru` with no arguments prints the same list with its flags.
+
+```
+$ meru setup                               # Ollama, models, folders, web search, MCP servers
+$ meru "what is the capital of France?"   # one question, answer streamed as text
+$ meru "when do I sow the tomatoes?"      # searches your folders, then lists Sources:
+$ meru "search my obsidian vault for AI"  # calls the tools you allowed; asks first when config says so
+$ meru "search the web for the latest Go release"  # web_search, through the SearXNG you run
+$ meru chat                                # interactive terminal UI
+$ meru chat --incognito                    # a chat that keeps nothing
+$ meru ping                                # is merud running?
+$ meru index                               # rescan the folders under [index] folders
+$ meru index ~/notes/work                  # rescan one folder or file inside them
+$ meru index -status                       # what the index holds
+$ meru mcp                                 # each MCP server: connected or not, and its tool counts
+$ meru mcp list                            # the server catalog, and your servers with their state
+$ meru mcp add obsidian                    # add a catalog server: do it for me, or show me how
+$ meru mcp add google                      # a server you run; Meru prints the command that starts it
+$ meru mcp add stdio notes -- npx -y some-mcp  # any other server: Meru tries it and proposes its tools
+$ meru mcp remove notes                    # take a server out of config.toml
+$ meru tools                               # each server, its allowed tools, which ask first
+$ meru log -n 20 -v                        # the latest tool calls, with results
+$ meru check --save                        # rerun your own questions from ~/.meru/checks.jsonl, grade them
+$ meru usage                               # sessions and questions, from the last hour to all time
+$ meru model                               # the model sets, and which one answers
+$ meru config template                     # every config key with its default, as setup writes it
+$ meru setup user                          # a few questions about you, saved as memories
+$ meru memory list                         # what it knows about you, in plain text
+$ meru memory forget <id>                  # delete one memory file
+$ meru skills list                         # what it knows how to do
+$ meru skills reset writing                # put a built-in skill back as shipped
+$ meru run --json "..."                    # one question for a script, one JSON event per line
+```
+
+`meru setup` writes `~/.meru/config.toml` from the config template: every key,
+with the defaults uncommented and what is off, such as the catalog's MCP
+servers, in comments ready to uncomment. `[builtin] tools` lists the built-in
+tools the model may use and `[skills] disabled` the skills it skips. `merud`
+reads the file when it starts, so restart it after a change. API keys go in
+`~/.meru/secrets.toml`, never in config. When a tool asks first, `meru` prompts
+`[o]nce [s]ession [d]eny` on the terminal, and denies when it runs in a script or
+a pipe.
+
 ### Copying code
 
 When an answer holds code, such as the commands to install and run `btop`, each
