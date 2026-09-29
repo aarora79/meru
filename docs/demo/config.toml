@@ -1,9 +1,0 @@
-# Config for the README demo: the invented notes in docs/demo/notes and
-# nothing else. docs/demo/README.md shows how to run it.
-profile = "lite"
-
-[models]
-main = "qwen3.6:35b-a3b-mxfp8"
-
-[index]
-folders = ["NOTES"]
