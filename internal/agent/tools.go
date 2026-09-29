@@ -184,6 +184,10 @@ type turn struct {
 	rounds int
 	// calls counts the tool calls so far, to number their IDs.
 	calls int
+	// called holds the name of each tool the turn called, whatever the
+	// outcome, for the check on answers that say they called one; see
+	// toolClaims.
+	called []string
 	// succeeded counts the calls that ended "ok". A turn where it stays 0
 	// changed nothing, so Handle checks its answer for a claim that it
 	// did; see claimsAction.
@@ -700,6 +704,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 	ids := make([]string, len(calls))
 	for i, c := range calls {
 		t.calls++
+		t.called = append(t.called, c.Name)
 		ids[i] = c.ID
 		if ids[i] == "" {
 			ids[i] = fmt.Sprintf("call-%d", t.calls)

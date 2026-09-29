@@ -362,8 +362,12 @@ the line as its tooltip.
   The header holds the chat's title, **Share as file** and a button that shows
   or hides the side panel. An incognito chat gets an **Incognito** badge beside
   its title, a line under the header that says what it keeps, and no Share as
-  file. A one-line work strip says what the route did and lists
-  each tool call by its label; "Show steps" opens the raw tool names, outcomes and
+  file. A one-line work strip says what the turn did and lists
+  each tool call by its label. Its first chip reads the turn's events, never
+  the route: "Used tools" after a `tool_call`, "Searched your files" after a
+  `sources` event, both together, or "Answered from the model" when neither
+  came. A turn on the `tools` route whose model called no tool once said "Used
+  tools" under a made-up answer; "Show steps" opens the raw tool names, outcomes and
   times, and an amber "Waiting for you" chip marks an open approval. The answer
   streams as plain text and renders as Markdown when it ends, as in `meru chat`;
   each code block gets its number in the chat and a Copy button, and each answer
@@ -1416,10 +1420,10 @@ order.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, the rule that the model never claims an action no tool took (see
-   [Claims no tool backs](#claims-no-tool-backs)), today's date with a pointer to the `datetime` tool (a model knows only its
+   [Claims no tool backs](#claims-no-tool-backs)), today's date with a pointer to the `datetime` tool for
+   the time in another place, a weekday or days between dates (a model knows only its
    training data, so without the date a trip that ended last week reads as one
-   still to come; the time of day goes through the tool, since it changes every
-   minute and would cost Ollama's reuse), one line on your computer that `merud`
+   still to come), one line on your computer that `merud`
    reads at startup (the OS and version, the processor, memory, the shell and the
    time zone, and no host or user name; without it the model answered a GPU
    question on an Apple silicon Mac with `nvidia-smi`), your profile, the note on your folders, a line on what
@@ -1428,7 +1432,13 @@ order.
    tool instead of the model's training), a line that says where your past
    chats are, the tools note, and the list of skills. The parts each question changes come after: recalled memories, the
    picked skills' instructions, file excerpts with earlier conversations, and
-   what the web-first step found.
+   what the web-first step found. The time of day goes last, to the minute
+   with the zone and its offset from UTC, such as "The time now is 20:02 EDT
+   (UTC-04:00)." It changes every minute, so nothing may follow it. The prompt
+   once left the time to the `datetime` tool; asked "what's the date and time
+   right now", a model called no tool, read the date from the prompt and made
+   up the time. The line costs about 18 tokens, and a follow-up in a later
+   minute reprocesses it, the history and the question.
    Ollama reuses its work on a prompt's opening until the first token that
    differs, so this order lets a follow-up reprocess only the changing parts, the
    history and the question. Where the tool schemas land depends on the
@@ -1633,8 +1643,17 @@ Two parts guard against this. The first is in the prompt. Every turn carries
 this rule after the one on who "I" is:
 
 > Never say you did something, such as saved, moved, sent, deleted, changed or
-> scheduled, unless a tool call in this turn did it and succeeded. When none of
-> your tools can do what the user asks, say so first, then offer what you can do.
+> scheduled, unless a tool call in this turn did it and succeeded. Never say you
+> called, ran or used a tool or command unless you called it in this
+> conversation. Never make up what a tool would give you, such as a time, a
+> file's contents or a search result: call the tool, or say you don't know.
+> When none of your tools can do what the user asks, say so first, then offer
+> what you can do.
+
+The middle two sentences came from a second session. Asked "whats the date and
+time right now" on the `tools` route, a model called no tool and answered with
+the right date and a made-up time. Asked "did you run date or how did you get
+this time", it answered "I called the `datetime` tool", and no call backed that.
 
 and, after the note on your folders, a line built from the tools config allows:
 
@@ -1681,6 +1700,34 @@ and it gets some cases wrong. It misses a claim in words no rule lists, such as
 flags a "Done." at the top of a poem you asked for, where the note is true but
 not needed. It stays quiet on a turn where any tool call succeeded, even one that
 only read a file, because it can't tell which call backs which claim.
+
+A second check runs on every full answer, whatever its tool calls, and looks for
+a sentence that says Meru called, ran or used a tool or a program:
+
+| Rule | Matches |
+| --- | --- |
+| "I", "I've" or "I have", with one word allowed between, and called, ran, run, used, invoked, executed, queried, checked or asked, when the sentence says tool or command or names an allowed tool in backquotes | "I called the `datetime` tool", "I've used the grep tool" |
+| the same with ran, run or executed and a common program: date, ls, grep, find, cat, curl, python, bash, zsh, sh, git, uname, pwd or which | "I ran date" |
+| using, via, through, with or from, then a name and tool or command, in a sentence with "I" | "I found it using the grep tool" |
+| tool or command, then returned, says, said, shows, showed, reported, gave or replied; or "according to the … tool" | "The datetime tool returned 15:25" |
+
+The same questions, offers and denials don't count. A claim names the allowed
+tools whose names appear in it, compared by the last dot-separated part, so
+`notes.search` and `search` match; it also names a word in backquotes when the
+sentence says tool or command, and the program of the second rule. It is backed
+when one of the tools it names has a `tool_call` line in this turn or in the
+turns the history holds (`[agent] history_turns`), so "how did you get this?"
+can answer about an earlier turn. A claim that names no tool is backed when any
+tool ran in those turns. `merud` reads the transcript only when the answer holds
+a claim. An unbacked claim sends the same `notice` event, with the text "Meru
+didn't run datetime for this answer, though the answer says it did.", or "any
+tool" when the claim names none. On a turn that called no tool and also claims
+an action, the first notice already says no tool ran, and the second doesn't
+repeat it. The span and log line mark it as `unbacked_claim`, as above.
+
+This check misses a claim in words no rule lists, such as "I got it by calling
+the datetime tool", and flags "here is the command I used" in a how-to answer,
+where Meru ran no command either.
 
 ### Routing
 

@@ -163,6 +163,49 @@ func TestModel(t *testing.T) {
 	}
 }
 
+func TestCalledTools(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Three turns: the first calls datetime, the second calls nothing, the
+	// third calls notes.search, which dispatch records as tool "search".
+	lines := []Line{
+		{Type: TypeUser, Text: "what time is it"},
+		{Type: TypeToolCall, CallID: "c1", Kind: "builtin", Server: "meru", Tool: "datetime"},
+		{Type: TypeToolResult, CallID: "c1", Outcome: "ok"},
+		{Type: TypeAssistant, Text: "It's 09:15."},
+		{Type: TypeUser, Text: "thanks"},
+		{Type: TypeAssistant, Text: "You're welcome."},
+		{Type: TypeUser, Text: "find my garden notes"},
+		{Type: TypeToolCall, CallID: "c2", Kind: "mcp", Server: "notes", Tool: "search"},
+	}
+	for _, l := range lines {
+		if err := s.Append(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		turns int
+		want  []string
+	}{
+		{0, nil},
+		{1, []string{"search"}},
+		{2, []string{"search"}},
+		{3, []string{"datetime", "search"}},
+		{10, []string{"datetime", "search"}},
+	}
+	for _, tt := range tests {
+		got, err := s.CalledTools(tt.turns)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("CalledTools(%d) = %q, want %q", tt.turns, got, tt.want)
+		}
+	}
+}
+
 func TestOpenRejectsBadIDs(t *testing.T) {
 	dir := t.TempDir()
 	tests := []string{

@@ -10,13 +10,24 @@
 import { icon } from "./icons.js";
 import { renderMarkdown } from "./markdown.js";
 
-// ROUTES says in words what each route did.
-const ROUTES = {
-  direct: "Answered from the model",
-  search: "Searched your files",
-  tools: "Used tools",
-  "search+tools": "Searched your files and used tools",
-};
+// workLabel says in words what turn t did, from what happened in it: a
+// "sources" event means merud searched the user's files, and a tool_call
+// event means the model called a tool. The route the router picked says
+// only what the turn could do. A real turn on the "tools" route called no
+// tool, and the strip still said "Used tools" under a made-up answer.
+// While the turn runs and has done neither, the label is "Answering" once
+// text streams, and "" before that, when the "Working…" chip says enough.
+// A turn that failed or was stopped before it did either gets "".
+export function workLabel(t) {
+  const files = t.sources.length > 0;
+  const tools = t.steps.length > 0;
+  if (files && tools) return "Searched your files and used tools";
+  if (files) return "Searched your files";
+  if (tools) return "Used tools";
+  if (t.state === "done") return "Answered from the model";
+  if (t.state === "active" && t.answer) return "Answering";
+  return "";
+}
 
 // el makes an element with a class and, optionally, text.
 export function el(tag, className, text) {
@@ -120,8 +131,8 @@ export function drawAll(t, h) {
 export function drawStrip(t, h) {
   const strip = t.el.strip;
   strip.replaceChildren();
-  const route = el("span", "route" + (t.fallback ? " fallback" : ""), ROUTES[t.route] || (t.route ? t.route : "Working"));
-  strip.append(route);
+  const label = workLabel(t);
+  if (label) strip.append(el("span", "route" + (t.fallback ? " fallback" : ""), label));
   for (const s of t.steps) {
     const failed = s.outcome && s.outcome !== "ok";
     const step = el("span", "step" + (failed ? " failed" : ""));

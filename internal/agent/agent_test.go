@@ -280,8 +280,11 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	}
 }
 
-// sameMessage compares the fields the agent sets.
-func sameMessage(a, b engine.Message) bool { return a.Role == b.Role && a.Content == b.Content }
+// sameMessage compares the fields the agent sets. It leaves out the clock
+// line at the end of a system prompt, which changes every minute.
+func sameMessage(a, b engine.Message) bool {
+	return a.Role == b.Role && withoutClock(a.Content) == withoutClock(b.Content)
+}
 
 func TestTurnContinuesSession(t *testing.T) {
 	cfg := testConfig(t)

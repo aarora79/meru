@@ -25,7 +25,8 @@ const DateTime = "datetime"
 const datetimeDescription = "Gives the current date and time on the user's computer, with the weekday and the time zone. " +
 	"Pass timezone (a name such as Asia/Kolkata or Europe/London) for the time there. " +
 	"Pass date (YYYY-MM-DD) for that date's weekday and how many days it is from today. " +
-	"Call it for any question about the time, a weekday, a date or days between dates; don't work the date out yourself."
+	"Your prompt already gives the local date and time. Call this tool for the time in another place, " +
+	"the weekday of another date or days between dates; don't work those out yourself."
 
 // datetimeSchema returns the tool's argument schema. Both arguments are
 // optional; with neither, the tool gives the local date and time.

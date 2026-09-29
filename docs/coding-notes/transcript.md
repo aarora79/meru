@@ -181,6 +181,17 @@ failed before its first line, stays out.
 `testdata/sessions/` holds three small session files and one stray file for
 `List`'s tests, including a torn line.
 
+### CalledTools
+
+`Session.CalledTools(n)` returns the `Tool` of each `tool_call` line in the
+last `n` turns, oldest first, where a turn starts at a `user` line. It walks
+back from the end counting `user` lines, then collects forward from where it
+stopped. The agent reads it when an answer says "I called the `datetime`
+tool", to check that a call backs the claim, in this turn or an earlier one the
+model reads in its history. The names are as `dispatch` wrote them, so an MCP
+tool shows by its own name, such as `search` for `notes.search`.
+`TestCalledTools` checks the turn counting.
+
 ### Model switch lines
 
 `TypeModelSwitch` lines say which main model writes the answers from there on:

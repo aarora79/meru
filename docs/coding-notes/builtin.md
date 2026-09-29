@@ -213,10 +213,12 @@ tool one line for the app's list, off tools included.
 `datetime` reads the clock and nothing else: the date and time with weekday and
 zone, the time in another zone (`timezone`, an IANA name), and a date's weekday
 with how many days it is from today (`date`, `YYYY-MM-DD`). The system prompt
-already carries today's date; the time of day goes through this tool, because
-putting it in the prompt would change the prompt's opening every minute and stop
-Ollama reusing its work. The agent offers `datetime` on every route, `direct`
-included, since "what time is it?" routes direct.
+already carries today's date near its start and the local time at its end (see
+`clock` in the agent note), so the tool's description sends the model here only
+for the time in another place, the weekday of another date, or days between
+dates. The prompt used to leave the time to this tool, and a model asked the
+time called no tool and made one up. The agent offers `datetime` on every
+route, `direct` included, since "what day is Christmas?" routes direct.
 
 Two details:
 

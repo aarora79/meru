@@ -221,7 +221,11 @@ this turn did it and succeeded, and when no tool can do what the user asks,
 say so first and then offer what you can. A real turn drove it. Asked to move
 a folder that `write_file` had saved under `~/meru-output`, the model called no
 tool and answered "Done. It's now at …/repos/hello-go/". Meru has no tool that
-moves files, so nothing moved.
+moves files, so nothing moved. Two more sentences came from a later turn:
+never say you called, ran or used a tool or command you didn't call in this
+conversation, and never make up what a tool would give, such as a time, a
+file's contents or a search result. Asked the time, a model had made one up,
+and then said "I called the `datetime` tool" when asked how it knew.
 
 `New` also keeps `displayDir(home, cfg.Skills.OutputDir)` in `a.outputDir`:
 the folder `write_file` writes in, as the model should read it, such as
@@ -320,10 +324,24 @@ The whole system prompt, in order: the configured prompt, `whoIsWho`,
 `honestyRule`, today's date (`today`), the profile, `filesNote`, the line from
 `canDoNote`, `chatsNote` while the file tools are on, `toolsNote` on a turn
 that offers tools, and the list of skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
-file tools; then the recalled memories, the picked skills' instructions, and last
-the files section, which holds the numbered excerpts and then the earlier
-conversations. `prompt` takes the changing parts in one `sections` struct and
+file tools; then the recalled memories, the picked skills' instructions, the
+files section, which holds the numbered excerpts and then the earlier
+conversations, and what the web-first step found; and last the time of day
+(`clock`). `prompt` takes the changing parts in one `sections` struct and
 leaves out each empty part.
+
+`today` writes the date, "Today is Monday, 28 September 2026.", and a pointer
+to `datetime` for the time in another place, a weekday or days between dates.
+The date changes once a day, so it sits with the parts that stay the same.
+`clock` writes "The time now is 20:02 EDT (UTC-04:00).": the minute, the zone's
+short name, and its offset from UTC. Go formats a time from a layout written as
+one fixed example time, so `now.Format("15:04 MST (UTC-07:00)")` means "hour,
+minute, zone name and offset" (the word UTC in the layout is plain text). The
+line changes every minute, so it goes after everything else; a follow-up in a
+later minute makes Ollama reprocess it, the history and the question, and
+nothing before. It costs about 18 tokens. The prompt used to leave the time to
+the tool, and a model asked "whats the date and time right now" called no tool
+and made the time up.
 
 ### budget.go
 
@@ -852,6 +870,53 @@ The rules will miss a claim in words they don't list, and flag a "Done." at
 the top of a poem you asked for. They are plain enough to read in a minute and
 test in a table, which matters more here than catching every phrasing: a
 warning that fires by surprise would teach you to ignore it.
+
+A second check catches an answer that says it called a tool when it didn't,
+as in "I called the `datetime` tool" or "I ran date". It runs on every full
+answer, because a turn that ran `grep` can still claim a `datetime` call:
+
+```go
+if tool, ok := a.unbackedToolClaim(ctx, t, sess, rep.text); ok {
+    unbacked = true
+    if notice == "" || t.calls > 0 {
+        notice = strings.TrimSpace(notice + " " + callNotice(tool))
+    }
+}
+```
+
+`toolClaims` splits the answer into sentences as `claimsAction` does and skips
+the same questions, offers and denials. A sentence counts when one of these
+matches:
+
+| Pattern | Catches |
+| --- | --- |
+| `callFirst`, with `toolWord` or an allowed tool in backquotes | "I called the `datetime` tool", "I've used the grep tool", but not "I used your notes" |
+| `runProgram` | "I ran date", "I executed `ls`" |
+| `usingTool`, in a sentence with `firstPerson` | "I found it using the grep tool", but not "You can search using the grep tool" |
+| `toolResult` | "The datetime tool returned 15:25", "According to the `datetime` tool" |
+
+Each claim keeps the tools it names: allowed tool names that appear in it, a
+word in backquotes when the sentence says tool or command, and the program
+`runProgram` found. `shortTool` cuts each name to its last dot-separated part in
+lower case, because the model sees `notes.search` while dispatch writes tool
+`search` on server `notes` in the transcript.
+
+`unbackedToolClaim` builds the list of calls that count: `t.called`, which
+`runCalls` fills with every call the turn made, and `sess.CalledTools`, which
+reads the `tool_call` lines of this turn and the `[agent] history_turns` turns
+before it from the transcript. The earlier turns count because a follow-up
+such as "how did you get this?" answers about them. It reads the transcript
+only when `toolClaims` found something, so most turns pay nothing.
+`unbackedCall` then says a claim is backed when one of its tools ran, or, for
+a claim that names none, when any tool ran. The notice reads "Meru didn't run
+datetime for this answer, though the answer says it did." On a turn with no
+calls that also claims an action, `unbackedNotice` already says no tool ran,
+so the second sentence stays out.
+
+`TestMadeUpTime` replays the real failure with a fake model: the first answer's
+prompt must end with the time, and the follow-up "I called the `datetime`
+tool" must get the notice. `TestToolClaimBackedByHistory` checks that a call
+in the earlier turn backs the same claim.
 
 ### searchFiles
 

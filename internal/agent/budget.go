@@ -47,8 +47,9 @@ const (
 // the profile, the files note, the tools note and the list of skills. The
 // note on the file tools comes next, on file turns only (see aboutFiles).
 // Then come the parts each question changes: recalled memories, the picked
-// skills' instructions, the file excerpts with earlier conversations, and
-// what the web-first step found (see webfirst.go).
+// skills' instructions, the file excerpts with earlier conversations, what
+// the web-first step found (see webfirst.go), and last the time of day
+// (see clock), which changes every minute.
 //
 // The order matters for speed. Ollama reuses its work on a prompt's opening
 // tokens when the next prompt starts the same way, and it stops reusing at
@@ -62,10 +63,31 @@ const (
 // data, so without this it read "a trip from 15 to 20 September 2026" in a
 // hotel booking on the 24th and said no visit was on record. The date changes
 // once a day, so it can sit among the parts that stay the same from turn to
-// turn; the time of day would change every minute and cost the reuse.
+// turn. The time of day changes every minute, so clock, below, puts it at the
+// end of the system prompt instead. The last sentence keeps the datetime tool
+// for what the prompt doesn't give.
 func today(now time.Time) string {
 	return "Today is " + now.Format("Monday, 2 January 2006") + ". " +
-		"For the time of day, a weekday, days between dates or the time in another place, call the datetime tool."
+		"The time now is at the end of this prompt; call the datetime tool for the time in another place, a weekday, or days between dates."
+}
+
+// clock tells the model the time of day to the minute, with the zone's
+// short name and its offset from UTC (Coordinated Universal Time), such as
+// "The time now is 20:02 EDT (UTC-04:00)." The zone's full name, such as
+// America/New_York, is already in the line on the user's computer.
+//
+// A real turn showed why the prompt needs it. Asked "whats the date and time
+// right now", a small model called no tool, got the date right from today's
+// line and made up the time. The prompt used to leave the time to the
+// datetime tool, so that the prompt's opening stayed the same for Ollama to
+// reuse, and the model didn't call the tool.
+//
+// The line goes last in the system prompt, after the parts each question
+// changes (see prompt in agent.go). It costs about 18 tokens. On a follow-up
+// in a later minute Ollama reprocesses from this line on: the line, the
+// history and the question. The parts before it keep their reuse.
+func clock(now time.Time) string {
+	return "The time now is " + now.Format("15:04 MST (UTC-07:00)") + "."
 }
 
 // sections is what a turn adds to the system prompt, beyond the parts
