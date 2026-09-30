@@ -1,6 +1,6 @@
 # testing
 
-**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`),
+**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`),
 `internal/testutil/fakeollama/` (`fake.go`, `api.go`, `wire.go`), `cmd/fakeollama/` (`main.go`)
 **Milestone:** v0.1
 **Architecture:** [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -148,6 +148,12 @@ may name no shell, interpreter or downloader, and only absolute paths.
 
 None of the clients, nor the installer, may reach `internal/connectors`: `merud`
 installs and starts the connectors, and a client asks it about them.
+`connectors_test.go` holds that package to the installer's rule: only
+`internal/connectors/run.go` may import `os/exec`, so every npm, uv and docker
+command it runs goes through one Runner, by absolute path and with no shell.
+The runtime downloads, Node from nodejs.org and uv from its GitHub release,
+are the one other place besides the Mac installer where `allowed_urls.txt`
+lists a URL that Meru fetches.
 
 `pins_test.go` checks that every program Meru installs, or tells you to install,
 names one exact version. It reads the connector manifests, the string literals in

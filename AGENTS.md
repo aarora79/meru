@@ -251,7 +251,9 @@ internal/
   installer/         the Mac installer minus the window: its nine steps, the Bridge, the
                      allowlist of programs it runs (run.go), and the page in web/
   connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
-                     versions, and the checks on them; merud's supervisor will use them (#87)
+                     versions, and the checks on them; the pinned Node and uv (runtimes.go),
+                     installs into ~/.meru/runtime (install.go, launch.go), and run.go, its one
+                     exec site; merud's supervisor will use them (#87)
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests

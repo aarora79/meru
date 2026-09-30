@@ -235,12 +235,13 @@
   </svg></a>
   <h1>Connectors: how Meru will run its own servers</h1>
   <p class="standfirst">A connector is a program Meru needs, such as the search engine behind web search, that Meru installs, starts, checks and restarts for you. This page walks through the design in issue #87: what you set, what Meru's developers set, what happens on disk, and which parts exist today.</p>
-  <aside class="aside"><p><b>Where the work stands.</b> Step 1 of 7 is built and in review in PR #90: the manifests, their checks, the config table and a test that refuses unpinned versions. <code>merud</code> reads none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 2 to 7.</p></aside>
-  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step1</code>, commit <code>cc06f33</code></p>
+  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 and 2 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2 adds the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. <code>merud</code> calls none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 3 to 7.</p></aside>
+  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step2</code></p>
 </header>
 
 <div class="strip" role="list">
   <div role="listitem"><b>4</b><span>manifests compiled into <code>merud</code>: SearXNG, Obsidian, Google and Ollama</span><small><code>internal/connectors/manifests/</code>, 29 Sep 2026</small></div>
+  <div role="listitem"><b>Node 24.21.0, uv 0.12.21</b><span>the runtimes Meru downloads for itself, each checked against a pinned SHA-256</span><small><code>internal/connectors/runtimes.go</code>, 30 Sep 2026</small></div>
   <div role="listitem"><b>1, 2, 4 … 60 s</b><span>wait before each restart after a crash (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
   <div role="listitem"><b>5 in 10 min</b><span>crashes before a connector stops trying and says why (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
   <div role="listitem"><b>10 min</b><span>idle time before Obsidian or Google stops (planned)</span><small><code>idle_timeout</code> in both manifests, 29 Sep 2026</small></div>
@@ -312,7 +313,7 @@ package = "obsidian-mcp"
 version = "2.0.1"
 
 [launch]
-command = "{pkg}/node_modules/.bin/obsidian-mcp"
+command = "obsidian-mcp"
 args = [
   "serve",
   "--vault", "{field.vault_name}={field.vault_path}",
@@ -346,7 +347,7 @@ allow = [
 ]
 confirm = []</code></pre>
 
-<p><code>kind = "stdio"</code> means Meru starts the program and talks MCP over its standard input and output. <code>{pkg}</code> stands for the connector's install folder, and <code>{field.vault_path}</code> for the value you type into the Vault folder field. Every client will draw its form from the <code>[[field]]</code> tables, so the desktop app and <code>meru chat</code> ask the same questions. <code>[mcp]</code> works as in a hand-added server: the model sees only the three tools <code>allow</code> names.</p>
+<p><code>kind = "stdio"</code> means Meru starts the program and talks MCP over its standard input and output. <code>command</code> names a program the npm package installs; Meru finds it in the install folder and runs it with its own Node (see <a href="#where-things-live-on-disk">Where things live on disk</a>). <code>{field.vault_path}</code> stands for the value you type into the Vault folder field. Every client will draw its form from the <code>[[field]]</code> tables, so the desktop app and <code>meru chat</code> ask the same questions. <code>[mcp]</code> works as in a hand-added server: the model sees only the three tools <code>allow</code> names.</p>
 
 <p><b>Your config</b> belongs to you. It holds whether the connector is on and the value of each field, in one table per connector in <code>config.toml</code>:</p>
 
@@ -382,7 +383,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
   <text x="40" y="50" class="t1" font-size="17" font-weight="700">Manifest</text>
   <text x="40" y="72" class="t3" font-size="13">written by Meru's developers · compiled into merud</text>
   <text x="40" y="102" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">package  obsidian-mcp 2.0.1</text>
-  <text x="40" y="124" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">start    {pkg}/node_modules/.bin/obsidian-mcp</text>
+  <text x="40" y="124" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">start    obsidian-mcp, with Meru's own Node</text>
   <text x="40" y="146" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">fields   vault_path, vault_name</text>
   <text x="40" y="168" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">health   obsidian_list_vaults → nonempty</text>
   <text x="40" y="190" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">tools    allow 3, confirm 0</text>
@@ -397,15 +398,15 @@ func (c Connector) Enabled() (enabled, ok bool) {
   <!-- supervisor -->
   <rect x="250" y="250" width="460" height="54" rx="10" class="ba2"/>
   <text x="480" y="275" text-anchor="middle" class="t1" font-size="16" font-weight="700">Supervisor in merud</text>
-  <text x="480" y="294" text-anchor="middle" class="ta2" font-size="12.5" font-weight="600">PLANNED · steps 2 to 6</text>
+  <text x="480" y="294" text-anchor="middle" class="ta2" font-size="12.5" font-weight="600">PLANNED · steps 3 to 6</text>
   <path d="M240 200 L360 248" class="ln" marker-end="url(#a1)"/>
   <path d="M720 200 L600 248" class="ln" marker-end="url(#a1)"/>
   <!-- runtime -->
   <rect x="20" y="344" width="920" height="110" rx="10" class="bg"/>
   <text x="40" y="370" class="t1" font-size="15" font-weight="700">~/.meru/runtime/</text>
   <text x="200" y="370" class="t3" font-size="13">the only place installs land; global npm, pip and Homebrew stay untouched</text>
-  <rect x="36" y="386" width="160" height="50" rx="7" class="b"/><text x="116" y="409" text-anchor="middle" class="t1 mono" font-size="13">node-&lt;v&gt;/</text><text x="116" y="427" text-anchor="middle" class="t3" font-size="12">pinned Node.js</text>
-  <rect x="216" y="386" width="140" height="50" rx="7" class="b"/><text x="286" y="409" text-anchor="middle" class="t1 mono" font-size="13">uv-&lt;v&gt;/</text><text x="286" y="427" text-anchor="middle" class="t3" font-size="12">pinned uv</text>
+  <rect x="36" y="386" width="160" height="50" rx="7" class="b"/><text x="116" y="409" text-anchor="middle" class="t1 mono" font-size="13">node-24.21.0/</text><text x="116" y="427" text-anchor="middle" class="t3" font-size="12">pinned Node.js</text>
+  <rect x="216" y="386" width="140" height="50" rx="7" class="b"/><text x="286" y="409" text-anchor="middle" class="t1 mono" font-size="13">uv-0.12.21/</text><text x="286" y="427" text-anchor="middle" class="t3" font-size="12">pinned uv</text>
   <rect x="376" y="386" width="200" height="50" rx="7" class="b"/><text x="476" y="409" text-anchor="middle" class="t1 mono" font-size="13">pkg/obsidian-2.0.1/</text><text x="476" y="427" text-anchor="middle" class="t3" font-size="12">the installed server</text>
   <rect x="596" y="386" width="170" height="50" rx="7" class="b"/><text x="681" y="409" text-anchor="middle" class="t1 mono" font-size="13">state/obsidian.json</text><text x="681" y="427" text-anchor="middle" class="t3" font-size="12">last tool list</text>
   <rect x="786" y="386" width="140" height="50" rx="7" class="b"/><text x="856" y="409" text-anchor="middle" class="t1 mono" font-size="13">logs/obsidian.log</text><text x="856" y="427" text-anchor="middle" class="t3" font-size="12">its error output</text>
@@ -416,34 +417,46 @@ func (c Connector) Enabled() (enabled, ok bool) {
 </figure>
 
 <!-- ============================================================ -->
-<h2 id="where-things-live-on-disk">Where things live on disk <span class="plan">planned</span></h2>
+<h2 id="where-things-live-on-disk">Where things live on disk <span class="plan built">built</span></h2>
+
+<p>Step 2 built this section. <code>merud</code> doesn't call the code until the supervisor lands in step 3.</p>
 
 <p>Every install lands under one folder, <code>~/.meru/runtime/</code>:</p>
 
 <pre><code class="language-text">~/.meru/runtime/
-  node-&lt;v&gt;/               pinned Node.js, for npm packages
-  uv-&lt;v&gt;/                 pinned uv, a Python package installer
+  node-24.21.0/           pinned Node.js, for npm packages
+  uv-0.12.21/             pinned uv, a Python package installer
+  python/                 the Python 3.12 uv downloads
+  cache/npm/, cache/uv/   download caches
+  home/                   HOME for npm and uv
+  npmrc                   an empty npm settings file
   pkg/obsidian-2.0.1/     obsidian-mcp and its npm packages
-  pkg/google-1.30.0/      workspace-mcp and its Python
-  state/obsidian.json     the tool list from the last health check
-  logs/obsidian.log       the server's error output</code></pre>
+  pkg/google-1.30.0/      workspace-mcp and its Python environment
+  state/obsidian.json     the tool list from the last health check (planned)
+  logs/obsidian.log       the server's error output (planned)</code></pre>
 
-<p><code>merud</code> downloads Node.js and uv, a Python package installer, the first time a connector needs one, at versions pinned in <code>merud</code>. Before it unpacks a download, it compares the file's SHA-256, a 64-character fingerprint of its contents, with the pin, and refuses a file that doesn't match. A changed or corrupt download never runs.</p>
+<p><code>merud</code> downloads Node.js 24.21.0, the newest Long Term Support release, and uv 0.12.21, a Python package installer, the first time a connector needs one. Before it unpacks a download, it compares the file's SHA-256, a 64-character fingerprint of its contents, with the pin compiled into <code>merud</code>, and refuses a file that doesn't match. A changed or corrupt download never runs. Unpacking refuses any entry that would land outside the runtime's folder.</p>
 
-<p>Each connector installs into its own folder, named for its ID and version. The install type in the manifest picks the command:</p>
+<p>Each connector installs into its own folder, named for its ID and version. The install type in the manifest picks the command, and each program runs by its full path:</p>
 
 <div class="tbl"><table>
 <thead><tr><th>Type</th><th>What <code>merud</code> runs</th></tr></thead>
 <tbody>
-<tr><td><code>npm</code></td><td><code>npm install --prefix &lt;dir&gt; &lt;package&gt;@&lt;version&gt; --no-audit --no-fund</code>, with the pinned Node.js</td></tr>
-<tr><td><code>pip</code></td><td><code>uv venv</code>, then <code>uv pip install &lt;package&gt;==&lt;version&gt;</code></td></tr>
+<tr><td><code>npm</code></td><td>the pinned <code>node</code> running npm's own script: <code>npm-cli.js install --prefix &lt;dir&gt; &lt;package&gt;@&lt;version&gt; --no-audit --no-fund --no-update-notifier --ignore-scripts</code></td></tr>
+<tr><td><code>pip</code></td><td>the pinned <code>uv venv &lt;dir&gt;/.venv --python 3.12</code>, then <code>uv pip install --python &lt;dir&gt;/.venv/bin/python &lt;package&gt;==&lt;version&gt;</code></td></tr>
 <tr><td><code>binary</code></td><td>download the file for this platform and check its SHA-256</td></tr>
-<tr><td><code>container</code></td><td><code>docker pull &lt;image&gt;@sha256:&lt;digest&gt;</code></td></tr>
+<tr><td><code>container</code></td><td><code>docker info</code>, then <code>docker pull &lt;image&gt;@sha256:&lt;digest&gt;</code></td></tr>
 </tbody></table></div>
 
-<p>When a new Meru release moves a pin, the version in the manifest no longer matches the installed folder, so <code>merud</code> installs the new version beside the old one. It removes the old folder only after the new one passes its health check, so a bad upgrade leaves the old files on disk.</p>
+<p>A folder is finished only when it holds a marker file, <code>.meru-installed</code>, which <code>merud</code> writes last. A folder without one is a leftover from an install that stopped part way, and <code>merud</code> deletes it rather than trust it. When a new Meru release moves a pin, the version in the manifest no longer matches the marker, so <code>merud</code> installs the new version beside the old one, and removes the old folder once the new one is complete.</p>
 
-<p>Every program runs from one Go file, <code>internal/connectors/run.go</code>, by absolute path, with no shell and a short environment. That fixes the Obsidian failure above: <code>merud</code> no longer asks <code>PATH</code> where a program lives, so launchd's short <code>PATH</code> stops mattering. Meru never runs your global npm, pip or Homebrew, so a connector can't break another program's packages, and removing <code>~/.meru/runtime/</code> removes every install.</p>
+<p>Two rules keep your own tools out of it:</p>
+<ul>
+  <li><b>Meru runs Node itself.</b> A connector such as <code>obsidian-mcp</code> ships a script whose first line, <code>#!/usr/bin/env node</code>, asks <code>PATH</code> for Node, and launchd's short <code>PATH</code> has none: the same failure as the <code>npx</code> entry above. So <code>merud</code> reads the package's <code>package.json</code>, finds the script, and runs <code>~/.meru/runtime/node-24.21.0/bin/node &lt;script&gt;</code>. It works whatever the <code>PATH</code> holds, and the child's <code>PATH</code> still starts with the pinned Node's folder, so any <code>node</code> the server starts is the same one.</li>
+  <li><b>uv's folders stay under <code>~/.meru/runtime</code>.</b> Left alone, uv keeps its cache and the Pythons it downloads in your home folder. <code>merud</code> sets <code>UV_CACHE_DIR</code>, <code>UV_PYTHON_INSTALL_DIR</code>, <code>UV_PYTHON_BIN_DIR</code>, <code>UV_PYTHON_CACHE_DIR</code>, <code>UV_TOOL_DIR</code> and <code>UV_TOOL_BIN_DIR</code> inside the runtime folder, tells uv to use only the Python it downloaded there, and skips your <code>uv.toml</code>. npm's cache and settings file sit there too.</li>
+</ul>
+
+<p>Every program runs from one Go file, <code>internal/connectors/run.go</code>, by absolute path, with no shell and a short environment; a policy test fails the build if another file in the package runs one. Meru never runs your global npm, pip or Homebrew, so a connector can't break another program's packages, and removing <code>~/.meru/runtime/</code> removes every install.</p>
 
 <!-- ============================================================ -->
 <h2 id="the-supervisor-and-its-states">The supervisor and its states <span class="plan">planned</span></h2>
@@ -556,9 +569,9 @@ func (c Connector) Enabled() (enabled, ok bool) {
 
 <ol>
   <li><b>You fill in the fields.</b> In Settings, under Connections, you turn Obsidian on and pick your vault folder, <code>~/Notes/vault</code>. You leave Vault name empty, so Meru makes one from the folder's name: <code>vault</code>. The client sends the socket op <code>connector_set</code>, and <code>merud</code> writes <code>[connectors.obsidian]</code> with <code>enabled = true</code> and the folder. The fields pass, so the state moves from <code>off</code> through <code>needs_config</code> to <code>installing</code>, and the card reads <code>starting</code>.</li>
-  <li><b>Node.js arrives.</b> obsidian-mcp 2.0.1 needs Node.js 22 or later. <code>merud</code> downloads its pinned Node.js 22 build into <code>~/.meru/runtime/node-&lt;v&gt;/</code>, checks the SHA-256 and unpacks it. Step 2 of the plan picks the exact Node.js version.</li>
-  <li><b>The package installs.</b> With that Node.js, <code>merud</code> runs <code>npm install --prefix ~/.meru/runtime/pkg/obsidian-2.0.1 obsidian-mcp@2.0.1 --no-audit --no-fund</code>. The program lands at <code>pkg/obsidian-2.0.1/node_modules/.bin/obsidian-mcp</code>.</li>
-  <li><b>The first health check.</b> <code>merud</code> starts that program by its full path with <code>serve --vault vault=/Users/you/Notes/vault</code>, and calls the tool <code>obsidian_list_vaults</code> with no arguments. The answer lists one vault, which meets <code>expect = "nonempty"</code>. <code>merud</code> saves the server's tool list to <code>state/obsidian.json</code>, stops the process, and moves to <code>ready</code>. The card now reads <b>"Obsidian is ready."</b></li>
+  <li><b>Node.js arrives.</b> obsidian-mcp 2.0.1 needs Node.js 22 or later. <code>merud</code> downloads its pinned Node.js 24.21.0 into <code>~/.meru/runtime/node-24.21.0/</code>, checks the SHA-256 and unpacks it.</li>
+  <li><b>The package installs.</b> With that Node.js, <code>merud</code> runs <code>npm install --prefix ~/.meru/runtime/pkg/obsidian-2.0.1 obsidian-mcp@2.0.1 --no-audit --no-fund --no-update-notifier --ignore-scripts</code>. The server's script lands at <code>pkg/obsidian-2.0.1/node_modules/obsidian-mcp/dist/main.js</code>.</li>
+  <li><b>The first health check.</b> <code>merud</code> starts the pinned <code>node</code> by its full path with that script and <code>serve --vault vault=/Users/you/Notes/vault</code>, and calls the tool <code>obsidian_list_vaults</code> with no arguments. The answer lists one vault, which meets <code>expect = "nonempty"</code>. <code>merud</code> saves the server's tool list to <code>state/obsidian.json</code>, stops the process, and moves to <code>ready</code>. The card now reads <b>"Obsidian is ready."</b></li>
   <li><b>The first question.</b> You ask "what did I write about the garden plan?". The model sees <code>obsidian.obsidian_search_vault</code> from the saved list and calls it. Figure 3 traces that call.</li>
   <li><b>Ten quiet minutes.</b> No further call comes, so the process stops and the state goes back to <code>ready</code>. The card still reads "Obsidian is ready.", and the next call starts the process again.</li>
 </ol>
@@ -722,8 +735,9 @@ func TestManifestsPinned(t *testing.T) {
 <ul>
   <li><b>Servers you add by hand stay unsupervised.</b> An <code>[[mcp.servers]]</code> entry keeps today's rules: one connect try per tools turn, no restart, no health check. To have Meru run a server for you, it needs a manifest, and only a Meru release can add one.</li>
   <li><b>Web search still needs Docker.</b> Meru pulls and runs the SearXNG image, but you install Docker and keep it running. Without it the status reads "Web search can't start: Docker isn't running."</li>
-  <li><b>The first run needs the internet and takes time.</b> Node.js, uv, each package and the SearXNG image download once. The SearXNG image alone is 96 MB compressed for Apple silicon (Docker Hub, 30 September 2026). Offline, the install fails and the connector reads <code>failed</code>.</li>
-  <li><b>Windows paths aren't handled yet.</b> The runtime folder, the <code>{pkg}</code> paths and <code>node_modules/.bin</code> follow macOS and Linux.</li>
+  <li><b>The first run needs the internet and takes time.</b> Node.js, uv, each package and the SearXNG image download once. Node.js for Apple silicon is 52,909,993 bytes (nodejs.org), uv 17,001,427 bytes (its GitHub release), and the SearXNG image 96 MB compressed (Docker Hub), all read on 30 September 2026. Offline, the install fails and the connector reads <code>failed</code>.</li>
+  <li><b>Only the package itself is pinned.</b> npm picks the package's own dependencies within the ranges the package names, so they can move between two installs of the same <code>obsidian-mcp</code> 2.0.1. The same holds for pip.</li>
+  <li><b>Windows has no runtime pin yet.</b> Node.js ships a <code>.zip</code> there and uv an <code>.exe</code>, and the runtime folder, the <code>{pkg}</code> paths and <code>.venv/bin</code> follow macOS and Linux.</li>
   <li><b>Two health checks are still open.</b> The plan's first draft checked SearXNG with an empty JSON search; the manifest uses <code>/healthz</code>. Google's check calls <code>list_calendars</code>, which nobody has yet confirmed against <code>workspace-mcp</code> 1.30.0, and which isn't in the model's allow list.</li>
   <li><b>An older <code>merud</code> refuses the new config.</b> <code>config.Load</code> rejects any key it doesn't know, so a <code>config.toml</code> with a <code>[connectors.*]</code> table fails to load in a Meru from before this change. The release notes have to say so.</li>
   <li><b>No sandbox.</b> A connector runs as an ordinary process with your user's permissions, like any MCP server. Meru decides which tools the model may call, and the program decides what each call does.</li>
@@ -737,8 +751,8 @@ func TestManifestsPinned(t *testing.T) {
 <div class="tbl"><table>
 <thead><tr><th>Step</th><th>What it adds</th><th>State</th></tr></thead>
 <tbody>
-<tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> in review, PR #90</td></tr>
-<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code></td><td><span class="plan">planned</span></td></tr>
+<tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> merged in PR #90</td></tr>
+<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> in review</td></tr>
 <tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan">planned</span></td></tr>
 <tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan">planned</span></td></tr>
 <tr><td>5</td><td>Google over HTTP with sign-in, and Adopt for existing entries</td><td><span class="plan">planned</span></td></tr>
@@ -749,14 +763,14 @@ func TestManifestsPinned(t *testing.T) {
 <!-- ============================================================ -->
 <h2 id="sources">Sources</h2>
 
-<p>Repository files, as of branch <code>connectors-step1</code>, commit <code>cc06f33</code> (29 September 2026):</p>
+<p>Repository files, as of branch <code>connectors-step2</code> (30 September 2026):</p>
 
 <ul>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
-  <li><a href="https://github.com/aarora79/meru/tree/connectors-step1/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>)</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
+  <li><a href="https://github.com/aarora79/meru/tree/connectors-step2/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>); <code>runtimes.go</code>, <code>download.go</code>, <code>install.go</code>, <code>launch.go</code> and <code>run.go</code> for the installs</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders; <code>connectors_test.go</code>: the one exec site</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
   <li>Today's wiring: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>cmd/merud/connections.go</code> (web search always "connected"), <code>internal/installer/websearch.go</code> and <code>google.go</code>, <code>cmd/merud/main.go</code> and <code>runtime.go</code> (the Ollama check before the socket)</li>
 </ul>
 
@@ -770,6 +784,8 @@ func TestManifestsPinned(t *testing.T) {
 <p>Upstream pages for the pins, checked 30 September 2026:</p>
 
 <ul>
+  <li><a href="https://nodejs.org/dist/v24.21.0/SHASUMS256.txt">Node.js 24.21.0 SHASUMS256.txt</a>: the SHA-256 of each archive; 24.21.0 "Krypton" is the newest Long Term Support release, from 7 September 2026</li>
+  <li><a href="https://github.com/astral-sh/uv/releases/tag/0.12.21">uv 0.12.21</a>: the <code>.sha256</code> file beside each archive, published 29 September 2026</li>
   <li><a href="https://www.npmjs.com/package/obsidian-mcp">npm, obsidian-mcp</a>: 2.0.1 is the newest release, published 14 August 2026</li>
   <li><a href="https://pypi.org/project/workspace-mcp/1.30.0/">PyPI, workspace-mcp 1.30.0</a>: uploaded 28 September 2026</li>
   <li><a href="https://hub.docker.com/r/searxng/searxng/tags">Docker Hub, searxng/searxng</a>: tag <code>2026.9.29-4e2c1ea7f</code> has index digest <code>sha256:3284e890…95c3</code>, pushed 29 September 2026; the arm64 image is 95,981,206 bytes compressed</li>

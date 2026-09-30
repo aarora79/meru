@@ -65,7 +65,7 @@ func valid() Manifest {
 		IdleTimeout: "10m",
 		Install:     Install{Type: InstallNPM, Package: "notes-mcp", Version: "1.2.3"},
 		Launch: Launch{
-			Command: "{pkg}/node_modules/.bin/notes-mcp",
+			Command: "notes-mcp",
 			Args:    []string{"--dir", "{field.dir}"},
 			Env:     map[string]string{"NOTES_KEY": "{field.key}"},
 		},
@@ -107,6 +107,7 @@ func binaryManifest() Manifest {
 	m.Install = Install{Type: InstallBinary, Version: "v0.4.2", Binaries: map[string]Binary{
 		"darwin_arm64": {URL: "https://example.org/notes-darwin-arm64.tar.gz", SHA256: strings.Repeat("b", 64)},
 	}}
+	m.Launch.Command = "{pkg}/notes-darwin-arm64"
 	return m
 }
 
@@ -194,6 +195,10 @@ func TestValidate(t *testing.T) {
 		{"stdio with url", valid, func(m *Manifest) { m.Launch.URL = "http://127.0.0.1:1/" }, `launch.url isn't used by kind "stdio"`},
 		{"placeholder names unknown field", valid, func(m *Manifest) { m.Launch.Args = []string{"{field.vault}"} }, "names no field"},
 		{"unknown placeholder", valid, func(m *Manifest) { m.Launch.Command = "{home}/bin/notes" }, "placeholder {home} is unknown"},
+		{"npm command is a path", valid, func(m *Manifest) { m.Launch.Command = "{pkg}/node_modules/.bin/notes-mcp" }, "must be the name of a program"},
+		{"pip command is a path", httpManifest, func(m *Manifest) { m.Launch.Command = "/usr/bin/notes" }, "must be the name of a program"},
+		{"binary command outside pkg", binaryManifest, func(m *Manifest) { m.Launch.Command = "/usr/bin/notes" }, "must be a file under {pkg}/"},
+		{"binary command climbs out", binaryManifest, func(m *Manifest) { m.Launch.Command = "{pkg}/../notes" }, "must be a file under {pkg}/"},
 		{"secret on command line", valid, func(m *Manifest) { m.Launch.Args = []string{"--key", "{field.key}"} }, "can't go on the command line"},
 		{"http url not loopback", httpManifest, func(m *Manifest) { m.Launch.URL = "http://example.org:8000/mcp" }, "launch.url"},
 		{"http url missing", httpManifest, func(m *Manifest) { m.Launch.URL = "" }, "launch.url is missing"},

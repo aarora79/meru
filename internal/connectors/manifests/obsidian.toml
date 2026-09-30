@@ -16,8 +16,11 @@ package = "obsidian-mcp"
 version = "2.0.1"
 
 [launch]
-# npm install --prefix {pkg} puts the program in node_modules/.bin.
-command = "{pkg}/node_modules/.bin/obsidian-mcp"
+# The package's program, by name. Meru finds its script through the
+# package's package.json and runs it with Meru's own pinned Node, so the
+# script's "#!/usr/bin/env node" line, which asks PATH for node, plays no
+# part.
+command = "obsidian-mcp"
 args = ["serve", "--vault", "{field.vault_name}={field.vault_path}"]
 
 [[field]]

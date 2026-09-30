@@ -3,11 +3,12 @@
 #
 # Only documentation links belong here: a URL that Meru prints for a person to
 # open, such as a help link in an error message. Meru must never fetch one.
-# The one exception is the Mac installer's download of Ollama.app, listed
-# below with its reason: the installer is not merud and not a client, and it
-# fetches that file only when the user presses Continue on a screen that
-# shows the URL. Links in comments don't need an entry, because the test
-# reads string literals only.
+# There are two exceptions, each listed below with its reason: the Mac
+# installer's download of Ollama.app, which it fetches only when the user
+# presses Continue on a screen that shows the URL, and the pinned Node and
+# uv archives merud downloads for connectors, each checked against its
+# SHA-256 before use. Links in comments don't need an entry, because the
+# test reads string literals only.
 #
 # One URL prefix per line. A literal URL passes when it starts with an entry.
 # Give every entry a reason after "#", for the reviewer who has to accept it.
@@ -47,3 +48,10 @@ https://www.docker.com/products/docker-desktop/  # where to get Docker, for web 
 https://console.cloud.google.com/  # the Google Cloud pages the Google screens link, steps 1 to 5 of docs/google-setup.md
 https://github.com/aarora79/meru/blob/main/docs/google-setup.md  # the full Google guide, linked from the Google screens
 http://www.apple.com/DTDs/PropertyList-1.0.dtd  # the DOCTYPE line of a launchd plist; launchd never fetches it
+
+# The connector runtimes (internal/connectors/runtimes.go). merud FETCHES
+# these archives the first time a connector needs Node or uv, and runs
+# nothing from one until its SHA-256 matches the pin. Each prefix names
+# one pinned release, so a new pin needs a new entry and a reviewer.
+https://nodejs.org/dist/v24.21.0/  # FETCHED by merud: Node 24.21.0, for npm connectors such as obsidian
+https://github.com/astral-sh/uv/releases/download/0.12.21/  # FETCHED by merud: uv 0.12.21, for pip connectors such as google
