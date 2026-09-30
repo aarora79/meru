@@ -7,7 +7,7 @@ happens on disk, and which parts exist today.
 
 > **Where the work stands.** Steps 1 and 2 of 7 are built. Step 1, merged in
 > PR #90, added the manifests, their checks, the config table and a test that
-> refuses unpinned versions. Step 2 adds the pinned Node and uv and the code
+> refuses unpinned versions. Step 2, in review in PR #91, adds the pinned Node and uv and the code
 > that installs each connector into `~/.meru/runtime`. `merud` calls none of it
 > yet, so Meru behaves as before. Anything marked (planned) below arrives in
 > steps 3 to 7.
@@ -670,7 +670,7 @@ The plan lands in seven pull requests, each of which keeps `main` working.
 | Step | What it adds | State |
 | --- | --- | --- |
 | 1 | ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, `[connectors.<id>]` parsing and the pin test | **built**, merged in PR #90 |
-| 2 | Node.js and uv download and check; npm, pip, binary and container installs into `~/.meru/runtime`; Node run by Meru; uv's folders under `~/.meru/runtime` | **built**, in review |
+| 2 | Node.js and uv download and check; npm, pip, binary and container installs into `~/.meru/runtime`; Node run by Meru; uv's folders under `~/.meru/runtime` | **built**, in review, PR #91 |
 | 3 | the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the `connectors` op and the new states in every status view | (planned) |
 | 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | (planned) |
 | 5 | Google over HTTP with sign-in, and Adopt for existing entries | (planned) |

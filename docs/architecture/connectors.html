@@ -235,7 +235,7 @@
   </svg></a>
   <h1>Connectors: how Meru will run its own servers</h1>
   <p class="standfirst">A connector is a program Meru needs, such as the search engine behind web search, that Meru installs, starts, checks and restarts for you. This page walks through the design in issue #87: what you set, what Meru's developers set, what happens on disk, and which parts exist today.</p>
-  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 and 2 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2 adds the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. <code>merud</code> calls none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 3 to 7.</p></aside>
+  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 and 2 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2, in review in PR #91, adds the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. <code>merud</code> calls none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 3 to 7.</p></aside>
   <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step2</code></p>
 </header>
 
@@ -752,7 +752,7 @@ func TestManifestsPinned(t *testing.T) {
 <thead><tr><th>Step</th><th>What it adds</th><th>State</th></tr></thead>
 <tbody>
 <tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> merged in PR #90</td></tr>
-<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> in review</td></tr>
+<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> in review, PR #91</td></tr>
 <tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan">planned</span></td></tr>
 <tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan">planned</span></td></tr>
 <tr><td>5</td><td>Google over HTTP with sign-in, and Adopt for existing entries</td><td><span class="plan">planned</span></td></tr>
