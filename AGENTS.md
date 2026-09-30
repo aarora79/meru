@@ -430,7 +430,13 @@ In `.claude/skills/`:
 - **`new-feature-design`** — design a feature before coding it. Writes an issue, a
   low-level design, a review and a test plan to `.scratchpad/`.
 - **`pr-review`** — multi-persona review of a PR, including a Go-mentor check that
-  the comments and coding notes explain the change.
+  the comments and coding notes explain the change. It blocks a config key or socket
+  op that misses a surface, and its `personas/security-patterns.md` lists Meru's
+  security guards, which both skills check against.
+
+Both skills started as copies of the skills of the same names in
+[agentic-community/mcp-gateway-registry](https://github.com/agentic-community/mcp-gateway-registry),
+rewritten for Go and for Meru.
 - **`explainer`** — build a self-contained HTML explainer. Used for the pages in
   `docs/architecture/`; update them when the Markdown they mirror changes.
 - **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
