@@ -32,8 +32,12 @@ const noServers = "No MCP servers in config.toml. Add one with meru mcp add <nam
 //
 // TOOLS shows "—" for a server that isn't connected (Tools is -1). The last
 // field is the reason a server isn't connected, or else the URL of an HTTP
-// server without its scheme. With no rows it returns one line that says
-// how to add a server.
+// server without its scheme. A connector merud runs shows its own state
+// instead, such as "ok" or "needs config", and its sentence:
+//
+//	obsidian   stdio      ok                3        3        0   Obsidian is ready. It starts when a question needs it.
+//
+// With no rows it returns one line that says how to add a server.
 func MCPTable(rows []rpc.MCPStatus) []string {
 	if len(rows) == 0 {
 		return []string{noServers}
@@ -61,8 +65,35 @@ func MCPTable(rows []rpc.MCPStatus) []string {
 		if r.State != rpc.MCPConnected {
 			last = oneLine(r.Err)
 		}
-		out = append(out, line(r.Name, r.Transport, r.State, tools,
+		state := r.State
+		if r.Connector != "" {
+			state, last = rpc.ConnectorWords(r.Connector), oneLine(r.Sentence)
+		}
+		out = append(out, line(r.Name, r.Transport, state, tools,
 			fmt.Sprint(r.Allowed), fmt.Sprint(r.Confirm), last))
+	}
+	return out
+}
+
+// ConnectorTable lays out merud's connectors as lines, one per connector
+// under a header, with its state and sentence, and for one that needs
+// config, where to set what it needs:
+//
+//	CONNECTOR  STATE
+//	obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.
+//
+// With no rows it returns nothing.
+func ConnectorTable(rows []rpc.ConnectorStatus) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := []string{"CONNECTOR  STATE"}
+	for _, r := range rows {
+		text := r.Sentence
+		if hint := rpc.FixHint(r.ID, r.Fix); hint != "" {
+			text += " " + hint
+		}
+		out = append(out, fmt.Sprintf("%-10s %-15s %s", r.ID, rpc.ConnectorWords(r.State), oneLine(text)))
 	}
 	return out
 }
@@ -114,15 +145,17 @@ type mcpRow struct {
 }
 
 // mcpRows lays out the box's lines: for each source a heading, which a key
-// can act on only for an MCP server, which d removes, then a row per tool,
-// then the catalog servers under "Add a connection".
+// can act on only for an MCP server in config.toml, which d removes, then
+// a row per tool, then the catalog servers under "Add a connection". A
+// connector merud runs has no [[mcp.servers]] entry to remove.
 func (b *mcpBox) mcpRows() []mcpRow {
 	var rows []mcpRow
 	for ci, c := range b.conns {
 		if ci > 0 {
 			rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1})
 		}
-		rows = append(rows, mcpRow{text: connHeading(c), act: c.Kind == "mcp", conn: ci, tool: -1, entry: -1})
+		removable := c.Kind == "mcp" && (c.Connector == "" || c.Connector == rpc.ConnectorByHand)
+		rows = append(rows, mcpRow{text: connHeading(c), act: removable, conn: ci, tool: -1, entry: -1})
 		if c.Fixed && c.Note != "" {
 			rows = append(rows, mcpRow{text: "    " + c.Note, conn: -1, tool: -1, entry: -1})
 		}
@@ -204,10 +237,22 @@ func connHeading(c rpc.Connection) string {
 		total = c.Offered
 	}
 	s := fmt.Sprintf("%s · %s · %d of %d tools on", name, what, on, total)
-	if c.Kind == "mcp" || c.Kind == "a2a" {
+	switch {
+	case c.Connector != "" && c.Connector != rpc.ConnectorByHand:
+		// A connector merud runs: its own state and sentence, and where
+		// to set a field it needs.
+		s = fmt.Sprintf("%s · connector, %s · %s · %d of %d tools on · %s", name, c.Transport,
+			rpc.ConnectorWords(c.Connector), on, total, oneLine(c.Sentence))
+		if hint := rpc.FixHint(c.Name, c.Fix); hint != "" {
+			s += " " + hint
+		}
+	case c.Kind == "mcp" || c.Kind == "a2a":
 		s = fmt.Sprintf("%s · %s · %s · %d of %d tools on", name, what, c.State, on, total)
 		if c.State != rpc.MCPConnected && c.Err != "" {
 			s += " · " + oneLine(c.Err)
+		}
+		if c.Connector == rpc.ConnectorByHand {
+			s += " · set up by hand"
 		}
 	}
 	return s

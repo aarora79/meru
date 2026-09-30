@@ -1048,11 +1048,33 @@ format, `%-10s` pads a string on the right to 10 columns and `%5s` pads on the l
 so the numbers line up on the right; `%-*s` takes its width from the argument
 before the string. `TOOLS` shows `—` for a server that isn't connected, and the
 last field is the reason, folded onto one line by `oneLine`, or an HTTP server's
-URL without its scheme.
+URL without its scheme. A connector's row shows its state in words from
+`rpc.ConnectorWords`, such as `needs config`, and its sentence in the last
+field:
+
+```text
+obsidian   stdio      ok                3        3        0   Obsidian is ready. It starts when a question needs it.
+```
+
+`ConnectorTable` lays out the reply to the `connectors` op, which `meru mcp`
+prints under the table: a `CONNECTOR  STATE` header, then one line per
+connector with its sentence, and for one that needs config, `rpc.FixHint`'s
+line on where to set the field. With no rows it returns nothing.
 
 The `/mcp` box is the app's Connections. It sends `OpConnections`, and `mcpRows`
 lays out the reply: a heading per source, a row per tool with its policy in the
-app's words (`policyWords`), then the catalog servers not added yet. Each `mcpRow`
+app's words (`policyWords`), then the catalog servers not added yet.
+`connHeading` writes a connector's heading with its kind, state, tool count,
+sentence and fix hint:
+
+```text
+obsidian · connector, stdio · needs config · 1 of 3 tools on · Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.
+```
+
+A server added by hand in a connector's place ends its heading with
+`· set up by hand`. Only a heading marked `removable`, an MCP server with an
+`[[mcp.servers]]` entry, takes `d`; a connector `merud` runs has no entry to
+remove, and its card is `Fixed`, so its tool rows don't move either. Each `mcpRow`
 says whether a key can act on it and which connection, tool or catalog entry it
 stands for, so the key handler and the drawing read the same list. `mcpKey` does
 the rest:
@@ -1363,7 +1385,9 @@ clicks a Sources line, which opens its `file://` URL.
 `mcp_test.go` checks `MCPTable` (connected and unconnected rows, `—`, the URL
 without its scheme, a reason with a line break, a long name that widens the first
 column, no servers), that `/mcp` sends `OpConnections` and fills the box, and that
-the box shows `merud`'s error. `TestMCPPolicyKeys` steps tools with ← and → and
+the box shows `merud`'s error. `TestConnectorTable` checks the connector
+lines, fix hint included, and `TestConnHeadingForConnectors` checks a
+connector's heading and the "set up by hand" mark. `TestMCPPolicyKeys` steps tools with ← and → and
 checks each `OpToolPolicy`, and that a tool that always asks never reaches Allow;
 `TestMCPAddAndRemove` adds a catalog server, types a key into the field that shows
 `•`, and removes a server with `d` twice.

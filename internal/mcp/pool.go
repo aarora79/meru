@@ -1,9 +1,12 @@
 // This file holds the Pool: one connection per configured server, the list
-// of allowed tools they offer, and the one rule for connecting: once at
-// startup, and once more at the start of a turn that offers tools
-// (Refresh). The same turn asks each connected server for its tool list
-// again, so the list follows a server that restarted with new tools.
-// Nothing reconnects or re-lists on a timer or in the background.
+// of allowed tools they offer, and the one rule for connecting a server
+// added by hand: once at startup, and once more at the start of a turn
+// that offers tools (Refresh). The same turn asks each connected server
+// for its tool list again, so the list follows a server that restarted
+// with new tools. Nothing reconnects or re-lists on a timer or in the
+// background. A managed server, a connector, is the exception: the Pool
+// asks its supervisor for a session through the Spawn hook (Spawner), and
+// the supervisor, not the Pool, starts, stops and restarts it.
 
 package mcp
 
@@ -46,6 +49,25 @@ const httpRetryTimeout = 5 * time.Second
 // (ARCHITECTURE.md, "MCP"), so two seconds only trips on a server that is
 // stuck, and a turn shouldn't wait longer on one.
 const relistTimeout = 2 * time.Second
+
+// Spawner is the Spawn hook: what the Pool needs from the supervisor that
+// runs a managed server (internal/connectors.Supervisor is the one). The
+// interface lives here, in the package that uses it, so mcp needn't
+// import connectors. The Pool never starts, restarts or stops a managed
+// server; it asks.
+type Spawner interface {
+	// Spawn returns a live session for one tool call, starting the
+	// program if it isn't running and waiting at most limit for it. The
+	// Pool calls done when the call ends. It fails, with a sentence the
+	// user can read, when the server can't take calls now.
+	Spawn(ctx context.Context, limit time.Duration) (cs *mcp.ClientSession, done func(), err error)
+	// Tools returns every tool the server offers while it can take
+	// calls, even before its program starts, and nil otherwise.
+	Tools() []*mcp.Tool
+	// State returns the connector's state, such as "ok" or
+	// "needs_config", and a sentence that says it.
+	State() (state, sentence string)
+}
 
 // dialFunc builds the transport for one server. procCtx bounds a stdio
 // child's life. NewPool uses dialTransport; tests swap in an in-memory
@@ -94,6 +116,10 @@ type server struct {
 	unknown []string // allow entries the server didn't offer
 	lastErr string   // why the last start or call failed, for Status
 	closed  bool     // set by Close; no connects after it
+	// offering is true while a managed server's supervisor offers its
+	// tools. A managed server never has a session here: each call gets
+	// one from Spawn.
+	offering bool
 }
 
 // ServerStatus is one server's health, for `meru tools list`, `meru mcp`
@@ -120,6 +146,13 @@ type ServerStatus struct {
 	// config, so they show while the server is down.
 	Listed   int
 	Confirms int
+	// Managed is true for a connector the supervisor runs. State and
+	// Sentence are then its connector state, such as "ok" or
+	// "needs_config", and the sentence that says it; Connected is true
+	// while its tools are offered, which may be before its program runs.
+	Managed  bool
+	State    string
+	Sentence string
 }
 
 // Tool is one tool a server offers, by its own name, such as
@@ -129,8 +162,10 @@ type Tool struct {
 	Description string
 }
 
-// NewPool validates servers, then starts or connects to each one, lists its
-// tools and keeps the allowed ones. A server that fails to start doesn't
+// NewPool validates servers, then starts or connects to each one added by
+// hand, lists its tools and keeps the allowed ones. It starts no managed
+// server (one with Spawn set): its supervisor does that on the first
+// call. A server that fails to start doesn't
 // fail the Pool: NewPool logs it, reports it in Status, and carries on with
 // the rest. Refresh tries it again at the start of the next turn that
 // offers tools. NewPool fails only when the config is invalid.
@@ -163,6 +198,11 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 			always: toSet(cfg.AlwaysConfirm), stop: func() {}}
 		p.servers = append(p.servers, s)
 		p.byName[cfg.Name] = s
+		if cfg.Spawn != nil {
+			// A managed server starts on its first call, through its
+			// supervisor, so the Pool connects to nothing here.
+			continue
+		}
 
 		s.mu.Lock()
 		err := p.connectLocked(ctx, s, connectTimeout)
@@ -401,17 +441,34 @@ func allowedTools(serverName string, allow map[string]bool, tools []*mcp.Tool) (
 // "<server>.<tool>", sorted by server in config order and by name within a
 // server. A server that isn't connected, because it never started or
 // because it died, offers nothing: the model can't call a tool whose server
-// isn't there.
+// isn't there. A managed server offers its allowed tools while its
+// supervisor says it can take calls, even before its program starts.
 func (p *Pool) Tools() []engine.ToolSpec {
 	var out []engine.ToolSpec
 	for _, s := range p.servers {
 		s.mu.Lock()
-		if s.session != nil {
+		if s.cfg.Spawn != nil {
+			s.syncManagedLocked()
+		}
+		if s.session != nil || (s.cfg.Spawn != nil && s.offering) {
 			out = append(out, s.tools...)
 		}
 		s.mu.Unlock()
 	}
 	return out
+}
+
+// syncManagedLocked copies a managed server's tool list from its
+// supervisor into s, and sets s.offering to whether it offers any now.
+// The caller holds s.mu.
+func (s *server) syncManagedLocked() {
+	tools := s.cfg.Spawn.Tools()
+	s.offering = tools != nil
+	if tools == nil {
+		s.tools, s.offered, s.all, s.unknown = nil, 0, nil, nil
+		return
+	}
+	s.setToolsLocked(tools)
 }
 
 // Refresh brings each server up to date for this turn, one server after
@@ -435,6 +492,9 @@ func (p *Pool) Tools() []engine.ToolSpec {
 //
 // A failure is logged and recorded for Status; the turn carries on without
 // that server's tools.
+//
+// Refresh leaves a managed server alone: its supervisor starts it on the
+// first call and keeps its tool list.
 func (p *Pool) Refresh(ctx context.Context) {
 	for _, s := range p.servers {
 		s.mu.Lock()
@@ -446,7 +506,7 @@ func (p *Pool) Refresh(ctx context.Context) {
 // refreshLocked does Refresh's work for one server. The caller holds s.mu,
 // so a call to this server waits until the refresh ends.
 func (p *Pool) refreshLocked(ctx context.Context, s *server) {
-	if s.closed {
+	if s.closed || s.cfg.Spawn != nil {
 		return
 	}
 	if s.session != nil {
@@ -574,20 +634,28 @@ func (p *Pool) Status() []ServerStatus {
 			}
 		}
 		s.mu.Lock()
-		out = append(out, ServerStatus{
+		st := ServerStatus{
 			Name:      s.cfg.Name,
 			Transport: s.cfg.transport(),
 			URL:       s.cfg.URL,
 			Connected: s.session != nil,
-			Offered:   s.offered,
-			Allowed:   len(s.tools),
-
-			OfferedTools: slices.Clone(s.all),
-			Unknown:      slices.Clone(s.unknown),
-			LastError:    s.lastErr,
-			Listed:       len(s.allow),
-			Confirms:     asks,
-		})
+			LastError: s.lastErr,
+			Listed:    len(s.allow),
+			Confirms:  asks,
+		}
+		if s.cfg.Spawn != nil {
+			// A managed server: its supervisor holds the state, and its
+			// tools count as connected while it offers them.
+			s.syncManagedLocked()
+			st.Managed, st.Connected = true, s.offering
+			st.State, st.Sentence = s.cfg.Spawn.State()
+			if !s.offering {
+				st.LastError = st.Sentence
+			}
+		}
+		st.Offered, st.Allowed = s.offered, len(s.tools)
+		st.OfferedTools, st.Unknown = slices.Clone(s.all), slices.Clone(s.unknown)
+		out = append(out, st)
 		s.mu.Unlock()
 	}
 	return out
@@ -649,16 +717,38 @@ func (p *Pool) lookup(name string) (s *server, tool string, ok bool) {
 // server: a call to a server that isn't connected fails at once with
 // ErrUnavailable and the last error. Only Refresh, at the start of a turn,
 // tries again.
-func (p *Pool) sessionFor(s *server) (*mcp.ClientSession, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch {
-	case s.closed:
-		return nil, fmt.Errorf("%w: %s: pool closed", ErrUnavailable, s.cfg.Name)
-	case s.session == nil:
-		return nil, fmt.Errorf("%w: %s: not connected: %s", ErrUnavailable, s.cfg.Name, s.lastErr)
+//
+// A managed server is the exception: sessionFor asks its supervisor
+// (Spawner.Spawn), which starts the program if it isn't running and waits
+// for it at most connectTimeout. The caller must call done when the call
+// ends; for a server added by hand done does nothing.
+func (p *Pool) sessionFor(ctx context.Context, s *server) (cs *mcp.ClientSession, done func(), err error) {
+	// cfg never changes after NewPool, so reading Spawn needs no lock.
+	if s.cfg.Spawn == nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		switch {
+		case s.closed:
+			return nil, nil, fmt.Errorf("%w: %s: pool closed", ErrUnavailable, s.cfg.Name)
+		case s.session == nil:
+			return nil, nil, fmt.Errorf("%w: %s: not connected: %s", ErrUnavailable, s.cfg.Name, s.lastErr)
+		}
+		return s.session, func() {}, nil
 	}
-	return s.session, nil
+
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return nil, nil, fmt.Errorf("%w: %s: pool closed", ErrUnavailable, s.cfg.Name)
+	}
+	// The lock isn't held here: a start may take seconds, and Status must
+	// still answer at once meanwhile.
+	cs, done, err = s.cfg.Spawn.Spawn(ctx, connectTimeout)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s: %w", ErrUnavailable, s.cfg.Name, err)
+	}
+	return cs, done, nil
 }
 
 // markOK clears the last error after a call that got an answer.

@@ -33,7 +33,7 @@ allows only code inside this repo to import.
 
 | Package | What it does | Start reading at |
 | --- | --- | --- |
-| `cmd/merud` | the daemon: starts everything, serves questions, the index ops, the tool ops and the desktop app's settings ops | `main.go`: `main`, `run`, `serve`, then `index.go`, `tools.go`, `connections.go`, `folders.go`, `save.go` and `models.go` |
+| `cmd/merud` | the daemon: starts everything, serves questions, the index ops, the tool ops and the desktop app's settings ops | `main.go`: `main`, `run`, `serve`, then `index.go`, `tools.go`, `connectors.go`, `connections.go`, `folders.go`, `save.go` and `models.go` |
 | `cmd/meru` | the client you type into, plus `meru setup` and `meru mcp` | `main.go`: `run`, `ask`, `ping`, then `approve.go`, `tools.go`, `log.go`, `setup.go`, `mcp.go`, `probe.go` |
 | `cmd/meru-desktop` | the desktop app's window (Wails v3, build tag `desktop`): opens it, serves the page, binds the Bridge | `main.go`: `run` |
 | `internal/desktop` | everything in the desktop app that needs no window: the Bridge the page calls, the views it sends, and the page (`web/`) | `bridge.go`: `Send`, `run`, then `views.go`, `history.go`, `status.go`, `settings.go`, `files.go`, `commands.go`, `assets.go` |
@@ -41,7 +41,7 @@ allows only code inside this repo to import.
 | `internal/installer` | the Mac installer's nine steps, its Bridge, and the one allowlist of programs it runs (see [Installer](../ARCHITECTURE.md#installer)) | `bridge.go`: `Run`, `run`, then `steps.go`, `run.go` and one file per step |
 | `internal/opener` | hands an `http`, `https` or `file` URL to the system's opener, with no shell | `opener.go`: `Check`, `Open` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
-| `internal/connectors` | the connector manifests, compiled in, with pinned versions, and the checks on them; the pinned Node and uv, and each connector's install under `~/.meru/runtime`; nothing calls it yet (see [Connectors and the supervisor](../ARCHITECTURE.md#connectors-and-the-supervisor)) | `manifest.go`: `Load`, `Parse`, `Validate`; `runtimes.go`: `Runtimes`, `EnsureRuntime`; `install.go`: `Install`, `Installed`; `launch.go`: `LaunchCommand`; `run.go`: `Runner`, `ExecRunner` |
+| `internal/connectors` | the connector manifests, compiled in, with pinned versions, and the checks on them; the pinned Node and uv, and each connector's install under `~/.meru/runtime`; the supervisor, one per stdio connector, which `merud` builds at startup: it checks the connector's settings, installs and health-checks it, starts it on the first call, stops it when idle and restarts it after a crash (see [Connectors and the supervisor](../ARCHITECTURE.md#connectors-and-the-supervisor)) | `manifest.go`: `Load`, `Parse`, `Validate`; `runtimes.go`: `Runtimes`, `EnsureRuntime`; `install.go`: `Install`, `Installed`; `launch.go`: `LaunchCommand`; `run.go`: `Runner`, `ExecRunner`, `stdioTransport`; `supervisor.go`: `New`, `Configure`, `Spawn`, `Status`, `Close`; `status.go`: `checkSettings`; `health.go`: `runHealthCheck` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
 | `internal/store` | `meru.db`: documents, chunks, vectors, the keyword index and the `tool_calls` log | `store.go`: `Open`, then `documents.go`, `search.go` and `toolcalls.go` |
@@ -60,7 +60,7 @@ allows only code inside this repo to import.
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour), with the desktop app's features as slash commands and boxes | `run.go`: `Run`, then `model.go`, `view.go`, `commands.go` and `box.go` |
 | `internal/about` | the tagline, the version and the project's links, for the desktop app and `meru chat` | `about.go`: `Version`, `ShortVersion`, `Links` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
-| `internal/mcp` | the MCP client pool: starts or connects to servers, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
+| `internal/mcp` | the MCP client pool: starts or connects to the servers added by hand, asks a connector's supervisor for a session through the `Spawner` hook, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
 | `internal/skills` | loads `SKILL.md` folders, installs the built-in skills, and stamps the folder so `merud` sees edits | `skills.go`: `Load`, then `builtin.go` and `stamp.go` |
 | `internal/memory` | one Markdown file per memory under `memory/<kind>/`; `merud` syncs the files into the store, where recall searches them | `memory.go`: `Open`, `Add`, `List` |
 | `internal/summarize` | writes a summary line into each quiet session's transcript and embeds it, for recall of past conversations | `summarize.go`: `New`, `Run`, `Tick` |
@@ -192,7 +192,8 @@ type Event struct {
     Approval   *Approval    // approval event: a call waiting for your answer
     Servers    []ServerInfo // tools event: each tool source and its allowed tools
     Log        []LogEntry   // log event: the newest tool_calls rows
-    MCP        []MCPStatus  // mcp_status event: one row per MCP server
+    MCP        []MCPStatus  // mcp_status event: one row per MCP server and per connector the pool runs
+    Connectors []ConnectorStatus // connectors event: every connector, its state, sentence and fields
     Sessions   []SessionInfo // sessions event: past chats, newest change first
     Turns      []TurnInfo    // turns event: one past chat's questions and answers
     Memories   []MemoryInfo  // memories event: the memory ops, and what an ask recalled
@@ -224,6 +225,7 @@ type Event struct {
 | `tools` | one `tools`; `done` |
 | `log` | one `log`; `done` |
 | `mcp_status` | one `mcp_status`; `done` |
+| `connectors` | one `connectors`; `done` |
 | `sessions` | one `sessions`; `done` |
 | `session_turns` | one `turns`, for the session in `Session`; `done` |
 | `session_delete` | `done` |
@@ -240,7 +242,7 @@ type Event struct {
 desktop app sends `sessions` for its list of past chats and `session_turns` to
 reopen one, and the settings ops for its Settings and Setup screens:
 `internal/rpc/settings.go` holds their types.
-`meru tools` sends `tools`, `meru mcp` sends `mcp_status`, and `meru log -n 5`
+`meru tools` sends `tools`, `meru mcp` sends `mcp_status` and then `connectors`, and `meru log -n 5`
 sends `log` with `Limit` 5. A
 `Citation` holds the number the answer cites, the path (as `~/…` under your home
 folder), the heading, the line range or PDF page, and the fused score. The `done`
@@ -434,6 +436,15 @@ tools, and a call to a server that isn't connected fails at once with
 connected and isn't sent again, since the tool may already have run. One goroutine per
 session waits for it to end and marks the server not connected; it never starts
 the server again (ARCHITECTURE.md, "MCP").
+
+A connector is the exception. Its pool entry carries a `Spawner`, the
+`connectors.Supervisor` that runs it, and the pool connects to nothing for it,
+at startup or in `Refresh`. `Pool.Tools` offers its allowed tools while the
+supervisor reports them, even before the program runs, and a call asks
+`Spawner.Spawn` for a session, which starts the program on the first call and
+waits for it at most `connectTimeout`. The supervisor, not the pool, restarts
+a program that crashed, after a backoff; it doesn't send the failed call again
+either (ARCHITECTURE.md, "The supervisor").
 
 `Handle` also calls `Tools()` on each turn for a second route rule. `toolTarget`
 looks for a sign that the question points at a connected tool: it names an MCP
@@ -761,9 +772,10 @@ the probe and writes the catalog's lists.
 
 ### `meru mcp` and `/mcp`, function by function
 
-1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows.
-   With `--json` it prints them as a JSON array; otherwise it prints
-   `tui.MCPTable(rows)`. In `meru chat`, `/mcp` opens the app's Connections
+1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows,
+   then `connectorRows` sends `connectors`. With `--json` it prints one object,
+   `{"servers": [...], "connectors": [...]}`; otherwise it prints
+   `tui.MCPTable(rows)` and, under it, `tui.ConnectorTable`. In `meru chat`, `/mcp` opens the app's Connections
    instead: it sends `connections` and changes a tool with `tool_policy`
    (`internal/tui/mcp.go`, `mcpKey`).
 2. **`cmd/merud/tools.go` → `handleMCPStatus`** reads `mcp.Pool.Status` and
@@ -772,7 +784,11 @@ the probe and writes the catalog's lists.
 3. **`cmd/merud/backends.go` → `mcpStatus`** turns each `mcp.ServerStatus` into
    an `rpc.MCPStatus`: `State` is `connected` or `not connected`, `Tools` is
    `-1` for a server that isn't connected (the table shows `—`), and `Allowed`
-   and `Confirm` come from config, so they show either way.
+   and `Confirm` come from config, so they show either way. A connector's row
+   adds `Connector` and `Sentence`, the supervisor's state and the line that
+   says it.
+4. **`cmd/merud/connectors.go` → `handleConnectors`** reads `Status` from each
+   supervisor and emits one `connectors` event. It starts nothing.
 
 ### `meru index`, function by function
 

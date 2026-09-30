@@ -150,7 +150,8 @@ None of the clients, nor the installer, may reach `internal/connectors`: `merud`
 installs and starts the connectors, and a client asks it about them.
 `connectors_test.go` holds that package to the installer's rule: only
 `internal/connectors/run.go` may import `os/exec`, so every npm, uv and docker
-command it runs goes through one Runner, by absolute path and with no shell.
+command it runs goes through one Runner, and every connector the supervisor
+starts goes through `stdioTransport`, both by absolute path and with no shell.
 The runtime downloads, Node from nodejs.org and uv from its GitHub release,
 are the one other place besides the Mac installer where `allowed_urls.txt`
 lists a URL that Meru fetches.

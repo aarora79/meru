@@ -52,7 +52,9 @@ type Result struct {
 // model's JSON arguments. It fails with ErrNotAllowed, before contacting any
 // server, when the tool isn't in its server's allow list. It fails with
 // ErrUnavailable when the server isn't connected; Call never starts or
-// reconnects a server itself.
+// reconnects a server added by hand. For a managed server it asks the
+// supervisor for a session (Spawner.Spawn), which starts the program on
+// the first call and waits for it at most connectTimeout.
 //
 // The call stops when ctx ends or when the server's timeout passes; the
 // error then wraps context.Canceled or context.DeadlineExceeded, and the SDK
@@ -86,10 +88,13 @@ func (p *Pool) Call(ctx context.Context, name string, args json.RawMessage) (res
 		return Result{}, fmt.Errorf("call %s: %w", name, err)
 	}
 
-	cs, err := p.sessionFor(s)
+	cs, done, err := p.sessionFor(ctx, s)
 	if err != nil {
 		return Result{}, err
 	}
+	// done tells a managed server's supervisor the call ended, so its idle
+	// timer counts from here.
+	defer done()
 	span.SetAttributes(sessionAttributes(s.cfg, cs)...)
 
 	// callCtx is a separate variable so the deferred span code above still
@@ -108,8 +113,9 @@ func (p *Pool) Call(ctx context.Context, name string, args json.RawMessage) (res
 			err = fmt.Errorf("%w (%w)", ctxErr, err)
 		}
 		// A call whose session is gone marks the server not connected, so
-		// the next turn reconnects. Call doesn't reconnect and send the
-		// call again: the server may have run the tool before the session
+		// the next turn reconnects; a managed server's supervisor sees the
+		// crash itself and restarts the program. Neither sends the call
+		// again: the server may have run the tool before the session
 		// broke, and a tool such as send_gmail_message would then run
 		// twice. The model sees the error and can ask again.
 		s.markFailed(cs, err)

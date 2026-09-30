@@ -73,6 +73,10 @@ type AboutSource struct {
 	Kind      string // "mcp" or "a2a", as dispatch names them
 	Connected bool
 	Tools     int // the allowed tools the model can use now
+	// Sentence is set for a connector merud runs, such as "Obsidian is
+	// ready. It starts when a question needs it.", so the model can say
+	// why one is down.
+	Sentence string
 }
 
 // aboutSpec returns the tool's spec. It takes no arguments.
@@ -192,18 +196,22 @@ func nameList(list []string) string {
 }
 
 // sources lists the sources of one kind, such as "google (connected, 9
-// tools), obsidian (not connected)", or says "none".
+// tools), obsidian (not connected; Obsidian needs your vault folder.)",
+// or says "none". A connector's sentence follows the semicolon.
 func sources(all []AboutSource, kind string) string {
 	var out []string
 	for _, s := range all {
 		if s.Kind != kind {
 			continue
 		}
+		state := "not connected"
 		if s.Connected {
-			out = append(out, fmt.Sprintf("%s (connected, %s)", s.Name, plural(s.Tools, "tool")))
-		} else {
-			out = append(out, s.Name+" (not connected)")
+			state = "connected, " + plural(s.Tools, "tool")
 		}
+		if s.Sentence != "" {
+			state += "; " + s.Sentence
+		}
+		out = append(out, s.Name+" ("+state+")")
 	}
 	return nameList(out)
 }

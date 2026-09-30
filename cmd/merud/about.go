@@ -99,6 +99,7 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 		case dispatch.KindMCP, dispatch.KindA2A:
 			a.Sources = append(a.Sources, builtin.AboutSource{
 				Name: srv.Name, Kind: srv.Kind, Connected: srv.Connected, Tools: len(srv.Tools),
+				Sentence: srv.Sentence,
 			})
 		case dispatch.KindCommand:
 			for _, t := range srv.Tools {

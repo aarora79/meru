@@ -10,6 +10,14 @@
 // server that isn't connected one try, so the list follows a server that
 // restarted. Nothing runs between turns.
 //
+// A managed server, a connector, is the one exception: its ServerConfig
+// carries a Spawner, the Spawn hook, which the supervisor in
+// internal/connectors provides. The Pool then connects to nothing at
+// startup or in Refresh; it offers the tools the supervisor reports and
+// asks it for a session on each call. The supervisor starts, stops and
+// restarts the program. The servers added by hand in [[mcp.servers]]
+// keep the rules above.
+//
 // Probe starts a server for a moment, before it goes into config, and
 // reports every tool it offers with the server's read-only and destructive
 // hints. It calls no tool, so it needs no allow list.

@@ -1,10 +1,12 @@
 # connectors
 
 **Code:** `internal/connectors/` (`doc.go`, `manifest.go`, `manifests/*.toml`,
-`runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`)
-**Milestone:** v0.5 (issue #87, steps 1 and 2)
+`runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`, `status.go`,
+`health.go`, `supervisor.go`)
+**Milestone:** v0.5 (issue #87, steps 1 to 3)
 **Architecture:** [Connectors and the supervisor](../../ARCHITECTURE.md#connectors-and-the-supervisor),
-[The runtime folder](../../ARCHITECTURE.md#the-runtime-folder)
+[The runtime folder](../../ARCHITECTURE.md#the-runtime-folder),
+[The supervisor](../../ARCHITECTURE.md#the-supervisor)
 
 ## What it does
 
@@ -14,13 +16,24 @@ only reports on. Each one has a **manifest**, a TOML file in `manifests/` that
 pins its version and says how to install it, how to start it, what to ask the
 user and how to tell that it works.
 
-The package has two parts so far. Step 1 reads and checks the manifests:
+The package has three parts so far. Step 1 reads and checks the manifests:
 `Load` parses all four and refuses the set when one breaks a rule. Step 2
 installs them: an `Installer` downloads the pinned Node and uv into
 `~/.meru/runtime`, checks each archive's SHA-256 before it unpacks it, installs
 a connector's package into `~/.meru/runtime/pkg/<id>-<version>/`, and says how
-to start the installed program. No code in `merud` calls any of it yet; the
-supervisor that will comes in step 3. The clients never import the package.
+to start the installed program. Step 3 runs them: `merud` builds one
+`Supervisor` per stdio connector (Obsidian is the only one today), which checks
+the user's `[connectors.<id>]` table, installs and checks the connector, starts
+it on the first tool call, stops it when idle, and restarts it after a crash.
+The MCP pool asks the supervisor for a session through its `Spawn` method (see
+[mcp](mcp.md)); `cmd/merud/connectors.go` joins the two (see
+[merud](merud.md)). The clients never import the package; they ask `merud`
+through the `connectors` op (see [rpc](rpc.md)).
+
+Still to come: SearXNG and Ollama in step 4, Google over HTTP with its sign-in
+and the move of a hand-added entry in step 5, and in step 6 the ops and forms
+that let a client set a connector's fields. Until then a user sets them in
+`config.toml`.
 
 ## The picture
 
@@ -38,7 +51,11 @@ flowchart LR
     install --> run["Runner (run.go)<br/>npm, uv, docker"]
     install --> marker[".meru-installed<br/>written last"]
     marker --> launch["LaunchCommand<br/>pinned node + script"]
-    launch -. "planned" .-> sup["the supervisor<br/>in merud"]
+    launch --> sup["Supervisor<br/>(supervisor.go)"]
+    sup --> check["checkSettings<br/>(status.go)"]
+    sup --> health["runHealthCheck<br/>tool cache (health.go)"]
+    sup --> stdio["stdioTransport<br/>(run.go)"]
+    pool["MCP pool<br/>(internal/mcp)"] -- "Spawn, Tools, State" --> sup
 ```
 
 ## Walk through the code
@@ -164,6 +181,24 @@ line to `line` for progress, and keeps the last 40 for the error message. The
 tests pass a fake `Runner` that records each `Cmd` and writes the files npm
 would, so no test runs npm, uv or docker.
 
+A running connector starts here too. `stdioTransport` turns a `Cmd` into the
+MCP transport the supervisor connects over: the child's stdin and stdout carry
+MCP, and its stderr goes to a writer the supervisor reads.
+
+```go
+cmd := exec.CommandContext(procCtx, c.Path, c.Args...)
+cmd.Env = append([]string{}, c.Env...)
+cmd.Stderr = stderr
+cmd.WaitDelay = childStopWait
+return &mcp.CommandTransport{Command: cmd, TerminateDuration: childStopWait}, nil
+```
+
+It refuses a relative path, as `ExecRunner` does. `procCtx` bounds the
+child's life: when the supervisor cancels it, Go kills the program. That is
+the backstop; the SDK first closes the child's stdin, waits `childStopWait`
+(2 seconds), sends a signal, and waits as long again. The pool waits the same
+for a server added by hand.
+
 A policy test, `TestConnectorsRunOnlyThroughRun`, fails the build if another
 file in the package imports `os/exec`.
 
@@ -217,7 +252,7 @@ Node's archive holds relative links such as `bin/npm ->
 `Installer` holds what an install needs: the Meru home, the user's home (for
 docker only), the platform, the pins, an HTTP client, a `Runner` and the places
 docker may live. Its fields are exported so a test can swap each one for a
-fake; `merud` will use `NewInstaller`.
+fake; `merud` uses `NewInstaller`.
 
 `Install` runs these steps:
 
@@ -275,8 +310,9 @@ there, and `UV_NO_CONFIG=1` so your `uv.toml` plays no part.
 **container.** `findDocker` checks a fixed list of absolute paths, the same
 idea as the Mac installer's allowlist. None found is `ErrDockerMissing`. A
 failing `docker info` is `ErrDockerNotRunning`. Then `docker pull
-<image>@sha256:<digest>` runs. The step 3 supervisor will turn these errors
-into "Docker isn't installed" and "Docker isn't running".
+<image>@sha256:<digest>` runs. The supervisor runs only stdio connectors so
+far; when it takes on SearXNG in step 4, it will turn these errors into
+"Docker isn't installed" and "Docker isn't running".
 
 ### launch.go: how to start what's installed
 
@@ -308,6 +344,232 @@ path under `{pkg}`. `fillPlaceholders` fills `{pkg}`, `{meru_dir}` and each
 `{field.<id>}`; a field with no value and no default fails with
 `ErrMissingField`.
 
+### status.go: states, sentences and the settings check
+
+A user sees six states, as string constants: `StateOK`, `StateOff`,
+`StateNeedsConfig`, `StateStarting`, `StateFailed` and `StateByHand`. `Status`
+is one connector as the `connectors` op reports it: its ID, name and kind, its
+state and a one-line sentence, each field with its value, and `Fix`, the IDs of
+the fields to ask again. A secret's value never goes in `FieldStatus`; `Saved`
+only says whether `secrets.toml` holds `connector_<id>_<field>` (`SecretName`).
+
+`checkSettings` holds the user's table up against the manifest's fields. It
+never fails; a problem becomes the `needs_config` sentence. One rule per
+field type:
+
+| Field | Problem | Sentence |
+| --- | --- | --- |
+| any required field | empty, with no default | Obsidian needs your vault folder. |
+| `folder` | the folder doesn't exist | Obsidian can't find the vault folder ~/Notes. |
+| `email` | no `@` | Obsidian needs an email address as your … |
+| `choice` | not one of the choices | Obsidian's … must be one of: a, b. |
+| any field with a `pattern` | the value doesn't match | Obsidian's vault name doesn't fit the form it needs (…). |
+| a key the manifest lacks | most often a typo | Obsidian has no setting called vault; remove it from [connectors.obsidian]. |
+
+The first problem becomes the sentence, and each field at fault goes in the fix
+list. A folder written `~/Notes` turns into a full path (`expandHome`), but the
+sentence names it as the user wrote it, or as the default reads. `lowerFirst`
+lower-cases a label inside a sentence ("vault folder") but leaves one that
+starts with an acronym, such as "API token". The check sorts the table's keys
+before it looks for unknown ones: Go visits a map's keys in a random order,
+and the same config should always give the same sentence.
+
+`fillMadeUp` fills in one value the user may leave empty: Obsidian's
+`vault_name`. `vaultName` makes it from the folder's name, lower-cased, with
+any character outside `a-z`, `0-9`, `-` and `_` turned into `-`, and leading
+digits, dashes and underscores dropped, so `My Notes` becomes `my-notes`.
+
+`settings.same` tells the supervisor whether a reload changed anything that
+would start the program another way.
+
+### health.go: the check and the tool cache
+
+`runHealthCheck` calls the manifest's `[health] tool` and checks its answer
+against `expect`:
+
+- `nonempty`: the answer holds some text;
+- `contains:<text>`: the text holds `<text>`;
+- `json_key:<key>`: the answer, read as a JSON object, has that key;
+- empty: any answer that isn't an error.
+
+The error it returns fits a status line, such as "the check
+obsidian_list_vaults gave an empty answer".
+
+After a good check the supervisor saves the tool list to
+`~/.meru/runtime/state/<id>.json`:
+
+```json
+{ "id": "obsidian", "version": "2.0.1", "tools": [ ... ] }
+```
+
+`writeToolCache` writes a temporary file and renames it over the old one, so a
+reader never sees half a file. `readToolCache` counts a file from another
+connector or version as missing, since a new version may offer other tools.
+This cache lets a fresh `merud` offer a ready connector's tools before the
+program runs.
+
+### supervisor.go: one state machine per connector
+
+A `Supervisor` runs one stdio connector. Inside, it moves through nine
+**phases**, which fold into the six states a user sees:
+
+```mermaid
+stateDiagram-v2
+    [*] --> off
+    off --> installing: config fixed, reload
+    needs_config --> installing: config fixed, reload
+    by_hand --> installing: entry removed, reload
+    installing --> ready: install and check pass
+    installing --> failed: install or check fails
+    ready --> starting: first call
+    starting --> ok: program up, check passes
+    starting --> backoff: start fails
+    ok --> backoff: crash
+    backoff --> starting: wait ends
+    backoff --> failed: fifth crash in 10 minutes
+    ok --> ready: idle_timeout
+    failed --> installing: reload
+```
+
+`installing`, `starting` and `backoff` all show as `starting`; `ready` and
+`ok` both show as `ok`, since the model can use the tools either way. The
+phases are numbers:
+
+```go
+type phase int
+
+const (
+    phaseOff phase = iota // 0
+    phaseByHand           // 1
+    ...
+)
+```
+
+`iota` is Go's counter inside a `const` block: it starts at 0 and adds one per
+line, so each phase gets its own number without anyone typing them.
+`phase.String` names each one for the log, and `phase.state` folds it into a
+user's state.
+
+**Configure.** `merud` calls `Configure(table, secrets, byHand)` at startup
+and on each reload. When nothing changed and the connector hasn't failed, a
+running program keeps running. Otherwise `resetLocked` stops what runs,
+forgets the crashes, and picks the phase config asks for: `by_hand`, `off`,
+`needs_config`, `ready` when the install and its tool cache are on disk, or
+`installing`, which starts a worker. A reload is also how a user retries a
+failed connector.
+
+**Install and check.** The `installAndCheck` worker installs the pinned
+version if it isn't there. Then `open` starts the program once, runs the MCP
+handshake, lists the tools and runs the health check, all within
+`startTimeout` (30 seconds). The worker saves the tool list, stops the program
+and moves to `ready`. A failure sets `failed` with "couldn't install: …" or
+"failed its check: …".
+
+**Spawn.** The MCP pool calls `Spawn(ctx, limit)` for each tool call. It loops:
+
+- `ok`: count one more call in use, stop the idle timer, hand back the session
+  and a `done` function;
+- `ready`: move to `starting`, start a worker that runs `start`, and wait;
+- `starting` or `installing`: wait;
+- `backoff`: fail at once if this call already waited through a start that
+  failed; otherwise wait for the restart;
+- anything else: fail at once with the sentence, such as "Obsidian needs your
+  vault folder."
+
+The wait uses a channel, `changed`, and `select`:
+
+```go
+changed := s.changed
+s.mu.Unlock()
+select {
+case <-changed:          // the phase moved; look again
+case <-wait.Done():      // limit passed, or ctx ended
+    return nil, nil, fmt.Errorf("%s didn't start within %s: %s", ...)
+}
+```
+
+A **channel** passes values between goroutines, and a read from a closed
+channel never blocks, for every reader at once. So `setPhaseLocked` closes
+`changed` and puts a fresh one in its place at each change of phase, and every
+call waiting in `Spawn` wakes and looks again. `select` waits on several
+channels and runs the case whose channel is ready first (see
+[go-basics/channels.md](go-basics/channels.md) and
+[go-basics/select.md](go-basics/select.md)).
+
+**done and the idle timer.** The pool calls `done` when the call ends. When the
+last call ends, `armIdleLocked` sets a timer for the manifest's
+`idle_timeout` (Obsidian: 10 minutes). If no call comes, `idleStop` stops the
+program and moves back to `ready`. The timer starts only when the count of
+calls in use reaches zero, so a running call holds the program up. `done`
+wraps its work in `sync.Once`, whose `Do` runs its function the first time
+only, so a second call of `done` can't count a call twice.
+
+**Crashes and backoff.** `watch` waits for the running session to end. If it
+is still the current session, the program crashed: `crashLocked` keeps the
+crashes of the last ten minutes, adds this one, and either waits before the
+next start or gives up.
+
+```go
+delay := min(firstBackoff<<(len(s.crashes)-1), maxBackoff)
+```
+
+`firstBackoff` is 1 second, and `<<` shifts left, which doubles it once per
+earlier crash: 1, 2, 4, then 8 seconds, capped at 60. The fifth crash in the
+window sets `failed` with "keeps stopping:" and the last line the program
+wrote to stderr, which `tailLog` keeps. A start that fails counts as a crash
+too. The call that was running when the program died fails with its error, and
+nothing sends it again: the tool may have run before the crash.
+
+**gen: dropping stale work.** Workers and timers run late. A reload may stop
+the program while a start is still on its way, or an idle timer may fire
+as a call comes in. The supervisor keeps a counter, `gen`, and adds one at each
+stop, crash and new config. Each worker, timer and `done` remembers the `gen`
+it began under. When it runs, it takes the lock and checks:
+
+```go
+if gen != s.gen || s.closed {
+    return // the machine moved on; leave the state alone
+}
+```
+
+Stale work then changes nothing, and no code has to find and cancel it.
+
+**Clock.** The waits go through a `Clock` interface with `Now` and
+`AfterFunc`. `merud` uses `realClock`, which calls `time.Now` and
+`time.AfterFunc`. Tests use a fake clock they move by hand, so a test of the
+ten-minute crash window runs in a moment.
+
+**Function fields for the machine.** `install`, `installed`, `launch` and
+`dial` are fields that hold functions. `New` fills them from an `Installer`,
+`childCmd` and `stdioTransport`; a test's fake connector puts in its own, so
+no test installs or starts a real program. `newSupervisor` sets up the rest,
+for both.
+
+**Goroutine ownership.** The supervisor owns every goroutine it starts: one
+worker at a time for an install or a start (`workLocked`), and one watcher
+per running program. `goLocked` counts each one on a `sync.WaitGroup`.
+`Close` stops the program, cancels the worker, and waits for the count to
+reach zero. After `Close`, `Spawn` fails with "stopped with merud".
+
+**The child's environment.** `childCmd` builds a short list: the `PATH` and
+variables `LaunchCommand` gives, the user's real `HOME`, where a connector
+keeps its own settings, and `TMPDIR` when `merud` has one. `tailLog` takes the
+child's stderr: it logs each line at debug level, keeps the last one that
+isn't blank, cuts a line at 300 bytes, and stops logging after 64 KiB, so a
+chatty program can't fill the disk. `Write` always reports every byte written,
+since an error would stop the pipe draining and block the program.
+
+**Status for the clients.** `Tools` returns the tool list while the phase is
+`ok` or `ready`, and nil otherwise, so a connector that is down offers the
+model nothing. `State` returns the state and its sentence; `Status` adds the
+fields and the fix list for the `connectors` op.
+
+`*Supervisor` has `Spawn`, `Tools` and `State` with the signatures that
+`internal/mcp`'s `Spawner` interface lists, so a supervisor is a `Spawner`. Go
+needs no `implements` line: any type with the right methods satisfies an
+interface. That lets `mcp` define the interface it uses without importing
+`connectors`.
+
 ## Go ideas used here
 
 - **embed** — `//go:embed` copies the manifests into the binary. More in
@@ -327,8 +589,24 @@ path under `{pkg}`. `fillPlaceholders` fills `{pkg}`, `{meru_dir}` and each
 - **Function types** — `Runner` is a type for any function with its signature,
   so a test can pass a fake; the Mac installer's `Runner` works the same way (see [installer](installer.md)).
 - **Goroutines** — `runLines` reads output while the program runs, and waits
-  for the reader before it returns. More in
-  [go-basics/goroutines.md](go-basics/goroutines.md).
+  for the reader before it returns. The supervisor starts a worker and a
+  watcher, and counts each on a `sync.WaitGroup` so `Close` can wait for them.
+  More in [go-basics/goroutines.md](go-basics/goroutines.md).
+- **Closing a channel to wake waiters** — a read from a closed channel returns
+  at once, for every reader, so closing `changed` wakes every call waiting in
+  `Spawn`. More in [go-basics/channels.md](go-basics/channels.md).
+- **select** — waits on several channels and runs the first that is ready:
+  a change of phase, or the end of the wait. More in
+  [go-basics/select.md](go-basics/select.md).
+- **sync.Mutex** — `mu` guards the supervisor's fields. A method whose name
+  ends in `Locked` expects the caller to hold it.
+- **sync.Once** — `once.Do(f)` runs `f` the first time only; `done` uses it.
+- **iota** — counts up inside a `const` block, numbering the phases.
+- **Interfaces, satisfied without a word** — `*Supervisor` is an
+  `mcp.Spawner` because it has the three methods; `Clock` lets a test swap
+  the time source. More in [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Function fields** — `install`, `launch` and `dial` hold functions, so a
+  test swaps in fakes without an interface for each.
 
 ## Try it
 
@@ -367,6 +645,39 @@ platform, `test_os`, at them:
 24.21.0 and `obsidian-mcp` 2.0.1 into a temporary Meru home and runs the
 server's `--help` with the pinned Node. CI doesn't run it.
 
+`health_test.go` covers the pieces around the supervisor: `TestRunHealthCheck`
+tries each kind of `expect` on good and bad answers, `TestToolCache` checks
+that a saved list comes back only for the same connector and version,
+`TestSecretField` checks that a secret comes from `secrets.toml`, never from
+config, and that only its saved flag shows, and `TestTailLog` checks the last
+line, the cut of a long line, and `wrap`.
+
+The supervisor tests (`supervisor_test.go`) start no program and wait out no
+real backoff. They use two fakes:
+
+- `fakeClock`, a `Clock` a test moves with `Advance`. Its timers fire inside
+  `Advance`, in the order they fall due.
+- `fakeConnector`, which fills the supervisor's function fields. Each start
+  runs an in-memory MCP server offering Obsidian's three tools, behind a
+  `closableTransport`: the server's end of the pipe, which the test cuts to
+  play a crash. A dying process closes its stdout the same way, so a call in
+  flight gets no answer.
+
+The tests walk each path: the state and sentence for each kind of config
+(`TestConfigureStates`); `needs_config`, then an install, then `ready`, and a
+second supervisor that is `ready` at once from the tool cache
+(`TestNeedsConfigThenInstallThenReady`); a failed install and its retry on
+reload; a lazy start and an idle stop; a crash that waits 1 second, then 2;
+five crashes that fail, while crashes older than ten minutes drop out; failed
+starts that count; a call in flight during a crash that fails and never
+reaches the server twice; a reload that keeps a running program, and one with
+`byHand` that stops it; `Close`; and `TestVaultName`.
+
+`pool_test.go` puts a real MCP pool over a supervisor, the way `merud` joins
+them: the pool offers the cached tools before the program runs, `Refresh`
+starts nothing, the first call starts the program, a call in flight during a
+crash fails once, and closing the pool leaves the program to the supervisor.
+
 ## Why it's built this way
 
 - **Plain structs, checked by hand.** A schema library would add a dependency
@@ -385,6 +696,14 @@ server's `--help` with the pinned Node. CI doesn't run it.
 - **A marker file, not a lock or a database.** A folder with the marker is
   finished; Meru deletes one without. A crash at any step leaves nothing a later
   run trusts.
+- **One small state machine, owned by `merud`.** A process manager such as
+  launchd would restart a crashed program, but only `merud` knows when a tool
+  call needs one, when it sits idle, and what to tell the user. One mutex, one
+  worker at a time and a `gen` counter keep it to one file.
+- **Start on first use.** Most questions call no Obsidian tool. The tool cache
+  lets the model see the tools without a Node process running all day.
+- **No retry of a failed call.** The pool never sends a call twice, for a
+  server added by hand or a connector: a tool may have acted before the crash.
 - **Standard library only.** The Node and uv archives come as `.tar.gz` on
   every pinned platform, so `archive/tar` and `compress/gzip` unpack them and no
   new module is needed. Windows, where Node ships a `.zip`, has no pin yet.

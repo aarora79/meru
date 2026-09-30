@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 func TestAssetsHeaders(t *testing.T) {
@@ -54,6 +56,29 @@ func TestPolicyIsStrict(t *testing.T) {
 		if strings.Contains(ContentSecurityPolicy, bad) {
 			t.Errorf("policy holds %q", bad)
 		}
+	}
+}
+
+// TestFixHintMatchesRPC fails when the fix hint the Settings page builds
+// drifts from rpc.FixHint, which the terminal clients print. The page
+// can't call Go, so it builds the same sentence from the same pieces;
+// this test checks each fixed piece appears in settings.js, in order.
+func TestFixHintMatchesRPC(t *testing.T) {
+	// A hint for connector "ID" and field "FIELD" splits into the fixed
+	// text around those two words.
+	hint := rpc.FixHint("ID", []string{"FIELD"})
+	before, rest, ok := strings.Cut(hint, "FIELD")
+	if !ok {
+		t.Fatalf("FixHint = %q; it doesn't name the field", hint)
+	}
+	middle, after, ok := strings.Cut(rest, "ID")
+	if !ok {
+		t.Fatalf("FixHint = %q; it doesn't name the connector", hint)
+	}
+	js := ownFiles(t)["web/js/settings.js"]
+	want := `"` + before + `" + fix.join(" and ") + "` + middle + `" + c.name + "` + after + `"`
+	if !strings.Contains(js, want) {
+		t.Errorf("settings.js doesn't build the fix hint as rpc.FixHint does; want the line\n%s", want)
 	}
 }
 

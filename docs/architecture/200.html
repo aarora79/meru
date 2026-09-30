@@ -970,9 +970,9 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <p>Each call has a time limit, 60 seconds unless the server's entry sets another. A server Meru starts gets only a short list of environment variables plus its own, so it can't read another tool's API key from <code>merud</code>'s environment.</p>
 
-<p><code>merud</code> doesn't supervise MCP servers. For a stdio server it starts the program as a child, because the child's input and output are the connection. For an HTTP server it connects to the URL, and you start the server yourself, with <code>launchd</code>, <code>systemd</code> or by hand, as you start Ollama. <code>merud</code> never restarts a server, checks its health or waits for it.</p>
+<p><code>merud</code> doesn't supervise the MCP servers you add. For a stdio server it starts the program as a child, because the child's input and output are the connection. For an HTTP server it connects to the URL, and you start the server yourself, with <code>launchd</code>, <code>systemd</code> or by hand, as you start Ollama. <code>merud</code> never restarts a server, checks its health or waits for it.</p>
 
-<p>That rule covers the servers you add by hand, and they keep it. A connector supervisor is planned (issue #87): <code>merud</code> will install, start, check and restart the programs Meru knows, which are SearXNG and the Obsidian and Google servers, each at a version pinned in Meru's release, and report on Ollama. So far the connectors' manifests, their checks and the code that installs each one under <code>~/.meru/runtime</code> exist; <code>merud</code> doesn't use them yet.</p>
+<p>Connectors are the exception (issue #87): <code>merud</code> installs, starts, checks and restarts the programs Meru knows, each at a version pinned in Meru's release. So far its supervisor runs Obsidian, once <code>[connectors.obsidian]</code> turns it on. It installs the pinned server under <code>~/.meru/runtime</code>, starts it at the first call, stops it after ten idle minutes and restarts it after a crash. An <code>[[mcp.servers]]</code> entry named <code>obsidian</code> still wins, and the connector shows "set up by hand". SearXNG, Google and the report on Ollama come in later steps.</p>
 
 <p><code>merud</code> tries to connect to each server once when it starts. At the start of each turn on a tools route, it asks each connected server for its tools again, gives each server that isn't connected one more try, then lists the tools. When the try fails, the turn goes on without that server. A server that crashed counts as not connected and gets the same one try, and so does one whose listing fails because it restarted and forgot <code>merud</code>'s session. The extra listing costs about 0.3 ms on loopback. Nothing runs in the background between turns, so a server that fails on start doesn't spin. You can start the Google server after <code>merud</code>, or restart it with more tools, and your next question sees it. A call that fails because the session is gone isn't sent again, since the tool may already have run.</p>
 
@@ -1104,7 +1104,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <ul>
   <li><a href="100.html">Level 100</a>: the big picture in two diagrams.</li>
   <li><a href="300.html">Level 300</a>, generated from <a href="https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>: the full design, with the engine interface, database tables, metric names, config keys and open questions.</li>
-  <li><a href="connectors.html">Connectors</a>: how Meru will install, start and check SearXNG, Obsidian and Google.</li>
+  <li><a href="connectors.html">Connectors</a>: how Meru installs, starts and checks Obsidian today, and SearXNG and Google next.</li>
   <li><a href="https://github.com/aarora79/meru/blob/main/ROADMAP.md">ROADMAP.md</a>: the five milestones, in shipping order.</li>
   <li><a href="https://github.com/aarora79/meru/blob/main/README.md">README.md</a>: commands and hardware.</li>
   <li><a href="../posters/meru-poster.html">The Meru poster</a>: the design on one printable page.</li>

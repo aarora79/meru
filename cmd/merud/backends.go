@@ -90,6 +90,9 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 			Unknown:   st.Unknown,
 			Tools:     []rpc.ToolInfo{}, // an empty list, not null, in the JSON
 		}
+		if st.Managed {
+			info.Connector, info.Sentence = st.State, st.Sentence
+		}
 		for _, t := range st.OfferedTools {
 			info.OfferedTools = append(info.OfferedTools, rpc.ToolInfo{Name: st.Name + "." + t.Name, Description: t.Description})
 		}
@@ -127,6 +130,11 @@ func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
 		}
 		if !st.Connected {
 			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+		}
+		if st.Managed {
+			// A connector: the supervisor's state and sentence say more
+			// than connected or not, such as "starts on first use".
+			row.Connector, row.Sentence = st.State, st.Sentence
 		}
 		out = append(out, row)
 	}

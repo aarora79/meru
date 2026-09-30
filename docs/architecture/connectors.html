@@ -235,16 +235,16 @@
   </svg></a>
   <h1>Connectors: how Meru will run its own servers</h1>
   <p class="standfirst">A connector is a program Meru needs, such as the search engine behind web search, that Meru installs, starts, checks and restarts for you. This page walks through the design in issue #87: what you set, what Meru's developers set, what happens on disk, and which parts exist today.</p>
-  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 and 2 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2, in review in PR #91, adds the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. <code>merud</code> calls none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 3 to 7.</p></aside>
-  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step2</code></p>
+  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 to 3 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. Step 3, whose pull request is still to come, adds the supervisor inside <code>merud</code>, which runs the Obsidian connector, and the <code>connectors</code> status op. A connector stays off until you turn it on, and an <code>[[mcp.servers]]</code> entry with the same name wins over it, so a working setup behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 4 to 7.</p></aside>
+  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step3</code></p>
 </header>
 
 <div class="strip" role="list">
   <div role="listitem"><b>4</b><span>manifests compiled into <code>merud</code>: SearXNG, Obsidian, Google and Ollama</span><small><code>internal/connectors/manifests/</code>, 29 Sep 2026</small></div>
   <div role="listitem"><b>Node 24.21.0, uv 0.12.21</b><span>the runtimes Meru downloads for itself, each checked against a pinned SHA-256</span><small><code>internal/connectors/runtimes.go</code>, 30 Sep 2026</small></div>
-  <div role="listitem"><b>1, 2, 4 … 60 s</b><span>wait before each restart after a crash (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
-  <div role="listitem"><b>5 in 10 min</b><span>crashes before a connector stops trying and says why (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
-  <div role="listitem"><b>10 min</b><span>idle time before Obsidian or Google stops (planned)</span><small><code>idle_timeout</code> in both manifests, 29 Sep 2026</small></div>
+  <div role="listitem"><b>1, 2, 4, 8 s</b><span>wait before each restart after a crash; it doubles, up to 60 s</span><small><code>internal/connectors/supervisor.go</code>, 30 Sep 2026</small></div>
+  <div role="listitem"><b>5 in 10 min</b><span>crashes before a connector stops trying and says why</span><small><code>internal/connectors/supervisor.go</code>, 30 Sep 2026</small></div>
+  <div role="listitem"><b>10 min</b><span>idle time before Obsidian stops, and Google once it lands (planned)</span><small><code>idle_timeout</code> in both manifests, 29 Sep 2026</small></div>
 </div>
 
 <nav class="toc" aria-label="Contents">
@@ -365,7 +365,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
 	return enabled, ok
 }</code></pre>
 
-<p><code>config.Load</code> checks only the table's shape: lower-case keys, and <code>enabled</code> set to true or false. It can't check the fields against the manifest, because the desktop app and <code>meru</code> import <code>config</code> and must never reach the connector code. <code>merud</code> will run that check <span class="plan">planned</span>.</p>
+<p><code>config.Load</code> checks only the table's shape: lower-case keys, and <code>enabled</code> set to true or false. It can't check the fields against the manifest, because the desktop app and <code>meru</code> import <code>config</code> and must never reach the connector code. <code>merud</code> runs that check each time it starts or reloads its tools.</p>
 
 <p><b>Adding your own MCP server stays the same.</b> You add it to <code>[[mcp.servers]]</code> in <code>config.toml</code>, or with <code>meru mcp add</code>, and the supervisor leaves it alone. You can't edit a manifest on your machine: it sits inside the <code>merud</code> binary, so it changes only when Meru's developers ship a release. A new manifest is how a Meru release adds a managed connector.</p>
 
@@ -398,7 +398,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
   <!-- supervisor -->
   <rect x="250" y="250" width="460" height="54" rx="10" class="ba2"/>
   <text x="480" y="275" text-anchor="middle" class="t1" font-size="16" font-weight="700">Supervisor in merud</text>
-  <text x="480" y="294" text-anchor="middle" class="ta2" font-size="12.5" font-weight="600">PLANNED · steps 3 to 6</text>
+  <text x="480" y="294" text-anchor="middle" class="tm" font-size="12.5" font-weight="600">BUILT FOR STDIO · step 3</text>
   <path d="M240 200 L360 248" class="ln" marker-end="url(#a1)"/>
   <path d="M720 200 L600 248" class="ln" marker-end="url(#a1)"/>
   <!-- runtime -->
@@ -409,7 +409,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
   <rect x="216" y="386" width="140" height="50" rx="7" class="b"/><text x="286" y="409" text-anchor="middle" class="t1 mono" font-size="13">uv-0.12.21/</text><text x="286" y="427" text-anchor="middle" class="t3" font-size="12">pinned uv</text>
   <rect x="376" y="386" width="200" height="50" rx="7" class="b"/><text x="476" y="409" text-anchor="middle" class="t1 mono" font-size="13">pkg/obsidian-2.0.1/</text><text x="476" y="427" text-anchor="middle" class="t3" font-size="12">the installed server</text>
   <rect x="596" y="386" width="170" height="50" rx="7" class="b"/><text x="681" y="409" text-anchor="middle" class="t1 mono" font-size="13">state/obsidian.json</text><text x="681" y="427" text-anchor="middle" class="t3" font-size="12">last tool list</text>
-  <rect x="786" y="386" width="140" height="50" rx="7" class="b"/><text x="856" y="409" text-anchor="middle" class="t1 mono" font-size="13">logs/obsidian.log</text><text x="856" y="427" text-anchor="middle" class="t3" font-size="12">its error output</text>
+  <rect x="786" y="386" width="140" height="50" rx="7" class="b"/><text x="856" y="409" text-anchor="middle" class="t1 mono" font-size="13">logs/obsidian.log</text><text x="856" y="427" text-anchor="middle" class="ta2" font-size="12">error output, planned</text>
   <path d="M480 304 L480 342" class="ln" marker-end="url(#a1)"/>
 </svg>
 </div>
@@ -419,7 +419,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
 <!-- ============================================================ -->
 <h2 id="where-things-live-on-disk">Where things live on disk <span class="plan built">built</span></h2>
 
-<p>Step 2 built this section. <code>merud</code> doesn't call the code until the supervisor lands in step 3.</p>
+<p>Step 2 built this code, and the supervisor calls it since step 3.</p>
 
 <p>Every install lands under one folder, <code>~/.meru/runtime/</code>:</p>
 
@@ -432,8 +432,10 @@ func (c Connector) Enabled() (enabled, ok bool) {
   npmrc                   an empty npm settings file
   pkg/obsidian-2.0.1/     obsidian-mcp and its npm packages
   pkg/google-1.30.0/      workspace-mcp and its Python environment
-  state/obsidian.json     the tool list from the last health check (planned)
+  state/obsidian.json     the tool list from the last health check
   logs/obsidian.log       the server's error output (planned)</code></pre>
+
+<p>Until <code>logs/</code> lands, <code>merud</code> writes a connector's error output to <code>merud.log</code> at debug level, and keeps the last line for the status sentence.</p>
 
 <p><code>merud</code> downloads Node.js 24.21.0, the newest Long Term Support release, and uv 0.12.21, a Python package installer, the first time a connector needs one. Before it unpacks a download, it compares the file's SHA-256, a 64-character fingerprint of its contents, with the pin compiled into <code>merud</code>, and refuses a file that doesn't match. A changed or corrupt download never runs. Unpacking refuses any entry that would land outside the runtime's folder.</p>
 
@@ -459,7 +461,9 @@ func (c Connector) Enabled() (enabled, ok bool) {
 <p>Every program runs from one Go file, <code>internal/connectors/run.go</code>, by absolute path, with no shell and a short environment; a policy test fails the build if another file in the package runs one. Meru never runs your global npm, pip or Homebrew, so a connector can't break another program's packages, and removing <code>~/.meru/runtime/</code> removes every install.</p>
 
 <!-- ============================================================ -->
-<h2 id="the-supervisor-and-its-states">The supervisor and its states <span class="plan">planned</span></h2>
+<h2 id="the-supervisor-and-its-states">The supervisor and its states <span class="plan built">built</span></h2>
+
+<p>Step 3 built this for stdio connectors, in <code>internal/connectors/supervisor.go</code>. Only Obsidian is a stdio connector today; SearXNG and Google follow in steps 4 and 5.</p>
 
 <p>The supervisor is the part of <code>merud</code> that runs each connector. It keeps one small state machine per connector: a record of which state the connector is in, and which events move it to the next one. It resembles launchd, which also starts and restarts programs. The likeness ends at two points: the supervisor installs the program first, and it gives up after five crashes in ten minutes and tells you why, where launchd would keep restarting.</p>
 
@@ -467,113 +471,123 @@ func (c Connector) Enabled() (enabled, ok bool) {
 <thead><tr><th>State</th><th>What it means</th></tr></thead>
 <tbody>
 <tr><td><code>off</code></td><td>you haven't turned it on</td></tr>
-<tr><td><code>needs_config</code></td><td>a required field is empty or fails its pattern</td></tr>
+<tr><td><code>by_hand</code></td><td>an <code>[[mcp.servers]]</code> entry with the same name runs instead</td></tr>
+<tr><td><code>needs_config</code></td><td>a field is missing or wrong</td></tr>
 <tr><td><code>installing</code></td><td>downloading the runtime or the package, then the first health check</td></tr>
 <tr><td><code>ready</code></td><td>installed and stopped; its tool list is known from the last health check</td></tr>
 <tr><td><code>starting</code></td><td>the process is starting, and must pass its health check</td></tr>
 <tr><td><code>ok</code></td><td>running and healthy</td></tr>
-<tr><td><code>crashed</code></td><td>the process exited or failed its check; waiting out a backoff, a pause that grows after each crash, before the next start</td></tr>
+<tr><td><code>backoff</code></td><td>the process exited or failed to start; waiting out a backoff, a pause that grows after each crash, before the next start</td></tr>
 <tr><td><code>failed</code></td><td>stopped trying; the reason says why</td></tr>
 </tbody></table></div>
 
 <figure>
 <div class="figbox">
-<svg viewBox="0 0 960 480" role="img" aria-labelledby="f2t">
+<svg viewBox="0 0 960 510" role="img" aria-labelledby="f2t">
   <title id="f2t">The connector state machine</title>
   <defs>
     <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
     <marker id="a2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mkw"/></marker>
   </defs>
-  <!-- row 1 -->
-  <rect x="20" y="40" width="140" height="44" rx="22" class="bn"/><text x="90" y="67" text-anchor="middle" class="t1 mono" font-size="15">off</text>
-  <rect x="220" y="40" width="160" height="44" rx="22" class="bn"/><text x="300" y="67" text-anchor="middle" class="t1 mono" font-size="15">needs_config</text>
-  <rect x="450" y="40" width="140" height="44" rx="22" class="ba2"/><text x="520" y="67" text-anchor="middle" class="t1 mono" font-size="15">installing</text>
-  <rect x="700" y="40" width="140" height="44" rx="22" class="bm"/><text x="770" y="67" text-anchor="middle" class="t1 mono" font-size="15">ready</text>
-  <!-- row 2 -->
-  <rect x="560" y="200" width="140" height="44" rx="22" class="ba2"/><text x="630" y="227" text-anchor="middle" class="t1 mono" font-size="15">starting</text>
-  <rect x="800" y="200" width="140" height="44" rx="22" class="bm"/><text x="870" y="227" text-anchor="middle" class="t1 mono" font-size="15">ok</text>
-  <!-- row 3 -->
-  <rect x="560" y="360" width="140" height="44" rx="22" class="ba2"/><text x="630" y="387" text-anchor="middle" class="t1 mono" font-size="15">crashed</text>
-  <rect x="220" y="360" width="160" height="44" rx="22" class="bwf"/><text x="300" y="387" text-anchor="middle" class="tw mono" font-size="15">failed(reason)</text>
+  <!-- the three states that wait on config -->
+  <rect x="20" y="30" width="170" height="44" rx="22" class="bg"/><text x="105" y="57" text-anchor="middle" class="t1 mono" font-size="15">off</text>
+  <rect x="20" y="110" width="170" height="44" rx="22" class="ba"/><text x="105" y="137" text-anchor="middle" class="t1 mono" font-size="15">by_hand</text>
+  <rect x="20" y="190" width="170" height="44" rx="22" class="bn"/><text x="105" y="217" text-anchor="middle" class="t1 mono" font-size="15">needs_config</text>
+  <path d="M190 52 L215 52 M190 132 L215 132 M190 212 L215 212 M215 52 L215 212" class="ln"/>
+  <path d="M215 132 L298 132" class="ln" marker-end="url(#a2)"/>
+  <text x="256" y="104" text-anchor="middle" class="t2 halo" font-size="12.5">config</text>
+  <text x="256" y="120" text-anchor="middle" class="t2 halo" font-size="12.5">fixed</text>
 
-  <!-- arrows -->
-  <path d="M160 62 L218 62" class="ln" marker-end="url(#a2)"/>
-  <text x="189" y="32" text-anchor="middle" class="t2" font-size="13">turn on</text>
-  <path d="M380 62 L448 62" class="ln" marker-end="url(#a2)"/>
-  <text x="414" y="32" text-anchor="middle" class="t2" font-size="13">fields valid</text>
-  <path d="M590 62 L698 62" class="ln" marker-end="url(#a2)"/>
-  <text x="644" y="26" text-anchor="middle" class="t2" font-size="13">installed,</text>
-  <text x="644" y="42" text-anchor="middle" class="t2" font-size="13">health ok</text>
+  <!-- install and run -->
+  <rect x="300" y="110" width="150" height="44" rx="22" class="ba2"/><text x="375" y="137" text-anchor="middle" class="t1 mono" font-size="15">installing</text>
+  <rect x="540" y="110" width="140" height="44" rx="22" class="bm"/><text x="610" y="137" text-anchor="middle" class="t1 mono" font-size="15">ready</text>
+  <rect x="540" y="250" width="150" height="44" rx="22" class="ba2"/><text x="615" y="277" text-anchor="middle" class="t1 mono" font-size="15">starting</text>
+  <rect x="780" y="250" width="140" height="44" rx="22" class="bm"/><text x="850" y="277" text-anchor="middle" class="t1 mono" font-size="15">ok</text>
+  <rect x="540" y="390" width="150" height="44" rx="22" class="ba2"/><text x="615" y="417" text-anchor="middle" class="t1 mono" font-size="15">backoff</text>
+  <rect x="220" y="390" width="170" height="44" rx="22" class="bwf"/><text x="305" y="417" text-anchor="middle" class="tw mono" font-size="15">failed(reason)</text>
 
-  <path d="M740 84 L660 198" class="ln" marker-end="url(#a2)"/>
-  <text x="690" y="146" text-anchor="end" class="t2 halo" font-size="13">first tool call</text>
-  <path d="M700 222 L798 222" class="ln" marker-end="url(#a2)"/>
-  <text x="749" y="212" text-anchor="middle" class="t2 halo" font-size="13">health ok</text>
-  <path d="M860 198 L800 86" class="ln" marker-end="url(#a2)"/>
-  <text x="870" y="140" class="t2 halo" font-size="13">idle 10 min</text>
+  <path d="M450 132 L538 132" class="ln" marker-end="url(#a2)"/>
+  <text x="495" y="88" text-anchor="middle" class="t2 halo" font-size="12.5">installed,</text>
+  <text x="495" y="104" text-anchor="middle" class="t2 halo" font-size="12.5">check ok</text>
 
-  <path d="M870 244 L700 370" class="ln" marker-end="url(#a2)"/>
-  <text x="800" y="320" class="t2 halo" font-size="13">process exits</text>
-  <path d="M650 246 L650 358" class="ln" marker-end="url(#a2)"/>
-  <text x="660" y="300" class="t2 halo" font-size="13">start or check fails</text>
-  <path d="M610 358 L610 246" class="ln" marker-end="url(#a2)"/>
-  <text x="600" y="292" text-anchor="end" class="t2 halo" font-size="13">backoff</text>
-  <text x="600" y="310" text-anchor="end" class="t2 halo" font-size="13">1, 2, 4 … 60 s</text>
+  <path d="M610 154 L610 248" class="ln" marker-end="url(#a2)"/>
+  <text x="600" y="206" text-anchor="end" class="t2 halo" font-size="13">first tool call</text>
+  <path d="M690 272 L778 272" class="ln" marker-end="url(#a2)"/>
+  <text x="734" y="262" text-anchor="middle" class="t2 halo" font-size="13">check ok</text>
+  <path d="M840 248 L684 142" class="ln" marker-end="url(#a2)"/>
+  <text x="775" y="180" class="t2 halo" font-size="13">idle 10 min</text>
 
-  <path d="M560 382 L382 382" class="lnw" marker-end="url(#a2w)"/>
-  <text x="471" y="372" text-anchor="middle" class="tw halo" font-size="13">5 crashes in 10 min</text>
-  <path d="M500 84 L360 358" class="lnw" marker-end="url(#a2w)"/>
-  <text x="445" y="200" class="tw halo" font-size="13">install fails</text>
-  <path d="M290 358 L290 86" class="ln" marker-end="url(#a2)"/>
-  <text x="280" y="215" text-anchor="end" class="t2 halo" font-size="13">Fix, or a</text>
-  <text x="280" y="233" text-anchor="end" class="t2 halo" font-size="13">field change</text>
+  <path d="M850 294 L692 400" class="ln" marker-end="url(#a2)"/>
+  <text x="790" y="362" class="t2 halo" font-size="13">crash</text>
+  <path d="M655 294 L655 388" class="ln" marker-end="url(#a2)"/>
+  <text x="664" y="345" class="t2 halo" font-size="13">start fails</text>
+  <path d="M575 388 L575 296" class="ln" marker-end="url(#a2)"/>
+  <text x="566" y="335" text-anchor="end" class="t2 halo" font-size="13">wait</text>
+  <text x="566" y="353" text-anchor="end" class="t2 halo" font-size="13">1, 2, 4, 8 s</text>
+
+  <path d="M540 412 L392 412" class="lnw" marker-end="url(#a2w)"/>
+  <text x="466" y="402" text-anchor="middle" class="tw halo" font-size="12.5">5th crash in 10 min</text>
+  <path d="M370 154 L322 388" class="lnw" marker-end="url(#a2w)"/>
+  <text x="358" y="270" class="tw halo" font-size="13">install or check fails</text>
+  <path d="M250 388 L130 236" class="lnd" marker-end="url(#a2)"/>
+  <text x="20" y="300" class="t2 halo" font-size="13">config changes,</text>
+  <text x="20" y="318" class="t2 halo" font-size="13">or merud restarts</text>
 
   <!-- legend: what the user sees -->
-  <text x="20" y="450" class="t3" font-size="13" font-weight="600">You see:</text>
-  <rect x="90" y="438" width="14" height="14" rx="7" class="bm"/><text x="110" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">ok</text>
-  <rect x="150" y="438" width="14" height="14" rx="7" class="bn"/><text x="170" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">needs_config</text>
-  <rect x="290" y="438" width="14" height="14" rx="7" class="ba2"/><text x="310" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">starting</text>
-  <rect x="400" y="438" width="14" height="14" rx="7" class="bwf"/><text x="420" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">failed(reason)</text>
+  <text x="20" y="484" class="t3" font-size="13" font-weight="600">You see:</text>
+  <rect x="90" y="472" width="14" height="14" rx="7" class="bm"/><text x="110" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">ok</text>
+  <rect x="146" y="472" width="14" height="14" rx="7" class="bg"/><text x="166" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">off</text>
+  <rect x="210" y="472" width="14" height="14" rx="7" class="ba"/><text x="230" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">by_hand</text>
+  <rect x="306" y="472" width="14" height="14" rx="7" class="bn"/><text x="326" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">needs_config</text>
+  <rect x="440" y="472" width="14" height="14" rx="7" class="ba2"/><text x="460" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">starting</text>
+  <rect x="546" y="472" width="14" height="14" rx="7" class="bwf"/><text x="566" y="484" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">failed(reason)</text>
 </svg>
 </div>
-<figcaption><b>Figure 2.</b> Eight states inside, four outside: the outline colour shows which of the four you see. A crash loops through <code>crashed</code> and <code>starting</code> with a growing wait, and only a Fix or a changed field leaves <code>failed</code>.</figcaption>
+<figcaption><b>Figure 2.</b> Nine states inside, six outside: the outline colour shows which of the six you see. A crash loops through <code>backoff</code> and <code>starting</code> with a growing wait, and only a config change or a restart of <code>merud</code> leaves <code>failed</code>.</figcaption>
 </figure>
 
-<p>You see four of those states, so a status line never has to explain the machine:</p>
+<p>You see six of those states, so a status line never has to explain the machine:</p>
 
 <div class="tbl"><table>
 <thead><tr><th>You see</th><th>States inside it</th></tr></thead>
 <tbody>
 <tr><td><code>ok</code></td><td><code>ok</code> (running) and <code>ready</code> (stopped, tools known)</td></tr>
-<tr><td><code>needs_config</code></td><td><code>off</code> and <code>needs_config</code></td></tr>
-<tr><td><code>starting</code></td><td><code>installing</code>, <code>starting</code> and <code>crashed</code> during its backoff</td></tr>
+<tr><td><code>off</code></td><td><code>off</code></td></tr>
+<tr><td><code>by_hand</code></td><td><code>by_hand</code>; clients show it as "set up by hand"</td></tr>
+<tr><td><code>needs_config</code></td><td><code>needs_config</code></td></tr>
+<tr><td><code>starting</code></td><td><code>installing</code>, <code>starting</code> and <code>backoff</code></td></tr>
 <tr><td><code>failed(reason)</code></td><td><code>failed</code></td></tr>
 </tbody></table></div>
 
-<p>Five rules govern the machine.</p>
+<p>These rules govern the machine.</p>
 
 <ul>
-  <li><b>Lazy start.</b> A <code>ready</code> connector's tools reach the model from the list saved at its last health check, in <code>state/&lt;id&gt;.json</code>, with no process running. The first call starts the process and waits for it, up to the connect timeout; today's pool allows 30 seconds for a connect. So Obsidian and Google use no memory until you ask for them.</li>
-  <li><b>Idle stop.</b> A process that gets no call for its <code>idle_timeout</code>, 10 minutes for Obsidian and Google, stops and goes back to <code>ready</code>.</li>
-  <li><b>Crashes and backoff.</b> After a crash the supervisor waits, then starts the process again. The wait doubles each time, 1, 2, 4 seconds and on, up to 60. Five crashes in ten minutes set <code>failed("keeps stopping: &lt;last line of its error output&gt;")</code>, so a program that dies on start can't spin.</li>
-  <li><b>No replay.</b> A call that was running when the process crashed fails with its error, and <code>merud</code> never sends it again, as for a hand-added server today. A call such as "send this mail" may have done its work before the crash, and sending it twice could send two mails.</li>
-  <li><b>Tools follow health.</b> Only a connector you see as <code>ok</code> offers tools. While SearXNG is down, the model doesn't get <code>web_search</code> at all, where today it gets a tool that fails.</li>
+  <li><b>Off by default.</b> A connector runs only when its <code>[connectors.&lt;id&gt;]</code> table says <code>enabled = true</code>. A manifest can say <code>default_on</code>, and none does yet; SearXNG will in step 4.</li>
+  <li><b>Set up by hand wins.</b> An <code>[[mcp.servers]]</code> entry named <code>obsidian</code> runs as it did before, through the pool's own rules, and the connector shows <code>by_hand</code>. Adopt <span class="plan">planned</span> will move such an entry over.</li>
+  <li><b>Fields.</b> <code>merud</code> checks the table against the manifest: a required field needs a value, a folder must exist, an email needs an <code>@</code>, a choice must be one of its choices, a value must match its pattern, and a key the manifest doesn't name is a mistake. The first problem becomes the sentence.</li>
+  <li><b>Lazy start.</b> A <code>ready</code> connector's tools reach the model from the list saved at its last health check, in <code>state/&lt;id&gt;.json</code>, with no process running. So a restart of <code>merud</code> offers them without starting anything. The first call starts the process, checks it again, and waits for it up to the connect timeout of 30 seconds. So Obsidian uses no memory until you ask for it.</li>
+  <li><b>Idle stop.</b> A process that gets no call for its <code>idle_timeout</code>, 10 minutes for Obsidian, stops and goes back to <code>ready</code>. A call still running holds it up.</li>
+  <li><b>Crashes and backoff.</b> After a crash, or a start that fails, the supervisor waits, then starts the process again. The wait doubles each time from 1 second, up to 60. The fifth crash within ten minutes sets <code>failed("keeps stopping: &lt;last line of its error output&gt;")</code>, so the waits run 1, 2, 4 and 8 seconds, and a program that dies on start can't spin. A call that arrives during a backoff waits for the restart.</li>
+  <li><b>No replay.</b> A call that was running when the process crashed fails with its error, and <code>merud</code> never sends it again, as for a hand-added server. A call such as "send this mail" may have done its work before the crash, and sending it twice could send two mails.</li>
+  <li><b>Tools follow health.</b> Only a connector you see as <code>ok</code> offers tools. Once SearXNG is a connector <span class="plan">planned</span>, the model won't get <code>web_search</code> while it's down, where today it gets a tool that fails.</li>
 </ul>
 
-<p>Health checks run after an install, at each start and on Fix. A container also gets one every 60 seconds while in use. The supervisor also outlives a reload of the MCP pool, which today stops every child process each time you change a tool's policy: the pool asks the supervisor for a connector's session, and a hand-added server keeps today's code.</p>
+<p>Health checks run after an install and at each start. Fix will run one too, and a container will get one every 60 seconds while in use <span class="plan">planned</span>. The supervisor also outlives a reload of the MCP pool, which stops every hand-added server's process each time you change a tool's policy. The pool asks the supervisor for a connector's session and never starts or stops the program itself. A reload hands each supervisor its config again: one whose config didn't change keeps its program running, and one that failed gets a fresh try.</p>
 
 <!-- ============================================================ -->
-<h2 id="turning-on-obsidian-end-to-end">Turning on Obsidian, end to end <span class="plan">planned</span></h2>
+<h2 id="turning-on-obsidian-end-to-end">Turning on Obsidian, end to end <span class="plan built">built</span></h2>
+
+<p>Step 3 built this, apart from the form in step 1, which arrives in step 6.</p>
 
 <p>This walk-through follows one connector from off to a first answer, with the values from its manifest. The rest of the design follows the same path with a different install type.</p>
 
 <ol>
-  <li><b>You fill in the fields.</b> In Settings, under Connections, you turn Obsidian on and pick your vault folder, <code>~/Notes/vault</code>. You leave Vault name empty, so Meru makes one from the folder's name: <code>vault</code>. The client sends the socket op <code>connector_set</code>, and <code>merud</code> writes <code>[connectors.obsidian]</code> with <code>enabled = true</code> and the folder. The fields pass, so the state moves from <code>off</code> through <code>needs_config</code> to <code>installing</code>, and the card reads <code>starting</code>.</li>
+  <li><b>You fill in the fields.</b> Today you add <code>[connectors.obsidian]</code> to <code>config.toml</code> with <code>enabled = true</code> and your vault folder, <code>~/Notes/vault</code>, then restart <code>merud</code>. Later <span class="plan">planned</span> you turn Obsidian on in Settings, under Connections, and pick the folder; the client sends the socket op <code>connector_set</code>, and <code>merud</code> writes the table. You leave Vault name empty, so Meru makes one from the folder's name: <code>vault</code>. The fields pass, so the state moves from <code>off</code> to <code>installing</code>, and the card reads Starting.</li>
   <li><b>Node.js arrives.</b> obsidian-mcp 2.0.1 needs Node.js 22 or later. <code>merud</code> downloads its pinned Node.js 24.21.0 into <code>~/.meru/runtime/node-24.21.0/</code>, checks the SHA-256 and unpacks it.</li>
   <li><b>The package installs.</b> With that Node.js, <code>merud</code> runs <code>npm install --prefix ~/.meru/runtime/pkg/obsidian-2.0.1 obsidian-mcp@2.0.1 --no-audit --no-fund --no-update-notifier --ignore-scripts</code>. The server's script lands at <code>pkg/obsidian-2.0.1/node_modules/obsidian-mcp/dist/main.js</code>.</li>
-  <li><b>The first health check.</b> <code>merud</code> starts the pinned <code>node</code> by its full path with that script and <code>serve --vault vault=/Users/you/Notes/vault</code>, and calls the tool <code>obsidian_list_vaults</code> with no arguments. The answer lists one vault, which meets <code>expect = "nonempty"</code>. <code>merud</code> saves the server's tool list to <code>state/obsidian.json</code>, stops the process, and moves to <code>ready</code>. The card now reads <b>"Obsidian is ready."</b></li>
+  <li><b>The first health check.</b> <code>merud</code> starts the pinned <code>node</code> by its full path with that script and <code>serve --vault vault=/Users/you/Notes/vault</code>, and calls the tool <code>obsidian_list_vaults</code> with no arguments. The answer lists one vault, which meets <code>expect = "nonempty"</code>. <code>merud</code> saves the server's tool list to <code>state/obsidian.json</code>, stops the process, and moves to <code>ready</code>. The card now reads <b>"Obsidian is ready. It starts when a question needs it."</b></li>
   <li><b>The first question.</b> You ask "what did I write about the garden plan?". The model sees <code>obsidian.obsidian_search_vault</code> from the saved list and calls it. Figure 3 traces that call.</li>
-  <li><b>Ten quiet minutes.</b> No further call comes, so the process stops and the state goes back to <code>ready</code>. The card still reads "Obsidian is ready.", and the next call starts the process again.</li>
+  <li><b>Ten quiet minutes.</b> No further call comes, so the process stops and the state goes back to <code>ready</code>. The card reads "Obsidian is ready." again, and the next call starts the process again.</li>
 </ol>
 
 <figure>
@@ -586,7 +600,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
   </defs>
   <rect x="30" y="20" width="160" height="46" rx="8" class="b"/><text x="110" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">model</text>
   <rect x="260" y="20" width="160" height="46" rx="8" class="b"/><text x="340" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">dispatch</text>
-  <rect x="490" y="20" width="200" height="46" rx="8" class="ba2"/><text x="590" y="42" text-anchor="middle" class="t1" font-size="15" font-weight="600">pool + supervisor</text><text x="590" y="59" text-anchor="middle" class="ta2" font-size="11.5" font-weight="600">PLANNED</text>
+  <rect x="490" y="20" width="200" height="46" rx="8" class="ba2"/><text x="590" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">pool + supervisor</text>
   <rect x="760" y="20" width="170" height="46" rx="8" class="bm"/><text x="845" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">obsidian-mcp</text>
   <line x1="110" y1="66" x2="110" y2="500" class="life"/>
   <line x1="340" y1="66" x2="340" y2="500" class="life"/>
@@ -667,33 +681,39 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 <p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. Today a missing Ollama stops <code>merud</code> before it opens its socket. The plan reverses that order <span class="plan">planned</span>: <code>merud</code> opens its socket first, checks Ollama every 30 seconds until it answers, then warms the models. A question asked meanwhile gets "Ollama isn't running" as its error, and every status view shows the same sentence.</p>
 
 <!-- ============================================================ -->
-<h2 id="status-and-fix">Status and Fix <span class="plan">planned</span></h2>
+<h2 id="status-and-fix">Status and Fix <span class="plan built">built</span> <span class="plan">Fix planned</span></h2>
 
-<p>Today every status view knows two states, connected and not connected, and none offers a way to repair anything. The plan gives each connector one plain sentence and one Fix action, the same in every client.</p>
+<p>Step 3 built the status. The Fix action and the forms arrive in step 6.</p>
 
-<p>A new socket op, <code>connectors</code>, returns one status per connector: its ID, name, state and sentence, whether Meru needs it, the field list with the values of the non-secret fields and whether each secret has a saved value, and the Fix, which names the fields to ask again. Two more ops make changes. <code>connector_set</code> saves values and on or off, then installs, starts and checks the connector while it streams progress to the client. <code>connector_fix</code> runs the connector's config step again.</p>
+<p>A hand-added server knows two states, connected and not connected, and no view offers a way to repair it. Each connector gets one plain sentence and, later, one Fix action, the same in every client.</p>
+
+<p>The socket op <code>connectors</code> returns one status per connector: its ID, name, kind, state and sentence, whether Meru needs it, the field list with the values of the non-secret fields and whether each secret has a saved value, and the Fix, which names the fields to ask again. <code>mcp_status</code> and <code>connections</code> carry the same state and sentence for the connector's row. Two more ops will make changes <span class="plan">planned</span>. <code>connector_set</code> saves values and on or off, then installs, starts and checks the connector while it streams progress to the client. <code>connector_fix</code> runs the connector's config step again.</p>
 
 <div class="tbl"><table>
 <thead><tr><th>You see</th><th>Example sentence</th><th>Fix</th></tr></thead>
 <tbody>
-<tr><td><code>ok</code></td><td>Obsidian is ready.</td><td>none needed</td></tr>
+<tr><td><code>ok</code></td><td>Obsidian is ready. It starts when a question needs it.</td><td>none needed</td></tr>
+<tr><td><code>ok</code></td><td>Obsidian is running.</td><td>none needed</td></tr>
+<tr><td><code>off</code></td><td>Obsidian is off.</td><td>turns it on <span class="plan">planned</span></td></tr>
+<tr><td><code>by_hand</code></td><td>Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]].</td><td>Adopt <span class="plan">planned</span></td></tr>
 <tr><td><code>needs_config</code></td><td>Obsidian needs your vault folder.</td><td>asks for the vault folder</td></tr>
-<tr><td><code>needs_config</code></td><td>Google needs you to sign in.</td><td>opens the sign-in link</td></tr>
-<tr><td><code>failed(reason)</code></td><td>Web search can't start: Docker isn't running.</td><td>runs the check again</td></tr>
+<tr><td><code>needs_config</code></td><td>Google needs you to sign in. <span class="plan">planned</span></td><td>opens the sign-in link</td></tr>
+<tr><td><code>starting</code></td><td>Obsidian stopped (…) and starts again in 2 s.</td><td>none needed</td></tr>
+<tr><td><code>failed(reason)</code></td><td>Web search can't start: Docker isn't running. <span class="plan">planned</span></td><td>runs the check again</td></tr>
 <tr><td><code>failed(reason)</code></td><td>Obsidian keeps stopping: <code>&lt;last line of its error output&gt;</code></td><td>asks for the fields again</td></tr>
-<tr><td>(Ollama)</td><td>Ollama isn't running.</td><td>runs the check again</td></tr>
+<tr><td>(Ollama)</td><td>Ollama isn't running. <span class="plan">planned</span></td><td>runs the check again</td></tr>
 </tbody></table></div>
 
-<p>The Fix column follows one rule: Fix asks again for the fields it names, or runs the check again when it names none. Four places show these rows:</p>
+<p>The Fix column follows one rule: Fix asks again for the fields it names, or runs the check again when it names none. Until the Fix button arrives, a <code>needs_config</code> connector names the key to set, as in "Set vault_path under [connectors.obsidian] in config.toml, then restart merud." Four places show these rows:</p>
 
 <ul>
-  <li><b>Settings, under Connections</b>, in the desktop app: one card per connector with a Fix button, a folder picker for folder fields, and a "Sign in to Google" button.</li>
-  <li><b>The rail</b>, the desktop app's side column: each connector with a coloured dot.</li>
-  <li><b><code>/mcp</code> in <code>meru chat</code></b>: the sentence, and <code>f</code> walks the fields in the terminal.</li>
-  <li><b><code>meru mcp status</code></b>: the sentence, for a script or a quick look.</li>
+  <li><b>Settings, under Connections</b>, in the desktop app: one card per connector with a pill (Ready, Starting, Needs setup, Failed or Off), its sentence and that hint. A connector's card has no Remove button. The Fix button, a folder picker for folder fields and a "Sign in to Google" button are <span class="plan">planned</span>.</li>
+  <li><b>The rail</b>, the desktop app's side column: a connector that isn't <code>ok</code> shows with its state, as in "obsidian (needs config)".</li>
+  <li><b><code>/mcp</code> in <code>meru chat</code></b>: the state, the sentence and the hint in the connector's heading. Later, <code>f</code> walks the fields in the terminal <span class="plan">planned</span>.</li>
+  <li><b><code>meru mcp status</code></b>: the state and sentence in the server's row, then one line per connector, the ones that are off or set up by hand included.</li>
 </ul>
 
-<p>Because every client draws its form from the same field list, a new connector in a later release needs no new screen in any client.</p>
+<p>The <code>about_meru</code> tool adds the sentence too, so the model can tell you why a connector's tools are missing. Because every client will draw its form from the same field list, a new connector in a later release needs no new screen in any client.</p>
 
 <!-- ============================================================ -->
 <h2 id="pinned-versions">Pinned versions</h2>
@@ -718,7 +738,9 @@ func TestManifestsPinned(t *testing.T) {
 <!-- ============================================================ -->
 <h2 id="moving-a-working-setup-over">Moving a working setup over <span class="plan">planned</span></h2>
 
-<p>A setup that works today keeps working. At start, an <code>[[mcp.servers]]</code> entry named <code>google</code> or <code>obsidian</code> with no matching <code>[connectors.*]</code> table runs as before. Its status reads "set up by hand" and offers <b>Adopt</b>. When you confirm, Adopt:</p>
+<p>"Set up by hand" is built in step 3 for Obsidian. Adopt arrives in step 5.</p>
+
+<p>A setup that works today keeps working. An <code>[[mcp.servers]]</code> entry named <code>google</code> or <code>obsidian</code> runs as before, and its connector reads "set up by hand". <b>Adopt</b> <span class="plan">planned</span> will offer to move it over. When you confirm, Adopt:</p>
 
 <ol>
   <li>writes <code>[connectors.&lt;id&gt;]</code> from the old entry: the vault folder from <code>--vault</code>, or the Google address and client ID, with the client secret moved into <code>secrets.toml</code>;</li>
@@ -752,8 +774,8 @@ func TestManifestsPinned(t *testing.T) {
 <thead><tr><th>Step</th><th>What it adds</th><th>State</th></tr></thead>
 <tbody>
 <tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> merged in PR #90</td></tr>
-<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> in review, PR #91</td></tr>
-<tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan">planned</span></td></tr>
+<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> merged in PR #91</td></tr>
+<tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan built">built</span> pull request to come</td></tr>
 <tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan">planned</span></td></tr>
 <tr><td>5</td><td>Google over HTTP with sign-in, and Adopt for existing entries</td><td><span class="plan">planned</span></td></tr>
 <tr><td>6</td><td>the config flow and Fix in the clients; the installer and <code>meru setup</code> hand connectors to <code>merud</code></td><td><span class="plan">planned</span></td></tr>
@@ -763,15 +785,16 @@ func TestManifestsPinned(t *testing.T) {
 <!-- ============================================================ -->
 <h2 id="sources">Sources</h2>
 
-<p>Repository files, as of branch <code>connectors-step2</code> (30 September 2026):</p>
+<p>Repository files, as of branch <code>connectors-step3</code> (30 September 2026):</p>
 
 <ul>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
-  <li><a href="https://github.com/aarora79/meru/tree/connectors-step2/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>); <code>runtimes.go</code>, <code>download.go</code>, <code>install.go</code>, <code>launch.go</code> and <code>run.go</code> for the installs</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders; <code>connectors_test.go</code>: the one exec site</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step2/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
-  <li>Today's wiring: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>cmd/merud/connections.go</code> (web search always "connected"), <code>internal/installer/websearch.go</code> and <code>google.go</code>, <code>cmd/merud/main.go</code> and <code>runtime.go</code> (the Ollama check before the socket)</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
+  <li><a href="https://github.com/aarora79/meru/tree/connectors-step3/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>); <code>runtimes.go</code>, <code>download.go</code>, <code>install.go</code>, <code>launch.go</code> and <code>run.go</code> for the installs; <code>supervisor.go</code>, <code>status.go</code> and <code>health.go</code> for the supervisor</li>
+  <li><code>internal/mcp/pool.go</code>: the <code>Spawner</code> hook the pool calls for a connector; <code>cmd/merud/connectors.go</code>: one supervisor per stdio connector, joined to the pool; <code>internal/rpc/connectors.go</code>: the <code>connectors</code> op</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders; <code>connectors_test.go</code>: the one exec site</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
+  <li>Today's wiring for hand-added servers: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>cmd/merud/connections.go</code> (web search always "connected"), <code>internal/installer/websearch.go</code> and <code>google.go</code>, <code>cmd/merud/main.go</code> and <code>runtime.go</code> (the Ollama check before the socket)</li>
 </ul>
 
 <p>The plan and its review:</p>
@@ -779,6 +802,7 @@ func TestManifestsPinned(t *testing.T) {
 <ul>
   <li><a href="https://github.com/aarora79/meru/issues/87">Issue #87</a>, the connector supervisor plan and its seven steps</li>
   <li><a href="https://github.com/aarora79/meru/pull/90">PR #90</a>, step 1</li>
+  <li><a href="https://github.com/aarora79/meru/pull/91">PR #91</a>, step 2</li>
 </ul>
 
 <p>Upstream pages for the pins, checked 30 September 2026:</p>

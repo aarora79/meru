@@ -40,6 +40,8 @@ func historyServer(t *testing.T, updated string) string {
 		case rpc.OpMCPStatus:
 			return emit(rpc.Event{Type: rpc.EventMCPStatus, MCP: []rpc.MCPStatus{
 				{Name: "google", State: rpc.MCPConnected}, {Name: "obsidian", State: rpc.MCPNotConnected},
+				{Name: "notes", State: rpc.MCPNotConnected, Connector: rpc.ConnectorNeedsConfig},
+				{Name: "files", State: rpc.MCPConnected, Connector: rpc.ConnectorOK},
 			}})
 		}
 		return errors.New(`unknown op "` + string(req.Op) + `"`)
@@ -122,8 +124,8 @@ func TestStatus(t *testing.T) {
 	if !s.Up || s.Documents != 1284 || !s.Scanning || s.Model != "main-model" {
 		t.Errorf("Status = %+v, want up with 1284 files, scanning, and the model", s)
 	}
-	if !reflect.DeepEqual(s.Connections, []string{"google"}) {
-		t.Errorf("Connections = %v, want only the connected server", s.Connections)
+	if !reflect.DeepEqual(s.Connections, []string{"google", "notes (needs config)", "files"}) {
+		t.Errorf("Connections = %v, want the connected server and each connector, with its state unless ok", s.Connections)
 	}
 
 	down, _ := newBridge(filepath.Join(t.TempDir(), "none.sock"))

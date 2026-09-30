@@ -196,7 +196,7 @@ call.
   - [100: the big picture](docs/architecture/100.md)
   - [200: how it works](docs/architecture/200.md)
   - [300: the full design](ARCHITECTURE.md), the design contract
-  - [Connectors](docs/architecture/connectors.md): how Meru will install, start and check its own servers
+  - [Connectors](docs/architecture/connectors.md): how Meru installs, starts and checks its own servers, starting with Obsidian
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
 - [docs/faq/](docs/faq/index.md) — short answers to "how do I…" questions, one page each

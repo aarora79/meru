@@ -22,7 +22,7 @@ import (
 
 // mcpUsage lists the `meru mcp` command shapes.
 const mcpUsage = `usage:
-  meru mcp [status] [--json]                       the state of each server in config.toml
+  meru mcp [status] [--json]                       the state of each server and connector
   meru mcp list                                    the catalog and your servers
   meru mcp add <catalog-name>                      add a server from the catalog
   meru mcp add stdio <name> -- <command> [args...] add a server merud starts
@@ -30,8 +30,8 @@ const mcpUsage = `usage:
   meru mcp remove [--yes] <name>                   take a server out of config.toml`
 
 // mcpCmd runs `meru mcp ...`. args are the words after "mcp". With no
-// words, or "status", it prints each server's state; --json prints the same
-// rows as JSON. The older forms `add <name> -- <command>` and `add <name>
+// words, or "status", it prints each server's state and each connector's;
+// --json prints the same as JSON. The older forms `add <name> -- <command>` and `add <name>
 // --url <url>` still work; they mean `add stdio` and `add http`.
 // `list-catalog`, and `add` with nothing after it, print only the catalog.
 func mcpCmd(ctx context.Context, socket string, args []string, c *console) error {
@@ -62,8 +62,9 @@ func mcpCmd(ctx context.Context, socket string, args []string, c *console) error
 }
 
 // mcpStatus runs `meru mcp` and `meru mcp status`: it asks merud for each
-// server's state and prints the table, or with asJSON the rows as a JSON
-// array. merud answers from what it holds, without asking any server, so
+// server's state and prints the table, then the connectors. With asJSON it
+// prints both as one JSON object: {"servers": [...], "connectors": [...]}.
+// merud answers from what it holds, without asking any server, so
 // this is quick while a server is down. It fails when merud can't be
 // reached or answers with an error.
 func mcpStatus(ctx context.Context, socket string, asJSON bool, out io.Writer) error {
@@ -79,14 +80,42 @@ func mcpStatus(ctx context.Context, socket string, asJSON bool, out io.Writer) e
 			return errors.New(ev.Error)
 		}
 	}
+	// Then every connector merud knows, the ones that are off or set up
+	// by hand included. A merud from before the connectors op answers
+	// with an error, and the servers are all there is to say.
+	conns := connectorRows(ctx, socket)
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		return enc.Encode(rows)
+		// The struct tags name the keys; both lists come out as [] rather
+		// than null when empty.
+		return enc.Encode(struct {
+			Servers    []rpc.MCPStatus       `json:"servers"`
+			Connectors []rpc.ConnectorStatus `json:"connectors"`
+		}{rows, conns})
 	}
 	// tui.MCPTable lays out the rows the way the chat's /mcp box does.
 	fmt.Fprintln(out, strings.Join(tui.MCPTable(rows), "\n"))
+	if lines := tui.ConnectorTable(conns); len(lines) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, strings.Join(lines, "\n"))
+	}
 	return nil
+}
+
+// connectorRows asks merud for its connectors (rpc.OpConnectors), and
+// returns an empty list when merud can't say.
+func connectorRows(ctx context.Context, socket string) []rpc.ConnectorStatus {
+	rows := []rpc.ConnectorStatus{}
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpConnectors}, nil) {
+		if err != nil || ev.Type == rpc.EventError {
+			return []rpc.ConnectorStatus{}
+		}
+		if ev.Type == rpc.EventConnectors {
+			rows = append(rows, ev.Connectors...)
+		}
+	}
+	return rows
 }
 
 // isJSONFlag reports whether word is --json, with one dash or two.

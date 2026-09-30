@@ -21,7 +21,9 @@ import (
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/connectors"
 	"github.com/aarora79/meru/internal/dispatch"
+	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -65,7 +67,15 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 			c.Transport, c.URL = "http", srv.URL
 		}
 		fillPolicies(&c, live[dispatch.KindMCP+":"+srv.Name], srv.Name+".", srv.Allow, srv.Confirm, srv.AlwaysConfirm)
+		// A server added by hand in a connector's place says so, as the
+		// connectors op does.
+		if st, ok := s.conns.byID(srv.Name); ok && st.State == connectors.StateByHand {
+			c.Connector, c.Sentence = rpc.ConnectorByHand, st.Sentence
+		}
 		conns = append(conns, c)
+	}
+	for _, sc := range s.conns.serverConfigs() {
+		conns = append(conns, connectorConnection(sc, live[dispatch.KindMCP+":"+sc.Name], s.conns))
 	}
 	for _, ag := range cfg.A2A.Agents {
 		c := rpc.Connection{Name: ag.Name, Kind: dispatch.KindA2A, Transport: "http", URL: ag.URL, Remote: ag.Remote}
@@ -85,6 +95,27 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 		conns = append(conns, c)
 	}
 	return rpc.Event{Type: rpc.EventConnections, Connections: conns, Catalog: catalogEntries(cfg, sec)}, nil
+}
+
+// connectorNote tells the user why a connector's tool switches don't move
+// yet: its lists come from its manifest (issue #87 brings the settings).
+const connectorNote = "Meru runs this connector and takes its tool lists from its manifest. " +
+	"Changing them here comes in a later release."
+
+// connectorConnection describes a connector the MCP pool runs, sc, as a
+// Settings card: its tools and their policies from the manifest, with
+// info, what the pool reports, and the connector's state and sentence.
+// The card is Fixed, since config has no lists for it to change.
+func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connectorSet) rpc.Connection {
+	c := rpc.Connection{Name: sc.Name, Kind: dispatch.KindMCP, Transport: "stdio", Fixed: true, Note: connectorNote}
+	fillPolicies(&c, info, sc.Name+".", sc.Allow, sc.Confirm, sc.AlwaysConfirm)
+	if st, ok := conns.byID(sc.Name); ok {
+		c.Connector, c.Sentence, c.Fix = st.State, st.Sentence, st.Fix
+		if !info.Connected {
+			c.Err = st.Sentence
+		}
+	}
+	return c
 }
 
 // builtinConnection lists merud's own tools, every one of the eleven, with

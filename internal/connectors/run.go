@@ -2,8 +2,9 @@
 // program. Every install step (npm, uv, docker) builds a Cmd and hands it
 // to a Runner. The real Runner, ExecRunner, runs the program by its
 // absolute path, with no shell and only the environment the Cmd lists.
-// internal/policy fails the build if another file in this package imports
-// os/exec.
+// A running stdio connector starts here too: stdioTransport turns a Cmd
+// into the child process the supervisor talks MCP to. internal/policy
+// fails the build if another file in this package imports os/exec.
 
 package connectors
 
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Cmd is one program to run: its absolute path, its arguments, its whole
@@ -121,4 +124,33 @@ func runLines(cmd *exec.Cmd, line func(string)) (string, error) {
 	_ = w.Close()
 	wg.Wait()
 	return strings.Join(tail, "\n"), err
+}
+
+// childStopWait is how long stopping a stdio connector waits, after
+// closing its stdin, before it signals the process; the SDK then waits as
+// long again before it kills it. It matches the MCP pool's wait for a
+// server added by hand.
+const childStopWait = 2 * time.Second
+
+// stdioTransport builds the MCP transport for a stdio connector: the
+// program c, started when the supervisor connects, with its stdin and
+// stdout carrying MCP and its stderr going to stderr. procCtx bounds the
+// child's life: when it ends, the program is killed, the backstop behind
+// the SDK's own close-stdin-then-signal stop. It fails when c names its
+// program by a relative path.
+func stdioTransport(procCtx context.Context, c Cmd, stderr io.Writer) (mcp.Transport, error) {
+	if !filepath.IsAbs(c.Path) {
+		return nil, fmt.Errorf("%s: %w", c.Path, ErrNotAbsolute)
+	}
+	// As in ExecRunner: the program runs by its absolute path, with each
+	// argument as its own string and no shell.
+	cmd := exec.CommandContext(procCtx, c.Path, c.Args...) // #nosec G204 -- the path is absolute and comes from a pinned install
+	cmd.Env = append([]string{}, c.Env...)
+	cmd.Dir = c.Dir
+	cmd.Stderr = stderr
+	// When Stderr isn't a file, os/exec copies it in a goroutine and Wait
+	// waits for the copy. WaitDelay caps that wait, in case a grandchild
+	// keeps stderr open.
+	cmd.WaitDelay = childStopWait
+	return &mcp.CommandTransport{Command: cmd, TerminateDuration: childStopWait}, nil
 }

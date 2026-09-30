@@ -101,6 +101,14 @@ type Connection struct {
 	// why a source isn't connected.
 	State string `json:"state"`
 	Err   string `json:"err,omitempty"`
+	// Connector is set for a connector merud's supervisor runs, and for
+	// a server added by hand that takes a connector's place
+	// (ConnectorByHand): the connector's state, with Sentence saying it
+	// in one line. Fix names the [connectors.<id>] keys to set when the
+	// state is ConnectorNeedsConfig.
+	Connector string   `json:"connector,omitempty"`
+	Sentence  string   `json:"sentence,omitempty"`
+	Fix       []string `json:"fix,omitempty"`
 	// Tools lists each tool the source offers or config names, with its
 	// policy, allowed tools first. Offered counts the tools the source
 	// offers, or is -1 when merud doesn't know, as for a server that never
