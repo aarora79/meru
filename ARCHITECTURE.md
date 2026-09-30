@@ -243,7 +243,7 @@ own. The commands, in the order `/help` lists them:
 | `/copy [N\|answer]` | copy code block N, the newest answer's last block, or the whole answer | — |
 | `/usage [by model]` | the usage box | `usage` |
 | `/me [add\|prefer <text>]` | the profile memories; `add` saves one to `me` and `prefer` one to `preferences` | `memory_list`, `memory_add`, `memory_forget` |
-| `/mcp` | every tool source with each tool's Off, Ask or Allow, and the catalog servers not added yet | `connections`, `tool_policy`, `mcp_add`, `mcp_remove`, `secret_set` |
+| `/mcp` | every connector, where `f` fixes one, `o` turns it on or off and `a` adopts one set up by hand; every tool source with each tool's Off, Ask or Allow; and the catalog servers not added yet | `connectors`, `connector_set`, `connector_fix`, `connector_adopt`, `connections`, `tool_policy`, `mcp_add`, `mcp_remove`, `secret_set` |
 | `/folders [add <path>]` | the `[index]` folders and the usual ones not indexed yet | `folders`, `folder_add`, `folder_remove` |
 | `/skills` | every skill, on or off | `skills`, `skill_enable`, `skill_disable` |
 | `/model [name\|save]` | the model sets, a switch, and a save | `models`, `model_use`, `model_save` |
@@ -522,7 +522,10 @@ differs from `meru chat`'s.
 
 **Settings** has a back link and eight sections:
 
-- **Connections** has a card per tool source: the built-in web tools, merud's
+- **Connections** opens with a card per connector, drawn from the fields its
+  manifest declares, with a pill, `merud`'s sentence, an on and off switch,
+  the form, Save and Fix (see [Setting up a connector](#setting-up-a-connector)).
+  Below them it has a card per tool source: the built-in web tools, merud's
   other built-in tools, each MCP server and A2A agent, and the local commands.
   Each card shows whether the source is connected, the last error when it isn't,
   "N of M tools on", and a switch per tool with three positions that map onto
@@ -3149,7 +3152,9 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 | last field | the URL of an HTTP server, or why the server isn't connected; a connector's sentence |
 
 Under the table, `meru mcp` lists every connector `merud` knows, the ones
-that are off or set up by hand included, from the `connectors` op.
+that are off or set up by hand included, from the `connectors` op. A
+connector that needs a field ends its line with the command that asks for
+it: "Run meru mcp fix obsidian to set vault_path."
 
 The data comes from the `mcp_status` op, which `merud` answers from config and the
 pool's own record of each server. It sends nothing to any server, so the view is
@@ -3204,7 +3209,7 @@ says little. A **connector** is one of those programs that Meru will install,
 configure, start, check and restart for you, at a version pinned in Meru's own
 release. Issue #87 holds the plan, which lands in seven steps.
 
-**What exists now (steps 1 to 5):** the manifests, the checks on them, the
+**What exists now (steps 1 to 5, and the first half of step 6):** the manifests, the checks on them, the
 `[connectors.<id>]` config table, a policy test that refuses unpinned
 versions, the code that downloads the pinned runtimes and installs each
 connector into `~/.meru/runtime`, the supervisor, which runs Obsidian over
@@ -3213,8 +3218,10 @@ watch on Ollama, and Adopt, which moves a hand-added `obsidian` or `google`
 entry over to its connector when you ask. A connector that Meru starts
 stays off until its table says `enabled = true`, and an `[[mcp.servers]]`
 entry with the same name wins over it, so a working setup behaves as
-before until you run `meru mcp adopt`. The settings forms and Fix are
-**planned** for step 6.
+before until you adopt it. The first half of step 6 added the settings
+forms and Fix in both clients and on the command line (see [Setting up a
+connector](#setting-up-a-connector)). The second half, in which the Mac
+installer and `meru setup` hand connectors to `merud`, is **planned**.
 
 ### The manifest
 
@@ -3507,14 +3514,89 @@ waits for one. The sentences:
 connector the pool runs, in their `connector` and `sentence` fields, and
 `connections` marks a hand-added server that takes a connector's place as
 `by_hand`. Settings shows each connector's card with a pill and its sentence,
-the rail names a connector that isn't `ok` with its state, `/mcp` and
-`meru mcp status` print the state and sentence, and `about_meru` adds the
-sentence. A sign-in link shows as a "Sign in to Google" button on the
-Settings card, and after "Sign in:" in `/mcp` and `meru mcp status`. Until
-the settings forms arrive (step 6), a `needs_config` connector says which
-key to set: "Set vault_path under [connectors.obsidian] in config.toml,
-then restart merud." A connector's tool lists come from its manifest, or
-from its table, so its card's switches don't move yet.
+the rail gives each connector that isn't off a dot, green when it is `ok`
+and amber otherwise, which opens its card, `/mcp` and `meru mcp status`
+print the state and sentence, and `about_meru` adds the sentence. A sign-in
+link shows as a "Sign in to Google" button on the Settings card, and after
+"Sign in:" in `/mcp` and `meru mcp status`. A `needs_config` connector in
+`meru mcp status` ends with the command that asks for its fields: "Run meru
+mcp fix obsidian to set vault_path." A connector's tool lists come from its
+manifest, or from its table, so the switches on its tool card don't move
+yet.
+
+### Setting up a connector
+
+Built in the first half of step 6 (`cmd/merud/connectors.go`,
+`internal/connectors/change.go`). Two socket ops change a connector, both
+user commands like the memory ops, so neither goes through `dispatch`:
+
+- **`connector_set`** takes the connector's ID and a change: `enabled`, new
+  field `values`, and new `secrets`, each by field ID. `merud` checks the
+  change against the manifest with the rules the supervisor applies to
+  config (`connectors.CheckChange`). When the connector would be on
+  afterwards, the whole table must pass: "Obsidian needs your vault folder."
+  refuses the change. When it would be off, each value given must pass its
+  own field's rule, and a required field may stay empty. `merud` also
+  refuses a secret sent as a plain value, a value for an oauth field, a
+  value on two lines, Ollama, which Meru doesn't run, and a connector set
+  up by hand, which Adopt moves over first. A refused change writes
+  nothing. Otherwise, holding the lock every `config.toml` write takes,
+  `merud` saves each secret in `secrets.toml` as
+  `connector_<id>_<field>`, with mode `0600`, writes `[connectors.<id>]`
+  through the catalog's checked writer (`catalog.SetConnector`), which
+  keeps every comment, and reloads.
+- **`connector_fix`** is the Fix button. A connector that needs fields
+  answers with its status, whose `fix` names them; the client asks for
+  those and sends them with `connector_set`. A connector that is off or set
+  up by hand answers with its status, whose sentence says what to do. Any
+  other gets its check again: a stdio or http connector installs and checks
+  again even when its saved tool list would let it skip that, SearXNG looks
+  at its URL at once, and for Ollama `merud` checks now and waits up to 5
+  seconds for the answer.
+
+After either change, `merud` follows the connector: it sends a `connector`
+event with the status at once and another each time the state, sentence or
+sign-in link changes, every 250 ms at most, until the connector is no
+longer starting or five minutes pass. The last event says where it
+settled. A secret never comes back: a field's status says only whether one
+is saved.
+
+Every client draws the same form from the field list, so a new connector
+in a later release needs no new screen:
+
+| Field type | Settings | `/mcp` and `meru mcp fix` |
+| --- | --- | --- |
+| `text`, `email` | a text field with the value config holds | one line, Enter keeps the value |
+| `secret` | a password field, empty, with "saved" when `secrets.toml` holds one | read without showing it; Enter keeps the saved one |
+| `folder` | a text field and Choose…, which opens the system's folder dialog | a path |
+| `choice` | a list of the choices | one line, with the choices named |
+| `oauth` | "Sign in to Google", which opens the server's link, once `merud` has one | skipped; the link prints after "Sign in:" |
+
+Which fields a client asks for comes from one rule, `rpc.AskFields`: the
+ones `fix` names; for a connector that is off, every field but an oauth
+one; otherwise none, since Fix only checks again.
+
+- **Settings, Connections** opens with a frame of connector cards. Each
+  card has its pill and sentence, an on and off switch (none for Ollama),
+  the form, Save, which reads "Save and turn on" while the connector is
+  off, and Fix. While a save or a fix runs, the card shows each sentence
+  `merud` reports. Fix marks the fields it names on the card and moves the
+  cursor to the first. A connector set up by hand has an Adopt button
+  instead of a form: it asks `connector_adopt` for the plan, shows it in
+  the page's own dialog, and applies it only after Adopt there. The tool
+  card below a connector that isn't ready links to its connector card.
+- **`/mcp` in `meru chat`** lists the connectors first. On a connector's
+  row, `f` runs Fix and then asks the fields it names one at a time, a
+  secret with `•` for each character; `o` turns it on or off; and `a`, on a
+  connector set up by hand, shows `merud`'s plan, which a second `a`
+  applies. The note line shows each step `merud` reports.
+- **`meru mcp set <id> [enabled=true|false] [field=value…] [secret-field…]`**
+  sends one change. A secret field named alone is read without echo; a
+  secret given as `field=value` is refused, since the shell's history would
+  keep it. **`meru mcp fix <id>`** runs Fix, asks what it names, and for a
+  connector that is off asks first whether to turn it on. Both print each
+  step, then the state and sentence, and the sign-in link while Google
+  waits for one.
 
 ### Google
 
@@ -3678,7 +3760,9 @@ user commands like the memory ops, so neither goes through `dispatch`:
 
 `meru mcp adopt [--yes] <id>` asks for the plan, prints every change,
 asks, and only then applies. `meru mcp unadopt [--yes] <id>` does the same
-for the undo. Adopt, for each connector:
+for the undo. The Adopt button on a Settings card and `a` in `/mcp` follow
+the same two steps (see [Setting up a connector](#setting-up-a-connector)).
+Adopt, for each connector:
 
 | | Obsidian | Google |
 | --- | --- | --- |

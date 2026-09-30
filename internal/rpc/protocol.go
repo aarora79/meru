@@ -97,6 +97,23 @@ const (
 	// [connectors.<id>], with the same two steps. The reply is one
 	// "adopt" event and "done".
 	OpConnectorUnadopt Op = "connector_unadopt"
+	// OpConnectorSet changes the connector named Request.ID, as
+	// Request.Connector says: on or off, field values, and secrets.
+	// merud checks the change against the connector's manifest, writes
+	// [connectors.<id>] and secrets.toml, reloads, and then follows the
+	// connector as it installs, starts and checks. The reply is one
+	// "connector" event at once and one more each time the state or the
+	// sentence changes, until the connector settles or a few minutes
+	// pass; the last one says where it stands. Then "done". A secret
+	// never comes back.
+	OpConnectorSet Op = "connector_set"
+	// OpConnectorFix runs the connector named Request.ID's config step
+	// again. When the connector needs fields, the reply is one
+	// "connector" event whose Fix names them, for the client to ask the
+	// user and send back with OpConnectorSet. When it needs none, merud
+	// installs and checks the connector again, and the reply follows it
+	// as OpConnectorSet's does. Then "done".
+	OpConnectorFix Op = "connector_fix"
 	// OpSessions lists the past conversations, the most recent first, at
 	// most Request.Limit of them. merud reads them from the session
 	// transcripts. The reply is one "sessions" event and "done".
@@ -281,6 +298,9 @@ type Request struct {
 	// Adopt says how OpConnectorAdopt and OpConnectorUnadopt run. A
 	// pointer, as Policy is. nil means: work out the changes, make none.
 	Adopt *AdoptRequest `json:"adopt,omitempty"`
+	// Connector is the change OpConnectorSet makes. A pointer, as Policy
+	// is.
+	Connector *ConnectorChange `json:"connector,omitempty"`
 }
 
 // TagChange says which tags OpSessionTag adds to a chat and which it
@@ -386,6 +406,10 @@ const (
 	// EventAdopt answers OpConnectorAdopt and OpConnectorUnadopt, in
 	// Adopted.
 	EventAdopt EventType = "adopt"
+	// EventConnector carries one connector's status, in Connector, on the
+	// replies to OpConnectorSet and OpConnectorFix: one as the reply
+	// starts, and one per change of state or sentence after it.
+	EventConnector EventType = "connector"
 	// EventFolders answers the folder ops, in Folders and Suggested.
 	EventFolders EventType = "folders"
 	// EventSaved answers OpSaveFile and OpAttachFile; Text holds the
@@ -470,6 +494,8 @@ type Event struct {
 	Connectors []ConnectorStatus `json:"connectors,omitempty"`
 	// Adopted is set on an "adopt" event.
 	Adopted *AdoptResult `json:"adopted,omitempty"`
+	// Connector is set on a "connector" event.
+	Connector *ConnectorStatus `json:"connector,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 

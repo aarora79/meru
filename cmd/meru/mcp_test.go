@@ -638,7 +638,7 @@ func TestMCPStatusConnectors(t *testing.T) {
 	if err := mcpCmd(t.Context(), sock, nil, c); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"CONNECTOR  STATE", "obsidian   needs config", "Set vault_path under [connectors.obsidian]"} {
+	for _, want := range []string{"CONNECTOR  STATE", "obsidian   needs config", "Run meru mcp fix obsidian to set vault_path."} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("text lacks %q:\n%s", want, out)
 		}

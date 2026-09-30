@@ -1352,8 +1352,16 @@ Meru searches the web through SearXNG, a search engine you run yourself. It hold
 no index: it passes your query to Google, Bing, DuckDuckGo and others, drops the
 parts that identify you, and merges the results. No account, no API key.
 
-SearXNG runs in Docker. `merud` can run it for you: add this to
-`~/.meru/config.toml` and restart `merud`.
+SearXNG runs in Docker. `merud` can run it for you: turn Web search on with
+its switch in the desktop app's Settings, under Connections, press `o` on its
+row in `/mcp` in `meru chat`, or run:
+
+```sh
+meru mcp set searxng enabled=true
+```
+
+Each writes this table to `~/.meru/config.toml`, which you can also add by hand
+and then restart `merud`:
 
 ```toml
 [connectors.searxng]
@@ -1406,8 +1414,8 @@ on any question, not only one that asks for the web: it has `web_search` and
 `web_fetch` on every route, and its instructions tell it to search when it
 isn't sure of a fact, such as what a song means. The desktop app's My files,
 Mail and calendar and Just talk scopes leave the web tools out. To turn web search off,
-set `enabled = false` under `[connectors.searxng]`, or `searxng_url = ""` under
-`[web]`.
+use the same switch, run `meru mcp set searxng enabled=false`, or set
+`searxng_url = ""` under `[web]`.
 
 To run your own SearXNG instead, start it on `127.0.0.1:8888` with `json`
 listed under `search: formats:` in its `settings.yml`, and leave the connector
@@ -1793,7 +1801,18 @@ Meru can also install and run the Obsidian server for you, as a **connector**.
 `merud` downloads a pinned Node and `obsidian-mcp` into `~/.meru/runtime`,
 starts the server when a question needs it, stops it after 10 minutes unused,
 and starts it again if it crashes. It reads your vault folder on disk, so
-Obsidian itself needn't run. To turn it on, add this to `config.toml`:
+Obsidian itself needn't run. To turn it on, open Settings in the desktop
+app, go to Connections, pick your vault folder on Obsidian's card with
+Choose…, and press Save and turn on. The card shows each step while `merud`
+installs and checks the server. In a terminal, `meru mcp fix obsidian` asks for
+the folder, or give it in one line:
+
+```sh
+meru mcp set obsidian enabled=true vault_path=~/Notes/vault
+```
+
+`merud` checks the folder exists before it writes anything, then writes the
+table to `config.toml`:
 
 ```toml
 [connectors.obsidian]
@@ -1801,8 +1820,7 @@ enabled    = true
 vault_path = "~/Notes/vault"
 ```
 
-Then restart `merud`. Under the server table, `meru mcp` lists every connector
-and its state:
+Under the server table, `meru mcp` lists every connector and its state:
 
 ```text
 CONNECTOR  STATE
@@ -1813,9 +1831,9 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 | --- | --- |
 | `ok` | ready: the model sees its tools, and the server starts on the first call |
 | `off` | config doesn't turn it on |
-| `needs config` | a setting is missing or wrong; the line says which key to set |
+| `needs config` | a setting is missing or wrong; the line names the `meru mcp fix` command that asks for it |
 | `starting` | installing, starting, or waiting a few seconds to start again after a crash |
-| `failed` | it couldn't install, failed its check, or crashed five times in ten minutes; the line says why, and a restart of `merud` tries again |
+| `failed` | it couldn't install, failed its check, or crashed five times in ten minutes; the line says why, and Fix tries again |
 | `set up by hand` | `[[mcp.servers]]` has an entry named `obsidian`, which runs instead |
 
 An `[[mcp.servers]]` entry of the same name always wins, so a setup that works
@@ -1823,9 +1841,40 @@ today keeps working: the connector only reports `set up by hand`, and adds how
 to move over. Settings in the desktop app shows the same state on the
 connector's card.
 
+#### Fix a connector
+
+Each connector's card in Settings has a Fix button, and so does `f` on its row
+in `/mcp` and `meru mcp fix <id>` in a terminal. Fix asks `merud` what the
+connector lacks. When a field is missing or wrong, such as a vault folder
+that's gone, Fix marks that field on the card, or asks for it in the terminal;
+a secret never shows as you type it. When nothing is missing, Fix runs the
+connector's check again: it reinstalls a program whose folder under
+`~/.meru/runtime` went missing, starts Web search again once Docker runs, and
+asks Google for a new sign-in link.
+
+```text
+$ meru mcp fix obsidian
+
+Vault folder
+  The folder that holds your Obsidian notes.
+  value [~/Notes/vault]: ~/Documents/Vault
+
+  Meru is installing Obsidian 2.0.1 and checking it.
+Obsidian: ok. Obsidian is ready. It starts when a question needs it.
+```
+
+`meru mcp set <id> key=value…` changes fields directly, and `enabled=true` or
+`enabled=false` turns a connector on or off. Name a secret field alone, such as
+`client_secret`, and `meru` asks for it without showing it; `merud` saves it
+in `secrets.toml`. A secret given as `client_secret=…` is refused, since your
+shell's history would keep it.
+
 #### Move a server you set up by hand to its connector
 
-`meru mcp adopt` moves an `obsidian` or `google` entry over to its connector:
+`meru mcp adopt` moves an `obsidian` or `google` entry over to its connector.
+The Adopt button on the connector's card in Settings, and `a` on its row in
+`/mcp`, do the same: each shows the plan first and changes nothing until you
+confirm.
 
 ```sh
 meru mcp adopt obsidian
@@ -1859,7 +1908,15 @@ vault_path = "/Users/dana/Notes"
 
 Meru runs `workspace-mcp` 1.30.0 for you on `127.0.0.1:8000` once
 `[connectors.google]` turns it on, with your address and OAuth client ID
-there and the client secret in `secrets.toml`:
+there and the client secret in `secrets.toml`. Google's card in Settings
+asks for all three, or in a terminal:
+
+```sh
+meru mcp set google enabled=true email=<your Gmail address> client_id=<your client ID> client_secret
+```
+
+`meru` asks for the client secret without showing it. Either way `merud`
+writes:
 
 ```toml
 [connectors.google]

@@ -398,6 +398,10 @@ func handler(svc services) rpc.Handler {
 			return tools.handleConnectors(svc.ollama, emit)
 		case rpc.OpConnectorAdopt, rpc.OpConnectorUnadopt:
 			return tools.handleAdopt(ctx, req, req.Op == rpc.OpConnectorUnadopt, emit)
+		case rpc.OpConnectorSet:
+			return tools.handleConnectorSet(ctx, req, svc.ollama, emit)
+		case rpc.OpConnectorFix:
+			return tools.handleConnectorFix(ctx, req, svc.ollama, emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, req, emit)
 		case rpc.OpMemoryList:

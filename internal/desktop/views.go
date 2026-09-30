@@ -46,6 +46,9 @@ const (
 	// in Attachments. Notice names any file a pick or drop couldn't
 	// attach, and why.
 	KindAttachments = "attachments"
+	// KindConnector carries one step of a connector's save or fix, in
+	// Connector, while the Settings card waits for it (connectors.go).
+	KindConnector = "connector"
 )
 
 // Update is one message from the Bridge to the page. Only the fields its
@@ -77,6 +80,8 @@ type Update struct {
 	// previews, for its bubble.
 	Attachments []Attachment `json:"attachments,omitempty"`
 	Images      []Attachment `json:"images,omitempty"`
+	// Connector is set on a KindConnector Update.
+	Connector *rpc.ConnectorStatus `json:"connector,omitempty"`
 }
 
 // Step is one tool call as the work strip shows it: a friendly Label, and

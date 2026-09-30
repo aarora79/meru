@@ -110,6 +110,22 @@ you share.
 
 ## Step 6: turn on the Google connector
 
+In the desktop app, open Settings, then Connections. On Google's card, type
+your address, the client ID and the client secret, and press **Save and turn
+on**. The secret field stays empty after you save and shows "saved": `merud`
+keeps the secret in `~/.meru/secrets.toml` and never sends it back.
+
+In a terminal, run this with your own address and client ID in place of the
+angle brackets. `meru` then asks for the client secret without showing it:
+
+```sh
+meru mcp set google enabled=true email=<your Gmail address> client_id=<your client ID> client_secret
+```
+
+`merud` checks each value first: an address needs an `@`, and a client ID ends
+in `.apps.googleusercontent.com`. Either way it writes the same two files you
+could write by hand instead:
+
 1. Add this table to `~/.meru/config.toml`, with your own address and client
    ID in place of the angle brackets:
 
@@ -134,6 +150,7 @@ you share.
    ```
 
 3. Restart `merud` so it reads both files (see [running.md](running.md)).
+   Settings and `meru mcp set` need no restart.
 
 `merud` now downloads its own `uv` and Python into `~/.meru/runtime`, installs
 `workspace-mcp` 1.30.0 there, starts it on port 8000 and checks it. You install
@@ -144,7 +161,7 @@ time takes a minute or two. Watch it with:
 meru mcp status
 ```
 
-The `google` line moves from `starting` ("Meru is installing Google 1.30.0 and
+The Settings card shows the same steps. The `google` line moves from `starting` ("Meru is installing Google 1.30.0 and
 checking it.") to `needs config`, "Google needs you to sign in.", with a link.
 
 If you ever ran the server yourself and it still runs, the line says "Google
@@ -154,8 +171,8 @@ Meru looks again every 30 seconds. Meru never stops a program it didn't start.
 ## Step 7: sign in to Google, once
 
 Open the link from `meru mcp status`, the one after `Sign in:`. In the desktop
-app, open Settings, then Connections, and click **Sign in to Google** on the
-google card. `meru chat` shows the same link in `/mcp`. Then:
+app, open Settings, then Connections, and click **Sign in to Google** on
+Google's card. `meru chat` shows the same link in `/mcp`. Then:
 
 1. Choose your Google account.
 2. Google says **Google hasn't verified this app**. You'll always see this: the
@@ -206,6 +223,10 @@ it instead:
    ```sh
    meru mcp adopt google --email <your Gmail address> --client-id <your client ID>
    ```
+
+   The **Adopt** button on Google's card in Settings does the same when
+   `start.sh` holds the values: it shows the plan in a dialog and changes
+   nothing until you press Adopt there.
 
 Adopt saves the secret in `~/.meru/secrets.toml`, turns your `google` entry into
 comments between two marker lines, writes `[connectors.google]` after it with
@@ -425,7 +446,7 @@ On Linux, a `systemd --user` service that runs `start.sh` does the same job.
 | `invalid_grant` or a new sign-in link after a week | the 7-day limit | Step 7 again (Step E if you run the server), or publish the app |
 | `meru mcp status`: "Google needs you to sign in." | no sign-in saved yet, or it expired | Step 7: open the link after `Sign in:` |
 | `meru mcp status`: "Google can't start: another program listens on 127.0.0.1:8000." | a server you started yourself, or another program, holds port 8000 | stop it; Meru looks again every 30 seconds. If it is your own Google server, see [Move a server you run over to Meru](#move-a-server-you-run-over-to-meru) |
-| `meru mcp status`: "Google needs your email address." or another missing value | `[connectors.google]` lacks a key, or `secrets.toml` lacks `connector_google_client_secret` | Step 6: add it, then restart `merud` |
+| `meru mcp status`: "Google needs your email address." or another missing value | `[connectors.google]` lacks a key, or `secrets.toml` lacks `connector_google_client_secret` | Fix on Google's card in Settings, or `meru mcp fix google`, asks for what is missing |
 | `meru mcp status`: "Google failed its check: …" | the server answers, but reading your calendar list fails, most often because an API is off | Step 2, then restart `merud` |
 | `meru mcp adopt google` says another program listens on 127.0.0.1:8000 | the server you started in a terminal still runs | stop it (Ctrl-C there), then run adopt again |
 | `address already in use` when you start the server yourself | something else holds port 8000 | stop the other program, or add `export WORKSPACE_MCP_PORT=8001` to `start.sh` and change the `url` in the `google` entry of `~/.meru/config.toml` to `http://127.0.0.1:8001/mcp`. The connector, and Adopt, need port 8000 |
@@ -434,8 +455,8 @@ On Linux, a `systemd --user` service that runs `start.sh` does the same job.
 | Meru finds a mail but can't read its attachment | the server saves attachments elsewhere | check `WORKSPACE_ATTACHMENT_DIR` in `start.sh`, restart the server; see [Read a mail's attachment](running.md#read-a-mails-attachment) |
 | `command not found: uvx` | uv isn't on your `PATH` | Step A; for launchd, add uv's folder to `PATH` in the plist |
 
-To start over from sign-in, stop Meru's Google connector (restart `merud` with
-`enabled = false` in `[connectors.google]`) or the server you run, delete
+To start over from sign-in, stop Meru's Google connector (its switch in
+Settings, or `meru mcp set google enabled=false`) or the server you run, delete
 `~/.google_workspace_mcp/credentials/`, start it again and sign in once more.
 
 ## What Meru may do with your account

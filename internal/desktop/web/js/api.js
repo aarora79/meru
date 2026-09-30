@@ -48,6 +48,11 @@ export const bridge = {
   addCustomServer: (server) => call("AddCustomServer", server),
   removeConnection: (name) => call("RemoveConnection", name),
   setSecret: (name, value) => call("SetSecret", name, value),
+  // The connector cards (connectors.go).
+  connectors: () => call("Connectors"),
+  setConnector: (id, change) => call("SetConnector", id, change),
+  fixConnector: (id) => call("FixConnector", id),
+  adoptConnector: (id, apply) => call("AdoptConnector", id, !!apply),
   folders: () => call("Folders"),
   addFolder: (path) => call("AddFolder", path),
   removeFolder: (path) => call("RemoveFolder", path),

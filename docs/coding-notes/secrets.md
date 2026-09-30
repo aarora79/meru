@@ -68,6 +68,12 @@ is true, hands it back as one.
 For one that does, it returns the key, or an error that names the missing entry
 and never shows a value.
 
+`With(name, value)` returns a copy that also holds one more entry, and leaves
+the original alone. `merud` uses it to check a secret the user typed, as part
+of a `connector_set`, before it saves anything: `connectors.CheckChange` sees
+the secrets as they would be, and a refused change leaves `secrets.toml` as it
+was. `With` on a nil `*Secrets` starts from an empty one.
+
 `Redact` replaces each stored value with `[secret:<name>]`:
 
 ```go

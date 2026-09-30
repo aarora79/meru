@@ -142,7 +142,7 @@ func TestConnectorLifecycle(t *testing.T) {
 		t.Fatalf("obsidian = %+v, want needs_config for vault_path", st)
 	}
 	status := runMeru(t, h, "mcp", "status")
-	for _, want := range []string{"needs config", "Set vault_path under [connectors.obsidian]"} {
+	for _, want := range []string{"needs config", "Run meru mcp fix obsidian to set vault_path."} {
 		if !strings.Contains(status.stdout, want) {
 			t.Errorf("meru mcp status lacks %q:\n%s", want, status.stdout)
 		}
@@ -298,5 +298,68 @@ allow   = ["search"]
 	status := runMeru(t, h, "mcp", "status")
 	if !strings.Contains(status.stdout, "connected") || !strings.Contains(status.stdout, "set up by hand") {
 		t.Errorf("meru mcp status:\n%s", status.stdout)
+	}
+}
+
+// TestConnectorSetAndFix sets the Obsidian connector up through the
+// socket, as the clients' forms do: meru mcp set takes it from needs
+// config to ok, writing the vault to config.toml; then its vault folder
+// goes, and meru mcp fix asks for a new one and brings it back.
+func TestConnectorSetAndFix(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	fakeObsidianInstall(t, h.dir)
+	h.writeConfig(t, fakeConfig(f.url, "[router]\ntemperature = 1.0\n\n[connectors.obsidian]\nenabled = true\n"))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	if st := obsidianStatus(t, h.socket); st.State != rpc.ConnectorNeedsConfig {
+		t.Fatalf("obsidian = %+v, want needs_config", st)
+	}
+
+	// A folder that isn't there is refused, and config stays as it was.
+	before, _ := os.ReadFile(h.config)
+	bad := runMeru(t, h, "mcp", "set", "obsidian", "vault_path="+filepath.Join(t.TempDir(), "gone"))
+	if bad.code == 0 || !strings.Contains(bad.stderr, "can't find the vault folder") {
+		t.Errorf("a missing folder: exit %d\n%s%s", bad.code, bad.stdout, bad.stderr)
+	}
+	if after, _ := os.ReadFile(h.config); string(after) != string(before) {
+		t.Error("a refused set wrote config.toml")
+	}
+
+	vault := filepath.Join(t.TempDir(), "notes")
+	if err := os.Mkdir(vault, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	res := runMeru(t, h, "mcp", "set", "obsidian", "vault_path="+vault)
+	if res.code != 0 || !strings.Contains(res.stdout, "Obsidian: ok. Obsidian is ready.") {
+		t.Fatalf("meru mcp set exited %d:\n%s%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, h.log())
+	}
+	if cfg, _ := os.ReadFile(h.config); !strings.Contains(string(cfg), fmt.Sprintf("vault_path = %q", vault)) {
+		t.Errorf("config.toml lacks the vault:\n%s", cfg)
+	}
+
+	// The vault goes. A reload finds it missing; Fix asks for another.
+	if err := os.Remove(vault); err != nil {
+		t.Fatal(err)
+	}
+	op(t, h.socket, rpc.Request{Op: rpc.OpMCPReload})
+	if st := obsidianStatus(t, h.socket); st.State != rpc.ConnectorNeedsConfig || !strings.Contains(st.Sentence, "can't find the vault folder") {
+		t.Fatalf("obsidian = %s %q, want needs_config for the missing vault", st.State, st.Sentence)
+	}
+	again := filepath.Join(t.TempDir(), "notes")
+	if err := os.Mkdir(again, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	res = runMeruInput(t, h, again+"\n", "mcp", "fix", "obsidian")
+	if res.code != 0 || !strings.Contains(res.stdout, "Vault folder") || !strings.Contains(res.stdout, "Obsidian: ok.") {
+		t.Fatalf("meru mcp fix exited %d:\n%s%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, h.log())
+	}
+	waitSentence(t, h, "Obsidian is ready. It starts when a question needs it.")
+
+	// Fix on a connector with nothing to ask runs its check again.
+	res = runMeru(t, h, "mcp", "fix", "obsidian")
+	if res.code != 0 || !strings.Contains(res.stdout, "Obsidian: ok. Obsidian is ready.") {
+		t.Errorf("a second fix exited %d:\n%s%s", res.code, res.stdout, res.stderr)
 	}
 }

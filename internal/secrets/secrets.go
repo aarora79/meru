@@ -102,6 +102,20 @@ func (s *Secrets) Has(name string) bool {
 	return s.values[name] != ""
 }
 
+// With returns a copy of s that also holds name = value, and leaves s as
+// it is. merud uses it to check a secret the user typed before it saves
+// it (see Set). A nil s counts as empty.
+func (s *Secrets) With(name, value string) *Secrets {
+	out := &Secrets{values: map[string]string{}}
+	if s != nil {
+		for k, v := range s.values {
+			out.values[k] = v
+		}
+	}
+	out.values[name] = strings.TrimSpace(value)
+	return out
+}
+
 // Resolve turns a config value into the value to use. "secret:<name>"
 // becomes that entry of secrets.toml; any other string comes back as it is.
 // It fails when the named entry is missing or empty, and the error names it,

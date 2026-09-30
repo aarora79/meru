@@ -81,7 +81,7 @@ func MCPTable(rows []rpc.MCPStatus) []string {
 // link to sign in at:
 //
 //	CONNECTOR  STATE
-//	obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.
+//	obsidian   needs config    Obsidian needs your vault folder. Run meru mcp fix obsidian to set vault_path.
 //	google     needs config    Google needs you to sign in. Sign in: https://accounts.google.com/o/oauth2/auth?…
 //
 // With no rows it returns nothing.
@@ -136,51 +136,73 @@ type mcpBox struct {
 	keyFor *rpc.CatalogEntry
 	need   rpc.CatalogNeed
 	key    textinput.Model
+
+	// connectors are merud's connectors, from the connectors op, which
+	// the box lists first; nil until merud answers, or when it can't say
+	// (connectors.go).
+	connectors []rpc.ConnectorStatus
+	// walk is the connector form f opened, which asks one field at a
+	// time; nil while none is open.
+	walk *fieldWalk
+	// adoptFor names the connector a first a asked merud to plan the
+	// adopt of, and adoptPlan holds merud's plan, which a second a
+	// applies.
+	adoptFor  string
+	adoptPlan []string
 }
 
 // mcpRow is one line of the /mcp box. act is false for a line no key acts
 // on, such as a heading. conn and tool index the connection and its tool,
-// and entry the catalog server; -1 means none.
+// entry the catalog server and cx the connector; -1 means none.
 type mcpRow struct {
 	text  string
 	act   bool
 	conn  int
 	tool  int
 	entry int
+	cx    int
 }
 
-// mcpRows lays out the box's lines: for each source a heading, which a key
-// can act on only for an MCP server in config.toml, which d removes, then
-// a row per tool, then the catalog servers under "Add a connection". A
+// mcpRows lays out the box's lines: the connectors under "Connectors",
+// which f, o and a act on; for each source a heading, which a key can act
+// on only for an MCP server in config.toml, which d removes, then a row
+// per tool; then the catalog servers under "Add a connection". A
 // connector merud runs has no [[mcp.servers]] entry to remove.
 func (b *mcpBox) mcpRows() []mcpRow {
 	var rows []mcpRow
+	if len(b.connectors) > 0 {
+		rows = append(rows, mcpRow{text: connectorsHead, conn: -1, tool: -1, entry: -1, cx: -1})
+		for i, c := range b.connectors {
+			rows = append(rows, mcpRow{text: connectorLine(c), act: true, conn: -1, tool: -1, entry: -1, cx: i})
+		}
+		rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1, cx: -1})
+	}
 	for ci, c := range b.conns {
 		if ci > 0 {
-			rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1})
+			rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1, cx: -1})
 		}
 		removable := c.Kind == "mcp" && (c.Connector == "" || c.Connector == rpc.ConnectorByHand)
-		rows = append(rows, mcpRow{text: connHeading(c), act: removable, conn: ci, tool: -1, entry: -1})
+		rows = append(rows, mcpRow{text: connHeading(c), act: removable, conn: ci, tool: -1, entry: -1, cx: -1})
 		if c.Fixed && c.Note != "" {
-			rows = append(rows, mcpRow{text: "    " + c.Note, conn: -1, tool: -1, entry: -1})
+			rows = append(rows, mcpRow{text: "    " + c.Note, conn: -1, tool: -1, entry: -1, cx: -1})
 		}
 		for ti, t := range c.Tools {
 			text := fmt.Sprintf("  %-11s %s", policyWords(t.Policy), t.Name)
 			if t.Missing {
 				text += " · not offered"
 			}
-			rows = append(rows, mcpRow{text: text, act: !c.Fixed, conn: ci, tool: ti, entry: -1})
+			rows = append(rows, mcpRow{text: text, act: !c.Fixed, conn: ci, tool: ti, entry: -1, cx: -1})
 		}
 	}
 	if len(b.catalog) > 0 {
-		rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1}, mcpRow{text: "Add a connection", conn: -1, tool: -1, entry: -1})
+		rows = append(rows, mcpRow{conn: -1, tool: -1, entry: -1, cx: -1}, mcpRow{text: "Add a connection", conn: -1, tool: -1, entry: -1, cx: -1})
 	}
 	for ei, e := range b.catalog {
 		text := "  " + e.Name + " · " + e.Title
 		if _, ok := keyNeed(e); ok {
 			text += " · needs an API key"
 		}
-		rows = append(rows, mcpRow{text: text, act: true, conn: -1, tool: -1, entry: ei})
+		rows = append(rows, mcpRow{text: text, act: true, conn: -1, tool: -1, entry: ei, cx: -1})
 	}
 	return rows
 }
@@ -244,13 +266,10 @@ func connHeading(c rpc.Connection) string {
 	s := fmt.Sprintf("%s · %s · %d of %d tools on", name, what, on, total)
 	switch {
 	case c.Connector != "" && c.Connector != rpc.ConnectorByHand:
-		// A connector merud runs: its own state and sentence, and where
-		// to set a field it needs.
+		// A connector merud runs: its own state and sentence. Its row
+		// under Connectors is where f sets a field it needs.
 		s = fmt.Sprintf("%s · connector, %s · %s · %d of %d tools on · %s", name, c.Transport,
 			rpc.ConnectorWords(c.Connector), on, total, oneLine(c.Sentence))
-		if hint := rpc.FixHint(c.Name, c.Fix); hint != "" {
-			s += " " + hint
-		}
 		if c.Link != "" {
 			s += " Sign in: " + c.Link
 		}
@@ -324,6 +343,13 @@ func keyNeed(e rpc.CatalogEntry) (rpc.CatalogNeed, bool) {
 // and d removes the marked MCP server after a second d.
 func (m *Model) mcpKey(msg tea.KeyMsg) tea.Cmd {
 	b := m.mcpBox
+	if b.walk != nil {
+		return m.walkKey(msg)
+	}
+	// A first a leaves a plan on screen; any key but a second a on the
+	// same connector drops it.
+	adoptFor := b.adoptFor
+	b.adoptFor, b.adoptPlan = "", nil
 	if b.keyFor != nil {
 		if msg.Type != tea.KeyEnter {
 			var cmd tea.Cmd
@@ -345,6 +371,9 @@ func (m *Model) mcpKey(msg tea.KeyMsg) tea.Cmd {
 	r, ok := b.marked()
 	if !ok || b.busy != "" {
 		return nil
+	}
+	if r.cx >= 0 {
+		return m.connectorKey(msg, b.connectors[r.cx], adoptFor)
 	}
 	switch {
 	case (msg.Type == tea.KeyLeft || msg.Type == tea.KeyRight) && r.tool >= 0:
@@ -442,6 +471,10 @@ func (m *Model) applyConnections(msg replyMsg) tea.Cmd {
 	}
 	b.at = min(b.at, max(b.actCount()-1, 0))
 	switch msg.tag {
+	case tagConns:
+		// The sources are in; the connectors come next, in their own
+		// request, so the box opens as soon as the first answer does.
+		return requestCmd(m.ask, tagConnectors, rpc.Request{Op: rpc.OpConnectors}, rpc.EventConnectors, readTimeout)
 	case tagPolicy:
 		m.notice = "saved to config.toml"
 	case tagMCPAdd:
@@ -469,7 +502,7 @@ func (m *Model) mcpBoxView(width, height int) string {
 	n := 0
 	for _, r := range b.mcpRows() {
 		switch {
-		case !r.act && r.text != "" && r.tool < 0 && r.conn >= 0, !r.act && r.text == "Add a connection":
+		case !r.act && r.text != "" && r.tool < 0 && r.conn >= 0, !r.act && (r.text == "Add a connection" || r.text == connectorsHead):
 			// Two spaces line a heading up with the ones a marker can
 			// sit on.
 			body = append(body, "  "+m.style.brand.Render(r.text))
@@ -489,6 +522,25 @@ func (m *Model) mcpBoxView(width, height int) string {
 	}
 	note := mcpNote
 	switch {
+	case b.walk != nil:
+		var lines []string
+		lines, note = b.walk.view()
+		body = append(body, "")
+		body = append(body, lines...)
+		focus = len(body) - 1
+	case b.adoptFor != "":
+		body = append(body, "", "To adopt "+b.adoptFor+", merud will:")
+		for i, line := range b.adoptPlan {
+			for j, part := range strings.Split(line, "\n") {
+				lead := fmt.Sprintf("  %d. ", i+1)
+				if j > 0 {
+					lead = "     "
+				}
+				body = append(body, lead+part)
+			}
+		}
+		focus = len(body) - 1
+		note = "Press a again to adopt " + b.adoptFor + "; any other key leaves it as it is."
 	case b.keyFor != nil:
 		body = append(body, "", b.need.Prompt, b.key.View())
 		focus = len(body) - 1

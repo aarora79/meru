@@ -1,7 +1,9 @@
 // Settings: the settings screen, with a back link and eight sections.
 // Connections, Folders, About you, Skills, Models, Activity and Usage each
 // ask the Bridge for their data when they open, and every change goes to
-// merud, which writes config.toml or the memory folder and reloads. About,
+// merud, which writes config.toml or the memory folder and reloads.
+// Connections opens with the connector cards, which connectors.js draws
+// from each connector's fields. About,
 // the last, says what Meru is and links to the project; the Bridge hands
 // it the links, so this file names no web address. The page keeps nothing
 // it can't fetch again.
@@ -9,6 +11,7 @@
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import { el, button, seconds } from "./turns.js";
+import { connectorCard } from "./connectors.js";
 
 // SECTIONS are the sections of Settings, in the order its tabs show them.
 const SECTIONS = [
@@ -32,7 +35,7 @@ const WEB_TOOLS = ["web_search", "web_fetch"];
 // current is the open Settings screen: its root element, the section on
 // show, the connection to bring into view, and what it calls back into
 // app.js.
-const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set() };
+const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set(), connectors: [] };
 
 // openable returns a <dd> holding text as a link-styled button that runs
 // open on a click, or as plain text when open is null. className adds a
@@ -135,17 +138,39 @@ function intro(body, text) {
 
 // ---- Connections ----
 
-// connections draws a card per tool source, then the catalog.
+// connections draws the connector cards, a card per tool source, then the
+// catalog. A merud from before the connectors op has none to show.
 function connections(body) {
-  bridge.connections().then(
-    (cv) => drawConnections(body, cv),
+  Promise.all([bridge.connections(), bridge.connectors().catch(() => [])]).then(
+    ([cv, conns]) => {
+      current.connectors = conns;
+      drawConnections(body, cv);
+    },
     (err) => fail(body, err),
   );
 }
 
-// drawConnections draws the Connections section from cv.
+// drawConnections draws the Connections section from cv, with the
+// connectors merud reported last.
 function drawConnections(body, cv) {
   body.replaceChildren();
+  if (current.connectors.length) {
+    intro(body, "The programs Meru installs, starts and checks for you. Each card asks for what its " +
+      "connector needs; Fix asks again for what is missing, or checks it again.");
+    const frame = el("div", "cards connectors");
+    const ctx = {
+      notice: current.pages.notice,
+      done: (status, text) => {
+        if (text) current.pages.notice(text);
+        current.focus = status ? "connector:" + status.id : "";
+        connections(body);
+        current.pages.refreshStatus();
+      },
+    };
+    for (const c of current.connectors) frame.append(connectorCard(c, ctx));
+    body.append(frame);
+    body.append(el("h2", "section-head", "Tools"));
+  }
   intro(body, "What Meru may reach, tool by tool. Off: the model never sees the tool. " +
     "Ask: Meru asks you before each call. Allow: it runs without asking. A new tool starts Off.");
   const grid = el("div", "cards");
@@ -196,7 +221,7 @@ function connectorManaged(c) {
 // connectionCard draws one source: its state, how many tools are on, and
 // a switch per tool. key names the card for "Change what … may do". A
 // connector merud runs shows its own state and sentence, and for one
-// that needs setup, the keys to set in config.toml.
+// that isn't ready, a link to its connector card.
 function connectionCard(body, c, title, key) {
   const card = el("article", "card connection");
   card.dataset.connection = key;
@@ -216,18 +241,17 @@ function connectionCard(body, c, title, key) {
   card.append(el("p", "card-sub", where.join(" · ")));
   if (connectorManaged(c)) {
     card.append(el("p", c.connector === "ok" ? "card-note" : "card-error", c.sentence));
-    // A connector that waits for a sign-in carries the link its server
-    // gave; the button opens it in the browser, where the user signs in.
-    if (c.link) {
-      card.append(button("Sign in to " + c.name.charAt(0).toUpperCase() + c.name.slice(1), {
-        className: "text-button",
-        onClick: () => bridge.openURL(c.link).catch((err) => current.pages.notice(errorText(err))),
+    // The connector's own card, above, holds its form, its sign-in and
+    // its Fix button; this one links to it.
+    const id = c.kind === "builtin" ? "searxng" : c.name;
+    if (c.connector !== "ok" && current.connectors.some((k) => k.id === id)) {
+      card.append(button("Set it up", {
+        className: "link-button",
+        onClick: () => {
+          const target = document.getElementById("connector-" + id);
+          if (target) target.scrollIntoView({ block: "center" });
+        },
       }));
-    }
-    const fix = c.kind === "builtin" ? [] : c.fix || [];
-    if (fix.length) {
-      card.append(el("p", "card-note",
-        "Set " + fix.join(" and ") + " under [connectors." + c.name + "] in config.toml, then restart merud."));
     }
   } else if (!up && c.err) {
     card.append(el("p", "card-error", c.err));

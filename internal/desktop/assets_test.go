@@ -59,26 +59,59 @@ func TestPolicyIsStrict(t *testing.T) {
 	}
 }
 
-// TestFixHintMatchesRPC fails when the fix hint the Settings page builds
-// drifts from rpc.FixHint, which the terminal clients print. The page
-// can't call Go, so it builds the same sentence from the same pieces;
-// this test checks each fixed piece appears in settings.js, in order.
-func TestFixHintMatchesRPC(t *testing.T) {
-	// A hint for connector "ID" and field "FIELD" splits into the fixed
-	// text around those two words.
-	hint := rpc.FixHint("ID", []string{"FIELD"})
-	before, rest, ok := strings.Cut(hint, "FIELD")
+// TestConnectorFormsFromSchema checks that the connector cards draw their
+// forms from the fields merud sends, never from code that knows a
+// connector: connectors.js draws an input for every field type in
+// rpc.FieldTypes, through one table, and names no connector, field or
+// config key of one. The page has no JavaScript test runner, so this reads
+// the source.
+func TestConnectorFormsFromSchema(t *testing.T) {
+	src := ownFiles(t)["web/js/connectors.js"]
+	_, table, ok := strings.Cut(src, "const INPUTS = {")
 	if !ok {
-		t.Fatalf("FixHint = %q; it doesn't name the field", hint)
+		t.Fatal("connectors.js has no INPUTS table")
 	}
-	middle, after, ok := strings.Cut(rest, "ID")
+	table, _, _ = strings.Cut(table, "\n};")
+	for _, typ := range rpc.FieldTypes() {
+		if !regexp.MustCompile(`(?m)^\s+` + typ + `: \(`).MatchString(table) {
+			t.Errorf("INPUTS draws nothing for field type %q", typ)
+		}
+	}
+	if !strings.Contains(src, "const draw = INPUTS[f.type] || INPUTS.text;") || !strings.Contains(src, "for (const f of c.fields) {") {
+		t.Error("the card doesn't draw each of c.fields through INPUTS")
+	}
+	for _, name := range []string{"obsidian", "google", "searxng", "ollama", "vault", "client_secret", "client_id", "[connectors."} {
+		if strings.Contains(strings.ToLower(src), name) {
+			t.Errorf("connectors.js names %q; a card must come from the schema alone", name)
+		}
+	}
+	// The secret field never holds a value: it starts empty and says
+	// only whether one is saved.
+	_, secret, _ := strings.Cut(src, "function secretInput(f) {")
+	secret, _, _ = strings.Cut(secret, "\n}\n")
+	if strings.Contains(secret, "f.value") || !strings.Contains(secret, `input.type = "password"`) || !strings.Contains(secret, "f.saved") {
+		t.Errorf("secretInput must be an empty password field that shows only f.saved:\n%s", secret)
+	}
+	// Adopt asks in the page's own dialog, never with window.confirm.
+	if strings.Contains(src, "confirm(") || !strings.Contains(src, `document.getElementById("dialog")`) {
+		t.Error("the adopt plan must show in the page's <dialog>")
+	}
+}
+
+// TestAskFieldsMatchesRPC fails when the page's askFields drifts from
+// rpc.AskFields, which the terminal clients use: the same three rules,
+// read from the source.
+func TestAskFieldsMatchesRPC(t *testing.T) {
+	src := ownFiles(t)["web/js/connectors.js"]
+	_, body, ok := strings.Cut(src, "export function askFields(c) {")
 	if !ok {
-		t.Fatalf("FixHint = %q; it doesn't name the connector", hint)
+		t.Fatal("connectors.js has no askFields")
 	}
-	js := ownFiles(t)["web/js/settings.js"]
-	want := `"` + before + `" + fix.join(" and ") + "` + middle + `" + c.name + "` + after + `"`
-	if !strings.Contains(js, want) {
-		t.Errorf("settings.js doesn't build the fix hint as rpc.FixHint does; want the line\n%s", want)
+	body, _, _ = strings.Cut(body, "\n}\n")
+	for _, want := range []string{`f.type !== "oauth"`, `c.state === "needs_config" && c.fix.includes(f.id)`, `c.state === "off"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("askFields lacks %q:\n%s", want, body)
+		}
 	}
 }
 

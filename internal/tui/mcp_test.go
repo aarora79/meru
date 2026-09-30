@@ -79,7 +79,7 @@ func TestConnectorTable(t *testing.T) {
 	})
 	want := []string{
 		"CONNECTOR  STATE",
-		"obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.",
+		"obsidian   needs config    Obsidian needs your vault folder. Run meru mcp fix obsidian to set vault_path.",
 		"notes      set up by hand  Notes is set up by hand, as the notes entry in [[mcp.servers]].",
 		"google     needs config    Google needs you to sign in. Sign in: https://accounts.example.test/o/oauth2/auth?client_id=x",
 	}
@@ -97,8 +97,8 @@ func TestConnHeadingForConnectors(t *testing.T) {
 	managed := rpc.Connection{Name: "obsidian", Kind: "mcp", Transport: "stdio", State: rpc.MCPNotConnected,
 		Connector: rpc.ConnectorNeedsConfig, Sentence: "Obsidian needs your vault folder.", Fix: []string{"vault_path"},
 		Tools: []rpc.ToolPolicy{{Name: "obsidian_read_note", Policy: rpc.PolicyAllow}}}
-	want := "obsidian · connector, stdio · needs config · 1 of 1 tools on · Obsidian needs your vault folder. " +
-		"Set vault_path under [connectors.obsidian] in config.toml, then restart merud."
+	// The fix goes on the connector's own row, where f asks for it.
+	want := "obsidian · connector, stdio · needs config · 1 of 1 tools on · Obsidian needs your vault folder."
 	if got := connHeading(managed); got != want {
 		t.Errorf("connHeading =\n%s\nwant\n%s", got, want)
 	}

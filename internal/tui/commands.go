@@ -42,7 +42,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/copy [N|answer]", "copy a code block, or the whole answer"},
 	{"/usage [by model]", "how much you use Meru"},
 	{"/me [add|prefer <text>]", "what Meru knows about you; add to it"},
-	{"/mcp", "tools: Off, Ask or Allow; add a server"},
+	{"/mcp", "connectors: fix, on/off, adopt; tools: Off, Ask or Allow; add a server"},
 	{"/folders [add <path>]", "the folders Meru searches"},
 	{"/skills", "turn skills on or off"},
 	{"/model [name|save]", "model sets: show, switch, save"},

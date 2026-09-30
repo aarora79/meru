@@ -67,9 +67,10 @@ func (m *Model) openBox() {
 // a change sent to merud. Update handles Ctrl-C and Ctrl-D before this, as
 // it does for the approval box.
 func (m *Model) boxKey(msg tea.KeyMsg) tea.Cmd {
-	typing := m.mcpBox != nil && m.mcpBox.keyFor != nil
+	typing := m.mcpBox != nil && (m.mcpBox.keyFor != nil || m.mcpBox.walk != nil)
 	if msg.Type == tea.KeyEsc && typing {
-		m.mcpBox.keyFor = nil // Esc leaves the key field, not the box
+		// Esc leaves the key field or the connector form, not the box.
+		m.mcpBox.keyFor, m.mcpBox.walk = nil, nil
 		return nil
 	}
 	if msg.Type == tea.KeyEsc || (!typing && msg.Type == tea.KeyRunes && string(msg.Runes) == "q") {
@@ -108,7 +109,15 @@ func (m *Model) boxKeys() keyList {
 	switch {
 	case m.mcpBox != nil && m.mcpBox.keyFor != nil:
 		return keyList{bind("enter", "save key"), bind("esc", "cancel")}
+	case m.mcpBox != nil && m.mcpBox.walk != nil:
+		return keyList{bind("enter", "next"), bind("esc", "cancel")}
 	case m.mcpBox != nil:
+		// A connector row takes its own keys; the help line names the
+		// ones the marked row takes, so it stays short.
+		if r, ok := m.mcpBox.marked(); ok && r.cx >= 0 {
+			k = keyList{move, bind("f", "fix"), bind("o", "on/off"), bind("a", "adopt")}
+			break
+		}
 		k = keyList{move, bind("←/→", "policy"), bind("enter", "add"), bind("d", "remove")}
 	case m.meBox != nil, m.usedBox != nil:
 		k = keyList{move, bind("d", "forget")}
@@ -265,6 +274,12 @@ const (
 	tagFolders   = "folders"
 	tagSkills    = "skills"
 	tagLog       = "log"
+	// The /mcp box's connector rows (connectors.go).
+	tagConnectors   = "connectors"
+	tagConnectorSet = "connector_set" // o, and the end of the f form
+	tagConnectorFix = "connector_fix" // f
+	tagAdoptPlan    = "adopt_plan"    // a
+	tagAdopt        = "adopt"         // a a
 )
 
 // requestCmd returns a command that sends req to merud once and hands
@@ -312,6 +327,8 @@ func (m *Model) applyReply(msg replyMsg) tea.Cmd {
 		return m.applyMemoryChange(msg)
 	case tagConns, tagPolicy, tagMCPAdd, tagMCPRemove:
 		return m.applyConnections(msg)
+	case tagConnectors, tagConnectorSet, tagConnectorFix, tagAdoptPlan, tagAdopt:
+		return m.applyConnector(msg)
 	case tagFolders:
 		m.applyFolders(msg)
 	case tagSkills:

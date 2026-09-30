@@ -370,7 +370,7 @@ func TestContainerExternal(t *testing.T) {
 		{"answers badly, run mode", runTable, func(d *fakeDocker) { d.listening = true },
 			StateNeedsConfig, "Web search can't use SearXNG at http://127.0.0.1:8888: it answers web pages, not JSON."},
 		{"nothing answers, watch mode", nil, func(*fakeDocker) {},
-			StateNeedsConfig, "To have Meru run it, set enabled = true under [connectors.searxng]"},
+			StateNeedsConfig, "To have Meru run it, turn it on in Settings, Connections, or run meru mcp set searxng enabled=true."},
 		{"foreign container holds the name", runTable, func(d *fakeDocker) {
 			d.exists, d.image = true, "docker.io/searxng/searxng:latest"
 		}, StateNeedsConfig, "a container named meru-searxng that Meru didn't start holds the name"},
