@@ -16,8 +16,9 @@ model that fits your Mac's memory.
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
-> **Status: pre-alpha, v0.4.9.** Answers from local models, your own files and
-> tools you allow, with every tool call logged. Scheduled jobs come in v0.5.
+> **Status: pre-alpha, v0.4.10.** Answers from local models, your own files and
+> tools you allow, with every tool call logged. Meru now installs, runs and
+> restarts the Obsidian server and SearXNG for you. Scheduled jobs come in v0.5.
 > [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 
 <p align="center"><img src="docs/img/desktop-app.png" width="760" alt="Meru.app: a rail with New chat, Incognito chat, New folder, chat search, folders and the chats of today and yesterday, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with three example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk."></p>
