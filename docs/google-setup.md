@@ -4,9 +4,11 @@ This guide takes you from nothing to Meru reading your mail, calendar and Drive,
 one pass. It takes about 20 minutes. Do the steps in order and don't skip any.
 
 Meru talks to Google through [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp),
-a small server that runs on your computer. You start that server; Meru connects to
-it at `http://127.0.0.1:8000/mcp`. Your Google password never touches Meru, and the
-keys you create below stay on your computer.
+a small server that runs on your computer, at `http://127.0.0.1:8000/mcp`. Meru
+installs `workspace-mcp` 1.30.0 into `~/.meru/runtime`, starts it when a question
+needs it and restarts it when it stops: Google is one of Meru's *connectors*
+([how connectors work](architecture/connectors.md)). Your Google password never
+touches Meru, and the keys you create below stay on your computer.
 
 You will:
 
@@ -15,8 +17,13 @@ You will:
 2. Tell Google who may sign in to your project: you.
 3. Create an OAuth client, which gives you a client ID and a client secret. OAuth
    is the standard way to let a program act for you without your password.
-4. Save those in a start script and start the server.
-5. Connect Meru and sign in once.
+4. Give Meru those values and turn the Google connector on.
+5. Sign in once, at the link Meru shows you.
+
+If you already run the server yourself, from an earlier version of this guide,
+skip to [Move a server you run over to Meru](#move-a-server-you-run-over-to-meru).
+If you would rather keep running it yourself, steps 1 to 5 still apply; then
+follow [Run the server yourself](#run-the-server-yourself).
 
 You need a Google account (a personal Gmail address works), a Mac or Linux
 computer with Meru installed ([running.md](running.md)), and a web browser.
@@ -90,7 +97,7 @@ yourself.
 3. **Name:** `Meru desktop`. Click **Create**.
 4. A box shows your **Client ID** and **Client secret**. Click **Download JSON**
    and keep the file somewhere safe, such as your password manager. Then copy both
-   values into a note for Step 7.
+   values into a note for Step 6.
 
    - The client ID ends in `.apps.googleusercontent.com`.
    - The client secret starts with `GOCSPX-`.
@@ -101,7 +108,140 @@ yourself.
 Treat the secret like a password. Don't paste it into a chat, an email or a file
 you share.
 
-## Step 6: install uv
+## Step 6: turn on the Google connector
+
+1. Add this table to `~/.meru/config.toml`, with your own address and client
+   ID in place of the angle brackets:
+
+   ```toml
+   [connectors.google]
+   enabled   = true
+   email     = "<your Gmail address>"
+   client_id = "<your client ID>"
+   ```
+
+2. Add the client secret to `~/.meru/secrets.toml`, which only you can read,
+   under the name Meru looks for:
+
+   ```sh
+   touch ~/.meru/secrets.toml
+   chmod 600 ~/.meru/secrets.toml
+   open -e ~/.meru/secrets.toml     # Linux: nano ~/.meru/secrets.toml
+   ```
+
+   ```toml
+   connector_google_client_secret = "<your client secret>"
+   ```
+
+3. Restart `merud` so it reads both files (see [running.md](running.md)).
+
+`merud` now downloads its own `uv` and Python into `~/.meru/runtime`, installs
+`workspace-mcp` 1.30.0 there, starts it on port 8000 and checks it. You install
+nothing yourself, and nothing lands in your own Python or Homebrew. The first
+time takes a minute or two. Watch it with:
+
+```sh
+meru mcp status
+```
+
+The `google` line moves from `starting` ("Meru is installing Google 1.30.0 and
+checking it.") to `needs config`, "Google needs you to sign in.", with a link.
+
+If you ever ran the server yourself and it still runs, the line says "Google
+can't start: another program listens on 127.0.0.1:8000." Stop that server;
+Meru looks again every 30 seconds. Meru never stops a program it didn't start.
+
+## Step 7: sign in to Google, once
+
+Open the link from `meru mcp status`, the one after `Sign in:`. In the desktop
+app, open Settings, then Connections, and click **Sign in to Google** on the
+google card. `meru chat` shows the same link in `/mcp`. Then:
+
+1. Choose your Google account.
+2. Google says **Google hasn't verified this app**. You'll always see this: the
+   app is your own project from Step 1, and Google reviews only apps it publishes
+   to others. Click **Advanced**, then **Go to Meru (unsafe)**.
+3. Tick every box on the permissions page, or click **Select all**, then
+   **Continue**.
+4. The browser shows a page that says authentication succeeded. Close it.
+
+Within 15 seconds `meru mcp status` says "Google is running." The server keeps
+your sign-in in `~/.google_workspace_mcp/credentials/`, so you won't see a link
+again until it expires (see [Signing in again every 7
+days](#signing-in-again-every-7-days)). Each link works for ten minutes; Meru
+shows a fresh one while it waits.
+
+Check the whole setup:
+
+```sh
+meru tools
+meru "what was the last email I sent?"
+```
+
+`meru tools` lists the `google` tools, and Meru answers from your mail. If Meru
+doesn't know your email yet, run `meru setup user` and answer the email question
+with the same Gmail address.
+
+## Move a server you run over to Meru
+
+If you followed an earlier version of this guide, `~/.meru/config.toml` has a
+`google` entry under `[[mcp.servers]]`, and you run `workspace-mcp` yourself,
+from a terminal or from the launchd job `com.meru.workspace-mcp`. That keeps
+working as it is; `meru mcp status` calls it "set up by hand". To let Meru run
+it instead:
+
+1. If you start the server in a terminal, stop it there (Ctrl-C). A launchd
+   job needs nothing from you: the next step stops it after you say yes.
+2. Run:
+
+   ```sh
+   meru mcp adopt google
+   ```
+
+   Meru reads your address, client ID and secret from
+   `~/.config/workspace-mcp/start.sh`, prints every change it will make, and
+   asks before it makes any. If you have no `start.sh`, give the values
+   yourself; it then asks for the secret without showing it:
+
+   ```sh
+   meru mcp adopt google --email <your Gmail address> --client-id <your client ID>
+   ```
+
+Adopt saves the secret in `~/.meru/secrets.toml`, turns your `google` entry into
+comments between two marker lines, writes `[connectors.google]` after it with
+your allow and confirm lists, stops the launchd job and renames its file to
+`com.meru.workspace-mcp.plist.disabled`, and asks `merud` to reload. Meru then
+runs the server on the same port, with the sign-in you already have, so you
+don't sign in again.
+
+To go back, run `meru mcp unadopt google`. It puts your entry back as it was,
+takes `[connectors.google]` out, and starts the launchd job again if Adopt
+stopped it. The secret stays in `~/.meru/secrets.toml`.
+
+## Signing in again every 7 days
+
+While your project is in "Testing" mode, Google ends each sign-in after 7 days.
+When that happens, the Google connector says "Google needs you to sign in." at
+its next start, with a new link: do Step 7 again. If you run the server
+yourself, Meru's Google answers fail with an error such as `invalid_grant` or a
+new sign-in link; do Step E below again.
+
+To stop that, publish the project:
+
+1. Open <https://console.cloud.google.com/auth/audience>.
+2. Under **Publishing status**, click **Publish app**, then **Confirm**.
+
+Google doesn't review a project only you use, so it stays unverified: you keep
+seeing the "hasn't verified this app" screen at each sign-in, and Google limits the
+project to 100 users. Neither matters for one person.
+
+## Run the server yourself
+
+This is the older way: you start `workspace-mcp` and keep it running, and Meru
+only connects to it. Do steps 1 to 5 first, then these steps instead of steps 6
+and 7.
+
+### Step A: install uv
 
 The server is a Python program, and `uv` downloads and runs it for you. You don't
 need to install Python yourself.
@@ -127,7 +267,7 @@ uvx --version
 It prints a version number. If it says `command not found`, open a new terminal
 once more.
 
-## Step 7: save a start script
+### Step B: save a start script
 
 A small script holds your client ID and secret, so you don't type them each time
 and they stay out of your shell history.
@@ -151,7 +291,7 @@ and they stay out of your shell history.
    export GOOGLE_OAUTH_CLIENT_SECRET="<your client secret>"
    export USER_GOOGLE_EMAIL="<your Gmail address>"
    export WORKSPACE_ATTACHMENT_DIR="$HOME/meru-output/attachments"
-   exec uvx workspace-mcp --transport streamable-http \
+   exec uvx workspace-mcp==1.30.0 --transport streamable-http \
      --tool-tier extended --tools gmail calendar drive docs
    ```
 
@@ -168,7 +308,7 @@ What each line does:
 | `--tool-tier extended` | includes the attachment and thread tools Meru uses |
 | `--tools gmail calendar drive docs` | only these four services, not the dozen others it knows |
 
-## Step 8: start the server
+### Step C: start the server
 
 ```sh
 ~/.config/workspace-mcp/start.sh
@@ -176,7 +316,7 @@ What each line does:
 
 The first start downloads the server, which takes a minute. Then it prints a few
 lines and stays running. Leave this terminal open: when you close it, the server
-stops. Step 11 shows how to start it at login instead.
+stops. Step F shows how to start it at login instead.
 
 Check it from a second terminal:
 
@@ -187,7 +327,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/mcp
 Any number, such as `406` or `400`, means the server answers. `000` means it isn't
 running; look at the first terminal for an error.
 
-## Step 9: connect Meru
+### Step D: connect Meru
 
 With `merud` running (see [running.md](running.md)):
 
@@ -205,7 +345,7 @@ command, and check that the entry's `allow` list ends with
 If Meru doesn't know your email yet, run `meru setup user` and answer the email
 question with the same Gmail address.
 
-## Step 10: sign in to Google, once
+### Step E: sign in to Google, once
 
 Ask Meru something that needs your mail:
 
@@ -227,7 +367,7 @@ page opens, the answer includes the link, starting with
 
 Ask the question again. Meru now answers from your mail. The server keeps your
 sign-in in `~/.google_workspace_mcp/credentials/`, so you won't see the link again
-until it expires (see the next section).
+until it expires (see [Signing in again every 7 days](#signing-in-again-every-7-days)).
 
 Check the whole setup:
 
@@ -237,22 +377,7 @@ meru tools
 
 The `google` block says `connected` and shows no warnings.
 
-## Signing in again every 7 days
-
-While your project is in "Testing" mode, Google ends each sign-in after 7 days.
-When that happens, Meru's Google answers fail with an error such as `invalid_grant`
-or a new sign-in link. Do Step 10 again.
-
-To stop that, publish the project:
-
-1. Open <https://console.cloud.google.com/auth/audience>.
-2. Under **Publishing status**, click **Publish app**, then **Confirm**.
-
-Google doesn't review a project only you use, so it stays unverified: you keep
-seeing the "hasn't verified this app" screen at each sign-in, and Google limits the
-project to 100 users. Neither matters for one person.
-
-## Step 11 (optional): start the server at login
+### Step F (optional): start the server at login
 
 So you don't keep a terminal open, let macOS start the server when you log in.
 
@@ -277,14 +402,14 @@ So you don't keep a terminal open, let macOS start the server when you log in.
    </plist>
    ```
 
-2. Stop the server you started in Step 8 (Ctrl-C in its terminal), then load the
+2. Stop the server you started in Step C (Ctrl-C in its terminal), then load the
    job:
 
    ```sh
    launchctl load ~/Library/LaunchAgents/com.meru.workspace-mcp.plist
    ```
 
-3. Check it with the `curl` line from Step 8. The log is in
+3. Check it with the `curl` line from Step C. The log is in
    `~/.config/workspace-mcp/server.log`.
 
 To stop it for good: `launchctl unload ~/Library/LaunchAgents/com.meru.workspace-mcp.plist`.
@@ -297,15 +422,21 @@ On Linux, a `systemd --user` service that runs `start.sh` does the same job.
 | `Error 403: access_denied` in the browser | you aren't a test user | Step 4: add the address you signed in with |
 | `Error 400: redirect_uri_mismatch` | the client isn't a Desktop app | Step 5: create a new client of type **Desktop app**, and put its ID and secret in `start.sh` |
 | `... API has not been used in project ... or it is disabled` | one API is off | Step 2: turn it on, wait a minute, ask again |
-| `invalid_grant` or a new sign-in link after a week | the 7-day limit | Step 10 again, or publish the app |
-| `address already in use` when the server starts | something else holds port 8000 | stop the other program, or add `export WORKSPACE_MCP_PORT=8001` to `start.sh` and change the `url` in the `google` entry of `~/.meru/config.toml` to `http://127.0.0.1:8001/mcp` |
+| `invalid_grant` or a new sign-in link after a week | the 7-day limit | Step 7 again (Step E if you run the server), or publish the app |
+| `meru mcp status`: "Google needs you to sign in." | no sign-in saved yet, or it expired | Step 7: open the link after `Sign in:` |
+| `meru mcp status`: "Google can't start: another program listens on 127.0.0.1:8000." | a server you started yourself, or another program, holds port 8000 | stop it; Meru looks again every 30 seconds. If it is your own Google server, see [Move a server you run over to Meru](#move-a-server-you-run-over-to-meru) |
+| `meru mcp status`: "Google needs your email address." or another missing value | `[connectors.google]` lacks a key, or `secrets.toml` lacks `connector_google_client_secret` | Step 6: add it, then restart `merud` |
+| `meru mcp status`: "Google failed its check: …" | the server answers, but reading your calendar list fails, most often because an API is off | Step 2, then restart `merud` |
+| `meru mcp adopt google` says another program listens on 127.0.0.1:8000 | the server you started in a terminal still runs | stop it (Ctrl-C there), then run adopt again |
+| `address already in use` when you start the server yourself | something else holds port 8000 | stop the other program, or add `export WORKSPACE_MCP_PORT=8001` to `start.sh` and change the `url` in the `google` entry of `~/.meru/config.toml` to `http://127.0.0.1:8001/mcp`. The connector, and Adopt, need port 8000 |
 | `meru tools` warns `google offers no such tool` | the server started without `--tool-tier extended` | fix the last line of `start.sh`, restart the server, and ask Meru a question that uses Google; that turn lists the tools again and the warning goes |
-| `meru tools` shows `google` as `not connected` | the server isn't running | Step 8, or check the log from Step 11 |
+| `meru tools` shows `google` as `not connected` | the server you run isn't running | Step C, or check the log from Step F |
 | Meru finds a mail but can't read its attachment | the server saves attachments elsewhere | check `WORKSPACE_ATTACHMENT_DIR` in `start.sh`, restart the server; see [Read a mail's attachment](running.md#read-a-mails-attachment) |
-| `command not found: uvx` | uv isn't on your `PATH` | Step 6; for launchd, add uv's folder to `PATH` in the plist |
+| `command not found: uvx` | uv isn't on your `PATH` | Step A; for launchd, add uv's folder to `PATH` in the plist |
 
-To start over from sign-in, stop the server, delete
-`~/.google_workspace_mcp/credentials/`, start it again and do Step 10.
+To start over from sign-in, stop Meru's Google connector (restart `merud` with
+`enabled = false` in `[connectors.google]`) or the server you run, delete
+`~/.google_workspace_mcp/credentials/`, start it again and sign in once more.
 
 ## What Meru may do with your account
 

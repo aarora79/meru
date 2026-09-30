@@ -1,5 +1,6 @@
 // This file holds the `meru mcp` commands: status (also `meru mcp` alone),
-// add, list and remove. It reads the words on the command line and hands
+// add, list and remove; adopt and unadopt live in adopt.go. It reads the
+// words on the command line and hands
 // the real work to the shared flow in setup.go (add), to merud (the state
 // of each server), and to internal/catalog (the file edits). See
 // ARCHITECTURE.md, "MCP" and "Adding an MCP server".
@@ -27,7 +28,9 @@ const mcpUsage = `usage:
   meru mcp add <catalog-name>                      add a server from the catalog
   meru mcp add stdio <name> -- <command> [args...] add a server merud starts
   meru mcp add http <name> <url> [--remote]        add a Streamable HTTP server you run
-  meru mcp remove [--yes] <name>                   take a server out of config.toml`
+  meru mcp remove [--yes] <name>                   take a server out of config.toml
+  meru mcp adopt [--yes] <obsidian|google>         let Meru run a server you set up by hand
+  meru mcp unadopt [--yes] <obsidian|google>       put the hand-added entry back`
 
 // mcpCmd runs `meru mcp ...`. args are the words after "mcp". With no
 // words, or "status", it prints each server's state and each connector's;
@@ -57,6 +60,8 @@ func mcpCmd(ctx context.Context, socket string, args []string, c *console) error
 		return err
 	case len(args) >= 2 && args[0] == "remove":
 		return c.remove(ctx, socket, args[1:])
+	case len(args) >= 1 && (args[0] == "adopt" || args[0] == "unadopt"):
+		return c.adopt(ctx, socket, args[1:], args[0] == "unadopt")
 	}
 	return errors.New(mcpUsage)
 }

@@ -150,8 +150,13 @@ func TestConnectorsOp(t *testing.T) {
 	for _, row := range got[0].Connectors {
 		ids = append(ids, row.ID)
 	}
-	if !slices.Equal(ids, []string{"obsidian", "ollama", "searxng"}) {
-		t.Errorf("connectors = %v, want obsidian, ollama and searxng in manifest order", ids)
+	if !slices.Equal(ids, []string{"google", "obsidian", "ollama", "searxng"}) {
+		t.Errorf("connectors = %v, want google, obsidian, ollama and searxng in manifest order", ids)
+	}
+	// Google, an http connector, has a supervisor too, off until config
+	// turns it on.
+	if g := got[0].Connectors[0]; g.Kind != "http" || g.State != rpc.ConnectorOff || g.Sentence != "Google is off." {
+		t.Errorf("google = %+v, want an http connector that is off", g)
 	}
 	row := obsidianRow(t, c)
 	if row.Name != "Obsidian" || row.Kind != "stdio" || row.Sentence != "Obsidian needs your vault folder." ||
@@ -161,6 +166,47 @@ func TestConnectorsOp(t *testing.T) {
 	if len(row.Fields) != 2 || row.Fields[0].ID != "vault_path" || row.Fields[1].Value != "notes" {
 		t.Errorf("fields = %+v", row.Fields)
 	}
+}
+
+// TestConnectorListsReachThePool checks that the tool lists Adopt keeps in
+// a [connectors.<id>] table take the place of the manifest's in the
+// connector's pool entry, and that a table without lists keeps the
+// manifest's.
+func TestConnectorListsReachThePool(t *testing.T) {
+	// A vault folder that isn't there keeps the connector at needs_config,
+	// so nothing installs; its pool entry and lists are there all the same.
+	vault := "/no/such/vault"
+	c := testConnectors(t)
+	c.configure(config.Config{Connectors: map[string]config.Connector{"obsidian": {
+		"enabled": true, "vault_path": vault,
+		"allow":   []any{"obsidian_read_note", "obsidian_create_note"},
+		"confirm": []any{"obsidian_create_note"},
+	}}}, &secrets.Secrets{})
+	var entry *mcpEntry
+	for _, sc := range c.serverConfigs() {
+		if sc.Name == "obsidian" {
+			entry = &mcpEntry{allow: sc.Allow, confirm: sc.Confirm}
+		}
+	}
+	if entry == nil {
+		t.Fatal("no pool entry for obsidian")
+	}
+	if !slices.Equal(entry.allow, []string{"obsidian_read_note", "obsidian_create_note"}) || !slices.Equal(entry.confirm, []string{"obsidian_create_note"}) {
+		t.Errorf("pool entry lists = %+v", *entry)
+	}
+
+	c.configure(config.Config{Connectors: map[string]config.Connector{"obsidian": {"enabled": true, "vault_path": vault}}}, &secrets.Secrets{})
+	m, _ := c.manifest("obsidian")
+	for _, sc := range c.serverConfigs() {
+		if sc.Name == "obsidian" && !slices.Equal(sc.Allow, m.MCP.Allow) {
+			t.Errorf("allow = %v, want the manifest's %v", sc.Allow, m.MCP.Allow)
+		}
+	}
+}
+
+// mcpEntry is a pool entry's two lists, for a test's messages.
+type mcpEntry struct {
+	allow, confirm []string
 }
 
 // closedURL returns a loopback URL where nothing listens: a port the

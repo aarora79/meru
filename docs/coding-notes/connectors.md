@@ -2,12 +2,14 @@
 
 **Code:** `internal/connectors/` (`doc.go`, `manifest.go`, `manifests/*.toml`,
 `runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`, `status.go`,
-`health.go`, `supervisor.go`, `container.go`)
-**Milestone:** v0.5 (issue #87, steps 1 to 4)
+`health.go`, `supervisor.go`, `container.go`, `adopt.go`)
+**Milestone:** v0.5 (issue #87, steps 1 to 5)
 **Architecture:** [Connectors and the supervisor](../../ARCHITECTURE.md#connectors-and-the-supervisor),
 [The runtime folder](../../ARCHITECTURE.md#the-runtime-folder),
 [The supervisor](../../ARCHITECTURE.md#the-supervisor),
-[SearXNG and Ollama](../../ARCHITECTURE.md#searxng-and-ollama)
+[Google](../../ARCHITECTURE.md#google),
+[SearXNG and Ollama](../../ARCHITECTURE.md#searxng-and-ollama),
+[Moving to connectors](../../ARCHITECTURE.md#moving-to-connectors)
 
 ## What it does
 
@@ -23,7 +25,8 @@ installs them: an `Installer` downloads the pinned Node and uv into
 `~/.meru/runtime`, checks each archive's SHA-256 before it unpacks it, installs
 a connector's package into `~/.meru/runtime/pkg/<id>-<version>/`, and says how
 to start the installed program. Step 3 runs them: `merud` builds one
-`Supervisor` per stdio connector (Obsidian is the only one today), which checks
+`Supervisor` per MCP connector (Obsidian over stdio, and since step 5 Google
+over HTTP), which checks
 the user's `[connectors.<id>]` table, installs and checks the connector, starts
 it on the first tool call, stops it when idle, and restarts it after a crash.
 The MCP pool asks the supervisor for a session through its `Spawn` method (see
@@ -35,10 +38,16 @@ config turns it on and nothing answers, pulls the pinned image and runs Meru's
 container. Ollama, the fourth manifest, needs no supervisor here: `merud` only
 reports on it (`cmd/merud/ollama.go`, see [merud](merud.md)).
 
-Still to come: Google over HTTP with its sign-in
-and the move of a hand-added entry in step 5, and in step 6 the ops and forms
-that let a client set a connector's fields. Until then a user sets them in
-`config.toml`.
+Step 5 adds Google, an `http` connector: the supervisor starts
+`workspace-mcp` on port 8000, waits for it to listen, and talks Streamable
+HTTP to it; when the health check's error carries a sign-in link, the
+supervisor keeps the program running and shows the link until the user signs
+in. Step 5 also adds `Adopter` (`adopt.go`), which moves a hand-added
+`obsidian` or `google` entry over to its connector, and back, when the user
+runs `meru mcp adopt`.
+
+Still to come, in step 6: the ops and forms that let a client set a
+connector's fields. Until then a user sets them in `config.toml`.
 
 ## The picture
 
@@ -60,7 +69,9 @@ flowchart LR
     sup --> check["checkSettings<br/>(status.go)"]
     sup --> health["runHealthCheck<br/>tool cache (health.go)"]
     sup --> stdio["stdioTransport<br/>(run.go)"]
+    sup --> http["httpTransport<br/>port check, start, listen (run.go)"]
     pool["MCP pool<br/>(internal/mcp)"] -- "Spawn, Tools, State" --> sup
+    adopt["Adopter<br/>(adopt.go)"] -- "catalog.AdoptServer<br/>launchctl via Runner" --> cfg["config.toml,<br/>secrets.toml"]
 ```
 
 ## Walk through the code
@@ -204,8 +215,34 @@ the backstop; the SDK first closes the child's stdin, waits `childStopWait`
 (2 seconds), sends a signal, and waits as long again. The pool waits the same
 for a server added by hand.
 
+An http connector starts here as well. `httpTransport` first looks at the
+connector's port with `Listening`, a TCP dial with a short timeout, and waits
+up to 3 seconds for it to come free, since Meru's own last program may still
+be exiting. If another program still holds it, it returns `ErrPortBusy` and
+starts nothing: that program may be the user's own server, and Meru never
+stops it. Otherwise it starts the program with its stdout and stderr going to
+the supervisor's writer, and waits until the program listens or exits:
+
+```go
+exited := make(chan struct{})
+go func() {
+	_ = cmd.Wait()
+	close(exited)
+}()
+if err := waitListening(ctx, addr, exited); err != nil { ... }
+return &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: loopbackClient(), DisableStandaloneSSE: true}, exited, nil
+```
+
+The goroutine reaps the program and **closes** `exited` when it ends; a closed
+channel is ready for every reader, so anyone can wait on it (see
+[go-basics/goroutines.md](go-basics/goroutines.md)). A Streamable HTTP session
+knows nothing of the program behind it, so the supervisor watches `exited` to
+learn of a crash. `loopbackClient` refuses a redirect off this machine, as the
+pool's client for a hand-added server does.
+
 A policy test, `TestConnectorsRunOnlyThroughRun`, fails the build if another
-file in the package imports `os/exec`.
+file in the package imports `os/exec`. Adopt runs `launchctl` through the same
+`Runner`, by its absolute path, `/bin/launchctl`.
 
 ### runtimes.go and download.go: Node and uv
 
@@ -387,6 +424,14 @@ digits, dashes and underscores dropped, so `My Notes` becomes `my-notes`.
 `settings.same` tells the supervisor whether a reload changed anything that
 would start the program another way.
 
+An `oauth` field, Google's `sign_in`, has no value in config, so the check
+skips it: the server runs the sign-in. An MCP connector's table may also hold
+`allow`, `confirm` and `always_confirm`, lists that take the place of the
+manifest's; Adopt writes them. `checkTools` puts them through the manifest's
+own rule, `checkMCP`: no wildcard, and every `confirm` tool also in `allow`.
+The supervisor's `Lists` hands them to the pool. `Status` gained `Link`, the
+sign-in link while Google waits for the user.
+
 ### health.go: the check and the tool cache
 
 `runHealthCheck` calls the manifest's `[health] tool` and checks its answer
@@ -413,10 +458,34 @@ connector or version as missing, since a new version may offer other tools.
 This cache lets a fresh `merud` offer a ready connector's tools before the
 program runs.
 
+For an OAuth connector, a failed check may mean "sign in first". With `oauth`
+true, `runHealthCheck` looks in the error's text for a sign-in link
+(`signInLink`) and returns a `*SignInError` holding it:
+
+```go
+type SignInError struct {
+	URL string
+}
+
+func (e *SignInError) Error() string {
+	return "the server needs you to sign in"
+}
+```
+
+A struct with an `Error() string` method is an `error`, so the caller finds it
+with `errors.As`, which walks an error's chain and fills in a pointer of the
+type asked for (see [go-basics/errors.md](go-basics/errors.md)). `Error`
+leaves the link out, since an error text may reach a log. `signInLink` takes
+the link on workspace-mcp's "Authorization URL:" line, or any https link whose
+query names both `client_id` and `redirect_uri`; a help page in an error, such
+as one that says an API is off, doesn't count. The regular expressions write
+`//` as `/{2}`, so the privacy policy test, which looks for links to other
+machines in the code, doesn't take them for one.
+
 ### supervisor.go: one state machine per connector
 
-A `Supervisor` runs one stdio connector. Inside, it moves through nine
-**phases**, which fold into the six states a user sees:
+A `Supervisor` runs one MCP connector, stdio or http. Inside, it moves through
+ten **phases**, which fold into the six states a user sees:
 
 ```mermaid
 stateDiagram-v2
@@ -434,10 +503,16 @@ stateDiagram-v2
     backoff --> failed: fifth crash in 10 minutes
     ok --> ready: idle_timeout
     failed --> installing: reload
+    installing --> sign_in: check wants a sign-in
+    starting --> sign_in: check wants a sign-in
+    sign_in --> ok: signed in
+    installing --> needs_config: port taken
+    needs_config --> installing: 30 s pass
 ```
 
 `installing`, `starting` and `backoff` all show as `starting`; `ready` and
-`ok` both show as `ok`, since the model can use the tools either way. The
+`ok` both show as `ok`, since the model can use the tools either way;
+`sign_in` shows as `needs_config`. The
 phases are numbers:
 
 ```go
@@ -575,6 +650,71 @@ needs no `implements` line: any type with the right methods satisfies an
 interface. That lets `mcp` define the interface it uses without importing
 `connectors`.
 
+**An http connector.** `New` fills `dial` with `httpTransport` for Google and
+with `stdioTransport` for Obsidian; the rest of the machine is the same. `dial`
+returns the transport and, for http, the `exited` channel. `open` makes `stop`
+wait on it, so the port is free before the next start, and starts one more
+goroutine, counted on the `WaitGroup`, that closes the session when the
+program exits; `watch` then sees the end of the session as a crash, as for a
+stdio program. Adding to the `WaitGroup` there is safe while `Close` waits,
+because `open` runs inside a worker that the group already counts.
+
+**Port taken.** When `dial` fails with `ErrPortBusy`, `blockLocked` moves to
+`needs_config` with a reason, "Google can't start: another program listens on
+127.0.0.1:8000. …", which `sentenceLocked` shows in place of the settings
+problem, and sets `retryTimer` for 30 seconds. `unblock` then installs and
+checks again, which starts with the port. A reload tries at once:
+`Configure` doesn't keep a connector that waits for its port.
+
+**Sign-in.** When `open`'s health check returns a `*SignInError`, `open` hands
+back the live session with the error instead of stopping the program: the
+link calls back to that program. `signInLocked` keeps the session, stores the
+link, moves to `sign_in`, starts the watcher, and sets `signInTimer`.
+Every 15 seconds `checkSignIn` starts a worker, `recheck`, that runs the
+health check again on the same session. A pass moves to `ok`, saves the tool
+list and starts the idle timer; another `*SignInError` keeps the newer link
+and sets the timer again; any other error sets `failed` and stops the program.
+`Spawn` and `Tools` treat `sign_in` as not ready, so the model sees none of
+Google's tools until the user signs in. `hideQueries` cuts the query off every
+link in a line before `tailLog` logs it or keeps it, so the sign-in link's
+one-time state never lands in `merud.log`.
+
+### adopt.go: moving a hand-added entry over
+
+`Adopter` holds what Adopt touches: the paths of `config.toml` and
+`secrets.toml`, the home folder, the `Runner` for `launchctl`, the user's ID,
+the operating system and a clock for the marker's date. `merud` fills it in
+(`cmd/merud/connectors.go`); tests fill it with a temporary home and a fake
+`launchctl`.
+
+Each direction has two halves, so the client can show the changes before any
+happen:
+
+- `PlanAdopt` reads config and works out an `AdoptPlan`: the table to write
+  (`catalog.ConnectorTable`), the secrets to save, the launchd job to stop,
+  and `Changes`, one line per step for the user. It changes nothing.
+  `obsidianFields` reads the vault from `--vault name=path` and refuses
+  `mcp-obsidian`, no vault or two, and `env`; `googleFields` checks the URL,
+  reads `start.sh` with `readStartScript` (a regular expression per `export`
+  line; nothing runs), and lets values from the command line take the place
+  of what it read. `checkFieldValues` runs the manifest's rules on the values,
+  so Adopt never writes a table the supervisor would refuse. `differentLists`
+  keeps each of the entry's tool lists that differs from the manifest's.
+- `Adopt` carries the plan out in order: `stopJob` (`launchctl bootout`,
+  rename the plist to `.disabled`, wait for the port), `secrets.Set` for each
+  secret, `catalog.AdoptServer` for the one config edit, then `reload`. When
+  the edit fails, the function `stopJob` returned starts the job again.
+- `PlanUnadopt` and `Unadopt` do the reverse: `catalog.UnadoptServer`, the
+  reload, which stops the connector's program, then `startJob` (rename back,
+  `launchctl bootstrap`) once the port is free.
+
+Google's address comes from the manifest's URL, `hostPort(m.Launch.URL)`, not
+from a constant, so the tests can move Google to a free port and never touch
+port 8000.
+
+A plan's `Nothing` says there is nothing to do: the entry is adopted, or
+restored, already. So both commands are safe to run twice.
+
 ### container.go: SearXNG
 
 `ContainerMode(m, table, url, toolListed)` picks what `merud` does for a
@@ -694,6 +834,8 @@ off stops Meru's container and nothing else.
   the time source. More in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Function fields** — `install`, `launch` and `dial` hold functions, so a
   test swaps in fakes without an interface for each.
+- **errors.As** — finds a `*SignInError` in an error's chain and hands back the
+  link it holds. More in [go-basics/errors.md](go-basics/errors.md).
 
 ## Try it
 
@@ -702,6 +844,9 @@ go test ./internal/connectors/...
 go test -run 'TestManifestsPinned|TestNoUnpinnedVersions|TestConnectorsRunOnlyThroughRun' ./internal/policy/
 # Downloads Node and obsidian-mcp for real, into a temporary folder:
 go test -tags integration -run TestIntegrationObsidian ./internal/connectors/
+# Downloads uv and workspace-mcp 1.30.0, runs it on a free port, and checks
+# that its health check asks for a sign-in:
+go test -tags integration -run TestIntegrationGoogle ./internal/connectors/
 ```
 
 `TestValidate` breaks one rule per case, starting from a manifest that passes,
@@ -760,6 +905,35 @@ starts that count; a call in flight during a crash that fails and never
 reaches the server twice; a reload that keeps a running program, and one with
 `byHand` that stops it; `Close`; and `TestVaultName`.
 
+`http_test.go` runs the supervisor with Google's manifest over a fake
+`workspace-mcp` served by `httptest` over Streamable HTTP, which answers
+`list_calendars` with a sign-in link until the test says the user signed in.
+`TestGoogleSignIn` walks the wait, a second check, and the sign-in, and checks
+that the log never holds the link's query; `TestGoogleCrashWhileSignIn`,
+`TestGoogleSignedInAlready` and `TestGooglePortBusy` cover a crash while
+waiting, a saved sign-in, and a taken port. `TestHTTPTransportPortBusy` runs
+the real `httpTransport` against a port a test listener holds.
+`TestSignInLink`, `TestHideQueries` and `TestToolListOverrides` cover the
+pieces.
+
+`TestIntegrationGoogle`, behind the `integration` tag, is the evidence for
+Google's health tool: it installs the real `workspace-mcp` 1.30.0 into a
+temporary Meru home, starts it on a free port with an empty home folder and a
+made-up OAuth client, checks that it offers `list_calendars` and every
+allowed tool (45 tools in all), and that the check comes back as a
+`*SignInError` whose link goes to `accounts.google.com` and calls back to the
+server's own port.
+
+`adopt_test.go` runs Adopt on real-shaped config files, with a temporary home
+and a fake `launchctl`: an `npx obsidian-mcp` entry with `--vault`, and a
+`google` entry with a `start.sh` fixture and a loaded launchd job. After each
+adopt and unadopt the file equals the original byte for byte, the secret file
+has mode 0600, and the fake saw `bootout` and then `bootstrap`.
+`TestAdoptGoogleByHand` plays the case of a server started in a terminal: it
+refuses while a test listener holds the port and without values, and works
+once both are dealt with. The refusal tests check that a refused adopt leaves
+`config.toml` as it was.
+
 `pool_test.go` puts a real MCP pool over a supervisor, the way `merud` joins
 them: the pool offers the cached tools before the program runs, `Refresh`
 starts nothing, the first call starts the program, a call in flight during a
@@ -799,6 +973,18 @@ crash fails once, and closing the pool leaves the program to the supervisor.
   lets the model see the tools without a Node process running all day.
 - **No retry of a failed call.** The pool never sends a call twice, for a
   server added by hand or a connector: a tool may have acted before the crash.
+- **Keep the program for the sign-in.** Google's sign-in link calls back to
+  the program that made it, so the supervisor keeps that program running and
+  checks again every 15 seconds, rather than stopping it and making a link
+  that would point at nothing.
+- **Adopt asks, and never kills.** Adopt changes nothing until the user says
+  yes, and it refuses while a program Meru didn't start holds Google's port.
+  It stops a launchd job only because that job is the one the docs and the
+  installer set up, and Unadopt starts it again.
+- **Comments, not a backup file.** Adopt keeps the old entry in
+  `config.toml` itself, as comments between two marker lines, so the user can
+  read it, and Unadopt restores it in place, byte for byte, with every other
+  edit since kept.
 - **Standard library only.** The Node and uv archives come as `.tar.gz` on
   every pinned platform, so `archive/tar` and `compress/gzip` unpack them and no
   new module is needed. Windows, where Node ships a `.zip`, has no pin yet.

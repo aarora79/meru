@@ -431,9 +431,13 @@ bundler.
   config.toml, then restart merud." The page builds that sentence itself, since
   it can't call Go, and `TestFixHintMatchesRPC` in `assets_test.go` fails when
   it drifts from `rpc.FixHint`. The card has no Remove button, since config has no
-  `[[mcp.servers]]` entry to take out. `connectorManaged` tells the two apart; a
-  server added by hand in a connector's place shows "set up by hand" and keeps
-  its Remove. The Web search card, cut from the built-in tools' connection,
+  `[[mcp.servers]]` entry to take out. While a connector waits for a sign-in,
+  its card holds a "Sign in to Google" button that opens the connection's
+  `link` through `bridge.openURL`, which checks it as it checks any link.
+  `connectorManaged` tells the two apart; a server added by hand in a
+  connector's place shows "set up by hand", keeps its Remove, and shows
+  `merud`'s sentence, which ends with the `meru mcp adopt` command that moves
+  it over. The Web search card, cut from the built-in tools' connection,
   takes that connection's `web` and `web_sentence` as its connector state, so
   it shows the SearXNG connector's pill and sentence in place of a flat
   "Connected". Models shows

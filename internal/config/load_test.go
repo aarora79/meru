@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -461,8 +462,8 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 3, 1, 25 and 3",
 			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands), len(cfg.Models.Sets))
 	}
-	if len(cfg.Connectors) != 2 {
-		t.Errorf("samples hold %d connector tables, want 2, searxng and obsidian", len(cfg.Connectors))
+	if len(cfg.Connectors) != 3 {
+		t.Errorf("samples hold %d connector tables, want 3, searxng, obsidian and google", len(cfg.Connectors))
 	}
 }
 
@@ -498,12 +499,25 @@ enabled = false
 		t.Error("an empty table says enabled is set")
 	}
 
+	// The tool lists load as lists of strings.
+	lists, err := Load(writeConfig(t, "[connectors.obsidian]\nallow = [\"obsidian_read_note\", \"obsidian_create_note\"]\nconfirm = [\"obsidian_create_note\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := lists.Connectors["obsidian"].List("allow"); !ok || !slices.Equal(got, []string{"obsidian_read_note", "obsidian_create_note"}) {
+		t.Errorf("List(allow) = %v, %v", got, ok)
+	}
+	if _, ok := lists.Connectors["obsidian"].List("always_confirm"); ok {
+		t.Error("List reports a list the table doesn't have")
+	}
+
 	bad := []struct{ name, body, want string }{
 		{"bad id", "[connectors.My-Notes]\nenabled = true", "connectors.My-Notes: a connector id may hold only"},
 		{"bad key", "[connectors.obsidian]\nVault = \"x\"", `the key "Vault" may hold only`},
 		{"enabled as a string", "[connectors.obsidian]\nenabled = \"yes\"", `connectors.obsidian.enabled is "yes"; write true or false`},
 		{"number value", "[connectors.obsidian]\nport = 8000", "connectors.obsidian.port must be a string"},
 		{"list value", "[connectors.obsidian]\nvaults = [\"a\"]", "connectors.obsidian.vaults must be a string"},
+		{"tool list of numbers", "[connectors.obsidian]\nallow = [1]", "connectors.obsidian.allow must list tool names"},
 		{"nested table", "[connectors.obsidian.extra]\nx = \"y\"", "unknown keys: connectors.obsidian.extra.x"},
 	}
 	for _, tt := range bad {

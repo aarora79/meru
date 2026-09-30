@@ -33,7 +33,7 @@ tail -20 ~/.meru/merud.err.log                     # what merud printed before i
 
 ## Google start script
 
-This is google-setup.md step 7. Ask for the client ID and the Google address
+This is google-setup.md step B. Ask for the client ID and the Google address
 first. Write the file with the secret left as a placeholder:
 
 ```sh
@@ -45,7 +45,7 @@ export GOOGLE_OAUTH_CLIENT_ID="<your client ID>"
 export GOOGLE_OAUTH_CLIENT_SECRET="<your client secret>"
 export USER_GOOGLE_EMAIL="<your Google address>"
 export WORKSPACE_ATTACHMENT_DIR="$HOME/meru-output/attachments"
-exec uvx workspace-mcp --transport streamable-http \
+exec uvx workspace-mcp==1.30.0 --transport streamable-http \
   --tool-tier extended --tools gmail calendar drive docs
 EOF
 chmod 700 ~/.config/workspace-mcp/start.sh
@@ -75,7 +75,7 @@ ls -l ~/.config/workspace-mcp/start.sh                            # expect -rwx-
 
 ## Start the Google server at login
 
-google-setup.md step 11, with the home folder filled in by the shell. The
+google-setup.md step F, with the home folder filled in by the shell. The
 `PATH` line lets launchd find `uvx` from Homebrew:
 
 ```sh

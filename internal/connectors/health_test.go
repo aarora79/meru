@@ -62,7 +62,7 @@ func TestRunHealthCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := runHealthCheck(context.Background(), healthSession(t, tt.answer, tt.isError), Health{Tool: "check", Expect: tt.expect})
+			err := runHealthCheck(context.Background(), healthSession(t, tt.answer, tt.isError), Health{Tool: "check", Expect: tt.expect}, false)
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Errorf("err = %v, want a pass", err)

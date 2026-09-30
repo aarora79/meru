@@ -173,6 +173,29 @@ the same:
 `settings.go`'s `Connection`, a Settings card, gained `Connector`, `Sentence`
 and `Fix`. They are set for a connector the pool runs, and `Connector` alone
 reads `by_hand` for a server added by hand that takes a connector's place.
+
+Both `ConnectorStatus` and `Connection` carry `Link`, the sign-in link a
+connector's server gave while the connector waits for the user ("Google
+needs you to sign in."). It is empty otherwise, and `omitempty` keeps it out
+of the JSON then.
+
+Two ops move a hand-added entry over to its connector and back:
+`OpConnectorAdopt` (`connector_adopt`) and `OpConnectorUnadopt`
+(`connector_unadopt`), each with the connector's ID in `Request.ID`. The
+request's `Adopt` field, an `*AdoptRequest`, says how it runs: without
+`Apply`, `merud` only works out the changes; with it, `merud` makes them.
+`Values` gives field values the old entry doesn't hold, such as Google's
+`email`, `client_id` and `client_secret`. `Adopt` is a pointer, like
+`Policy`, so `Request` stays comparable with `==`. The reply is one `adopt`
+event whose `Adopted` holds an `AdoptResult`:
+
+```json
+{"id":"obsidian","changes":["Comment out the obsidian entry in [[mcp.servers]] in …", "Add this after it:\n    [connectors.obsidian]\n    …"],"applied":true}
+```
+
+`Nothing` is true when there is nothing to change, such as an entry adopted
+already. The secret goes one way only: `merud` writes it to `secrets.toml`
+and no event holds it.
 `Web` and `WebSentence` are set on the built-in tools' connection only: the
 SearXNG connector's state and sentence, for the Web search card and `/mcp`.
 

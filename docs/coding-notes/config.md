@@ -249,17 +249,20 @@ made with `slices.Clone`, so no caller can change the defaults.
 `Connector`, a `map[string]any`: a map whose values may be of any type, since
 each connector names its own fields in its manifest (see
 [connectors](connectors.md)). The check keeps to shape. An ID and each key must
-be lower-case letters, digits and `_`; `enabled` must be `true` or `false`; every
-other value must be a string or a bool. A **type switch** reads the type held in
-the `any`:
+be lower-case letters, digits and `_`; `enabled` must be `true` or `false`; the
+tool lists `allow`, `confirm` and `always_confirm` (`ListKeys`), which Adopt
+writes, must be lists of strings; every other value must be a string or a
+bool. A **type switch** reads the type held in the `any`:
 
 ```go
 switch v := conns[id][k].(type) {
 case bool:
 case string:
     if k == "enabled" { ... } // "yes" in quotes is a string, not a bool
+case []any:
+    // a list: only the ListKeys, and only strings in it
 default:
-    // a number, a list or a table
+    // a number or a table
 }
 ```
 
@@ -267,8 +270,10 @@ default:
 `internal/connectors`, and the clients, which import `config`, must never reach
 it. `merud` hands each table to its connector's supervisor, which checks it
 against the manifest (`checkSettings` in `internal/connectors/status.go`).
-`Enabled()` returns the table's `enabled` and whether it had one, and
-`Value(key)` returns a string field. More on type switches in
+`Enabled()` returns the table's `enabled` and whether it had one,
+`Value(key)` returns a string field, and `List(key)` returns a tool list as
+`[]string`; the TOML library decodes a list into `[]any`, and `List` copies
+each string out. More on type switches in
 [go-basics/type-switches.md](go-basics/type-switches.md).
 
 `[log] level` must be `debug`, `info`, `warn` or `error`. `LogLevel` turns the

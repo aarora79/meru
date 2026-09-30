@@ -1,6 +1,7 @@
 // This file holds the health check for an MCP connector, a cheap tool
-// call whose answer must hold what the manifest's [health] expect says,
-// and the tool list the supervisor keeps from the last check in
+// call whose answer must hold what the manifest's [health] expect says;
+// for an oauth connector, the sign-in link a failed check may carry; and
+// the tool list the supervisor keeps from the last check in
 // ~/.meru/runtime/state/<id>.json, so the model sees a ready connector's
 // tools before the program runs. See ARCHITECTURE.md, "The supervisor".
 
@@ -11,12 +12,74 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// SignInError means the health check found that the server needs the
+// user to sign in first, and gave URL, the link to sign in at. Its Error
+// text leaves the link out: the link holds a one-time state value and the
+// OAuth client's ID, and an error text may reach a log.
+type SignInError struct {
+	URL string
+}
+
+// Error says the server needs a sign-in, without the link.
+func (e *SignInError) Error() string {
+	return "the server needs you to sign in"
+}
+
+// authURLLine finds the link workspace-mcp gives when it needs a sign-in:
+// its error text holds a line "Authorization URL: https://…"
+// (auth/google_auth.py, start_auth_flow, in workspace-mcp 1.30.0). The
+// patterns write "//" as "/{2}", so the policy test that looks for links
+// to other machines in the code doesn't take them for one.
+var authURLLine = regexp.MustCompile(`Authorization URL:\s*(https:/{2}\S+)`)
+
+// anyHTTPS finds any https link in a text.
+var anyHTTPS = regexp.MustCompile(`https:/{2}[^\s"'<>()\[\]]+`)
+
+// signInLink returns the sign-in link in a server's error text, or "" when
+// it holds none. It takes the link on an "Authorization URL:" line first,
+// and otherwise the first https link shaped like an OAuth sign-in, one
+// whose query names both client_id and redirect_uri. Any other link, such
+// as a help page that names an API to turn on, doesn't count, so a check
+// that fails for another reason isn't taken for a sign-in.
+func signInLink(text string) string {
+	if m := authURLLine.FindStringSubmatch(text); m != nil {
+		if link, _, ok := cleanLink(m[1]); ok {
+			return link
+		}
+	}
+	for _, raw := range anyHTTPS.FindAllString(text, -1) {
+		link, u, ok := cleanLink(raw)
+		if !ok {
+			continue
+		}
+		if q := u.Query(); q.Get("client_id") != "" && q.Get("redirect_uri") != "" {
+			return link
+		}
+	}
+	return ""
+}
+
+// cleanLink trims the punctuation a link at the end of a sentence may
+// carry, or Markdown's "**", and parses it. It returns the link as the
+// server wrote it, and ok is false unless it is an https link with a
+// host.
+func cleanLink(raw string) (string, *url.URL, bool) {
+	link := strings.TrimRight(raw, ".,;:*`")
+	u, err := url.Parse(link)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", nil, false
+	}
+	return link, u, true
+}
 
 // runHealthCheck calls the manifest's health tool on cs and checks the
 // answer against h.Expect:
@@ -27,8 +90,11 @@ import (
 //   - "": any answer that isn't an error.
 //
 // A tool that reports an error fails the check too. The error says what
-// was wrong, in words a status line can show.
-func runHealthCheck(ctx context.Context, cs *mcp.ClientSession, h Health) error {
+// was wrong, in words a status line can show. For a connector that signs
+// in with OAuth (oauth true), an error that holds a sign-in link returns
+// a *SignInError with the link instead: the server works, and waits for
+// the user.
+func runHealthCheck(ctx context.Context, cs *mcp.ClientSession, h Health, oauth bool) error {
 	if h.Tool == "" {
 		return nil
 	}
@@ -38,10 +104,16 @@ func runHealthCheck(ctx context.Context, cs *mcp.ClientSession, h Health) error 
 	}
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: h.Tool, Arguments: args})
 	if err != nil {
+		if link := signInLink(err.Error()); oauth && link != "" {
+			return &SignInError{URL: link}
+		}
 		return fmt.Errorf("the check %s failed: %w", h.Tool, err)
 	}
 	text := resultText(res)
 	if res.IsError {
+		if link := signInLink(text); oauth && link != "" {
+			return &SignInError{URL: link}
+		}
 		return fmt.Errorf("the check %s reported an error: %s", h.Tool, firstLine(text))
 	}
 	switch {

@@ -1,9 +1,9 @@
 # catalog
 
 **Code:** `internal/catalog/` (`doc.go`, `catalog.go`, `block.go`, `append.go`,
-`remove.go`, `edit.go`, `commands.go`, `searxng.go`, and the tests
-`catalog_test.go`, `remove_test.go`, `edit_test.go`, `commands_test.go` and
-`searxng_test.go`)
+`remove.go`, `edit.go`, `adopt.go`, `commands.go`, `searxng.go`, and the tests
+`catalog_test.go`, `remove_test.go`, `edit_test.go`, `adopt_test.go`,
+`commands_test.go` and `searxng_test.go`)
 **Milestone:** v0.3
 **Architecture:** [Adding an MCP server](../../ARCHITECTURE.md#adding-an-mcp-server),
 [MCP](../../ARCHITECTURE.md#mcp), [Web search](../../ARCHITECTURE.md#web-search)
@@ -21,7 +21,7 @@ It holds two servers, one for each kind of example the docs use, in this order:
 
 | Name | Server | Transport | Needs | Allowed | Asks first |
 | --- | --- | --- | --- | --- | --- |
-| `google` | `uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, save a mail's attachment, send mail, list and change events, search Drive, read a doc | send mail, change an event |
+| `google` | `uvx workspace-mcp==1.30.0 --transport streamable-http --tools gmail calendar drive docs --tool-tier extended`, which you start | Streamable HTTP at `http://127.0.0.1:8000/mcp` | Google OAuth client, sign-in, the server running | search and read mail and threads, save a mail's attachment, send mail, list and change events, search Drive, read a doc | send mail, change an event |
 | `obsidian` | `uvx mcp-obsidian` | stdio | Local REST API plugin key | list, read and search notes, append to a note | append |
 
 The tool names are exact. Tools are deny-by-default, so an allow entry with a typo
@@ -95,7 +95,7 @@ text all print the same line:
 const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
     "WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
     "GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
-    "uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
+    "uvx workspace-mcp==1.30.0 --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
 ```
 
 The OAuth client ID and secret go in the server's environment when you start it,
@@ -206,6 +206,35 @@ works on lines:
 Line-based editing can misread a file, so `writeChecked` checks the result:
 it must load, and hold the same servers in the same order, minus the one
 removed. If not, nothing changes and the error says to edit the file by hand.
+
+Steps 1 to 3 live in `serverSpan`, which returns where the block starts and
+ends; `cutServer` and `AdoptServer` both use it.
+
+### adopt.go
+
+Adopt (see [connectors](connectors.md)) moves a hand-added `obsidian` or
+`google` entry over to its connector, and must be undone exactly. Two
+functions do its edits, each in one write through `writeChecked`:
+
+- `AdoptServer(path, id, day, table)` finds the entry with `serverSpan` and
+  turns each line into a comment: `"# "` in front, or `"#"` alone for an empty
+  line, so the change can be read back. It puts a marker line above, `# adopted
+  by merud on 2026-09-30; meru mcp unadopt obsidian restores it`, and one
+  below, `# end of the adopted obsidian entry`, then `table` right after. The
+  check: the file loads, the other servers stay in order, and
+  `[connectors.<id>]` turns the connector on. It refuses a file that already
+  has `[connectors.<id>]`.
+- `UnadoptServer(path, id)` finds the two markers, strips the `"# "` from each
+  line between them, takes out the table that follows up to its last key, and
+  keeps the comments and blank lines after it, which were there before. After
+  an adopt and an unadopt the file is the same, byte for byte, which
+  `TestAdoptRoundTrip` checks on real-shaped files, one of them an entry with
+  no line break at the end of the file: the lower marker then says so, and the
+  undo leaves the break out again. With no marker it returns `ErrNotAdopted`.
+
+`ConnectorTable(id, values, lists)` writes the table: `enabled = true`, then
+each value and list in key order, one line each, which is what lets
+`UnadoptServer` find the table's end.
 
 ### edit.go
 
@@ -346,6 +375,10 @@ and changing tools ask first. `TestCheckSearXNG` runs the check against
   list later in `config.toml`.
 - **Edit lines, then check.** Removing a block by lines keeps your comments,
   and loading the result before the rename catches a line read wrong.
-- **Unpinned versions.** `uvx` fetches the latest release, so security
-  fixes arrive. A new tool in a later release gives the model nothing until you
-  allow it.
+- **google pinned to the connector's version.** The google command runs
+  `workspace-mcp==1.30.0`, the version the Google connector pins, so a server
+  you run by hand and the one Meru runs are the same release, and `meru mcp
+  adopt google` changes nothing about what runs. A pin moves only in a Meru
+  release (see [connectors](connectors.md)). The google entry stays for anyone
+  who wants to run the server by hand. `mcp-obsidian`, the REST API server,
+  has no connector and stays as it was.

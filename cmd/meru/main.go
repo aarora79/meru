@@ -113,6 +113,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
                         add a server that isn't in the catalog
   meru mcp remove [--yes] <name>
                         take a server out of config.toml
+  meru mcp adopt [--yes] <obsidian|google>
+                        let Meru run a server you set up by hand
+  meru mcp unadopt [--yes] <obsidian|google>
+                        put the hand-added entry back
   meru check [file] [--only id,category] [--json] [--save]
                         rerun your questions from ~/.meru/checks.jsonl
                         and grade the answers

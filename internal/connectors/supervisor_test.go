@@ -167,11 +167,11 @@ func (f *fakeConnector) hook(s *Supervisor) {
 
 // dial starts a fresh fake server and returns the client's end of its
 // in-memory transport. The server stops when procCtx ends or on crash.
-func (f *fakeConnector) dial(procCtx context.Context, _ Cmd, stderr *tailLog) (mcp.Transport, error) {
+func (f *fakeConnector) dial(_, procCtx context.Context, _ Cmd, stderr *tailLog) (mcp.Transport, <-chan struct{}, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.dialErr != nil {
-		return nil, f.dialErr
+		return nil, nil, f.dialErr
 	}
 	f.dials.Add(1)
 	if f.stderrLine != "" {
@@ -227,7 +227,7 @@ func (f *fakeConnector) dial(procCtx context.Context, _ Cmd, stderr *tailLog) (m
 		defer kill()
 		_ = server.Run(killed, end)
 	}()
-	return clientEnd, nil
+	return clientEnd, nil, nil
 }
 
 // closableTransport is a server's end of an in-memory transport that a
@@ -357,8 +357,8 @@ func TestConfigureStates(t *testing.T) {
 		{"no table is off", nil, false, StateOff, "Obsidian is off.", nil},
 		{"enabled false is off", config.Connector{"enabled": false, "vault_path": vault}, false, StateOff, "Obsidian is off.", nil},
 		{"a hand-added server wins", config.Connector{"enabled": true, "vault_path": vault}, true, StateByHand,
-			"Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]].", nil},
-		{"by hand while off", nil, true, StateByHand, "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]].", nil},
+			"Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian.", nil},
+		{"by hand while off", nil, true, StateByHand, "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian.", nil},
 		{"no vault folder", config.Connector{"enabled": true}, false, StateNeedsConfig, "Obsidian needs your vault folder.", []string{"vault_path"}},
 		{"a vault folder that isn't there", config.Connector{"enabled": true, "vault_path": "/no/such/vault"}, false, StateNeedsConfig,
 			"Obsidian can't find the vault folder /no/such/vault.", []string{"vault_path"}},

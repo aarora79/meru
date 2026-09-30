@@ -39,9 +39,12 @@
 // that Meru's client doesn't do. workspace-mcp runs on this machine with
 // your own OAuth client, so the catalog keeps it.
 //
-// The commands aren't pinned to a version: uvx fetches the latest
-// release, which keeps security fixes coming. A later release that adds a
-// tool gives the model nothing new, because allow names each tool.
+// google's command names workspace-mcp 1.30.0, the version the Google
+// connector pins (internal/connectors/manifests/google.toml), so a server
+// you run by hand and the one Meru runs are the same release; meru mcp
+// adopt google moves the first over to the second. A pin moves only in a
+// Meru release. obsidian's mcp-obsidian is the Local REST API server,
+// which no connector runs; the Obsidian connector runs obsidian-mcp.
 
 package catalog
 
@@ -160,10 +163,10 @@ type Entry struct {
 const googleStart = "USER_GOOGLE_EMAIL=<your Google address> " +
 	"WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments " +
 	"GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> " +
-	"uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
+	"uvx workspace-mcp==1.30.0 --transport streamable-http --tools gmail calendar drive docs --tool-tier extended"
 
 // installUV is the Install text for the servers that run with uvx.
-const installUV = "uvx downloads the server the first time it starts. " +
+const installUV = "The first time the server starts, uvx downloads it. " +
 	"Install uv, which provides uvx: https://docs.astral.sh/uv/getting-started/installation/"
 
 // Entries returns the catalog, in the order setup offers it. It builds the

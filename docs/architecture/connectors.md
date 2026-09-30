@@ -5,19 +5,22 @@ search, that Meru installs, starts, checks and restarts for you. This page walks
 through the design in issue #87: what you set, what Meru's developers set, what
 happens on disk, and which parts exist today.
 
-> **Where the work stands.** Steps 1 to 4 of 7 are built. Step 1, merged in
+> **Where the work stands.** Steps 1 to 5 of 7 are built. Step 1, merged in
 > PR #90, added the manifests, their checks, the config table and a test that
 > refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node
 > and uv and the code that installs each connector into `~/.meru/runtime`.
 > Step 3, merged in PR #92, added the supervisor inside `merud`, which runs
-> the Obsidian connector, and the `connectors` status op. Step 4, whose pull
-> request is still to come, runs SearXNG as a container, offers `web_search`
-> only while SearXNG answers, and keeps `merud` up while Ollama is down. A
-> connector that Meru starts stays off until you turn it on, and an
-> `[[mcp.servers]]` entry with the same name wins over it, so a working setup
-> behaves as before. Anything marked (planned) below arrives in steps 5 to 7.
+> the Obsidian connector, and the `connectors` status op. Step 4, merged in
+> PR #93, runs SearXNG as a container, offers `web_search` only while
+> SearXNG answers, and keeps `merud` up while Ollama is down. Step 5, whose
+> pull request is still to come, runs Google over HTTP with its sign-in, and
+> adds Adopt, which moves a server you set up by hand over to its connector
+> when you run `meru mcp adopt`. A connector that Meru starts stays off until
+> you turn it on, and an `[[mcp.servers]]` entry with the same name wins over
+> it, so a working setup behaves as before. Anything marked (planned) below
+> arrives in steps 6 and 7.
 
-Meru · 30 September 2026 · written from branch `connectors-step4`
+Meru · 30 September 2026 · written from branch `connectors-step5`
 
 | Figure | What it counts | Source |
 | --- | --- | --- |
@@ -25,7 +28,8 @@ Meru · 30 September 2026 · written from branch `connectors-step4`
 | Node 24.21.0, uv 0.12.21 | the runtimes Meru downloads for itself, each checked against a pinned SHA-256 | `internal/connectors/runtimes.go`, 30 Sep 2026 |
 | 1, 2, 4, 8 s | wait before each restart after a crash; it doubles, up to 60 s | `internal/connectors/supervisor.go`, 30 Sep 2026 |
 | 5 in 10 min | crashes before a connector stops trying and says why | `internal/connectors/supervisor.go`, 30 Sep 2026 |
-| 10 min | idle time before Obsidian stops, and Google once it lands (planned) | `idle_timeout` in both manifests, 29 Sep 2026 |
+| 10 min | idle time before Obsidian or Google stops | `idle_timeout` in both manifests, 29 Sep 2026 |
+| 15 s | how often Meru checks again while Google waits for you to sign in | `internal/connectors/supervisor.go`, 30 Sep 2026 |
 
 1. [The problem today](#the-problem-today)
 2. [What a connector is](#what-a-connector-is)
@@ -310,9 +314,9 @@ Homebrew, so a connector can't break another program's packages, and removing
 
 ## The supervisor and its states
 
-*Built in step 3 for stdio connectors, in `internal/connectors/supervisor.go`.
-Only Obsidian is a stdio connector today; SearXNG and Google follow in steps 4
-and 5.*
+*Built in step 3 for stdio connectors, in `internal/connectors/supervisor.go`,
+and in step 5 for Google, the one `http` connector. SearXNG has its own loop,
+built in step 4.*
 
 The supervisor is the part of `merud` that runs each connector. It keeps one
 small state machine per connector: a record of which state the connector is in,
@@ -325,7 +329,8 @@ and tells you why, where launchd would keep restarting.
 | --- | --- |
 | `off` | you haven't turned it on |
 | `by_hand` | an `[[mcp.servers]]` entry with the same name runs instead |
-| `needs_config` | a field is missing or wrong |
+| `needs_config` | a field is missing or wrong, or another program holds Google's port |
+| `sign_in` | Google runs and waits for you to sign in at its link; you see `needs_config` |
 | `installing` | downloading the runtime or the package, then the first health check |
 | `ready` | installed and stopped; its tool list is known from the last health check |
 | `starting` | the process is starting, and must pass its health check |
@@ -379,11 +384,13 @@ You see six of those states, so a status line never has to explain the machine:
 These rules govern the machine.
 
 - **Off by default.** A connector runs only when its `[connectors.<id>]` table
-  says `enabled = true`. A manifest can say `default_on`, and none does yet;
-  SearXNG will in step 4.
-- **Set up by hand wins.** An `[[mcp.servers]]` entry named `obsidian` runs as
+  says `enabled = true`. A manifest can say `default_on`; of the four, SearXNG
+  and Ollama do, and neither runs through this supervisor.
+- **Set up by hand wins.** An `[[mcp.servers]]` entry named `obsidian` or `google` runs as
   it did before, through the pool's own rules, and the connector shows
-  `by_hand`. Adopt (planned) will move such an entry over.
+  `by_hand`, with a sentence that ends "To have Meru run it, run meru mcp
+  adopt obsidian." Adopt moves such an entry over (see [Moving a working setup
+  over](#moving-a-working-setup-over)).
 - **Fields.** `merud` checks the table against the manifest: a required field
   needs a value, a folder must exist, an email needs an `@`, a choice must be
   one of its choices, a value must match its pattern, and a key the manifest
@@ -406,9 +413,9 @@ These rules govern the machine.
   error, and `merud` never sends it again, as for a hand-added server. A call
   such as "send this mail" may have done its work before the crash, and sending
   it twice could send two mails.
-- **Tools follow health.** Only a connector you see as `ok` offers tools. Once
-  SearXNG is a connector (planned), the model won't get `web_search` while it's
-  down, where today it gets a tool that fails.
+- **Tools follow health.** Only a connector you see as `ok` offers tools. The
+  model doesn't get `web_search` while SearXNG is down, or Google's tools
+  while Google waits for you to sign in.
 
 Health checks run after an install and at each start. Fix will run one too, and
 a container will get one every 60 seconds while in use (both planned). The
@@ -551,11 +558,27 @@ adds it by hand.
 
 ### Google, for mail, calendar and files
 
-Google is an `http` connector: Meru starts `workspace-mcp` and talks MCP to it
-at `http://127.0.0.1:8000/mcp`. You sign in with OAuth, the standard that lets a
-program act for your account without your password. The server gives you a link,
-a client opens it, and you sign in once (planned). Google sends the browser back
-to a callback address on port 8000, which is why the manifest fixes that port.
+*Built in step 5.*
+
+Google is an `http` connector: Meru starts `workspace-mcp` 1.30.0 and talks MCP
+to it at `http://127.0.0.1:8000/mcp`. You sign in with OAuth, the standard that
+lets a program act for your account without your password. Google sends the
+browser back to a callback address on port 8000, which is why the manifest
+fixes that port. Before each start, Meru looks at the port. If another program
+holds it, such as a Google server you started yourself, the connector reads
+"Google can't start: another program listens on 127.0.0.1:8000." and Meru
+looks again every 30 seconds. It never stops that program.
+
+To check the server, Meru calls `list_calendars`, a read-only tool that reads
+the calendar list. Before you sign in, the server asks Google nothing and
+answers with an error that holds a sign-in link. The connector then keeps the
+server running, since the link calls back to it, and reads "Google needs you to
+sign in." with the link: a "Sign in to Google" button in Settings, and the link
+after "Sign in:" in `/mcp` and `meru mcp status`. Every 15 seconds Meru checks
+again, and once you have signed in the connector is `ok`. Each link works for
+ten minutes, so Meru shows the newest. The link holds a one-time value, so it
+never goes in `merud.log`: Meru cuts the query off every link in the server's
+output before it logs a line.
 
 The four fields are your Google address, the ID of an OAuth client you create
 (it must end in `.apps.googleusercontent.com`), that client's secret, and the
@@ -590,7 +613,10 @@ The socket op `connectors` returns one status per connector: its ID, name,
 kind, state and sentence, whether Meru needs it, the field list with the values
 of the non-secret fields and whether each secret has a saved value, and the
 Fix, which names the fields to ask again. `mcp_status` and `connections` carry
-the same state and sentence for the connector's row. Two more ops will make
+the same state and sentence for the connector's row, and `link`, Google's
+sign-in link while it waits for you. `connector_adopt` and
+`connector_unadopt` move a hand-added entry over and back (see [Moving a
+working setup over](#moving-a-working-setup-over)). Two more ops will make
 changes (planned). `connector_set` saves values and on or off, then installs,
 starts and checks the connector while it streams progress to the client.
 `connector_fix` runs the connector's config step again.
@@ -600,13 +626,14 @@ starts and checks the connector while it streams progress to the client.
 | `ok` | Obsidian is ready. It starts when a question needs it. | none needed |
 | `ok` | Obsidian is running. | none needed |
 | `off` | Obsidian is off. | turns it on (planned) |
-| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. | Adopt (planned) |
+| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian. | Adopt, today with `meru mcp adopt` |
 | `needs_config` | Obsidian needs your vault folder. | asks for the vault folder |
-| `needs_config` | Google needs you to sign in. (planned) | opens the sign-in link |
+| `needs_config` | Google needs you to sign in. | opens the sign-in link, today a button in Settings |
+| `needs_config` | Google can't start: another program listens on 127.0.0.1:8000. … | none; stop that program |
 | `starting` | Obsidian stopped (…) and starts again in 2 s. | none needed |
-| `failed(reason)` | Web search can't start: Docker isn't running. (planned) | runs the check again |
+| `needs_config` | Web search can't start: Docker isn't running. | runs the check again |
 | `failed(reason)` | Obsidian keeps stopping: `<last line of its error output>` | asks for the fields again |
-| (Ollama) | Ollama isn't running. (planned) | runs the check again |
+| `failed` (Ollama) | Ollama isn't running at `http://127.0.0.1:11434`. | runs the check again |
 
 The Fix column follows one rule: Fix asks again for the fields it names, or runs
 the check again when it names none. Until the Fix button arrives, a
@@ -616,8 +643,10 @@ these rows:
 
 - **Settings, under Connections**, in the desktop app: one card per connector
   with a pill (Ready, Starting, Needs setup, Failed or Off), its sentence and
-  that hint. A connector's card has no Remove button. The Fix button, a folder
-  picker for folder fields and a "Sign in to Google" button are planned.
+  that hint, and a "Sign in to Google" button while Google waits for you. A
+  connector's card has no Remove button. A server set up by hand in a
+  connector's place shows the adopt hint. The Fix button and a folder picker
+  for folder fields are planned.
 - **The rail**, the desktop app's side column: a connector that isn't `ok`
   shows with its state, as in "obsidian (needs config)".
 - **`/mcp` in `meru chat`**: the state, the sentence and the hint in the
@@ -659,13 +688,14 @@ range, `npx` or `uvx` with no exact version, an image with no digest, and a file
 fetched from a branch such as `main`. Meru's own `releases/latest` link passes,
 because it fetches Meru and not a dependency.
 
-Ten places break the rule today and keep working, each listed in the test
+Four places break the rule today and keep working, each listed in the test
 with a reason. Step 4 took three off: `meru setup`'s SearXNG recipe and the two
-docs that repeated it. Seven of the rest, such as the installer's
-`searxng:latest` and the catalog's `uvx workspace-mcp`, go away in steps 5 and
-6. The other three stay:
-an Ollama model tag, a made-up server name in an example, and the local Grafana
-stack. The list can only shrink, since an entry that no longer matches anything
+docs that repeated it. Step 5 took six: the Google start commands in the
+catalog, the installer, `running.md`, `google-setup.md` and the catalog's
+coding note, which now all run `uvx workspace-mcp==1.30.0`, the Google
+connector's own pin, and the catalog's install hint. The installer's
+`searxng:latest` goes in step 6. The other three stay: an Ollama model tag, a
+made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything
 also fails the test.
 
 A pin moves only in a Meru release. Its developers pick the new version, test
@@ -674,24 +704,44 @@ Meru never picks up a new connector version by itself.
 
 ## Moving a working setup over
 
-*"Set up by hand" is built in step 3 for Obsidian. Adopt arrives in step 5.*
+*Built in step 5.*
 
 A setup that works today keeps working. An `[[mcp.servers]]` entry named
 `google` or `obsidian` runs as before, and its connector reads "set up by
-hand". Adopt (planned) will offer to move it over. When you confirm, Adopt:
+hand". Nothing moves until you run `meru mcp adopt obsidian` or `meru mcp
+adopt google`. The command asks `merud` what it would change, prints each
+change, and asks before `merud` makes any. Adopt:
 
-1. writes `[connectors.<id>]` from the old entry: the vault folder from
-   `--vault`, or the Google address and client ID, with the client secret moved
-   into `secrets.toml`;
-2. keeps your allow and confirm lists;
-3. comments out the old block and stops the old launchd job;
-4. starts the connector on the same port, so Google's sign-in callback and saved
-   tokens still work.
+1. reads what the connector needs. For Obsidian it takes the vault from the
+   entry's `--vault name=path`. For Google it reads your address, client ID and
+   client secret from `~/.config/workspace-mcp/start.sh`, the script the Google
+   guide has you write; with no script, you give them as `--email` and
+   `--client-id`, and the command asks for the secret without showing it;
+2. saves the client secret in `secrets.toml` as `connector_google_client_secret`,
+   readable by you alone;
+3. stops the launchd job `com.meru.workspace-mcp`, if one runs the old Google
+   server, and renames its file to `.plist.disabled` so it doesn't come back
+   at login;
+4. comments the old entry out between two marker lines and writes
+   `[connectors.<id>]` right after it, with `enabled = true`, the values, and
+   your allow and confirm lists where they differ from the connector's own;
+5. reloads, and `merud` installs, checks and runs the connector, Google on the
+   same port, so its sign-in callback and saved tokens still work.
 
-The IDs stay `google` and `obsidian`, so tool names such as
-`google.search_gmail_messages` read the same in the `tool_calls` log, the
-transcripts and the router, the part of Meru that picks how to handle each
-question. To undo Adopt, restore the commented block.
+Adopt refuses, with a reason, what the connector can't take over: the other
+Obsidian server, `mcp-obsidian`, which talks to the app's Local REST API plugin
+and has other tool names; an entry with no vault or with two; a Google entry at
+another address; and a Google server you started by hand that still holds port
+8000. Meru never stops a program it didn't start, so it asks you to stop that
+one first. Run twice, Adopt says the entry is adopted already.
+
+`meru mcp unadopt <id>` undoes it: it takes the table out, puts the entry back
+without the markers, reloads, and starts the launchd job again if Adopt
+stopped it. The file then matches the one before Adopt, byte for byte. The
+secret stays in `secrets.toml`. The IDs stay `google` and `obsidian`, so tool
+names such as `google.search_gmail_messages` read the same in the `tool_calls`
+log, the transcripts and the router, the part of Meru that picks how to handle
+each question.
 
 ## What it doesn't do
 
@@ -717,9 +767,10 @@ question. To undo Adopt, restore the commented block.
 - **Windows has no runtime pin yet.** Node.js ships a `.zip` there and uv an
   `.exe`, and the runtime folder, the `{pkg}` paths and `.venv/bin` follow
   macOS and Linux.
-- **Google's health check is still open.** It calls `list_calendars`, which
-  nobody has yet confirmed against `workspace-mcp` 1.30.0, and which isn't in
-  the model's allow list.
+- **Adopt never kills a server.** A Google server you started in a terminal
+  keeps port 8000 until you stop it; Adopt refuses until then.
+- **Settings has no Adopt button yet.** Adopt runs from `meru mcp adopt`; the
+  button arrives with the forms in step 6.
 - **An older `merud` refuses the new config.** `config.Load` rejects any key it
   doesn't know, so a `config.toml` with a `[connectors.*]` table fails to load
   in a Meru from before this change. The release notes have to say so.
@@ -736,33 +787,38 @@ The plan lands in seven pull requests, each of which keeps `main` working.
 | 1 | ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, `[connectors.<id>]` parsing and the pin test | **built**, merged in PR #90 |
 | 2 | Node.js and uv download and check; npm, pip, binary and container installs into `~/.meru/runtime`; Node run by Meru; uv's folders under `~/.meru/runtime` | **built**, merged in PR #91 |
 | 3 | the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the `connectors` op and the new states in every status view | **built**, merged in PR #92 |
-| 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | **built**, pull request to come |
-| 5 | Google over HTTP with sign-in, and Adopt for existing entries | (planned) |
+| 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | **built**, merged in PR #93 |
+| 5 | Google over HTTP with sign-in, and Adopt for existing entries | **built**, pull request to come |
 | 6 | the config flow and Fix in the clients; the installer and `meru setup` hand connectors to `merud` | (planned) |
 | 7 | docs, the install skill and the release notes | (planned) |
 
 ## Sources
 
-Repository files, as of branch `connectors-step4` (30 September 2026):
+Repository files, as of branch `connectors-step5` (30 September 2026):
 
 - [ARCHITECTURE.md, "Connectors and the
-  supervisor"](https://github.com/aarora79/meru/blob/connectors-step4/ARCHITECTURE.md#connectors-and-the-supervisor),
+  supervisor"](https://github.com/aarora79/meru/blob/connectors-step5/ARCHITECTURE.md#connectors-and-the-supervisor),
   the design contract; [level
   300](../../ARCHITECTURE.md#connectors-and-the-supervisor) is its web page
-- [internal/connectors/](https://github.com/aarora79/meru/tree/connectors-step4/internal/connectors):
+- [internal/connectors/](https://github.com/aarora79/meru/tree/connectors-step5/internal/connectors):
   `manifest.go` and `manifests/` (`searxng.toml`, `obsidian.toml`,
   `google.toml`, `ollama.toml`); `runtimes.go`, `download.go`, `install.go`,
   `launch.go` and `run.go` for the installs; `supervisor.go`, `status.go` and
-  `health.go` for the supervisor; `container.go` for SearXNG
+  `health.go` for the supervisor; `container.go` for SearXNG; `adopt.go` for
+  Adopt, with `internal/catalog/adopt.go` for its edits of `config.toml`;
+  `install_integration_test.go`, whose `TestIntegrationGoogle` runs the real
+  `workspace-mcp` 1.30.0 on a free port and checks the sign-in link
 - `internal/mcp/pool.go`: the `Spawner` hook the pool calls for a connector;
-  `cmd/merud/connectors.go`: one supervisor per stdio connector, joined to the
-  pool; `internal/rpc/connectors.go`: the `connectors` op
-- [internal/config/config.go](https://github.com/aarora79/meru/blob/connectors-step4/internal/config/config.go)
+  `cmd/merud/connectors.go`: one supervisor per MCP connector, joined to the
+  pool, and the adopt ops; `internal/rpc/connectors.go`: the `connectors`,
+  `connector_adopt` and `connector_unadopt` ops; `cmd/meru/adopt.go`: `meru
+  mcp adopt` and `unadopt`
+- [internal/config/config.go](https://github.com/aarora79/meru/blob/connectors-step5/internal/config/config.go)
   and `load.go`: the `[connectors.<id>]` table
-- [internal/policy/pins_test.go](https://github.com/aarora79/meru/blob/connectors-step4/internal/policy/pins_test.go):
+- [internal/policy/pins_test.go](https://github.com/aarora79/meru/blob/connectors-step5/internal/policy/pins_test.go):
   the pin rules and the list of today's offenders; `connectors_test.go`: the
   one exec site
-- [docs/coding-notes/connectors.md](https://github.com/aarora79/meru/blob/connectors-step4/docs/coding-notes/connectors.md):
+- [docs/coding-notes/connectors.md](https://github.com/aarora79/meru/blob/connectors-step5/docs/coding-notes/connectors.md):
   the code, walked through for readers new to Go
 - Today's wiring for hand-added servers: `internal/mcp/pool.go` (connect once, 30 s each, no restart),
   `internal/installer/websearch.go` and `google.go`; `cmd/merud/ollama.go`, the
@@ -775,6 +831,7 @@ The plan and its review:
 - [PR #90](https://github.com/aarora79/meru/pull/90), step 1
 - [PR #91](https://github.com/aarora79/meru/pull/91), step 2
 - [PR #92](https://github.com/aarora79/meru/pull/92), step 3
+- [PR #93](https://github.com/aarora79/meru/pull/93), step 4
 
 Upstream pages for the pins, checked 30 September 2026:
 

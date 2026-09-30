@@ -280,7 +280,7 @@ func TestCatalogIsTwoServers(t *testing.T) {
 		t.Errorf("Names() = %v, want %v", got, want)
 	}
 	google, _ := Find("google")
-	if google.URL != "http://127.0.0.1:8000/mcp" || !strings.Contains(google.Start, "uvx workspace-mcp --transport streamable-http") {
+	if google.URL != "http://127.0.0.1:8000/mcp" || !strings.Contains(google.Start, "uvx workspace-mcp==1.30.0 --transport streamable-http") {
 		t.Errorf("google = url %q, start %q", google.URL, google.Start)
 	}
 	for _, tool := range []string{"send_gmail_message", "manage_event"} {

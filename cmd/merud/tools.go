@@ -21,6 +21,7 @@ import (
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/commands"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/connectors"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/mcp"
@@ -367,7 +368,18 @@ func (s *toolService) handleMCPStatus(emit func(rpc.Event) error) error {
 	s.mu.Lock()
 	pool := s.pool
 	s.mu.Unlock()
-	return emit(rpc.Event{Type: rpc.EventMCPStatus, MCP: mcpStatus(pool.Status())})
+	rows := mcpStatus(pool.Status())
+	// The pool knows a connector only by its Spawn hook, so it calls each
+	// one stdio; an http connector, Google, says where it answers.
+	for i, r := range rows {
+		if r.Connector == "" || s.conns == nil {
+			continue
+		}
+		if m, ok := s.conns.manifest(r.Name); ok && m.Kind == connectors.KindHTTP {
+			rows[i].Transport, rows[i].URL = "http", m.Launch.URL
+		}
+	}
+	return emit(rpc.Event{Type: rpc.EventMCPStatus, MCP: rows})
 }
 
 // handleReload answers OpMCPReload: it reloads the MCP servers from config

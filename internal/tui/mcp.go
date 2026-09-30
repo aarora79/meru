@@ -76,11 +76,13 @@ func MCPTable(rows []rpc.MCPStatus) []string {
 }
 
 // ConnectorTable lays out merud's connectors as lines, one per connector
-// under a header, with its state and sentence, and for one that needs
-// config, where to set what it needs:
+// under a header, with its state and sentence; for one that needs config,
+// where to set what it needs; and for one that waits for a sign-in, the
+// link to sign in at:
 //
 //	CONNECTOR  STATE
 //	obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.
+//	google     needs config    Google needs you to sign in. Sign in: https://accounts.google.com/o/oauth2/auth?…
 //
 // With no rows it returns nothing.
 func ConnectorTable(rows []rpc.ConnectorStatus) []string {
@@ -92,6 +94,9 @@ func ConnectorTable(rows []rpc.ConnectorStatus) []string {
 		text := r.Sentence
 		if hint := rpc.FixHint(r.ID, r.Fix); hint != "" {
 			text += " " + hint
+		}
+		if r.Link != "" {
+			text += " Sign in: " + r.Link
 		}
 		out = append(out, fmt.Sprintf("%-10s %-15s %s", r.ID, rpc.ConnectorWords(r.State), oneLine(text)))
 	}
@@ -246,6 +251,9 @@ func connHeading(c rpc.Connection) string {
 		if hint := rpc.FixHint(c.Name, c.Fix); hint != "" {
 			s += " " + hint
 		}
+		if c.Link != "" {
+			s += " Sign in: " + c.Link
+		}
 	case c.Kind == "builtin" && c.WebSentence != "":
 		// The built-in tools hold web search, whose state is the SearXNG
 		// connector's.
@@ -257,6 +265,10 @@ func connHeading(c rpc.Connection) string {
 		}
 		if c.Connector == rpc.ConnectorByHand {
 			s += " · set up by hand"
+			// The sentence ends with how Meru can run it instead.
+			if _, how, ok := strings.Cut(c.Sentence, "[[mcp.servers]]. "); ok {
+				s += " · " + how
+			}
 		}
 	}
 	return s

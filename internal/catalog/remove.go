@@ -78,41 +78,10 @@ func RemoveServer(configPath, name string) (string, error) {
 // cutServer returns text without the [[mcp.servers]] block named name, and
 // the lines it took out. It fails when no block has that name.
 func cutServer(text, name string) (rest, removed string, err error) {
-	lines := strings.SplitAfter(text, "\n")
-	if lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1] // SplitAfter leaves "" after a final "\n"
-	}
-
-	// Walk the headers of the top-level tables. A server block starts at a
-	// [[mcp.servers]] line; [mcp.servers.env] and the like stay part of it.
-	start, end := -1, len(lines)
-	for i, line := range lines {
-		key, ok := header(line)
-		if !ok || strings.HasPrefix(key, "mcp.servers.") {
-			continue
-		}
-		if start >= 0 {
-			end = i
-			break
-		}
-		if key == "mcp.servers" && blockNamed(lines[i:], name) {
-			start = i
-		}
-	}
-	if start < 0 {
+	lines := splitLines(text)
+	start, end, ok := serverSpan(lines, name)
+	if !ok {
 		return "", "", fmt.Errorf("no [[mcp.servers]] block named %q", name)
-	}
-
-	// Leave every comment after the block's last key in place: walk back
-	// over comment and blank lines, in any mix.
-	for end > start+1 && (isComment(lines[end-1]) || isBlank(lines[end-1])) {
-		end--
-	}
-	// Take the block's own comments with it. A bare "#" ends them: the
-	// config template uses one to part a server's comments from the text
-	// above, and Block never writes one.
-	for start > 0 && isComment(lines[start-1]) && strings.TrimSpace(lines[start-1]) != "#" {
-		start--
 	}
 
 	removed = strings.Join(lines[start:end], "")
@@ -126,6 +95,48 @@ func cutServer(text, name string) (rest, removed string, err error) {
 		kept = kept[:len(kept)-1]
 	}
 	return strings.Join(kept, ""), removed, nil
+}
+
+// serverSpan finds the [[mcp.servers]] block named name in lines: the
+// index of its first line and the index just past its last. The block
+// runs from its [[mcp.servers]] line to its last key before the next
+// top-level header, sub-tables such as [mcp.servers.env] included, and
+// takes the comment lines right above it, up to a blank line or a bare
+// "#". The comments after its last key stay out: they belong to the next
+// table. ok is false when no block has that name.
+func serverSpan(lines []string, name string) (start, end int, ok bool) {
+	// Walk the headers of the top-level tables. A server block starts at a
+	// [[mcp.servers]] line; [mcp.servers.env] and the like stay part of it.
+	start, end = -1, len(lines)
+	for i, line := range lines {
+		key, isHeader := header(line)
+		if !isHeader || strings.HasPrefix(key, "mcp.servers.") {
+			continue
+		}
+		if start >= 0 {
+			end = i
+			break
+		}
+		if key == "mcp.servers" && blockNamed(lines[i:], name) {
+			start = i
+		}
+	}
+	if start < 0 {
+		return 0, 0, false
+	}
+
+	// Leave every comment after the block's last key in place: walk back
+	// over comment and blank lines, in any mix.
+	for end > start+1 && (isComment(lines[end-1]) || isBlank(lines[end-1])) {
+		end--
+	}
+	// Take the block's own comments with it. A bare "#" ends them: the
+	// config template uses one to part a server's comments from the text
+	// above, and Block never writes one.
+	for start > 0 && isComment(lines[start-1]) && strings.TrimSpace(lines[start-1]) != "#" {
+		start--
+	}
+	return start, end, true
 }
 
 // blockNamed reports whether lines, which start at a [[mcp.servers]]

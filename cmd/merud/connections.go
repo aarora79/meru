@@ -98,19 +98,26 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 }
 
 // connectorNote tells the user why a connector's tool switches don't move
-// yet: its lists come from its manifest (issue #87 brings the settings).
-const connectorNote = "Meru runs this connector and takes its tool lists from its manifest. " +
-	"Changing them here comes in a later release."
+// yet: its lists come from its manifest, or from the lists Adopt kept in
+// its [connectors.<id>] table (issue #87 brings the settings).
+const connectorNote = "Meru runs this connector and takes its tool lists from its manifest, or from its " +
+	"[connectors.<id>] table in config.toml. Changing them here comes in a later release."
 
 // connectorConnection describes a connector the MCP pool runs, sc, as a
-// Settings card: its tools and their policies from the manifest, with
-// info, what the pool reports, and the connector's state and sentence.
-// The card is Fixed, since config has no lists for it to change.
+// Settings card: its tools and their policies from its lists, with info,
+// what the pool reports, and the connector's state, sentence and sign-in
+// link. The card is Fixed, since the app can't change its lists yet.
 func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connectorSet) rpc.Connection {
 	c := rpc.Connection{Name: sc.Name, Kind: dispatch.KindMCP, Transport: "stdio", Fixed: true, Note: connectorNote}
 	fillPolicies(&c, info, sc.Name+".", sc.Allow, sc.Confirm, sc.AlwaysConfirm)
 	if st, ok := conns.byID(sc.Name); ok {
-		c.Connector, c.Sentence, c.Fix = st.State, st.Sentence, st.Fix
+		c.Connector, c.Sentence, c.Fix, c.Link = st.State, st.Sentence, st.Fix, st.Link
+		if st.Kind == connectors.KindHTTP {
+			c.Transport = "http"
+			if m, ok := conns.manifest(sc.Name); ok {
+				c.URL = m.Launch.URL
+			}
+		}
 		if !info.Connected {
 			c.Err = st.Sentence
 		}

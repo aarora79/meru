@@ -198,6 +198,7 @@ cmd/
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
                      `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
+                     `mcp adopt|unadopt` (adopt.go),
                      `check` and `check report` (check.go, checkfile.go, checkreport.go), `run --json`
                      (run.go), the approval prompt (approve.go) and the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
@@ -228,7 +229,7 @@ internal/
                      the past chats in ~/.meru/sessions
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and SearXNG, the safe append to config.toml, and
-                     one-list edits and removals in it
+                     one-list edits and removals in it; Adopt's edit and its undo (adopt.go)
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; builtin/ ships writing, explainer, web-research and
                      file-research
@@ -255,9 +256,11 @@ internal/
   connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
                      versions, and the checks on them; the pinned Node and uv (runtimes.go),
                      installs into ~/.meru/runtime (install.go, launch.go), and run.go, its one
-                     exec site; the supervisor merud runs per stdio connector (supervisor.go),
-                     its states and settings check (status.go) and health check (health.go);
-                     the SearXNG container's supervisor (container.go)
+                     exec site; the supervisor merud runs per MCP connector, Obsidian over
+                     stdio and Google over HTTP with its sign-in (supervisor.go), its states
+                     and settings check (status.go) and health check (health.go); the SearXNG
+                     container's supervisor (container.go); Adopt, which moves a hand-added
+                     entry over to its connector and back (adopt.go)
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests

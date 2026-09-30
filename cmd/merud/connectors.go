@@ -18,8 +18,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/catalog"
@@ -30,16 +32,17 @@ import (
 	"github.com/aarora79/meru/internal/secrets"
 )
 
-// connectorSet holds merud's supervisors: one per stdio connector, in
-// manifest order, and web, the SearXNG container's. None of the fields
-// changes after newConnectorSet; each supervisor guards its own state.
+// connectorSet holds merud's supervisors: one per MCP connector, stdio
+// (Obsidian) or http (Google), in manifest order, and web, the SearXNG
+// container's. None of the fields changes after newConnectorSet; each
+// supervisor guards its own state.
 type connectorSet struct {
 	sups []*connectors.Supervisor
 	web  *connectors.Container
 }
 
 // newConnectorSet loads the manifests and builds a supervisor for each
-// stdio connector and for the SearXNG container, installing under
+// MCP connector and for the SearXNG container, installing under
 // meruDir/runtime. Each stands off until configure hands it config
 // (newPool does, at startup and on each reload). Ollama, the one
 // dependency, has its own watcher (ollama.go). It fails when the
@@ -58,9 +61,8 @@ func newConnectorSet(meruDir string, log *slog.Logger) (*connectorSet, error) {
 	c := &connectorSet{}
 	for _, m := range manifests {
 		// A switch with no value runs the first case that is true.
-		// Google, an http connector, joins in a later step of issue #87.
 		switch {
-		case m.Kind == connectors.KindStdio:
+		case m.Kind == connectors.KindStdio || m.Kind == connectors.KindHTTP:
 			sup, err := connectors.New(m, in, log)
 			if err != nil {
 				c.Close()
@@ -147,8 +149,9 @@ func byHand(servers []config.MCPServer, id string) bool {
 
 // serverConfigs returns the pool entries for the connectors that are on
 // and not set up by hand: one managed server each, named for the
-// connector, so its tools stay <id>.<tool>, with the manifest's tool
-// lists and its supervisor as the Spawn hook. A connector that is off
+// connector, so its tools stay <id>.<tool>, with its tool lists (the
+// manifest's, or those its [connectors.<id>] table sets, as Adopt writes
+// them) and its supervisor as the Spawn hook. A connector that is off
 // gets no entry, so it stays out of mcp_status.
 func (c *connectorSet) serverConfigs() []mcp.ServerConfig {
 	var out []mcp.ServerConfig
@@ -157,10 +160,10 @@ func (c *connectorSet) serverConfigs() []mcp.ServerConfig {
 		if state == connectors.StateOff || state == connectors.StateByHand {
 			continue
 		}
-		m := sup.Manifest()
+		allow, confirm, always := sup.Lists()
 		out = append(out, mcp.ServerConfig{
-			Name: m.ID, Spawn: sup,
-			Allow: m.MCP.Allow, Confirm: m.MCP.Confirm, AlwaysConfirm: m.MCP.AlwaysConfirm,
+			Name: sup.Manifest().ID, Spawn: sup,
+			Allow: allow, Confirm: confirm, AlwaysConfirm: always,
 		})
 	}
 	return out
@@ -203,7 +206,7 @@ func (c *connectorSet) statuses(extra ...connectors.Status) []rpc.ConnectorStatu
 func connectorRow(st connectors.Status) rpc.ConnectorStatus {
 	row := rpc.ConnectorStatus{
 		ID: st.ID, Name: st.Name, Kind: st.Kind, State: st.State, Sentence: st.Sentence,
-		Required: st.Required, Fix: st.Fix,
+		Required: st.Required, Fix: st.Fix, Link: st.Link,
 		Fields: make([]rpc.ConnectorField, 0, len(st.Fields)), // [] rather than null in the JSON
 	}
 	for _, f := range st.Fields {
@@ -215,8 +218,8 @@ func connectorRow(st connectors.Status) rpc.ConnectorStatus {
 	return row
 }
 
-// byID returns the status of stdio connector id, and false when merud
-// runs no stdio connector of that name.
+// byID returns the status of MCP connector id, and false when merud runs
+// no MCP connector of that name.
 func (c *connectorSet) byID(id string) (connectors.Status, bool) {
 	for _, sup := range c.sups {
 		if sup.Manifest().ID == id {
@@ -224,6 +227,17 @@ func (c *connectorSet) byID(id string) (connectors.Status, bool) {
 		}
 	}
 	return connectors.Status{}, false
+}
+
+// manifest returns the manifest of MCP connector id, and false when merud
+// runs no MCP connector of that name.
+func (c *connectorSet) manifest(id string) (connectors.Manifest, bool) {
+	for _, sup := range c.sups {
+		if sup.Manifest().ID == id {
+			return sup.Manifest(), true
+		}
+	}
+	return connectors.Manifest{}, false
 }
 
 // Close stops every connector's program and the SearXNG connector's
@@ -243,4 +257,73 @@ func (c *connectorSet) Close() {
 // nothing, so it answers at once while a connector installs or restarts.
 func (s *toolService) handleConnectors(ollama *ollamaWatch, emit func(rpc.Event) error) error {
 	return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: s.conns.statuses(ollama.status())})
+}
+
+// adopter returns the Adopter for this merud: its config.toml and
+// secrets.toml, the user's home folder, and launchctl run through the
+// connectors package's one exec site.
+func (s *toolService) adopter() (*connectors.Adopter, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("find the home folder: %w", err)
+	}
+	return &connectors.Adopter{
+		ConfigPath: s.configPath, SecretsPath: secrets.Path(s.dir), Home: home,
+		Run: connectors.ExecRunner(), UID: os.Getuid(), OS: runtime.GOOS, Now: time.Now,
+	}, nil
+}
+
+// handleAdopt answers OpConnectorAdopt and, with undo, OpConnectorUnadopt.
+// It works out the changes for the connector named req.ID; without
+// req.Adopt.Apply it only sends them, so the client can ask the user
+// first. With Apply it makes them and reloads the MCP servers, all while
+// it holds the lock every config.toml write takes. The reply is one
+// "adopt" event. A secret in req.Adopt.Values goes to secrets.toml only;
+// the event never holds it.
+func (s *toolService) handleAdopt(ctx context.Context, req rpc.Request, undo bool, emit func(rpc.Event) error) error {
+	m, ok := s.conns.manifest(req.ID)
+	if !ok || !connectors.Adoptable(m) {
+		return fmt.Errorf("meru mcp adopt takes obsidian or google, not %q", req.ID)
+	}
+	a, err := s.adopter()
+	if err != nil {
+		return err
+	}
+	var in rpc.AdoptRequest
+	if req.Adopt != nil {
+		in = *req.Adopt
+	}
+	// A reload here must outlive a client that hangs up halfway, as
+	// handleSecretSet's does.
+	reload := func() error { return s.reloadMCP(context.WithoutCancel(ctx)) }
+
+	var plan connectors.AdoptPlan
+	err = s.bt.EditConfig(func() error {
+		var err error
+		if undo {
+			plan, err = a.PlanUnadopt(ctx, m)
+		} else {
+			plan, err = a.PlanAdopt(ctx, m, in.Values)
+		}
+		if err != nil || !in.Apply {
+			return err
+		}
+		if undo {
+			return a.Unadopt(ctx, plan, reload)
+		}
+		return a.Adopt(ctx, plan, reload)
+	})
+	if err != nil {
+		return err
+	}
+	if in.Apply && !plan.Nothing {
+		verb := "adopted"
+		if undo {
+			verb = "unadopted"
+		}
+		s.log.InfoContext(ctx, "connector "+verb, "connector", m.ID)
+	}
+	return emit(rpc.Event{Type: rpc.EventAdopt, Adopted: &rpc.AdoptResult{
+		ID: m.ID, Changes: plan.Changes, Applied: in.Apply && !plan.Nothing, Nothing: plan.Nothing,
+	}})
 }

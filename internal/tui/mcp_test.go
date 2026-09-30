@@ -75,11 +75,13 @@ func TestConnectorTable(t *testing.T) {
 	got := ConnectorTable([]rpc.ConnectorStatus{
 		{ID: "obsidian", State: rpc.ConnectorNeedsConfig, Sentence: "Obsidian needs your vault folder.", Fix: []string{"vault_path"}},
 		{ID: "notes", State: rpc.ConnectorByHand, Sentence: "Notes is set up by hand, as the notes entry in [[mcp.servers]]."},
+		{ID: "google", State: rpc.ConnectorNeedsConfig, Sentence: "Google needs you to sign in.", Link: "https://accounts.example.test/o/oauth2/auth?client_id=x"},
 	})
 	want := []string{
 		"CONNECTOR  STATE",
 		"obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.",
 		"notes      set up by hand  Notes is set up by hand, as the notes entry in [[mcp.servers]].",
+		"google     needs config    Google needs you to sign in. Sign in: https://accounts.example.test/o/oauth2/auth?client_id=x",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("ConnectorTable =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -102,6 +104,17 @@ func TestConnHeadingForConnectors(t *testing.T) {
 	}
 	hand := rpc.Connection{Name: "obsidian", Kind: "mcp", Transport: "stdio", State: rpc.MCPConnected, Connector: rpc.ConnectorByHand}
 	if got := connHeading(hand); !strings.HasSuffix(got, "· connected · 0 of 0 tools on · set up by hand") {
+		t.Errorf("connHeading = %q", got)
+	}
+	// With merud's sentence, the heading says how to adopt it.
+	hand.Sentence = "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian."
+	if got := connHeading(hand); !strings.HasSuffix(got, "· set up by hand · To have Meru run it, run meru mcp adopt obsidian.") {
+		t.Errorf("connHeading = %q", got)
+	}
+	// A connector that waits for a sign-in shows the link.
+	google := rpc.Connection{Name: "google", Kind: "mcp", Transport: "http", State: rpc.MCPNotConnected,
+		Connector: rpc.ConnectorNeedsConfig, Sentence: "Google needs you to sign in.", Link: "https://accounts.example.test/o/oauth2/auth?client_id=x"}
+	if got := connHeading(google); !strings.HasSuffix(got, "Google needs you to sign in. Sign in: https://accounts.example.test/o/oauth2/auth?client_id=x") {
 		t.Errorf("connHeading = %q", got)
 	}
 	// The built-in tools' heading carries web search's state.

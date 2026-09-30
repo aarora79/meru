@@ -2735,7 +2735,7 @@ OAuth 2.1 mode needs HTTP, so you start it yourself and `merud` connects to it
 ```sh
 USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
   GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
-  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
+  uvx workspace-mcp==1.30.0 --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
 ```
 
 The server offers 120-odd tools across twelve Google services. `--tools` limits the
@@ -3016,7 +3016,7 @@ none. The connectors are the one exception: servers that Meru installs from a
 manifest with a pinned version, which a supervisor inside `merud` starts,
 checks and restarts (see
 [Connectors and the supervisor](#connectors-and-the-supervisor); built for
-stdio connectors). The pool reaches a connector through its supervisor, and
+Obsidian over stdio and Google over HTTP). The pool reaches a connector through its supervisor, and
 nothing below changes for a hand-added server:
 
 | Transport | What `merud` does | What it never does |
@@ -3204,15 +3204,17 @@ says little. A **connector** is one of those programs that Meru will install,
 configure, start, check and restart for you, at a version pinned in Meru's own
 release. Issue #87 holds the plan, which lands in seven steps.
 
-**What exists now (steps 1 to 4):** the manifests, the checks on them, the
+**What exists now (steps 1 to 5):** the manifests, the checks on them, the
 `[connectors.<id>]` config table, a policy test that refuses unpinned
 versions, the code that downloads the pinned runtimes and installs each
-connector into `~/.meru/runtime`, the supervisor for stdio connectors, which
-runs Obsidian, the SearXNG container, and the watch on Ollama. A connector
-that Meru starts stays off until its table says `enabled = true`, and an
-`[[mcp.servers]]` entry with the same name wins over it, so a working setup
-behaves as before. Google, Adopt and the settings forms are **planned**, and
-arrive over the next steps.
+connector into `~/.meru/runtime`, the supervisor, which runs Obsidian over
+stdio and Google over HTTP with its sign-in, the SearXNG container, the
+watch on Ollama, and Adopt, which moves a hand-added `obsidian` or `google`
+entry over to its connector when you ask. A connector that Meru starts
+stays off until its table says `enabled = true`, and an `[[mcp.servers]]`
+entry with the same name wins over it, so a working setup behaves as
+before until you run `meru mcp adopt`. The settings forms and Fix are
+**planned** for step 6.
 
 ### The manifest
 
@@ -3279,11 +3281,13 @@ or `npx` without an exact version, a container image without a digest, and a
 file fetched from a branch. It reads the manifests, the installer, the catalog,
 `cmd/meru`, `scripts/`, `deploy/` and the code blocks in `docs/`. Meru's own
 `releases/latest` link passes: it fetches Meru, not a dependency. The places
-that break the rule today, such as the installer's `searxng:latest` and the
-catalog's `uvx workspace-mcp`, sit on a short list in the test and keep working
-until steps 5 and 6 replace them; the list can only shrink. Step 4 took off
-`meru setup`'s SearXNG recipe and the docs that repeated it, which fetched
-files from SearXNG's main branch.
+that break the rule today, such as the installer's `searxng:latest`, sit on a
+short list in the test and keep working until step 6 replaces them; the list
+can only shrink. Step 4 took off `meru setup`'s SearXNG recipe and the docs
+that repeated it, which fetched files from SearXNG's main branch. Step 5 took
+off the Google start commands in the catalog, the installer and the docs:
+each now runs `uvx workspace-mcp==1.30.0`, the Google connector's pin, so a
+server you run by hand and the one Meru runs are the same release.
 
 ### Config and secrets
 
@@ -3295,13 +3299,20 @@ enabled    = true
 vault_path = "~/Notes/vault"
 ```
 
-`enabled` is true or false; every other value is a string. `config.Load` checks
-the shape only: an ID and its keys are lower-case letters, digits and `_`. It
-doesn't know the connectors, because the clients import `config` and must not
-reach `internal/connectors`. `merud` checks each stdio connector's table,
-and SearXNG's, against its manifest, and a key or value that doesn't fit
-leaves the connector at needs config, with the field to fix; Google's table
-gets the same check when it joins in step 5. A secret field never goes in `config.toml`: its value goes in
+`enabled` is true or false, and a field's value is a string. An MCP
+connector's table may also hold `allow`, `confirm` and `always_confirm`,
+each a list of tool names, which then take the place of the manifest's
+lists; Adopt writes them when the old entry's lists differ from the
+manifest's. They follow an `[[mcp.servers]]` entry's rules: one tool per
+name, no wildcard, and each `confirm` tool also in `allow`. `config.Load`
+checks the shape only: an ID and its keys are lower-case letters, digits and
+`_`, and only those three keys hold lists. It doesn't know the connectors,
+because the clients import `config` and must not reach
+`internal/connectors`. `merud` checks each connector's table against its
+manifest, and a key or value that doesn't fit leaves the connector at needs
+config, with the field to fix. A tool the server doesn't offer shows as a
+warning in `meru tools`, as for a hand-added server, since only the running
+server knows its tools. A secret field never goes in `config.toml`: its value goes in
 `secrets.toml` as `secret:connector_<id>_<field>`. `[[mcp.servers]]` stays for
 the servers you add by hand, and the supervisor never manages those.
 
@@ -3400,17 +3411,18 @@ last 40 lines for the error message.
 
 ### The supervisor
 
-Built in step 3, for stdio connectors (`internal/connectors/supervisor.go`).
-`merud` runs one small state machine per stdio connector, built at startup
-from the manifests and kept for its whole life. It moves through nine
-states inside; you see six:
+Built in step 3 for stdio connectors, and in step 5 for http ones
+(`internal/connectors/supervisor.go`). `merud` runs one small state machine
+per MCP connector, Obsidian and Google, built at startup from the manifests
+and kept for its whole life. It moves through ten states inside; you see
+six:
 
 | State | Meaning | Inside it |
 | --- | --- | --- |
 | `ok` | ready to use; its tools are offered | `ok` (running) or `ready` (installed, checked, not running) |
 | `off` | config never turned it on, or turned it off | `off` |
 | `by_hand` | an `[[mcp.servers]]` entry with the same name runs instead ("set up by hand") | `by_hand` |
-| `needs_config` | a field is missing or wrong; Fix names it | `needs_config` |
+| `needs_config` | a field is missing or wrong, the port is taken, or you need to sign in | `needs_config`, `sign_in` (running, waiting for you) |
 | `starting` | on its way | `installing`, `starting`, backoff after a crash |
 | `failed(reason)` | stopped until config changes or `merud` restarts; the reason says why | `failed` |
 
@@ -3420,6 +3432,8 @@ off, by_hand, needs_config ──config fixed──▶ installing ──ok──
                                                  ▼                                       └─backoff◀─┤
                                                failed ◀────── fifth crash in 10 min ────────────────┘
 ok ──idle_timeout──▶ ready
+installing, starting ──check wants a sign-in──▶ sign_in ──you sign in──▶ ok
+installing, starting ──port taken──▶ needs_config ──30 s, or a reload──▶ installing
 ```
 
 - **Off by default.** A connector starts only when its `[connectors.<id>]`
@@ -3428,14 +3442,16 @@ ok ──idle_timeout──▶ ready
 - **Set up by hand wins.** When `[[mcp.servers]]` has an entry with the
   connector's ID, that entry runs through the pool's own rules, unchanged, and
   the connector shows `by_hand` with the sentence "Obsidian is set up by hand,
-  as the obsidian entry in [[mcp.servers]]." Adopt (step 5) moves such an
-  entry over.
+  as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru
+  mcp adopt obsidian." Adopt moves such an entry over (see
+  [Moving to connectors](#moving-to-connectors)).
 - **Fields.** `merud` checks the table against the manifest's fields: a
   required field needs a value, a folder must exist, an email needs an `@`, a
   choice must be one of its choices, a value must match its pattern, and a key
-  the manifest lacks is a mistake. The first problem becomes the sentence, and
-  Fix lists the fields. When Obsidian's `vault_name` is empty, `merud` makes
-  one from the vault folder's name.
+  the manifest lacks is a mistake. An `oauth` field has no value in config:
+  the server signs you in (see [Google](#google)). The first problem becomes
+  the sentence, and Fix lists the fields. When Obsidian's `vault_name` is
+  empty, `merud` makes one from the vault folder's name.
 - **Install and check.** With good fields, the supervisor installs the pinned
   version if it isn't there, starts the program once, lists its tools, calls
   the manifest's health tool, saves the tool list to
@@ -3460,27 +3476,30 @@ ok ──idle_timeout──▶ ready
   restarts or stops one; a hand-added server keeps today's code. A reload
   hands each supervisor its table again: one whose config didn't change keeps
   its program running, and one that failed gets a fresh try.
-- **Its own goroutines.** Each supervisor owns one worker for an install or a
-  start and one watcher per running program; closing it stops both and waits
-  for them. The waits run on a clock that tests replace.
+- **Its own goroutines.** Each supervisor owns one worker for an install, a
+  start or a sign-in check, and one watcher per running program; closing it
+  stops both and waits for them. The waits run on a clock that tests
+  replace.
 
 The child gets a short environment: the `PATH` and variables `LaunchCommand`
 gives, the user's real `HOME`, and `TMPDIR`. Its error output goes to
-`merud.log` at debug level, and the supervisor keeps the last line for the
-sentence.
+`merud.log` at debug level, with the query of every link in it replaced by
+`?…`, so a sign-in link's one-time state never lands in the log; the
+supervisor keeps the last line for the sentence.
 
 **Status.** The socket op `connectors` returns one `ConnectorStatus` per
 connector: `id`, `name`, `kind`, `state`, `sentence`, `required`, the
-`fields` with each non-secret value and whether each secret is saved, and
-`fix`, the fields to ask again. The sentences:
+`fields` with each non-secret value and whether each secret is saved, `fix`,
+the fields to ask again, and `link`, the sign-in link while a connector
+waits for one. The sentences:
 
 | State | Sentence |
 | --- | --- |
 | `ok`, not running | Obsidian is ready. It starts when a question needs it. |
 | `ok`, running | Obsidian is running. |
 | `off` | Obsidian is off. |
-| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. |
-| `needs_config` | Obsidian needs your vault folder. / Obsidian can't find the vault folder ~/Notes. |
+| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian. |
+| `needs_config` | Obsidian needs your vault folder. / Obsidian can't find the vault folder ~/Notes. / Google needs you to sign in. / Google can't start: another program listens on 127.0.0.1:8000. Stop that program; Meru looks again every 30 seconds. |
 | `starting` | Meru is installing Obsidian 2.0.1 and checking it. / Obsidian is starting. / Obsidian stopped (…) and starts again in 2 s. |
 | `failed` | Obsidian couldn't install: … / Obsidian failed its check: … / Obsidian keeps stopping: … |
 
@@ -3490,10 +3509,56 @@ connector the pool runs, in their `connector` and `sentence` fields, and
 `by_hand`. Settings shows each connector's card with a pill and its sentence,
 the rail names a connector that isn't `ok` with its state, `/mcp` and
 `meru mcp status` print the state and sentence, and `about_meru` adds the
-sentence. Until the settings forms arrive (step 6), a `needs_config`
-connector says which key to set: "Set vault_path under
-[connectors.obsidian] in config.toml, then restart merud." A connector's
-tool lists come from its manifest, so its card's switches don't move yet.
+sentence. A sign-in link shows as a "Sign in to Google" button on the
+Settings card, and after "Sign in:" in `/mcp` and `meru mcp status`. Until
+the settings forms arrive (step 6), a `needs_config` connector says which
+key to set: "Set vault_path under [connectors.obsidian] in config.toml,
+then restart merud." A connector's tool lists come from its manifest, or
+from its table, so its card's switches don't move yet.
+
+### Google
+
+Built in step 5. Google is the one `http` connector: `merud` starts
+`workspace-mcp` 1.30.0 from its own Python environment,
+`~/.meru/runtime/pkg/google-1.30.0/.venv/bin/workspace-mcp`, with
+`--transport streamable-http`, the four services and the extended tool
+tier, and talks to it over Streamable HTTP at `http://127.0.0.1:8000/mcp`.
+The environment carries `USER_GOOGLE_EMAIL`, `GOOGLE_OAUTH_CLIENT_ID`, the
+client secret from `secret:connector_google_client_secret`,
+`WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments`, and
+`WORKSPACE_MCP_HOST=127.0.0.1` with port 8000. The child keeps your real
+`HOME`, so the tokens a hand-run server saved in
+`~/.google_workspace_mcp/credentials/` keep working.
+
+- **The port.** Port 8000 is fixed, since the sign-in link calls back to
+  it. Before each start, `merud` looks at the port, waiting up to 3 seconds
+  for its own last program to let go. If another program still listens
+  there, the connector is `needs_config` with "Google can't start: another
+  program listens on 127.0.0.1:8000.", and `merud` looks again every 30
+  seconds and on each reload. It never stops that program: it may be the
+  server you started by hand.
+- **The start.** `merud` starts the program, waits for it to listen, then
+  connects. A Streamable HTTP session doesn't end when the server's
+  program does, so `merud` watches the program and closes the session when
+  it exits; a crash then counts as for a stdio connector.
+- **The check.** The health tool is `list_calendars`, marked read-only: one
+  read of the calendar list. Before you sign in, `workspace-mcp` asks
+  Google nothing and answers the call with an error whose text holds
+  `Authorization URL: https://accounts.google.com/o/oauth2/auth?…`, with a
+  callback to `http://localhost:8000/oauth2callback`. The integration test
+  `TestIntegrationGoogle` checks this against the real 1.30.0 on a free
+  port.
+- **The sign-in.** When the check's error holds such a link, the connector
+  keeps the program running, since the link calls back to it, and moves to
+  `sign_in`, which you see as `needs_config` with "Google needs you to sign
+  in." and the link. Every 15 seconds `merud` runs the check again: a new
+  link replaces the old one, since each works for ten minutes, and once the
+  check passes the connector is `ok`, with the program running. A check
+  that fails for any other reason, such as a Google API that is off in
+  your project, sets `failed`. The link never goes in `merud.log`, and a
+  link counts only after "Authorization URL:" or when its query names both
+  `client_id` and `redirect_uri`, so a help page in an error isn't taken
+  for a sign-in.
 
 ### SearXNG and Ollama
 
@@ -3597,24 +3662,73 @@ and only then opens the store and builds the rest. Until then:
 true; a question asked while Ollama is down fails with Ollama's own error, as
 before.
 
-### Moving to connectors (planned)
+### Moving to connectors
 
+Built in step 5 (`internal/connectors/adopt.go`, `internal/catalog/adopt.go`).
 A working setup keeps working. An `[[mcp.servers]]` entry named `google` or
-`obsidian` runs as it does today, and its connector says "set up by hand"
-(built in step 3 for Obsidian). An **Adopt** action will move it over. Adopt,
-after you confirm:
+`obsidian` runs as it did, and its connector says "set up by hand". Nothing
+moves until you run `meru mcp adopt <id>`. Two socket ops do the work, both
+user commands like the memory ops, so neither goes through `dispatch`:
 
-1. writes `[connectors.<id>]` from the old entry: the vault path from
-   `--vault`, the Google address and client ID, and the client secret into
-   `secrets.toml`;
-2. keeps the allow and confirm lists;
-3. comments out the old block and stops the old launchd job;
-4. starts the connector on the same port, so Google's sign-in callback and
-   saved tokens still work.
+- `connector_adopt`, with the connector's ID. Without `adopt.apply` it only
+  works out the changes and sends them in an `adopt` event; with it, it
+  makes them and reloads the MCP servers. `adopt.values` gives what the
+  entry doesn't hold: Google's `email`, `client_id` and `client_secret`.
+- `connector_unadopt`, the same two steps for the undo.
 
-Undoing it takes one step: restore the commented block. The connector IDs stay
-`google` and `obsidian`, so tool names such as `google.search_gmail_messages`
-don't change in `tool_calls`, transcripts or the router.
+`meru mcp adopt [--yes] <id>` asks for the plan, prints every change,
+asks, and only then applies. `meru mcp unadopt [--yes] <id>` does the same
+for the undo. Adopt, for each connector:
+
+| | Obsidian | Google |
+| --- | --- | --- |
+| takes | an entry that runs `obsidian-mcp` through `npx`, `node` or its own program, with one `--vault name=path` | an entry at `http://127.0.0.1:8000/mcp` (or `localhost`) |
+| reads | the vault name and folder from `--vault` | the address, client ID and secret from `~/.config/workspace-mcp/start.sh`, the script `docs/google-setup.md` has you write, or from `--email`, `--client-id` and a secret it asks for |
+| refuses | `mcp-obsidian` through `uvx` (the Local REST API server, with other tool names), no vault or two, a folder that isn't there, a vault name `obsidian-mcp` refuses, `env` | another address, a stdio entry, a start script on another port, a missing value (it names what to give), another program on port 8000 |
+| saves | nothing in `secrets.toml` | the secret as `connector_google_client_secret`, with mode 0600 |
+| stops | nothing | the launchd job `com.meru.workspace-mcp`, if loaded (`launchctl bootout`), and renames its plist to `.plist.disabled` so it doesn't start at login |
+
+Then, in one write of `config.toml` through the catalog's checked writer,
+Adopt comments out the entry, its own comments included, between two
+marker lines, and puts `[connectors.<id>]` right after it, with
+`enabled = true`, the values, and each tool list that differs from the
+manifest's:
+
+```toml
+# adopted by merud on 2026-09-30; meru mcp unadopt obsidian restores it
+# [[mcp.servers]]
+# name    = "obsidian"
+# command = "npx"
+# args    = ["-y", "obsidian-mcp", "serve", "--vault", "notes=/Users/dana/Notes"]
+# allow   = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note", "obsidian_create_note"]
+# end of the adopted obsidian entry
+[connectors.obsidian]
+enabled = true
+allow = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note", "obsidian_create_note"]
+vault_name = "notes"
+vault_path = "/Users/dana/Notes"
+```
+
+The reload hands the supervisor the new table: it installs the pinned
+version if it isn't there, checks it and runs it from then on, Google on
+the same port, so its sign-in callback and saved tokens still work. Adopt
+refuses when config has both the entry and a `[connectors.<id>]` table, and
+does nothing, with a line that says so, when the entry is adopted already.
+If the config write fails, it starts the launchd job again.
+
+**Never killed.** A Google server you started by hand in a terminal isn't
+Meru's to stop. Adopt refuses while it listens on port 8000 and asks you to
+stop it (Ctrl+C where it runs), then to run adopt again.
+
+**Undo.** Unadopt takes out `[connectors.<id>]`, puts the entry back
+without the markers, reloads, so the supervisor stops its program, and
+then renames the plist back and starts the launchd job with `launchctl
+bootstrap`, if Adopt stopped it. After an adopt and an unadopt with no edit
+between them, `config.toml` is the same, byte for byte. The secret stays in
+`secrets.toml`, where the next adopt finds it. The connector IDs stay
+`google` and `obsidian`, so tool names such as
+`google.search_gmail_messages` don't change in `tool_calls`, transcripts or
+the router.
 
 ---
 

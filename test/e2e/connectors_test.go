@@ -179,6 +179,91 @@ func TestConnectorLifecycle(t *testing.T) {
 	}
 }
 
+// TestConnectorAdopt moves a hand-added obsidian entry, one that runs
+// obsidian-mcp through npx with --vault, over to the connector with meru
+// mcp adopt, through a real merud, and back with meru mcp unadopt. The
+// "npx" is cmd/fakemcp under that name, so nothing downloads. After the
+// round trip config.toml is the same, byte for byte.
+func TestConnectorAdopt(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	fakeObsidianInstall(t, h.dir)
+	npx := filepath.Join(t.TempDir(), "npx")
+	if err := os.Symlink(filepath.Join(binDir, "fakemcp"), npx); err != nil {
+		t.Fatal(err)
+	}
+	vault := t.TempDir()
+	body := fakeConfig(f.url, fmt.Sprintf(`[router]
+temperature = 1.0
+
+# My notes, set up by hand.
+[[mcp.servers]]
+name    = "obsidian"
+command = %q
+args    = ["-y", "obsidian-mcp", "serve", "--vault", "notes=%s"]
+allow   = ["obsidian_list_vaults", "search"]
+`, npx, vault))
+	h.writeConfig(t, body)
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	st := obsidianStatus(t, h.socket)
+	if st.State != rpc.ConnectorByHand || !strings.Contains(st.Sentence, "run meru mcp adopt obsidian") {
+		t.Fatalf("obsidian = %s %q, want by_hand with the adopt hint", st.State, st.Sentence)
+	}
+
+	// Asking for the plan changes nothing.
+	var plan *rpc.AdoptResult
+	for _, ev := range op(t, h.socket, rpc.Request{Op: rpc.OpConnectorAdopt, ID: "obsidian"}) {
+		if ev.Type == rpc.EventAdopt {
+			plan = ev.Adopted
+		}
+	}
+	if plan == nil || plan.Applied || len(plan.Changes) == 0 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	if got, _ := os.ReadFile(h.config); string(got) != body {
+		t.Fatal("asking for the plan changed config.toml")
+	}
+
+	// meru mcp adopt shows the plan, asks, and adopts.
+	res := runMeruInput(t, h, "y\n", "mcp", "adopt", "obsidian")
+	if res.code != 0 || !strings.Contains(res.stdout, "Done.") || !strings.Contains(res.stdout, `vault_name = "notes"`) {
+		t.Fatalf("meru mcp adopt exited %d:\n%s\n%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, h.log())
+	}
+	adopted, _ := os.ReadFile(h.config)
+	for _, want := range []string{"# adopted by merud on ", "[connectors.obsidian]\nenabled = true\n", `allow = ["obsidian_list_vaults", "search"]`} {
+		if !strings.Contains(string(adopted), want) {
+			t.Errorf("config.toml lacks %q:\n%s", want, adopted)
+		}
+	}
+	waitSentence(t, h, "Obsidian is ready. It starts when a question needs it.")
+	tools := runMeru(t, h, "tools")
+	for _, want := range []string{"obsidian.obsidian_list_vaults", "obsidian.search"} {
+		if !strings.Contains(tools.stdout, want) {
+			t.Errorf("meru tools lacks %s, which the old entry allowed:\n%s", want, tools.stdout)
+		}
+	}
+	// A second adopt has nothing to do.
+	again := runMeru(t, h, "mcp", "adopt", "--yes", "obsidian")
+	if again.code != 0 || !strings.Contains(again.stdout, "adopted already") {
+		t.Errorf("a second adopt: %d\n%s%s", again.code, again.stdout, again.stderr)
+	}
+
+	// meru mcp unadopt puts the entry back as it was.
+	res = runMeru(t, h, "mcp", "unadopt", "--yes", "obsidian")
+	if res.code != 0 {
+		t.Fatalf("meru mcp unadopt exited %d:\n%s\n%s", res.code, res.stdout, res.stderr)
+	}
+	if got, _ := os.ReadFile(h.config); string(got) != body {
+		t.Errorf("after unadopt config.toml differs:\n%s\nwant:\n%s", got, body)
+	}
+	if st := obsidianStatus(t, h.socket); st.State != rpc.ConnectorByHand {
+		t.Errorf("obsidian = %s %q after unadopt, want by_hand", st.State, st.Sentence)
+	}
+}
+
 // TestConnectorSetUpByHand checks the rule that keeps a working setup
 // working: an [[mcp.servers]] entry named obsidian wins over the
 // connector, runs as before, and the connector says it is set up by hand.
@@ -203,7 +288,7 @@ allow   = ["search"]
 	waitReady(t, h, m, readyTimeout)
 
 	st := obsidianStatus(t, h.socket)
-	if st.State != rpc.ConnectorByHand || st.Sentence != "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]." {
+	if st.State != rpc.ConnectorByHand || st.Sentence != "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian." {
 		t.Errorf("obsidian = %s %q, want by_hand", st.State, st.Sentence)
 	}
 	tools := runMeru(t, h, "tools")
