@@ -61,6 +61,9 @@ type Status struct {
 	// every connector merud runs, with its state in brackets unless it is
 	// ok: "google, obsidian (needs config)".
 	Connections []string `json:"connections"`
+	// Connectors are the rail's dots: each connector that isn't off, with
+	// its state. A click on one opens its card in Settings.
+	Connectors []ConnectorDot `json:"connectors"`
 }
 
 // Status asks merud what the index holds, which MCP servers are
@@ -74,7 +77,7 @@ func (b *Bridge) Status(ctx context.Context) Status {
 	model := b.model
 	b.mu.Unlock()
 	s := Status{Socket: b.socket, Machine: machineName(runtime.GOOS), Model: model, Fast: b.fast, Embed: b.embed,
-		Connections: []string{}}
+		Connections: []string{}, Connectors: []ConnectorDot{}}
 	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpIndexStatus}, rpc.EventStatus)
 	if err != nil {
 		// A timeout means merud took the connection and then didn't answer
@@ -117,6 +120,7 @@ func (b *Bridge) Status(ctx context.Context) Status {
 	// names when it is on, and Ollama, when it isn't ok. A merud from
 	// before the connectors op answers with an error, and adds nothing.
 	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpConnectors}, rpc.EventConnectors); err == nil {
+		s.Connectors = connectorDots(ev.Connectors)
 		for _, c := range ev.Connectors {
 			switch {
 			case c.Kind == "container" && c.State == rpc.ConnectorOK:

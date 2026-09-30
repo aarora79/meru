@@ -255,3 +255,47 @@ func TestBracketDepth(t *testing.T) {
 		}
 	}
 }
+
+// TestSetConnector checks the connector table writer: a new table goes at
+// the end, a second write changes values in place, and the comments and
+// the keys it doesn't name stay.
+func TestSetConnector(t *testing.T) {
+	path := writeConfig(t, "# my note\n[index]\nwatch = false\n")
+	on, off := true, false
+	if err := SetConnector(path, "obsidian", &on, map[string]string{"vault_path": `C:\Notes "main"`}); err != nil {
+		t.Fatal(err)
+	}
+	want := "# my note\n[index]\nwatch = false\n\n[connectors.obsidian]\nenabled = true\nvault_path = \"C:\\\\Notes \\\"main\\\"\"\n"
+	if got := readText(t, path); got != want {
+		t.Errorf("after the first write:\n%s\nwant:\n%s", got, want)
+	}
+
+	// A comment in the table and the key left out both stay.
+	text := strings.Replace(readText(t, path), "enabled = true\n", "enabled = true # on since Monday\n", 1)
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetConnector(path, "obsidian", &off, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := cfg.Connectors["obsidian"]
+	if en, ok := tab.Enabled(); !ok || en {
+		t.Errorf("enabled = %v, %v; want false", en, ok)
+	}
+	if v, _ := tab.Value("vault_path"); v != `C:\Notes "main"` {
+		t.Errorf("vault_path = %q", v)
+	}
+	if got := readText(t, path); !strings.Contains(got, "enabled = false # on since Monday\n") || !strings.HasPrefix(got, "# my note\n") {
+		t.Errorf("the edit lost a comment:\n%s", got)
+	}
+
+	// Nothing to set writes nothing.
+	before := readText(t, path)
+	if err := SetConnector(path, "obsidian", nil, nil); err != nil || readText(t, path) != before {
+		t.Errorf("an empty change: %v, or it wrote the file", err)
+	}
+}

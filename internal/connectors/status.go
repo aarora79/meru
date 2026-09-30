@@ -166,23 +166,8 @@ func checkSettings(m Manifest, table config.Connector, sec *secrets.Secrets, hom
 			v = expandHome(v, home)
 		}
 		st.values[f.ID] = v
-
-		label := lowerFirst(f.Label)
-		switch {
-		case v == "" && f.Required:
-			problem(f.ID, fmt.Sprintf("%s needs your %s.", m.Name, label))
-		case v == "":
-			// An optional field left empty is fine.
-		case f.Type == FieldFolder && !isFolder(v):
-			problem(f.ID, fmt.Sprintf("%s can't find the %s %s.", m.Name, label, written))
-		case f.Type == FieldEmail && !strings.Contains(v, "@"):
-			problem(f.ID, fmt.Sprintf("%s needs an email address as your %s.", m.Name, label))
-		case f.Type == FieldChoice && !slices.Contains(f.Choices, v):
-			problem(f.ID, fmt.Sprintf("%s's %s must be one of: %s.", m.Name, label, strings.Join(f.Choices, ", ")))
-		case f.Pattern != "" && !regexp.MustCompile(f.Pattern).MatchString(v):
-			// Validate compiled every pattern already, so MustCompile
-			// can't panic here.
-			problem(f.ID, fmt.Sprintf("%s's %s doesn't fit the form it needs (%s).", m.Name, label, f.Pattern))
+		if p := fieldProblem(m, f, v, written); p != "" {
+			problem(f.ID, p)
 		}
 	}
 	// Ranging over a map visits the keys in a random order, so sort them
@@ -206,6 +191,34 @@ func checkSettings(m Manifest, table config.Connector, sec *secrets.Secrets, hom
 	}
 	fillMadeUp(m, st.values)
 	return st
+}
+
+// fieldProblem says what is wrong with v, the value of field f of
+// connector m, in one sentence, or returns "" when nothing is. v is the
+// value to use, with a folder's "~/" already turned into the home
+// folder; written is the value as the user wrote it, for the sentence.
+// The rules: a required field needs a value, a folder must exist, an
+// email needs an "@", a choice must be one of the choices, and a value
+// must match the field's pattern.
+func fieldProblem(m Manifest, f Field, v, written string) string {
+	label := lowerFirst(f.Label)
+	switch {
+	case v == "" && f.Required:
+		return fmt.Sprintf("%s needs your %s.", m.Name, label)
+	case v == "":
+		// An optional field left empty is fine.
+	case f.Type == FieldFolder && !isFolder(v):
+		return fmt.Sprintf("%s can't find the %s %s.", m.Name, label, written)
+	case f.Type == FieldEmail && !strings.Contains(v, "@"):
+		return fmt.Sprintf("%s needs an email address as your %s.", m.Name, label)
+	case f.Type == FieldChoice && !slices.Contains(f.Choices, v):
+		return fmt.Sprintf("%s's %s must be one of: %s.", m.Name, label, strings.Join(f.Choices, ", "))
+	case f.Pattern != "" && !regexp.MustCompile(f.Pattern).MatchString(v):
+		// Validate compiled every pattern already, so MustCompile can't
+		// panic here.
+		return fmt.Sprintf("%s's %s doesn't fit the form it needs (%s).", m.Name, label, f.Pattern)
+	}
+	return ""
 }
 
 // isMCP reports whether m is an MCP server, stdio or http, which has tool

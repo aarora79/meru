@@ -195,3 +195,23 @@ func TestSetRepairsMode(t *testing.T) {
 		t.Error("Set lost an entry")
 	}
 }
+
+// TestWith checks that With adds an entry to a copy, leaves the original
+// as it was, and treats a nil Secrets as empty.
+func TestWith(t *testing.T) {
+	s := &Secrets{values: map[string]string{"a": "one"}}
+	got := s.With("b", " two ")
+	if v, err := got.Resolve("secret:b"); err != nil || v != "two" {
+		t.Errorf("b = %q, %v; want two", v, err)
+	}
+	if !got.Has("a") {
+		t.Error("the copy lost a")
+	}
+	if s.Has("b") {
+		t.Error("With changed the original")
+	}
+	var none *Secrets
+	if !none.With("c", "three").Has("c") {
+		t.Error("With on nil lost the new entry")
+	}
+}

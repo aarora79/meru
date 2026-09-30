@@ -127,6 +127,29 @@ func (o *ollamaWatch) poke() {
 	}
 }
 
+// ollamaFixWait bounds how long Fix on Ollama waits for the check it asks
+// for. A check is one request to Ollama on this machine, so a few seconds
+// is plenty.
+const ollamaFixWait = 5 * time.Second
+
+// recheck is Fix for Ollama, which Meru never starts: it asks the loop to
+// check now and waits, at most ollamaFixWait, for the state to change, so
+// the reply can carry the new sentence. An Ollama that stays as it was
+// leaves the state alone, and recheck returns after the wait.
+func (o *ollamaWatch) recheck(ctx context.Context) {
+	o.mu.Lock()
+	changed := o.changed
+	o.mu.Unlock()
+	o.poke()
+	timer := time.NewTimer(ollamaFixWait)
+	defer timer.Stop()
+	select {
+	case <-changed:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+}
+
 // tryReady runs one check and, when Ollama passes it, the warm-up. It
 // reports whether merud can take questions now.
 func (o *ollamaWatch) tryReady(ctx context.Context) bool {
@@ -233,15 +256,23 @@ func (o *ollamaWatch) failing() (bool, <-chan struct{}) {
 
 // answer answers req while Ollama fails, before merud is ready. It
 // answers the connectors op with Ollama's row, the only connector merud
-// has set up by then, and mcp_status with no servers, so `meru mcp
-// status` prints the connectors; every other request gets the error
-// notReady gives. The rpc server answers ping itself.
+// has set up by then, mcp_status with no servers, so `meru mcp status`
+// prints the connectors, and Fix on Ollama with its row; every other
+// request gets the error notReady gives. The rpc server answers ping
+// itself.
 func (o *ollamaWatch) answer(req rpc.Request, emit func(rpc.Event) error) error {
 	switch req.Op {
 	case rpc.OpConnectors:
 		return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{connectorRow(o.status())}})
 	case rpc.OpMCPStatus:
 		return emit(rpc.Event{Type: rpc.EventMCPStatus, MCP: []rpc.MCPStatus{}})
+	case rpc.OpConnectorFix:
+		// Fix on Ollama: the gate has asked for a check already, so the
+		// reply is Ollama's row as it stands.
+		if req.ID == o.m.ID {
+			row := connectorRow(o.status())
+			return emit(rpc.Event{Type: rpc.EventConnector, Connector: &row})
+		}
 	}
 	return o.notReady()
 }

@@ -2,14 +2,15 @@
 
 **Code:** `internal/connectors/` (`doc.go`, `manifest.go`, `manifests/*.toml`,
 `runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`, `status.go`,
-`health.go`, `supervisor.go`, `container.go`, `adopt.go`)
-**Milestone:** v0.5 (issue #87, steps 1 to 5)
+`health.go`, `supervisor.go`, `container.go`, `adopt.go`, `change.go`)
+**Milestone:** v0.5 (issue #87, steps 1 to 6)
 **Architecture:** [Connectors and the supervisor](../../ARCHITECTURE.md#connectors-and-the-supervisor),
 [The runtime folder](../../ARCHITECTURE.md#the-runtime-folder),
 [The supervisor](../../ARCHITECTURE.md#the-supervisor),
 [Google](../../ARCHITECTURE.md#google),
 [SearXNG and Ollama](../../ARCHITECTURE.md#searxng-and-ollama),
-[Moving to connectors](../../ARCHITECTURE.md#moving-to-connectors)
+[Moving to connectors](../../ARCHITECTURE.md#moving-to-connectors),
+[Setting up a connector](../../ARCHITECTURE.md#setting-up-a-connector)
 
 ## What it does
 
@@ -46,8 +47,9 @@ in. Step 5 also adds `Adopter` (`adopt.go`), which moves a hand-added
 `obsidian` or `google` entry over to its connector, and back, when the user
 runs `meru mcp adopt`.
 
-Still to come, in step 6: the ops and forms that let a client set a
-connector's fields. Until then a user sets them in `config.toml`.
+Step 6 adds `CheckChange` (`change.go`), which `merud` runs on a client's
+`connector_set` before it writes anything, and `Recheck` on the supervisor
+and the container, the half of Fix that checks a connector again.
 
 ## The picture
 
@@ -408,8 +410,9 @@ field type:
 | any field with a `pattern` | the value doesn't match | Obsidian's vault name doesn't fit the form it needs (…). |
 | a key the manifest lacks | most often a typo | Obsidian has no setting called vault; remove it from [connectors.obsidian]. |
 
-The first problem becomes the sentence, and each field at fault goes in the fix
-list. A folder written `~/Notes` turns into a full path (`expandHome`), but the
+`fieldProblem` holds the rules for one field, so `CheckChange` applies the
+same ones to a value a client sends. The first problem becomes the sentence,
+and each field at fault goes in the fix list. A folder written `~/Notes` turns into a full path (`expandHome`), but the
 sentence names it as the user wrote it, or as the default reads. `lowerFirst`
 lower-cases a label inside a sentence ("vault folder") but leaves one that
 starts with an acronym, such as "API token". The check sorts the table's keys
@@ -431,6 +434,30 @@ manifest's; Adopt writes them. `checkTools` puts them through the manifest's
 own rule, `checkMCP`: no wildcard, and every `confirm` tool also in `allow`.
 The supervisor's `Lists` hands them to the pool. `Status` gained `Link`, the
 sign-in link while Google waits for the user.
+
+### change.go: checking a change before merud writes it
+
+`Change` is one `connector_set`: `Enabled`, a `*bool` that is `nil` to leave
+on or off as it is, and `Values` and `Secrets`, each by field ID.
+`CheckChange(m, table, sec, home, ch)` returns nil when `merud` may write it,
+and otherwise one sentence that says what to fix. It refuses a dependency
+(`ErrNotManaged`: Meru doesn't run Ollama), a value for a field the manifest
+lacks, a secret sent as a value or a value sent as a secret, a value for an
+`oauth` field, an empty secret, and a value on two lines, which would break
+the one-line TOML the catalog writes.
+
+Then it builds the table and the secrets as they would be after the change,
+without touching either: `maps.Clone` copies the table, and
+`secrets.With` returns a copy of the secrets with one more entry. It runs
+`checkSettings` on the result. A connector that would be on must pass whole,
+so turning Obsidian on with no vault fails with "Obsidian needs your vault
+folder." One that would be off only needs each value given to pass its own
+field's rule, through `fieldProblem`: the user may fill in a form in
+several saves before turning it on.
+
+`TestCheckChange` runs each rule on the real manifests. `TestFieldTypesMatchRPC`
+fails when the field types drift from `rpc.FieldTypes`, the list every client
+draws an input for.
 
 ### health.go: the check and the tool cache
 
@@ -714,6 +741,18 @@ port 8000.
 
 A plan's `Nothing` says there is nothing to do: the entry is adopted, or
 restored, already. So both commands are safe to run twice.
+
+### Recheck: the half of Fix that checks again
+
+`Supervisor.Recheck` runs `resetLocked`, as a new config would, which stops
+the program, forgets the crashes and moves to the state config asks for. When
+that lands on `ready` from the saved tool list, Recheck goes one step further,
+to `installing`, and runs `installAndCheck`: Fix wants the real check, which
+also finds an install folder that went missing. `Container.Recheck` hands the
+last `Configure`'s arguments back to `configure` with `force` set, so a new
+loop starts from a fresh check even though config didn't change. Both do
+nothing before the first `Configure`. `TestRecheckRunsTheCheckAgain`,
+`TestRecheckLeavesConfigProblems` and `TestContainerRecheck` cover them.
 
 ### container.go: SearXNG
 

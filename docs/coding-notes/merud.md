@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -661,6 +661,34 @@ up can't leave it half done. The reply is one `adopt` event with the plan's
 lines; the secret from the request never goes in it. Neither op goes through
 `dispatch`: like the memory ops, each is a command the user runs, not a tool
 the model calls.
+
+`handleConnectorSet` answers `connector_set`, the Save button and `meru mcp
+set`. `connectorSet.find` looks the ID up among every manifest, Ollama's
+included, since `CheckChange` has to say that Meru doesn't run Ollama. Inside
+`bt.EditConfig` it loads `config.toml` and `secrets.toml` fresh, refuses a
+connector an `[[mcp.servers]]` entry runs (`byHand`), and hands the change to
+`connectors.CheckChange`. Only when that passes does it write: each secret
+through `secrets.Set`, in sorted order, as `connectors.SecretName(id, field)`,
+then the table through `catalog.SetConnector`, then `reloadMCP`, which gives
+every supervisor its new table. The writes come after every check, so a
+refused change leaves both files as they were.
+
+`handleConnectorFix` answers `connector_fix`. It reads the connector's row
+with `connectorSet.row`, which asks the right supervisor: the stdio or http
+one, the SearXNG `Container`, or `ollamaWatch`. A row that needs fields, or
+that is off or set up by hand, goes straight back: the client asks the user
+from it. Any other row gets `recheck`, which calls the supervisor's or the
+container's `Recheck`, or, for Ollama, `ollamaWatch.recheck`, which pokes the
+watch loop and waits up to `ollamaFixWait` for its state to change.
+
+Both handlers end in `follow`. It reads the row every `followEvery` (250 ms)
+on a `time.Ticker`, sends a `connector` event whenever the state, sentence or
+link differs from the last one sent, and stops when the state is no longer
+`starting`, after `settleWait` (five minutes), or when the client hangs up.
+Reading the row asks the connector nothing, so the loop costs a lock and a
+copy each time. Polling keeps the supervisors as they are: none of them needs
+to know that a client is watching. While Ollama is down, the gate answers
+`connector_fix` for Ollama itself, with its row (`ollamaWatch.answer`).
 
 `handleMCPStatus` (`tools.go`) fixes one thing the pool can't know: the pool
 sees a connector only through its `Spawn` hook and calls it `stdio`, so for an
@@ -1329,6 +1357,35 @@ there is no start script; the command then reads the client secret with
 `startServer`: a yes applies once, a no applies nothing, `--yes` asks nothing,
 the flags make it ask for the secret and send it but never print it, and bad
 words print the usage.
+
+### meru: connector.go
+
+`meru mcp set <id> …` and `meru mcp fix <id>` send the same two ops as the
+Settings cards. `setConnector` first asks `merud` for the connector's row
+(`connectorByID`), so it knows each field's type. Each word is `enabled=true`
+or `enabled=false`, `field=value`, or a secret field's name alone, which it
+reads with `readSecret`. A secret written as `field=value` is refused before
+anything goes to `merud`: the shell's history would keep it.
+`strings.Cut(w, "=")` splits a word at its first `=`, so a value may hold
+one.
+
+`fixConnector` sends `connector_fix` and asks `rpc.AskFields` which fields
+to ask. For a connector that is off it asks first whether to turn it on.
+`askFields` prints each field's label, help and choices, shows the value
+config holds in brackets, and keeps it on Enter; a secret field reads
+without echo, and Enter keeps the saved one. `sendChange` then sends the
+answers with `connector_set`.
+
+`connectorOp` reads the reply. Each `connector` event's sentence prints once
+the next event arrives, so the steps show as they happen and the last one,
+where the connector settled, prints once, through `printConnector`, with the
+sign-in link and the fix command when they apply.
+
+`connector_test.go` runs both commands against a fake `merud`: the change
+carries each value and the secret apart, the output shows each step but
+never the secret, Fix asks only the field `merud` names, an off connector is
+asked about first, and each bad word or refusal ends with the usage or
+`merud`'s reason.
 
 ### meru: probe.go
 

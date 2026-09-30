@@ -1,8 +1,8 @@
 // This file changes one list or string in config.toml without touching
 // the rest of the file: a server's or agent's allow and confirm lists, the
 // lists in a plain table such as [index] folders or [skills] disabled, and
-// a string such as [models] main. merud
-// uses it for the desktop app's settings. Like AppendServer, it writes
+// a string such as [models] main, and a connector's [connectors.<id>]
+// table (SetConnector). merud uses it for the clients' settings. Like AppendServer, it writes
 // through writeChecked, so a change that would break config leaves the
 // file as it was.
 
@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -106,6 +107,38 @@ func SetTableStrings(configPath, table string, values map[string]string, check f
 		quoted[k] = quote(v)
 	}
 	return setTableValues(configPath, table, quoted, check)
+}
+
+// SetConnector sets keys of the [connectors.<id>] table in one write:
+// enabled, when it isn't nil, and each field value in values, as a
+// string. A missing table goes at the end of the file, and every other
+// line stays as it was. A secret never comes here; merud saves it in
+// secrets.toml. Before the file is replaced, SetConnector checks that the
+// result loads and that the table holds exactly the values asked for. It
+// does nothing when there is nothing to set.
+func SetConnector(configPath, id string, enabled *bool, values map[string]string) error {
+	set := make(map[string]string, len(values)+1)
+	if enabled != nil {
+		set["enabled"] = strconv.FormatBool(*enabled)
+	}
+	for k, v := range values {
+		set[k] = quote(v)
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return setTableValues(configPath, "connectors."+id, set, func(next config.Config) error {
+		t := next.Connectors[id]
+		if on, ok := t.Enabled(); enabled != nil && (!ok || on != *enabled) {
+			return fmt.Errorf("the change left [connectors.%s] enabled unset or wrong; edit %s by hand", id, configPath)
+		}
+		for k, want := range values {
+			if got, _ := t.Value(k); got != want {
+				return fmt.Errorf("the change left %s = %q in [connectors.%s], want %q; edit %s by hand", k, got, id, want, configPath)
+			}
+		}
+		return nil
+	})
 }
 
 // setTableValues does the work of SetTableLists and SetTableStrings.

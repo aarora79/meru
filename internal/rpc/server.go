@@ -196,7 +196,8 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		OpConnections, OpToolPolicy, OpMCPAdd, OpMCPRemove, OpSecretSet, OpFolders, OpFolderAdd,
 		OpFolderRemove, OpSaveFile, OpAttachFile, OpSkillEnable, OpSkillDisable, OpModels,
 		OpModelSet, OpModelUse, OpModelSave, OpSessionDelete, OpSessionMove, OpSessionTag, OpChatFolders,
-		OpChatFolderAdd, OpChatFolderRename, OpChatFolderRemove, OpConnectorAdopt, OpConnectorUnadopt:
+		OpChatFolderAdd, OpChatFolderRename, OpChatFolderRemove, OpConnectorAdopt, OpConnectorUnadopt,
+		OpConnectorSet, OpConnectorFix:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})

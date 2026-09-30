@@ -6,7 +6,10 @@
 
 package rpc
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // The states a connector reports, in ConnectorStatus.State and
 // MCPStatus.Connector. internal/connectors defines the same words.
@@ -96,14 +99,53 @@ type ConnectorField struct {
 	Saved    bool     `json:"saved,omitempty"`
 }
 
-// FixHint tells the user where to set the fields a connector needs, until
-// the clients can ask for them: "Set vault_path under [connectors.obsidian]
-// in config.toml, then restart merud." It returns "" when fix is empty.
+// ConnectorChange is what OpConnectorSet changes in one connector.
+// Enabled turns it on or off; nil leaves that as it is. Values holds new
+// field values by field ID, such as {"vault_path": "~/Notes"}; an empty
+// value clears the field. Secrets holds new values for secret fields, by
+// field ID: merud saves each in secrets.toml as
+// connector_<id>_<field>, never in config.toml, and never sends one back.
+type ConnectorChange struct {
+	Enabled *bool             `json:"enabled,omitempty"`
+	Values  map[string]string `json:"values,omitempty"`
+	Secrets map[string]string `json:"secrets,omitempty"`
+}
+
+// FieldTypes returns every type a ConnectorField can have, in the order
+// the manifests document them. Each client draws an input for each one;
+// the tests hold the connectors package and the clients to this list.
+func FieldTypes() []string {
+	return []string{"text", "folder", "secret", "email", "choice", "oauth"}
+}
+
+// AskFields returns the fields a client asks the user for after Fix
+// (OpConnectorFix) answers with c: the ones c.Fix names; for a connector
+// that is off, every field but an oauth one, whose server signs the user
+// in, since turning it on needs them; and none otherwise, when Fix runs
+// the check again and asks nothing. Every client asks the same fields in
+// the same order.
+func AskFields(c ConnectorStatus) []ConnectorField {
+	var out []ConnectorField
+	for _, f := range c.Fields {
+		switch {
+		case f.Type == "oauth":
+		case c.State == ConnectorNeedsConfig && slices.Contains(c.Fix, f.ID):
+			out = append(out, f)
+		case c.State == ConnectorOff:
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// FixHint tells a terminal user how to give the fields a connector needs:
+// "Run meru mcp fix obsidian to set vault_path." It returns "" when fix is
+// empty.
 func FixHint(id string, fix []string) string {
 	if len(fix) == 0 {
 		return ""
 	}
-	return "Set " + strings.Join(fix, " and ") + " under [connectors." + id + "] in config.toml, then restart merud."
+	return "Run meru mcp fix " + id + " to set " + strings.Join(fix, " and ") + "."
 }
 
 // ConnectorWords says a connector state the way the clients show it:

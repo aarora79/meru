@@ -267,7 +267,7 @@ func changes(op rpc.Op) bool {
 	switch op {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
 		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile,
-		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave,
+		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave, rpc.OpConnectorAdopt,
 		// Renaming or removing a chat folder rewrites every chat in it.
 		rpc.OpSessionDelete, rpc.OpSessionMove, rpc.OpSessionTag,
 		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove:

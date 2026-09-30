@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `connectors.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, Settings boxes, Edit first and the version) after v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -1059,7 +1059,7 @@ obsidian   stdio      ok                3        3        0   Obsidian is ready.
 `ConnectorTable` lays out the reply to the `connectors` op, which `meru mcp`
 prints under the table: a `CONNECTOR  STATE` header, then one line per
 connector with its sentence, and for one that needs config, `rpc.FixHint`'s
-line on where to set the field. A connector that waits for a sign-in adds
+line, which names the `meru mcp fix` command that asks for the field. A connector that waits for a sign-in adds
 "Sign in:" and its `Link`, so the user can open it from the terminal. With no
 rows it returns nothing.
 
@@ -1067,15 +1067,16 @@ The `/mcp` box is the app's Connections. It sends `OpConnections`, and `mcpRows`
 lays out the reply: a heading per source, a row per tool with its policy in the
 app's words (`policyWords`), then the catalog servers not added yet.
 `connHeading` writes a connector's heading with its kind, state, tool count,
-sentence, fix hint and, while it waits for a sign-in, "Sign in:" with the
-link. A server set up by hand in a connector's place ends its heading with
+sentence and, while it waits for a sign-in, "Sign in:" with the link; the
+connector's own row, under Connectors at the top of the box, is where `f`
+asks for a missing field (see connectors.go below). A server set up by hand in a connector's place ends its heading with
 the part of merud's sentence after "[[mcp.servers]]. ", which says how to
 move it over: "To have Meru run it, run meru mcp adopt obsidian." The built-in tools' heading ends with web search's state
 and sentence, from the connection's `Web` and `WebSentence`, such as "web search
 needs config: Web search can't start: Docker isn't running.":
 
 ```text
-obsidian · connector, stdio · needs config · 1 of 3 tools on · Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.
+obsidian · connector, stdio · needs config · 1 of 3 tools on · Obsidian needs your vault folder.
 ```
 
 A server added by hand in a connector's place ends its heading with
@@ -1100,6 +1101,44 @@ the rest:
 While a change waits, `busy` says what `merud` is doing and the box takes no other
 change. `applyConnections` puts the new lists in place, keeps the marker inside
 them, and says on the notice line what changed or why nothing did.
+
+### connectors.go
+
+Once the sources arrive, `applyConnections` asks for the connectors op, and
+`applyConnector` puts the reply in `connectors`. `mcpRows` then lists them
+first, under "Connectors", one row each (`connectorLine`), with `cx`, the
+connector's index, set on the row. A merud too old for the op answers with
+an error, and the box shows no connector rows. On a connector's row the help
+line names `f`, `o` and `a` in place of the policy keys, and `connectorKey`
+handles them:
+
+- `f` sends `connector_fix`. When the reply names fields (`rpc.AskFields`),
+  `newFieldWalk` opens a small form in the box: one field at a time, with its
+  label, help and choices, a `textinput` whose placeholder shows the value
+  `merud` holds, and `EchoPassword` for a secret. Enter keeps the answer and
+  moves on (`take`), and an empty answer keeps what `merud` holds. Esc closes
+  the form and keeps the box. After the last field, `walkKey` sends the
+  answers with `connector_set`, and turns the connector on when it was off.
+- `o` sends `connector_set` with `Enabled` flipped. It refuses Ollama, which
+  Meru doesn't run, and a connector set up by hand, whose note points at `a`.
+- `a`, on a connector set up by hand, asks for the adopt plan
+  (`connector_adopt` without `Apply`), which the box shows numbered. A second
+  `a` on the same row sends it again with `Apply`; any other key drops the
+  plan (`adoptFor`).
+
+A set or a fix can take minutes while `merud` installs, so `connectorCmd`
+streams it. A `tea.Cmd` runs in its own goroutine; this one reads the reply
+and hands each `connector` event but the last to the program with
+`send.Send` as a `connectorStepMsg`, which Update shows on the box's note
+line. The last comes back as the command's `replyMsg`, and
+`applyConnector` puts it on the notice line, "Obsidian: ok. Obsidian is
+ready. …", then asks for the sources again. A refusal that says a field is
+missing adds "Press f to set it up."
+
+`connectors_test.go` drives each key against a fake `merud`: the rows and the
+help line, `f` asking the one field `merud` names and sending it with a step
+on the note line, a secret that never shows, an off connector turned on by
+the form, `o`, and `a` twice.
 
 ### models.go
 

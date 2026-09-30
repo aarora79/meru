@@ -277,6 +277,15 @@ the same order, and runs `CheckServers`; `SetTableLists` runs the caller's
 as `main` and `fast` in `[models]` for `merud`'s `model_save`, so a reader never
 sees one changed without the other. `SetTableString` calls it with one key.
 
+`SetConnector(path, id, enabled, values)` writes the `[connectors.<id>]`
+table for `merud`'s `connector_set`: `enabled` as `true` or `false` when
+the pointer isn't nil, and each field value as a quoted string. It goes
+through `setTableValues`, so a missing table goes at the end of the file and
+every other line stays, and its check makes sure the loaded result holds
+exactly the values asked for. A secret never comes here. `TestSetConnector`
+writes a path with a backslash and quotes in it, then turns the connector
+off, and checks the comment on the `enabled` line survives.
+
 ### commands.go
 
 `AppendCommand(configPath, block)` adds one `[[commands]]` entry to the end of

@@ -166,9 +166,18 @@ the same:
 
 - **`ConnectorWords(state)`** writes a state the way a person reads it:
   `needs config` and `set up by hand`; the other states read as they are.
-- **`FixHint(id, fix)`** says where to set what a connector needs, until the
-  clients can ask for it: "Set vault_path under [connectors.obsidian] in
-  config.toml, then restart merud." It returns `""` for an empty list.
+- **`FixHint(id, fix)`** tells a terminal user how to give what a connector
+  needs: "Run meru mcp fix obsidian to set vault_path." It returns `""` for
+  an empty list.
+- **`AskFields(c)`** returns the fields a client asks for after Fix: the ones
+  `c.Fix` names; for a connector that is off, every field but an `oauth`
+  one; otherwise none. The terminal, `meru chat` and the desktop page all
+  follow it, so each asks the same questions.
+- **`FieldTypes()`** lists the six field types, `text`, `folder`, `secret`,
+  `email`, `choice` and `oauth`. It is a function rather than a variable, so
+  no caller can change the list. A test in `internal/connectors` holds the
+  manifests to it, and one in `internal/desktop` checks the page draws an
+  input for each.
 
 `settings.go`'s `Connection`, a Settings card, gained `Connector`, `Sentence`
 and `Fix`. They are set for a connector the pool runs, and `Connector` alone
@@ -196,6 +205,16 @@ event whose `Adopted` holds an `AdoptResult`:
 `Nothing` is true when there is nothing to change, such as an entry adopted
 already. The secret goes one way only: `merud` writes it to `secrets.toml`
 and no event holds it.
+
+Two more ops change a connector, for the settings forms and the Fix button.
+`OpConnectorSet` (`connector_set`) carries the change in `Request.Connector`,
+a `*ConnectorChange`: `Enabled`, a `*bool` so that "leave it as it is" is
+`nil`, `Values` by field ID and `Secrets` by field ID. `OpConnectorFix`
+(`connector_fix`) carries only the ID. Both reply with `connector` events
+(`EventConnector`), each holding one `ConnectorStatus` in `Event.Connector`:
+one at once, one per change of state or sentence, and the last where the
+connector settled. A client that shows progress prints each; one that
+doesn't keeps the last.
 `Web` and `WebSentence` are set on the built-in tools' connection only: the
 SearXNG connector's state and sentence, for the Web search card and `/mcp`.
 

@@ -6,8 +6,10 @@
 // so a running connector survives it. The MCP pool reaches each stdio
 // connector through its Spawn hook, web_search asks the SearXNG one
 // whether it works, and the connectors op reports them all, Ollama
-// included (ollama.go). See ARCHITECTURE.md, "The supervisor" and
-// "SearXNG and Ollama".
+// included (ollama.go). The clients' settings forms and Fix button reach
+// them through connector_set and connector_fix, and Adopt through
+// connector_adopt. See ARCHITECTURE.md, "The supervisor", "SearXNG and
+// Ollama" and "Setting up a connector".
 
 package main
 
@@ -39,6 +41,9 @@ import (
 type connectorSet struct {
 	sups []*connectors.Supervisor
 	web  *connectors.Container
+	// all holds every manifest, Ollama's included, for the ops that name
+	// a connector.
+	all []connectors.Manifest
 }
 
 // newConnectorSet loads the manifests and builds a supervisor for each
@@ -58,7 +63,7 @@ func newConnectorSet(meruDir string, log *slog.Logger) (*connectorSet, error) {
 		return nil, fmt.Errorf("connectors: find the home folder: %w", err)
 	}
 	in := connectors.NewInstaller(meruDir, home)
-	c := &connectorSet{}
+	c := &connectorSet{all: manifests}
 	for _, m := range manifests {
 		// A switch with no value runs the first case that is true.
 		switch {
@@ -326,4 +331,180 @@ func (s *toolService) handleAdopt(ctx context.Context, req rpc.Request, undo boo
 	return emit(rpc.Event{Type: rpc.EventAdopt, Adopted: &rpc.AdoptResult{
 		ID: m.ID, Changes: plan.Changes, Applied: in.Apply && !plan.Nothing, Nothing: plan.Nothing,
 	}})
+}
+
+// settleWait bounds how long connector_set and connector_fix follow a
+// connector that is still starting. A first install of Google downloads
+// a Python and a package, which can take minutes on a slow line; past
+// this the reply ends and the install goes on, which the connectors op
+// then shows.
+const settleWait = 5 * time.Minute
+
+// followEvery is how often the reply looks at the connector while it
+// follows it. A look reads what the supervisor holds and asks nothing of
+// the connector.
+const followEvery = 250 * time.Millisecond
+
+// find returns the manifest of connector id, whatever its kind, and false
+// when merud has none of that name.
+func (c *connectorSet) find(id string) (connectors.Manifest, bool) {
+	for _, m := range c.all {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return connectors.Manifest{}, false
+}
+
+// row returns connector id's status in the protocol's shape: from its
+// supervisor, the SearXNG one, or ollama's watch. ok is false for an ID
+// merud doesn't run.
+func (c *connectorSet) row(id string, ollama *ollamaWatch) (rpc.ConnectorStatus, bool) {
+	switch {
+	case c.web != nil && c.web.Manifest().ID == id:
+		return connectorRow(c.web.Status()), true
+	case ollama != nil && id == "ollama":
+		return connectorRow(ollama.status()), true
+	}
+	st, ok := c.byID(id)
+	if !ok {
+		return rpc.ConnectorStatus{}, false
+	}
+	return connectorRow(st), true
+}
+
+// recheck runs connector id's check again (Fix's second half): a stdio
+// or http connector installs and checks again, and the SearXNG one looks
+// at its URL at once. It does nothing for an ID it doesn't run.
+func (c *connectorSet) recheck(id string) {
+	if c.web != nil && c.web.Manifest().ID == id {
+		c.web.Recheck()
+		return
+	}
+	for _, sup := range c.sups {
+		if sup.Manifest().ID == id {
+			sup.Recheck()
+		}
+	}
+}
+
+// handleConnectorSet answers OpConnectorSet. It checks req.Connector
+// against the connector's manifest and the config and secrets as they
+// stand (connectors.CheckChange), and refuses a connector set up by hand,
+// which Adopt moves over first. Then, holding the lock every config.toml
+// write takes, it saves each secret in secrets.toml as
+// connector_<id>_<field> with mode 0600, writes [connectors.<id>] through
+// the catalog's checked writer, and reloads, which hands the supervisor
+// its new table. Last it follows the connector until it settles (see
+// follow). A refused change writes nothing. No event ever holds a
+// secret: the status carries only whether each one is saved.
+func (s *toolService) handleConnectorSet(ctx context.Context, req rpc.Request, ollama *ollamaWatch, emit func(rpc.Event) error) error {
+	if req.Connector == nil {
+		return errors.New("connector_set needs a change")
+	}
+	m, ok := s.conns.find(req.ID)
+	if !ok {
+		return fmt.Errorf("merud has no connector called %q", req.ID)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("find the home folder: %w", err)
+	}
+	ch := connectors.Change{Enabled: req.Connector.Enabled, Values: req.Connector.Values, Secrets: req.Connector.Secrets}
+	err = s.bt.EditConfig(func() error {
+		cfg, err := config.Load(s.configPath)
+		if err != nil {
+			return err
+		}
+		if byHand(cfg.MCP.Servers, m.ID) {
+			return fmt.Errorf("%s is set up by hand, as the %s entry in [[mcp.servers]]; adopt it first (meru mcp adopt %s, or Adopt in Settings)", m.Name, m.ID, m.ID)
+		}
+		sec, err := secrets.Load(secrets.Path(s.dir))
+		if err != nil {
+			return err
+		}
+		if err := connectors.CheckChange(m, cfg.Connectors[m.ID], sec, home, ch); err != nil {
+			return err
+		}
+		// Sorted, so the writes happen in the same order each time.
+		names := make([]string, 0, len(ch.Secrets))
+		for k := range ch.Secrets {
+			names = append(names, k)
+		}
+		slices.Sort(names)
+		for _, k := range names {
+			if err := secrets.Set(secrets.Path(s.dir), connectors.SecretName(m.ID, k), ch.Secrets[k]); err != nil {
+				return err
+			}
+		}
+		if err := catalog.SetConnector(s.configPath, m.ID, ch.Enabled, ch.Values); err != nil {
+			return err
+		}
+		// The reload must outlive a client that hangs up halfway, as
+		// handleSecretSet's does.
+		return s.reloadMCP(context.WithoutCancel(ctx))
+	})
+	if err != nil {
+		return err
+	}
+	s.log.InfoContext(ctx, "connector set", "connector", m.ID, "values", len(ch.Values), "secrets", len(ch.Secrets))
+	return s.follow(ctx, m.ID, ollama, emit)
+}
+
+// handleConnectorFix answers OpConnectorFix, the Fix button. A connector
+// that needs fields gets one "connector" event whose Fix names them, and
+// the client asks the user for those and sends them with
+// OpConnectorSet. One that is off or set up by hand gets its status,
+// whose sentence says what to do. Any other gets its check again
+// (recheck; for Ollama, a check now), and the reply follows it until it
+// settles.
+func (s *toolService) handleConnectorFix(ctx context.Context, req rpc.Request, ollama *ollamaWatch, emit func(rpc.Event) error) error {
+	row, ok := s.conns.row(req.ID, ollama)
+	if !ok {
+		return fmt.Errorf("merud has no connector called %q", req.ID)
+	}
+	switch {
+	case row.State == rpc.ConnectorNeedsConfig && len(row.Fix) > 0,
+		row.State == rpc.ConnectorOff, row.State == rpc.ConnectorByHand:
+		return emit(rpc.Event{Type: rpc.EventConnector, Connector: &row})
+	case req.ID == "ollama":
+		ollama.recheck(ctx)
+	default:
+		s.conns.recheck(req.ID)
+	}
+	s.log.InfoContext(ctx, "connector fix", "connector", req.ID)
+	return s.follow(ctx, req.ID, ollama, emit)
+}
+
+// follow sends connector id's status as a "connector" event now, and
+// again each time its state, sentence or sign-in link changes, until it
+// is no longer starting, settleWait passes, or the client hangs up. The
+// last event says where it settled: ok, needs config (with the fields to
+// ask, or a sign-in link), failed, or off.
+func (s *toolService) follow(ctx context.Context, id string, ollama *ollamaWatch, emit func(rpc.Event) error) error {
+	deadline := time.Now().Add(settleWait)
+	// A Ticker sends on its channel C every followEvery until Stop.
+	tick := time.NewTicker(followEvery)
+	defer tick.Stop()
+	var last *rpc.ConnectorStatus
+	for {
+		row, ok := s.conns.row(id, ollama)
+		if !ok {
+			return fmt.Errorf("merud has no connector called %q", id)
+		}
+		if last == nil || row.State != last.State || row.Sentence != last.Sentence || row.Link != last.Link {
+			if err := emit(rpc.Event{Type: rpc.EventConnector, Connector: &row}); err != nil {
+				return err
+			}
+			last = &row
+		}
+		if row.State != rpc.ConnectorStarting || time.Now().After(deadline) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
 }

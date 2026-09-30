@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `about.go`, `files.go`, `thumbs.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `connectors.go`, `about.go`, `files.go`, `thumbs.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -254,6 +254,27 @@ every field. A secret variable's value travels in the same request: `merud` must
 save it before it writes the entry, or the reload that follows would fail on a
 `secret:` reference with nothing behind it.
 
+### connectors.go
+
+The Bridge methods behind the connector cards. `Connectors` sends the
+`connectors` op and returns every connector with each list set to `[]`
+(`pageConnector`), since the page can't loop over `null`. `SetConnector(id,
+change)` sends `connector_set` with an `rpc.ConnectorChange`, which Wails
+decodes from the page's plain object; `FixConnector(id)` sends
+`connector_fix`. Both go through `follow`, which reads every `connector`
+event, emits each to the page as a `KindConnector` Update, and returns the
+last, where the connector settled. A first install can take minutes, so
+`follow` allows `connectorTimeout`, six minutes, where the settings ops get
+their usual short timeout. `AdoptConnector(id, apply)` sends
+`connector_adopt`, first without `Apply` for the plan and then with it.
+
+`connectorDots` builds `Status.Connectors`, the rail's dots: every connector
+that isn't off, with its state and the words for it.
+
+`connectors_test.go` runs each method against a fake `merud`: the request
+merud gets, the two steps a save emits to the page, the field Fix names,
+the plan and the apply, merud's refusal as the error, and the rail's dots.
+
 ### about.go
 
 `Tagline` holds the one line that says what Meru is: "A personal AI assistant
@@ -426,15 +447,10 @@ bundler.
   name's pattern to answer sooner; `merud` checks everything again. A connector
   `merud` runs gets its own card: "Connector" in place of "MCP server", a pill
   from `CONNECTOR_PILLS` (Ready in green; Starting, Needs setup, Failed and Off
-  in amber), its sentence under the title, and, for one that needs setup, the
-  keys to set, such as "Set vault_path under [connectors.obsidian] in
-  config.toml, then restart merud." The page builds that sentence itself, since
-  it can't call Go, and `TestFixHintMatchesRPC` in `assets_test.go` fails when
-  it drifts from `rpc.FixHint`. The card has no Remove button, since config has no
-  `[[mcp.servers]]` entry to take out. While a connector waits for a sign-in,
-  its card holds a "Sign in to Google" button that opens the connection's
-  `link` through `bridge.openURL`, which checks it as it checks any link.
-  `connectorManaged` tells the two apart; a server added by hand in a
+  in amber), its sentence under the title, and, for one that isn't ready, a
+  "Set it up" link that scrolls to its connector card above (see
+  connectors.js below). The card has no Remove button, since config has no
+  `[[mcp.servers]]` entry to take out. `connectorManaged` tells the two apart; a server added by hand in a
   connector's place shows "set up by hand", keeps its Remove, and shows
   `merud`'s sentence, which ends with the `meru mcp adopt` command that moves
   it over. The Web search card, cut from the built-in tools' connection,
@@ -491,6 +507,50 @@ bundler.
 - `img/meru-logo.svg` is a copy of the project logo in `docs/img/`. The rail and
   the new chat show it with an `<img>` tag, which the page's policy allows for its
   own files.
+
+#### connectors.js: the connector cards
+
+`connectorCard(c, ctx, mark)` draws one connector from its status alone. It
+names no connector: `TestConnectorFormsFromSchema` fails if the file holds a
+connector's ID, a field's ID or a config key. The card has a pill from
+`PILLS`, the sentence, an on and off switch for any kind but `dependency`,
+and, when the connector has fields, a form. `INPUTS` maps each field type
+to the function that draws it, and every entry returns the same three
+things: the element, the control to focus, and `read`, which returns what
+the user entered. So the form's Save loops over the fields without knowing
+their types, but for two rules: a secret goes in `secrets` and only when
+typed, and any other value goes in `values` only when it changed.
+
+- `text` and `email`: a text field holding the value config has.
+- `secret`: an empty password field whose placeholder says whether one is
+  saved, with a "saved" pill. The page never holds the secret.
+- `folder`: a text field and Choose…, which calls `bridge.chooseFolder`, the
+  folder dialog Settings' Folders section uses.
+- `choice`: a `<select>` of the choices, with an empty one when the field is
+  optional.
+- `oauth`: the "Sign in to Google" button while `merud` has a link, opened
+  through `bridge.openURL`, and a note otherwise.
+
+`run(promise, after)` wraps a save or a fix: it turns the card's buttons
+off, shows "Asking merud…", and puts a function in `live`, a map from the
+connector's ID to the card's progress line. app.js hands each
+`KindConnector` Update to `connectorProgress`, which finds the card in
+`live` and shows the step. When the promise ends, `settled` hands the result
+to Settings, which draws the section again with a notice. Fix that names
+fields draws a new card with `mark` set, which gives those fields an amber
+edge (`.connector-field.needs`) and moves the cursor to the first. `askFields`
+picks them by `rpc.AskFields`'s rule; `TestAskFieldsMatchesRPC` reads it.
+
+A connector set up by hand gets only Adopt. `adoptDialog` asks the Bridge for
+the plan and fills the page's one `<dialog>` with it, each change in an
+ordered list and a table's lines in a `<pre>`, with Cancel, which has the
+focus, and Adopt, which applies. The page has no `window.confirm`: the
+viewer blocks it, and the dialog shows the plan in full.
+
+In app.js, the rail draws `status.connectors` as a row of dots, each a
+button that opens Settings at the card: `goSettings("connections",
+"connector:" + id)`, which the section's focus code scrolls to. The
+Connections line lists only the servers the dots don't cover.
 
 ### cmd/meru-desktop/main.go
 

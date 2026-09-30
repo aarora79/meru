@@ -146,14 +146,18 @@ type Container struct {
 	mode       Mode
 	url        string
 	problem    string // a key the manifest doesn't know, as a sentence
-	state      string
-	sentence   string
-	ours       bool        // the healthy server is Meru's own container
-	reason     string      // what the last crash said, during a backoff
-	retryAt    time.Time   // when the backoff ends
-	crashes    []time.Time // within the last crashWindow
-	stopLoop   context.CancelFunc
-	loopDone   chan struct{}
+	// table and listed are what the last Configure got, which Recheck
+	// hands back.
+	table    config.Connector
+	listed   bool
+	state    string
+	sentence string
+	ours     bool        // the healthy server is Meru's own container
+	reason   string      // what the last crash said, during a backoff
+	retryAt  time.Time   // when the backoff ends
+	crashes  []time.Time // within the last crashWindow
+	stopLoop context.CancelFunc
+	loopDone chan struct{}
 }
 
 // NewContainer returns the supervisor for the container connector m,
@@ -191,6 +195,24 @@ func (c *Container) Manifest() Manifest { return c.m }
 // new loop starts from a fresh check. Leaving run mode stops Meru's own
 // container, if it runs; a server that isn't Meru's is never touched.
 func (c *Container) Configure(table config.Connector, url string, toolListed bool) {
+	c.configure(table, url, toolListed, false)
+}
+
+// Recheck is Fix for the container: it stops the loop, forgets the
+// crashes, and starts a new loop from a fresh check, even when config
+// hasn't changed. It does nothing before the first Configure.
+func (c *Container) Recheck() {
+	c.mu.Lock()
+	configured, table, url, listed := c.configured, c.table, c.url, c.listed
+	c.mu.Unlock()
+	if configured {
+		c.configure(table, url, listed, true)
+	}
+}
+
+// configure does the work of Configure and, with force, of Recheck,
+// which starts a new loop even when nothing changed.
+func (c *Container) configure(table config.Connector, url string, toolListed, force bool) {
 	mode := ContainerMode(c.m, table, url, toolListed)
 	// checkSettings finds a key the manifest doesn't know. A container
 	// connector has no fields, so only "enabled" belongs in its table.
@@ -199,13 +221,15 @@ func (c *Container) Configure(table config.Connector, url string, toolListed boo
 	c.configuring.Lock()
 	defer c.configuring.Unlock()
 	c.mu.Lock()
-	if c.closed || (c.configured && mode == c.mode && url == c.url && problem == c.problem && c.state != StateFailed) {
+	if c.closed || (!force && c.configured && mode == c.mode && url == c.url && problem == c.problem && c.state != StateFailed) {
+		c.table, c.listed = table, toolListed
 		c.mu.Unlock()
 		return
 	}
 	stopOurs := c.configured && c.mode == ModeRun && mode != ModeRun
 	cancel, done := c.stopLoop, c.loopDone
 	c.configured, c.mode, c.url, c.problem = true, mode, url, problem
+	c.table, c.listed = table, toolListed
 	c.crashes, c.ours = nil, false
 	switch {
 	case mode == ModeOff:
@@ -403,7 +427,7 @@ func (c *Container) foreignSentence() string {
 func (c *Container) watchSentence(url string, err error) string {
 	s := fmt.Sprintf("%s can't use SearXNG at %s: %s.", c.m.Name, url, shortReason(err))
 	if sameURL(url, c.m.Launch.URL) {
-		s += fmt.Sprintf(" To have Meru run it, set enabled = true under [connectors.%s] in config.toml, then restart merud.", c.m.ID)
+		s += fmt.Sprintf(" To have Meru run it, turn it on in Settings, Connections, or run meru mcp set %s enabled=true.", c.m.ID)
 	}
 	return s
 }

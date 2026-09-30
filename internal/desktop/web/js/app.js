@@ -18,6 +18,7 @@ import {
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
+import { connectorProgress } from "./connectors.js";
 import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
 
 // How often the rail asks merud for its status, in milliseconds.
@@ -355,6 +356,9 @@ onUpdate((u) => {
       break;
     case "attachments":
       onAttachments(u);
+      break;
+    case "connector":
+      connectorProgress(u.connector);
       break;
   }
 });
@@ -983,7 +987,33 @@ function drawStatus() {
   box.append(head);
   if (s.model) box.append(row("Answer model", s.model));
   box.append(row("Files", s.documents.toLocaleString() + (s.scanning ? " · indexing" : "")));
-  box.append(row("Connections", s.connections.length ? s.connections.join(", ") : "none"));
+  // The connectors get a dot each, which opens their card in Settings;
+  // the Connections line names the rest, the servers added by hand.
+  const dots = s.connectors || [];
+  const named = new Set(dots.flatMap((d) => [d.id.toLowerCase(), d.name.toLowerCase()]));
+  const others = s.connections.filter((c) => !named.has(c.replace(/ \(.*\)$/, "").toLowerCase()));
+  if (dots.length) box.append(connectorDots(dots));
+  box.append(row("Connections", others.length ? others.join(", ") : "none"));
+}
+
+// connectorDots draws the rail's connector line: a dot per connector,
+// green when it is ok and amber otherwise, each a button that opens its
+// card in Settings.
+function connectorDots(dots) {
+  const p = el("p", "status-row");
+  const list = el("span", "status-value connector-dots");
+  for (const d of dots) {
+    const b = button("", {
+      className: "link-button connector-dot",
+      ariaLabel: d.name + ": " + d.words + ". Open its settings.",
+      onClick: () => goSettings("connections", "connector:" + d.id),
+    });
+    b.title = d.name + ": " + d.words;
+    b.append(el("span", "dot" + (d.state === "ok" ? "" : " warn")), document.createTextNode(" " + d.name));
+    list.append(b);
+  }
+  p.append(el("span", "status-label", "Connectors"), list);
+  return p;
 }
 
 // row is one label and value line of the status block.

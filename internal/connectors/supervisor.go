@@ -304,6 +304,30 @@ func (s *Supervisor) Configure(table config.Connector, sec *secrets.Secrets, byH
 	release()
 }
 
+// Recheck is Fix's second half, for a connector whose fields are all
+// right: it stops what runs, forgets the crashes, and installs and checks
+// the connector again, even when the install and its saved tool list are
+// on disk. A connector that is off, set up by hand or short of a field
+// only goes back to that state, since a check can't mend those. It does
+// nothing before the first Configure or after Close.
+func (s *Supervisor) Recheck() {
+	s.mu.Lock()
+	if !s.configured || s.closed {
+		s.mu.Unlock()
+		return
+	}
+	release := s.resetLocked()
+	if s.phase == phaseReady {
+		// resetLocked took the shortcut the saved tool list allows; Fix
+		// wants the full check, which also finds a broken install.
+		s.setPhaseLocked(phaseInstalling, "")
+		values := s.set.values
+		s.workLocked(func(ctx context.Context, gen int) { s.installAndCheck(ctx, gen, values) })
+	}
+	s.mu.Unlock()
+	release()
+}
+
 // resetLocked stops what runs and moves to the state config asks for:
 // by_hand, off, needs_config, ready when the install and its tool list
 // are on disk, or installing. The caller holds s.mu, and must call the

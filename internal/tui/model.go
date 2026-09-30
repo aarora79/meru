@@ -410,6 +410,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case replyMsg:
 		cmd := m.applyReply(msg)
 		return m, cmd
+	case connectorStepMsg:
+		m.applyConnectorStep(msg)
+		return m, nil
 	case savedMsg:
 		m.applySaved(msg)
 		return m, nil
