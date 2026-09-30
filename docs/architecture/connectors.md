@@ -52,7 +52,10 @@ tells you little when one fails. Three failures show what that costs.
 [[mcp.servers]]
 name    = "obsidian"
 command = "npx"
-args    = ["-y", "obsidian-mcp", "serve", "--vault", "notes=~/Notes/vault"]
+args    = [
+  "-y", "obsidian-mcp", "serve",
+  "--vault", "notes=~/Notes/vault",
+]
 ```
 
 On a Mac, launchd, the service manager that starts `merud` at login, hands
@@ -114,7 +117,10 @@ version = "2.0.1"
 
 [launch]
 command = "{pkg}/node_modules/.bin/obsidian-mcp"
-args = ["serve", "--vault", "{field.vault_name}={field.vault_path}"]
+args = [
+  "serve",
+  "--vault", "{field.vault_name}={field.vault_path}",
+]
 
 [[field]]
 id = "vault_path"
@@ -137,7 +143,11 @@ args = {}
 expect = "nonempty"
 
 [mcp]
-allow = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note"]
+allow = [
+  "obsidian_list_vaults",
+  "obsidian_search_vault",
+  "obsidian_read_note",
+]
 confirm = []
 ```
 
@@ -229,8 +239,8 @@ Every install lands under one folder, `~/.meru/runtime/`:
 ~/.meru/runtime/
   node-<v>/               pinned Node.js, for npm packages
   uv-<v>/                 pinned uv, a Python package installer
-  pkg/obsidian-2.0.1/     obsidian-mcp and the npm packages it needs
-  pkg/google-1.30.0/      workspace-mcp in its own Python environment
+  pkg/obsidian-2.0.1/     obsidian-mcp and its npm packages
+  pkg/google-1.30.0/      workspace-mcp and its Python
   state/obsidian.json     the tool list from the last health check
   logs/obsidian.log       the server's error output
 ```

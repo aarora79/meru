@@ -45,8 +45,9 @@
     padding: 0 16px 96px;
   }
   .wrap > * { grid-column: 2; min-width: 0; }
-  /* Figures, tables, code and the number strip break out of the text column. */
-  .wrap > figure, .wrap > .tbl, .wrap > pre, .wrap > .codewrap, .wrap > .strip {
+  /* Figures, tables and the number strip break out of the text column. Code
+     blocks stay inside it and scroll sideways when a line is long. */
+  .wrap > figure, .wrap > .tbl, .wrap > .strip {
     grid-column: 1 / -1; width: min(100%, var(--wide)); justify-self: center; min-width: 0;
   }
 
@@ -274,7 +275,10 @@
 <pre><code class="language-toml">[[mcp.servers]]
 name    = "obsidian"
 command = "npx"
-args    = ["-y", "obsidian-mcp", "serve", "--vault", "notes=~/Notes/vault"]</code></pre>
+args    = [
+  "-y", "obsidian-mcp", "serve",
+  "--vault", "notes=~/Notes/vault",
+]</code></pre>
 
 <p>On a Mac, launchd, the service manager that starts <code>merud</code> at login, hands <code>merud</code> a short <code>PATH</code>, the list of folders a program searches for other programs, and that list holds no Node.js. Each start then fails with this error, and the server stays down:</p>
 
@@ -309,7 +313,10 @@ version = "2.0.1"
 
 [launch]
 command = "{pkg}/node_modules/.bin/obsidian-mcp"
-args = ["serve", "--vault", "{field.vault_name}={field.vault_path}"]
+args = [
+  "serve",
+  "--vault", "{field.vault_name}={field.vault_path}",
+]
 
 [[field]]
 id = "vault_path"
@@ -332,7 +339,11 @@ args = {}
 expect = "nonempty"
 
 [mcp]
-allow = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note"]
+allow = [
+  "obsidian_list_vaults",
+  "obsidian_search_vault",
+  "obsidian_read_note",
+]
 confirm = []</code></pre>
 
 <p><code>kind = "stdio"</code> means Meru starts the program and talks MCP over its standard input and output. <code>{pkg}</code> stands for the connector's install folder, and <code>{field.vault_path}</code> for the value you type into the Vault folder field. Every client will draw its form from the <code>[[field]]</code> tables, so the desktop app and <code>meru chat</code> ask the same questions. <code>[mcp]</code> works as in a hand-added server: the model sees only the three tools <code>allow</code> names.</p>
@@ -412,8 +423,8 @@ func (c Connector) Enabled() (enabled, ok bool) {
 <pre><code class="language-text">~/.meru/runtime/
   node-&lt;v&gt;/               pinned Node.js, for npm packages
   uv-&lt;v&gt;/                 pinned uv, a Python package installer
-  pkg/obsidian-2.0.1/     obsidian-mcp and the npm packages it needs
-  pkg/google-1.30.0/      workspace-mcp in its own Python environment
+  pkg/obsidian-2.0.1/     obsidian-mcp and its npm packages
+  pkg/google-1.30.0/      workspace-mcp and its Python
   state/obsidian.json     the tool list from the last health check
   logs/obsidian.log       the server's error output</code></pre>
 
