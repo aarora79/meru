@@ -51,7 +51,9 @@ type Status struct {
 	// page opens Setup on its own.
 	Folders int `json:"folders"`
 	Profile int `json:"profile"`
-	// Connections names the MCP servers merud holds a connection to.
+	// Connections names the MCP servers merud holds a connection to, and
+	// every connector merud runs, with its state in brackets unless it is
+	// ok: "google, obsidian (needs config)".
 	Connections []string `json:"connections"`
 }
 
@@ -88,7 +90,12 @@ func (b *Bridge) Status(ctx context.Context) Status {
 	}
 	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpMCPStatus}, rpc.EventMCPStatus); err == nil {
 		for _, m := range ev.MCP {
-			if m.State == rpc.MCPConnected {
+			switch {
+			case m.Connector != "" && m.Connector != rpc.ConnectorOK:
+				// A connector that is starting, needs config or failed
+				// still shows, so the rail says what is wrong.
+				s.Connections = append(s.Connections, m.Name+" ("+rpc.ConnectorWords(m.Connector)+")")
+			case m.State == rpc.MCPConnected:
 				s.Connections = append(s.Connections, m.Name)
 			}
 		}

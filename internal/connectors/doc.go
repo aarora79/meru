@@ -5,7 +5,7 @@
 // says how to install it, how to start it, what to ask the user and how to
 // tell that it works. See ARCHITECTURE.md, "Connectors and the supervisor".
 //
-// The package has two parts so far (issue #87, steps 1 and 2):
+// The package has three parts so far (issue #87, steps 1 to 3):
 //
 //   - The manifests. Load parses every embedded manifest and refuses one
 //     that breaks a rule: a version that isn't exact, a container image
@@ -18,13 +18,19 @@
 //     to start the installed program (launch.go). Every program it runs
 //     goes through run.go, by absolute path, with no shell and a short
 //     environment.
-//
-// merud calls none of this yet. The supervisor that will start, check and
-// restart connectors arrives in step 3.
+//   - The supervisor. merud builds one Supervisor per stdio connector
+//     (supervisor.go). It checks the user's [connectors.<id>] values
+//     against the manifest (status.go), installs and health-checks the
+//     connector, keeps its tool list (health.go), starts it on the first
+//     tool call, stops it when idle, and restarts it after a crash with a
+//     growing wait. The MCP pool asks it for a session through its Spawn
+//     method, and the connectors op reports its Status.
 //
 // What the package chooses not to do: it never asks PATH for a program,
 // never touches the user's own npm, pip, uv or Homebrew folders, and
-// starts no connector itself. The clients never import it
+// leaves alone a connector the user set up by hand in [[mcp.servers]]. It
+// supervises no container, HTTP server or dependency yet: SearXNG,
+// Ollama and Google come in later steps. The clients never import it
 // (internal/policy): merud owns the connectors, and a client asks merud
 // about them over the socket.
 package connectors

@@ -54,6 +54,11 @@ type toolService struct {
 	// list of what is connected comes from it. mu guards it.
 	started config.Config
 
+	// conns holds the connector supervisors. It is set once and never
+	// swapped: a reload hands it new config, and the pool it builds asks
+	// the same supervisors for sessions.
+	conns *connectorSet
+
 	mu        sync.Mutex       // guards secrets, pool, a2a and connected
 	secrets   *secrets.Secrets // swapped on reload
 	pool      *mcp.Pool        // swapped on reload
@@ -86,23 +91,32 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	if err != nil {
 		return nil, fmt.Errorf("commands: %w", err)
 	}
-	pool, err := newPool(ctx, cfg.MCP.Servers, sec, log)
+	// The connectors come before the pool, which reaches each one through
+	// its supervisor. They outlive every pool a reload builds.
+	conns, err := newConnectorSet(cfg.Dir, log)
 	if err != nil {
+		return nil, err
+	}
+	pool, err := newPool(ctx, cfg, sec, conns, log)
+	if err != nil {
+		conns.Close()
 		return nil, err
 	}
 	agents, err := a2aAgents(cfg.A2A.Agents, sec.Resolve)
 	if err != nil {
 		pool.Close()
+		conns.Close()
 		return nil, err
 	}
 	ac, err := a2a.New(ctx, agents, log)
 	if err != nil {
 		pool.Close()
+		conns.Close()
 		return nil, fmt.Errorf("a2a: %w", err)
 	}
 
 	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, a2a: ac, secrets: sec, pool: pool,
-		started: cfg, connected: agent.ConnectedTools(cfg)}
+		conns: conns, started: cfg, connected: agent.ConnectedTools(conns.routerServers(cfg))}
 	outputDir, err := expandHome(cfg.Skills.OutputDir)
 	if err != nil {
 		return nil, fmt.Errorf("skills.output_dir: %w", err)
@@ -175,14 +189,19 @@ func logWebSearch(ctx context.Context, cfg config.Config, log *slog.Logger) {
 	log.Info("web search ready", "searxng", web.SearXNGURL, "fetch", fetch)
 }
 
-// newPool resolves the secrets in each server entry and starts the MCP
-// pool.
-func newPool(ctx context.Context, servers []config.MCPServer, sec *secrets.Secrets, log *slog.Logger) (*mcp.Pool, error) {
-	cfgs, err := mcpServerConfigs(servers, sec.Resolve)
+// newPool resolves the secrets in each [[mcp.servers]] entry, hands the
+// connectors their part of cfg, and starts the MCP pool over both: the
+// servers added by hand, which it connects to now, and the connectors
+// that are on, which their supervisors start on the first call. The
+// entries are checked before the connectors see the new config, so a bad
+// entry changes nothing.
+func newPool(ctx context.Context, cfg config.Config, sec *secrets.Secrets, conns *connectorSet, log *slog.Logger) (*mcp.Pool, error) {
+	cfgs, err := mcpServerConfigs(cfg.MCP.Servers, sec.Resolve)
 	if err != nil {
 		return nil, fmt.Errorf("mcp: %w", err)
 	}
-	pool, err := mcp.NewPool(ctx, cfgs, log)
+	conns.configure(cfg, sec)
+	pool, err := mcp.NewPool(ctx, append(cfgs, conns.serverConfigs()...), log)
 	if err != nil {
 		return nil, fmt.Errorf("mcp: %w", err)
 	}
@@ -239,6 +258,11 @@ func (s *toolService) redact(text string) string {
 // started, a removed server's included. A call still running on the old
 // pool fails; reloads are rare, and the user asked for this one.
 //
+// The connectors are the exception: their supervisors outlive the pool.
+// A reload hands each one the [connectors.<id>] table as it is now; one
+// whose config didn't change keeps its program running, and one that
+// failed gets a fresh try.
+//
 // It fails, leaving the old pool in place, when config or secrets don't
 // load or a server entry is wrong.
 func (s *toolService) reloadMCP(ctx context.Context) error {
@@ -253,7 +277,7 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	pool, err := newPool(ctx, cfg.MCP.Servers, sec, s.log)
+	pool, err := newPool(ctx, cfg, sec, s.conns, s.log)
 	if err != nil {
 		return err
 	}
@@ -262,9 +286,10 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 	old := s.pool
 	s.pool, s.secrets = pool, sec
 	s.started.MCP = cfg.MCP
-	// The router's list takes the new [mcp] servers and keeps the rest as
-	// merud last loaded them.
-	s.connected = agent.ConnectedTools(s.started)
+	s.started.Connectors = cfg.Connectors
+	// The router's list takes the new [mcp] servers and connectors, and
+	// keeps the rest as merud last loaded them.
+	s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
 	s.mu.Unlock()
 	s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
 	old.Close()
@@ -301,7 +326,7 @@ func (s *toolService) reloadA2A(ctx context.Context) error {
 	old := s.a2a
 	s.a2a = ac
 	s.started.A2A = cfg.A2A
-	s.connected = agent.ConnectedTools(s.started)
+	s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
 	s.mu.Unlock()
 	s.dispatcher.Replace(dispatch.KindA2A, ac)
 	old.Close()
@@ -321,7 +346,7 @@ func (s *toolService) reloadBuiltin() error {
 	s.bt.SetLists(cfg.Builtin)
 	s.mu.Lock()
 	s.started.Builtin = cfg.Builtin
-	s.connected = agent.ConnectedTools(s.started)
+	s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
 	s.mu.Unlock()
 	s.log.Info("built-in tools reloaded", "tools", len(cfg.Builtin.Tools), "confirm", len(cfg.Builtin.Confirm))
 	return nil
@@ -337,12 +362,15 @@ func (s *toolService) connectedTools() []string {
 	return s.connected
 }
 
-// Close stops the MCP servers merud started and the A2A client.
+// Close stops the MCP servers merud started, the connectors' programs and
+// the A2A client. The pool goes first, so no call asks a supervisor for a
+// session while it stops.
 func (s *toolService) Close() {
 	s.mu.Lock()
 	pool, ac := s.pool, s.a2a
 	s.mu.Unlock()
 	pool.Close()
+	s.conns.Close()
 	ac.Close()
 }
 

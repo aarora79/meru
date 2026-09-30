@@ -47,6 +47,16 @@ func TestMCPTable(t *testing.T) {
 			"SERVER           TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM",
 			"google-workspace http       connected         0        0        0   mcp.example.com/mcp",
 		}},
+		{"a connector shows its own state and sentence", []rpc.MCPStatus{
+			{Name: "obsidian", Transport: "stdio", State: "connected", Connector: rpc.ConnectorOK, Tools: 3, Allowed: 3,
+				Sentence: "Obsidian is ready. It starts when a question needs it."},
+			{Name: "notes", Transport: "stdio", State: "not connected", Connector: rpc.ConnectorNeedsConfig, Tools: -1, Allowed: 3,
+				Err: "Notes needs your folder.", Sentence: "Notes needs your folder."},
+		}, []string{
+			"SERVER     TRANSPORT  STATE         TOOLS  ALLOWED  CONFIRM",
+			"obsidian   stdio      ok                3        3        0   Obsidian is ready. It starts when a question needs it.",
+			"notes      stdio      needs config      —        3        0   Notes needs your folder.",
+		}},
 		{"no servers", nil, []string{noServers}},
 	}
 	for _, tt := range tests {
@@ -56,6 +66,43 @@ func TestMCPTable(t *testing.T) {
 				t.Errorf("MCPTable =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
 			}
 		})
+	}
+}
+
+// TestConnectorTable checks the connector lines `meru mcp` prints under
+// its table, with where to set a field the connector needs.
+func TestConnectorTable(t *testing.T) {
+	got := ConnectorTable([]rpc.ConnectorStatus{
+		{ID: "obsidian", State: rpc.ConnectorNeedsConfig, Sentence: "Obsidian needs your vault folder.", Fix: []string{"vault_path"}},
+		{ID: "notes", State: rpc.ConnectorByHand, Sentence: "Notes is set up by hand, as the notes entry in [[mcp.servers]]."},
+	})
+	want := []string{
+		"CONNECTOR  STATE",
+		"obsidian   needs config    Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.",
+		"notes      set up by hand  Notes is set up by hand, as the notes entry in [[mcp.servers]].",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("ConnectorTable =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if ConnectorTable(nil) != nil {
+		t.Error("no connectors should give no lines")
+	}
+}
+
+// TestConnHeadingForConnectors checks the /mcp box's heading for a
+// connector merud runs and for a server set up by hand in its place.
+func TestConnHeadingForConnectors(t *testing.T) {
+	managed := rpc.Connection{Name: "obsidian", Kind: "mcp", Transport: "stdio", State: rpc.MCPNotConnected,
+		Connector: rpc.ConnectorNeedsConfig, Sentence: "Obsidian needs your vault folder.", Fix: []string{"vault_path"},
+		Tools: []rpc.ToolPolicy{{Name: "obsidian_read_note", Policy: rpc.PolicyAllow}}}
+	want := "obsidian · connector, stdio · needs config · 1 of 1 tools on · Obsidian needs your vault folder. " +
+		"Set vault_path under [connectors.obsidian] in config.toml, then restart merud."
+	if got := connHeading(managed); got != want {
+		t.Errorf("connHeading =\n%s\nwant\n%s", got, want)
+	}
+	hand := rpc.Connection{Name: "obsidian", Kind: "mcp", Transport: "stdio", State: rpc.MCPConnected, Connector: rpc.ConnectorByHand}
+	if got := connHeading(hand); !strings.HasSuffix(got, "· connected · 0 of 0 tools on · set up by hand") {
+		t.Errorf("connHeading = %q", got)
 	}
 }
 

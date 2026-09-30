@@ -1,6 +1,6 @@
 # rpc
 
-**Code:** `internal/rpc/` (`protocol.go`, `sessions.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
+**Code:** `internal/rpc/` (`protocol.go`, `sessions.go`, `settings.go`, `connectors.go`, `citation.go`, `args.go`, `usage.go`, `client.go`, `server.go`)
 **Milestone:** v0.1; sources and the index ops in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client)
 
@@ -112,6 +112,8 @@ type MCPStatus struct {
     Name      string `json:"name"`
     Transport string `json:"transport"` // "stdio" or "http"
     State     string `json:"state"`     // MCPConnected or MCPNotConnected
+    Connector string `json:"connector,omitempty"`
+    Sentence  string `json:"sentence,omitempty"`
     URL       string `json:"url,omitempty"`
     Tools     int    `json:"tools"`
     Allowed   int    `json:"allowed"`
@@ -128,6 +130,49 @@ since it has no tool list to count; the clients draw it as `—`. `Tools` has no
 `Allowed` and `Confirm` come from config (`Confirm` counts `confirm` and
 `always_confirm` together), so they show either way. `Err` says in one line why a
 server isn't connected.
+
+A connector the pool runs adds a row after the `[[mcp.servers]]` entries, with
+`Connector` and `Sentence` set: its state, such as `needs_config`, and the
+sentence that says it. `State` then reads `connected` while its tools are
+offered, which may be before its program runs. `rpc.ServerInfo`, the `tools`
+event's view of a source, gained the same two fields.
+
+### connectors.go
+
+The `connectors` op (`OpConnectors`) asks for every connector `merud`'s
+supervisor knows, whether it runs or not. `merud` answers from what each
+supervisor holds and starts nothing. The reply is one `connectors` event
+(`EventConnectors`), whose `Connectors` field holds one `ConnectorStatus` each:
+
+```json
+{"id":"obsidian","name":"Obsidian","kind":"stdio","state":"needs_config",
+ "sentence":"Obsidian needs your vault folder.",
+ "fields":[{"id":"vault_path","type":"folder","label":"Vault folder","required":true}, ...],
+ "fix":["vault_path"]}
+```
+
+`Fields` lists what the connector asks the user, as `ConnectorField`s, from its
+manifest: ID, type, label, help, whether it is required, its pattern, default
+and choices, and the value config holds. A secret's value never leaves
+`merud`: `Value` stays empty and `Saved` says whether `secrets.toml` holds it.
+`Fields` goes out as `[]` rather than `null`. `Fix` names the fields to ask
+again when the state is `needs_config`.
+
+The clients can't import `internal/connectors` (the dependency rule in
+AGENTS.md), so this file spells out the same six states as constants:
+`ConnectorOK`, `ConnectorOff`, `ConnectorNeedsConfig`, `ConnectorStarting`,
+`ConnectorFailed` and `ConnectorByHand`. Two helpers keep both clients' words
+the same:
+
+- **`ConnectorWords(state)`** writes a state the way a person reads it:
+  `needs config` and `set up by hand`; the other states read as they are.
+- **`FixHint(id, fix)`** says where to set what a connector needs, until the
+  clients can ask for it: "Set vault_path under [connectors.obsidian] in
+  config.toml, then restart merud." It returns `""` for an empty list.
+
+`settings.go`'s `Connection`, a Settings card, gained `Connector`, `Sentence`
+and `Fix`. They are set for a connector the pool runs, and `Connector` alone
+reads `by_hand` for a server added by hand that takes a connector's place.
 
 The desktop app added `SourceDesktop` (`desktop`) to the sources, and two ops
 for its list of past chats, with their types in `sessions.go`:
@@ -299,7 +344,8 @@ the caller's context closes the connection.
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
 `tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
 `memory_forget`), the skill ops (`skills`, `skill_show`, `skill_reset`) and the
-MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`) to the handler. Any other op gets an
+MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`), `connectors`, and the
+history and settings ops to the handler. Any other op gets an
 `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,

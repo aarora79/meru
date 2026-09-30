@@ -1,6 +1,6 @@
 // This file turns a manifest's [launch] table into the program, the
 // arguments and the environment that start an installed connector. The
-// supervisor (planned, issue #87 step 3) will call LaunchCommand; this
+// supervisor (supervisor.go) calls LaunchCommand through childCmd; this
 // file starts nothing itself.
 
 package connectors

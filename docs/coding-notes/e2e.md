@@ -2,7 +2,8 @@
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
 `daemon_test.go`, `index_test.go`, `integration_test.go`, `index_integration_test.go`,
-`mcp_add_test.go`, `commands_test.go`, `race_test.go`, `norace_test.go`)
+`mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `race_test.go`, `norace_test.go`),
+`cmd/fakemcp/`
 **Milestone:** v0.1; the notes tests in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client),
 [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -166,10 +167,23 @@ makes a test slower, not flaky.
 | `TestNoTelemetryByDefault` | `daemon_test.go` | With no `otlp_endpoint`, merud contacts nothing but the fake |
 | `TestAnswerCitesLocalNote` | `index_test.go` | v0.2's "done when": merud indexes a notes folder; the router picks `search`; the main model's prompt holds the garden note's fact under "From your files" and the citation rule; `meru "question"` prints the answer, then `Sources:` with `[1]` and the note's path and nothing it didn't cite; `meru index -status` counts four files (the empty one too, the `.env` never) |
 | `TestMCPAddAndRemove` | `mcp_add_test.go` | `meru mcp add stdio` probes `cmd/fakemcp` through a real merud, proposes `search` (read-only) as allowed and `send` and `secret` as asking, writes them, and `meru tools` shows the server with no restart; `meru mcp remove --yes` takes it out of config and out of merud |
+| `TestConnectorLifecycle` | `connectors_test.go` | The Obsidian connector through a real merud, with `cmd/fakemcp` as its program: turned on with no vault it is `needs_config`, and `meru mcp status` says `needs config` and "Set vault_path under [connectors.obsidian]"; with a vault and `mcp_reload` it is ready without running, and `meru tools` offers `obsidian.obsidian_list_vaults`; the first call starts it; after a SIGKILL merud logs the crash, starts it again, and the next call answers from a new process |
+| `TestConnectorSetUpByHand` | `connectors_test.go` | An `[[mcp.servers]]` entry named `obsidian` wins over a connector that is turned on: the connector reports `by_hand` and its sentence, `meru tools` shows only the hand-added server's tools, and `meru mcp status` shows it connected and "set up by hand" |
 | `TestLocalCommand` | `commands_test.go` | A `[[commands]]` entry runs `echo` with a string and a path parameter; the fake model calls `cmd.say` with `hello; rm -rf ~`, which echo prints as one argument; the `tool_call` line holds the argv with the path resolved, `meru log` shows it as a command line, and `meru tools` shows the template. Unix only, for `echo` |
 | `TestIndexFollowsChanges` | `index_test.go` | The watcher re-indexes a changed note (the next prompt holds the new fact, not the old) and drops a deleted one; a key file added later stays out; `meru index` rescans; `meru index <folder>` refuses a folder outside `[index]` and names the config file, and rescans one inside |
 | `TestIntegrationLiteTTFT` | `integration_test.go` | Real Ollama, lite profile: "Paris", and the first token within one second after two warm-up questions |
 | `TestIntegrationNotesAnswer` | `index_integration_test.go` | Real Ollama, lite profile: a question about the garden note gets "April" and "12" in the answer and the note first among the sources, and `meru` prints a `Sources:` list naming it; logs the scan time, the search time (from merud's debug log) and the time to first token |
+
+The connector tests download nothing. `fakeObsidianInstall` lays out
+`~/.meru/runtime` as a finished install leaves it: the pinned Node's folder,
+whose `bin/node` is a link to `cmd/fakemcp`, and the package folder with its
+`.meru-installed` marker, `package.json` and an empty script. merud counts the
+connector as installed and starts fakemcp in Node's place. `cmd/fakemcp`
+offers three tools, `search`, `send` and `secret`; started with `--vault` among
+its arguments, as the Obsidian manifest's `serve --vault <name>=<path>` is, it
+adds a fourth, `obsidian_list_vaults`, which the manifest's health check calls.
+Its answer, `vault notes (pid N)`, names the process, so the test knows which
+process to kill and can tell that the next answer came from a new one.
 
 `TestNoTelemetryByDefault` can't watch merud's network connections without
 root, so it sets traps. It starts a canary HTTP server in the test and points

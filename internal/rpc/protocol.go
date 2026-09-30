@@ -80,6 +80,11 @@ const (
 	// sends nothing to any server, so the reply comes at once while a
 	// server is down. The reply is one "mcp_status" event and "done".
 	OpMCPStatus Op = "mcp_status"
+	// OpConnectors asks for the state of each connector merud's
+	// supervisor knows (connectors.go). merud answers from what the
+	// supervisor holds and starts nothing. The reply is one "connectors"
+	// event and "done".
+	OpConnectors Op = "connectors"
 	// OpSessions lists the past conversations, the most recent first, at
 	// most Request.Limit of them. merud reads them from the session
 	// transcripts. The reply is one "sessions" event and "done".
@@ -361,6 +366,8 @@ const (
 	// EventConnections answers the connection ops, in Connections and
 	// Catalog.
 	EventConnections EventType = "connections"
+	// EventConnectors answers OpConnectors, in Connectors.
+	EventConnectors EventType = "connectors"
 	// EventFolders answers the folder ops, in Folders and Suggested.
 	EventFolders EventType = "folders"
 	// EventSaved answers OpSaveFile and OpAttachFile; Text holds the
@@ -440,6 +447,9 @@ type Event struct {
 	Folders     []FolderInfo   `json:"folders,omitempty"`
 	Suggested   []FolderInfo   `json:"suggested,omitempty"`
 	Models      *ModelsInfo    `json:"models,omitempty"`
+
+	// Connectors is set on a "connectors" event.
+	Connectors []ConnectorStatus `json:"connectors,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 
@@ -614,6 +624,11 @@ type ServerInfo struct {
 	OfferedTools []ToolInfo `json:"offered_tools,omitempty"`
 	// Unknown lists allow entries the source doesn't offer, usually typos.
 	Unknown []string `json:"unknown,omitempty"`
+	// Connector and Sentence are set for a connector merud's supervisor
+	// runs: its state, such as ConnectorOK, and the sentence that says
+	// it. Connected is then true while its tools are offered.
+	Connector string `json:"connector,omitempty"`
+	Sentence  string `json:"sentence,omitempty"`
 }
 
 // ToolInfo is one tool the model may use.
@@ -753,21 +768,31 @@ type SkillInfo struct {
 }
 
 // MCP server states, for MCPStatus.State. Config has no key that turns a
-// server off, so there is no "disabled" state; a server you don't want is
-// one you remove.
+// server added by hand off, so there is no "disabled" state; a server you
+// don't want is one you remove. A connector has its own, finer states in
+// MCPStatus.Connector.
 const (
 	MCPConnected    = "connected"
 	MCPNotConnected = "not connected"
 )
 
 // MCPStatus is one row of `meru mcp` and the chat's /mcp box: what config
-// declares for one [[mcp.servers]] entry, joined with what merud's client
-// pool holds for it. A server that never connected still reports the
-// tools config allows.
+// declares for one [[mcp.servers]] entry, or for one connector merud
+// runs, joined with what merud's client pool holds for it. A server that
+// never connected still reports the tools config allows.
 type MCPStatus struct {
 	Name      string `json:"name"`
 	Transport string `json:"transport"` // "stdio" or "http"
-	State     string `json:"state"`     // MCPConnected or MCPNotConnected
+	// State is MCPConnected or MCPNotConnected. A connector counts as
+	// connected while its tools are offered, which may be before its
+	// program starts.
+	State string `json:"state"`
+	// Connector is set only for a connector merud's supervisor runs: its
+	// state (ConnectorOK and the rest), with Sentence saying it in one
+	// line, such as "Obsidian is ready. It starts when a question needs
+	// it."
+	Connector string `json:"connector,omitempty"`
+	Sentence  string `json:"sentence,omitempty"`
 	URL       string `json:"url,omitempty"`
 	// Tools counts the tools the server offers, from its tools/list. It is
 	// -1 when the server isn't connected: with no list, any count would be

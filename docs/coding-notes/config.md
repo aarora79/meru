@@ -265,8 +265,9 @@ default:
 
 `config` doesn't know which connectors exist. That list lives in
 `internal/connectors`, and the clients, which import `config`, must never reach
-it. `merud` will check each table against its manifest; nothing reads the tables
-yet. `Enabled()` returns the table's `enabled` and whether it had one, and
+it. `merud` hands each table to its connector's supervisor, which checks it
+against the manifest (`checkSettings` in `internal/connectors/status.go`).
+`Enabled()` returns the table's `enabled` and whether it had one, and
 `Value(key)` returns a string field. More on type switches in
 [go-basics/type-switches.md](go-basics/type-switches.md).
 

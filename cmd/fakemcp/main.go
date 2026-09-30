@@ -8,13 +8,18 @@
 //     carries destructiveHint;
 //   - secret is never allowlisted, so a call to it must be denied.
 //
-// It is test code, built by test/e2e, and never ships.
+// Started with the Obsidian connector's arguments, which hold "--vault",
+// it offers a fourth: obsidian_list_vaults, which names one vault and the
+// process ID. The connector tests run it in place of the Obsidian server,
+// whose health check calls that tool, and kill it by that process ID. It
+// is test code, built by test/e2e, and never ships.
 package main
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -54,6 +59,13 @@ func main() {
 		func(context.Context, *mcp.CallToolRequest, noArgs) (*mcp.CallToolResult, any, error) {
 			return text("you should not see this"), nil, nil
 		})
+	if slices.Contains(os.Args[1:], "--vault") {
+		mcp.AddTool(s, &mcp.Tool{Name: "obsidian_list_vaults", Description: "List the vaults.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}},
+			func(context.Context, *mcp.CallToolRequest, noArgs) (*mcp.CallToolResult, any, error) {
+				return text(fmt.Sprintf("vault notes (pid %d)", os.Getpid())), nil, nil
+			})
+	}
 	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		fmt.Fprintln(os.Stderr, "fakemcp:", err)
 		os.Exit(1)

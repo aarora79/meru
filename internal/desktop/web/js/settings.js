@@ -175,23 +175,53 @@ function drawConnections(body, cv) {
   }
 }
 
+// CONNECTOR_PILLS says each connector state on a card's pill, with the
+// pill's colour: ok is green, the rest amber.
+const CONNECTOR_PILLS = {
+  ok: ["ok", "Ready"],
+  starting: ["down", "Starting"],
+  needs_config: ["down", "Needs setup"],
+  failed: ["down", "Failed"],
+  off: ["down", "Off"],
+};
+
+// connectorManaged reports whether merud's supervisor runs connection c,
+// rather than a server the user added by hand.
+function connectorManaged(c) {
+  return Boolean(c.connector) && c.connector !== "by_hand";
+}
+
 // connectionCard draws one source: its state, how many tools are on, and
-// a switch per tool. key names the card for "Change what … may do".
+// a switch per tool. key names the card for "Change what … may do". A
+// connector merud runs shows its own state and sentence, and for one
+// that needs setup, the keys to set in config.toml.
 function connectionCard(body, c, title, key) {
   const card = el("article", "card connection");
   card.dataset.connection = key;
   const head = el("div", "card-head");
   head.append(el("h3", "", title));
   const up = c.state === "connected";
-  const pill = el("span", "pill " + (up ? "ok" : "down"), up ? "Connected" : "Not connected");
-  head.append(pill);
+  let [look, words] = [up ? "ok" : "down", up ? "Connected" : "Not connected"];
+  if (connectorManaged(c)) [look, words] = CONNECTOR_PILLS[c.connector] || ["down", c.connector];
+  head.append(el("span", "pill " + look, words));
   card.append(head);
 
   const where = [c.kind === "mcp" ? "MCP server" : c.kind === "a2a" ? "Agent" : c.kind === "command" ? "Programs on this Mac" : "Inside merud"];
+  if (connectorManaged(c)) where[0] = "Connector";
+  if (c.connector === "by_hand") where.push("set up by hand");
   if (c.transport) where.push(c.transport === "http" ? "connects to " + c.url : "merud starts it");
   if (c.remote) where.push("on another machine");
   card.append(el("p", "card-sub", where.join(" · ")));
-  if (!up && c.err) card.append(el("p", "card-error", c.err));
+  if (connectorManaged(c)) {
+    card.append(el("p", c.connector === "ok" ? "card-note" : "card-error", c.sentence));
+    const fix = c.fix || [];
+    if (fix.length) {
+      card.append(el("p", "card-note",
+        "Set " + fix.join(" and ") + " under [connectors." + c.name + "] in config.toml, then restart merud."));
+    }
+  } else if (!up && c.err) {
+    card.append(el("p", "card-error", c.err));
+  }
 
   const on = c.tools.filter((t) => t.policy !== "off").length;
   const total = c.offered >= 0 && c.kind !== "builtin" ? Math.max(c.offered, c.tools.length) : c.tools.length;
@@ -213,7 +243,8 @@ function connectionCard(body, c, title, key) {
       },
     }));
   }
-  if (c.kind === "mcp") card.append(removeButton(body, c.name));
+  // A connector merud runs has no [[mcp.servers]] entry to remove.
+  if (c.kind === "mcp" && !connectorManaged(c)) card.append(removeButton(body, c.name));
   return card;
 }
 

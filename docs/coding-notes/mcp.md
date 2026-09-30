@@ -2,11 +2,12 @@
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
 `probe.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
-`headers_test.go`, `refresh_test.go`, `stdio_test.go`, `stdio_unix_test.go`,
-`probe_test.go`, `probe_unix_test.go`, `testserver_test.go`)
+`headers_test.go`, `refresh_test.go`, `managed_test.go`, `stdio_test.go`,
+`stdio_unix_test.go`, `probe_test.go`, `probe_unix_test.go`, `testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
-[Agent loop](../../ARCHITECTURE.md#agent-loop) step 4
+[Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
+[The supervisor](../../ARCHITECTURE.md#the-supervisor)
 
 ## What it does
 
@@ -35,9 +36,10 @@ Go SDK (`github.com/modelcontextprotocol/go-sdk`):
 - **Streamable HTTP.** The Pool connects to a server that is already running, at a
   URL. The URL must be loopback unless the entry says `remote = true`.
 
-The Pool supervises nothing. It starts a stdio server because the transport is the
-child's stdin and stdout, and it connects to an HTTP server that you start. It
-never restarts either one on its own, checks its health or retries on a timer:
+The Pool supervises no server added by hand in `[[mcp.servers]]`. It starts a
+stdio server because the transport is the child's stdin and stdout, and it
+connects to an HTTP server that you start. It never restarts either one on its
+own, checks its health or retries on a timer:
 
 | When | What the Pool does |
 | --- | --- |
@@ -46,6 +48,13 @@ never restarts either one on its own, checks its health or retries on a timer:
 | a turn that offers no tools, or no turn at all | nothing |
 | a call to a server that isn't connected | fails at once with `ErrUnavailable` |
 | a call whose session is gone | fails, marks the server not connected, and isn't sent again |
+
+A **connector** is the exception. `merud` adds one pool entry per connector
+that is on, with a `Spawner` in its `Spawn` field: the supervisor in
+`internal/connectors`, which installs, starts, stops and restarts the program
+(see [connectors](connectors.md)). For such a **managed** server the Pool
+connects to nothing, at startup or in `Refresh`. It offers the tools the
+supervisor reports, and on each call asks the supervisor for a session.
 
 ## The picture
 
@@ -124,6 +133,7 @@ type ServerConfig struct {
     Confirm []string
     AlwaysConfirm []string
     Timeout time.Duration
+    Spawn   Spawner // set only for a connector
 }
 ```
 
@@ -156,6 +166,13 @@ It refuses:
 `ValidateAll` also refuses two servers with one name, because their tool names
 would collide.
 
+The last field, `Spawn`, marks a managed server, a connector. `merud` leaves it
+nil for every `[[mcp.servers]]` entry and sets it only on the entries it builds
+for connectors (`serverConfigs` in `cmd/merud/connectors.go`). A managed entry
+takes no `command`, `url`, `env`, `headers` or `remote`, since the supervisor
+knows how to start the program; `Validate` refuses one that sets any of them,
+and skips the "command or url" rule for it.
+
 ### stdio.go
 
 `newStdioTransport` builds the child process:
@@ -182,7 +199,33 @@ return &mcp.CommandTransport{Command: cmd, TerminateDuration: terminateWait}
 
 ### pool.go
 
-`NewPool` validates the config, then connects each server in turn:
+**The Spawn hook.** The file opens with the interface the Pool needs from a
+supervisor:
+
+```go
+type Spawner interface {
+    Spawn(ctx context.Context, limit time.Duration) (cs *mcp.ClientSession, done func(), err error)
+    Tools() []*mcp.Tool
+    State() (state, sentence string)
+}
+```
+
+An **interface** lists methods; any type that has them fits, with no
+declaration. `*connectors.Supervisor` has all three, so it is a `Spawner`. The
+interface lives here, in the package that uses it, so `mcp` never imports
+`connectors` (see [go-basics/interfaces.md](go-basics/interfaces.md)). The Pool
+never starts, restarts or stops a managed server; it asks.
+
+`NewPool` validates the config, then connects each server added by hand in
+turn. It skips a managed one:
+
+```go
+if cfg.Spawn != nil {
+    continue // its supervisor starts it on the first call
+}
+```
+
+For the rest:
 
 ```go
 s.mu.Lock()
@@ -265,9 +308,17 @@ and to `lastErr` for `Status`, and the turn carries on without that server. The
 agent loop reaches `Refresh` through `dispatch.Refresher` (see
 [dispatch.md](dispatch.md) and [agent.md](agent.md)).
 
+`refreshLocked` returns at once for a managed server. Its supervisor keeps
+the tool list and starts the program when a call needs it.
+
 `Tools` lists only the tools of servers with a live session, so a dead server's
-tools drop out of the next prompt. `sessionFor`, which `Call` uses, never
-connects:
+tools drop out of the next prompt. For a managed server it first calls
+`syncManagedLocked`, which copies the supervisor's list into the server and
+sets `offering` to whether it has one. A managed server offers its allowed
+tools while `offering` is true, even before its program runs, and none while
+the supervisor reports another state.
+
+`sessionFor`, which `Call` uses, never connects a server added by hand:
 
 ```go
 switch {
@@ -281,6 +332,23 @@ case s.session == nil:
 A `switch` with no value after it tests each `case` in turn and runs the first
 that is true, like a chain of `if … else if`. `%w` wraps `ErrUnavailable` in the
 error, so `dispatch` can find it with `errors.Is`.
+
+For a managed server, `sessionFor` asks the supervisor instead, without the
+server's lock held, since a start may take seconds and `Status` must answer
+meanwhile:
+
+```go
+cs, done, err = s.cfg.Spawn.Spawn(ctx, connectTimeout)
+if err != nil {
+    return nil, nil, fmt.Errorf("%w: %s: %w", ErrUnavailable, s.cfg.Name, err)
+}
+```
+
+`sessionFor` now returns a `done` function too. `Call` runs it with `defer`
+when the call ends, so the supervisor's idle timer counts from the last call;
+for a server added by hand `done` does nothing. A failed `Spawn` carries the
+supervisor's sentence, such as "Obsidian needs your vault folder.", wrapped in
+`ErrUnavailable`.
 
 With no timer, no background loop and no wait, nothing runs while nobody asks. A
 server that crashes on start doesn't spin, and a server nobody needs is never
@@ -319,12 +387,19 @@ tools that ask first. `Confirms` counts a tool once when both `confirm` and
 `always_confirm` name it. `meru tools` and `meru mcp` both read `Status`, through
 `cmd/merud` (see [merud.md](merud.md)).
 
+A managed server's row sets `Managed`, and `State` and `Sentence` from the
+supervisor, such as `needs_config` and "Obsidian needs your vault folder."
+`Connected` is true while the supervisor offers the tools, which may be before
+the program runs. While it offers none, `LastError` holds the sentence.
+
 Each `server` has a `sync.Mutex` next to the fields it guards. Calls lock it only
 to read or swap the session, never during the tool call itself, so many calls to
 one server can run at once.
 
 `Close` ends every session, cancels every process context, and then waits on the
-`watchers` wait group until every `watch` goroutine has returned.
+`watchers` wait group until every `watch` goroutine has returned. It leaves a
+managed server's program to its supervisor, which outlives the Pool across a
+reload.
 
 **Headers.** A Streamable HTTP server that wants an API key gets it in `Headers`.
 `httpClient` wraps Go's default transport in a `headerTransport`, an
@@ -429,11 +504,15 @@ if !allowed {
    made-up name as `denied` before the pool sees it.
 2. **Arguments.** They must be a JSON object; empty means `{}`.
 3. **Session.** `sessionFor` returns the live session, or fails at once with
-   `ErrUnavailable` when the server isn't connected. It never starts the server.
+   `ErrUnavailable` when the server isn't connected. It never starts a server
+   added by hand. For a managed server it asks the supervisor, which may start
+   the program and wait up to 30 seconds for it.
    A call that fails because the session is gone marks the server not connected
    (`markFailed`) and returns the error. `Call` doesn't reconnect and send it
    again: the server may have run the tool before the session broke, and
-   `send_gmail_message` would then send the mail twice.
+   `send_gmail_message` would then send the mail twice. A connector's
+   supervisor sees the crash itself and restarts the program, but it doesn't
+   send the call again either.
 4. **Call.** `cs.CallTool` runs under a timeout (60 s unless the entry sets
    `Timeout`). If you cancel `ctx`, or the timeout passes, the SDK sends the server
    a `notifications/cancelled` message and `Call` returns an error that wraps
@@ -500,6 +579,18 @@ checks that calls fail and its tools leave the list until `Refresh` starts
 a new process. `TestStatusCountsFromConfig` checks `URL`, `Listed` and
 `Confirms` for a server that never connected.
 
+`managed_test.go` covers the Spawn hook with `fakeSpawner`, a fake supervisor
+that hands out sessions to the in-memory test server and counts them.
+`TestManagedServer` puts a managed server beside one added by hand: only the
+hand-added one connects at startup, neither `NewPool` nor `Refresh` asks the
+fake for a session, `Tools` follows what the fake reports, a call asks `Spawn`
+once and runs `done` once, and a fake that turns to `needs_config` takes the
+tools away and makes a call fail with `ErrUnavailable` and the sentence.
+`TestManagedValidate` checks that a managed entry refuses `command`, `url` and
+`env`. The tests of servers added by hand kept every assertion they had before
+the hook. `internal/connectors/pool_test.go` runs a real supervisor behind a
+Pool.
+
 `refresh_test.go` covers a server that restarts. Its `restartable` type is a
 Streamable HTTP server that a test can restart with other tools on the same
 address. `TestRefreshFollowsARestartedServer` replays the `workspace-mcp` case
@@ -515,12 +606,16 @@ turn.
 - **The official SDK.** It implements both transports, the handshake, paging and
   cancellation, and the MCP maintainers keep it current with the spec. Writing our
   own JSON-RPC client would be several hundred lines to test and keep in step.
-- **No supervision.** The operating system already runs processes and restarts
-  them (`launchd`, `systemd`). A restart loop inside `merud` would need its own
-  goroutine, backoff and shutdown, and would do work while nobody asks. One try
-  per turn that offers tools needs a loop over the servers and nothing else. An
-  earlier version retried on the next call, at most once every 10 seconds; the
-  turn-level try replaced it, so a call never waits on a server start.
+- **No supervision of a server added by hand.** You start and look after an
+  HTTP server yourself, and a stdio server you added runs the command you gave.
+  A restart loop in the Pool would need its own goroutine, backoff and shutdown,
+  and would do work while nobody asks. One try per turn that offers tools needs
+  a loop over the servers and nothing else. An earlier version retried on the
+  next call, at most once every 10 seconds; the turn-level try replaced it, so a
+  call never waits on a server start. Connectors do get supervision, from
+  `internal/connectors`, because Meru installed them and knows how to start,
+  check and restart them. The Spawn hook keeps that code out of the Pool, so the
+  hand-added path stayed as it was.
 - **List every turn, with no cache age.** The listing costs about 0.3 ms per
   server on loopback, so a rule such as "list when the list is older than 30
   seconds" would save nothing a person could notice and add a clock to test.

@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -402,6 +402,12 @@ with no tool list, any count would be a guess. `Allowed` and `Confirm` come from
 config, so they show either way. The line inside the `if` sets three fields at
 once, in the order the line names them.
 
+A connector's row comes from a managed pool entry (`st.Managed`). `mcpStatus`
+copies its state and sentence into `Connector` and `Sentence`, since they say
+more than connected or not: "Obsidian is ready. It starts when a question needs
+it." `mcpBackend.Status`, the list `meru tools` and `about_meru` read, does the
+same for `rpc.ServerInfo`.
+
 ### merud: tools.go
 
 `toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
@@ -410,8 +416,21 @@ pool, the A2A client, the built-in tools, the local commands and the
 
 `newToolService` checks the `[[commands]]` entries with `commands.New` first,
 before any MCP server starts, so a bad entry stops `merud` with an error that
-names it and leaves nothing to clean up. It then joins the four backends in
-this order:
+names it and leaves nothing to clean up. Next it builds the connector
+supervisors with `newConnectorSet` (see [connectors.go](#merud-connectorsgo)
+below), then the pool with `newPool(ctx, cfg, sec, conns, log)`. The connectors
+come first because the pool reaches each one through its supervisor. `newPool`
+works in this order:
+
+1. `mcpServerConfigs` resolves the secrets in each `[[mcp.servers]]` entry and
+   checks it. A bad entry fails here, before the connectors see the new
+   config, so it changes nothing.
+2. `conns.configure` hands each supervisor its `[connectors.<id>]` table.
+3. `mcp.NewPool` starts over both lists: the entries added by hand, which it
+   connects to now, and `conns.serverConfigs()`, one managed entry per
+   connector that is on, which its supervisor starts on the first call.
+
+It then joins the four backends in this order:
 
 ```go
 s.dispatcher = dispatch.New(
@@ -435,7 +454,8 @@ reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides
 | --- | --- | --- |
 | `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
 | `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
-| `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order |
+| `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order, then one per connector the pool runs |
+| `connectors` | `handleConnectors`: `conns.statuses()`, read from each supervisor; starts nothing | one `connectors` event, a row per stdio connector in manifest order, off and set up by hand included |
 
 **Status.** `handleMCPStatus` takes the current pool under `s.mu`, since a reload
 may swap it, and reads `pool.Status()`. That reads what the pool holds and sends
@@ -454,13 +474,12 @@ goes through `Redact` before it leaves, in case a server echoes a key back.
 now, swaps it into the dispatcher with `Replace`, and closes the old pool:
 
 ```go
-names := s.started
-names.MCP = cfg.MCP
-
 s.mu.Lock()
 old := s.pool
 s.pool, s.secrets = pool, sec
-s.connected = agent.ConnectedTools(names)
+s.started.MCP = cfg.MCP
+s.started.Connectors = cfg.Connectors
+s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
 s.mu.Unlock()
 s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
 old.Close()
@@ -469,17 +488,27 @@ old.Close()
 `connected` is the list of servers, commands and web search that the router's
 prompt names (see [router.md](router.md)). `newToolService` builds it from
 config at startup, and a reload builds it again with the new `[mcp]` servers
-and the rest as `merud` started, since only the pool reloads. `newRouter` takes
+and connectors and the rest as `merud` started, since only the pool reloads.
+`routerServers` adds an entry for each connector the pool runs, with its name
+and allow list, so the router names Obsidian whether you added it by hand or
+turned the connector on. `newRouter` takes
 `connectedTools`, the method that reads it under the lock, so `merud` builds
 the router after the tool service. The list changes only at startup and on a
 reload, so the router's prompt opens the same way from turn to turn.
 
 The new pool has no memory of the old one, so a server you added appears, one you
 changed restarts with its new settings, and one you removed is gone. `old.Close()`
-stops every child the old pool started, the removed server's included. A config
+stops every child the old pool started, the removed server's included. The
+connectors are the exception: their supervisors outlive the pool. `newPool`
+hands each one its table again, and one whose config didn't change keeps its
+program running across the reload, while one that failed gets a fresh try. A config
 that fails to load, or a bad server entry, returns the error before anything
 changes, and the old pool keeps running. `reload`, a second mutex, lets one
 reload run at a time.
+
+`Close` stops the pool first, then the connectors with `conns.Close`, then the
+A2A client. With the pool gone, no call can ask a supervisor for a session
+while it stops.
 
 `handleReload` passes `context.WithoutCancel(ctx)`: a context with the request's
 values but none of its cancellation. A client that hangs up mid-reload then can't
@@ -515,6 +544,44 @@ it asks any search engine, so starting `merud` sends nothing off the machine.
 SearXNG port, checks the log line, and runs a turn in which the model calls
 `web_search` and still answers.
 
+### merud: connectors.go
+
+This file joins the connector supervisors (see [connectors](connectors.md)) to
+the rest of `merud`. `connectorSet` holds one `*connectors.Supervisor` per stdio
+connector, in manifest order. `newConnectorSet` loads the manifests, makes an
+`Installer` over `~/.meru` and the home folder, and builds each supervisor.
+The set is built once and never swapped: `toolService.conns` keeps it for
+`merud`'s whole life, and every pool a reload builds asks the same supervisors
+for sessions.
+
+| Method | What it does |
+| --- | --- |
+| `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name |
+| `serverConfigs()` | one managed pool entry per connector that isn't off or set up by hand: its ID as the name, the manifest's tool lists, the supervisor as `Spawn` |
+| `routerServers(cfg)` | `cfg` with an `[[mcp.servers]]` entry added per connector the pool runs, for the router's list |
+| `statuses()` | every connector's `rpc.ConnectorStatus`, for the `connectors` op |
+| `byID(id)` | one connector's status, for `connections.go` |
+| `Close()` | stops each supervisor and waits for its goroutines |
+
+**The hand-added entry wins.** An `[[mcp.servers]]` entry named `obsidian`
+runs through the pool's own rules, unchanged, and the connector reports
+`by_hand`. `serverConfigs` then gives it no pool entry, so the pool and the
+router hold one `obsidian` at most. A connector that is off gets no entry
+either, so it stays out of `mcp_status`.
+
+`handleConnectors` answers the `connectors` op from what each supervisor holds,
+so it answers at once while a connector installs or restarts.
+
+`connectors_test.go` builds a real set over a temporary `~/.meru`.
+`TestConnectorsJoinThePool` walks the join table-driven: no table gives `off`;
+a hand-added entry gives `by_hand`, with or without a table that turns the
+connector on; a table with no vault gives `needs_config` and a managed entry.
+Each case checks that the hand-added entry reaches the pool unchanged, and
+that the pool and the router each hold one `obsidian`, or none when it is off.
+One case is the owner's own setup, an `npx obsidian-mcp` entry with no
+`[connectors.obsidian]` table, which must keep working as it did.
+`TestConnectorsOp` checks the op's reply for a connector that needs config.
+
 ### merud: connections.go
 
 The desktop app's Settings changes tools through four ops, and lists them through
@@ -525,6 +592,13 @@ offers (from `OfferedTools`) plus any config allows, each with `policyOf`'s
 answer: `off` when `allow` leaves it out, `always` when `always_confirm` names it,
 `ask` when `confirm` does, `allow` otherwise. `catalogEntries` adds the catalog,
 marking what config has and which keys `secrets.toml` holds.
+
+After the `[[mcp.servers]]` entries come the connectors the pool runs, one
+`Connection` each from `connectorConnection`. The card carries the connector's
+state, sentence and fix list, and is `Fixed`, with a note that says its tool
+lists come from its manifest: config has no lists to change yet, so the
+switches don't move and the card has no Remove. A hand-added server that takes
+a connector's place gets `Connector = by_hand` and the connector's sentence.
 
 - `handleToolPolicy` checks the change, then `setEntryPolicy` or
   `setBuiltinPolicy` computes the new lists with `newLists` and writes them with
@@ -634,7 +708,7 @@ Each fact comes from a place `merud` already keeps:
 | the main model's capabilities, size, quantization, context | `Details`, through the `modelDetailer` interface, at most 3 seconds |
 | the computer | the `machineLine` the prompt carries |
 | folders, files, chunks, database size | `idx.currentFolders`, `st.Stats`, `st.DiskBytes` |
-| MCP servers, A2A agents, commands | `tools.dispatcher.Servers`, the list `meru tools` prints |
+| MCP servers, A2A agents, commands | `tools.dispatcher.Servers`, the list `meru tools` prints, with a connector's sentence |
 | skills on and off | `skillService.names` |
 | memories by kind | `mem.List`, keeping only each memory's kind |
 
@@ -1089,9 +1163,19 @@ Setup offers each catalog entry, in catalog order: `google`, then `obsidian`.
 `mcpCmd` reads the words after `meru mcp`. With no words, or `status`, it calls
 `mcpStatus`, which sends `mcp_status` and prints the rows with `tui.MCPTable`, the
 same function the chat's `/mcp` box uses, so the two views can't drift apart.
-`--json` prints the rows as a JSON array instead. `rows` starts as
-`[]rpc.MCPStatus{}` so that a config with no servers prints `[]`; a nil slice
-would print `null`.
+A connector's row shows its state words, such as `needs config`, and its
+sentence. Below the table, `connectorRows` sends `connectors` and
+`tui.ConnectorTable` prints every connector `merud` knows, off and set up by
+hand included, with where to set a field one needs. A `merud` from before the
+op answers with an error, and the first table is all that prints.
+`--json` prints both lists as one JSON object instead,
+`{"servers": [...], "connectors": [...]}`. Before step 3 it printed the
+server list alone as an array, so a script that read it must now read
+`.servers`. An anonymous struct, declared where
+it is needed, names the two keys with struct tags. `rows` starts as
+`[]rpc.MCPStatus{}`, and `connectorRows` returns `[]rpc.ConnectorStatus{}` when
+`merud` can't say, so an empty list prints `[]`; a nil slice would print
+`null`.
 
 `addEntry` turns the words after `add` into a `catalog.Entry`:
 
@@ -1156,6 +1240,8 @@ socket protocol by hand: read one JSON request, write events. It records the ops
 it saw, so a test can check that a write ends with `mcp_reload`. `TestMCPStatus`
 checks the table from `meru mcp` and `meru mcp status`, reads `--json` back into
 the same structs, and checks the output with no servers and with `merud` down.
+`TestMCPStatusConnectors` checks that the text and the JSON both carry the
+connectors `merud` reports, with the same fields.
 
 ### meru: user.go
 

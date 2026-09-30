@@ -280,6 +280,11 @@ ends "Quote model names, versions and numbers exactly as this tool gives them." 
 whole text stops at 2,000 characters, about 500 tokens, because it lands in the
 model's context on every call.
 
+Each `AboutSource` names an MCP server or A2A agent, whether it is connected and
+how many tools it offers. A connector `merud` runs adds its `Sentence`, which
+`sources` puts after a semicolon, so the model can say why one is down:
+`obsidian (not connected; Obsidian needs your vault folder.)`.
+
 Nothing here can leak a secret, because `About` has no field for one: no env,
 no header, no server error, no memory text. `dispatch` also runs the result
 through its secret redaction, as it does for every tool.

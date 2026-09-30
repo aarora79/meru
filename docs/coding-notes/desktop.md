@@ -184,7 +184,12 @@ this, a busy `merud` showed as "merud isn't running" while it answered questions
 setting: after a change `merud` may restart every MCP server, and each may take a
 while to start. `done` is `one` for an op that `merud` answers with `done` alone.
 `Status` also carries the folder and profile counts: with both at zero, the page
-opens Setup on its own.
+opens Setup on its own. Its `Connections`, the names the rail shows, lists
+each MCP server `merud` holds a connection to, and each connector the pool
+runs that isn't `ok`, with its state in brackets: `obsidian (needs config)`.
+`rpc.ConnectorWords` writes the state, so the rail and `meru chat` say it the
+same way. A connector that is `ok` shows by name alone, like a connected
+server.
 
 ### The chat list (history.go, web/js/organize.js)
 
@@ -409,7 +414,17 @@ bundler.
   a tick for a server on another computer. Each argument gets a field of its own,
   so an argument with a space in it needs no quotes, and no quoting rule can cut
   one in the wrong place. A variable ticked Secret shows as a password field. The form checks the
-  name's pattern to answer sooner; `merud` checks everything again. Models shows
+  name's pattern to answer sooner; `merud` checks everything again. A connector
+  `merud` runs gets its own card: "Connector" in place of "MCP server", a pill
+  from `CONNECTOR_PILLS` (Ready in green; Starting, Needs setup, Failed and Off
+  in amber), its sentence under the title, and, for one that needs setup, the
+  keys to set, such as "Set vault_path under [connectors.obsidian] in
+  config.toml, then restart merud." The page builds that sentence itself, since
+  it can't call Go, and `TestFixHintMatchesRPC` in `assets_test.go` fails when
+  it drifts from `rpc.FixHint`. The card has no Remove button, since config has no
+  `[[mcp.servers]]` entry to take out. `connectorManaged` tells the two apart; a
+  server added by hand in a connector's place shows "set up by hand" and keeps
+  its Remove. Models shows
   the tiers, then "Models you can use for answers": a card per model we tried,
   with its size, a pill per capability, "No tools" and what that means for a
   model without them, a line on what it did well and one on what it did badly,

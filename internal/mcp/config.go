@@ -1,6 +1,7 @@
 // This file holds the settings for one MCP server and the checks they must
-// pass before the Pool will use them. The config package will fill
-// ServerConfig from a [[mcp.servers]] entry in config.toml.
+// pass before the Pool will use them. merud fills a ServerConfig from each
+// [[mcp.servers]] entry in config.toml, and one for each connector its
+// supervisor runs.
 
 package mcp
 
@@ -71,10 +72,19 @@ type ServerConfig struct {
 
 	// Timeout caps one tool call. Zero means DefaultCallTimeout.
 	Timeout time.Duration
+
+	// Spawn, when set, makes this a managed server: a connector, whose
+	// program a supervisor in merud runs (internal/connectors). Command,
+	// Args, Env, URL, Remote and Headers then stay empty, since the
+	// supervisor knows how to start it. merud leaves Spawn nil for every
+	// [[mcp.servers]] entry, so a server added by hand keeps the Pool's own
+	// connect rules.
+	Spawn Spawner
 }
 
 // transport names the transport this entry uses: "stdio" or "http". Status
-// reports it, and spans derive network.transport from it.
+// reports it, and spans derive network.transport from it. A managed
+// server is a stdio connector.
 func (c ServerConfig) transport() string {
 	if c.URL != "" {
 		return "http"
@@ -108,6 +118,12 @@ func (c ServerConfig) Validate() error {
 	hasCommand := strings.TrimSpace(c.Command) != ""
 	hasURL := strings.TrimSpace(c.URL) != ""
 	switch {
+	case c.Spawn != nil && (hasCommand || hasURL || len(c.Env) > 0 || len(c.Headers) > 0 || c.Remote):
+		// The supervisor starts a managed server; a command or URL here
+		// would be a second, conflicting way to reach it.
+		add("a managed connector takes no command, url, env, headers or remote")
+	case c.Spawn != nil:
+		// Nothing to reach: the supervisor hands the Pool its sessions.
 	case hasCommand && hasURL:
 		add("set command or url, not both")
 	case !hasCommand && !hasURL:

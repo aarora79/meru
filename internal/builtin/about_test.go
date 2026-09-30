@@ -33,6 +33,7 @@ func sampleAbout() About {
 		Sources: []AboutSource{
 			{Name: "google", Kind: dispatch.KindMCP, Connected: true, Tools: 9},
 			{Name: "obsidian", Kind: dispatch.KindMCP},
+			{Name: "notes", Kind: dispatch.KindMCP, Sentence: "Notes needs your vault folder."},
 		},
 		Commands: []string{"cmd.git-log"},
 		Skills:   []string{"web-research", "writing"},
@@ -52,7 +53,7 @@ func TestAboutText(t *testing.T) {
 		"Profile: lite.",
 		"Apple M4 Max",
 		"Indexed folders: ~/notes. The index holds 120 files in 950 chunks; meru.db is 42.0 MB.",
-		"MCP servers: google (connected, 9 tools), obsidian (not connected).",
+		"MCP servers: google (connected, 9 tools), obsidian (not connected), notes (not connected; Notes needs your vault folder.).",
 		"A2A agents: none.",
 		"Local commands: cmd.git-log.",
 		"Skills: web-research, writing; turned off: explainer.",

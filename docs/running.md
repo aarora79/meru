@@ -1753,8 +1753,11 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
 
 `ALLOWED` and `CONFIRM` come from `config.toml`, so they show while a server is
 down. `merud` answers from what it already holds and sends nothing to any server,
-so the table comes back at once. `meru mcp --json` prints the same rows as JSON,
-and `/mcp` in `meru chat` shows the table in a box.
+so the table comes back at once. `meru mcp --json` prints the same as one JSON
+object, `{"servers": [...], "connectors": [...]}`, and `/mcp` in `meru chat`
+shows the table in a box. Before connectors, `--json` printed the server list
+as a bare array; a script that read that array now reads `.servers`, as in
+`meru mcp --json | jq '.servers[]'`.
 
 `merud` connects to each server once when it starts. A server that isn't connected
 gets one more try at the start of each turn on a tools route: 5 seconds for an
@@ -1771,6 +1774,43 @@ tools; after that turn it shows the new count, and the model can call the new
 tools. If the server lost `merud`'s session in the restart, that turn connects
 again first. The log shows `mcp server tool list changed` with the counts, or
 `mcp server failed to list its tools; reconnecting`.
+
+#### Obsidian as a connector
+
+Meru can also install and run the Obsidian server for you, as a **connector**.
+`merud` downloads a pinned Node and `obsidian-mcp` into `~/.meru/runtime`,
+starts the server when a question needs it, stops it after 10 minutes unused,
+and starts it again if it crashes. It reads your vault folder on disk, so
+Obsidian itself needn't run. To turn it on, add this to `config.toml`:
+
+```toml
+[connectors.obsidian]
+enabled    = true
+vault_path = "~/Notes/vault"
+```
+
+Then restart `merud`. Under the server table, `meru mcp` lists every connector
+and its state:
+
+```text
+CONNECTOR  STATE
+obsidian   ok              Obsidian is ready. It starts when a question needs it.
+```
+
+| State | What it means |
+| --- | --- |
+| `ok` | ready: the model sees its tools, and the server starts on the first call |
+| `off` | config doesn't turn it on |
+| `needs config` | a setting is missing or wrong; the line says which key to set |
+| `starting` | installing, starting, or waiting a few seconds to start again after a crash |
+| `failed` | it couldn't install, failed its check, or crashed five times in ten minutes; the line says why, and a restart of `merud` tries again |
+| `set up by hand` | `[[mcp.servers]]` has an entry named `obsidian`, which runs instead |
+
+An `[[mcp.servers]]` entry of the same name always wins, so a setup that works
+today keeps working: the connector only reports `set up by hand`. To move to the
+connector, take that entry out (`meru mcp remove obsidian`) and turn the
+connector on. Settings in the desktop app shows the same state on the
+connector's card.
 
 #### See and remove servers
 

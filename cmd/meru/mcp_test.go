@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -32,8 +33,11 @@ type fakeMerud struct {
 	probe func(rpc.ProbeServer) (*rpc.ProbeResult, error)
 	// servers is what OpTools and OpMCPReload report.
 	servers []rpc.ServerInfo
-	// status is what OpMCPStatus reports.
-	status []rpc.MCPStatus
+	// status is what OpMCPStatus reports, and connectors what OpConnectors
+	// reports; a nil connectors answers OpConnectors with an error, as a
+	// merud from before the op does.
+	status     []rpc.MCPStatus
+	connectors []rpc.ConnectorStatus
 
 	mu   sync.Mutex    // guards reqs
 	reqs []rpc.Request // every request, in order
@@ -112,6 +116,12 @@ func (f *fakeMerud) serve(conn net.Conn) {
 		_ = enc.Encode(rpc.Event{Type: rpc.EventTools, Servers: f.servers})
 	case rpc.OpMCPStatus:
 		_ = enc.Encode(rpc.Event{Type: rpc.EventMCPStatus, MCP: f.status})
+	case rpc.OpConnectors:
+		if f.connectors == nil {
+			_ = enc.Encode(rpc.Event{Type: rpc.EventError, Error: `unknown op "connectors"`})
+			return
+		}
+		_ = enc.Encode(rpc.Event{Type: rpc.EventConnectors, Connectors: f.connectors})
 	}
 	_ = enc.Encode(rpc.Event{Type: rpc.EventDone})
 }
@@ -572,26 +582,29 @@ func TestMCPStatus(t *testing.T) {
 		}
 	}
 
-	// --json prints the rows, and they read back as the same structs.
+	// --json prints the rows under "servers", and they read back as the
+	// same structs. This merud knows no connectors op, so "connectors" is
+	// an empty list.
 	for _, args := range [][]string{{"--json"}, {"status", "--json"}} {
 		c, out, _ := scripted("")
 		if err := mcpCmd(t.Context(), sock, args, c); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		var got []rpc.MCPStatus
+		var got statusJSON
 		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 			t.Fatalf("%v: %v\n%s", args, err, out)
 		}
-		if !slices.Equal(got, rows) {
-			t.Errorf("%v = %+v, want %+v", args, got, rows)
+		if !slices.Equal(got.Servers, rows) || got.Connectors == nil || len(got.Connectors) != 0 {
+			t.Errorf("%v = %+v, want the rows and no connectors", args, got)
 		}
 	}
 
-	// No servers: an empty JSON array, and a line on how to add one.
+	// No servers: empty JSON lists, and a line on how to add one.
 	empty := (&fakeMerud{}).start(t)
 	c, out, _ := scripted("")
-	if err := mcpCmd(t.Context(), empty, []string{"--json"}, c); err != nil || strings.TrimSpace(out.String()) != "[]" {
-		t.Errorf("--json with no servers = %q, %v; want []", out, err)
+	if err := mcpCmd(t.Context(), empty, []string{"--json"}, c); err != nil ||
+		strings.Join(strings.Fields(out.String()), "") != `{"servers":[],"connectors":[]}` {
+		t.Errorf("--json with no servers = %q, %v; want empty lists", out, err)
 	}
 	c, out, _ = scripted("")
 	if err := mcpCmd(t.Context(), empty, nil, c); err != nil || !strings.Contains(out.String(), "meru mcp add") {
@@ -602,5 +615,44 @@ func TestMCPStatus(t *testing.T) {
 	c, _, _ = scripted("")
 	if err := mcpCmd(t.Context(), filepath.Join(t.TempDir(), "merud.sock"), nil, c); err == nil {
 		t.Error("meru mcp with merud down succeeded, want an error")
+	}
+}
+
+// statusJSON is what `meru mcp --json` prints.
+type statusJSON struct {
+	Servers    []rpc.MCPStatus       `json:"servers"`
+	Connectors []rpc.ConnectorStatus `json:"connectors"`
+}
+
+// TestMCPStatusConnectors checks that the text and the JSON of `meru mcp`
+// both carry the connectors merud reports, with the same fields.
+func TestMCPStatusConnectors(t *testing.T) {
+	conns := []rpc.ConnectorStatus{
+		{ID: "obsidian", Name: "Obsidian", Kind: "stdio", State: rpc.ConnectorNeedsConfig,
+			Sentence: "Obsidian needs your vault folder.", Fix: []string{"vault_path"},
+			Fields: []rpc.ConnectorField{{ID: "vault_path", Type: "folder", Label: "Vault folder", Required: true}}},
+	}
+	sock := (&fakeMerud{connectors: conns}).start(t)
+
+	c, out, _ := scripted("")
+	if err := mcpCmd(t.Context(), sock, nil, c); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"CONNECTOR  STATE", "obsidian   needs config", "Set vault_path under [connectors.obsidian]"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("text lacks %q:\n%s", want, out)
+		}
+	}
+
+	c, out, _ = scripted("")
+	if err := mcpCmd(t.Context(), sock, []string{"status", "--json"}, c); err != nil {
+		t.Fatal(err)
+	}
+	var got statusJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !reflect.DeepEqual(got.Connectors, conns) || got.Servers == nil {
+		t.Errorf("JSON = %+v, want the connectors %+v and a servers list", got, conns)
 	}
 }

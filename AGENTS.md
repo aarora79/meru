@@ -188,7 +188,8 @@ go.mod, go.sum       one module, github.com/aarora79/meru
 cmd/
   merud/             the daemon: main.go wires config, engine, router, store, indexer, tools,
                      socket and agent loop; one file per group of socket ops (history, chats,
-                     memory, skills, tools, connections, folders, models, save, index); sessions.go
+                     memory, skills, tools, connectors, connections, folders, models, save,
+                     index); connectors.go also joins the connector supervisors to the pool; sessions.go
                      replays transcripts and runs the summarizer;
                      backends.go joins the MCP pool to dispatch; runtime.go checks Ollama and
                      warms the models; machine.go describes the computer for the system prompt
@@ -253,7 +254,8 @@ internal/
   connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
                      versions, and the checks on them; the pinned Node and uv (runtimes.go),
                      installs into ~/.meru/runtime (install.go, launch.go), and run.go, its one
-                     exec site; merud's supervisor will use them (#87)
+                     exec site; the supervisor merud runs per stdio connector (supervisor.go),
+                     its states and settings check (status.go) and health check (health.go)
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests

@@ -385,6 +385,8 @@ func handler(svc services) rpc.Handler {
 			return tools.handleReload(ctx, emit)
 		case rpc.OpMCPStatus:
 			return tools.handleMCPStatus(emit)
+		case rpc.OpConnectors:
+			return tools.handleConnectors(emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, req, emit)
 		case rpc.OpMemoryList:
