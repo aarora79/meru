@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meru connectors: how Meru will run its own servers</title>
+<style>
+  /* One file, no external fonts, so it opens from disk and offline.
+     Theme, figure and code styles match 100.html, 200.html and 300.html. */
+  :root {
+    --measure: 52ch;   /* about 72 characters a line in the system font */
+    --wide: 960px;
+    --sans: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --bg: #ffffff; --panel: #f8f9fa; --ink: #202124; --ink-2: #3c4043;
+    --ink-3: #5f6368; --rule: #dadce0; --accent: #1a73e8; --accent-2: #b06000;
+    --warn: #c5221f; --code-bg: #f1f3f4; --band: #f1f3f4; --meru: #0E7C7B;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+      --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+      --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #202124; --panel: #292a2d; --ink: #e8eaed; --ink-2: #bdc1c6;
+    --ink-3: #9aa0a6; --rule: #3c4043; --accent: #8ab4f8; --accent-2: #fdd663;
+    --warn: #f28b82; --code-bg: #282a2e; --band: #2a2b2e; --meru: #5FC4BD;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 18px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr min(var(--measure), 100%) 1fr;
+    padding: 0 16px 96px;
+  }
+  .wrap > * { grid-column: 2; min-width: 0; }
+  /* Figures, tables and the number strip break out of the text column. Code
+     blocks stay inside it and scroll sideways when a line is long. */
+  .wrap > figure, .wrap > .tbl, .wrap > .strip {
+    grid-column: 1 / -1; width: min(100%, var(--wide)); justify-self: center; min-width: 0;
+  }
+
+  /* ===== Level switcher: shared by 100.html, 200.html and 300.html ===== */
+  .levels { display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+            padding: 20px 0 0; font-family: var(--sans); font-size: 15px; line-height: 1; }
+  .levels-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+                  text-transform: uppercase; color: var(--ink-3); }
+  .levels ol { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; }
+  .levels li { display: flex; align-items: center; margin: 0; }
+  .levels li + li::before { content: "·"; color: var(--ink-3); padding: 0 6px; }
+  .levels a { display: block; padding: 6px 12px; border-radius: 999px; border: 1px solid transparent;
+              color: var(--ink-2); font-weight: 600; text-decoration: none;
+              font-variant-numeric: tabular-nums; }
+  .levels a:hover { color: var(--meru); border-color: var(--rule); }
+  .levels .repo { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .levels .repo svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+  .levels .theme { margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+                   width: 34px; height: 34px; padding: 0; border: 1px solid var(--rule); border-radius: 999px;
+                   background: transparent; color: var(--ink-2); cursor: pointer; }
+  .levels .theme:hover { color: var(--meru); border-color: var(--meru); }
+  .levels .theme svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+                       stroke-linecap: round; stroke-linejoin: round; }
+  .levels .theme .sun { display: none; }
+  .levels .theme.is-dark .sun { display: block; }
+  .levels .theme.is-dark .moon { display: none; }
+  .levels .theme + .repo { margin-left: 6px; }
+  @media (max-width: 480px) { .levels .repo-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
+
+  /* Aside callout: a tinted box with a --meru left border. */
+  .aside { border-left: 4px solid var(--meru); background: var(--panel);
+           background: color-mix(in srgb, var(--meru) 9%, var(--bg));
+           padding: 14px 18px; margin: 24px 0; border-radius: 0 8px 8px 0;
+           font-size: 16px; line-height: 1.6; color: var(--ink-2); }
+  .aside p { margin: 0 0 10px; }
+  .aside p:last-child { margin-bottom: 0; }
+  .aside b { color: var(--ink); }
+
+  header.top { padding: 28px 0 24px; border-bottom: 1px solid var(--rule); }
+  .page-logo { float: right; width: 76px; height: 76px; margin: 2px 0 12px 24px;
+               padding: 6px; box-sizing: border-box; background: #FFFDF7;
+               border: 1px solid #E6E1D6; border-radius: 16px; display: block; }
+  .page-logo svg { display: block; width: 100%; height: 100%; }
+  .page-logo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (max-width: 700px) { .page-logo { width: 56px; height: 56px; margin-left: 16px; border-radius: 12px; } }
+  h1 { font-size: clamp(32px, 4.6vw, 42px); line-height: 1.16; font-weight: 700;
+       letter-spacing: -0.021em; margin: 0 0 16px; }
+  .standfirst { font-size: 21px; line-height: 1.55; color: var(--ink-2); margin: 0 0 18px; }
+  .byline, figcaption, .note { font-size: 14.5px; line-height: 1.55; color: var(--ink-3); }
+  h2 { font-size: 28px; line-height: 1.25; font-weight: 700; letter-spacing: -0.015em;
+       margin: 60px 0 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 21px; line-height: 1.35; font-weight: 600; margin: 36px 0 10px; }
+  p { margin: 0 0 18px; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  ul, ol { margin: 0 0 18px; padding-left: 24px; }
+  li { margin-bottom: 8px; }
+  strong, b { font-weight: 600; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--code-bg); color: var(--ink); padding: 18px 20px; border-radius: 8px;
+        overflow-x: auto; border: 1px solid var(--rule); font-size: 14.5px; line-height: 1.65;
+        margin: 0 0 22px; font-family: var(--mono); }
+  pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+  .codewrap { position: relative; margin: 0 0 22px; }
+  .codewrap > pre { margin: 0; }
+  .copy-btn { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center;
+    gap: 6px; font: 500 12.5px/1 var(--sans); color: var(--ink-3); background: var(--bg);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; cursor: pointer;
+    opacity: 0; transition: opacity .12s, color .12s, border-color .12s; }
+  .codewrap:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+  .copy-btn:hover, .copy-btn.done { color: var(--accent); border-color: var(--accent); opacity: 1; }
+  @media (hover: none) { .copy-btn { opacity: 1; } }
+
+  /* "planned" marks behaviour that isn't built yet. */
+  .plan { font: 600 12px/1 var(--sans); letter-spacing: 0.04em; text-transform: uppercase;
+          color: var(--accent-2); border: 1px solid var(--accent-2); border-radius: 999px;
+          padding: 3px 8px; vertical-align: 3px; white-space: nowrap; }
+  h2 .plan { font-size: 12px; vertical-align: 6px; margin-left: 6px; }
+  .built { color: var(--meru); border-color: var(--meru); }
+
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+           gap: 14px; margin: 28px 0 8px; }
+  .strip div { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px;
+               padding: 14px 16px; }
+  .strip b { display: block; font-size: 26px; line-height: 1.2; font-weight: 700; color: var(--meru);
+             font-variant-numeric: tabular-nums; }
+  .strip span { display: block; font-size: 15px; line-height: 1.45; color: var(--ink-2); margin-top: 4px; }
+  .strip small { display: block; font-size: 13px; line-height: 1.4; color: var(--ink-3); margin-top: 8px; }
+
+  .toc { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
+         padding: 18px 24px; margin: 32px 0; font-size: 16px; }
+  .toc ol { margin: 0; padding-left: 22px; columns: 2 240px; column-gap: 32px; }
+  .toc li { margin-bottom: 6px; break-inside: avoid; }
+
+  figure { margin: 32px 0; }
+  .figbox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px;
+            background: var(--bg); padding: 12px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { margin: 10px auto 0; max-width: var(--measure); }
+  figcaption b { color: var(--ink-2); }
+
+  .tbl { overflow-x: auto; margin: 0 0 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; line-height: 1.55;
+          font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th { font-size: 13px; font-weight: 600; color: var(--ink-3); text-transform: uppercase;
+             letter-spacing: 0.05em; border-bottom: 2px solid var(--rule); }
+  tbody tr:nth-child(even) td { background: var(--panel); }
+  td:first-child code { white-space: nowrap; }
+
+  footer.end { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule);
+               font-size: 14.5px; color: var(--ink-3); }
+
+  /* SVG paint: every diagram uses these, so one drawing serves both themes. */
+  svg text { font-family: var(--sans); }
+  svg .mono { font-family: var(--mono); }
+  .t1 { fill: var(--ink); } .t2 { fill: var(--ink-2); } .t3 { fill: var(--ink-3); }
+  .ta { fill: var(--accent); } .ta2 { fill: var(--accent-2); } .tw { fill: var(--warn); } .tm { fill: var(--meru); }
+  .b  { fill: var(--panel); stroke: var(--rule); stroke-width: 1.5; }
+  .bn { fill: var(--panel); stroke: var(--ink-3); stroke-width: 1.4; }
+  .ba { fill: var(--bg); stroke: var(--accent); stroke-width: 1.6; }
+  .ba2 { fill: var(--bg); stroke: var(--accent-2); stroke-width: 1.6; }
+  .bm { fill: var(--bg); stroke: var(--meru); stroke-width: 1.8; }
+  .bwf { fill: var(--bg); stroke: var(--warn); stroke-width: 1.6; }
+  .bg { fill: none; stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .ln { stroke: var(--ink-3); stroke-width: 1.4; fill: none; }
+  .lna { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+  .lnd { stroke: var(--ink-3); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .lnw { stroke: var(--warn); stroke-width: 1.5; fill: none; }
+  .life { stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .mk { fill: var(--ink-3); } .mka { fill: var(--accent); } .mkw { fill: var(--warn); }
+  .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+
+  @media (max-width: 700px) {
+    body { font-size: 17px; line-height: 1.65; }
+    h2 { font-size: 24px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .standfirst { font-size: 19px; }
+    pre { font-size: 13px; padding: 14px 16px; }
+    table { font-size: 15px; }
+    figure svg { min-width: 640px; }
+  }
+  @media print {
+    body { font-size: 11pt; background: #fff; color: #000; }
+    figure, pre, table, .toc, .strip { break-inside: avoid; }
+    .copy-btn, .levels .theme { display: none; }
+  }
+</style>
+<script>
+  // Theme: apply the saved choice before the page paints, as the level pages do.
+  (function () {
+    var theme = "dark";
+    try {
+      var saved = localStorage.getItem("meru-theme");
+      if (saved === "light" || saved === "dark") theme = saved;
+    } catch (e) {}
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="levels" aria-label="Architecture levels">
+  <span class="levels-label">Level</span>
+  <ol>
+    <li><a href="100.html" title="The big picture">100</a></li>
+    <li><a href="200.html" title="How it works">200</a></li>
+    <li><a href="300.html" title="The full design">300</a></li>
+  </ol>
+  <button class="theme" type="button" hidden aria-label="Switch to dark mode" title="Switch to dark mode">
+    <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+  <a class="repo" href="https://github.com/aarora79/meru" title="The Meru repository on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg><span class="repo-text">GitHub</span></a>
+</nav>
+
+<header class="top">
+  <a class="page-logo" href="../index.html" aria-label="Meru home page" title="Meru home page"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -5 50 50" width="76" height="76">
+    <ellipse cx="23" cy="17" rx="21" ry="6" fill="none" stroke="#0A5453" stroke-width="1.4" stroke-dasharray="3 2.4"/>
+    <path d="M6 38 L20 12 L25 20 L29 14 L40 38 Z" fill="#0E7C7B" stroke="#14181C" stroke-width="2" stroke-linejoin="round"/>
+    <line x1="20" y1="1" x2="20" y2="12" stroke="#14181C" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="3.5" cy="16" r="2.6" fill="#E9A82C" stroke="#14181C" stroke-width="1.2"/>
+    <circle cx="41" cy="20.5" r="2" fill="#FFFDF7" stroke="#14181C" stroke-width="1.2"/>
+  </svg></a>
+  <h1>Connectors: how Meru will run its own servers</h1>
+  <p class="standfirst">A connector is a program Meru needs, such as the search engine behind web search, that Meru installs, starts, checks and restarts for you. This page walks through the design in issue #87: what you set, what Meru's developers set, what happens on disk, and which parts exist today.</p>
+  <aside class="aside"><p><b>Where the work stands.</b> Step 1 of 7 is built and in review in PR #90: the manifests, their checks, the config table and a test that refuses unpinned versions. <code>merud</code> reads none of it yet, so Meru behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 2 to 7.</p></aside>
+  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step1</code>, commit <code>cc06f33</code></p>
+</header>
+
+<div class="strip" role="list">
+  <div role="listitem"><b>4</b><span>manifests compiled into <code>merud</code>: SearXNG, Obsidian, Google and Ollama</span><small><code>internal/connectors/manifests/</code>, 29 Sep 2026</small></div>
+  <div role="listitem"><b>1, 2, 4 … 60 s</b><span>wait before each restart after a crash (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
+  <div role="listitem"><b>5 in 10 min</b><span>crashes before a connector stops trying and says why (planned)</span><small>ARCHITECTURE.md, 29 Sep 2026</small></div>
+  <div role="listitem"><b>10 min</b><span>idle time before Obsidian or Google stops (planned)</span><small><code>idle_timeout</code> in both manifests, 29 Sep 2026</small></div>
+</div>
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#the-problem-today">The problem today</a></li>
+    <li><a href="#what-a-connector-is">What a connector is</a></li>
+    <li><a href="#where-things-live-on-disk">Where things live on disk</a></li>
+    <li><a href="#the-supervisor-and-its-states">The supervisor and its states</a></li>
+    <li><a href="#turning-on-obsidian-end-to-end">Turning on Obsidian, end to end</a></li>
+    <li><a href="#the-four-connectors">The four connectors</a></li>
+    <li><a href="#status-and-fix">Status and Fix</a></li>
+    <li><a href="#pinned-versions">Pinned versions</a></li>
+    <li><a href="#moving-a-working-setup-over">Moving a working setup over</a></li>
+    <li><a href="#what-it-doesnt-do">What it doesn't do</a></li>
+    <li><a href="#where-the-work-stands">Where the work stands</a></li>
+    <li><a href="#sources">Sources</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="the-problem-today">The problem today</h2>
+
+<p><code>merud</code>, Meru's background program, leans on four other programs. Ollama runs the models. SearXNG, a search engine you host on your own machine, backs the built-in <code>web_search</code> tool. An Obsidian server reads your notes, and a Google server reaches Gmail, Calendar and Drive. Those last two speak the Model Context Protocol (MCP), the standard way a program offers tools to a model.</p>
+
+<p>Today you install each of these, start it, and restart it when it stops. <code>merud</code> reads the MCP servers from <code>~/.meru/config.toml</code>, starts the ones it can, and tells you little when one fails. Three failures show what that costs.</p>
+
+<p><b>Obsidian fails on every turn.</b> A common setup starts the server through <code>npx</code>, the Node.js package runner:</p>
+
+<pre><code class="language-toml">[[mcp.servers]]
+name    = "obsidian"
+command = "npx"
+args    = [
+  "-y", "obsidian-mcp", "serve",
+  "--vault", "notes=~/Notes/vault",
+]</code></pre>
+
+<p>On a Mac, launchd, the service manager that starts <code>merud</code> at login, hands <code>merud</code> a short <code>PATH</code>, the list of folders a program searches for other programs, and that list holds no Node.js. Each start then fails with this error, and the server stays down:</p>
+
+<pre><code class="language-text">exec: "npx": executable file not found in $PATH</code></pre>
+
+<p>The same entry works when you start <code>merud</code> from a terminal, whose <code>PATH</code> does hold Node.js, so the fault shows up only once Meru runs in the background.</p>
+
+<p><b>Web search says "Connected" while SearXNG is down.</b> Settings marks web search connected whenever <code>[web] searxng_url</code> holds a URL, because <code>merud</code> never asks SearXNG whether it answers. The model still gets <code>web_search</code>, and each call fails.</p>
+
+<p><b>Google runs by hand.</b> <code>merud</code> connects to the Google server at <code>127.0.0.1:8000</code> but never starts it. The installer writes a start script and a launchd job for it. When that job is missing, you start the server in a terminal and leave the terminal open.</p>
+
+<p><code>merud</code> can't repair any of this, because of how it holds its servers today. The MCP pool, the part of <code>merud</code> that keeps its server connections, connects to each server once at start, one after another, with 30 seconds for each. It has no restart and no timer. At the start of each turn that offers tools it tries a dead server once more, and it never sends a failed call a second time. SearXNG sits outside the pool. <code>merud</code> checks Ollama once, and if Ollama doesn't answer, <code>merud</code> exits before it opens its socket, the file the clients talk to it through, so no client can show you why.</p>
+
+<!-- ============================================================ -->
+<h2 id="what-a-connector-is">What a connector is</h2>
+
+<p>A connector is one of those programs that Meru installs, configures, starts, checks and restarts for you, at a version fixed in Meru's own release. Two files describe each one, and two different people write them.</p>
+
+<p><b>The manifest</b> belongs to Meru's developers. It is a TOML file, the same plain format as <code>config.toml</code>, at <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into the <code>merud</code> binary. It names the package and its exact version, the command that starts it, the values to ask you for, a health check (a cheap request that proves the program works), and which of its tools the model may call. Obsidian's manifest, without its comments:</p>
+
+<pre><code class="language-toml">id = "obsidian"
+name = "Obsidian"
+kind = "stdio"
+required = false
+default_on = false
+idle_timeout = "10m"
+
+[install]
+type = "npm"
+package = "obsidian-mcp"
+version = "2.0.1"
+
+[launch]
+command = "{pkg}/node_modules/.bin/obsidian-mcp"
+args = [
+  "serve",
+  "--vault", "{field.vault_name}={field.vault_path}",
+]
+
+[[field]]
+id = "vault_path"
+type = "folder"
+label = "Vault folder"
+help = "The folder that holds your Obsidian notes."
+required = true
+
+[[field]]
+id = "vault_name"
+type = "text"
+label = "Vault name"
+help = "A short name the tools use for the vault. Leave it empty and Meru makes one from the folder's name."
+required = false
+pattern = "^[a-z][a-z0-9_-]*$"
+
+[health]
+tool = "obsidian_list_vaults"
+args = {}
+expect = "nonempty"
+
+[mcp]
+allow = [
+  "obsidian_list_vaults",
+  "obsidian_search_vault",
+  "obsidian_read_note",
+]
+confirm = []</code></pre>
+
+<p><code>kind = "stdio"</code> means Meru starts the program and talks MCP over its standard input and output. <code>{pkg}</code> stands for the connector's install folder, and <code>{field.vault_path}</code> for the value you type into the Vault folder field. Every client will draw its form from the <code>[[field]]</code> tables, so the desktop app and <code>meru chat</code> ask the same questions. <code>[mcp]</code> works as in a hand-added server: the model sees only the three tools <code>allow</code> names.</p>
+
+<p><b>Your config</b> belongs to you. It holds whether the connector is on and the value of each field, in one table per connector in <code>config.toml</code>:</p>
+
+<pre><code class="language-toml">[connectors.obsidian]
+enabled    = true
+vault_path = "~/Notes/vault"</code></pre>
+
+<p>A secret never goes in that table. Google's OAuth client secret, for example, lives in <code>~/.meru/secrets.toml</code> under the name <code>connector_google_client_secret</code>, the pattern <code>connector_&lt;id&gt;_&lt;field&gt;</code>, and <code>merud</code> refers to it as <code>secret:connector_google_client_secret</code>. <code>config</code> reads each table as a plain map, because every connector has its own fields:</p>
+
+<pre><code class="language-go">// internal/config/config.go
+type Connector map[string]any
+
+func (c Connector) Enabled() (enabled, ok bool) {
+	enabled, ok = c["enabled"].(bool)
+	return enabled, ok
+}</code></pre>
+
+<p><code>config.Load</code> checks only the table's shape: lower-case keys, and <code>enabled</code> set to true or false. It can't check the fields against the manifest, because the desktop app and <code>meru</code> import <code>config</code> and must never reach the connector code. <code>merud</code> will run that check <span class="plan">planned</span>.</p>
+
+<p><b>Adding your own MCP server stays the same.</b> You add it to <code>[[mcp.servers]]</code> in <code>config.toml</code>, or with <code>meru mcp add</code>, and the supervisor leaves it alone. You can't edit a manifest on your machine: it sits inside the <code>merud</code> binary, so it changes only when Meru's developers ship a release. A new manifest is how a Meru release adds a managed connector.</p>
+
+<p>The split has two effects. Nobody can point a working install at an untested version by editing a file on disk, because the pins live in the binary. And a Meru upgrade can move a pin without touching your settings, because your config holds only your values.</p>
+
+<figure>
+<div class="figbox">
+<svg viewBox="0 0 960 470" role="img" aria-labelledby="f1t">
+  <title id="f1t">The manifest and your config both feed the supervisor, which fills the runtime folder</title>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
+  </defs>
+  <!-- manifest -->
+  <rect x="20" y="20" width="440" height="180" rx="10" class="bm"/>
+  <text x="40" y="50" class="t1" font-size="17" font-weight="700">Manifest</text>
+  <text x="40" y="72" class="t3" font-size="13">written by Meru's developers · compiled into merud</text>
+  <text x="40" y="102" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">package  obsidian-mcp 2.0.1</text>
+  <text x="40" y="124" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">start    {pkg}/node_modules/.bin/obsidian-mcp</text>
+  <text x="40" y="146" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">fields   vault_path, vault_name</text>
+  <text x="40" y="168" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">health   obsidian_list_vaults → nonempty</text>
+  <text x="40" y="190" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">tools    allow 3, confirm 0</text>
+  <!-- config -->
+  <rect x="500" y="20" width="440" height="100" rx="10" class="ba"/>
+  <text x="520" y="50" class="t1" font-size="17" font-weight="700">Your config</text>
+  <text x="520" y="72" class="t3" font-size="13">~/.meru/config.toml · you change it</text>
+  <text x="520" y="100" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">[connectors.obsidian] enabled, vault_path</text>
+  <rect x="500" y="132" width="440" height="68" rx="10" class="ba"/>
+  <text x="520" y="160" class="t1" font-size="15" font-weight="600">~/.meru/secrets.toml</text>
+  <text x="520" y="184" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">connector_&lt;id&gt;_&lt;field&gt;</text>
+  <!-- supervisor -->
+  <rect x="250" y="250" width="460" height="54" rx="10" class="ba2"/>
+  <text x="480" y="275" text-anchor="middle" class="t1" font-size="16" font-weight="700">Supervisor in merud</text>
+  <text x="480" y="294" text-anchor="middle" class="ta2" font-size="12.5" font-weight="600">PLANNED · steps 2 to 6</text>
+  <path d="M240 200 L360 248" class="ln" marker-end="url(#a1)"/>
+  <path d="M720 200 L600 248" class="ln" marker-end="url(#a1)"/>
+  <!-- runtime -->
+  <rect x="20" y="344" width="920" height="110" rx="10" class="bg"/>
+  <text x="40" y="370" class="t1" font-size="15" font-weight="700">~/.meru/runtime/</text>
+  <text x="200" y="370" class="t3" font-size="13">the only place installs land; global npm, pip and Homebrew stay untouched</text>
+  <rect x="36" y="386" width="160" height="50" rx="7" class="b"/><text x="116" y="409" text-anchor="middle" class="t1 mono" font-size="13">node-&lt;v&gt;/</text><text x="116" y="427" text-anchor="middle" class="t3" font-size="12">pinned Node.js</text>
+  <rect x="216" y="386" width="140" height="50" rx="7" class="b"/><text x="286" y="409" text-anchor="middle" class="t1 mono" font-size="13">uv-&lt;v&gt;/</text><text x="286" y="427" text-anchor="middle" class="t3" font-size="12">pinned uv</text>
+  <rect x="376" y="386" width="200" height="50" rx="7" class="b"/><text x="476" y="409" text-anchor="middle" class="t1 mono" font-size="13">pkg/obsidian-2.0.1/</text><text x="476" y="427" text-anchor="middle" class="t3" font-size="12">the installed server</text>
+  <rect x="596" y="386" width="170" height="50" rx="7" class="b"/><text x="681" y="409" text-anchor="middle" class="t1 mono" font-size="13">state/obsidian.json</text><text x="681" y="427" text-anchor="middle" class="t3" font-size="12">last tool list</text>
+  <rect x="786" y="386" width="140" height="50" rx="7" class="b"/><text x="856" y="409" text-anchor="middle" class="t1 mono" font-size="13">logs/obsidian.log</text><text x="856" y="427" text-anchor="middle" class="t3" font-size="12">its error output</text>
+  <path d="M480 304 L480 342" class="ln" marker-end="url(#a1)"/>
+</svg>
+</div>
+<figcaption><b>Figure 1.</b> Each file has one owner. A Meru release changes the manifest; you change the config and secrets; only <code>merud</code> writes the runtime folder.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="where-things-live-on-disk">Where things live on disk <span class="plan">planned</span></h2>
+
+<p>Every install lands under one folder, <code>~/.meru/runtime/</code>:</p>
+
+<pre><code class="language-text">~/.meru/runtime/
+  node-&lt;v&gt;/               pinned Node.js, for npm packages
+  uv-&lt;v&gt;/                 pinned uv, a Python package installer
+  pkg/obsidian-2.0.1/     obsidian-mcp and its npm packages
+  pkg/google-1.30.0/      workspace-mcp and its Python
+  state/obsidian.json     the tool list from the last health check
+  logs/obsidian.log       the server's error output</code></pre>
+
+<p><code>merud</code> downloads Node.js and uv, a Python package installer, the first time a connector needs one, at versions pinned in <code>merud</code>. Before it unpacks a download, it compares the file's SHA-256, a 64-character fingerprint of its contents, with the pin, and refuses a file that doesn't match. A changed or corrupt download never runs.</p>
+
+<p>Each connector installs into its own folder, named for its ID and version. The install type in the manifest picks the command:</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Type</th><th>What <code>merud</code> runs</th></tr></thead>
+<tbody>
+<tr><td><code>npm</code></td><td><code>npm install --prefix &lt;dir&gt; &lt;package&gt;@&lt;version&gt; --no-audit --no-fund</code>, with the pinned Node.js</td></tr>
+<tr><td><code>pip</code></td><td><code>uv venv</code>, then <code>uv pip install &lt;package&gt;==&lt;version&gt;</code></td></tr>
+<tr><td><code>binary</code></td><td>download the file for this platform and check its SHA-256</td></tr>
+<tr><td><code>container</code></td><td><code>docker pull &lt;image&gt;@sha256:&lt;digest&gt;</code></td></tr>
+</tbody></table></div>
+
+<p>When a new Meru release moves a pin, the version in the manifest no longer matches the installed folder, so <code>merud</code> installs the new version beside the old one. It removes the old folder only after the new one passes its health check, so a bad upgrade leaves the old files on disk.</p>
+
+<p>Every program runs from one Go file, <code>internal/connectors/run.go</code>, by absolute path, with no shell and a short environment. That fixes the Obsidian failure above: <code>merud</code> no longer asks <code>PATH</code> where a program lives, so launchd's short <code>PATH</code> stops mattering. Meru never runs your global npm, pip or Homebrew, so a connector can't break another program's packages, and removing <code>~/.meru/runtime/</code> removes every install.</p>
+
+<!-- ============================================================ -->
+<h2 id="the-supervisor-and-its-states">The supervisor and its states <span class="plan">planned</span></h2>
+
+<p>The supervisor is the part of <code>merud</code> that runs each connector. It keeps one small state machine per connector: a record of which state the connector is in, and which events move it to the next one. It resembles launchd, which also starts and restarts programs. The likeness ends at two points: the supervisor installs the program first, and it gives up after five crashes in ten minutes and tells you why, where launchd would keep restarting.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>State</th><th>What it means</th></tr></thead>
+<tbody>
+<tr><td><code>off</code></td><td>you haven't turned it on</td></tr>
+<tr><td><code>needs_config</code></td><td>a required field is empty or fails its pattern</td></tr>
+<tr><td><code>installing</code></td><td>downloading the runtime or the package, then the first health check</td></tr>
+<tr><td><code>ready</code></td><td>installed and stopped; its tool list is known from the last health check</td></tr>
+<tr><td><code>starting</code></td><td>the process is starting, and must pass its health check</td></tr>
+<tr><td><code>ok</code></td><td>running and healthy</td></tr>
+<tr><td><code>crashed</code></td><td>the process exited or failed its check; waiting out a backoff, a pause that grows after each crash, before the next start</td></tr>
+<tr><td><code>failed</code></td><td>stopped trying; the reason says why</td></tr>
+</tbody></table></div>
+
+<figure>
+<div class="figbox">
+<svg viewBox="0 0 960 480" role="img" aria-labelledby="f2t">
+  <title id="f2t">The connector state machine</title>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
+    <marker id="a2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mkw"/></marker>
+  </defs>
+  <!-- row 1 -->
+  <rect x="20" y="40" width="140" height="44" rx="22" class="bn"/><text x="90" y="67" text-anchor="middle" class="t1 mono" font-size="15">off</text>
+  <rect x="220" y="40" width="160" height="44" rx="22" class="bn"/><text x="300" y="67" text-anchor="middle" class="t1 mono" font-size="15">needs_config</text>
+  <rect x="450" y="40" width="140" height="44" rx="22" class="ba2"/><text x="520" y="67" text-anchor="middle" class="t1 mono" font-size="15">installing</text>
+  <rect x="700" y="40" width="140" height="44" rx="22" class="bm"/><text x="770" y="67" text-anchor="middle" class="t1 mono" font-size="15">ready</text>
+  <!-- row 2 -->
+  <rect x="560" y="200" width="140" height="44" rx="22" class="ba2"/><text x="630" y="227" text-anchor="middle" class="t1 mono" font-size="15">starting</text>
+  <rect x="800" y="200" width="140" height="44" rx="22" class="bm"/><text x="870" y="227" text-anchor="middle" class="t1 mono" font-size="15">ok</text>
+  <!-- row 3 -->
+  <rect x="560" y="360" width="140" height="44" rx="22" class="ba2"/><text x="630" y="387" text-anchor="middle" class="t1 mono" font-size="15">crashed</text>
+  <rect x="220" y="360" width="160" height="44" rx="22" class="bwf"/><text x="300" y="387" text-anchor="middle" class="tw mono" font-size="15">failed(reason)</text>
+
+  <!-- arrows -->
+  <path d="M160 62 L218 62" class="ln" marker-end="url(#a2)"/>
+  <text x="189" y="32" text-anchor="middle" class="t2" font-size="13">turn on</text>
+  <path d="M380 62 L448 62" class="ln" marker-end="url(#a2)"/>
+  <text x="414" y="32" text-anchor="middle" class="t2" font-size="13">fields valid</text>
+  <path d="M590 62 L698 62" class="ln" marker-end="url(#a2)"/>
+  <text x="644" y="26" text-anchor="middle" class="t2" font-size="13">installed,</text>
+  <text x="644" y="42" text-anchor="middle" class="t2" font-size="13">health ok</text>
+
+  <path d="M740 84 L660 198" class="ln" marker-end="url(#a2)"/>
+  <text x="690" y="146" text-anchor="end" class="t2 halo" font-size="13">first tool call</text>
+  <path d="M700 222 L798 222" class="ln" marker-end="url(#a2)"/>
+  <text x="749" y="212" text-anchor="middle" class="t2 halo" font-size="13">health ok</text>
+  <path d="M860 198 L800 86" class="ln" marker-end="url(#a2)"/>
+  <text x="870" y="140" class="t2 halo" font-size="13">idle 10 min</text>
+
+  <path d="M870 244 L700 370" class="ln" marker-end="url(#a2)"/>
+  <text x="800" y="320" class="t2 halo" font-size="13">process exits</text>
+  <path d="M650 246 L650 358" class="ln" marker-end="url(#a2)"/>
+  <text x="660" y="300" class="t2 halo" font-size="13">start or check fails</text>
+  <path d="M610 358 L610 246" class="ln" marker-end="url(#a2)"/>
+  <text x="600" y="292" text-anchor="end" class="t2 halo" font-size="13">backoff</text>
+  <text x="600" y="310" text-anchor="end" class="t2 halo" font-size="13">1, 2, 4 … 60 s</text>
+
+  <path d="M560 382 L382 382" class="lnw" marker-end="url(#a2w)"/>
+  <text x="471" y="372" text-anchor="middle" class="tw halo" font-size="13">5 crashes in 10 min</text>
+  <path d="M500 84 L360 358" class="lnw" marker-end="url(#a2w)"/>
+  <text x="445" y="200" class="tw halo" font-size="13">install fails</text>
+  <path d="M290 358 L290 86" class="ln" marker-end="url(#a2)"/>
+  <text x="280" y="215" text-anchor="end" class="t2 halo" font-size="13">Fix, or a</text>
+  <text x="280" y="233" text-anchor="end" class="t2 halo" font-size="13">field change</text>
+
+  <!-- legend: what the user sees -->
+  <text x="20" y="450" class="t3" font-size="13" font-weight="600">You see:</text>
+  <rect x="90" y="438" width="14" height="14" rx="7" class="bm"/><text x="110" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">ok</text>
+  <rect x="150" y="438" width="14" height="14" rx="7" class="bn"/><text x="170" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">needs_config</text>
+  <rect x="290" y="438" width="14" height="14" rx="7" class="ba2"/><text x="310" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">starting</text>
+  <rect x="400" y="438" width="14" height="14" rx="7" class="bwf"/><text x="420" y="450" class="t2 mono" font-size="13" xml:space="preserve" style="white-space:pre">failed(reason)</text>
+</svg>
+</div>
+<figcaption><b>Figure 2.</b> Eight states inside, four outside: the outline colour shows which of the four you see. A crash loops through <code>crashed</code> and <code>starting</code> with a growing wait, and only a Fix or a changed field leaves <code>failed</code>.</figcaption>
+</figure>
+
+<p>You see four of those states, so a status line never has to explain the machine:</p>
+
+<div class="tbl"><table>
+<thead><tr><th>You see</th><th>States inside it</th></tr></thead>
+<tbody>
+<tr><td><code>ok</code></td><td><code>ok</code> (running) and <code>ready</code> (stopped, tools known)</td></tr>
+<tr><td><code>needs_config</code></td><td><code>off</code> and <code>needs_config</code></td></tr>
+<tr><td><code>starting</code></td><td><code>installing</code>, <code>starting</code> and <code>crashed</code> during its backoff</td></tr>
+<tr><td><code>failed(reason)</code></td><td><code>failed</code></td></tr>
+</tbody></table></div>
+
+<p>Five rules govern the machine.</p>
+
+<ul>
+  <li><b>Lazy start.</b> A <code>ready</code> connector's tools reach the model from the list saved at its last health check, in <code>state/&lt;id&gt;.json</code>, with no process running. The first call starts the process and waits for it, up to the connect timeout; today's pool allows 30 seconds for a connect. So Obsidian and Google use no memory until you ask for them.</li>
+  <li><b>Idle stop.</b> A process that gets no call for its <code>idle_timeout</code>, 10 minutes for Obsidian and Google, stops and goes back to <code>ready</code>.</li>
+  <li><b>Crashes and backoff.</b> After a crash the supervisor waits, then starts the process again. The wait doubles each time, 1, 2, 4 seconds and on, up to 60. Five crashes in ten minutes set <code>failed("keeps stopping: &lt;last line of its error output&gt;")</code>, so a program that dies on start can't spin.</li>
+  <li><b>No replay.</b> A call that was running when the process crashed fails with its error, and <code>merud</code> never sends it again, as for a hand-added server today. A call such as "send this mail" may have done its work before the crash, and sending it twice could send two mails.</li>
+  <li><b>Tools follow health.</b> Only a connector you see as <code>ok</code> offers tools. While SearXNG is down, the model doesn't get <code>web_search</code> at all, where today it gets a tool that fails.</li>
+</ul>
+
+<p>Health checks run after an install, at each start and on Fix. A container also gets one every 60 seconds while in use. The supervisor also outlives a reload of the MCP pool, which today stops every child process each time you change a tool's policy: the pool asks the supervisor for a connector's session, and a hand-added server keeps today's code.</p>
+
+<!-- ============================================================ -->
+<h2 id="turning-on-obsidian-end-to-end">Turning on Obsidian, end to end <span class="plan">planned</span></h2>
+
+<p>This walk-through follows one connector from off to a first answer, with the values from its manifest. The rest of the design follows the same path with a different install type.</p>
+
+<ol>
+  <li><b>You fill in the fields.</b> In Settings, under Connections, you turn Obsidian on and pick your vault folder, <code>~/Notes/vault</code>. You leave Vault name empty, so Meru makes one from the folder's name: <code>vault</code>. The client sends the socket op <code>connector_set</code>, and <code>merud</code> writes <code>[connectors.obsidian]</code> with <code>enabled = true</code> and the folder. The fields pass, so the state moves from <code>off</code> through <code>needs_config</code> to <code>installing</code>, and the card reads <code>starting</code>.</li>
+  <li><b>Node.js arrives.</b> obsidian-mcp 2.0.1 needs Node.js 22 or later. <code>merud</code> downloads its pinned Node.js 22 build into <code>~/.meru/runtime/node-&lt;v&gt;/</code>, checks the SHA-256 and unpacks it. Step 2 of the plan picks the exact Node.js version.</li>
+  <li><b>The package installs.</b> With that Node.js, <code>merud</code> runs <code>npm install --prefix ~/.meru/runtime/pkg/obsidian-2.0.1 obsidian-mcp@2.0.1 --no-audit --no-fund</code>. The program lands at <code>pkg/obsidian-2.0.1/node_modules/.bin/obsidian-mcp</code>.</li>
+  <li><b>The first health check.</b> <code>merud</code> starts that program by its full path with <code>serve --vault vault=/Users/you/Notes/vault</code>, and calls the tool <code>obsidian_list_vaults</code> with no arguments. The answer lists one vault, which meets <code>expect = "nonempty"</code>. <code>merud</code> saves the server's tool list to <code>state/obsidian.json</code>, stops the process, and moves to <code>ready</code>. The card now reads <b>"Obsidian is ready."</b></li>
+  <li><b>The first question.</b> You ask "what did I write about the garden plan?". The model sees <code>obsidian.obsidian_search_vault</code> from the saved list and calls it. Figure 3 traces that call.</li>
+  <li><b>Ten quiet minutes.</b> No further call comes, so the process stops and the state goes back to <code>ready</code>. The card still reads "Obsidian is ready.", and the next call starts the process again.</li>
+</ol>
+
+<figure>
+<div class="figbox">
+<svg viewBox="0 0 960 520" role="img" aria-labelledby="f3t">
+  <title id="f3t">The first tool call starts the server</title>
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
+    <marker id="a3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mka"/></marker>
+  </defs>
+  <rect x="30" y="20" width="160" height="46" rx="8" class="b"/><text x="110" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">model</text>
+  <rect x="260" y="20" width="160" height="46" rx="8" class="b"/><text x="340" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">dispatch</text>
+  <rect x="490" y="20" width="200" height="46" rx="8" class="ba2"/><text x="590" y="42" text-anchor="middle" class="t1" font-size="15" font-weight="600">pool + supervisor</text><text x="590" y="59" text-anchor="middle" class="ta2" font-size="11.5" font-weight="600">PLANNED</text>
+  <rect x="760" y="20" width="170" height="46" rx="8" class="bm"/><text x="845" y="49" text-anchor="middle" class="t1" font-size="15" font-weight="600">obsidian-mcp</text>
+  <line x1="110" y1="66" x2="110" y2="500" class="life"/>
+  <line x1="340" y1="66" x2="340" y2="500" class="life"/>
+  <line x1="590" y1="66" x2="590" y2="500" class="life"/>
+  <line x1="845" y1="66" x2="845" y2="500" class="life"/>
+
+  <path d="M110 110 L336 110" class="lna" marker-end="url(#a3a)"/>
+  <text x="120" y="102" class="t1 halo mono" font-size="12.5">obsidian_search_vault</text>
+  <text x="120" y="128" class="t3 halo" font-size="12">offered from state/obsidian.json</text>
+
+  <text x="350" y="150" class="t3 halo" font-size="12.5">checks the allow list, writes a tool_calls row</text>
+  <path d="M340 186 L586 186" class="ln" marker-end="url(#a3)"/>
+  <text x="350" y="178" class="t2 halo" font-size="12.5">session for obsidian?</text>
+
+  <text x="600" y="212" class="t2 halo" font-size="12.5">ready → starting</text>
+  <path d="M590 244 L841 244" class="ln" marker-end="url(#a3)"/>
+  <text x="600" y="236" class="t2 halo" font-size="12.5">spawn by full path, no shell</text>
+
+  <path d="M590 288 L841 288" class="ln" marker-end="url(#a3)"/>
+  <text x="600" y="280" class="t2 halo mono" font-size="12.5">obsidian_list_vaults</text>
+  <path d="M845 318 L594 318" class="lnd" marker-end="url(#a3)"/>
+  <text x="835" y="310" text-anchor="end" class="t2 halo" font-size="12.5">nonempty → ok</text>
+
+  <path d="M590 360 L841 360" class="lna" marker-end="url(#a3a)"/>
+  <text x="600" y="352" class="t1 halo mono" font-size="12.5">obsidian_search_vault</text>
+  <path d="M845 392 L344 392" class="lnd" marker-end="url(#a3)"/>
+  <text x="835" y="384" text-anchor="end" class="t2 halo" font-size="12.5">matching notes</text>
+  <path d="M340 426 L114 426" class="lnd" marker-end="url(#a3)"/>
+  <text x="330" y="418" text-anchor="end" class="t2 halo" font-size="12.5">result, logged</text>
+
+  <text x="600" y="476" class="t3 halo" font-size="12.5">10 min, no call: stop the process → ready</text>
+  <path d="M590 486 L841 486" class="lnd" marker-end="url(#a3)"/>
+</svg>
+</div>
+<figcaption><b>Figure 3.</b> The model gets the tool before any process runs. The first call pays for the start and one health check, and every later call within ten minutes goes straight through. <code>dispatch</code>, the one path every tool call takes, logs it the same way it logs any other call.</figcaption>
+</figure>
+
+<p>If the process crashes while it works on that search, the search fails and the model sees the error. The supervisor waits 1 second and starts the process again, so your next question finds it running.</p>
+
+<!-- ============================================================ -->
+<h2 id="the-four-connectors">The four connectors</h2>
+
+<p>Four manifests ship in step 1. The table shows what each one pins and how <code>merud</code> checks it. Each pin carries a comment in its manifest that says where it came from and on what date.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>ID</th><th>Kind</th><th>Pin</th><th>Health check</th><th>You give</th></tr></thead>
+<tbody>
+<tr><td><code>searxng</code></td><td>container</td><td>image <code>searxng/searxng</code> by digest</td><td><code>GET /healthz</code>, expects <code>OK</code></td><td>nothing</td></tr>
+<tr><td><code>obsidian</code></td><td>stdio</td><td>npm <code>obsidian-mcp</code> 2.0.1</td><td><code>obsidian_list_vaults</code>, nonempty</td><td>vault folder, vault name</td></tr>
+<tr><td><code>google</code></td><td>http</td><td>PyPI <code>workspace-mcp</code> 1.30.0</td><td><code>list_calendars</code>, nonempty</td><td>address, client ID, client secret, sign-in</td></tr>
+<tr><td><code>ollama</code></td><td>dependency</td><td>none; Meru installs nothing</td><td><code>GET /api/version</code>, has <code>version</code></td><td>nothing</td></tr>
+</tbody></table></div>
+
+<h3 id="searxng-for-web-search">SearXNG, for web search</h3>
+
+<p>SearXNG is the only connector on by default. It runs as a Docker container named <code>meru-searxng</code>, from an image pinned by digest, the hash of the image's contents:</p>
+
+<pre><code class="language-toml">[install]
+type = "container"
+image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df284ae8c48a26851ae2eff6f99b4b0b18ec3da5a4d9095c3"</code></pre>
+
+<p>A tag such as <code>2026.9.29-4e2c1ea7f</code> can move to a new image; the digest can't, so the pin holds even if someone retags. Docker maps <code>127.0.0.1:8888</code> to the container's port 8080 and mounts <code>~/.meru/searxng</code> as its settings folder. The health check asks <code>/healthz</code>, which answers <code>OK</code> without running a search, so a check sends nothing off the machine.</p>
+
+<p>Some people already run SearXNG, with Docker Compose for example. If something that isn't <code>meru-searxng</code> already answers on port 8888, Meru calls it <b>external</b>: it reports on it and never starts, stops or changes it <span class="plan">planned</span>.</p>
+
+<h3 id="obsidian-for-notes">Obsidian, for notes</h3>
+
+<p>The Obsidian connector uses the npm package <code>obsidian-mcp</code>, which reads the vault folder on disk, so the Obsidian app needn't be open. Meru's catalog, its list of starter servers, holds another Obsidian server, <code>mcp-obsidian</code>, which talks to a plugin inside the running app. It stays in the catalog for anyone who adds it by hand.</p>
+
+<h3 id="google-for-mail-calendar-and-files">Google, for mail, calendar and files</h3>
+
+<p>Google is an <code>http</code> connector: Meru starts <code>workspace-mcp</code> and talks MCP to it at <code>http://127.0.0.1:8000/mcp</code>. You sign in with OAuth, the standard that lets a program act for your account without your password. The server gives you a link, a client opens it, and you sign in once <span class="plan">planned</span>. Google sends the browser back to a callback address on port 8000, which is why the manifest fixes that port.</p>
+
+<p>The four fields are your Google address, the ID of an OAuth client you create (it must end in <code>.apps.googleusercontent.com</code>), that client's secret, and the sign-in. The secret reaches the server as an environment variable and never as a command-line argument, because any user on the machine can read another's arguments in the process list; the manifest check refuses a secret in <code>args</code>. The server runs with your real home folder and saves its sign-in tokens there, so the tokens from a server you ran by hand keep working once Meru runs it. Mail attachments go to <code>~/meru-output/attachments</code>, where Meru's <code>read_file</code> tool can read them. The model may call nine tools, and two of them, <code>send_gmail_message</code> and <code>manage_event</code>, ask you first.</p>
+
+<h3 id="ollama-reported-and-never-run">Ollama, reported and never run</h3>
+
+<p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. Today a missing Ollama stops <code>merud</code> before it opens its socket. The plan reverses that order <span class="plan">planned</span>: <code>merud</code> opens its socket first, checks Ollama every 30 seconds until it answers, then warms the models. A question asked meanwhile gets "Ollama isn't running" as its error, and every status view shows the same sentence.</p>
+
+<!-- ============================================================ -->
+<h2 id="status-and-fix">Status and Fix <span class="plan">planned</span></h2>
+
+<p>Today every status view knows two states, connected and not connected, and none offers a way to repair anything. The plan gives each connector one plain sentence and one Fix action, the same in every client.</p>
+
+<p>A new socket op, <code>connectors</code>, returns one status per connector: its ID, name, state and sentence, whether Meru needs it, the field list with the values of the non-secret fields and whether each secret has a saved value, and the Fix, which names the fields to ask again. Two more ops make changes. <code>connector_set</code> saves values and on or off, then installs, starts and checks the connector while it streams progress to the client. <code>connector_fix</code> runs the connector's config step again.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>You see</th><th>Example sentence</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>ok</code></td><td>Obsidian is ready.</td><td>none needed</td></tr>
+<tr><td><code>needs_config</code></td><td>Obsidian needs your vault folder.</td><td>asks for the vault folder</td></tr>
+<tr><td><code>needs_config</code></td><td>Google needs you to sign in.</td><td>opens the sign-in link</td></tr>
+<tr><td><code>failed(reason)</code></td><td>Web search can't start: Docker isn't running.</td><td>runs the check again</td></tr>
+<tr><td><code>failed(reason)</code></td><td>Obsidian keeps stopping: <code>&lt;last line of its error output&gt;</code></td><td>asks for the fields again</td></tr>
+<tr><td>(Ollama)</td><td>Ollama isn't running.</td><td>runs the check again</td></tr>
+</tbody></table></div>
+
+<p>The Fix column follows one rule: Fix asks again for the fields it names, or runs the check again when it names none. Four places show these rows:</p>
+
+<ul>
+  <li><b>Settings, under Connections</b>, in the desktop app: one card per connector with a Fix button, a folder picker for folder fields, and a "Sign in to Google" button.</li>
+  <li><b>The rail</b>, the desktop app's side column: each connector with a coloured dot.</li>
+  <li><b><code>/mcp</code> in <code>meru chat</code></b>: the sentence, and <code>f</code> walks the fields in the terminal.</li>
+  <li><b><code>meru mcp status</code></b>: the sentence, for a script or a quick look.</li>
+</ul>
+
+<p>Because every client draws its form from the same field list, a new connector in a later release needs no new screen in any client.</p>
+
+<!-- ============================================================ -->
+<h2 id="pinned-versions">Pinned versions</h2>
+
+<p>A pin is one exact version, such as <code>obsidian-mcp</code> 2.0.1. "Latest" can mean one release today and another tomorrow, so an unpinned install can break a working Meru with no change on your side. With a pin, every Meru user runs the version Meru's developers tested for that release. This part exists today.</p>
+
+<p><code>connectors.Load</code> parses the four manifests and refuses the set if any one breaks a rule. It refuses <code>latest</code>, an empty version, a range such as <code>^2.0.0</code> or <code>&gt;=1.30</code>, a bare major such as <code>2</code>, a container image without <code>@sha256:</code> and its digest, and a download without an https URL and a SHA-256 for each platform. A policy test calls it:</p>
+
+<pre><code class="language-go">// internal/policy/pins_test.go
+func TestManifestsPinned(t *testing.T) {
+	if _, err := connectors.Load(); err != nil {
+		t.Fatalf("connector manifests: %v", err)
+	}
+}</code></pre>
+
+<p>A second test, <code>TestNoUnpinnedVersions</code>, reads more than the manifests. It scans the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and every code block in the Markdown under <code>docs/</code>. It fails on <code>@latest</code>, <code>:latest</code>, a version range, <code>npx</code> or <code>uvx</code> with no exact version, an image with no digest, and a file fetched from a branch such as <code>main</code>. Meru's own <code>releases/latest</code> link passes, because it fetches Meru and not a dependency.</p>
+
+<p>Thirteen places break the rule today and keep working, each listed in the test with a reason. Ten of them, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, go away in steps 4 and 5. The other three stay: an Ollama model tag, a made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything also fails the test.</p>
+
+<p>A pin moves only in a Meru release. Its developers pick the new version, test it, and list it in the release notes under "Connector versions". Your installed Meru never picks up a new connector version by itself.</p>
+
+<!-- ============================================================ -->
+<h2 id="moving-a-working-setup-over">Moving a working setup over <span class="plan">planned</span></h2>
+
+<p>A setup that works today keeps working. At start, an <code>[[mcp.servers]]</code> entry named <code>google</code> or <code>obsidian</code> with no matching <code>[connectors.*]</code> table runs as before. Its status reads "set up by hand" and offers <b>Adopt</b>. When you confirm, Adopt:</p>
+
+<ol>
+  <li>writes <code>[connectors.&lt;id&gt;]</code> from the old entry: the vault folder from <code>--vault</code>, or the Google address and client ID, with the client secret moved into <code>secrets.toml</code>;</li>
+  <li>keeps your allow and confirm lists;</li>
+  <li>comments out the old block and stops the old launchd job;</li>
+  <li>starts the connector on the same port, so Google's sign-in callback and saved tokens still work.</li>
+</ol>
+
+<p>The IDs stay <code>google</code> and <code>obsidian</code>, so tool names such as <code>google.search_gmail_messages</code> read the same in the <code>tool_calls</code> log, the transcripts and the router, the part of Meru that picks how to handle each question. To undo Adopt, restore the commented block.</p>
+
+<!-- ============================================================ -->
+<h2 id="what-it-doesnt-do">What it doesn't do</h2>
+
+<ul>
+  <li><b>Servers you add by hand stay unsupervised.</b> An <code>[[mcp.servers]]</code> entry keeps today's rules: one connect try per tools turn, no restart, no health check. To have Meru run a server for you, it needs a manifest, and only a Meru release can add one.</li>
+  <li><b>Web search still needs Docker.</b> Meru pulls and runs the SearXNG image, but you install Docker and keep it running. Without it the status reads "Web search can't start: Docker isn't running."</li>
+  <li><b>The first run needs the internet and takes time.</b> Node.js, uv, each package and the SearXNG image download once. The SearXNG image alone is 96 MB compressed for Apple silicon (Docker Hub, 30 September 2026). Offline, the install fails and the connector reads <code>failed</code>.</li>
+  <li><b>Windows paths aren't handled yet.</b> The runtime folder, the <code>{pkg}</code> paths and <code>node_modules/.bin</code> follow macOS and Linux.</li>
+  <li><b>Two health checks are still open.</b> The plan's first draft checked SearXNG with an empty JSON search; the manifest uses <code>/healthz</code>. Google's check calls <code>list_calendars</code>, which nobody has yet confirmed against <code>workspace-mcp</code> 1.30.0, and which isn't in the model's allow list.</li>
+  <li><b>An older <code>merud</code> refuses the new config.</b> <code>config.Load</code> rejects any key it doesn't know, so a <code>config.toml</code> with a <code>[connectors.*]</code> table fails to load in a Meru from before this change. The release notes have to say so.</li>
+  <li><b>No sandbox.</b> A connector runs as an ordinary process with your user's permissions, like any MCP server. Meru decides which tools the model may call, and the program decides what each call does.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="where-the-work-stands">Where the work stands</h2>
+
+<p>The plan lands in seven pull requests, each of which keeps <code>main</code> working.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Step</th><th>What it adds</th><th>State</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> in review, PR #90</td></tr>
+<tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code></td><td><span class="plan">planned</span></td></tr>
+<tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan">planned</span></td></tr>
+<tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan">planned</span></td></tr>
+<tr><td>5</td><td>Google over HTTP with sign-in, and Adopt for existing entries</td><td><span class="plan">planned</span></td></tr>
+<tr><td>6</td><td>the config flow and Fix in the clients; the installer and <code>meru setup</code> hand connectors to <code>merud</code></td><td><span class="plan">planned</span></td></tr>
+<tr><td>7</td><td>docs, the install skill and the release notes</td><td><span class="plan">planned</span></td></tr>
+</tbody></table></div>
+
+<!-- ============================================================ -->
+<h2 id="sources">Sources</h2>
+
+<p>Repository files, as of branch <code>connectors-step1</code>, commit <code>cc06f33</code> (29 September 2026):</p>
+
+<ul>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
+  <li><a href="https://github.com/aarora79/meru/tree/connectors-step1/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>)</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step1/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
+  <li>Today's wiring: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>cmd/merud/connections.go</code> (web search always "connected"), <code>internal/installer/websearch.go</code> and <code>google.go</code>, <code>cmd/merud/main.go</code> and <code>runtime.go</code> (the Ollama check before the socket)</li>
+</ul>
+
+<p>The plan and its review:</p>
+
+<ul>
+  <li><a href="https://github.com/aarora79/meru/issues/87">Issue #87</a>, the connector supervisor plan and its seven steps</li>
+  <li><a href="https://github.com/aarora79/meru/pull/90">PR #90</a>, step 1</li>
+</ul>
+
+<p>Upstream pages for the pins, checked 30 September 2026:</p>
+
+<ul>
+  <li><a href="https://www.npmjs.com/package/obsidian-mcp">npm, obsidian-mcp</a>: 2.0.1 is the newest release, published 14 August 2026</li>
+  <li><a href="https://pypi.org/project/workspace-mcp/1.30.0/">PyPI, workspace-mcp 1.30.0</a>: uploaded 28 September 2026</li>
+  <li><a href="https://hub.docker.com/r/searxng/searxng/tags">Docker Hub, searxng/searxng</a>: tag <code>2026.9.29-4e2c1ea7f</code> has index digest <code>sha256:3284e890…95c3</code>, pushed 29 September 2026; the arm64 image is 95,981,206 bytes compressed</li>
+</ul>
+
+<footer class="end">
+  <p>Markdown twin: <a href="https://github.com/aarora79/meru/blob/main/docs/architecture/connectors.md">docs/architecture/connectors.md</a> · <a href="100.html">Level 100</a> · <a href="200.html">Level 200</a> · <a href="300.html">Level 300</a> · <a href="https://github.com/aarora79/meru/blob/main/ROADMAP.md">Roadmap</a></p>
+</footer>
+
+</div>
+<script>
+// Copy control on every code block. With scripts off, code stays selectable.
+document.querySelectorAll('pre').forEach(function (pre) {
+  var wrap = document.createElement('div');
+  wrap.className = 'codewrap';
+  pre.parentNode.insertBefore(wrap, pre);
+  wrap.appendChild(pre);
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy-btn';
+  btn.setAttribute('aria-label', 'Copy this code to the clipboard');
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy</span>';
+  wrap.appendChild(btn);
+  btn.addEventListener('click', function () {
+    var text = pre.innerText;
+    function done() {
+      btn.querySelector('span').textContent = 'Copied';
+      btn.classList.add('done');
+      setTimeout(function () {
+        btn.querySelector('span').textContent = 'Copy';
+        btn.classList.remove('done');
+      }, 1200);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else { fallback(); }
+  });
+});
+</script>
+<script>
+  // Theme toggle: flips between light and dark and remembers the choice in this browser.
+  (function () {
+    var btn = document.querySelector(".levels .theme");
+    if (!btn) return;
+    var root = document.documentElement;
+    var media = window.matchMedia("(prefers-color-scheme: dark)");
+    function current() {
+      var t = root.getAttribute("data-theme");
+      return t === "light" || t === "dark" ? t : (media.matches ? "dark" : "light");
+    }
+    function paint() {
+      var dark = current() === "dark";
+      btn.classList.toggle("is-dark", dark);
+      var label = dark ? "Switch to light mode" : "Switch to dark mode";
+      btn.setAttribute("aria-label", label);
+      btn.title = label;
+    }
+    btn.hidden = false;
+    paint();
+    btn.addEventListener("click", function () {
+      var next = current() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("meru-theme", next); } catch (e) {}
+      paint();
+    });
+    media.addEventListener("change", paint);
+  })();
+</script>
+</body>
+</html>

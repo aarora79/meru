@@ -443,7 +443,7 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 	var sample strings.Builder
 	in := false
 	for _, line := range strings.Split(Template(), "\n") {
-		if strings.HasPrefix(line, "# [[") {
+		if strings.HasPrefix(line, "# [[") || strings.HasPrefix(line, "# [connectors.") {
 			in = true
 		}
 		if in && !strings.HasPrefix(line, "# ") {
@@ -460,6 +460,59 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 25 || len(cfg.Models.Sets) != 3 {
 		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 3, 1, 25 and 3",
 			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands), len(cfg.Models.Sets))
+	}
+	if len(cfg.Connectors) != 1 {
+		t.Errorf("samples hold %d connector tables, want 1", len(cfg.Connectors))
+	}
+}
+
+// TestLoadConnectors checks the [connectors.<id>] tables: values load as
+// written, Enabled and Value read them, and each shape rule refuses what
+// it names.
+func TestLoadConnectors(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+[connectors.obsidian]
+enabled = true
+vault_path = "~/Notes/vault"
+
+[connectors.searxng]
+enabled = false
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	obs := cfg.Connectors["obsidian"]
+	if on, ok := obs.Enabled(); !on || !ok {
+		t.Errorf("obsidian Enabled() = %v, %v; want true, true", on, ok)
+	}
+	if v, ok := obs.Value("vault_path"); v != "~/Notes/vault" || !ok {
+		t.Errorf("obsidian Value(vault_path) = %q, %v", v, ok)
+	}
+	if _, ok := obs.Value("enabled"); ok {
+		t.Error("Value(enabled) found a string; enabled is a bool")
+	}
+	if on, ok := cfg.Connectors["searxng"].Enabled(); on || !ok {
+		t.Errorf("searxng Enabled() = %v, %v; want false, true", on, ok)
+	}
+	if _, ok := (Connector{}).Enabled(); ok {
+		t.Error("an empty table says enabled is set")
+	}
+
+	bad := []struct{ name, body, want string }{
+		{"bad id", "[connectors.My-Notes]\nenabled = true", "connectors.My-Notes: a connector id may hold only"},
+		{"bad key", "[connectors.obsidian]\nVault = \"x\"", `the key "Vault" may hold only`},
+		{"enabled as a string", "[connectors.obsidian]\nenabled = \"yes\"", `connectors.obsidian.enabled is "yes"; write true or false`},
+		{"number value", "[connectors.obsidian]\nport = 8000", "connectors.obsidian.port must be a string"},
+		{"list value", "[connectors.obsidian]\nvaults = [\"a\"]", "connectors.obsidian.vaults must be a string"},
+		{"nested table", "[connectors.obsidian.extra]\nx = \"y\"", "unknown keys: connectors.obsidian.extra.x"},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tt.body))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Load = %v, want an error containing %q", err, tt.want)
+			}
+		})
 	}
 }
 

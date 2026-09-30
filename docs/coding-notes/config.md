@@ -245,6 +245,31 @@ because `builtin` imports `config` and Go refuses an import cycle. A test in
 `builtin` checks that the two lists agree. `BuiltinTools()` hands out a copy,
 made with `slices.Clone`, so no caller can change the defaults.
 
+`checkConnectors` checks the `[connectors.<id>]` tables. Each table is a
+`Connector`, a `map[string]any`: a map whose values may be of any type, since
+each connector names its own fields in its manifest (see
+[connectors](connectors.md)). The check keeps to shape. An ID and each key must
+be lower-case letters, digits and `_`; `enabled` must be `true` or `false`; every
+other value must be a string or a bool. A **type switch** reads the type held in
+the `any`:
+
+```go
+switch v := conns[id][k].(type) {
+case bool:
+case string:
+    if k == "enabled" { ... } // "yes" in quotes is a string, not a bool
+default:
+    // a number, a list or a table
+}
+```
+
+`config` doesn't know which connectors exist. That list lives in
+`internal/connectors`, and the clients, which import `config`, must never reach
+it. `merud` will check each table against its manifest; nothing reads the tables
+yet. `Enabled()` returns the table's `enabled` and whether it had one, and
+`Value(key)` returns a string field. More on type switches in
+[go-basics/type-switches.md](go-basics/type-switches.md).
+
 `[log] level` must be `debug`, `info`, `warn` or `error`. `LogLevel` turns the
 name into the `slog.Level` `merud` logs at, and returns `false` for any other
 name, so `validate` and `merud`'s `openLog` share one list. `merud -v` sets
@@ -257,10 +282,10 @@ The uncommented lines hold the defaults, so `Load` of the template gives the
 same `Config` as no file at all; `TestTemplateMatchesDefaults` checks that.
 The `[models]` lines stay empty, with the `lite` names in comments, because a
 name there would override the profile: a user who then picked `full` would
-still run the `lite` model. The MCP servers, local commands and A2A agent
-sit in comments, ready to uncomment. So do six read-only GitHub commands for
-the `gh` CLI: nothing runs until the user takes the `# ` off an entry, which
-keeps tools deny-by-default.
+still run the `lite` model. The MCP servers, local commands, A2A agent and a
+`[connectors.obsidian]` table sit in comments, ready to uncomment. So do six
+read-only GitHub commands for the `gh` CLI: nothing runs until the user takes
+the `# ` off an entry, which keeps tools deny-by-default.
 
 `template.go` compiles the file into the binary:
 

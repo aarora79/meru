@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -310,6 +311,9 @@ func validate(cfg Config) error {
 	for _, err := range checkBuiltin(cfg.Builtin) {
 		add("%w", err)
 	}
+	for _, err := range checkConnectors(cfg.Connectors) {
+		add("%w", err)
+	}
 	// Agentic retrieval runs no search before the answer, so without
 	// search_files the model could only grep: it would lose search by
 	// meaning altogether.
@@ -429,6 +433,46 @@ func checkBuiltin(b Builtin) []error {
 	for _, name := range b.Confirm {
 		if !slices.Contains(b.Tools, name) {
 			errs = append(errs, fmt.Errorf("builtin.confirm: %q isn't in builtin.tools; add it there, or take it out of confirm", name))
+		}
+	}
+	return errs
+}
+
+// connectorKey is what a connector ID, and a key in its [connectors.<id>]
+// table, may hold: the rule the connector manifests follow for IDs. Config
+// checks only this shape. The list of connectors lives in
+// internal/connectors, which the clients mustn't import, and the clients
+// import config; merud checks each table against its manifest.
+var connectorKey = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// checkConnectors checks the [connectors.<id>] tables and returns one error
+// per problem: a connector ID or key of the wrong shape, an enabled that
+// isn't true or false, or a value that isn't a string or a bool.
+func checkConnectors(conns map[string]Connector) []error {
+	var errs []error
+	// Sort the IDs so the errors come out in the same order each run; a
+	// map's order changes from run to run.
+	ids := slices.Sorted(maps.Keys(conns))
+	for _, id := range ids {
+		if !connectorKey.MatchString(id) {
+			errs = append(errs, fmt.Errorf("connectors.%s: a connector id may hold only lower-case letters, digits and \"_\", starting with a letter", id))
+			continue
+		}
+		for _, k := range slices.Sorted(maps.Keys(conns[id])) {
+			if !connectorKey.MatchString(k) {
+				errs = append(errs, fmt.Errorf("connectors.%s: the key %q may hold only lower-case letters, digits and \"_\", starting with a letter", id, k))
+			}
+			// A type switch picks a branch by the type of the value held
+			// in the `any` (docs/coding-notes/go-basics/type-switches.md).
+			switch v := conns[id][k].(type) {
+			case bool:
+			case string:
+				if k == "enabled" {
+					errs = append(errs, fmt.Errorf("connectors.%s.enabled is %q; write true or false, with no quotes", id, v))
+				}
+			default:
+				errs = append(errs, fmt.Errorf("connectors.%s.%s must be a string, or true or false", id, k))
+			}
 		}
 	}
 	return errs

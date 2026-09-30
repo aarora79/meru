@@ -1,0 +1,78 @@
+# Gmail, Google Calendar, Drive and Docs, through the workspace-mcp server,
+# which Meru starts as a Streamable HTTP server on 127.0.0.1:8000.
+#
+# Pin: workspace-mcp 1.30.0, the newest release on PyPI on 2026-09-29
+# (https://pypi.org/pypi/workspace-mcp/json; uploaded 2026-09-28).
+id = "google"
+name = "Google"
+kind = "http"
+required = false
+default_on = false
+idle_timeout = "10m"
+
+[install]
+type = "pip"
+package = "workspace-mcp"
+version = "1.30.0"
+
+[launch]
+# uv venv {pkg} puts the program in bin/.
+command = "{pkg}/bin/workspace-mcp"
+args = ["--transport", "streamable-http", "--tools", "gmail", "calendar", "drive", "docs", "--tool-tier", "extended"]
+url = "http://127.0.0.1:8000/mcp"
+# The sign-in link's callback is fixed to this port.
+port = 8000
+auth = "oauth"
+
+[launch.env]
+USER_GOOGLE_EMAIL = "{field.email}"
+GOOGLE_OAUTH_CLIENT_ID = "{field.client_id}"
+GOOGLE_OAUTH_CLIENT_SECRET = "{field.client_secret}"
+# Where the server saves a mail attachment, so read_file can read it. The
+# server expands the "~" itself.
+WORKSPACE_ATTACHMENT_DIR = "~/meru-output/attachments"
+
+[[field]]
+id = "email"
+type = "email"
+label = "Google address"
+help = "The Google account whose mail, calendar and files Meru may read."
+required = true
+
+[[field]]
+id = "client_id"
+type = "text"
+label = "OAuth client ID"
+help = "From your OAuth client of type \"Desktop app\"; docs/google-setup.md shows the steps."
+required = true
+pattern = '\.apps\.googleusercontent\.com$'
+
+[[field]]
+id = "client_secret"
+type = "secret"
+label = "OAuth client secret"
+help = "From the same OAuth client. Meru keeps it in secrets.toml."
+required = true
+
+[[field]]
+id = "sign_in"
+type = "oauth"
+label = "Sign in to Google"
+help = "The server gives you a link; sign in there once."
+required = true
+
+[health]
+tool = "list_calendars"
+args = {}
+expect = "nonempty"
+
+[mcp]
+# get_gmail_attachment_content comes last: the router names a server by
+# the nouns in its first allowed tools, and "drive" matters more there.
+allow = [
+  "search_gmail_messages", "get_gmail_message_content", "get_gmail_thread_content", "send_gmail_message",
+  "get_events", "manage_event",
+  "search_drive_files", "get_doc_content",
+  "get_gmail_attachment_content",
+]
+confirm = ["send_gmail_message", "manage_event"]

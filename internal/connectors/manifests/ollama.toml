@@ -1,0 +1,18 @@
+# Ollama, the model runtime. The user installs and runs it; Meru only
+# checks that it answers and reports when it doesn't. The check goes to
+# [ollama] base_url in config.toml, so no URL sits here.
+#
+# Pin: none, since Meru installs nothing. merud checks at start that
+# Ollama is 0.12.11 or later (cmd/merud/runtime.go).
+id = "ollama"
+name = "Ollama"
+kind = "dependency"
+required = true
+default_on = true
+
+[install]
+type = "none"
+
+[health]
+path = "/api/version"
+expect = "json_key:version"
