@@ -5,8 +5,7 @@ search, that Meru installs, starts, checks and restarts for you. This page walks
 through the design in issue #87: what you set, what Meru's developers set, what
 happens on disk, and which parts exist today.
 
-> **Where the work stands.** Steps 1 to 5 of 7 are built, and the first half
-> of step 6. Step 1, merged in
+> **Where the work stands.** Steps 1 to 6 of 7 are built. Step 1, merged in
 > PR #90, added the manifests, their checks, the config table and a test that
 > refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node
 > and uv and the code that installs each connector into `~/.meru/runtime`.
@@ -15,16 +14,15 @@ happens on disk, and which parts exist today.
 > PR #93, runs SearXNG as a container, offers `web_search` only while
 > SearXNG answers, and keeps `merud` up while Ollama is down. Step 5, merged
 > in PR #95, runs Google over HTTP with its sign-in, and adds Adopt, which
-> moves a server you set up by hand over to its connector. The first half of
-> step 6 adds the settings forms, drawn from each connector's fields, and Fix,
-> in the desktop app, in `meru chat` and on the command line. A connector
-> that Meru starts stays off until you turn it on, and an `[[mcp.servers]]`
-> entry with the same name wins over it, so a working setup behaves as
-> before. Anything marked (planned) below arrives in the second half of step
-> 6, where the Mac installer and `meru setup` hand connectors to `merud`, or
-> in step 7.
+> moves a server you set up by hand over to its connector. Step 6, in PR #96
+> and the pull request stacked on it, adds the settings forms, drawn from each
+> connector's fields, and Fix, in the desktop app, in `meru chat` and on the
+> command line, and has the Mac installer and `meru setup` hand connectors to
+> `merud`. A connector that Meru starts stays off until you turn it on, and an
+> `[[mcp.servers]]` entry with the same name wins over it, so a working setup
+> behaves as before. Anything marked (planned) below arrives in step 7.
 
-Meru · 30 September 2026 · written from branch `connectors-step6a`
+Meru · 30 September 2026 · written from branch `connectors-step6b`
 
 | Figure | What it counts | Source |
 | --- | --- | --- |
@@ -91,9 +89,9 @@ SearXNG whether it answers. The model still gets `web_search`, and each call
 fails.
 
 **Google runs by hand.** `merud` connects to the Google server at
-`127.0.0.1:8000` but never starts it. The installer writes a start script and a
-launchd job for it. When that job is missing, you start the server in a terminal
-and leave the terminal open.
+`127.0.0.1:8000` but never starts it. Older installers wrote a start script and
+a launchd job for it. When that job is missing, you start the server in a
+terminal and leave the terminal open.
 
 `merud` can't repair any of this, because of how it holds its servers today. The
 MCP pool, the part of `merud` that keeps its server connections, connects to
@@ -546,7 +544,7 @@ status reads "Web search needs Docker, which isn't installed." or "Web search
 can't start: Docker isn't running.", and the next minute's check tries again.
 
 Some people already run SearXNG, with Docker Compose for example, or have the
-container the Mac installer started. If a healthy SearXNG that isn't Meru's
+container an older Mac installer started. If a healthy SearXNG that isn't Meru's
 container already answers at `[web] searxng_url`, Meru calls it **external**:
 the status reads "Web search uses the SearXNG already running at
 http://127.0.0.1:8888.", and Meru never starts, stops or pulls anything for it.
@@ -701,13 +699,14 @@ range, `npx` or `uvx` with no exact version, an image with no digest, and a file
 fetched from a branch such as `main`. Meru's own `releases/latest` link passes,
 because it fetches Meru and not a dependency.
 
-Four places break the rule today and keep working, each listed in the test
+Three places break the rule today and keep working, each listed in the test
 with a reason. Step 4 took three off: `meru setup`'s SearXNG recipe and the two
 docs that repeated it. Step 5 took six: the Google start commands in the
 catalog, the installer, `running.md`, `google-setup.md` and the catalog's
 coding note, which now all run `uvx workspace-mcp==1.30.0`, the Google
-connector's own pin, and the catalog's install hint. The installer's
-`searxng:latest` goes in step 6. The other three stay: an Ollama model tag, a
+connector's own pin, and the catalog's install hint. Step 6 took the
+installer's `searxng:latest`: the installer hands web search to `merud`, which
+runs the pinned image. The other three stay: an Ollama model tag, a
 made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything
 also fails the test.
 
@@ -766,7 +765,7 @@ each question.
   you install Docker and keep it running. Without it the status reads "Web
   search can't start: Docker isn't running."
 - **A foreign `meru-searxng` stays put.** A container of that name without
-  Meru's label, such as the one the Mac installer starts today, is never
+  Meru's label, such as the one older Mac installers started, is never
   removed. While it answers, Meru uses it; when it doesn't, the status says to
   start it or remove it.
 - **The first run needs the internet and takes time.** Node.js, uv, each package
@@ -800,8 +799,8 @@ The plan lands in seven pull requests, each of which keeps `main` working.
 | 3 | the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the `connectors` op and the new states in every status view | **built**, merged in PR #92 |
 | 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | **built**, merged in PR #93 |
 | 5 | Google over HTTP with sign-in, and Adopt for existing entries | **built**, merged in PR #95 |
-| 6a | the config flow and Fix in the clients: `connector_set` and `connector_fix`, the connector cards in Settings, the rail's dots, the connector rows in `/mcp`, `meru mcp set` and `meru mcp fix` | **built**, this pull request |
-| 6b | the installer and `meru setup` hand connectors to `merud` | (planned) |
+| 6a | the config flow and Fix in the clients: `connector_set` and `connector_fix`, the connector cards in Settings, the rail's dots, the connector rows in `/mcp`, `meru mcp set` and `meru mcp fix` | **built**, PR #96 |
+| 6b | the installer and `meru setup` hand connectors to `merud`: the installer's steps gather each connector's values, Start Meru sends them, and the installer runs no docker, uv or launchctl for a connector | **built**, this pull request |
 | 7 | docs, the install skill and the release notes | (planned) |
 
 ## Sources
@@ -833,7 +832,7 @@ Repository files, as of branch `main` (30 September 2026):
 - [docs/coding-notes/connectors.md](https://github.com/aarora79/meru/blob/main/docs/coding-notes/connectors.md):
   the code, walked through for readers new to Go
 - Today's wiring for hand-added servers: `internal/mcp/pool.go` (connect once, 30 s each, no restart),
-  `internal/installer/websearch.go` and `google.go`; `cmd/merud/ollama.go`, the
+  `internal/installer/connectors.go`, the installer's hand-off; `cmd/merud/ollama.go`, the
   watch on Ollama behind the socket
 
 The plan and its review:

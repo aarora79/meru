@@ -34,18 +34,11 @@ func (p Paths) Socket() string { return filepath.Join(p.MeruDir(), "merud.sock")
 // Memory is the memory folder, ~/.meru/memory.
 func (p Paths) Memory() string { return filepath.Join(p.MeruDir(), "memory") }
 
-// SearXNG is the folder that holds SearXNG's settings.yml, ~/.meru/searxng.
-func (p Paths) SearXNG() string { return filepath.Join(p.MeruDir(), "searxng") }
-
 // Bin is where meru and merud go, ~/.local/bin.
 func (p Paths) Bin() string { return filepath.Join(p.Home, ".local", "bin") }
 
 // LaunchAgents is the user's launchd folder, ~/Library/LaunchAgents.
 func (p Paths) LaunchAgents() string { return filepath.Join(p.Home, "Library", "LaunchAgents") }
-
-// Workspace is where the Google server's start script lives,
-// ~/.config/workspace-mcp, as docs/google-setup.md puts it.
-func (p Paths) Workspace() string { return filepath.Join(p.Home, ".config", "workspace-mcp") }
 
 // Tilde writes path with "~" for the home folder, as config.toml and the
 // screens show paths: /Users/dana/notes becomes ~/notes.

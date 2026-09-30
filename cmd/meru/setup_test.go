@@ -170,8 +170,7 @@ func TestMCPAddAlreadyThere(t *testing.T) {
 func TestSetupWithMain(t *testing.T) {
 	dir := t.TempDir()
 	input := "\n" + // download: yes, the default
-		"\n" + // no folders
-		strings.Repeat("k\n", len(catalog.Entries())) // skip each catalog server
+		"\n" // no folders; with merud down, the tools step asks nothing
 	c, out, ran := scripted(input)
 	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.34.0", nil }
 
@@ -206,8 +205,7 @@ func TestSetupFirstRun(t *testing.T) {
 		"full\n" + // profile
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
-		"~/notes, /srv/papers\n" +
-		strings.Repeat("k\n", len(catalog.Entries())) // skip each catalog server
+		"~/notes, /srv/papers\n"
 	c, out, ran := scripted(input)
 	checks := 0
 	c.ollamaVersion = func(context.Context, string) (string, error) {
@@ -266,8 +264,9 @@ func TestSetupExistingConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// No download, skip each server, and no to setup user.
-	c, out, ran := scripted("n\n" + strings.Repeat("k\n", len(catalog.Entries())) + "n\n")
+	// No download and no to setup user. This merud knows no connectors,
+	// so the tools step says so and asks nothing.
+	c, out, ran := scripted("n\n" + "n\n")
 	if err := setupCmd(context.Background(), sock, c, ""); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
@@ -299,10 +298,10 @@ func TestSetupWebSearch(t *testing.T) {
 		{"answers", "http://127.0.0.1:8888", []error{nil}, "", []string{"SearXNG answers JSON at http://127.0.0.1:8888"}},
 		{
 			"down, then html, then json", "http://127.0.0.1:8888", []error{down, html, nil}, "\n\n",
-			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "[connectors.searxng]\n  enabled = true",
-				"restart merud", "JSON is off", "settings.yml", "SearXNG answers JSON"},
+			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "merud can run it for you",
+				"Start merud, then run: meru mcp set searxng enabled=true", "JSON is off", "settings.yml", "SearXNG answers JSON"},
 		},
-		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"[connectors.searxng]", "Skipped."}},
+		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"meru mcp set searxng enabled=true", "Skipped."}},
 		{
 			"down at another address", "http://127.0.0.1:9999", []error{fmt.Errorf("%w on http://127.0.0.1:9999", catalog.ErrSearXNGDown)}, "s\n",
 			[]string{"SearXNG isn't answering on http://127.0.0.1:9999. Start the SearXNG you run there", "Skipped."},
@@ -320,7 +319,7 @@ func TestSetupWebSearch(t *testing.T) {
 				checks++
 				return tt.answers[checks-1]
 			}
-			if err := c.checkWebSearch(context.Background(), tt.url); err != nil {
+			if err := c.checkWebSearch(context.Background(), noMerud(t), tt.url); err != nil {
 				t.Fatalf("checkWebSearch: %v\n%s", err, out)
 			}
 			if checks != len(tt.answers) {
@@ -357,7 +356,7 @@ func TestSetupWebSearchReal(t *testing.T) {
 		jsonOn = true // the user fixes settings.yml before pressing Enter
 		return err
 	}
-	if err := c.checkWebSearch(context.Background(), srv.URL); err != nil {
+	if err := c.checkWebSearch(context.Background(), noMerud(t), srv.URL); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "JSON is off") || !strings.Contains(out.String(), "SearXNG answers JSON") {
@@ -369,11 +368,86 @@ func TestSetupWebSearchReal(t *testing.T) {
 	closed.Close()
 	c, out, _ = scripted("s\n")
 	c.searxng = catalog.CheckSearXNG
-	if err := c.checkWebSearch(context.Background(), addr); err != nil {
+	if err := c.checkWebSearch(context.Background(), noMerud(t), addr); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "SearXNG isn't answering on "+addr) {
 		t.Errorf("output:\n%s", out)
+	}
+}
+
+// noMerud returns a socket path where no merud listens.
+func noMerud(t *testing.T) string {
+	return filepath.Join(t.TempDir(), "merud.sock")
+}
+
+// TestSetupWebSearchHandsOff checks that, with merud up and nothing
+// answering at Meru's SearXNG address, a yes asks merud to run the
+// connector and prints where it stands.
+func TestSetupWebSearchHandsOff(t *testing.T) {
+	f := &connectorMerud{settled: rpc.ConnectorStatus{ID: "searxng", Name: "Web search", State: rpc.ConnectorOK,
+		Sentence: "Web search is running in the container meru-searxng."}}
+	sock := startServer(t, f.handle)
+	c, out, _ := scripted("\n")
+	c.searxng = func(context.Context, string) error {
+		return fmt.Errorf("%w on http://127.0.0.1:8888", catalog.ErrSearXNGDown)
+	}
+	if err := c.checkWebSearch(context.Background(), sock, catalog.SearXNGURL); err != nil {
+		t.Fatalf("checkWebSearch: %v\n%s", err, out)
+	}
+	ch := f.only(t)
+	if ch.Enabled == nil || !*ch.Enabled || len(ch.Values) != 0 {
+		t.Errorf("change = %+v, want web search turned on", ch)
+	}
+	for _, want := range []string{"Have merud run SearXNG?", "Web search: ok. Web search is running in the container meru-searxng."} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out.String(), "docker") || strings.Contains(out.String(), "compose") {
+		t.Errorf("setup printed a docker recipe:\n%s", out)
+	}
+}
+
+// TestSetupConnectors checks the tools step with merud up: Obsidian, off,
+// is asked about and its fields, and merud turns it on with them; Google,
+// set up by hand, is offered Adopt, which a no leaves alone.
+func TestSetupConnectors(t *testing.T) {
+	rows := map[string]rpc.ConnectorStatus{
+		"obsidian": {ID: "obsidian", Name: "Obsidian", State: rpc.ConnectorOff, Sentence: "Obsidian is off.", Fields: obsidianFields},
+		"google": {ID: "google", Name: "Google", State: rpc.ConnectorByHand,
+			Sentence: "Google is set up by hand, as the google entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt google."},
+	}
+	var changes []rpc.Request
+	sock := startServer(t, func(_ context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		switch req.Op {
+		case rpc.OpConnectors:
+			return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{rows["obsidian"], rows["google"]}})
+		case rpc.OpConnectorSet:
+			changes = append(changes, req)
+			done := rows[req.ID]
+			done.State, done.Sentence = rpc.ConnectorOK, "Obsidian is ready. It starts when a question needs it."
+			return emit(rpc.Event{Type: rpc.EventConnector, Connector: &done})
+		case rpc.OpConnectorAdopt:
+			t.Error("setup adopted after a no")
+		}
+		return nil
+	})
+	// Obsidian: yes, the vault, Enter for the vault name; Google: no.
+	c, out, _ := scripted("y\n~/Notes\n\nn\n")
+	for _, id := range []string{"obsidian", "google"} {
+		if err := c.offerConnector(context.Background(), sock, id); err != nil {
+			t.Fatalf("%s: %v\n%s", id, err, out)
+		}
+	}
+	if len(changes) != 1 || changes[0].ID != "obsidian" || changes[0].Connector.Values["vault_path"] != "~/Notes" ||
+		changes[0].Connector.Enabled == nil || !*changes[0].Connector.Enabled {
+		t.Errorf("changes = %+v", changes)
+	}
+	for _, want := range []string{"Set up Obsidian?", "Vault folder", "Obsidian: ok.", "Let Meru run it instead?"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 }
 

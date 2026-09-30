@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -104,16 +106,57 @@ func TestBridgeEmailAfterGoogle(t *testing.T) {
 
 // TestBridgeProgress checks that a step's news reaches the page as events.
 func TestBridgeProgress(t *testing.T) {
-	noDocker := &fakeRunner{answer: func(string, []string, func(string)) (string, error) { return "", ErrMissing }}
-	b, events := newBridge(t, noDocker)
-	v, _ := b.Run(StepWeb, Input{})
-	if len(*events) == 0 || (*events)[0].Step != StepWeb {
+	b, events := newBridge(t, &fakeRunner{})
+	b.progress(StepStart, "Waiting for merud to answer", -1)
+	if len(*events) != 1 || (*events)[0] != (Progress{Step: StepStart, Line: "Waiting for merud to answer", Fraction: -1}) {
 		t.Errorf("events = %+v", *events)
 	}
-	for _, s := range v.Steps {
-		if s.ID == StepWeb && (s.Status != StatusFailed || s.Detail != ErrNoDocker.Error()) {
-			t.Errorf("web step = %s %q, want failed with ErrNoDocker", s.Status, s.Detail)
+}
+
+// TestBridgeHandOffs checks what the connector steps leave for the Start
+// Meru step: the Obsidian step's vault, the Google step's values with the
+// secret apart, both in step order, and nothing for a step skipped
+// afterwards. No step runs a program for a connector.
+func TestBridgeHandOffs(t *testing.T) {
+	r := &fakeRunner{}
+	b, _ := newBridge(t, r)
+	vault := filepath.Join(b.paths.Home, "Notes")
+	if err := os.Mkdir(vault, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := b.Run(StepGoogle, Input{Google: goodGoogle()}); status(v, StepGoogle) != StatusDone {
+		t.Fatalf("google = %v", status(v, StepGoogle))
+	}
+	if v, _ := b.Run(StepObsidian, Input{Obsidian: ObsidianInput{Vault: vault}}); status(v, StepObsidian) != StatusDone {
+		t.Fatalf("obsidian = %v", status(v, StepObsidian))
+	}
+	hands := b.handOffs()
+	if len(hands) != 2 || hands[0].ID != "obsidian" || hands[1].ID != "google" {
+		t.Fatalf("hand-offs = %+v, want obsidian then google", hands)
+	}
+	if hands[0].Change.Values["vault_path"] != vault || hands[1].Change.Secrets["client_secret"] != goodGoogle().Secret {
+		t.Errorf("hand-offs = %+v", hands)
+	}
+	for _, s := range b.State().Steps {
+		if strings.Contains(s.Detail, goodGoogle().Secret) {
+			t.Errorf("step %s shows the secret", s.ID)
 		}
+	}
+	if _, err := b.Skip(StepGoogle); err != nil {
+		t.Fatal(err)
+	}
+	if hands := b.handOffs(); len(hands) != 1 || hands[0].ID != "obsidian" {
+		t.Errorf("after skipping Google: %+v", hands)
+	}
+	if calls := r.called(); len(calls) != 0 {
+		t.Errorf("the connector steps ran %v", calls)
+	}
+	if err := b.OpenSignIn(); err == nil {
+		t.Error("OpenSignIn opened something before merud gave a link")
+	}
+	b.signIn = "https://accounts.example.test/o/oauth2/auth?client_id=x"
+	if err := b.OpenSignIn(); err != nil || len(r.called()) != 1 || r.called()[0] != "open "+b.signIn {
+		t.Errorf("OpenSignIn: %v, %v", err, r.called())
 	}
 }
 

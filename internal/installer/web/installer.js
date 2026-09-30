@@ -43,7 +43,8 @@ const state = {
   folders: [],
   commands: [],
   googlePage: 0,
-  google: { email: "", clientID: "", secret: "" },
+  google: { email: "", clientID: "", secret: "", adopt: true },
+  obsidian: { vault: "", adopt: true },
   profile: null,
   meru: { clearQuarantine: true, addPath: true },
 };
@@ -110,8 +111,8 @@ function drawWelcome() {
   const body = $("body");
   body.replaceChildren(
     el("p", "", "This installer sets up Meru, a personal AI assistant that runs on this Mac. The models run here, and your questions and files stay here."),
-    el("p", "", "It takes nine steps. Each one says what it does, what it downloads and how long it takes, and waits for you. You can skip any step but About you, and run this installer again later to finish one."),
-    el("p", "", "At the end you have web search, your chosen folders in Meru's search index, the built-in skills and a few commands that only read, and the path of the one file that holds every setting."),
+    el("p", "", "It takes ten steps. Each one says what it does, what it downloads and how long it takes, and waits for you. You can skip any step but About you, and run this installer again later to finish one."),
+    el("p", "", "At the end you have web search, your notes and your mail if you want them, your chosen folders in Meru's search index, the built-in skills and a few commands that only read, and the path of the one file that holds every setting."),
     el("div", "warn", "Meru isn't signed by Apple, because it is a personal project with no Apple developer account. That is why macOS asked before it opened this installer. The second step offers to clear the same warning for Meru.app, so it opens like any other app."),
   );
   const foot = $("foot");
@@ -219,7 +220,7 @@ async function skip() {
 
 // collect gathers what the current form holds into the Bridge's Input.
 function collect(id) {
-  const input = { choice: state.choice, meru: state.meru, folders: [], commands: [], google: state.google, profile: state.profile || {} };
+  const input = { choice: state.choice, meru: state.meru, folders: [], commands: [], obsidian: state.obsidian, google: state.google, profile: state.profile || {} };
   if (id === "folders") input.folders = state.folders.filter((f) => f.chosen).map((f) => f.path);
   if (id === "skills") input.commands = state.commands.filter((c) => c.chosen && !c.on).map((c) => c.name);
   if (id === "profile") {
@@ -255,6 +256,21 @@ function field(label, value, hint, onInput, type) {
   const l = el("label", "", label);
   l.htmlFor = id;
   return el("div", "field", null, l, input, hint ? el("span", "hint", hint) : null);
+}
+
+// choice draws two radio options, yes and no, each [title, text], for a
+// step that can adopt a server set up by hand. onChange gets true for yes.
+function choice(group, yes, onChange, yesText, noText) {
+  const set = el("fieldset", "options");
+  for (const [value, [title, text]] of [[true, yesText], [false, noText]]) {
+    const radio = el("input");
+    radio.type = "radio";
+    radio.name = "adopt-" + group;
+    radio.checked = value === yes;
+    radio.addEventListener("change", () => onChange(value));
+    set.append(el("label", "option", null, radio, el("span", "", null, el("strong", "", title), el("p", "", text))));
+  }
+  return set;
 }
 
 function linkButton(label, name) {
@@ -359,7 +375,34 @@ const FORMS = {
       body.append(el("div", "", null, linkButton("Get Docker Desktop", "docker")));
       return;
     }
-    body.append(el("p", "", "The step downloads the searxng/searxng image, writes its settings to ~/.meru/searxng/settings.yml with JSON on and a new secret key, and starts the container meru-searxng on 127.0.0.1:8888, where no other computer can reach it. Docker starts it again after a restart. Then it sends one test search, \"test\", and points Meru at it."));
+    body.append(el("p", "", "The step turns web search on and points Meru at 127.0.0.1:8888. When Meru starts, in the last step, merud downloads SearXNG at the version pinned in this release and runs it in Docker as the container meru-searxng, where no other computer can reach it. merud checks it every minute and starts it again when it stops. A SearXNG that already answers there stays as it is: Meru uses it and never touches it."));
+  },
+
+  obsidian(body, screen) {
+    const o = state.obsidian;
+    if (screen.byHand) {
+      body.append(el("p", "", "config.toml has an obsidian entry you set up yourself, and it keeps working as it is. Meru can run it for you instead: merud installs its own copy of the Obsidian server, keeps your vault and the tools your entry allows, and comments your entry out, so meru mcp unadopt obsidian puts it back."));
+      body.append(choice("obsidian", o.adopt, (v) => { o.adopt = v; },
+        ["Let Meru run it (Adopt)", "merud moves the entry over when Meru starts, in the last step."],
+        ["Keep my own setup", "Nothing changes."]));
+      return;
+    }
+    if (!o.vault && screen.vault) o.vault = screen.vault;
+    body.append(el("p", "", "Pick the folder that holds your Obsidian notes, your vault. When Meru starts, in the last step, merud installs the Obsidian server at the version pinned in this release, with its own copy of Node, and reads your notes from that folder. Obsidian itself needn't run."));
+    const shown = el("p", "", o.vault ? "Vault: " + o.vault : "No vault picked yet.");
+    body.append(shown);
+    body.append(el("div", "", null, button("Choose the vault folder…", "secondary", async () => {
+      try {
+        const f = await call("PickFolder");
+        if (f && f.path) {
+          o.vault = f.path;
+          shown.textContent = "Vault: " + f.path;
+        }
+      } catch (err) {
+        body.append(el("p", "error", errorText(err)));
+      }
+    })));
+    body.append(el("p", "dim", "Meru reads, lists and searches your notes. Writing to a note asks you first."));
   },
 
   skills(body, screen) {
@@ -384,7 +427,7 @@ const FORMS = {
     body.append(set);
   },
 
-  google(body) {
+  google(body, screen) {
     const g = state.google;
     if (state.googlePage === 0) {
       body.append(el("p", "", "Meru reaches Gmail, Calendar, Drive and Docs through workspace-mcp, a small server that runs on this Mac with a Google sign-in you make yourself. Your password never reaches Meru, and the keys stay on this Mac."));
@@ -411,10 +454,18 @@ const FORMS = {
       body.append(el("p", "dim", "Check that the project picker at the top of each page says meru. Google doesn't charge for this."));
       return;
     }
+    if (screen.byHand) {
+      body.append(el("p", "", "config.toml has a google entry you set up yourself, and it keeps working as it is. Meru can run the server for you instead: merud reads your address, client ID and secret from ~/.config/workspace-mcp/start.sh, stops the launchd job that runs it, and runs its own copy on the same port, so your sign-in still works."));
+      body.append(choice("google", g.adopt, (v) => { g.adopt = v; },
+        ["Let Meru run it (Adopt)", "merud moves the entry over when Meru starts, in the last step. If you have no start.sh, fill in the three fields below."],
+        ["Keep my own setup", "Nothing changes."]));
+    } else {
+      g.adopt = false;
+    }
     body.append(field("Your Google address", g.email, "The account whose mail Meru reads.", (v) => { g.email = v; }));
     body.append(field("Client ID", g.clientID, "It ends in .apps.googleusercontent.com.", (v) => { g.clientID = v; }));
-    body.append(field("Client secret", "", "It starts with GOCSPX-. It goes only into the start script, which only you can read, and never shows here again.", (v) => { g.secret = v; }, "password"));
-    body.append(el("p", "dim", "The step installs uv with Homebrew if it's missing, saves ~/.config/workspace-mcp/start.sh, starts the server at login with launchd, and adds the google entry to config.toml. The first time you ask about your mail, the server gives you a Google sign-in link; sign in there once."));
+    body.append(field("Client secret", "", "It starts with GOCSPX-. It goes to merud, which keeps it in ~/.meru/secrets.toml where only you can read it, and it never shows here again.", (v) => { g.secret = v; }, "password"));
+    body.append(el("p", "dim", "When Meru starts, in the last step, merud installs the Google server at the version pinned in this release, with its own uv and Python, and starts it on 127.0.0.1:8000. Then it gives you a Google sign-in link; the last screen has a button that opens it. Sign in there once."));
   },
 
   profile(body, screen) {
@@ -429,7 +480,7 @@ const FORMS = {
   },
 
   start(body) {
-    body.append(el("p", "", "The step writes ~/Library/LaunchAgents/com.meru.merud.plist, loads it with launchctl, and waits for merud to answer. merud then scans your folders by itself; this screen follows the scan for two minutes and leaves the rest to merud."));
+    body.append(el("p", "", "The step writes ~/Library/LaunchAgents/com.meru.merud.plist, loads it with launchctl, and waits for merud to answer. Then it hands merud the connectors you turned on, web search, Obsidian and Google, and shows each line merud reports while it downloads, installs and checks them. merud then scans your folders by itself; this screen follows the scan for two minutes and leaves the rest to merud."));
   },
 };
 
@@ -457,6 +508,13 @@ function drawSummary() {
     ),
     el("p", "dim", "Run this installer again at any time to finish a step you skipped."),
   );
+  if (state.view.signIn) {
+    body.append(el("div", "card", null,
+      el("strong", "", "Sign in to Google"),
+      el("p", "", "The Google server waits for you to sign in once. The button opens Google's sign-in page in your browser. Google shows \"Google hasn't verified this app\": it is your own project, so click Advanced, then Go to Meru."),
+      button("Sign in to Google", "primary", () => call("OpenSignIn").catch(() => {})),
+    ));
+  }
   const foot = $("foot");
   foot.replaceChildren(
     button("Open config.toml", "secondary", () => call("OpenConfig").catch(() => {})),

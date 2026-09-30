@@ -1,9 +1,9 @@
 // This file holds the settings.yml Meru writes for the SearXNG it runs
-// in Docker, and the function that writes it once. Two programs write
-// it: the Mac installer's "Web search" step and merud's SearXNG
-// connector. The installer may not import internal/connectors, and
-// merud may import this package, so the one copy lives here. See
-// ARCHITECTURE.md, "SearXNG and Ollama".
+// in Docker, and the function that writes it once, before merud's
+// SearXNG connector first starts its container. It lives here, next to
+// CheckSearXNG, because the Mac installer, which may not import
+// internal/connectors, reads the same address. See ARCHITECTURE.md,
+// "SearXNG and Ollama".
 
 package catalog
 

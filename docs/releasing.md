@@ -135,7 +135,7 @@ curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh 
 `make release` attaches `scripts/install.sh` to every release, so that URL always
 serves the latest copy. A plain `curl -LO` of any file's URL works too. People
 who'd rather not use Terminal download `Meru-v0.4.1-macos-arm64.dmg`, open it and
-run "Install Meru.app", which walks through nine steps in a window
+run "Install Meru.app", which walks through ten steps in a window
 ([running.md](running.md#the-mac-installer)).
 
 To try the disk image before a release, `make dmg` builds

@@ -1,13 +1,11 @@
-// This file tests the Google step: the input checks, the start script and
-// its mode, the launchd job, and the whole step with a fake launchctl and
-// a fake server, including that the secret never reaches the screen.
+// This file tests the Google step: the input checks, the hand-off it
+// gives the Start Meru step, with the secret apart from the values, and
+// the Adopt choice for a google entry set up by hand. The step runs no
+// program and writes no start script, launchd job or config entry.
 
 package installer
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +36,7 @@ func TestGoogleInputCheck(t *testing.T) {
 		{"email without @", func(in *GoogleInput) { in.Email = "dana" }, "needs an @"},
 		{"wrong client ID", func(in *GoogleInput) { in.ClientID = "12345" }, "apps.googleusercontent.com"},
 		{"no secret", func(in *GoogleInput) { in.Secret = "" }, "client secret is empty"},
-		{"a quote in the secret", func(in *GoogleInput) { in.Secret = "GOCSPX-a'b" }, "client secret holds"},
+		{"a space in the secret", func(in *GoogleInput) { in.Secret = "GOCSPX-a b" }, "client secret holds"},
 		{"a newline in the secret", func(in *GoogleInput) { in.Secret = "GOCSPX-a\nexport X=1" }, "client secret holds"},
 	}
 	for _, tt := range tests {
@@ -62,125 +60,77 @@ func TestGoogleInputCheck(t *testing.T) {
 	}
 }
 
-// TestWriteStartScript checks the script's lines and its mode, 0700, on a
-// first write and over an older, wider file.
-func TestWriteStartScript(t *testing.T) {
-	dir := t.TempDir()
-	old := filepath.Join(dir, "start.sh")
-	writeFile(t, old, "#!/bin/sh\n")
-	if err := os.Chmod(old, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path, err := WriteStartScript(dir, goodGoogle())
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o700 {
-		t.Errorf("mode = %v, want 0700", info.Mode().Perm())
-	}
-	text := readFile(t, path)
-	for _, want := range []string{
-		"export GOOGLE_OAUTH_CLIENT_ID='12345-abc.apps.googleusercontent.com'\n",
-		"export GOOGLE_OAUTH_CLIENT_SECRET='GOCSPX-madeUpSecretForTests'\n",
-		"export USER_GOOGLE_EMAIL='dana.reyes@example.com'\n",
-		`export WORKSPACE_ATTACHMENT_DIR="$HOME/meru-output/attachments"`,
-		"--tool-tier extended --tools gmail calendar drive docs",
-		"--transport streamable-http",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("start.sh lacks %q", want)
-		}
-	}
-}
-
-// TestGooglePlist checks the launchd job's paths.
-func TestGooglePlist(t *testing.T) {
-	p := Paths{Home: "/Users/dana"}
-	plist := GooglePlist(p)
-	for _, want := range []string{
-		"<string>com.meru.workspace-mcp</string>",
-		"<string>/Users/dana/.config/workspace-mcp/start.sh</string>",
-		"<string>/opt/homebrew/bin:/usr/local/bin:/Users/dana/.local/bin:/usr/bin:/bin</string>",
-		"<string>/Users/dana/.config/workspace-mcp/server.log</string>",
-	} {
-		if !strings.Contains(plist, want) {
-			t.Errorf("plist lacks %q", want)
-		}
-	}
-	if strings.Contains(GooglePlist(Paths{Home: "/Users/a&b"}), "a&b") {
-		t.Error("a home folder with & went into the plist unescaped")
-	}
-}
-
-// TestSetUpGoogle runs the whole step: launchctl loads the job, the fake
-// server answers, config gets the google entry, and neither the news nor
-// the result nor the config holds the secret. A second run keeps one
-// entry.
+// TestSetUpGoogle checks the hand-off: Google turned on, the address and
+// client ID as values, the secret apart, and nothing written to config.
+// The result never shows the secret.
 func TestSetUpGoogle(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotAcceptable) // what workspace-mcp answers a plain GET
-	}))
-	defer srv.Close()
 	p := tempHome(t)
+	before := readFile(t, p.Config())
 	in := goodGoogle()
-
-	for run := range 2 {
-		r := &fakeRunner{}
-		say, lines := collect()
-		msg, err := SetUpGoogle(context.Background(), r.run, clientTo(srv), p, in, say)
-		if err != nil {
-			t.Fatalf("run %d: %v", run, err)
-		}
-		plist := filepath.Join(p.LaunchAgents(), "com.meru.workspace-mcp.plist")
-		calls := strings.Join(r.called(), "\n")
-		if !strings.Contains(calls, "launchctl unload "+plist) || !strings.Contains(calls, "launchctl load -w "+plist) {
-			t.Errorf("calls:\n%s", calls)
-		}
-		for _, text := range append(*lines, msg, calls, readFile(t, p.Config())) {
-			if strings.Contains(text, in.Secret) {
-				t.Fatalf("the secret leaked into %q", text)
-			}
-		}
-		if !strings.Contains(msg, "sign-in link") {
-			t.Errorf("the result doesn't say how the first sign-in works: %q", msg)
-		}
-	}
-	cfg, err := config.Load(p.Config())
+	in.Email = "  " + in.Email + " " // pasted with spaces around it
+	msg, hand, err := SetUpGoogle(p, ByHand{}, in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := 0
-	for _, s := range cfg.MCP.Servers {
-		if s.Name == "google" {
-			n++
-			if s.URL != "http://127.0.0.1:8000/mcp" {
-				t.Errorf("google url = %q", s.URL)
-			}
+	if hand == nil || hand.ID != "google" || hand.Adopt || hand.Change == nil {
+		t.Fatalf("hand-off = %+v", hand)
+	}
+	ch := hand.Change
+	if ch.Enabled == nil || !*ch.Enabled || ch.Values["email"] != "dana.reyes@example.com" ||
+		ch.Values["client_id"] != in.ClientID || ch.Secrets["client_secret"] != in.Secret {
+		t.Errorf("change = %+v", ch)
+	}
+	if _, ok := ch.Values["client_secret"]; ok {
+		t.Error("the secret went as a plain value, which would land in config.toml")
+	}
+	if strings.Contains(msg, in.Secret) {
+		t.Error("the result shows the secret")
+	}
+	if readFile(t, p.Config()) != before {
+		t.Error("the step wrote config.toml; merud writes it on the hand-off")
+	}
+	if _, err := os.Stat(filepath.Join(p.Home, "meru-output", "attachments")); err != nil {
+		t.Errorf("the attachments folder: %v", err)
+	}
+	for _, gone := range []string{filepath.Join(p.Home, ".config", "workspace-mcp"), filepath.Join(p.LaunchAgents(), "com.meru.workspace-mcp.plist")} {
+		if _, err := os.Stat(gone); err == nil {
+			t.Errorf("the step wrote %s; merud runs the server now", gone)
 		}
 	}
-	if n != 1 {
-		t.Errorf("config has %d google entries, want 1", n)
+	if _, _, err := SetUpGoogle(p, ByHand{}, GoogleInput{Email: "dana"}); err == nil {
+		t.Error("a bad input passed")
 	}
 }
 
-// TestSetUpGoogleBadInput checks that a bad input stops the step before it
-// runs anything or writes a file.
-func TestSetUpGoogleBadInput(t *testing.T) {
+// TestSetUpGoogleByHand checks the two choices for a google entry set up
+// by hand: keep it, which hands nothing over, or adopt it, with only the
+// values the user gave.
+func TestSetUpGoogleByHand(t *testing.T) {
 	p := tempHome(t)
-	r := &fakeRunner{}
-	in := goodGoogle()
-	in.ClientID = "not-a-client"
-	if _, err := SetUpGoogle(context.Background(), r.run, deadClient(), p, in, func(string) {}); err == nil {
-		t.Fatal("a bad client ID passed")
+	msg, hand, err := SetUpGoogle(p, ByHand{Entry: true}, GoogleInput{})
+	if err != nil || hand != nil || !strings.Contains(msg, "stays as it is") {
+		t.Errorf("keep: %q, %+v, %v", msg, hand, err)
 	}
-	if calls := r.called(); len(calls) != 0 {
-		t.Errorf("ran %v", calls)
+	msg, hand, err = SetUpGoogle(p, ByHand{Entry: true}, GoogleInput{Adopt: true, Email: "dana@example.com"})
+	if err != nil || hand == nil || !hand.Adopt || hand.Change != nil {
+		t.Fatalf("adopt: %q, %+v, %v", msg, hand, err)
 	}
-	if _, err := os.Stat(p.Workspace()); err == nil {
-		t.Error("wrote the start script for a bad input")
+	if len(hand.Values) != 1 || hand.Values["email"] != "dana@example.com" {
+		t.Errorf("values = %v, want the address alone", hand.Values)
+	}
+}
+
+// TestGoogleFound checks what a second run finds.
+func TestGoogleFound(t *testing.T) {
+	byHand := config.Config{MCP: config.MCP{Servers: []config.MCPServer{{Name: "google", URL: "http://127.0.0.1:8000/mcp"}}}}
+	if got := GoogleFound(byHand); !strings.Contains(got, "set up by hand") {
+		t.Errorf("by hand: %q", got)
+	}
+	on := config.Config{Connectors: map[string]config.Connector{"google": {"enabled": true, "email": "dana@example.com"}}}
+	if got := GoogleFound(on); !strings.Contains(got, "dana@example.com") {
+		t.Errorf("on: %q", got)
+	}
+	if got := GoogleFound(config.Config{}); got != "" {
+		t.Errorf("nothing: %q", got)
 	}
 }

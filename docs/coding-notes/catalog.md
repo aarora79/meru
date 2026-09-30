@@ -325,11 +325,10 @@ the same hint text, so the terminal and the model say the same thing.
 
 ### searxngsettings.go
 
-The `settings.yml` Meru writes for the SearXNG it runs in Docker lives here,
-because two programs write it: the Mac installer's Web search step, and
-`merud`'s SearXNG connector before its container first starts. The installer
-may not import `internal/connectors`, and `merud` may import `catalog`, so this
-is the one place both reach. `SearXNGSettings(secret)` returns the file: JSON
+The `settings.yml` Meru writes for the SearXNG it runs in Docker lives here:
+`merud`'s SearXNG connector writes it before its container first starts. It
+sits next to `CheckSearXNG` and `SearXNGURL`, which the Mac installer reads
+too, and the installer may not import `internal/connectors`. `SearXNGSettings(secret)` returns the file: JSON
 on, the limiter off, `base_url` on `127.0.0.1:8888`, and `secret_key`, which
 signs SearXNG's cookies. `NewSecret` makes that key from 32 bytes of
 `crypto/rand`. `WriteSearXNGSettings(dir)` writes the file with mode `0600`

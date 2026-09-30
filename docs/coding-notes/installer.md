@@ -2,7 +2,8 @@
 
 **Code:** `internal/installer/` (`doc.go`, `run.go`, `steps.go`, `bridge.go`,
 `machine.go`, `configfile.go`, `meru.go`, `ollama.go`, `folders.go`,
-`websearch.go`, `commands.go`, `google.go`, `profile.go`, `merud.go`,
+`websearch.go`, `obsidian.go`, `commands.go`, `google.go`, `profile.go`,
+`connectors.go`, `merud.go`,
 `assets.go`, the page in `web/`, and `launchd/com.meru.merud.plist`, a copy of
 the one in `deploy/`), plus `cmd/meru-installer/main.go` and its `Info.plist`
 **Milestone:** the Mac installer, asked for ahead of v0.5
@@ -11,11 +12,14 @@ the one in `deploy/`), plus `cmd/meru-installer/main.go` and its `Info.plist`
 ## What it does
 
 The Mac installer is "Install Meru.app" on each release's disk image. It walks a
-person through nine steps, from checking the Mac to starting `merud`, and each step
+person through ten steps, from checking the Mac to starting `merud`, and each step
 says what it does and what it downloads before it runs.
 
 The installer runs before `merud` exists, so it has to do what the clients never
-do: run programs such as `brew` and `docker`, and write files such as launchd jobs.
+do: run programs such as `brew` and `launchctl`, and write files such as `merud`'s
+launchd job. The connectors are the exception: web search, Obsidian and Google
+are `merud`'s to install and run, so their steps only gather values, and the
+last step hands them to `merud` over the socket.
 To keep that safe and testable, the code splits in two, as the desktop app's does.
 `cmd/meru-installer` opens the window with Wails, a Go library that shows an HTML
 page in the Mac's own WebView. Everything else sits here, in `internal/installer`,
@@ -28,13 +32,13 @@ the real programs and servers.
 flowchart LR
     page["page<br/>(web/installer.js)"] -- "Run, Skip, Screen" --> bridge[Bridge]
     bridge --> flow["Flow<br/>(steps.go)"]
-    bridge --> steps["the nine steps<br/>(meru.go, ollama.go, ...)"]
+    bridge --> steps["the ten steps<br/>(meru.go, ollama.go, ...)"]
     steps --> run["Runner<br/>(run.go)"]
-    run --> progs["brew, docker, launchctl,<br/>open, ditto, xattr, ..."]
-    steps --> http["HTTP on 127.0.0.1<br/>Ollama, SearXNG, Google server"]
+    run --> progs["brew, launchctl,<br/>open, ditto, xattr, ..."]
+    steps --> http["HTTP on 127.0.0.1<br/>Ollama, SearXNG"]
     steps --> catalog["catalog<br/>config.toml edits"]
     steps --> memory["memory<br/>profile files"]
-    steps --> rpc["rpc<br/>ping, index_status"]
+    steps --> rpc["rpc<br/>ping, index_status,<br/>connector_set, connector_adopt"]
     bridge -- "installer:progress" --> page
 ```
 
@@ -50,16 +54,15 @@ This is the only file that starts programs. `Programs()` returns the allowlist, 
 map from each program's name to the absolute paths it may live at:
 
 ```go
-"docker": {
-    "/usr/local/bin/docker", "/opt/homebrew/bin/docker", "~/.orbstack/bin/docker",
-    "~/.docker/bin/docker", "/Applications/Docker.app/Contents/Resources/bin/docker",
-},
+"brew": {"/opt/homebrew/bin/brew", "/usr/local/bin/brew"},
 ```
+
+`docker` left the list in step 6 of issue #87: `merud` runs SearXNG now.
 
 `Locate(program, home)` returns the first path that exists, or `ErrNotAllowed`
 for a name the map lacks, or `ErrMissing` when none of the paths exists. The
 installer never searches `PATH`, because an app opened from Finder gets a short
-`PATH` that holds neither Homebrew nor Docker.
+`PATH` that doesn't hold Homebrew.
 
 `Runner` is a function type:
 
@@ -70,14 +73,14 @@ type Runner func(ctx context.Context, program string, args []string, line func(s
 Any function with that signature is a Runner. `ExecRunner(home)` returns the real
 one: it finds the program with `Locate`, runs it with `exec.CommandContext`, which
 takes each argument as its own string and uses no shell, and hands each line of
-output to `line` as it comes, so the screen shows `brew` and `docker` working. The
+output to `line` as it comes, so the screen shows `brew` working. The
 tests pass a fake that records each call and runs nothing. `runLines` joins stdout
 and stderr through an `io.Pipe` and reads it in a goroutine while the program
 runs.
 
 ### steps.go
 
-`Flow` holds the nine steps and their states: pending, running, done, failed or
+`Flow` holds the ten steps and their states: pending, running, done, failed or
 skipped. `Start` moves a step to running and refuses while another runs, `Finish`
 moves it to done or failed with the reason, and `Skip` refuses for About you,
 the one step with `Skippable` false. A `sync.Mutex` guards the list, because Wails
@@ -93,6 +96,14 @@ calls the step, and records how it ended; a step that fails comes back as a
 failed step with its reason, not as an error, so the page can show Retry and
 Skip. `Links()` maps each name a screen may open to a fixed `https` address, so
 the page can never open an address of its own.
+
+The Bridge also keeps the connector hand-offs, a map from connector ID to the
+`HandOff` its step gathered, under its mutex. `runConnector` runs a connector
+step and keeps what it returns; `Skip` drops a skipped step's hand-off, so a
+step skipped on a second visit hands nothing over. `handOffs` returns them in
+step order for Start Meru. `OpenSignIn` opens the Google sign-in link `merud`
+gave, which the Bridge holds in `signIn`; the page asks for it by name, as it
+asks for a link, and never holds the address.
 
 ### machine.go
 
@@ -136,17 +147,23 @@ writes `[index] folders` with `catalog.SetTableLists`.
 
 ### websearch.go
 
-`catalog.WriteSearXNGSettings` writes the `settings.yml`: JSON on, a random
-`secret_key` from `crypto/rand`, the limiter off. It lives in `catalog` because
-`merud`'s SearXNG connector writes the same file, and the installer may not
-import `internal/connectors`. The installer still pulls `searxng:latest` and
-starts the container with `--restart unless-stopped`; step 6 of issue #87 hands
-that to `merud`. Meru's SearXNG connector leaves this container alone, since it
-lacks the `meru.connector` label, and uses it while it answers. `DockerRunArgs` builds the `docker run` arguments,
-publishing port 8080 of the container on `127.0.0.1:8888` only. `SetUpWebSearch`
-keeps a SearXNG that already answers, and otherwise pulls the image, starts the
-container and waits for `VerifySearXNG`, one test search, to pass. Then it sets
-`[web] searxng_url` and makes sure `[builtin] tools` has both web tools.
+`SetUpWebSearch` runs no program. When `VerifySearXNG`, one test search, passes
+at `127.0.0.1:8888`, a SearXNG already runs there, such as the container an
+older installer started, and the step hands nothing over: `merud` watches it as
+an external SearXNG. Otherwise it needs Docker, which `HasDocker` looks for at
+its usual paths with `os.Stat`, and returns a `HandOff` that turns the SearXNG
+connector on. Either way it sets `[web] searxng_url` and makes sure `[builtin]
+tools` has both web tools. The Bridge passes `HasDocker`'s answer in, so the
+tests don't depend on the Mac they run on.
+
+### obsidian.go
+
+`SetUpObsidian` takes the vault folder from the screen, checks with `os.Stat`
+that it is a folder, a path written `~/…` counting from the home folder, and
+returns a `HandOff` with `vault_path` as the user wrote it. `connectorState`
+reads config: when `[[mcp.servers]]` has an `obsidian` entry, the step keeps it
+unless the user picked Adopt, and then the hand-off is an adopt. `ObsidianFound`
+says what a second run finds.
 
 ### commands.go
 
@@ -160,13 +177,24 @@ outside launchd's short `PATH`, such as `gh` from Homebrew, gets its full path i
 
 ### google.go
 
-`GoogleInput.check` refuses an empty field, and any space, quote or `$`, before
-anything is written, and its messages never quote the secret. `WriteStartScript`
-writes `start.sh` through a temporary file made with mode `0600`, sets `0700`, and
-renames it into place, so no other user can read the secret at any moment.
-`GooglePlist` and `loadJob` start it at login. `SetUpGoogle` waits up to three
-minutes for the server, because its first start downloads it, then adds the
-catalog's `google` entry.
+`GoogleInput.check` refuses an empty field and any space or line break, and its
+messages never quote the secret. `SetUpGoogle` returns a `HandOff` whose change
+holds the address and client ID as values and the secret apart, in `Secrets`,
+so `merud` puts it in `secrets.toml` and never in `config.toml`. It writes no
+start script, launchd job or config entry. For a `google` entry set up by hand,
+Adopt makes the hand-off an adopt, with any values the user typed for an entry
+whose start script `merud` can't read.
+
+### connectors.go
+
+`HandConnectors` sends each hand-off to `merud` in order. A change goes out as
+`connector_set`, and `handOne` shows each `connector` event's sentence as it
+comes. An adopt goes out as `connector_adopt` with `Apply`, and then
+`watchConnector` asks the `connectors` op every second until the connector is
+no longer starting, since `merud` installs an adopted connector on its own. A
+refusal or a failure becomes that connector's line, and the next one still
+goes out. Each result keeps the sign-in link `merud` gave, for `OpenSignIn`;
+the lines on screen never hold it.
 
 ### profile.go
 
@@ -182,7 +210,10 @@ from a copy in `launchd/`, because an embedded file must sit in the package's
 folder; `TestMerudPlistIsDeployCopy` keeps the two equal. `StartMerud` loads the
 job and waits for `Ping`. `FollowScan` asks `index_status` every two seconds while
 `merud`'s own startup scan runs, and stops watching after two minutes; the scan
-carries on in `merud`.
+carries on in `merud`. `loadJob` and `xmlText`, which write and load the plist,
+live here now that `merud`'s is the only launchd job the installer writes. The
+Bridge's Start Meru step runs `StartMerud`, then `HandConnectors`, then
+`FollowScan`.
 
 ### assets.go and web/
 
@@ -219,8 +250,10 @@ make dmg                             # dist/Meru-dev-macos-arm64.dmg
 ```
 
 The tests start no real program and reach no real server: a fake Runner stands in
-for `brew`, `docker` and `launchctl`, `httptest` servers stand in for Ollama,
-SearXNG and the Google server, and a small socket server stands in for `merud`.
+for `brew` and `launchctl`, `httptest` servers stand in for Ollama and SearXNG,
+and a small socket server stands in for `merud`, which `connectors_test.go` uses
+to check every hand-off, the secret kept off the screen, and a refusal that
+doesn't stop the next connector.
 
 `make installer-app` and `make desktop-app` sign each finished app with
 `codesign --sign -`, an ad-hoc signature with no certificate, and verify it.
@@ -244,9 +277,12 @@ package lets CI test each step, which a script's `curl | bash` flow doesn't.
 
 The installer could have asked `merud` to do the work, as the desktop app does.
 But nothing runs `merud` until the last step, and `merud` needs Ollama and the
-models before it starts, so the installer must act on its own. The allowlist keeps
-that power narrow: ten programs at fixed paths, no shell, and a policy test that
-fails the build if a second way to start a program appears.
+models before it starts, so the installer must act on its own for those. The
+connectors wait for `merud`, which installs each at the version pinned in its
+release, runs it and repairs it later, so the installer doesn't duplicate that
+work with its own docker, uv and launchd jobs. The allowlist keeps the
+installer's power narrow: nine programs at fixed paths, no shell, and a policy
+test that fails the build if a second way to start a program appears.
 
 Each step writes config through `catalog`, the code `meru setup` and `merud`
 already use, so the comments in `config.toml` survive and a bad write never lands.

@@ -197,7 +197,7 @@ checked by Apple, so the first time macOS refuses to open it: click Done, then
 Open Anyway in System Settings, Privacy & Security. "Read me first.txt" on the
 disk image says the same.
 
-The installer walks through nine steps. Each screen says what the step does, why,
+The installer walks through ten steps. Each screen says what the step does, why,
 and what it downloads, and waits for Continue. It shows progress as it goes, and a
 step that fails says why and offers Retry and Skip.
 
@@ -207,14 +207,18 @@ step that fails says why and offers Retry and Skip.
 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`; clears macOS's quarantine mark from them if you tick the box; adds `~/.local/bin` to `PATH` in `~/.zshrc` if you tick that box |
 | Ollama and the models | installs Ollama with Homebrew, or from Ollama's site when there is no Homebrew, starts it, and downloads the models with a progress bar |
 | Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |
-| Web search | starts SearXNG in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only, with its settings in `~/.meru/searxng/settings.yml`. Needs Docker Desktop, OrbStack or colima; without one, the screen links Docker's download page and you can skip |
+| Web search | turns web search on; in the last step `merud` downloads SearXNG at its pinned version and runs it in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only. A SearXNG that already answers there stays as it is. Needs Docker Desktop, OrbStack or colima; without one, the screen links Docker's download page and you can skip |
+| Obsidian notes | asks for your vault folder with the folder dialog; in the last step `merud` installs the Obsidian server with its own Node. An `obsidian` entry you set up yourself stays as it is, or moves over to Meru if you pick Adopt |
 | Skills and commands | turns the built-in skills on and adds the sample commands you tick, all read-only |
-| Gmail, Calendar and Drive | the steps in [google-setup.md](google-setup.md), in three screens: it links each Google Cloud page, takes your client ID and secret, and does steps 6 to 11 for you |
+| Gmail, Calendar and Drive | steps 1 to 5 of [google-setup.md](google-setup.md), in three screens: it links each Google Cloud page and takes your address, client ID and secret. In the last step `merud` installs and runs the Google server. A `google` entry you set up yourself stays as it is, or moves over if you pick Adopt |
 | About you | your name, which Meru needs to tell you apart from people in your files; your email, needed after the Google step; how you like answers |
-| Start Meru | starts `merud` now and at every login, and shows its first scan of your folders |
+| Start Meru | starts `merud` now and at every login, hands it the connectors you turned on (`connector_set`, or `connector_adopt` for Adopt) and shows each line `merud` reports while it installs and checks them, then shows its first scan of your folders. When Google waits for you to sign in, the last screen has a Sign in to Google button |
 
 You can skip any step but About you, and run the installer again later: each step
-checks what is already done and offers to skip it. The last screen shows where
+checks what is already done and offers to skip it. The installer runs no docker,
+uv or launchctl for a connector: `merud` installs, runs and repairs each one,
+and a connector that goes wrong later shows on its card in Meru.app's Settings,
+with a Fix button. The last screen shows where
 your settings live, `~/.meru/config.toml`, with a button that opens it. Meru.app's
 Settings and `/help` in `meru chat` change most of them for you; after you edit
 the file by hand, restart `merud` with
@@ -1337,10 +1341,17 @@ rounds. [ARCHITECTURE.md](../ARCHITECTURE.md#retrieval) has the numbers. Run
    already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
 4. **Web search.** It checks that SearXNG answers JSON at `[web] searxng_url`. If
-   nothing answers, it prints the `[connectors.searxng]` table that has `merud`
-   run SearXNG (see [Web search](#web-search)); if SearXNG answers a web page, it
-   names the `formats` setting. Press Enter to check again, or type `s` to skip.
-5. **Tools.** It offers each server in the catalog, one at a time (see below).
+   nothing answers at Meru's address and `merud` runs, it offers to have `merud`
+   run SearXNG, sends `connector_set`, and prints each step `merud` reports (see
+   [Web search](#web-search)); with `merud` down it names `meru mcp set searxng
+   enabled=true` for later. If SearXNG answers a web page, it names the
+   `formats` setting. Press Enter to check again, or type `s` to skip.
+5. **Tools.** With `merud` running, it offers Obsidian and Google, which `merud`
+   installs and runs: it asks each connector's fields, a secret without showing
+   it, and `merud` turns it on with them. A server you set up by hand is
+   offered Adopt instead. With `merud` down, it names `meru mcp fix obsidian`
+   and `meru mcp fix google` for later. `meru mcp add` still adds any server you
+   run yourself (see below).
 6. **About you.** If `merud` is running, it offers `meru setup user` (see
    [Tell Meru about you](#tell-meru-about-you)).
 7. **A test question.** If `merud` is running, it asks one question and prints
@@ -1373,8 +1384,9 @@ When nothing answers there, it writes `~/.meru/searxng/settings.yml`, with JSON
 on and a random secret key, pulls the SearXNG image at the version pinned in
 this Meru release, and starts it as the container `meru-searxng`, on
 `127.0.0.1:8888` only. The first start downloads the image and takes a minute
-or so. The Mac installer's Web search step also starts a container called
-`meru-searxng` (see [The Mac installer](#the-mac-installer)).
+or so. The Mac installer's Web search step turns the connector on the same
+way (see [The Mac installer](#the-mac-installer)); installers before this
+release started a container called `meru-searxng` themselves.
 
 `merud` checks SearXNG when it starts and once a minute after. The check is an
 empty search with `format=json`: SearXNG refuses it, in JSON, without asking any
@@ -1388,7 +1400,7 @@ does. Stopping `merud` leaves the container running.
 at `searxng_url` and it isn't Meru's container, `merud` uses it and never
 starts, stops or pulls anything: Settings says "Web search uses the SearXNG
 already running at http://127.0.0.1:8888." That covers a SearXNG you started
-with Docker Compose and the installer's container. Meru's container carries the
+with Docker Compose and the container an older installer started. Meru's container carries the
 label `meru.connector=searxng`; a container named `meru-searxng` without it
 stays as it is.
 
