@@ -41,7 +41,7 @@ allows only code inside this repo to import.
 | `internal/installer` | the Mac installer's nine steps, its Bridge, and the one allowlist of programs it runs (see [Installer](../ARCHITECTURE.md#installer)) | `bridge.go`: `Run`, `run`, then `steps.go`, `run.go` and one file per step |
 | `internal/opener` | hands an `http`, `https` or `file` URL to the system's opener, with no shell | `opener.go`: `Check`, `Open` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
-| `internal/connectors` | the connector manifests, compiled in, with pinned versions, and the checks on them; the pinned Node and uv, and each connector's install under `~/.meru/runtime`; the supervisor, one per stdio connector, which `merud` builds at startup: it checks the connector's settings, installs and health-checks it, starts it on the first call, stops it when idle and restarts it after a crash (see [Connectors and the supervisor](../ARCHITECTURE.md#connectors-and-the-supervisor)) | `manifest.go`: `Load`, `Parse`, `Validate`; `runtimes.go`: `Runtimes`, `EnsureRuntime`; `install.go`: `Install`, `Installed`; `launch.go`: `LaunchCommand`; `run.go`: `Runner`, `ExecRunner`, `stdioTransport`; `supervisor.go`: `New`, `Configure`, `Spawn`, `Status`, `Close`; `status.go`: `checkSettings`; `health.go`: `runHealthCheck` |
+| `internal/connectors` | the connector manifests, compiled in, with pinned versions, and the checks on them; the pinned Node and uv, and each connector's install under `~/.meru/runtime`; the supervisor, one per stdio connector, which `merud` builds at startup: it checks the connector's settings, installs and health-checks it, starts it on the first call, stops it when idle and restarts it after a crash; and the SearXNG container's supervisor, which checks it every minute and runs Meru's container when config asks (see [Connectors and the supervisor](../ARCHITECTURE.md#connectors-and-the-supervisor)) | `manifest.go`: `Load`, `Parse`, `Validate`; `runtimes.go`: `Runtimes`, `EnsureRuntime`; `install.go`: `Install`, `Installed`; `launch.go`: `LaunchCommand`; `run.go`: `Runner`, `ExecRunner`, `stdioTransport`; `supervisor.go`: `New`, `Configure`, `Spawn`, `Status`, `Close`; `container.go`: `ContainerMode`, `NewContainer`, `Configure`, `OK`, `Status`, `Close`; `status.go`: `checkSettings`; `health.go`: `runHealthCheck` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
 | `internal/store` | `meru.db`: documents, chunks, vectors, the keyword index and the `tool_calls` log | `store.go`: `Open`, then `documents.go`, `search.go` and `toolcalls.go` |
@@ -493,22 +493,22 @@ sequenceDiagram
     M->>M: openLog(merud.log, level) — -v forces debug
     M->>O: Setup(cfg.Observability)
     M->>E: NewOllama(base URL, keep_alive, embed model, logger)
-    M->>E: checkRuntime: Info() → Ollama 0.12.11 or later?
     M->>R: Listen(socket) — refuses if another merud answers
-    M->>E: warm(): one tiny call each to the fast and embed models
+    M->>R: Serve(listener, gate) — until ready, the gate waits or answers from the Ollama watch
+    M->>E: waitReady: Info() → Ollama 0.12.11 or later? then warm() the fast and embed models; again every 30 s
     M->>E: embedDims: embed one probe text to learn the vector size
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)
     M->>M: newToolService: secrets.Load, commands.New, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
-    M->>M: logWebSearch: catalog.CheckSearXNG, one info line, never fatal
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
     M->>M: newIndexService(indexer, store, folders)
     M->>M: bt.UseAbout(aboutService.facts): about_meru reads the setup on each call
     M->>M: a.StartWarm(): mark the answer model as loading
+    M->>R: gate.open(handler) — questions to the agent, index ops to the indexer, tool ops to the tool service
     par errgroup, until Ctrl-C, SIGTERM or a server error
         M->>E: load the answer model with a real prompt; questions wait for it
     and
-        M->>R: Serve(listener, handler) — questions to the agent, index ops to the indexer, tool ops to the tool service
+        M->>E: the Ollama watch: Info() every 30 s, for the connectors op
     and
         M->>M: startupScan: Scan, or Reembed after an embed model change
     and
@@ -516,10 +516,18 @@ sequenceDiagram
     end
 ```
 
-All of this is in `cmd/merud/main.go` (`run` and `serve`), `cmd/merud/runtime.go`
-(`checkRuntime` and `warm`), `cmd/merud/index.go` (`startupScan`, `watch` and the
-adapters) and `cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog`,
-`reloadMCP` and `logWebSearch`).
+All of this is in `cmd/merud/main.go` (`run` and `serve`), `cmd/merud/ollama.go`
+(the watch on Ollama and the gate), `cmd/merud/runtime.go` (`warm`),
+`cmd/merud/index.go` (`startupScan`, `watch` and the adapters) and
+`cmd/merud/tools.go` (`newToolService`, `handleTools`, `handleLog` and
+`reloadMCP`).
+
+`merud` opens its socket and serves before it checks Ollama. While Ollama is
+down or too old, the gate answers the `connectors` op with Ollama's row,
+`mcp_status` with no servers, and every other request with "Ollama isn't
+running, so Meru can't answer yet." or the reason; while Ollama answers and the
+models load, a request waits. Nothing that needs the engine starts before
+Ollama is ready.
 
 `newToolService` loads `secrets.toml` first and fails when other users can read
 it, then checks the `[[commands]]` entries with `commands.New`, starts the MCP
@@ -541,11 +549,12 @@ walks never race over the same files. `signal.NotifyContext` turns Ctrl-C into a
 cancelled `context.Context`, and every step watches that context, so `merud` stops
 cleanly wherever it is. ([more on context](coding-notes/go-basics/context.md))
 
-`logWebSearch` runs `catalog.CheckSearXNG` against `[web] searxng_url` and logs
-`web search ready`, `web search not ready` with the reason, or `web search off`.
-The check asks SearXNG for an empty query, which SearXNG refuses without asking
-any search engine, and gives up after 3 seconds. A missing SearXNG never stops
-`merud`: `web_search` reports the same problem to the model when it runs.
+The SearXNG connector, built with the tool service, runs `catalog.CheckSearXNG`
+against `[web] searxng_url` at start and every minute, and runs Meru's own
+container when `[connectors.searxng]` turns it on. The check asks SearXNG for an
+empty query, which SearXNG refuses without asking any search engine, and gives
+up after 3 seconds. A missing SearXNG never stops `merud`; the model gets
+`web_search` only while the check passes.
 
 ## 5. One question, function by function
 

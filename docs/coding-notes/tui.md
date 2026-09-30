@@ -1065,7 +1065,9 @@ The `/mcp` box is the app's Connections. It sends `OpConnections`, and `mcpRows`
 lays out the reply: a heading per source, a row per tool with its policy in the
 app's words (`policyWords`), then the catalog servers not added yet.
 `connHeading` writes a connector's heading with its kind, state, tool count,
-sentence and fix hint:
+sentence and fix hint. The built-in tools' heading ends with web search's state
+and sentence, from the connection's `Web` and `WebSentence`, such as "web search
+needs config: Web search can't start: Docker isn't running.":
 
 ```text
 obsidian · connector, stdio · needs config · 1 of 3 tools on · Obsidian needs your vault folder. Set vault_path under [connectors.obsidian] in config.toml, then restart merud.

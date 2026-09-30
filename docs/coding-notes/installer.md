@@ -136,8 +136,13 @@ writes `[index] folders` with `catalog.SetTableLists`.
 
 ### websearch.go
 
-`SearXNGSettings` writes the `settings.yml`: JSON on, a random `secret_key` from
-`crypto/rand`, the limiter off. `DockerRunArgs` builds the `docker run` arguments,
+`catalog.WriteSearXNGSettings` writes the `settings.yml`: JSON on, a random
+`secret_key` from `crypto/rand`, the limiter off. It lives in `catalog` because
+`merud`'s SearXNG connector writes the same file, and the installer may not
+import `internal/connectors`. The installer still pulls `searxng:latest` and
+starts the container with `--restart unless-stopped`; step 6 of issue #87 hands
+that to `merud`. Meru's SearXNG connector leaves this container alone, since it
+lacks the `meru.connector` label, and uses it while it answers. `DockerRunArgs` builds the `docker run` arguments,
 publishing port 8080 of the container on `127.0.0.1:8888` only. `SetUpWebSearch`
 keeps a SearXNG that already answers, and otherwise pulls the image, starts the
 container and waits for `VerifySearXNG`, one test search, to pass. Then it sets

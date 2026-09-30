@@ -1090,7 +1090,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <p>A real session showed why the warm-up uses a real prompt. <code>merud</code> warmed <code>qwen3.6:35b-a3b-mxfp8</code>, a 38 GB mixture-of-experts model, with "hi" before it took questions; the load took 84 seconds, and Ollama kept the model, as <code>keep_alive: -1</code> asks, with no reload in its log. Yet the first question, 26 minutes later, spent 2 minutes 17 seconds on a prompt of 1,349 tokens, and the next question spent 6 seconds on 1,460. A mixture-of-experts model runs each token through a few of its many experts, so a three-token prompt touched a sliver of the weights, and the first long prompt read the rest from disk. A warm-up prompt of a thousand tokens or more touches most experts before the user asks, and Ollama keeps its opening for the first question to reuse.</p>
 <p>Loading a 38 GB model at every start costs a minute or two of disk reads, in the background. <code>keep_alive: -1</code> already says the user wants the models in memory, and the other choice, a load on the first question, is the wait the real session hit. So the warm-up stays on for every start.</p>
 
-<p>The <code>fast</code> tier needs a runtime that reports log probabilities, because <a href="#routing">routing</a> reads them. Ollama added them in v0.12.11; <code>merud</code> reads <code>/api/version</code> at startup and refuses to start on anything older, naming both versions. Routing costs no extra model: the <code>fast</code> model is already loaded.</p>
+<p>The <code>fast</code> tier needs a runtime that reports log probabilities, because <a href="#routing">routing</a> reads them. Ollama added them in v0.12.11; <code>merud</code> reads <code>/api/version</code> when it starts and every 30 seconds after. On anything older it stays up, answers no question, and names both versions (see <a href="#connector-searxng-ollama">SearXNG and Ollama</a>). Routing costs no extra model: the <code>fast</code> model is already loaded.</p>
 
 <p>A new embedding model makes vectors of a different size, and every stored vector goes stale. The store records the embedding model's name and vector size. When either stops matching config, the store drops every vector and keeps the text, so keyword search keeps working while the indexer re-embeds your files (see <a href="#storage">Storage</a>).</p>
 
@@ -2145,7 +2145,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 
 <p>Today you install, start and repair every server Meru uses: SearXNG for web search, the Obsidian and Google MCP servers, and Ollama. When one is down, Meru says little. A <b>connector</b> is one of those programs that Meru will install, configure, start, check and restart for you, at a version pinned in Meru's own release. Issue #87 holds the plan, which lands in seven steps.</p>
 
-<p><b>What exists now (steps 1 to 3):</b> the manifests, the checks on them, the <code>[connectors.&lt;id&gt;]</code> config table, a policy test that refuses unpinned versions, the code that downloads the pinned runtimes and installs each connector into <code>~/.meru/runtime</code>, and the supervisor for stdio connectors, which runs Obsidian. A connector stays off until its table says <code>enabled = true</code>, and an <code>[[mcp.servers]]</code> entry with the same name wins over it, so a working setup behaves as before. SearXNG, Ollama, Google, Adopt and the settings forms are <b>planned</b>, and arrive over the next steps.</p>
+<p><b>What exists now (steps 1 to 4):</b> the manifests, the checks on them, the <code>[connectors.&lt;id&gt;]</code> config table, a policy test that refuses unpinned versions, the code that downloads the pinned runtimes and installs each connector into <code>~/.meru/runtime</code>, the supervisor for stdio connectors, which runs Obsidian, the SearXNG container, and the watch on Ollama. A connector that Meru starts stays off until its table says <code>enabled = true</code>, and an <code>[[mcp.servers]]</code> entry with the same name wins over it, so a working setup behaves as before. Google, Adopt and the settings forms are <b>planned</b>, and arrive over the next steps.</p>
 
 <h3 id="connector-manifest">The manifest</h3>
 
@@ -2188,7 +2188,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 
 <h3 id="connector-pins">Pinned versions</h3>
 
-<p>Each connector runs one version, chosen and tested for a Meru release. A pin moves only in a new Meru release, and the release notes list it under "Connector versions". A policy test (<code>internal/policy/pins_test.go</code>) fails on <code>latest</code>, <code>@latest</code>, <code>:latest</code>, a version range, a package runner such as <code>uvx</code> or <code>npx</code> without an exact version, a container image without a digest, and a file fetched from a branch. It reads the manifests, the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and the code blocks in <code>docs/</code>. Meru's own <code>releases/latest</code> link passes: it fetches Meru, not a dependency. The places that break the rule today, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, sit on a short list in the test and keep working until steps 4 and 5 replace them; the list can only shrink.</p>
+<p>Each connector runs one version, chosen and tested for a Meru release. A pin moves only in a new Meru release, and the release notes list it under "Connector versions". A policy test (<code>internal/policy/pins_test.go</code>) fails on <code>latest</code>, <code>@latest</code>, <code>:latest</code>, a version range, a package runner such as <code>uvx</code> or <code>npx</code> without an exact version, a container image without a digest, and a file fetched from a branch. It reads the manifests, the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and the code blocks in <code>docs/</code>. Meru's own <code>releases/latest</code> link passes: it fetches Meru, not a dependency. The places that break the rule today, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, sit on a short list in the test and keep working until steps 5 and 6 replace them; the list can only shrink. Step 4 took off <code>meru setup</code>'s SearXNG recipe and the docs that repeated it, which fetched files from SearXNG's main branch.</p>
 
 <h3 id="connector-config">Config and secrets</h3>
 
@@ -2198,7 +2198,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 enabled    = true
 vault_path = "~/Notes/vault"</code></pre>
 
-<p><code>enabled</code> is true or false; every other value is a string. <code>config.Load</code> checks the shape only: an ID and its keys are lower-case letters, digits and <code>_</code>. It doesn't know the connectors, because the clients import <code>config</code> and must not reach <code>internal/connectors</code>. <code>merud</code> checks each stdio connector's table against its manifest, and a key or value that doesn't fit leaves the connector at needs config, with the field to fix; the other kinds get the same check when they join in steps 4 and 5. A secret field never goes in <code>config.toml</code>: its value goes in <code>secrets.toml</code> as <code>secret:connector_&lt;id&gt;_&lt;field&gt;</code>. <code>[[mcp.servers]]</code> stays for the servers you add by hand, and the supervisor never manages those.</p>
+<p><code>enabled</code> is true or false; every other value is a string. <code>config.Load</code> checks the shape only: an ID and its keys are lower-case letters, digits and <code>_</code>. It doesn't know the connectors, because the clients import <code>config</code> and must not reach <code>internal/connectors</code>. <code>merud</code> checks each stdio connector's table, and SearXNG's, against its manifest, and a key or value that doesn't fit leaves the connector at needs config, with the field to fix; Google's table gets the same check when it joins in step 5. A secret field never goes in <code>config.toml</code>: its value goes in <code>secrets.toml</code> as <code>secret:connector_&lt;id&gt;_&lt;field&gt;</code>. <code>[[mcp.servers]]</code> stays for the servers you add by hand, and the supervisor never manages those.</p>
 
 <h3 id="connector-runtime">The runtime folder</h3>
 
@@ -2303,11 +2303,66 @@ ok ──idle_timeout──▶ ready</code></pre>
 
 <p><code>mcp_status</code> and <code>connections</code> carry the same state and sentence for a connector the pool runs, in their <code>connector</code> and <code>sentence</code> fields, and <code>connections</code> marks a hand-added server that takes a connector's place as <code>by_hand</code>. Settings shows each connector's card with a pill and its sentence, the rail names a connector that isn't <code>ok</code> with its state, <code>/mcp</code> and <code>meru mcp status</code> print the state and sentence, and <code>about_meru</code> adds the sentence. Until the settings forms arrive (step 6), a <code>needs_config</code> connector says which key to set: "Set vault_path under [connectors.obsidian] in config.toml, then restart merud." A connector's tool lists come from its manifest, so its card's switches don't move yet.</p>
 
-<h3 id="connector-searxng-ollama">SearXNG and Ollama (planned)</h3>
+<h3 id="connector-searxng-ollama">SearXNG and Ollama</h3>
 
-<p><b>SearXNG</b> runs as the container <code>meru-searxng</code> from the pinned image, on <code>127.0.0.1:8888</code>. A SearXNG that already answers there and isn't <code>meru-searxng</code>, such as one you run with Docker Compose, counts as <b>external</b>: Meru reports on it and never starts, stops or changes it.</p>
+<p>Built in step 4 (<code>internal/connectors/container.go</code>, <code>cmd/merud/ollama.go</code>).</p>
 
-<p><b>Ollama</b> is a status-only dependency. Meru never installs or starts it; the health check is <code>GET /api/version</code> on <code>[ollama] base_url</code>. <code>merud</code> will open its socket before it checks Ollama, so a client can show "Ollama isn't running" rather than finding no <code>merud</code> at all. It checks again every 30 seconds until Ollama answers, then warms the models, and a question asked meanwhile gets that sentence as its error.</p>
+<p><b>SearXNG</b> is the one container connector. Its own supervisor, a <code>Container</code>, runs one loop while the connector is on: it checks <code>[web] searxng_url</code>, acts on what it finds, and waits a minute, or the backoff after a crash, before the next check. The check is <code>catalog.CheckSearXNG</code>: <code>GET /search?q=&amp;format=json</code>. SearXNG with JSON on refuses the empty query with <code>400</code> and <code>{"error": "No query"}</code>, and with JSON off answers a <code>403</code> web page; either way it asks no search engine, so the check sends nothing off the machine. The pinned image's <code>/healthz</code> answers <code>OK</code> even with JSON off, when <code>web_search</code> can't work, so Meru doesn't use it.</p>
+
+<p>The mode comes from config (<code>connectors.ContainerMode</code>):</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Config</th><th>Mode</th><th>What <code>merud</code> does</th></tr></thead>
+  <tbody>
+    <tr><td><code>[connectors.searxng] enabled = true</code>, and <code>searxng_url</code> is <code>http://127.0.0.1:8888</code></td><td>run</td><td>checks, and runs its own container when nothing answers</td></tr>
+    <tr><td><code>enabled = true</code> with another <code>searxng_url</code></td><td>watch</td><td>checks and reports; Meru's container answers only at 8888</td></tr>
+    <tr><td>no <code>enabled</code> key, and <code>[builtin] tools</code> lists <code>web_search</code></td><td>watch</td><td>checks and reports, as <code>merud</code> did before connectors; it starts nothing</td></tr>
+    <tr><td><code>enabled = false</code>, <code>web_search</code> not listed, or <code>searxng_url = ""</code></td><td>off</td><td>nothing</td></tr>
+  </tbody>
+</table></div>
+
+<p>The watch mode is the back-compat rule: a config from before connectors, which lists <code>web_search</code> and names a URL by default, keeps working, and an upgrade starts no container nobody asked for.</p>
+
+<p>In run mode, one pass goes:</p>
+
+<ol>
+  <li><b>Healthy:</b> ok. <code>docker inspect meru-searxng</code> says whether it is Meru's container, for the sentence.</li>
+  <li><b>Meru's container stopped answering:</b> a crash. The restarts wait 1, 2, 4 and 8 seconds, and the fifth crash in ten minutes sets failed, as for a stdio connector. Once failed, the loop only checks, and turns ok if the server comes back.</li>
+  <li><b>Something answers, badly, and it isn't Meru's container:</b> needs config, with the reason. Meru doesn't start a second server to fight it for the port.</li>
+  <li><b>No Docker, or Docker not running:</b> needs config, and the next minute's check tries again.</li>
+  <li><b>A container named <code>meru-searxng</code> without Meru's label:</b> needs config. Meru leaves it alone.</li>
+  <li><b>Otherwise:</b> <code>docker pull</code> of the pinned image by digest (the install), then <code>docker run</code> of a new container, <code>docker start</code> of a stopped one, or <code>docker restart</code> of one that runs but fails its check. A container from an older pin goes first. The container then gets 90 seconds to pass its check.</li>
+</ol>
+
+<p><code>docker run</code> gets <code>--name meru-searxng</code>, <code>--label meru.connector=searxng</code>, <code>--restart no</code>, <code>--publish 127.0.0.1:8888:8080</code>, the settings volume <code>~/.meru/searxng:/etc/searxng</code> and <code>SEARXNG_BASE_URL</code>. Before the first run, <code>merud</code> writes <code>settings.yml</code> there, with JSON on and a random secret key, unless the file exists; the Mac installer writes the same file, from <code>catalog.WriteSearXNGSettings</code>. The supervisor alone restarts the container, so it counts each crash, and Docker never starts it on its own: after a reboot the next <code>merud</code> does. Closing <code>merud</code> leaves it running, and turning the connector off stops it.</p>
+
+<p><b>External SearXNG.</b> A healthy server at <code>searxng_url</code> that isn't Meru's container, such as one you run with Docker Compose or the one the Mac installer started, counts as external: the connector is ok with "Web search uses the SearXNG already running at http://127.0.0.1:8888.", and Meru never starts, stops or pulls anything for it.</p>
+
+<p><b>Tools follow health.</b> The model gets <code>web_search</code> only while the connector is ok; <code>web_fetch</code> doesn't depend on it. The sentences:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>State</th><th>Sentence</th></tr></thead>
+  <tbody>
+    <tr><td><code>ok</code></td><td>Web search is running in the container meru-searxng. / Web search uses the SearXNG already running at …</td></tr>
+    <tr><td><code>off</code></td><td>Web search is off.</td></tr>
+    <tr><td><code>needs_config</code></td><td>Web search needs Docker, which isn't installed. / Web search can't start: Docker isn't running. / Web search can't use SearXNG at …: nothing answers there. (and, at Meru's own address, how to turn the connector on)</td></tr>
+    <tr><td><code>starting</code></td><td>Meru is checking Web search at … / Meru is downloading Web search (image sha256-…) and starting it. / Web search stopped (…) and starts again in 2 s.</td></tr>
+    <tr><td><code>failed</code></td><td>Web search couldn't install: … / Web search keeps stopping: …</td></tr>
+  </tbody>
+</table></div>
+
+<p>Settings shows them on the Web search card, <code>/mcp</code> on the built-in tools' line, <code>meru mcp status</code> in its connector table, <code>about_meru</code> in a "Web search" line, and the desktop app's rail names web search with its state.</p>
+
+<p><b>Ollama</b> is a status-only dependency. Meru never installs or starts it. <code>merud</code> opens its socket before it checks Ollama, so a client hears why <code>merud</code> can't answer instead of finding no <code>merud</code> at all. The check asks <code>GET /api/version</code> through the engine's <code>Info</code>, at start, then every 30 seconds, and at once when a request comes while Ollama fails. Once Ollama answers with 0.12.11 or later, <code>merud</code> loads the fast and embedding models and only then opens the store and builds the rest. Until then:</p>
+
+<ul>
+  <li>the connectors op lists Ollama alone, <code>failed</code>, with "Ollama isn't running at http://127.0.0.1:11434.", "Ollama 0.12.0 is too old; Meru needs 0.12.11 or later." or "Ollama … couldn't load a model: …";</li>
+  <li><code>mcp_status</code> answers with no servers, so <code>meru mcp status</code> prints the connector table;</li>
+  <li>every other request gets "Ollama isn't running, so Meru can't answer yet.", or "Meru can't answer yet: " and the sentence;</li>
+  <li>while Ollama answers and the models load, a request waits, as it waited in the socket's queue before.</li>
+</ul>
+
+<p><code>merud</code> answers <code>ping</code> from the start. The desktop app's status block says "Waiting for Ollama" with the sentence, and no advice to start <code>merud</code>. After <code>merud</code> is ready it keeps checking every 30 seconds, so the connectors op stays true; a question asked while Ollama is down fails with Ollama's own error, as before.</p>
 
 <h3 id="connector-adopt">Moving to connectors (planned)</h3>
 
@@ -2533,14 +2588,14 @@ meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HT
 
 <h2 id="web-search">Web search</h2>
 
-<p>Meru searches the web through <b>SearXNG</b>, a metasearch engine you run on your own machine. SearXNG keeps no index of its own. It passes the search words to engines such as Google, Bing, DuckDuckGo and Wikipedia, drops the cookies and headers that identify you, and merges what comes back. It needs no account and no API key. You start it once, in Docker (<code>docs/running.md</code>, "Web search"), and <code>merud</code> reaches it on loopback, as it reaches Ollama.</p>
+<p>Meru searches the web through <b>SearXNG</b>, a metasearch engine you run on your own machine. SearXNG keeps no index of its own. It passes the search words to engines such as Google, Bing, DuckDuckGo and Wikipedia, drops the cookies and headers that identify you, and merges what comes back. It needs no account and no API key. It runs in Docker: <code>merud</code> runs it as a connector when config turns that on, or uses one you run (see <a href="#connector-searxng-ollama">SearXNG and Ollama</a>), and reaches it on loopback, as it reaches Ollama.</p>
 
 <p>Two built-in tools use it. Both go through <code>dispatch</code>, so every search, page and download lands in the transcript and in <code>tool_calls</code>. While <code>web_search</code> is on, both go with every route, <code>direct</code> included (see <a href="#end-to-end">A question, end to end</a>); without it, <code>web_fetch</code> waits for a tools route:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Tool</th><th>Offered when</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>web_search</code></td><td><code>[web] searxng_url</code> is set and <code>[builtin] tools</code> lists it, as both are by default</td><td>One GET to <code>&lt;searxng_url&gt;/search?format=json</code>, with a 15-second limit. It returns up to <code>max_results</code> results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL.</td></tr>
+    <tr><td><code>web_search</code></td><td><code>[web] searxng_url</code> is set and <code>[builtin] tools</code> lists it, as both are by default, and the SearXNG connector is ok</td><td>One GET to <code>&lt;searxng_url&gt;/search?format=json</code>, with a 15-second limit. It returns up to <code>max_results</code> results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL.</td></tr>
     <tr><td><code>web_fetch</code></td><td><code>[builtin] tools</code> lists it, as it does by default</td><td>Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers.</td></tr>
   </tbody>
 </table></div>
@@ -2571,7 +2626,7 @@ max_results = 8                         # 1 to 20</code></pre>
 
 <p><b>Fetching pages is on by default.</b> Asked for the latest Go release, the <code>lite</code> model trusted months-old snippets and answered 1.26; the answer sat on go.dev's release page, which it couldn't read. So <code>merud</code> fetches public pages when the model asks, under the URL guard, and taking <code>web_fetch</code> out of <code>[builtin] tools</code> turns that off. It is the one case where <code>merud</code> connects off this machine with no <code>remote = true</code> entry. The site sees your IP address and a User-Agent that names Meru. <code>web_fetch</code> keeps no cookies and uses no proxy. It checks each address as it connects, after DNS, and refuses loopback, private networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local addresses (169.254/16, where cloud metadata services answer, and fe80::/10), unspecified and multicast addresses, 0.0.0.0/8 and 100.64.0.0/10. The check runs on the connection itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS name that points inside your network, and the model can't use the tool to read a service on your machine or LAN.</p>
 
-<p><b>When SearXNG isn't there.</b> <code>merud</code> starts anyway, and logs one line that says whether SearXNG answers JSON. The check sends an empty query, which SearXNG refuses without asking any engine, so it sends nothing off the machine. A <code>web_search</code> call then fails with "SearXNG isn't answering on &lt;url&gt;. See "Web search" in docs/running.md.", and the model tells you. A SearXNG that answers HTML has JSON turned off, and the error names the <code>search.formats</code> setting in <code>settings.yml</code>. <code>meru setup</code> runs the same check in its Web search step.</p>
+<p><b>When SearXNG isn't there.</b> <code>merud</code> starts anyway. The SearXNG connector checks it at start and every minute (see <a href="#connector-searxng-ollama">SearXNG and Ollama</a>), and the model gets <code>web_search</code> only while the check passes. A call that comes between a failed check and the next turn's tool list fails with the connector's sentence. A SearXNG that answers HTML has JSON turned off, and the sentence names the <code>search.formats</code> setting in <code>settings.yml</code>. <code>meru setup</code> runs the same check in its Web search step.</p>
 
 <h3 id="web-first">Web first</h3>
 

@@ -23,6 +23,8 @@ import (
 
 // TestStartupRefusals starts merud in setups it must refuse, and checks that
 // it exits 1 with a message naming the problem, without claiming the socket.
+// An Ollama that is down or too old isn't one of them: merud stays up and
+// says so (ollama_test.go).
 func TestStartupRefusals(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -31,12 +33,6 @@ func TestStartupRefusals(t *testing.T) {
 		config   func(fakeURL string) string
 		want     []string // pieces stderr must contain
 	}{
-		{
-			name:     "Ollama too old",
-			fakeArgs: []string{"-version", "0.12.0"},
-			config:   func(u string) string { return fakeConfig(u, "") },
-			want:     []string{"found Ollama 0.12.0", "too old", "0.12.11"},
-		},
 		{
 			// 10.0.0.1 is a private address on another machine. merud must
 			// refuse it from the config alone, without trying to connect.

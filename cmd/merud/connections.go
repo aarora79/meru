@@ -60,7 +60,7 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 		live[info.Kind+":"+info.Name] = info
 	}
 
-	conns := []rpc.Connection{builtinConnection(cfg)}
+	conns := []rpc.Connection{builtinConnection(cfg, s.conns.web.Status())}
 	for _, srv := range cfg.MCP.Servers {
 		c := rpc.Connection{Name: srv.Name, Kind: dispatch.KindMCP, Transport: "stdio", Remote: srv.Remote}
 		if srv.URL != "" {
@@ -120,10 +120,12 @@ func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connec
 
 // builtinConnection lists merud's own tools, every one of the eleven, with
 // its policy from [builtin] tools and confirm. configure always asks.
-// Note says why web_search does nothing yet when [web] searxng_url is
-// empty.
-func builtinConnection(cfg config.Config) rpc.Connection {
-	c := rpc.Connection{Name: "meru", Kind: dispatch.KindBuiltin, State: rpc.MCPConnected}
+// web is the SearXNG connector's status, which the Web search card shows
+// in place of a flat "connected". Note says why web_search does nothing
+// yet when [web] searxng_url is empty.
+func builtinConnection(cfg config.Config, web connectors.Status) rpc.Connection {
+	c := rpc.Connection{Name: "meru", Kind: dispatch.KindBuiltin, State: rpc.MCPConnected,
+		Web: web.State, WebSentence: web.Sentence}
 	for _, name := range config.BuiltinTools() {
 		p := policyOf(name, cfg.Builtin.Tools, cfg.Builtin.Confirm, nil)
 		if name == builtin.Configure && p != rpc.PolicyOff {

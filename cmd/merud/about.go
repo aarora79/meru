@@ -1,6 +1,7 @@
 // This file gathers the facts the about_meru tool reports: the profile and
 // models, what Ollama says about the main model, the computer, the search
-// index, the tool sources, the skills and the memory counts. The tool
+// index, the tool sources, web search's state, the skills and the memory
+// counts. The tool
 // itself, and the text it writes, live in internal/builtin/about.go.
 
 package main
@@ -47,7 +48,10 @@ type aboutService struct {
 	mem     *memory.Store
 	machine string // the line that describes the computer
 	home    string // the home folder, so paths show as ~/...
-	log     *slog.Logger
+	// web says whether web search works now, with the SearXNG
+	// connector's sentence; nil leaves the line out.
+	web func() (bool, string)
+	log *slog.Logger
 }
 
 // facts gathers the facts about_meru reports. It never fails: a fact it
@@ -106,6 +110,10 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 				a.Commands = append(a.Commands, t.Name)
 			}
 		}
+	}
+
+	if s.web != nil {
+		_, a.Web = s.web()
 	}
 
 	a.Skills, a.Disabled = s.skills.names(ctx)

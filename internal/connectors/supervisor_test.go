@@ -322,6 +322,10 @@ func readyConnector(t *testing.T) (*Supervisor, *fakeConnector, *fakeClock) {
 	s, clock := testSupervisor(t, f)
 	s.Configure(vaultTable(t), nil, false)
 	waitPhase(t, s, phaseReady)
+	// The supervisor has closed the check's session, which for a real
+	// program waits for it to exit. The fake's server notices the closed
+	// pipe in its own goroutine a moment later, so wait for its count.
+	waitFor(t, "the check's program to stop", func() bool { return f.running.Load() == 0 })
 	return s, f, clock
 }
 

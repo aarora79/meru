@@ -104,6 +104,13 @@ func TestConnHeadingForConnectors(t *testing.T) {
 	if got := connHeading(hand); !strings.HasSuffix(got, "· connected · 0 of 0 tools on · set up by hand") {
 		t.Errorf("connHeading = %q", got)
 	}
+	// The built-in tools' heading carries web search's state.
+	own := rpc.Connection{Name: "meru", Kind: "builtin", State: rpc.MCPConnected,
+		Web: rpc.ConnectorNeedsConfig, WebSentence: "Web search can't start: Docker isn't running.",
+		Tools: []rpc.ToolPolicy{{Name: "web_search", Policy: rpc.PolicyAllow}}}
+	if got, want := connHeading(own), "meru · built in · 1 of 1 tools on · web search needs config: Web search can't start: Docker isn't running."; got != want {
+		t.Errorf("connHeading =\n%s\nwant\n%s", got, want)
+	}
 }
 
 // connsFixture is merud's answer to OpConnections: merud's own tools, an

@@ -61,10 +61,12 @@ func startDaemon(t *testing.T, dir, cfgBody string, eng *fakeEngine) daemon {
 	}
 	t.Cleanup(stop)
 
-	waitUntil(t, "merud answers a ping", func() bool {
+	// merud answers a ping as soon as its socket opens, before it has
+	// checked Ollama; the status op waits until merud is ready.
+	waitUntil(t, "merud is ready", func() bool {
 		up := false
-		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpPing}, nil) {
-			up = err == nil && ev.Type == rpc.EventDone
+		for ev, err := range rpc.Do(ctx, sock, rpc.Request{Op: rpc.OpIndexStatus}, nil) {
+			up = up || (err == nil && ev.Type == rpc.EventStatus)
 		}
 		return up
 	})

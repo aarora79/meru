@@ -87,7 +87,7 @@ const movesToConnector = "moves to a pinned connector in delivery steps 4-5 of #
 // replaces it, and then its entry goes. Add nothing here for new code.
 var pinOffenders = []pinOffender{
 	// The Mac installer's SearXNG container and Google start script.
-	{"internal/installer/websearch.go", "docker.io/searxng/searxng:latest", movesToConnector},
+	{"internal/installer/websearch.go", "docker.io/searxng/searxng:latest", "the installer hands web search to merud's pinned connector in delivery step 6 of #87"},
 	{"internal/installer/google.go", "exec uvx workspace-mcp", movesToConnector},
 	// Ollama names a model with no tag "<name>:latest". That is a model
 	// tag, not a program version, and Ollama itself is the user's to
@@ -97,10 +97,6 @@ var pinOffenders = []pinOffender{
 	// obsidian.
 	{"internal/catalog/catalog.go", "uvx workspace-mcp", movesToConnector},
 	{"internal/catalog/catalog.go", "uvx downloads the server", movesToConnector},
-	// meru setup's SearXNG recipe, and the docs that repeat it.
-	{"cmd/meru/setup.go", "raw.githubusercontent.com/searxng/searxng/master/", movesToConnector},
-	{"docs/running.md", "raw.githubusercontent.com/searxng/searxng/master/", movesToConnector},
-	{"docs/faq/web-search.md", "raw.githubusercontent.com/searxng/searxng/master/", movesToConnector},
 	// The google start commands in the docs.
 	{"docs/running.md", "uvx workspace-mcp", movesToConnector},
 	{"docs/coding-notes/catalog.md", "uvx workspace-mcp", movesToConnector},

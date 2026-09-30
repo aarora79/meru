@@ -151,7 +151,9 @@ function drawConnections(body, cv) {
   const grid = el("div", "cards");
   for (const c of cv.connections) {
     if (c.kind === "builtin") {
-      const web = { ...c, tools: c.tools.filter((t) => WEB_TOOLS.includes(t.name)) };
+      // The Web search card shows the SearXNG connector's state and
+      // sentence; the built-in card stays "Connected".
+      const web = { ...c, tools: c.tools.filter((t) => WEB_TOOLS.includes(t.name)), connector: c.web, sentence: c.web_sentence };
       const own = { ...c, tools: c.tools.filter((t) => !WEB_TOOLS.includes(t.name)), note: "" };
       grid.append(connectionCard(body, web, "Web search", "web"), connectionCard(body, own, "Built into Meru", "meru"));
       continue;
@@ -207,14 +209,14 @@ function connectionCard(body, c, title, key) {
   card.append(head);
 
   const where = [c.kind === "mcp" ? "MCP server" : c.kind === "a2a" ? "Agent" : c.kind === "command" ? "Programs on this Mac" : "Inside merud"];
-  if (connectorManaged(c)) where[0] = "Connector";
+  if (connectorManaged(c)) where[0] = c.kind === "builtin" ? "Inside merud, through SearXNG" : "Connector";
   if (c.connector === "by_hand") where.push("set up by hand");
   if (c.transport) where.push(c.transport === "http" ? "connects to " + c.url : "merud starts it");
   if (c.remote) where.push("on another machine");
   card.append(el("p", "card-sub", where.join(" · ")));
   if (connectorManaged(c)) {
     card.append(el("p", c.connector === "ok" ? "card-note" : "card-error", c.sentence));
-    const fix = c.fix || [];
+    const fix = c.kind === "builtin" ? [] : c.fix || [];
     if (fix.length) {
       card.append(el("p", "card-note",
         "Set " + fix.join(" and ") + " under [connectors." + c.name + "] in config.toml, then restart merud."));

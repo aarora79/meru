@@ -23,8 +23,14 @@ type Status struct {
 	// Hint how to start it. Busy is true when merud took the connection
 	// but didn't answer in time: it runs, but a long answer or a Mac short
 	// of memory slowed it, so the page mustn't tell the user to start it.
-	Up      bool   `json:"up"`
-	Busy    bool   `json:"busy,omitempty"`
+	Up   bool `json:"up"`
+	Busy bool `json:"busy,omitempty"`
+	// Waiting is true when merud runs but can't answer yet, because
+	// Ollama is down, too old or short of a model; Problem then holds
+	// Ollama's sentence, such as "Ollama isn't running at
+	// http://127.0.0.1:11434.", and the page mustn't tell the user to
+	// start merud.
+	Waiting bool   `json:"waiting,omitempty"`
 	Problem string `json:"problem,omitempty"`
 	Hint    string `json:"hint,omitempty"`
 	// Socket is where the app looks for merud, and Machine names this
@@ -57,10 +63,11 @@ type Status struct {
 	Connections []string `json:"connections"`
 }
 
-// Status asks merud what the index holds and which MCP servers are
-// connected. It never fails: a merud that doesn't answer gives a Status
-// with Up false and the reason in Problem. A merud too old to know
-// mcp_status still reports its index.
+// Status asks merud what the index holds, which MCP servers are
+// connected, and how web search and Ollama stand. It never fails: a merud
+// that doesn't answer gives a Status with Up false and the reason in
+// Problem, and one that waits for Ollama also sets Waiting. A merud too
+// old to know mcp_status or the connectors op still reports its index.
 func (b *Bridge) Status(ctx context.Context) Status {
 	// Settings can change the answer model, so b.model sits under b.mu.
 	b.mu.Lock()
@@ -77,6 +84,12 @@ func (b *Bridge) Status(ctx context.Context) Status {
 			s.Busy = true
 			s.Problem = "merud didn't answer within a few seconds. It may be busy with a long answer, " +
 				"or the Mac may be short of memory. Meru checks again every 15 seconds."
+			return s
+		}
+		// merud may run but wait for Ollama: then it answers the
+		// connectors op, and Ollama's row says why it can't answer yet.
+		if why, ok := b.waitingFor(ctx); ok {
+			s.Waiting, s.Problem = true, why
 			return s
 		}
 		s.Problem = fmt.Sprintf("merud isn't answering at %s.", b.socket)
@@ -100,7 +113,38 @@ func (b *Bridge) Status(ctx context.Context) Status {
 			}
 		}
 	}
+	// The connectors mcp_status doesn't list: web search, which the rail
+	// names when it is on, and Ollama, when it isn't ok. A merud from
+	// before the connectors op answers with an error, and adds nothing.
+	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpConnectors}, rpc.EventConnectors); err == nil {
+		for _, c := range ev.Connectors {
+			switch {
+			case c.Kind == "container" && c.State == rpc.ConnectorOK:
+				s.Connections = append(s.Connections, c.Name)
+			case c.Kind == "container" && c.State != rpc.ConnectorOff,
+				c.Kind == "dependency" && c.State != rpc.ConnectorOK:
+				s.Connections = append(s.Connections, c.Name+" ("+rpc.ConnectorWords(c.State)+")")
+			}
+		}
+	}
 	return s
+}
+
+// waitingFor asks merud for its connectors after a status request failed.
+// When merud answers and Ollama isn't ok, merud runs but waits for
+// Ollama: waitingFor returns Ollama's sentence and true. Otherwise it
+// returns false.
+func (b *Bridge) waitingFor(ctx context.Context) (string, bool) {
+	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpConnectors}, rpc.EventConnectors)
+	if err != nil {
+		return "", false
+	}
+	for _, c := range ev.Connectors {
+		if c.Kind == "dependency" && c.State != rpc.ConnectorOK {
+			return c.Sentence, true
+		}
+	}
+	return "", false
 }
 
 // machineName names the computer merud runs on, as the page says it:

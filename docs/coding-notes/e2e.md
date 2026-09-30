@@ -2,7 +2,7 @@
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
 `daemon_test.go`, `index_test.go`, `integration_test.go`, `index_integration_test.go`,
-`mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `race_test.go`, `norace_test.go`),
+`mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `ollama_test.go`, `race_test.go`, `norace_test.go`),
 `cmd/fakemcp/`
 **Milestone:** v0.1; the notes tests in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client),
@@ -160,7 +160,9 @@ makes a test slower, not flaky.
 | `TestCancelMidAnswer` | `failure_test.go` | SIGINT to meru mid-answer: exit 130, the fake sees the call cancelled, no answer line, the next question works |
 | `TestOllamaErrors` | `failure_test.go` | HTTP 500 on the router call, 503 on the answer, a stream that breaks part way: meru exits 1 with the reason, merud stays up |
 | `TestOllamaDown` | `failure_test.go` | The fake stops: meru exits 1 naming `/api/chat` and "connection refused"; merud still answers a ping |
-| `TestStartupRefusals` | `daemon_test.go` | Ollama 0.12.0, a non-loopback `base_url`, a non-loopback `otlp_endpoint`: merud exits 1, names the problem, leaves no socket |
+| `TestStartupRefusals` | `daemon_test.go` | A non-loopback `base_url`, a non-loopback `otlp_endpoint`: merud exits 1, names the problem, leaves no socket |
+| `TestOllamaStartsLate` | `ollama_test.go` | merud starts before the fake Ollama, on a port nothing listens on: it keeps its socket, `meru mcp status` says "Ollama isn't running at …" and `failed`, and a question exits 1 with "Ollama isn't running, so Meru can't answer yet."; once the fake starts on that port, merud warms the models and answers |
+| `TestOllamaTooOld` | `ollama_test.go` | Ollama 0.12.0: merud stays up, `meru mcp status` says it is too old and needs 0.12.11, and a question gets "Meru can't answer yet: …" |
 | `TestSingleInstance` | `daemon_test.go` | A second merud on a held socket exits 1; the first keeps answering |
 | `TestShutdown` | `daemon_test.go` | SIGTERM and SIGINT: merud exits 0, removes its socket, logs the stop |
 | `TestFilePermissions` | `daemon_test.go` | Session directories 0700; transcript, socket and log 0600 |

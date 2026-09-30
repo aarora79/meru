@@ -57,6 +57,10 @@ type Tools struct {
 	onRemember func(context.Context)       // runs after remember saves; nil for none
 	now        func() time.Time            // the clock datetime reads; time.Now outside tests
 	about      func(context.Context) About // gathers about_meru's facts; nil leaves about_meru out
+	// webReady says whether web search works now, and in one line why
+	// not; nil means it works whenever [web] searxng_url is set. See
+	// UseWebCheck.
+	webReady func() (bool, string)
 
 	// sessionsDir is the folder of past chats the file tools also read,
 	// set by ReadSessions; "" when they don't read it. See chats.go.
@@ -234,8 +238,34 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		}
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
+	search, _ := t.webSearchOn()
 	// DeleteFunc drops, in place, each spec the function returns true for.
-	return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool { return !t.enabled(s.Name) })
+	return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool {
+		return !t.enabled(s.Name) || (s.Name == WebSearch && !search)
+	})
+}
+
+// UseWebCheck makes web_search depend on ready, which reports whether web
+// search works now and says why not in one line. merud passes its SearXNG
+// connector's state (ARCHITECTURE.md, "SearXNG and Ollama"), so the model
+// is offered web_search only while SearXNG answers. merud calls it once,
+// before the first turn. Without it, web_search depends on [web]
+// searxng_url alone.
+func (t *Tools) UseWebCheck(ready func() (bool, string)) {
+	t.webReady = ready
+}
+
+// webSearchOn reports whether web_search may run now, and why not: [web]
+// searxng_url must be set, and the check UseWebCheck gave must pass.
+// [builtin] tools is checked apart, as for every built-in.
+func (t *Tools) webSearchOn() (bool, string) {
+	if t.web.searxngURL == "" {
+		return false, "[web] searxng_url is empty"
+	}
+	if t.webReady != nil {
+		return t.webReady()
+	}
+	return true, ""
 }
 
 // Confirm says configure always asks, with no session approval. Any other
@@ -325,7 +355,7 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			})
 		}
 	}
-	if t.web.searxngURL != "" {
+	if on, _ := t.webSearchOn(); on {
 		tools = append(tools, rpc.ToolInfo{
 			Name:        WebSearch,
 			Description: "Searches the web through SearXNG at " + t.web.searxngURL + ".",
@@ -379,7 +409,13 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.grep(ctx, args)
 	case name == SearchFiles && t.hasFiles() && t.search != nil:
 		text, sources, err = t.searchFiles(ctx, args)
-	case name == WebSearch && t.web.searxngURL != "":
+	case name == WebSearch:
+		// The check can change between the turn's tool list and this
+		// call, so a call that comes while web search is down says why.
+		on, why := t.webSearchOn()
+		if !on {
+			return dispatch.Result{Text: "web_search is off now: " + why, IsError: true}, nil
+		}
 		text, err = t.webSearch(ctx, args)
 	case name == WebFetch:
 		text, err = t.webFetch(ctx, args)

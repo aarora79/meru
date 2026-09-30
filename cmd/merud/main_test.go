@@ -46,7 +46,8 @@ type fakeEngine struct {
 	slowModel string
 	loaded    chan struct{}
 
-	mu          sync.Mutex // guards the fields below
+	mu          sync.Mutex // guards the fields below, and version and infoErr once merud runs
+	infoCalls   int        // Info calls, one per check of Ollama
 	models      []string
 	embeds      int
 	system      string // the system prompt of the last Stream call
@@ -136,7 +137,18 @@ func (f *fakeEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector
 }
 
 func (f *fakeEngine) Info(ctx context.Context) (engine.ModelInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.infoCalls++
 	return engine.ModelInfo{Runtime: "ollama", RuntimeVersion: f.version}, f.infoErr
+}
+
+// setOllama changes what Info reports, as when Ollama starts or is
+// upgraded while merud waits.
+func (f *fakeEngine) setOllama(version string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.version, f.infoErr = version, err
 }
 
 func TestVersionAtLeast(t *testing.T) {
@@ -172,28 +184,27 @@ func TestVersionAtLeast(t *testing.T) {
 	}
 }
 
-func TestCheckRuntime(t *testing.T) {
+// TestCheckOllama checks the sentence each Ollama gives: none for one
+// new enough, and one each for a version too old, one Meru can't read,
+// and no answer.
+func TestCheckOllama(t *testing.T) {
+	const url = "http://127.0.0.1:11434"
 	tests := []struct {
-		name string
-		eng  *fakeEngine
-		want string // piece of the error; empty means success
+		name    string
+		eng     *fakeEngine
+		version string
+		problem string
 	}{
-		{"new enough", &fakeEngine{version: "0.13.0"}, ""},
-		{"too old", &fakeEngine{version: "0.11.0"}, "found Ollama 0.11.0, which is too old; Meru needs 0.12.11"},
-		{"down", &fakeEngine{infoErr: errors.New("connection refused")}, "is it running?"},
-		{"odd version", &fakeEngine{version: "dev"}, "read Ollama version"},
+		{"new enough", &fakeEngine{version: "0.13.0"}, "0.13.0", ""},
+		{"too old", &fakeEngine{version: "0.11.0"}, "0.11.0", "Ollama 0.11.0 is too old; Meru needs 0.12.11 or later."},
+		{"down", &fakeEngine{infoErr: errors.New("connection refused")}, "", "Ollama isn't running at " + url + "."},
+		{"odd version", &fakeEngine{version: "dev"}, "dev", `Ollama answered with a version Meru can't read, "dev"; Meru needs 0.12.11 or later.`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := checkRuntime(context.Background(), tt.eng)
-			if tt.want == "" {
-				if err != nil {
-					t.Errorf("checkRuntime = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("checkRuntime = %v, want an error containing %q", err, tt.want)
+			version, problem := checkOllama(context.Background(), tt.eng, url)
+			if version != tt.version || problem != tt.problem {
+				t.Errorf("checkOllama = %q, %q; want %q, %q", version, problem, tt.version, tt.problem)
 			}
 		})
 	}
@@ -541,7 +552,6 @@ func TestRunStartupErrors(t *testing.T) {
 	good := filepath.Join(dir, "config.toml")
 	sock := filepath.Join(dir, "e.sock")
 	okEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
-	oldEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.5.0"}, nil }
 
 	tests := []struct {
 		name  string
@@ -551,7 +561,6 @@ func TestRunStartupErrors(t *testing.T) {
 	}{
 		{"bad config", []string{"-config", badCfg, "-socket", sock}, okEngine, "profile"},
 		{"engine fails", []string{"-config", good, "-socket", sock}, failEngine, "engine: boom"},
-		{"old ollama", []string{"-config", good, "-socket", sock}, oldEngine, "too old"},
 		{"stray argument", []string{"-config", good, "extra"}, okEngine, "unexpected arguments"},
 		{"unknown flag", []string{"-nope"}, okEngine, "not defined"},
 	}

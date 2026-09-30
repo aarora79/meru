@@ -246,6 +246,10 @@ func connHeading(c rpc.Connection) string {
 		if hint := rpc.FixHint(c.Name, c.Fix); hint != "" {
 			s += " " + hint
 		}
+	case c.Kind == "builtin" && c.WebSentence != "":
+		// The built-in tools hold web search, whose state is the SearXNG
+		// connector's.
+		s += " · web search " + rpc.ConnectorWords(c.Web) + ": " + oneLine(c.WebSentence)
 	case c.Kind == "mcp" || c.Kind == "a2a":
 		s = fmt.Sprintf("%s · %s · %s · %d of %d tools on", name, what, c.State, on, total)
 		if c.State != rpc.MCPConnected && c.Err != "" {

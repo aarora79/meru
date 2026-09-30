@@ -19,13 +19,12 @@ search.
 - **Ollama 0.12.11 or later**, to run the models. Download it from
   <https://ollama.com/download>. It runs in the background and listens on
   `http://127.0.0.1:11434`. Check with `curl http://127.0.0.1:11434/api/version`.
-  `merud` refuses to start with an older Ollama, because the router needs log
-  probabilities, which Ollama added in 0.12.11.
+  `merud` answers no question with an older Ollama, because the router needs
+  log probabilities, which Ollama added in 0.12.11; it stays up and says so.
 - **Docker**, only for web search. Meru searches the web through SearXNG, which
   runs in a container (see [Web search](#web-search)). Meru runs without Docker;
-  only the `web_search` tool stops working, and it tells the model why. On macOS,
-  Docker Desktop or Colima provides `docker compose`; check with
-  `docker compose version`.
+  the model just doesn't get `web_search`. On macOS, Docker Desktop, OrbStack or
+  colima provides `docker`; check with `docker info`.
 
 ## 2. Download the models
 
@@ -1338,9 +1337,9 @@ rounds. [ARCHITECTURE.md](../ARCHITECTURE.md#retrieval) has the numbers. Run
    already there, it leaves the file alone and tells you
    where to add folders, so your comments and settings stay as you wrote them.
 4. **Web search.** It checks that SearXNG answers JSON at `[web] searxng_url`. If
-   nothing answers, it prints the container commands from
-   [Web search](#web-search); if SearXNG answers a web page, it names the
-   `formats` setting. Press Enter to check again, or type `s` to skip.
+   nothing answers, it prints the `[connectors.searxng]` table that has `merud`
+   run SearXNG (see [Web search](#web-search)); if SearXNG answers a web page, it
+   names the `formats` setting. Press Enter to check again, or type `s` to skip.
 5. **Tools.** It offers each server in the catalog, one at a time (see below).
 6. **About you.** If `merud` is running, it offers `meru setup user` (see
    [Tell Meru about you](#tell-meru-about-you)).
@@ -1353,61 +1352,72 @@ Meru searches the web through SearXNG, a search engine you run yourself. It hold
 no index: it passes your query to Google, Bing, DuckDuckGo and others, drops the
 parts that identify you, and merges the results. No account, no API key.
 
-You run it once, in Docker, and Meru uses it from then on. On a Mac, the
-installer's Web search step does all of this for you (see
-[The Mac installer](#the-mac-installer)); it runs SearXNG as the container
-`meru-searxng`, with its settings in `~/.meru/searxng/settings.yml`. The steps
-below do it by hand, on a Mac or on Linux.
+SearXNG runs in Docker. `merud` can run it for you: add this to
+`~/.meru/config.toml` and restart `merud`.
 
-```sh
-mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
-curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml \
-     -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
-cp -i .env.example .env && printf 'SEARXNG_HOST=127.0.0.1\nSEARXNG_PORT=8888\n' >> .env
-docker compose up -d
+```toml
+[connectors.searxng]
+enabled = true
 ```
 
-The two lines added to `.env` matter. Upstream's compose file listens on port
-8080 on every network interface, which would let other machines on your network
-use your SearXNG. With them, it listens on `127.0.0.1:8888` only, where Meru looks.
+`merud` then checks `[web] searxng_url`, `http://127.0.0.1:8888` by default.
+When nothing answers there, it writes `~/.meru/searxng/settings.yml`, with JSON
+on and a random secret key, pulls the SearXNG image at the version pinned in
+this Meru release, and starts it as the container `meru-searxng`, on
+`127.0.0.1:8888` only. The first start downloads the image and takes a minute
+or so. The Mac installer's Web search step also starts a container called
+`meru-searxng` (see [The Mac installer](#the-mac-installer)).
 
-SearXNG answers on `http://127.0.0.1:8888` and returns web pages. Meru needs JSON,
-which is off by default: SearXNG answers a JSON request with `403 Forbidden`. The
-first start writes `~/srv/searxng/core-config/settings.yml`; add JSON to the end of
-it:
+`merud` checks SearXNG when it starts and once a minute after. The check is an
+empty search with `format=json`: SearXNG refuses it, in JSON, without asking any
+search engine, so nothing leaves your machine. When Meru's container stops
+answering, `merud` starts it again after 1, 2, 4 and 8 seconds, and gives up at
+the fifth failure in ten minutes. `merud` starts the container with
+`--restart no`, so Docker doesn't start it after a reboot; the next `merud`
+does. Stopping `merud` leaves the container running.
 
-```sh
-cat >> ~/srv/searxng/core-config/settings.yml <<'EOF'
+**A SearXNG you run yourself stays yours.** When a SearXNG already answers JSON
+at `searxng_url` and it isn't Meru's container, `merud` uses it and never
+starts, stops or pulls anything: Settings says "Web search uses the SearXNG
+already running at http://127.0.0.1:8888." That covers a SearXNG you started
+with Docker Compose and the installer's container. Meru's container carries the
+label `meru.connector=searxng`; a container named `meru-searxng` without it
+stays as it is.
 
-search:
-  formats:
-    - html
-    - json
-EOF
-```
+**Without the table,** as in a config from before this release, `merud` only
+checks `searxng_url` and reports what it finds; it starts nothing. With
+`enabled = false`, web search is off. Either way, the model gets `web_search`
+only while the check passes, and Settings, `/mcp` in `meru chat`,
+`meru mcp status` and `about_meru` show the state and a sentence:
 
-Then restart it and check that JSON comes back:
+| What you see | What to do |
+| --- | --- |
+| Web search is running in the container meru-searxng. | Nothing. |
+| Web search uses the SearXNG already running at … | Nothing; Meru leaves it alone. |
+| Web search needs Docker, which isn't installed. | Install Docker Desktop, OrbStack or colima. |
+| Web search can't start: Docker isn't running. | Open Docker; `merud` tries again within a minute. |
+| Web search can't use SearXNG at …: nothing answers there. | Turn on the connector as above, or start your own SearXNG. |
+| Web search can't use SearXNG at …: it answers web pages, not JSON … | Add `json` under `search: formats:` in that SearXNG's `settings.yml` and restart it. |
+| Web search keeps stopping: … | Read `docker logs meru-searxng`, then restart `merud`. |
 
-```sh
-docker compose restart
-curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
-```
-
-A line starting `{"query":` means it works. A line of HTML means the `formats`
-change did not take; check the file path and restart again.
-
-Meru's default config already points at `http://127.0.0.1:8888`, so there is
-nothing else to do. `merud` logs `web search ready` when it starts, `meru tools`
-lists `web_search` under `meru`, and a question such as
-`meru "search the web for the latest Go release"` uses it. The model can search
+`meru tools` lists `web_search` under `meru` once the check passes, and a
+question such as `meru "search the web for the latest Go release"` uses it. The model can search
 on any question, not only one that asks for the web: it has `web_search` and
 `web_fetch` on every route, and its instructions tell it to search when it
 isn't sure of a fact, such as what a song means. The desktop app's My files,
 Mail and calendar and Just talk scopes leave the web tools out. To turn web search off,
-set `searxng_url = ""` under `[web]` in `~/.meru/config.toml`.
+set `enabled = false` under `[connectors.searxng]`, or `searxng_url = ""` under
+`[web]`.
 
-To stop it: `cd ~/srv/searxng && docker compose down`. To update it:
-`docker compose pull && docker compose up -d`.
+To run your own SearXNG instead, start it on `127.0.0.1:8888` with `json`
+listed under `search: formats:` in its `settings.yml`, and leave the connector
+off. Check it with:
+
+```sh
+curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
+```
+
+A line starting `{"query":` means it works.
 
 **What leaves your machine.** Your search words go to the engines SearXNG asks;
 that is what web search is. They go without an account and without cookies,
@@ -2267,15 +2277,15 @@ later.
 | What you see | What it means and what to do |
 | --- | --- |
 | `connect to merud at …: … (is merud running?)` | `merud` isn't running, or it uses a different socket. Start `merud`, or pass `-socket` to `meru`. |
-| `merud` says Ollama is too old | Update Ollama to 0.12.11 or later. |
-| `merud` can't reach Ollama | Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. |
+| `Ollama isn't running, so Meru can't answer yet.` | `merud` runs but can't reach Ollama. Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. `merud` checks again every 30 seconds, and at once when you ask something, then loads the models. `meru mcp status` and the desktop app's status block show the same sentence. |
+| `Meru can't answer yet: Ollama … is too old` | Update Ollama to 0.12.11 or later. `merud` notices within 30 seconds. |
 | `model … not found` in the answer or the log | Pull the model named in the error with `ollama pull`. |
 | `secrets … so other users can read it; run chmod 600 …` | Run the `chmod 600` command in the message. `meru mcp add` also fixes the mode when it saves a key. |
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |
 | A file never shows up in answers | Check that its folder is in `[index] folders`, then run `merud -v` and search `~/.meru/merud.log` for the file's name; the skip line gives the reason. |
 | `merud` warns that the OS watch limit was reached | Linux only: raise `fs.inotify.max_user_watches` (see step 7). Changes still get in at the next startup. |
-| `web_search` answers that JSON is off, or `curl` on SearXNG prints HTML | SearXNG answers web pages only. Add `json` under `search: formats:` in `~/srv/searxng/core-config/settings.yml`, then `docker compose restart` (see [Web search](#web-search)). |
-| `web_search` says `SearXNG isn't answering on http://127.0.0.1:8888` | The container isn't running. Run `cd ~/srv/searxng && docker compose up -d`, and check that Docker itself runs. `docker compose ps` should show `127.0.0.1:8888->8888/tcp`. |
+| Settings or `meru mcp status` says web search answers web pages, not JSON | SearXNG has JSON off. Add `json` under `search: formats:` in its `settings.yml` (`~/.meru/searxng/settings.yml` for Meru's container), then restart it (see [Web search](#web-search)). |
+| The model has no `web_search` | Web search isn't ok. `meru mcp status` gives the reason: Docker missing or stopped, nothing answering at `searxng_url`, or the connector off (see [Web search](#web-search)). |
 | `merud` refuses a config value | The message names the key. Fix it in `~/.meru/config.toml`; `meru config template` shows every key, its default and the allowed values. |
 | The first answer is slow | Ollama was loading the answer model; `merud` loads it in the background at startup, and a question asked before `answer model warm` shows in `~/.meru/merud.log` waits for it. Later answers are fast while `merud` runs, because it keeps the models loaded. |
 | `couldn't load the answer model` in the log | Ollama couldn't load `[models] main`. Pull it with the `ollama pull` command on the same line, or pick another answer model. |

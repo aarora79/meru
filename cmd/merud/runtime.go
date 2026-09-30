@@ -1,6 +1,7 @@
-// This file holds merud's startup checks on the model runtime: the Ollama
-// version check and the warm-up calls for the fast and embedding models.
-// The answer model warms in the background; see agent.StartWarm.
+// This file holds merud's checks on the model runtime: the version
+// comparison behind the Ollama check (ollama.go) and the warm-up calls for
+// the fast and embedding models. The answer model warms in the
+// background; see agent.StartWarm.
 
 package main
 
@@ -19,24 +20,6 @@ import (
 // minOllama is the oldest Ollama that reports log probabilities, which the
 // router needs. See ARCHITECTURE.md, "Model tiers".
 const minOllama = "0.12.11"
-
-// checkRuntime asks the engine what it runs on and returns the runtime's
-// version. It fails when the runtime can't be reached or is older than
-// minOllama, and the message names both versions.
-func checkRuntime(ctx context.Context, eng engine.Engine) (string, error) {
-	info, err := eng.Info(ctx)
-	if err != nil {
-		return "", fmt.Errorf("reach Ollama: %w (is it running?)", err)
-	}
-	ok, err := versionAtLeast(info.RuntimeVersion, minOllama)
-	if err != nil {
-		return "", fmt.Errorf("read Ollama version: %w", err)
-	}
-	if !ok {
-		return "", fmt.Errorf("found Ollama %s, which is too old; Meru needs %s or later for log probabilities", info.RuntimeVersion, minOllama)
-	}
-	return info.RuntimeVersion, nil
-}
 
 // versionAtLeast reports whether version have is at least want. Both are
 // dotted numbers such as "0.12.11", with an optional leading "v". Anything
@@ -82,7 +65,7 @@ func parseVersion(s string) ([3]int, error) {
 }
 
 // warm loads the fast and embedding models into Ollama with a tiny request
-// each, before merud takes questions: the router needs the fast model for
+// each, once Ollama answers and before merud takes questions: the router needs the fast model for
 // every question, and the store needs the embedding model to open. Both
 // are small, so this takes a second or two. The engine sends keep_alive
 // from config with every call, so the models then stay loaded.

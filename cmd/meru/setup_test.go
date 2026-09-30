@@ -299,10 +299,14 @@ func TestSetupWebSearch(t *testing.T) {
 		{"answers", "http://127.0.0.1:8888", []error{nil}, "", []string{"SearXNG answers JSON at http://127.0.0.1:8888"}},
 		{
 			"down, then html, then json", "http://127.0.0.1:8888", []error{down, html, nil}, "\n\n",
-			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "docker compose up -d",
-				"SEARXNG_PORT=8888", "JSON is off", "settings.yml", "SearXNG answers JSON"},
+			[]string{"SearXNG isn't answering on http://127.0.0.1:8888", "[connectors.searxng]\n  enabled = true",
+				"restart merud", "JSON is off", "settings.yml", "SearXNG answers JSON"},
 		},
-		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"docker compose up -d", "Skipped."}},
+		{"skip", "http://127.0.0.1:8888", []error{down}, "s\n", []string{"[connectors.searxng]", "Skipped."}},
+		{
+			"down at another address", "http://127.0.0.1:9999", []error{fmt.Errorf("%w on http://127.0.0.1:9999", catalog.ErrSearXNGDown)}, "s\n",
+			[]string{"SearXNG isn't answering on http://127.0.0.1:9999. Start the SearXNG you run there", "Skipped."},
+		},
 		{"off", "", nil, "", []string{"Web search is off"}},
 	}
 	for _, tt := range tests {

@@ -109,6 +109,12 @@ type Connection struct {
 	Connector string   `json:"connector,omitempty"`
 	Sentence  string   `json:"sentence,omitempty"`
 	Fix       []string `json:"fix,omitempty"`
+	// Web and WebSentence are set on the built-in tools' connection only:
+	// the SearXNG connector's state, one of the Connector states, and its
+	// sentence, such as "Web search can't start: Docker isn't running."
+	// The desktop app's Web search card and /mcp show them.
+	Web         string `json:"web,omitempty"`
+	WebSentence string `json:"web_sentence,omitempty"`
 	// Tools lists each tool the source offers or config names, with its
 	// policy, allowed tools first. Offered counts the tools the source
 	// offers, or is -1 when merud doesn't know, as for a server that never

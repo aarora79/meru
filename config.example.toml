@@ -174,9 +174,10 @@ tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_
 confirm = ["write_file"]
 
 [web]
-# Where SearXNG, the search engine you run on this machine, answers.
-# Loopback only. Empty turns web_search off. See "Web search" in
-# docs/running.md to start it.
+# Where SearXNG, the search engine behind web_search, answers on this
+# machine. Loopback only. Empty turns web_search off. merud checks it every
+# minute and offers web_search only while it answers; [connectors.searxng]
+# below has merud run it. See "Web search" in docs/running.md.
 searxng_url = "http://127.0.0.1:8888"
 # How many results web_search returns when the model doesn't say, 1 to 20.
 max_results = 8
@@ -520,14 +521,23 @@ mouse_copy = true
 # confirm = []
 # timeout = "60s"
 
-# Connectors: programs Meru will install, start and check for you, such as
-# the Obsidian server. Each has a manifest built into merud that pins its
-# version and names its fields. One [connectors.<id>] table per connector
-# holds enabled (true or false) and the values of its fields, each a string.
-# A secret field never goes here: its value lives in secrets.toml as
-# secret:connector_<id>_<field>. Nothing reads these tables yet; the
-# supervisor that does is planned (ARCHITECTURE.md, "Connectors and the
-# supervisor"). Until then, [[mcp.servers]] above is how to add a server.
+# Connectors: programs Meru installs, starts and checks for you, such as
+# the Obsidian server and SearXNG. Each has a manifest built into merud that
+# pins its version and names its fields. One [connectors.<id>] table per
+# connector holds enabled (true or false) and the values of its fields, each
+# a string. A secret field never goes here: its value lives in secrets.toml
+# as secret:connector_<id>_<field>. An [[mcp.servers]] entry with the same
+# name wins over a connector (ARCHITECTURE.md, "Connectors and the
+# supervisor").
+#
+# SearXNG: with enabled = true, merud pulls the pinned image and runs the
+# container meru-searxng on 127.0.0.1:8888, unless a SearXNG already answers
+# at [web] searxng_url, which it then uses and leaves alone. Needs Docker.
+# With no table, merud only checks searxng_url; enabled = false turns web
+# search off.
+#
+# [connectors.searxng]
+# enabled = true
 #
 # [connectors.obsidian]
 # enabled    = true

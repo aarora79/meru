@@ -13,14 +13,12 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/aarora79/meru/internal/a2a"
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/builtin"
-	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/commands"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
@@ -129,6 +127,9 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	s.bt = bt
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)
+	// web_search goes to the model only while the SearXNG connector is
+	// ok, so a model never calls a search engine that isn't there.
+	bt.UseWebCheck(conns.webOK)
 	// search_files runs the same hybrid search a turn runs before the
 	// answer, through the same store and embedding model.
 	bt.UseSearch(search)
@@ -163,30 +164,6 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	log.Info("tools ready", "mcp_servers", len(cfg.MCP.Servers), "a2a_agents", len(agents),
 		"commands", cmds.Len(), "tools", len(s.dispatcher.Tools()))
 	return s, nil
-}
-
-// logWebSearch writes one info line saying whether web search works: off,
-// SearXNG answering JSON at [web] searxng_url, or why not. It never stops
-// merud, because web search is optional and SearXNG may start later;
-// web_search reports the same problem to the model when it calls the tool.
-// The check takes at most 3 seconds, and doesn't run when [builtin] tools
-// leaves web_search out.
-func logWebSearch(ctx context.Context, cfg config.Config, log *slog.Logger) {
-	web := cfg.Web
-	fetch := slices.Contains(cfg.Builtin.Tools, builtin.WebFetch)
-	switch {
-	case !slices.Contains(cfg.Builtin.Tools, builtin.WebSearch):
-		log.Info("web search off", "reason", "[builtin] tools leaves out web_search", "fetch", fetch)
-		return
-	case web.SearXNGURL == "":
-		log.Info("web search off", "reason", "[web] searxng_url is empty", "fetch", fetch)
-		return
-	}
-	if err := catalog.CheckSearXNG(ctx, web.SearXNGURL); err != nil {
-		log.Info("web search not ready", "searxng", web.SearXNGURL, "err", err)
-		return
-	}
-	log.Info("web search ready", "searxng", web.SearXNGURL, "fetch", fetch)
 }
 
 // newPool resolves the secrets in each [[mcp.servers]] entry, hands the
@@ -335,8 +312,8 @@ func (s *toolService) reloadA2A(ctx context.Context) error {
 }
 
 // reloadBuiltin reads config.toml again and hands the built-in tools their
-// new [builtin] lists, so a policy the desktop app changed works on the
-// next call. The router's list follows, since it names the web tools. It
+// new [builtin] lists, and the SearXNG connector its config, so a policy
+// the desktop app changed works on the next call. The router's list follows, since it names the web tools. It
 // fails when config doesn't load, and the old lists stay.
 func (s *toolService) reloadBuiltin() error {
 	cfg, err := config.Load(s.configPath)
@@ -344,6 +321,9 @@ func (s *toolService) reloadBuiltin() error {
 		return err
 	}
 	s.bt.SetLists(cfg.Builtin)
+	// Whether [builtin] tools lists web_search is part of the SearXNG
+	// connector's config, so it hears the change too.
+	s.conns.configureWeb(cfg)
 	s.mu.Lock()
 	s.started.Builtin = cfg.Builtin
 	s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
