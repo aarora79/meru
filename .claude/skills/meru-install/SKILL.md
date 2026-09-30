@@ -234,9 +234,11 @@ Terminal, with the answer model from step 1, for example
 `meru setup` and the answer `lite` do. It checks Ollama, pulls the models (they
 are already there, so it finishes fast), asks which folders to index, and
 writes `~/.meru/config.toml` with that model as `[models] main`, so Meru answers
-with it from the first question. Its web-search step wants SearXNG in Docker; type `s` to
-skip it if they don't run Docker. It offers the tool servers one at a time;
-they can skip all of them now.
+with it from the first question. Its web-search step offers to have `merud`
+run SearXNG in Docker once `merud` runs; type `s` to skip it if they don't run
+Docker, and turn it on later with `meru mcp set searxng enabled=true`. Its tools
+step asks about Obsidian and Google, which `merud` installs and runs; they can
+skip both now.
 
 **Start `merud` at login** with the launchd file from the repository's
 `deploy/launchd/`, pointed at `~/.local/bin`. reference.md, "Start merud at
@@ -267,48 +269,44 @@ with no restart. Without the app, set `main = "<model>"` under `[models]` in
 Ask whether they want Meru to read their Google mail, calendar and Drive. If
 not, skip to step 7. If yes, say it takes about 20 minutes in a browser, and
 follow [docs/google-setup.md](../../../docs/google-setup.md) with them, one
-step at a time. Read that file now; it has every screen.
-
-First check whether their Meru runs Google as a connector: `meru mcp` prints
-its usage with `meru mcp adopt` when it does. If so, do items 1 and 2 below,
-then google-setup.md steps 6 and 7 instead of items 3 to 7: add
-`[connectors.google]` with their address and client ID to
-`~/.meru/config.toml`, put the secret in `~/.meru/secrets.toml` as
-`connector_google_client_secret` (mode 600; the same care as below: never
-print it), restart `merud`, and have them open the link after `Sign in:` in
-`meru mcp status`. `merud` installs and runs the server itself, so they need
-no uv, start script or launchd job. If they already run the server by hand,
-`meru mcp adopt google` moves it over; it asks before it changes anything.
-With an older Meru, follow the items below. In short:
+step at a time. Read that file now; it has every screen. `merud` installs and
+runs the Google server itself, as a connector, so they need no uv, start
+script or launchd job. In short:
 
 1. **Google Cloud.** They make a project named `meru`, turn on the Gmail,
    Calendar, Drive and Docs APIs, set up the consent screen (External), add
    their own address as a test user, and create an OAuth client of type
    **Desktop app**. Give them the links from google-setup.md steps 1 to 5 and
    wait while they click through.
-2. **The client ID and secret.** Ask for the client ID (it ends in
+2. **Turn the connector on.** Ask for the client ID (it ends in
    `.apps.googleusercontent.com`; it isn't secret) and their Google address.
-   For the secret, which starts with `GOCSPX-`, offer the Terminal route in
-   reference.md, "Google start script", which keeps it out of this chat. If the
-   person pastes the secret here anyway, write it into the file with your file
-   tool, never with a command that prints it, and never repeat it.
-3. **uv.** Ask, then `brew install uv`. Check with `uvx --version`.
-4. **The start script.** Write `~/.config/workspace-mcp/start.sh` with mode
-   700 from reference.md, "Google start script". Check its mode with
-   `ls -l ~/.config/workspace-mcp/start.sh`, and never `cat` it.
-5. **Start it at login.** Ask, then install the launchd job from
-   google-setup.md step F, as reference.md, "Start the Google server at
-   login", writes it. Check with
-   `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/mcp`: any
-   number but `000` means the server answers.
-6. **Connect Meru.** Run `meru mcp add google`. It ends with a line such as
-   `google · connected · offers 45, 10 allowed`.
-7. **First sign-in.** Ask the person to run
-   `meru "what was the last email I sent?"` in their Terminal. The server opens
-   a Google sign-in page. Google warns "Google hasn't verified this app": that
+   The secret, which starts with `GOCSPX-`, must stay out of this chat: ask
+   the person to run this in their own Terminal, with their values in place of
+   the angle brackets. `meru` asks for the secret without showing it, and
+   `merud` saves it in `~/.meru/secrets.toml`, which only they can read:
+
+   ```sh
+   meru mcp set google enabled=true email=<their address> client_id=<their client ID> client_secret
+   ```
+
+   Meru.app's Settings, Connections, has the same form on Google's card. If the
+   person pastes the secret here anyway, never repeat it, and ask them to use
+   the command or the form instead of passing it on yourself.
+3. **Wait for the install.** The command prints each step while `merud`
+   downloads its own uv, Python and the server, which takes a minute or two
+   the first time, and ends with "Google needs you to sign in." and a link
+   after `Sign in here:`.
+4. **First sign-in.** They open that link, or click **Sign in to Google** on
+   the card in Settings. Google warns "Google hasn't verified this app": that
    is their own project, so they click **Advanced**, then **Go to Meru
-   (unsafe)**, tick every box and click **Continue**. They ask the question
-   again to see an answer.
+   (unsafe)**, tick every box and click **Continue**. `meru mcp status` then
+   shows `google` as `ok`.
+
+If they already run the Google server by hand, from a start script or the
+launchd job `com.meru.workspace-mcp`, `meru mcp` says "set up by hand", and
+`meru mcp adopt google` moves it over; it shows every change and asks before
+it makes any. If something stops working later, `meru mcp fix google` asks for
+what is missing or checks the server again.
 
 Tell them that while the project is in Testing mode, Google ends the sign-in
 every 7 days; google-setup.md, "Signing in again every 7 days", shows how to
@@ -355,13 +353,16 @@ Ask before each line, and show what each removes. reference.md, "Uninstall",
 lists the full set of commands:
 
 1. Stop and remove the launchd jobs: `merud`, and the Google server and the
-   Ollama context job if you installed them.
+   Ollama context job if an older install made them. `merud`'s own
+   connectors stop with it; their programs live in `~/.meru/runtime`, and
+   Meru's SearXNG container is `meru-searxng` (`docker rm -f meru-searxng`,
+   with a yes).
 2. Remove `~/.local/bin/meru`, `~/.local/bin/merud` and `/Applications/Meru.app`.
 3. Offer to remove the models with `ollama rm`, and Ollama itself.
 4. **`~/.meru` last, and only after an explicit yes** to a question that says
    it deletes every chat, every memory, the settings and the search index, and
    can't be undone. Offer to copy it elsewhere first. Never remove it as part
    of an update.
-5. The Google files: `~/.config/workspace-mcp/` holds the client secret, and
-   `~/.google_workspace_mcp/` holds the Google sign-in. Remove them only with a
+5. The Google files: `~/.google_workspace_mcp/` holds the Google sign-in, and
+   `~/.config/workspace-mcp/`, from an older install, holds a client secret. Remove them only with a
    yes. The Google Cloud project stays until they delete it in the console.

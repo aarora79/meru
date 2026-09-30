@@ -254,7 +254,7 @@ internal/
                      web/ (index.html, app.css, js/, vendored marked and DOMPurify in vendor/,
                      fonts/)
   opener/            opens a clicked http, https or file link with the system opener, no shell
-  installer/         the Mac installer minus the window: its nine steps, the Bridge, the
+  installer/         the Mac installer minus the window: its ten steps, the Bridge, the
                      allowlist of programs it runs (run.go), and the page in web/
   connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
                      versions, and the checks on them; the pinned Node and uv (runtimes.go),

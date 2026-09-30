@@ -32,15 +32,16 @@ const (
 
 // The step IDs, in the order the installer shows them.
 const (
-	StepCheck   = "check"
-	StepMeru    = "meru"
-	StepOllama  = "ollama"
-	StepFolders = "folders"
-	StepWeb     = "web"
-	StepSkills  = "skills"
-	StepGoogle  = "google"
-	StepProfile = "profile"
-	StepStart   = "start"
+	StepCheck    = "check"
+	StepMeru     = "meru"
+	StepOllama   = "ollama"
+	StepFolders  = "folders"
+	StepWeb      = "web"
+	StepObsidian = "obsidian"
+	StepSkills   = "skills"
+	StepGoogle   = "google"
+	StepProfile  = "profile"
+	StepStart    = "start"
 )
 
 // Step is one screen of the installer and where it stands. The JSON names
@@ -81,7 +82,7 @@ func NewFlow() *Flow {
 	return &Flow{steps: stepList()}
 }
 
-// stepList returns the nine steps with their text, every one pending.
+// stepList returns the ten steps with their text, every one pending.
 // Every string here shows on screen. Each step but About you can be
 // skipped: Meru needs to know whose files it reads.
 func stepList() []Step {
@@ -112,9 +113,15 @@ func stepList() []Step {
 		},
 		{
 			ID: StepWeb, Title: "Web search",
-			What: "Downloads SearXNG, a search engine that runs on your own computer, and starts it in Docker.",
+			What: "Turns on web search. When Meru starts, merud downloads SearXNG, a search engine that runs on your own computer, and runs it in Docker.",
 			Why:  "With web search Meru can look up what your files don't hold. SearXNG asks several search engines for you, with no account and no cookies.",
-			Cost: "One container image, about 200 MB. A minute or two. Needs Docker Desktop, OrbStack or colima.",
+			Cost: "One container image, about 200 MB, which merud downloads in the last step. A minute or two. Needs Docker Desktop, OrbStack or colima.",
+		},
+		{
+			ID: StepObsidian, Title: "Obsidian notes",
+			What: "Asks for your Obsidian vault folder. When Meru starts, merud installs the Obsidian server and reads your notes from that folder.",
+			Why:  "With it Meru can list, search and read your notes. Obsidian itself needn't run, and writing a note asks you first.",
+			Cost: "merud downloads its own Node and the server, about 60 MB, in the last step. A minute.",
 		},
 		{
 			ID: StepSkills, Title: "Skills and commands",
@@ -124,9 +131,9 @@ func stepList() []Step {
 		},
 		{
 			ID: StepGoogle, Title: "Gmail, Calendar and Drive",
-			What: "Walks you through making your own Google sign-in, then sets up the small server Meru reaches Google through.",
+			What: "Walks you through making your own Google sign-in, then takes what Meru needs to run the small server it reaches Google through.",
 			Why:  "With it Meru can search your mail, list your events and read your Drive files. Sending mail and changing an event ask you first.",
-			Cost: "uv, about 40 MB, and the server on its first start. About 20 minutes, most of it in Google's console.",
+			Cost: "merud downloads its own uv, Python and the server, about 150 MB, in the last step. About 20 minutes, most of it in Google's console.",
 		},
 		{
 			ID: StepProfile, Title: "About you",
@@ -136,9 +143,9 @@ func stepList() []Step {
 		},
 		{
 			ID: StepStart, Title: "Start Meru",
-			What: "Starts merud now and at every login, waits for it to answer, and shows its first scan of your folders.",
-			Why:  "merud has to run for Meru to answer. launchd, the Mac's own service manager, starts it at login.",
-			Cost: "No download. Seconds, then the scan runs in the background.",
+			What: "Starts merud now and at every login, hands it the connectors you turned on, shows each one as merud installs and checks it, then shows its first scan of your folders.",
+			Why:  "merud has to run for Meru to answer, and it installs, runs and repairs the connectors from here on. launchd, the Mac's own service manager, starts it at login.",
+			Cost: "The connectors' downloads, a few minutes the first time. Then the scan runs in the background.",
 		},
 	}
 	for i := range steps {

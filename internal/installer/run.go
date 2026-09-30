@@ -24,28 +24,25 @@ import (
 var ErrNotAllowed = errors.New("the installer doesn't run this program")
 
 // ErrMissing means an allowed program isn't at any of its paths on this
-// Mac, such as docker before Docker Desktop is installed.
+// Mac, such as brew on a Mac without Homebrew.
 var ErrMissing = errors.New("not installed")
 
 // Programs returns the allowlist: each program the installer may run, with
 // the absolute paths it looks for it at, in order. A path that starts with
 // "~/" sits under the home folder. The installer never searches PATH: an
-// app opened from Finder gets a short PATH that holds neither Homebrew nor
-// Docker, and a fixed list means no file dropped earlier on PATH can stand
+// app opened from Finder gets a short PATH that doesn't hold Homebrew,
+// and a fixed list means no file dropped earlier on PATH can stand
 // in for a program.
 //
 // It builds a new map on each call, so no caller can change the list.
 func Programs() map[string][]string {
 	return map[string][]string{
-		// Homebrew installs Ollama and uv when the user has it.
+		// Homebrew installs Ollama when the user has it.
 		"brew": {"/opt/homebrew/bin/brew", "/usr/local/bin/brew"},
-		// docker pulls and runs the SearXNG container. Docker Desktop,
-		// OrbStack and colima each put the same command in one of these.
-		"docker": {
-			"/usr/local/bin/docker", "/opt/homebrew/bin/docker", "~/.orbstack/bin/docker",
-			"~/.docker/bin/docker", "/Applications/Docker.app/Contents/Resources/bin/docker",
-		},
-		// launchctl loads the launchd jobs for merud and the Google server.
+		// launchctl loads merud's launchd job. The connectors, SearXNG,
+		// Obsidian and Google, are merud's to install and run: the
+		// installer hands them over (connectors.go) and runs no docker,
+		// uv or launchctl for them.
 		"launchctl": {"/bin/launchctl"},
 		// open starts Ollama.app and Meru.app, and opens config.toml and
 		// the help links.
@@ -103,9 +100,8 @@ const tailLines = 40
 // user whose home folder is home.
 //
 // It passes the program a small environment of its own: HOME, USER,
-// TMPDIR, LANG and a PATH that holds Homebrew's and Docker's folders, so
-// docker finds its credential helper and brew finds its own tools. Nothing
-// else from the installer's environment goes along.
+// TMPDIR, LANG and a PATH that holds Homebrew's folders, so brew finds its
+// own tools. Nothing else from the installer's environment goes along.
 func ExecRunner(home string) Runner {
 	// A function literal like this one is a closure: it keeps home from
 	// the call that made it.
@@ -130,10 +126,7 @@ func ExecRunner(home string) Runner {
 
 // childEnv builds the environment ExecRunner passes each program.
 func childEnv(home string) []string {
-	dirs := []string{
-		"/opt/homebrew/bin", "/usr/local/bin", expandHome("~/.orbstack/bin", home),
-		expandHome("~/.docker/bin", home), "/usr/bin", "/bin", "/usr/sbin", "/sbin",
-	}
+	dirs := []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"}
 	env := []string{
 		"HOME=" + home,
 		"PATH=" + strings.Join(dirs, ":"),

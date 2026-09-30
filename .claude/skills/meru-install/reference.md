@@ -31,84 +31,14 @@ launchctl kickstart -k gui/$(id -u)/com.meru.merud # restart
 tail -20 ~/.meru/merud.err.log                     # what merud printed before its log opened
 ```
 
-## Google start script
+## Google by hand
 
-This is google-setup.md step B. Ask for the client ID and the Google address
-first. Write the file with the secret left as a placeholder:
-
-```sh
-mkdir -p ~/.config/workspace-mcp
-cat > ~/.config/workspace-mcp/start.sh <<'EOF'
-#!/bin/sh
-# Starts the Google server Meru connects to. Keep this file private.
-export GOOGLE_OAUTH_CLIENT_ID="<your client ID>"
-export GOOGLE_OAUTH_CLIENT_SECRET="<your client secret>"
-export USER_GOOGLE_EMAIL="<your Google address>"
-export WORKSPACE_ATTACHMENT_DIR="$HOME/meru-output/attachments"
-exec uvx workspace-mcp==1.30.0 --transport streamable-http \
-  --tool-tier extended --tools gmail calendar drive docs
-EOF
-chmod 700 ~/.config/workspace-mcp/start.sh
-```
-
-Then put in the client ID and the address with your file edit tool, or with
-`sed -i ''`. Neither is secret.
-
-**The secret, by the Terminal route.** Ask the person to run this in their own
-Terminal. `read -rs` reads the secret without showing it, `sed` writes it into
-the file, and `unset` forgets it; the secret never reaches this chat:
-
-```sh
-read -rs "s?Client secret: " && sed -i '' "s|<your client secret>|$s|" ~/.config/workspace-mcp/start.sh && unset s && echo saved
-```
-
-(`"s?Client secret: "` is zsh's way to give `read` a prompt. In bash, use
-`read -rsp "Client secret: " s` instead.)
-
-Check without showing the secret:
-
-```sh
-grep -c '<your client secret>' ~/.config/workspace-mcp/start.sh   # expect 0
-grep -c 'GOCSPX-' ~/.config/workspace-mcp/start.sh                # expect 1
-ls -l ~/.config/workspace-mcp/start.sh                            # expect -rwx------
-```
-
-## Start the Google server at login
-
-google-setup.md step F, with the home folder filled in by the shell. The
-`PATH` line lets launchd find `uvx` from Homebrew:
-
-```sh
-cat > ~/Library/LaunchAgents/com.meru.workspace-mcp.plist <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.meru.workspace-mcp</string>
-  <key>ProgramArguments</key>
-  <array><string>$HOME/.config/workspace-mcp/start.sh</string></array>
-  <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin</string></dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$HOME/.config/workspace-mcp/server.log</string>
-  <key>StandardErrorPath</key><string>$HOME/.config/workspace-mcp/server.log</string>
-</dict>
-</plist>
-EOF
-launchctl load ~/Library/LaunchAgents/com.meru.workspace-mcp.plist
-```
-
-The first start downloads the server, which takes a minute. Then check:
-
-```sh
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/mcp   # any number but 000
-tail -20 ~/.config/workspace-mcp/server.log
-```
-
-google-setup.md, "When something goes wrong", covers the usual errors, such as
-`access_denied` (not a test user) and `redirect_uri_mismatch` (not a Desktop
-app client).
+The Google connector needs no file of its own: `merud` installs and runs the
+server (SKILL.md, step 6). Only an install from before connectors runs the
+server from `~/.config/workspace-mcp/start.sh` and the launchd job
+`com.meru.workspace-mcp`; `meru mcp adopt google` moves such a setup over, and
+[docs/google-setup.md](../../../docs/google-setup.md), "Run the server
+yourself", keeps the steps for anyone who wants to run it by hand.
 
 ## GitHub commands
 
@@ -146,7 +76,8 @@ backup back and look again.
 ## Uninstall
 
 ```sh
-# The launchd jobs; skip the ones that were never installed.
+# The launchd jobs; skip the ones that were never installed. The Google job
+# comes only from an install before connectors.
 launchctl bootout gui/$(id -u)/com.meru.merud
 rm ~/Library/LaunchAgents/com.meru.merud.plist
 launchctl unload ~/Library/LaunchAgents/com.meru.workspace-mcp.plist
@@ -171,7 +102,8 @@ ollama rm qwen3-embedding:0.6b      # if they used the full profile
 Only after an explicit yes to a question that names what goes:
 
 ```sh
-rm -rf ~/.meru                                     # every chat, memory, setting and the index
+docker rm -f meru-searxng                          # Meru's web search container, if it runs
+rm -rf ~/.meru                                     # every chat, memory, setting, the index and the connectors' installs
 rm -rf ~/.config/workspace-mcp ~/.google_workspace_mcp   # the Google client secret and sign-in
 ```
 

@@ -39,13 +39,17 @@ func TestLocate(t *testing.T) {
 	if _, err := Locate("bash", t.TempDir()); !errors.Is(err, ErrNotAllowed) {
 		t.Errorf("Locate(bash) = %v, want ErrNotAllowed", err)
 	}
-	// ~/.orbstack/bin/docker is one of docker's paths; in a fresh home it
-	// is the only one that can exist, so Locate finds it there.
-	home := t.TempDir()
-	fake := filepath.Join(home, ".orbstack", "bin", "docker")
-	writeFile(t, fake, "")
-	if got, err := Locate("docker", home); err != nil || (got != fake && !strings.HasPrefix(got, "/")) {
-		t.Errorf("Locate(docker) = %q, %v", got, err)
+	// launchctl is at /bin/launchctl on every Mac, and nowhere on Linux.
+	if got, err := Locate("launchctl", t.TempDir()); err == nil && got != "/bin/launchctl" {
+		t.Errorf("Locate(launchctl) = %q", got)
+	} else if err != nil && !errors.Is(err, ErrMissing) {
+		t.Errorf("Locate(launchctl) = %v, want ErrMissing where it isn't", err)
+	}
+	// The connectors are merud's: the installer runs no docker or uv.
+	for _, gone := range []string{"docker", "uv", "uvx", "npm", "npx"} {
+		if _, err := Locate(gone, t.TempDir()); !errors.Is(err, ErrNotAllowed) {
+			t.Errorf("Locate(%s) = %v, want ErrNotAllowed", gone, err)
+		}
 	}
 	run := ExecRunner(t.TempDir())
 	if _, err := run(context.Background(), "rm", []string{"-rf", "/"}, nil); !errors.Is(err, ErrNotAllowed) {

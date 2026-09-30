@@ -2693,12 +2693,20 @@ own the first time you run `meru`.
    `~/.meru/` when it starts; setup doesn't write `prompt.md` or the built-in
    skills yet.
 4. **Web search.** Meru checks that SearXNG answers JSON at `[web] searxng_url`.
-   When nothing answers, it prints the commands that start SearXNG in Docker; when
-   SearXNG answers HTML, it names the `search.formats` setting to change. Then it
+   When nothing answers at Meru's own address and `merud` runs, it offers to have
+   `merud` run SearXNG and sends `connector_set` (see [Setting up a
+   connector](#setting-up-a-connector)), printing each step `merud` reports;
+   with `merud` down it names `meru mcp set searxng enabled=true`. When SearXNG
+   answers HTML, it names the `search.formats` setting to change. Then it
    waits: Enter checks again, `s` skips. Meru works without web search (see
    [Web search](#web-search)).
-5. **Tools.** Meru offers the catalog's servers, one at a time, and you pick a path
-   for each (see below). You can skip any of them and add them later.
+5. **Tools.** With `merud` running, Meru offers the Obsidian and Google
+   connectors, one at a time. For one that is off it asks the connector's
+   fields, a secret without showing it, and `merud` turns it on with them; for
+   one set up by hand it offers Adopt, which shows `merud`'s plan and asks
+   again. With `merud` down it names `meru mcp fix <id>` for later. Setup prints
+   no docker or `uvx` command: `merud` installs each connector. `meru mcp add`
+   still adds any server by hand (see below).
 6. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
    name, your email, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
@@ -2713,8 +2721,8 @@ goes through `merud` (see [Desktop app](#desktop-app)). Writing the first
 `config.toml` and pulling models stay with `meru setup`.
 
 On a Mac, the installer in each release's disk image does all of this in a window,
-before `merud` exists, and more: it installs Ollama, starts SearXNG in Docker, sets
-up the Google server and starts `merud` at login (see [Installer](#installer)).
+and more: it installs Ollama, starts `merud` at login, and hands `merud` the
+connectors you turned on (see [Installer](#installer)).
 
 ### Adding an MCP server
 
@@ -2876,16 +2884,20 @@ match ordinary words. A config file you share or commit holds names only.
 ## Installer
 
 The Mac installer, "Install Meru.app", takes a Mac with Apple silicon from nothing
-to a running Meru in nine steps: Ollama and the models, web search, folders in the
-index, skills and commands, Google if you want it, your profile, and `merud` started
-at login. Each release carries it in a disk image, `Meru-vX.Y.Z-macos-arm64.dmg`,
+to a running Meru in ten steps: Ollama and the models, folders in the index, web
+search, your Obsidian notes, skills and commands, Google if you want it, your
+profile, and `merud` started at login, which then installs the connectors you
+turned on. Each release carries it in a disk image, `Meru-vX.Y.Z-macos-arm64.dmg`,
 beside the zip files. `scripts/install.sh` and the `meru-install` skill stay for
 people who prefer a terminal.
 
 **Why it is its own program.** The clients never run a program. The desktop app
 changes config only by asking `merud`, and `meru setup` writes it only through
-`catalog`. The installer has to install Ollama, pull models, start a container and
-load launchd jobs before any `merud` exists, so it can't ask `merud`. It is a
+`catalog`. The installer has to install Ollama, pull models and load `merud`'s
+launchd job before any `merud` exists, so it can't ask `merud` for those. The
+connectors are a different matter: their steps only gather what each needs,
+and the last step hands them to `merud`, which installs and runs them (see
+[The hand-off](#the-hand-off)). It is a
 fourth program, `cmd/meru-installer`: a Wails window with Meru.app's fonts, colours
 and logo, which it borrows from Meru.app's page, and a dark palette that follows the
 Mac's setting. Its logic lives in `internal/installer`, which doesn't import Wails,
@@ -2896,12 +2908,10 @@ What runs where:
 | Part | Runs as | Does |
 | --- | --- | --- |
 | `cmd/meru-installer` | the window | serves the page, binds the Bridge, shows the folder dialog |
-| `internal/installer` | the installer's process | the nine steps, the Bridge the page calls, the allowlist of programs |
-| programs from the allowlist | child processes, no shell | `brew`, `docker`, `launchctl`, `open`, `ditto`, `xattr`, `codesign`, `sysctl`, `sw_vers`, `df` |
+| `internal/installer` | the installer's process | the ten steps, the Bridge the page calls, the allowlist of programs |
+| programs from the allowlist | child processes, no shell | `brew`, `launchctl`, `open`, `ditto`, `xattr`, `codesign`, `sysctl`, `sw_vers`, `df` |
 | Ollama | Ollama.app, or a Homebrew service | answers `POST /api/pull`, whose stream gives each download's progress |
-| SearXNG | the Docker container `meru-searxng` | web search on `127.0.0.1:8888` |
-| `workspace-mcp` | the launchd job `com.meru.workspace-mcp` | the Google server, when you set it up |
-| `merud` | the launchd job `com.meru.merud` | everything after the last step |
+| `merud` | the launchd job `com.meru.merud` | the connectors the last step hands it, and everything after the last step |
 
 **The rules it keeps.** `internal/policy` checks each one:
 
@@ -2916,14 +2926,13 @@ What runs where:
   MCP or A2A clients or `commands`, and never talks to a model. It pulls models
   through Ollama's HTTP API on loopback, which carries no prompt.
 - It changes `config.toml` only through `catalog`: `SetTableLists`,
-  `SetTableString`, `AppendServer` and `AppendCommand`. Each edits lines of text,
+  `SetTableString` and `AppendCommand`. Each edits lines of text,
   keeps every comment, and replaces the file only after the result loads. A missing
   `config.toml` starts as the template. The profile goes into memory files through
   `memory`, the same files `merud` reads, and the installer talks to `merud` only
   over the socket.
 - It reaches the internet only after you press Continue on a step that says what it
-  downloads: through Homebrew for Ollama and uv, through `docker pull` for the
-  SearXNG image, and, on a Mac with no Homebrew, straight to
+  downloads: through Homebrew for Ollama, and, on a Mac with no Homebrew, straight to
   `https://ollama.com/download/Ollama-darwin.zip`, whose address the screen shows
   first. `codesign --verify` then checks Ollama.app's signature, and the installer
   deletes the app when the check fails. It sends no telemetry and never checks for
@@ -2942,11 +2951,12 @@ and Skip. You can skip every step but About you.
 | 2 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`, or `~/Applications` when that isn't writable, with `ditto`; clears the quarantine mark with `xattr` when its box is ticked; adds the `PATH` line to `~/.zshrc` when asked | the three programs; `config.toml` from the template when missing |
 | 3 | Ollama and the models | installs Ollama when missing, starts it, and pulls each model of the chosen set that Ollama lacks | `[models] main`, when the set names one |
 | 4 | Folders to search | lists the folders config has, then Documents, Desktop and Notes with file counts; the system's folder dialog adds more | `[index] folders` |
-| 5 | Web search | keeps a SearXNG that already answers JSON on `127.0.0.1:8888`. Otherwise it checks `docker version`, writes `~/.meru/searxng/settings.yml` (JSON on, a random `secret_key`, the limiter off), pulls `searxng/searxng`, runs `meru-searxng` published on `127.0.0.1:8888` only with `--restart unless-stopped`, and sends one test search | `[web] searxng_url`; `web_search` and `web_fetch` in `[builtin] tools` |
-| 6 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
-| 7 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, installs uv with Homebrew, and waits for the server to answer | `~/.config/workspace-mcp/start.sh` (mode `0700`), its launchd job, the `google` entry |
-| 8 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
-| 9 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, and follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job |
+| 5 | Web search | keeps a SearXNG that already answers JSON on `127.0.0.1:8888`, which `merud` then only watches. Otherwise it looks for the `docker` command in its usual places, and hands the SearXNG connector to the last step, turned on | `[web] searxng_url`; `web_search` and `web_fetch` in `[builtin] tools` |
+| 6 | Obsidian notes | takes your vault folder from the folder dialog, checks it is a folder, and hands the Obsidian connector to the last step with it. An `obsidian` entry in `[[mcp.servers]]` stays as it is, or goes to the last step as an Adopt | nothing |
+| 7 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
+| 8 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, and hands the Google connector to the last step with them. A `google` entry stays as it is, or goes to the last step as an Adopt | `~/meru-output/attachments/` |
+| 9 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
+| 10 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, hands `merud` the connectors, then follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job; `merud` writes `[connectors.<id>]` and `secrets.toml` |
 
 The last screen lists what each step did, or that you skipped it. It names
 `~/.meru/config.toml`, with a button that opens it in your text editor, and says
@@ -2971,10 +2981,11 @@ table in "Models we tried". You can pick
 any row that fits, `lite` alone included.
 
 **Running it again.** Each step first looks for its own work: the same programs in
-`~/.local/bin`, Ollama answering with the models, folders in config, SearXNG
-answering, commands in config, the start script and the `google` entry, a saved
-name, `merud` answering. The screen says what it found and offers Skip. Each write
-checks before it changes anything: `settings.yml` keeps its secret, a command or a
+`~/.local/bin`, Ollama answering with the models, folders in config, commands
+in config, a saved name, `merud` answering; for the connectors, a SearXNG
+answering, a `[connectors.<id>]` table that turns one on, or an entry set up by
+hand. The screen says what it found and offers Skip. Each write
+checks before it changes anything: a command or a
 server config already has stays as it is, and an unchanged answer keeps its memory
 file. Continue on Start Meru restarts `merud`, so it reads what this run wrote.
 
@@ -2992,8 +3003,34 @@ installed, and only when its box is ticked; the box says what the mark does.
 **What it doesn't do.** It doesn't uninstall, update itself or look for a newer
 Meru. It doesn't install Docker, whose licence terms and size are yours to weigh;
 it links the download page and offers Skip. It can't do Google's console steps for
-you, and it doesn't sign you in to Google: the first Google question does, with a
-link from the server.
+you, and it doesn't sign you in to Google: it opens the link `merud` gives, and
+you sign in there.
+
+### The hand-off
+
+Built in the second half of step 6 of the connectors plan
+(`internal/installer/connectors.go`). The Web search, Obsidian and Google steps
+keep what they gathered in the Bridge's memory, one hand-off per connector, and
+write no connector config. Once `merud` answers, Start Meru sends each in
+step order: `connector_set` with the values, for a connector turned on, or
+`connector_adopt` with `apply`, for a server set up by hand that the user
+chose to adopt. It shows each sentence `merud` reports while it downloads,
+installs and checks the connector, then its state. A connector `merud`
+refuses, or one that fails, doesn't stop the step: its line says what went
+wrong and points at Meru.app's Settings, where its card has a Fix button.
+Google's client secret goes to `merud` in the `connector_set` and nowhere
+else: not to the page, a log or `config.toml`. When Google then waits for a
+sign-in, the last screen has a Sign in to Google button: the Bridge keeps the
+link `merud` gave and opens it with `open`, so the page never holds an
+address of its own.
+
+The installer runs no docker, uv or launchctl for a connector, so the
+allowlist lost `docker`; `launchctl` stays for `merud`'s own job. An install
+from an older installer keeps working: its SearXNG container answers at
+8888, so the Web search step finds it and hands nothing over, and `merud`
+watches it as an external SearXNG; its hand-run Google server, with
+`start.sh` and the `com.meru.workspace-mcp` job, shows as set up by hand, and
+the Google step offers Adopt in place of a second setup.
 
 ---
 
@@ -3209,7 +3246,7 @@ says little. A **connector** is one of those programs that Meru will install,
 configure, start, check and restart for you, at a version pinned in Meru's own
 release. Issue #87 holds the plan, which lands in seven steps.
 
-**What exists now (steps 1 to 5, and the first half of step 6):** the manifests, the checks on them, the
+**What exists now (steps 1 to 6):** the manifests, the checks on them, the
 `[connectors.<id>]` config table, a policy test that refuses unpinned
 versions, the code that downloads the pinned runtimes and installs each
 connector into `~/.meru/runtime`, the supervisor, which runs Obsidian over
@@ -3218,10 +3255,12 @@ watch on Ollama, and Adopt, which moves a hand-added `obsidian` or `google`
 entry over to its connector when you ask. A connector that Meru starts
 stays off until its table says `enabled = true`, and an `[[mcp.servers]]`
 entry with the same name wins over it, so a working setup behaves as
-before until you adopt it. The first half of step 6 added the settings
-forms and Fix in both clients and on the command line (see [Setting up a
-connector](#setting-up-a-connector)). The second half, in which the Mac
-installer and `meru setup` hand connectors to `merud`, is **planned**.
+before until you adopt it. Step 6 added the settings forms and Fix in both
+clients and on the command line (see [Setting up a
+connector](#setting-up-a-connector)), and made the Mac installer and `meru
+setup` hand connectors to `merud` (see [The hand-off](#the-hand-off)).
+Step 7, the release notes and the install skill's last changes, is
+**planned**.
 
 ### The manifest
 
@@ -3288,9 +3327,9 @@ or `npx` without an exact version, a container image without a digest, and a
 file fetched from a branch. It reads the manifests, the installer, the catalog,
 `cmd/meru`, `scripts/`, `deploy/` and the code blocks in `docs/`. Meru's own
 `releases/latest` link passes: it fetches Meru, not a dependency. The places
-that break the rule today, such as the installer's `searxng:latest`, sit on a
-short list in the test and keep working until step 6 replaces them; the list
-can only shrink. Step 4 took off `meru setup`'s SearXNG recipe and the docs
+that break the rule today sit on a short list in the test, each with a reason;
+the list can only shrink. Step 6 took the installer's `searxng:latest` off it:
+`merud` runs the pinned image now. Step 4 took off `meru setup`'s SearXNG recipe and the docs
 that repeated it, which fetched files from SearXNG's main branch. Step 5 took
 off the Google start commands in the catalog, the installer and the docs:
 each now runs `uvx workspace-mcp==1.30.0`, the Google connector's pin, so a
@@ -3526,7 +3565,7 @@ yet.
 
 ### Setting up a connector
 
-Built in the first half of step 6 (`cmd/merud/connectors.go`,
+Built in step 6 (`cmd/merud/connectors.go`,
 `internal/connectors/change.go`). Two socket ops change a connector, both
 user commands like the memory ops, so neither goes through `dispatch`:
 
@@ -3693,14 +3732,14 @@ In run mode, one pass goes:
 `--restart no`, `--publish 127.0.0.1:8888:8080`, the settings volume
 `~/.meru/searxng:/etc/searxng` and `SEARXNG_BASE_URL`. Before the first run,
 `merud` writes `settings.yml` there, with JSON on and a random secret key,
-unless the file exists; the Mac installer writes the same file, from
+unless the file exists; an older Mac installer wrote the same file, from
 `catalog.WriteSearXNGSettings`. The supervisor alone restarts the container,
 so it counts each crash, and Docker never starts it on its own: after a reboot
 the next `merud` does. Closing `merud` leaves it running, and turning the
 connector off stops it.
 
 **External SearXNG.** A healthy server at `searxng_url` that isn't Meru's
-container, such as one you run with Docker Compose or the one the Mac
+container, such as one you run with Docker Compose or the one an older Mac
 installer started, counts as external: the connector is ok with "Web search
 uses the SearXNG already running at http://127.0.0.1:8888.", and Meru never
 starts, stops or pulls anything for it.

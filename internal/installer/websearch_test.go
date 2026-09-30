@@ -1,6 +1,6 @@
-// This file tests the web search step: the docker arguments, the check
-// against a fake SearXNG, and the whole step with a fake docker. The
-// settings.yml it writes comes from internal/catalog, which tests it.
+// This file tests the web search step: the check against a fake
+// SearXNG, and the whole step, which runs no program and hands the
+// connector to merud.
 
 package installer
 
@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,27 +21,6 @@ import (
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 )
-
-// TestDockerRunArgs checks the docker arguments: each option is its own
-// string, the port listens on loopback only, and no shell appears.
-func TestDockerRunArgs(t *testing.T) {
-	args := DockerRunArgs("/Users/dana/.meru/searxng")
-	want := []string{
-		"run", "--detach", "--name", "meru-searxng", "--restart", "unless-stopped",
-		"--publish", "127.0.0.1:8888:8080",
-		"--volume", "/Users/dana/.meru/searxng:/etc/searxng",
-		"--env", "SEARXNG_BASE_URL=http://127.0.0.1:8888/",
-		"docker.io/searxng/searxng:latest",
-	}
-	if !slices.Equal(args, want) {
-		t.Errorf("args =\n%q\nwant\n%q", args, want)
-	}
-	for _, a := range args {
-		if a == "sh" || a == "-c" || strings.Contains(a, "0.0.0.0") {
-			t.Errorf("argument %q has no place here", a)
-		}
-	}
-}
 
 // fakeSearXNG answers like SearXNG: JSON when json is true, the HTML page
 // SearXNG sends when JSON is off otherwise. It counts the searches.
@@ -104,67 +82,36 @@ func TestVerifySearXNG(t *testing.T) {
 	}
 }
 
-// TestSetUpWebSearch runs the whole step with a fake docker. SearXNG
-// answers only once the container "starts", so the test sees the pull,
-// the run and then the config writes.
-func TestSetUpWebSearch(t *testing.T) {
-	var started atomic.Bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !started.Load() {
-			// Before docker run, nothing answers: close the connection.
-			hj, _ := w.(http.Hijacker)
-			conn, _, _ := hj.Hijack()
-			conn.Close()
-			return
-		}
-		io.WriteString(w, `{"query": "test", "results": []}`)
-	}))
-	defer srv.Close()
+// TestHasDocker checks that a docker command in one of OrbStack's or
+// Docker's folders under the home folder counts.
+func TestHasDocker(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".orbstack", "bin", "docker"), "")
+	if !HasDocker(home) {
+		t.Error("HasDocker = false with ~/.orbstack/bin/docker in place")
+	}
+}
 
+// TestSetUpWebSearch runs the step on a Mac where nothing answers at
+// Meru's SearXNG address: it runs no program, writes [web] and [builtin],
+// and hands the connector to the Start Meru step, turned on.
+func TestSetUpWebSearch(t *testing.T) {
 	p := tempHome(t)
 	// Take web_fetch out of [builtin] tools, to check the step puts it back.
 	tools := slices.DeleteFunc(config.BuiltinTools(), func(s string) bool { return s == "web_fetch" })
 	if err := catalog.SetTableLists(p.Config(), "builtin", map[string][]string{"tools": tools}, nil); err != nil {
 		t.Fatal(err)
 	}
-
-	r := &fakeRunner{answer: func(program string, args []string, line func(string)) (string, error) {
-		switch args[0] {
-		case "inspect":
-			return "", errors.New("Error: No such object: meru-searxng")
-		case "pull":
-			line("latest: Pulling from searxng/searxng")
-			line("Status: Downloaded newer image for searxng/searxng:latest")
-		case "run":
-			started.Store(true)
-		}
-		return "", nil
-	}}
-	say, lines := collect()
-	msg, err := SetUpWebSearch(context.Background(), r.run, clientTo(srv), p, say)
+	msg, hand, err := SetUpWebSearch(context.Background(), deadClient(), p, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	calls := r.called()
-	wantCalls := []string{
-		"docker version --format {{.Server.Version}}",
-		"docker inspect --format {{.State.Running}} meru-searxng",
-		"docker pull docker.io/searxng/searxng:latest",
-		"docker " + strings.Join(DockerRunArgs(p.SearXNG()), " "),
+	if hand == nil || hand.ID != "searxng" || hand.Adopt || hand.Change == nil || hand.Change.Enabled == nil || !*hand.Change.Enabled {
+		t.Errorf("hand-off = %+v, want web search turned on", hand)
 	}
-	if !slices.Equal(calls, wantCalls) {
-		t.Errorf("calls =\n%s\nwant\n%s", strings.Join(calls, "\n"), strings.Join(wantCalls, "\n"))
-	}
-	news := strings.Join(*lines, "\n")
-	for _, want := range []string{"Downloading the web search container…", "Starting it…", "Pulling from searxng/searxng"} {
-		if !strings.Contains(news, want) {
-			t.Errorf("the screen never said %q:\n%s", want, news)
-		}
-	}
-	if !strings.Contains(msg, "answered a test search") {
+	if !strings.Contains(msg, "merud downloads SearXNG") {
 		t.Errorf("result = %q", msg)
 	}
-
 	cfg, err := config.Load(p.Config())
 	if err != nil {
 		t.Fatal(err)
@@ -172,56 +119,44 @@ func TestSetUpWebSearch(t *testing.T) {
 	if cfg.Web.SearXNGURL != SearXNGURL || !slices.Contains(cfg.Builtin.Tools, "web_search") || !slices.Contains(cfg.Builtin.Tools, "web_fetch") {
 		t.Errorf("config: searxng_url %q, tools %v", cfg.Web.SearXNGURL, cfg.Builtin.Tools)
 	}
+	if _, ok := cfg.Connectors["searxng"]; ok {
+		t.Error("the step wrote [connectors.searxng] itself; merud writes it on the hand-off")
+	}
 	if !strings.Contains(readFile(t, p.Config()), "# Where SearXNG, the search engine behind web_search, answers on this") {
 		t.Error("the config lost its comments")
 	}
 }
 
-// TestSetUpWebSearchNoDocker checks the two ways the step stops before it
-// changes anything: no docker, and a docker whose engine isn't running.
+// TestSetUpWebSearchNoDocker checks that the step stops before it changes
+// anything on a Mac with no Docker.
 func TestSetUpWebSearchNoDocker(t *testing.T) {
-	for name, dockerErr := range map[string]error{
-		"not installed": ErrMissing,
-		"not running":   errors.New("Cannot connect to the Docker daemon"),
-	} {
-		t.Run(name, func(t *testing.T) {
-			p := tempHome(t)
-			before := readFile(t, p.Config())
-			r := &fakeRunner{answer: func(string, []string, func(string)) (string, error) { return "", dockerErr }}
-			_, err := SetUpWebSearch(context.Background(), r.run, deadClient(), p, func(string) {})
-			if err == nil {
-				t.Fatal("the step passed without docker")
-			}
-			if (dockerErr == ErrMissing) != errors.Is(err, ErrNoDocker) {
-				t.Errorf("err = %v", err)
-			}
-			if readFile(t, p.Config()) != before {
-				t.Error("the step changed config.toml")
-			}
-		})
+	p := tempHome(t)
+	before := readFile(t, p.Config())
+	_, hand, err := SetUpWebSearch(context.Background(), deadClient(), p, false)
+	if !errors.Is(err, ErrNoDocker) || hand != nil {
+		t.Errorf("err = %v, hand-off %+v; want ErrNoDocker and none", err, hand)
+	}
+	if readFile(t, p.Config()) != before {
+		t.Error("the step changed config.toml")
 	}
 }
 
 // TestSetUpWebSearchAlreadyRunning checks that a SearXNG the user already
-// runs is left alone: no docker call, only the config write.
+// runs, or one an older installer started, is left alone: no hand-off, so
+// merud only watches it, and only the config write.
 func TestSetUpWebSearchAlreadyRunning(t *testing.T) {
 	srv := fakeSearXNG(true, nil)
 	defer srv.Close()
 	p := tempHome(t)
-	r := &fakeRunner{}
-	msg, err := SetUpWebSearch(context.Background(), r.run, clientTo(srv), p, func(string) {})
+	msg, hand, err := SetUpWebSearch(context.Background(), clientTo(srv), p, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls := r.called(); len(calls) != 0 {
-		t.Errorf("ran %v", calls)
+	if hand != nil {
+		t.Errorf("hand-off = %+v, want none for a SearXNG that already answers", hand)
 	}
 	if !strings.Contains(msg, "already answers") {
 		t.Errorf("result = %q", msg)
-	}
-	// The settings file is untouched too: the user's SearXNG has its own.
-	if _, err := os.Stat(filepath.Join(p.SearXNG(), "settings.yml")); err == nil {
-		t.Error("wrote settings.yml for a SearXNG the installer didn't start")
 	}
 	var parsed map[string]any
 	if _, err := toml.DecodeFile(p.Config(), &parsed); err != nil {

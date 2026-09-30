@@ -83,10 +83,9 @@ type pinOffender struct {
 // replaces it, and then its entry goes. Add nothing here for new code.
 // Step 5 of #87 took off the Google start commands in the catalog, the
 // installer and the docs: each now names workspace-mcp 1.30.0, the
-// Google connector's pin.
+// Google connector's pin. Step 6 took off the installer's SearXNG
+// container: merud's connector runs the pinned image now.
 var pinOffenders = []pinOffender{
-	// The Mac installer's SearXNG container.
-	{"internal/installer/websearch.go", "docker.io/searxng/searxng:latest", "the installer hands web search to merud's pinned connector in delivery step 6 of #87"},
 	// Ollama names a model with no tag "<name>:latest". That is a model
 	// tag, not a program version, and Ollama itself is the user's to
 	// update, so it stays.

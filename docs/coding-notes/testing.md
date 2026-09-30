@@ -165,9 +165,10 @@ such as `@^2` or `>=1.30`, a container image with no `@sha256:` digest, a comman
 that starts with `uvx` or `npx` and a package with no exact version, or a file
 fetched from a `master` branch. Prose outside a code block may say "latest".
 Meru's own `releases/latest` link passes: it is how you get Meru, not a
-dependency. `pinOffenders` names each place that breaks the rule today, such
-as the installer's `searxng:latest`; each keeps working until the connector
-supervisor replaces it (issue #87), and an entry that no longer matches anything
+dependency. `pinOffenders` names each place that breaks the rule today, each
+with its reason; the installer's `searxng:latest` left the list in step 6 of
+issue #87, when `merud`'s pinned connector took web search over. An entry that
+no longer matches anything
 fails the test, so the list can only shrink. `TestPinRulesCatch` runs the rules on
 made-up lines, the way `TestChecksCatchViolations` does for the other checks.
 

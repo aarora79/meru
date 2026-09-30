@@ -2,7 +2,8 @@
 // binds: the page calls its methods by name to read each screen, run or
 // skip a step, pick a folder and open a link. The Bridge asks Flow before
 // each step and sends every line of progress to the page as the event
-// "installer:progress".
+// "installer:progress". It keeps the connector hand-offs the steps gather
+// until the Start Meru step sends them to merud.
 
 package installer
 
@@ -46,8 +47,8 @@ type Options struct {
 	Apps string
 	// Run runs one program from the allowlist.
 	Run Runner
-	// Local reaches services on this Mac: Ollama, SearXNG and the Google
-	// server. Web reaches the internet, for the Ollama download only.
+	// Local reaches services on this Mac: Ollama and SearXNG. Web
+	// reaches the internet, for the Ollama download only.
 	Local, Web *http.Client
 	// Emit sends an event to the page; PickFolder shows the system's
 	// folder dialog and returns "" on a cancel; Quit closes the window.
@@ -97,12 +98,19 @@ type Bridge struct {
 	// user picked there.
 	machine *Machine
 	choice  int
+	// hands holds each connector's hand-off, by connector ID, from the
+	// step that gathered it, for the Start Meru step. A secret in one
+	// stays in memory until merud has it.
+	hands map[string]HandOff
+	// signIn is the sign-in link merud gave for Google after the hand-off,
+	// which OpenSignIn opens; the page never sees it.
+	signIn string
 }
 
 // New returns a Bridge for o.
 func New(o Options) *Bridge {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Bridge{o: o, paths: Paths{Home: o.Home}, flow: NewFlow(), ctx: ctx, cancel: cancel, choice: -1}
+	return &Bridge{o: o, paths: Paths{Home: o.Home}, flow: NewFlow(), ctx: ctx, cancel: cancel, choice: -1, hands: map[string]HandOff{}}
 }
 
 // ServiceShutdown stops a running step. Wails calls it when the window
@@ -121,12 +129,19 @@ type View struct {
 	ConfigExists bool   `json:"configExists"`
 	// Apps is where Meru.app goes.
 	Apps string `json:"apps"`
+	// SignIn is true once merud has given a Google sign-in link, which
+	// the summary's button opens through OpenSignIn.
+	SignIn bool `json:"signIn"`
 }
 
 // State returns the steps as they stand.
 func (b *Bridge) State() View {
 	_, err := os.Stat(b.paths.Config())
-	return View{Steps: b.flow.Steps(), Config: b.paths.Tilde(b.paths.Config()), ConfigExists: err == nil, Apps: b.paths.Tilde(b.o.Apps)}
+	b.mu.Lock()
+	signIn := b.signIn != ""
+	b.mu.Unlock()
+	return View{Steps: b.flow.Steps(), Config: b.paths.Tilde(b.paths.Config()), ConfigExists: err == nil,
+		Apps: b.paths.Tilde(b.o.Apps), SignIn: signIn}
 }
 
 // Detect looks for what an earlier run, or the user, already set up, and
@@ -155,11 +170,18 @@ func (b *Bridge) Detect() View {
 	// asking any search engine.
 	if err := catalog.CheckSearXNG(ctx, SearXNGURL); err == nil {
 		b.flow.SetFound(StepWeb, "SearXNG answers JSON at "+SearXNGURL+".")
+	} else if cfgErr == nil && connectorState(cfg, "searxng").On {
+		b.flow.SetFound(StepWeb, "config.toml has merud run web search.")
+	}
+	if cfgErr == nil {
+		b.flow.SetFound(StepObsidian, ObsidianFound(cfg))
 	}
 	if cfgErr == nil && len(cfg.Commands) > 0 {
 		b.flow.SetFound(StepSkills, fmt.Sprintf("config.toml has %d commands.", len(cfg.Commands)))
 	}
-	b.flow.SetFound(StepGoogle, GoogleFound(p, cfgErr == nil && hasServer(cfg, "google")))
+	if cfgErr == nil {
+		b.flow.SetFound(StepGoogle, GoogleFound(cfg))
+	}
 	if prof, err := LoadProfile(p); err == nil && prof.Name != "" {
 		b.flow.SetFound(StepProfile, "Meru knows your name: "+prof.Name+". Check the form and press Continue.")
 	}
@@ -177,14 +199,19 @@ func hasServer(cfg config.Config, name string) bool {
 // Screen is the extra data one step's screen shows. Only the fields for
 // that step are set.
 type Screen struct {
-	Machine  *Machine        `json:"machine,omitempty"`
-	Models   []ModelState    `json:"models,omitempty"`
-	OllamaAt string          `json:"ollamaAt,omitempty"`
-	Brew     bool            `json:"brew"`
-	Download string          `json:"download,omitempty"`
-	Folders  []Folder        `json:"folders,omitempty"`
-	SkipNote string          `json:"skipNote,omitempty"`
-	Docker   bool            `json:"docker"`
+	Machine  *Machine     `json:"machine,omitempty"`
+	Models   []ModelState `json:"models,omitempty"`
+	OllamaAt string       `json:"ollamaAt,omitempty"`
+	Brew     bool         `json:"brew"`
+	Download string       `json:"download,omitempty"`
+	Folders  []Folder     `json:"folders,omitempty"`
+	SkipNote string       `json:"skipNote,omitempty"`
+	Docker   bool         `json:"docker"`
+	// ByHand is true on the Obsidian and Google screens when config.toml
+	// has an [[mcp.servers]] entry of that name, which the screen offers
+	// to adopt. Vault is the Obsidian vault config names now.
+	ByHand   bool            `json:"byHand"`
+	Vault    string          `json:"vault,omitempty"`
 	Commands []CommandOption `json:"commands,omitempty"`
 	Skills   []SkillOption   `json:"skills,omitempty"`
 	Profile  *Profile        `json:"profile,omitempty"`
@@ -230,8 +257,14 @@ func (b *Bridge) Screen(id string) (Screen, error) {
 		}
 		return Screen{Folders: SuggestFolders(b.ctx, p, cfg.Index.Folders), SkipNote: SkipNote}, nil
 	case StepWeb:
-		_, err := Locate("docker", p.Home)
-		return Screen{Docker: err == nil}, nil
+		return Screen{Docker: HasDocker(p.Home)}, nil
+	case StepObsidian, StepGoogle:
+		cfg, err := config.Load(p.Config())
+		if err != nil {
+			return Screen{}, err
+		}
+		vault, _ := cfg.Connectors["obsidian"].Value("vault_path")
+		return Screen{ByHand: connectorState(cfg, id).Entry, Vault: vault}, nil
 	case StepSkills:
 		cfg, err := config.Load(p.Config())
 		if err != nil {
@@ -271,12 +304,13 @@ func (b *Bridge) chosen() config.Recommendation {
 // Input is everything a step's screen can send with Continue. Each step
 // reads only its own part.
 type Input struct {
-	Choice   int         `json:"choice"`
-	Meru     MeruInput   `json:"meru"`
-	Folders  []string    `json:"folders"`
-	Commands []string    `json:"commands"`
-	Google   GoogleInput `json:"google"`
-	Profile  Profile     `json:"profile"`
+	Choice   int           `json:"choice"`
+	Meru     MeruInput     `json:"meru"`
+	Folders  []string      `json:"folders"`
+	Commands []string      `json:"commands"`
+	Obsidian ObsidianInput `json:"obsidian"`
+	Google   GoogleInput   `json:"google"`
+	Profile  Profile       `json:"profile"`
 }
 
 // Run runs step id with in, for Continue and Retry, and returns the new
@@ -299,7 +333,69 @@ func (b *Bridge) Run(id string, in Input) (View, error) {
 // you, which can't be skipped, and while the step runs.
 func (b *Bridge) Skip(id string) (View, error) {
 	err := b.flow.Skip(id)
+	if err == nil {
+		// A skipped step hands nothing to merud, whatever an earlier run
+		// of it gathered.
+		b.setHand(stepConnector(id), nil)
+	}
 	return b.State(), err
+}
+
+// stepConnector names the connector step id gathers the hand-off for, or
+// "" for a step with none.
+func stepConnector(id string) string {
+	switch id {
+	case StepWeb:
+		return "searxng"
+	case StepObsidian:
+		return "obsidian"
+	case StepGoogle:
+		return "google"
+	}
+	return ""
+}
+
+// setHand keeps h as connector id's hand-off, or drops it when h is nil.
+func (b *Bridge) setHand(id string, h *HandOff) {
+	if id == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if h == nil {
+		delete(b.hands, id)
+		return
+	}
+	b.hands[id] = *h
+}
+
+// handOffs returns the hand-offs, in step order: web search, Obsidian,
+// Google.
+func (b *Bridge) handOffs() []HandOff {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []HandOff
+	for _, id := range []string{"searxng", "obsidian", "google"} {
+		if h, ok := b.hands[id]; ok {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// runConnector runs one connector step, set, which gathers the hand-off,
+// and keeps what it gathered for the Start Meru step.
+func (b *Bridge) runConnector(id string, set func(cfg config.Config) (string, *HandOff, error)) (string, error) {
+	cfg, err := loadConfig(b.paths.Config())
+	if err != nil {
+		return "", err
+	}
+	detail, h, err := set(cfg)
+	if err != nil {
+		return "", err
+	}
+	b.setHand(stepConnector(id), h)
+	return detail, nil
 }
 
 // progress sends one line of news to the page.
@@ -343,11 +439,19 @@ func (b *Bridge) run(ctx context.Context, id string, in Input, say func(string))
 	case StepFolders:
 		return SaveFolders(p, in.Folders)
 	case StepWeb:
-		return SetUpWebSearch(ctx, b.o.Run, b.o.Local, p, say)
+		return b.runConnector(id, func(config.Config) (string, *HandOff, error) {
+			return SetUpWebSearch(ctx, b.o.Local, p, HasDocker(p.Home))
+		})
+	case StepObsidian:
+		return b.runConnector(id, func(cfg config.Config) (string, *HandOff, error) {
+			return SetUpObsidian(p, connectorState(cfg, "obsidian"), in.Obsidian)
+		})
 	case StepSkills:
 		return SaveSkillsAndCommands(p, in.Commands)
 	case StepGoogle:
-		return SetUpGoogle(ctx, b.o.Run, b.o.Local, p, in.Google, say)
+		return b.runConnector(id, func(cfg config.Config) (string, *HandOff, error) {
+			return SetUpGoogle(p, connectorState(cfg, "google"), in.Google)
+		})
 	case StepProfile:
 		return SaveProfile(p, in.Profile, b.flow.Is(StepGoogle, StatusDone))
 	case StepStart:
@@ -358,11 +462,20 @@ func (b *Bridge) run(ctx context.Context, id string, in Input, say func(string))
 		if err != nil {
 			return "", err
 		}
+		lines := []string{detail}
+		for _, r := range HandConnectors(ctx, p.Socket(), b.handOffs(), say) {
+			lines = append(lines, r.Line)
+			if r.Link != "" {
+				b.mu.Lock()
+				b.signIn = r.Link
+				b.mu.Unlock()
+			}
+		}
 		scan, err := FollowScan(ctx, p.Socket(), 2*time.Second, say)
 		if err != nil {
 			return "", err
 		}
-		return detail + "\n" + scan, nil
+		return strings.Join(append(lines, scan), "\n"), nil
 	}
 	return "", fmt.Errorf("no step %q", id)
 }
@@ -469,6 +582,21 @@ func (b *Bridge) OpenLink(name string) error {
 		return fmt.Errorf("no link %q", name)
 	}
 	_, err := b.o.Run(b.ctx, "open", []string{url}, nil)
+	return err
+}
+
+// OpenSignIn opens the Google sign-in link merud gave in the Start Meru
+// step, in the default browser. The link stays in Go: the page only asks
+// for it to open, as it asks for a link by name. It fails when merud gave
+// none, or the link isn't https.
+func (b *Bridge) OpenSignIn() error {
+	b.mu.Lock()
+	link := b.signIn
+	b.mu.Unlock()
+	if !strings.HasPrefix(link, "https://") {
+		return errors.New("merud gave no sign-in link; Meru.app's Settings, Connections, shows one once Google asks")
+	}
+	_, err := b.o.Run(b.ctx, "open", []string{link}, nil)
 	return err
 }
 

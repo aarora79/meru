@@ -1,8 +1,10 @@
-// This file holds the "Web search" step: it writes a settings.yml for
-// SearXNG (catalog.WriteSearXNGSettings, which merud's SearXNG connector
-// uses too), pulls and starts SearXNG's container with docker, bound to
-// 127.0.0.1 only, checks that it answers JSON, and points [web]
-// searxng_url at it. See ARCHITECTURE.md, "Web search" and "Installer".
+// This file holds the "Web search" step. The installer no longer runs
+// SearXNG itself: merud's SearXNG connector pulls the pinned image, runs
+// the container and restarts it. The step points [web] searxng_url at
+// Meru's address, turns on web_search and web_fetch, and, unless a
+// SearXNG already answers there, asks the Start Meru step to turn the
+// connector on through merud (connectors.go). See ARCHITECTURE.md,
+// "Installer" and "SearXNG and Ollama".
 
 package installer
 
@@ -13,70 +15,46 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
+	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
-// The container the step runs, and where it answers.
-const (
-	// SearXNGImage is SearXNG's own image on Docker Hub. It has no fixed
-	// version, so a second run of the installer brings security fixes.
-	SearXNGImage = "docker.io/searxng/searxng:latest"
-	// SearXNGContainer is the container's name, so a second run finds it.
-	// catalog holds it, since merud's SearXNG connector uses the same one.
-	SearXNGContainer = catalog.SearXNGContainer
-	// SearXNGURL is where Meru reaches it: the default [web] searxng_url.
-	SearXNGURL = catalog.SearXNGURL
-	// searxngPublish maps port 8888 on this Mac's loopback address to
-	// port 8080 in the container. Docker listens on 127.0.0.1 only, so no
-	// other machine on the network can use this SearXNG.
-	searxngPublish = "127.0.0.1:8888:8080"
-)
+// SearXNGURL is where Meru reaches SearXNG: the default [web] searxng_url,
+// and the one address where merud runs its own container.
+const SearXNGURL = catalog.SearXNGURL
 
 // DockerDownloadURL is where the screen sends a user who has no Docker.
 const DockerDownloadURL = "https://www.docker.com/products/docker-desktop/"
-
-// searxngStartWait is how long the step waits for SearXNG to answer after
-// the container starts. Its first start takes several seconds.
-const searxngStartWait = 90 * time.Second
 
 // ErrNoDocker means docker isn't installed. The screen offers the download
 // link and Skip.
 var ErrNoDocker = errors.New("this Mac has no Docker. Install Docker Desktop, OrbStack or colima, then press Retry, or skip web search for now")
 
-// DockerRunArgs returns the arguments for docker that start SearXNG, with
-// settingsDir mounted as its settings folder. Each is a separate string,
-// and the Runner passes them to docker with no shell.
-func DockerRunArgs(settingsDir string) []string {
+// dockerPaths are where Docker Desktop, OrbStack and colima put the docker
+// command. The installer only looks for one, to say early that web search
+// needs Docker; merud runs it.
+func dockerPaths(home string) []string {
 	return []string{
-		"run", "--detach",
-		"--name", SearXNGContainer,
-		// Docker starts the container again after a restart of the Mac or
-		// of Docker, unless the user stopped it.
-		"--restart", "unless-stopped",
-		"--publish", searxngPublish,
-		"--volume", settingsDir + ":/etc/searxng",
-		"--env", "SEARXNG_BASE_URL=" + SearXNGURL + "/",
-		SearXNGImage,
+		"/usr/local/bin/docker", "/opt/homebrew/bin/docker", expandHome("~/.orbstack/bin/docker", home),
+		expandHome("~/.docker/bin/docker", home), "/Applications/Docker.app/Contents/Resources/bin/docker",
 	}
 }
 
-// containerState asks docker whether the SearXNG container exists and
-// runs. It returns "running", "stopped" or "" for no such container.
-func containerState(ctx context.Context, run Runner) string {
-	out, err := run(ctx, "docker", []string{"inspect", "--format", "{{.State.Running}}", SearXNGContainer}, nil)
-	if err != nil {
-		return ""
+// HasDocker reports whether the docker command is at one of dockerPaths.
+func HasDocker(home string) bool {
+	for _, p := range dockerPaths(home) {
+		// os.Stat follows links: Docker's command is a link into its app.
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return true
+		}
 	}
-	if strings.TrimSpace(out) == "true" {
-		return "running"
-	}
-	return "stopped"
+	return false
 }
 
 // VerifySearXNG sends one search, "test", to SearXNG at baseURL with
@@ -115,74 +93,35 @@ func VerifySearXNG(ctx context.Context, client *http.Client, baseURL string) err
 	return nil
 }
 
-// SetUpWebSearch runs the web search step and returns what it did. say
-// gets each line of news, including every line docker prints while it
-// downloads the image.
+// SetUpWebSearch runs the web search step. It writes [web] and [builtin]
+// in config.toml and returns what it did, with the hand-off for the Start
+// Meru step, or nil when there is none.
 //
-// When SearXNG already answers JSON at SearXNGURL, such as one the user
-// started with docker compose, it only writes config. Otherwise it needs
-// docker, and fails with ErrNoDocker without it, or when Docker isn't
-// running, or when the container doesn't answer within 90 seconds.
-func SetUpWebSearch(ctx context.Context, run Runner, client *http.Client, p Paths, say func(string)) (string, error) {
+// A SearXNG that already answers JSON at SearXNGURL, such as one the user
+// runs with docker compose or the container an older installer started,
+// stays as it is: merud watches it and never touches it, so the step asks
+// for no hand-off. Otherwise the step needs Docker, which docker says this
+// Mac has (HasDocker), and fails with ErrNoDocker without it; merud pulls
+// and runs the container once the Start Meru step turns the connector on.
+// It runs no program.
+func SetUpWebSearch(ctx context.Context, client *http.Client, p Paths, docker bool) (string, *HandOff, error) {
 	var done []string
+	var hand *HandOff
 	if err := VerifySearXNG(ctx, client, SearXNGURL); err == nil {
-		done = append(done, "SearXNG already answers JSON at "+SearXNGURL+", so the installer left it as it is.")
+		done = append(done, "SearXNG already answers JSON at "+SearXNGURL+". merud uses it as it is and never starts, stops or updates it.")
 	} else {
-		say("Checking that Docker runs")
-		// docker version asks the Docker engine for its version, so it
-		// fails when the engine isn't running. The Runner fails with
-		// ErrMissing when docker isn't installed at all.
-		if _, err := run(ctx, "docker", []string{"version", "--format", "{{.Server.Version}}"}, nil); err != nil {
-			if errors.Is(err, ErrMissing) {
-				return "", ErrNoDocker
-			}
-			return "", errors.New("the Docker engine isn't running. Open Docker Desktop, OrbStack or colima, wait until it says it runs, then press Retry")
+		if !docker {
+			return "", nil, ErrNoDocker
 		}
-		wrote, err := catalog.WriteSearXNGSettings(p.SearXNG())
-		if err != nil {
-			return "", err
-		}
-		settings := p.Tilde(filepath.Join(p.SearXNG(), "settings.yml"))
-		if wrote {
-			done = append(done, "Wrote SearXNG's settings to "+settings+", with JSON on and a new secret key.")
-		} else {
-			done = append(done, "Kept SearXNG's settings in "+settings+".")
-		}
-
-		switch containerState(ctx, run) {
-		case "running":
-			say("The " + SearXNGContainer + " container already runs")
-		case "stopped":
-			say("Starting the " + SearXNGContainer + " container")
-			if _, err := run(ctx, "docker", []string{"start", SearXNGContainer}, say); err != nil {
-				return "", err
-			}
-		default:
-			say("Downloading the web search container…")
-			if _, err := run(ctx, "docker", []string{"pull", SearXNGImage}, say); err != nil {
-				return "", err
-			}
-			say("Starting it…")
-			if _, err := run(ctx, "docker", DockerRunArgs(p.SearXNG()), say); err != nil {
-				return "", err
-			}
-			done = append(done, "Started SearXNG in the container "+SearXNGContainer+", on "+SearXNGURL+" only. Docker starts it again after a restart.")
-		}
-
-		say("Waiting for SearXNG to answer a test search")
-		if _, err := waitFor(ctx, searxngStartWait, func() (string, error) {
-			return "", VerifySearXNG(ctx, client, SearXNGURL)
-		}); err != nil {
-			return "", fmt.Errorf("SearXNG didn't answer a test search: %w. Its log: docker logs %s", err, SearXNGContainer)
-		}
-		done = append(done, "SearXNG answered a test search.")
+		on := true
+		hand = &HandOff{ID: "searxng", Name: "Web search", Change: &rpc.ConnectorChange{Enabled: &on}}
+		done = append(done, "When Meru starts, in the last step, merud downloads SearXNG at the version pinned in this release and runs it in Docker as the container meru-searxng, on "+SearXNGURL+" only.")
 	}
-
 	msg, err := saveWebConfig(p)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return strings.Join(append(done, msg), "\n"), nil
+	return strings.Join(append(done, msg), "\n"), hand, nil
 }
 
 // webTools are the two built-in tools web search needs on.

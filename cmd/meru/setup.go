@@ -32,6 +32,7 @@ import (
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
 
@@ -351,9 +352,10 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 }
 
 // setupCmd runs `meru setup`: check Ollama, download the models, write
-// config.toml if there is none, check SearXNG for web search, offer the
-// catalog servers, offer `meru setup user`, and ask merud a test question
-// when it runs.
+// config.toml if there is none, check SearXNG for web search and offer to
+// have merud run it, offer the Obsidian and Google connectors, offer `meru
+// setup user`, and ask merud a test question when it runs. merud sets up
+// every connector (connector_set); setup only asks the questions.
 //
 // main, when not "", is the answer model for a new config.toml, in place of
 // the profile question: scripts/install.sh passes the model it picked for
@@ -410,15 +412,20 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 	}
 
 	fmt.Fprintln(c.out, "\n4. Web search")
-	if err := c.checkWebSearch(ctx, cfg.Web.SearXNGURL); err != nil {
+	if err := c.checkWebSearch(ctx, socket, cfg.Web.SearXNGURL); err != nil {
 		return err
 	}
 
 	fmt.Fprintln(c.out, "\n5. Tools")
-	fmt.Fprintln(c.out, "Meru can connect to these servers. Pick a path for each, or skip it and run meru mcp add later.")
-	for _, e := range catalog.Entries() {
-		if _, err := c.offer(ctx, socket, e); err != nil {
-			return err
+	if ping(ctx, socket, io.Discard) != nil {
+		fmt.Fprintln(c.out, "merud isn't running, and it installs and runs the tools' servers. Start merud, then run\n"+
+			"meru mcp fix obsidian or meru mcp fix google to set one up. To add a server you run yourself: meru mcp add.")
+	} else {
+		fmt.Fprintln(c.out, "merud can install and run these servers for you, each at the version pinned in this release.")
+		for _, id := range []string{"obsidian", "google"} {
+			if err := c.offerConnector(ctx, socket, id); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -447,21 +454,53 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 	return nil
 }
 
-// searxngStart tells the user how to have merud run SearXNG: the
-// [connectors.searxng] table that turns the SearXNG connector on. merud
-// then pulls the pinned image and runs the container meru-searxng on
-// 127.0.0.1:8888, with JSON on (ARCHITECTURE.md, "SearXNG and Ollama").
-// setup prints it; the settings forms that write it come later.
-const searxngStart = `  [connectors.searxng]
-  enabled = true`
+// offerConnector offers connector id, Obsidian or Google, as the Fix
+// button would: one that is off is asked about, then its fields, and
+// merud turns it on with them (connector_set), printing each step; one
+// set up by hand is offered Adopt, which shows merud's plan and asks
+// again; one already on says where it stands. A merud that can't say
+// about the connector doesn't stop setup.
+func (c *console) offerConnector(ctx context.Context, socket, id string) error {
+	row, err := connectorByID(ctx, socket, id)
+	if err != nil {
+		fmt.Fprintf(c.out, "\n%s: merud can't say: %v\n", id, err)
+		return nil
+	}
+	fmt.Fprintf(c.out, "\n%s: %s\n", row.Name, row.Sentence)
+	switch row.State {
+	case rpc.ConnectorByHand:
+		ok, err := c.yes("Let Meru run it instead? merud shows every change first.", false)
+		if err != nil || !ok {
+			return err
+		}
+		return c.adopt(ctx, socket, []string{id}, false)
+	case rpc.ConnectorOff:
+		ok, err := c.yes("Set up "+row.Name+"?", false)
+		if err != nil || !ok {
+			return err
+		}
+		change, err := c.askFields(rpc.AskFields(row))
+		if err != nil {
+			return err
+		}
+		on := true
+		change.Enabled = &on
+		if err := c.sendChange(ctx, socket, row, change); err != nil {
+			// merud refused a value; say so and go on with setup.
+			fmt.Fprintf(c.out, "merud didn't set it up: %v\nTry again with meru mcp fix %s.\n", err, id)
+		}
+	}
+	return nil
+}
 
 // checkWebSearch checks that SearXNG answers JSON at baseURL, which is
-// [web] searxng_url. When it doesn't, it says why and what to do: the
-// table that has merud run SearXNG when nothing answers at Meru's own
-// address, the formats setting when it answers HTML. Then it waits: Enter checks again, s skips. Web search is
-// optional, so the step never stops setup; it fails only when the input
-// ends.
-func (c *console) checkWebSearch(ctx context.Context, baseURL string) error {
+// [web] searxng_url. When it doesn't, it says why and what to do: at
+// Meru's own address, it offers to have merud run SearXNG, the connector
+// (connector_set, then merud's steps as they come); when SearXNG answers
+// HTML, it names the formats setting. Then it waits: Enter checks again,
+// s skips. Web search is optional, so the step never stops setup; it
+// fails only when the input ends.
+func (c *console) checkWebSearch(ctx context.Context, socket, baseURL string) error {
 	if baseURL == "" {
 		fmt.Fprintln(c.out, "Web search is off: [web] searxng_url is empty in config.toml.")
 		return nil
@@ -476,9 +515,20 @@ func (c *console) checkWebSearch(ctx context.Context, baseURL string) error {
 			fmt.Fprintln(c.out, catalog.SearXNGFormatsHint)
 		case errors.Is(err, catalog.ErrSearXNGDown) && baseURL == catalog.SearXNGURL:
 			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Meru searches the web through SearXNG, "+
-				"a search engine that runs in Docker. To have merud run it for you, add this to "+
-				"config.toml and restart merud:\n\n%s\n\n"+
-				"merud then downloads SearXNG and starts it, which takes a minute the first time.\n", baseURL, searxngStart)
+				"a search engine that runs in Docker. merud can run it for you, at the version pinned in this release.\n", baseURL)
+			if ping(ctx, socket, io.Discard) != nil {
+				fmt.Fprintln(c.out, "Start merud, then run: meru mcp set searxng enabled=true")
+				break
+			}
+			ok, err := c.yes("Have merud run SearXNG? The first start downloads it, which takes a minute.", true)
+			if err != nil {
+				return err
+			}
+			if ok {
+				on := true
+				row := rpc.ConnectorStatus{ID: "searxng", Name: "Web search"}
+				return c.sendChange(ctx, socket, row, rpc.ConnectorChange{Enabled: &on})
+			}
 		case errors.Is(err, catalog.ErrSearXNGDown):
 			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Start the SearXNG you run there; "+
 				"see \"Web search\" in docs/running.md.\n", baseURL)

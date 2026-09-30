@@ -1274,9 +1274,13 @@ text through `config.Load` before it renames it into place, as before.
 Step 4, Web search, is `checkWebSearch`. It calls `c.searxng`, which is
 `catalog.CheckSearXNG` outside tests, on `[web] searxng_url`. When SearXNG answers
 JSON it says so and moves on. When nothing answers (`ErrSearXNGDown`) at
-Meru's own address, `http://127.0.0.1:8888`, it prints `searxngStart`, the
-`[connectors.searxng]` table that has `merud` run SearXNG, and says to restart
-`merud`; at another address it says to start the SearXNG the user runs there.
+Meru's own address, `http://127.0.0.1:8888`, and `merud` answers a ping, it
+asks whether `merud` should run SearXNG; a yes sends `connector_set` with
+`enabled` through `sendChange` (connector.go), which prints each step and where
+the connector settled, and the step ends there. With `merud` down it names
+`meru mcp set searxng enabled=true` for later. At another address it says to
+start the SearXNG the user runs there. Setup prints no docker command:
+`merud` runs the pinned image.
 When SearXNG answers HTML (`ErrSearXNGNoJSON`) it prints
 `catalog.SearXNGFormatsHint`. Then it waits: Enter checks again, `s` skips. Web
 search is optional, so the step never stops setup. An empty `searxng_url` says
@@ -1289,10 +1293,20 @@ later when it doesn't: the answers go to `merud`, which owns the memory folder.
 works on the Meru home in `/tmp/x`, the same one `merud -config
 /tmp/x/config.toml` uses.
 
-`setup_test.go` scripts whole sessions: the answers go in as a string, and the
-test reads back the files and the output.
+Step 5, Tools, offers the Obsidian and Google connectors when `merud`
+answers: `offerConnector` asks the connector's row (`connectorByID`). For one
+that is off it asks whether to set it up, then its fields with `askFields`, a
+secret without echo, and sends them with `enabled` through `sendChange`; a
+refusal prints `merud`'s reason and setup goes on. For one set up by hand it
+offers Adopt, which runs `adopt` from adopt.go, with its plan and its own
+question. One already on prints its state. With `merud` down the step names
+`meru mcp fix obsidian` and `meru mcp fix google` and asks nothing. `offer`
+and `doIt` stay for `meru mcp add`, which adds a server by hand.
 
-Setup offers each catalog entry, in catalog order: `google`, then `obsidian`.
+`setup_test.go` scripts whole sessions: the answers go in as a string, and the
+test reads back the files and the output. `TestSetupWebSearchHandsOff` and
+`TestSetupConnectors` run the two steps against a fake `merud` and check the
+`connector_set` it gets.
 
 ### meru: mcp.go
 

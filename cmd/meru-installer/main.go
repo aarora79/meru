@@ -3,9 +3,9 @@
 // Command meru-installer is the guided Mac installer, "Install Meru.app" on
 // the disk image. It opens a window, drawn by the system's WebView through
 // Wails v3 with the same fonts and colours as Meru.app, and walks the user
-// through nine steps: the Mac check, Meru itself, Ollama and the models,
-// folders, web search, skills and commands, Google, About you, and starting
-// merud. See ARCHITECTURE.md, "Installer".
+// through ten steps: the Mac check, Meru itself, Ollama and the models,
+// folders, web search, Obsidian, skills and commands, Google, About you,
+// and starting merud. See ARCHITECTURE.md, "Installer".
 //
 // Usage: open "Install Meru.app". It takes no flags.
 //

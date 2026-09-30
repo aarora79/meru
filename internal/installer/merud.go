@@ -1,13 +1,16 @@
 // This file holds the last step, "Start Meru": it writes merud's launchd
 // job from the repo's own plist, loads it so merud starts now and at every
 // login, waits for merud to answer on its socket, and follows the scan of
-// the chosen folders that merud starts by itself.
+// the chosen folders that merud starts by itself. The hand-off of the
+// connectors, which this step runs between the two, lives in
+// connectors.go.
 
 package installer
 
 import (
 	"context"
 	_ "embed" // the blank import turns on the //go:embed directive below
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -38,6 +41,33 @@ const (
 	// folder takes longer; merud carries on without the screen.
 	indexWait = 2 * time.Minute
 )
+
+// xmlText escapes s for a plist's <string> element.
+func xmlText(s string) string {
+	var b strings.Builder
+	_ = xml.EscapeText(&b, []byte(s)) // a strings.Builder never fails a write
+	return b.String()
+}
+
+// loadJob writes plist to the LaunchAgents folder as label.plist and asks
+// launchd to load it, unloading any older copy first, so a second run
+// picks up a changed job. It returns the plist's path.
+func loadJob(ctx context.Context, run Runner, p Paths, label, plist string) (string, error) {
+	dir := p.LaunchAgents()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", fmt.Errorf("create %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, label+".plist")
+	// unload fails when the job isn't loaded, which is fine.
+	_, _ = run(ctx, "launchctl", []string{"unload", path}, nil)
+	if err := os.WriteFile(path, []byte(plist), 0o644); err != nil { // #nosec G306 -- launchd jobs are readable, as launchd expects
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	if _, err := run(ctx, "launchctl", []string{"load", "-w", path}, nil); err != nil {
+		return "", err
+	}
+	return path, nil
+}
 
 // MerudPlist returns the launchd job for merud: the repo's plist with
 // __HOME__ replaced by the home folder and merud's path pointed at

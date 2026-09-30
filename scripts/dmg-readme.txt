@@ -5,7 +5,7 @@ Meru is a personal AI assistant that runs on your own Mac. The models run
 here, and your questions and files stay here.
 
 To install it, open "Install Meru.app" from this disk image. It walks you
-through nine steps and says what each one does before it does it.
+through ten steps and says what each one does before it does it.
 
 The first time: Open Anyway
 ---------------------------
