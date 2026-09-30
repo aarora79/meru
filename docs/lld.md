@@ -41,6 +41,7 @@ allows only code inside this repo to import.
 | `internal/installer` | the Mac installer's nine steps, its Bridge, and the one allowlist of programs it runs (see [Installer](../ARCHITECTURE.md#installer)) | `bridge.go`: `Run`, `run`, then `steps.go`, `run.go` and one file per step |
 | `internal/opener` | hands an `http`, `https` or `file` URL to the system's opener, with no shell | `opener.go`: `Check`, `Open` |
 | `internal/config` | reads and checks `~/.meru/config.toml` | `load.go`: `Load` |
+| `internal/connectors` | the connector manifests, compiled in, with pinned versions, and the checks on them; nothing calls it yet (see [Connectors and the supervisor](../ARCHITECTURE.md#connectors-and-the-supervisor)) | `manifest.go`: `Load`, `Parse`, `Validate` |
 | `internal/engine` | the `Engine` interface and the Ollama client | `engine.go`, then `ollama.go` |
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
 | `internal/store` | `meru.db`: documents, chunks, vectors, the keyword index and the `tool_calls` log | `store.go`: `Open`, then `documents.go`, `search.go` and `toolcalls.go` |

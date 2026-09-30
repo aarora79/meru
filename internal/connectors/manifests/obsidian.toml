@@ -1,0 +1,46 @@
+# Obsidian notes, through the obsidian-mcp server, which reads the vault
+# folder on disk. Obsidian itself needn't be running.
+#
+# Pin: obsidian-mcp 2.0.1, the version `npm view obsidian-mcp version`
+# gave on 2026-09-29. It needs Node 22 or later.
+id = "obsidian"
+name = "Obsidian"
+kind = "stdio"
+required = false
+default_on = false
+idle_timeout = "10m"
+
+[install]
+type = "npm"
+package = "obsidian-mcp"
+version = "2.0.1"
+
+[launch]
+# npm install --prefix {pkg} puts the program in node_modules/.bin.
+command = "{pkg}/node_modules/.bin/obsidian-mcp"
+args = ["serve", "--vault", "{field.vault_name}={field.vault_path}"]
+
+[[field]]
+id = "vault_path"
+type = "folder"
+label = "Vault folder"
+help = "The folder that holds your Obsidian notes."
+required = true
+
+[[field]]
+id = "vault_name"
+type = "text"
+label = "Vault name"
+help = "A short name the tools use for the vault. Leave it empty and Meru makes one from the folder's name."
+required = false
+# obsidian-mcp's rule for a vault id.
+pattern = "^[a-z][a-z0-9_-]*$"
+
+[health]
+tool = "obsidian_list_vaults"
+args = {}
+expect = "nonempty"
+
+[mcp]
+allow = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note"]
+confirm = []

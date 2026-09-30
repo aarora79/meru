@@ -250,6 +250,8 @@ internal/
   opener/            opens a clicked http, https or file link with the system opener, no shell
   installer/         the Mac installer minus the window: its nine steps, the Bridge, the
                      allowlist of programs it runs (run.go), and the page in web/
+  connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
+                     versions, and the checks on them; merud's supervisor will use them (#87)
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
@@ -293,7 +295,7 @@ docs/
 `about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
-`dispatch`, `a2a`, `builtin`, `commands` or anything else that talks to a model, stores data
+`dispatch`, `a2a`, `builtin`, `commands`, `connectors` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
@@ -301,7 +303,7 @@ and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
 `memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
-`index`, `dispatch`, `mcp`, `a2a`, `builtin` or `commands`. It starts programs
+`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands` or `connectors`. It starts programs
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through

@@ -42,6 +42,11 @@ type Config struct {
 	// Commands lists the local programs the model may run, one tool each
 	// (v0.3). The commands package checks them when merud starts.
 	Commands []Command `toml:"commands"`
+	// Connectors holds one [connectors.<id>] table per connector: whether
+	// it is on, and the values the user gave for its fields. Nothing
+	// reads it yet; the connector supervisor will (ARCHITECTURE.md,
+	// "Connectors and the supervisor").
+	Connectors map[string]Connector `toml:"connectors"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.
@@ -373,4 +378,32 @@ type CommandParam struct {
 	// string must match, such as "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" for a
 	// GitHub owner/name. String only; empty means any text.
 	Pattern string `toml:"pattern"`
+}
+
+// Connector is one [connectors.<id>] table: "enabled", a true or false,
+// and one key per field of the connector's manifest, such as vault_path.
+// Each value is a string or a bool. A secret field never appears here;
+// its value lives in secrets.toml as secret:connector_<id>_<field>.
+//
+// It is a map rather than a struct because each connector has its own
+// fields, named in its manifest. `any` is Go's name for "a value of any
+// type"; checkConnectors in load.go makes sure each one is a string or a
+// bool.
+type Connector map[string]any
+
+// Enabled reports whether the table says enabled = true. ok is false when
+// the table leaves enabled out, so the caller can fall back on the
+// connector's own default.
+func (c Connector) Enabled() (enabled, ok bool) {
+	// c["enabled"].(bool) is a type assertion: it asks whether the value
+	// is a bool, and ok says whether it was.
+	enabled, ok = c["enabled"].(bool)
+	return enabled, ok
+}
+
+// Value returns the string value of key, and false when the table has no
+// such key or it isn't a string.
+func (c Connector) Value(key string) (string, bool) {
+	v, ok := c[key].(string)
+	return v, ok
 }

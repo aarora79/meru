@@ -45,8 +45,9 @@ Read them in this order; each builds on the ones before it.
 24. [desktop](desktop.md): the desktop app, its Bridge to `merud`, and the page in its window
 25. [about](about.md): the tagline, the version and the links both clients show
 26. [installer](installer.md): the Mac installer's nine steps, its allowlist of programs, and its window
-27. [testing](testing.md): how Meru tests itself, from unit tests to fakes
-28. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+27. [connectors](connectors.md): the connector manifests, their pinned versions, and the checks on them
+28. [testing](testing.md): how Meru tests itself, from unit tests to fakes
+29. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
 ### Go basics
 

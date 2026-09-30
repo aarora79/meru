@@ -1,0 +1,31 @@
+# SearXNG, the search engine behind the built-in web_search tool. Meru runs
+# it as a container that listens on 127.0.0.1:8888 only.
+#
+# Pin: the searxng/searxng image, tag 2026.9.29-4e2c1ea7f, looked up on
+# 2026-09-29 with
+#   docker buildx imagetools inspect docker.io/searxng/searxng:2026.9.29-4e2c1ea7f
+# which gave the digest below for the multi-platform index. The digest is
+# the pin; the tag in front of it is there for the reader.
+id = "searxng"
+name = "Web search"
+kind = "container"
+required = false
+default_on = true
+
+[install]
+type = "container"
+image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df284ae8c48a26851ae2eff6f99b4b0b18ec3da5a4d9095c3"
+
+[launch]
+# Meru reaches SearXNG at url; Docker maps port 8888 on the loopback
+# address to port 8080 inside the container.
+url = "http://127.0.0.1:8888"
+port = 8080
+volumes = ["{meru_dir}/searxng:/etc/searxng"]
+env = { SEARXNG_BASE_URL = "http://127.0.0.1:8888/" }
+
+[health]
+# /healthz answers "OK" without running a search, so the check sends
+# nothing off this machine.
+path = "/healthz"
+expect = "contains:OK"

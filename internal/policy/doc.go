@@ -3,7 +3,7 @@
 // AGENTS.md, so the rules hold on every run, not only when a reviewer spots a
 // problem.
 //
-// The tests check five things:
+// The tests check six things:
 //
 //   - No Go file imports a cloud-model SDK, and go.mod requires none
 //     (non-negotiable 1, ARCHITECTURE.md "Privacy boundary").
@@ -21,6 +21,13 @@
 //     reaches the engine, the store, the agent loop or the tool packages,
 //     starts programs only in internal/installer/run.go, and its allowlist
 //     names no shell, interpreter or downloader.
+//   - Every program Meru installs or tells the user to install is pinned
+//     (pins_test.go): no "latest", no version range, no package runner
+//     without an exact version, no container image without a digest, in
+//     the connector manifests, the installer, the catalog, cmd/meru,
+//     scripts/, deploy/ and the code blocks in docs/. A short list names
+//     the places that break the rule today, until the connectors replace
+//     them (issue #87). No client or installer imports internal/connectors.
 //
 // The deny-lists live in testdata/*.txt, one entry per line, so that no Go
 // string literal in this package names a provider host. The URL check reads

@@ -519,3 +519,17 @@ mouse_copy = true
 # allow   = ["summarize"]
 # confirm = []
 # timeout = "60s"
+
+# Connectors: programs Meru will install, start and check for you, such as
+# the Obsidian server. Each has a manifest built into merud that pins its
+# version and names its fields. One [connectors.<id>] table per connector
+# holds enabled (true or false) and the values of its fields, each a string.
+# A secret field never goes here: its value lives in secrets.toml as
+# secret:connector_<id>_<field>. Nothing reads these tables yet; the
+# supervisor that does is planned (ARCHITECTURE.md, "Connectors and the
+# supervisor"). Until then, [[mcp.servers]] above is how to add a server.
+#
+# [connectors.obsidian]
+# enabled    = true
+# vault_path = "~/Notes/vault"
+# vault_name = "notes"

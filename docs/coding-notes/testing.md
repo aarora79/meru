@@ -1,6 +1,6 @@
 # testing
 
-**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`),
+**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`),
 `internal/testutil/fakeollama/` (`fake.go`, `api.go`, `wire.go`), `cmd/fakeollama/` (`main.go`)
 **Milestone:** v0.1
 **Architecture:** [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -145,6 +145,24 @@ program besides `merud` that starts other programs. Only
 `internal/installer/run.go` may import `os/exec`; no installer file may import
 `syscall` or call `os.StartProcess`; and `installer.Programs()`, the allowlist,
 may name no shell, interpreter or downloader, and only absolute paths.
+
+None of the clients, nor the installer, may reach `internal/connectors`: `merud`
+installs and starts the connectors, and a client asks it about them.
+
+`pins_test.go` checks that every program Meru installs, or tells you to install,
+names one exact version. It reads the connector manifests, the string literals in
+`internal/installer`, `internal/catalog` and `cmd/meru`, every file in `scripts/`
+and `deploy/`, and the code blocks of the Markdown files under `docs/`. A line
+fails when it holds `@latest`, `:latest` or `version = "latest"`, a version range
+such as `@^2` or `>=1.30`, a container image with no `@sha256:` digest, a command
+that starts with `uvx` or `npx` and a package with no exact version, or a file
+fetched from a `master` branch. Prose outside a code block may say "latest".
+Meru's own `releases/latest` link passes: it is how you get Meru, not a
+dependency. `pinOffenders` names each place that breaks the rule today, such
+as the installer's `searxng:latest`; each keeps working until the connector
+supervisor replaces it (issue #87), and an entry that no longer matches anything
+fails the test, so the list can only shrink. `TestPinRulesCatch` runs the rules on
+made-up lines, the way `TestChecksCatchViolations` does for the other checks.
 
 `models_test.go` keeps the installers on one model table. The Mac installer
 reads `config.Recommendations` itself, but `scripts/install.sh`, the

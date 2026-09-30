@@ -276,6 +276,7 @@
     <li><a href="#skills">Skills: instructions loaded on demand</a></li>
     <li><a href="#loop">The agent loop: five steps</a></li>
     <li><a href="#mcp">Tools over MCP</a></li>
+    <li><a href="#connectors">Connectors and the supervisor</a></li>
     <li><a href="#local-commands">Local commands</a></li>
     <li><a href="#setup">First run and setup</a></li>
     <li><a href="#installer">The Mac installer</a></li>
@@ -2032,7 +2033,7 @@ tools_threshold  = 0.25           # "marginal" only</code></pre>
 
 <p>Meru can use any MCP server you already run, with no new code.</p>
 
-<p><b><code>merud</code> doesn't supervise servers.</b> The operating system already ships a process supervisor, and a second one inside the daemon would trade the first design rule for convenience:</p>
+<p><b><code>merud</code> doesn't supervise the servers you add by hand.</b> This section describes the <code>[[mcp.servers]]</code> entries: servers you add and run yourself. For them the operating system already ships a process supervisor, and <code>merud</code> adds none. The connectors are the one exception: servers that Meru installs from a manifest with a pinned version, which a supervisor inside <code>merud</code> will start, check and restart (planned; see <a href="#connectors">Connectors and the supervisor</a>). Nothing below changes for a hand-added server:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>Transport</th><th>What <code>merud</code> does</th><th>What it never does</th></tr></thead>
@@ -2060,7 +2061,7 @@ tools_threshold  = 0.25           # "marginal" only</code></pre>
 
 <p><code>merud</code> never sends a failed call again on its own: the server may have run the tool before the session broke, and a tool such as <code>send_gmail_message</code> would then run twice. The model sees the error and can ask again on the next turn.</p>
 
-<p>There is no loop, timer, goroutine or backoff, and nothing runs while nobody asks: a server that fails and is never needed again is never touched again. The one goroutine per session waits for the session to end so that <code>/mcp</code> reports a dead server at once; it marks the server not connected and never reconnects. So you can start <code>workspace-mcp</code> after <code>merud</code>, or restart it with new tools, and your next question sees it with no restart of <code>merud</code>.</p>
+<p>For a hand-added server there is no loop, timer, goroutine or backoff, and nothing runs while nobody asks: a server that fails and is never needed again is never touched again. The connector supervisor will have a timer and a backoff, for connectors only. The one goroutine per session waits for the session to end so that <code>/mcp</code> reports a dead server at once; it marks the server not connected and never reconnects. So you can start <code>workspace-mcp</code> after <code>merud</code>, or restart it with new tools, and your next question sees it with no restart of <code>merud</code>.</p>
 
 <pre><code>[[mcp.servers]]
 name    = "obsidian"
@@ -2132,6 +2133,111 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
 <p>Meru doesn't confine MCP servers. Each one runs as an ordinary process with your user's permissions, and can read files or reach the network by itself. Adding a server to config means trusting it. Meru's allowlist picks which tools the model may call; what each call does is up to the server.</p>
 
 <p>Meru uses no MCP shell server. It runs the programs you declare in <code>[[commands]]</code> itself (see <a href="#local-commands">Local commands</a>), because a shell server confines nothing Meru doesn't, adds a runtime and a process to supervise, and keeps the real policy, which program with which arguments, where <code>dispatch</code> can't see or log it.</p>
+
+<!-- ============================================================ -->
+<h2 id="connectors">Connectors and the supervisor</h2>
+
+<p>Today you install, start and repair every server Meru uses: SearXNG for web search, the Obsidian and Google MCP servers, and Ollama. When one is down, Meru says little. A <b>connector</b> is one of those programs that Meru will install, configure, start, check and restart for you, at a version pinned in Meru's own release. Issue #87 holds the plan, which lands in seven steps.</p>
+
+<p><b>What exists now (step 1):</b> the manifests, the checks on them, the <code>[connectors.&lt;id&gt;]</code> config table and a policy test that refuses unpinned versions. <code>merud</code> reads none of them yet, so Meru behaves as before. Everything else in this section is <b>planned</b>, and arrives over the next steps.</p>
+
+<h3 id="connector-manifest">The manifest</h3>
+
+<p>Each connector has one TOML file, <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into <code>merud</code>. Four ship:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>ID</th><th>Kind</th><th>Install</th><th>What it is</th></tr></thead>
+  <tbody>
+    <tr><td><code>searxng</code></td><td>container</td><td>an image, by digest</td><td>the search engine behind <code>web_search</code></td></tr>
+    <tr><td><code>obsidian</code></td><td>stdio</td><td>the npm package <code>obsidian-mcp</code></td><td>notes in an Obsidian vault folder</td></tr>
+    <tr><td><code>google</code></td><td>http</td><td>the Python package <code>workspace-mcp</code></td><td>Gmail, Calendar, Drive and Docs</td></tr>
+    <tr><td><code>ollama</code></td><td>dependency</td><td>none</td><td>the model runtime; status only</td></tr>
+  </tbody>
+</table></div>
+
+<p>A manifest names:</p>
+<ul>
+  <li><code>id</code>, <code>name</code>, <code>kind</code> (<code>stdio</code>, <code>http</code>, <code>container</code> or <code>dependency</code>), <code>required</code>, <code>default_on</code> and <code>idle_timeout</code>;</li>
+  <li><code>[install]</code>: <code>type</code> (<code>npm</code>, <code>pip</code>, <code>binary</code>, <code>container</code> or <code>none</code>), and the <code>package</code> and exact <code>version</code>, or a container <code>image</code> with its digest, or a <code>url_&lt;os&gt;_&lt;arch&gt;</code> and <code>sha256_&lt;os&gt;_&lt;arch&gt;</code> per platform for a download;</li>
+  <li><code>[launch]</code>: the <code>command</code>, <code>args</code> and <code>env</code> that start it, the loopback <code>url</code> and <code>port</code> it answers on, <code>auth</code> (<code>none</code> or <code>oauth</code>), and a container's <code>volumes</code>. <code>{pkg}</code> stands for the install folder, <code>{meru_dir}</code> for <code>~/.meru</code>, and <code>{field.&lt;id&gt;}</code> for a value the user gave;</li>
+  <li><code>[[field]]</code>: what to ask the user, each with an <code>id</code>, a <code>type</code> (<code>text</code>, <code>folder</code>, <code>secret</code>, <code>email</code>, <code>choice</code> or <code>oauth</code>), a <code>label</code>, <code>help</code>, <code>required</code>, and an optional <code>pattern</code>, <code>default</code> and <code>choices</code>. Every client will draw the same form from these;</li>
+  <li><code>[health]</code>: how to tell it works. An MCP server gets a cheap tool call (<code>tool</code>, <code>args</code>); a container or a dependency gets an HTTP GET (<code>path</code>). <code>expect</code> is <code>nonempty</code>, <code>contains:&lt;text&gt;</code> or <code>json_key:&lt;key&gt;</code>;</li>
+  <li><code>[mcp]</code>: <code>allow</code>, <code>confirm</code> and <code>always_confirm</code>, with the same meaning as in an <code>[[mcp.servers]]</code> entry.</li>
+</ul>
+
+<p><code>connectors.Load</code> parses every manifest when asked, and refuses the set when one breaks a rule:</p>
+<ul>
+  <li>an unknown kind, install type, field type or auth, or an install type that doesn't fit the kind;</li>
+  <li>a missing <code>id</code> or <code>name</code>, an ID used twice, or a field ID used twice;</li>
+  <li>a version that isn't one exact release: <code>latest</code>, an empty version, a range (<code>^</code>, <code>~</code>, <code>&gt;</code>, <code>&lt;</code>, <code>*</code>, <code>x</code>), a bare major such as <code>2</code>, or a tag;</li>
+  <li>a container image without <code>@sha256:&lt;digest&gt;</code>, or tagged <code>latest</code>;</li>
+  <li>a download without an https URL and a SHA-256 for each platform it names;</li>
+  <li>a secret field with a default;</li>
+  <li>a <code>pattern</code> that doesn't compile;</li>
+  <li>an http or container connector whose <code>url</code> isn't loopback;</li>
+  <li>a launch placeholder that names no field, or a secret on the command line, where other users can read it in the process list;</li>
+  <li>a wildcard in a tool list, or a <code>confirm</code> tool that <code>allow</code> doesn't list.</li>
+</ul>
+
+<h3 id="connector-pins">Pinned versions</h3>
+
+<p>Each connector runs one version, chosen and tested for a Meru release. A pin moves only in a new Meru release, and the release notes list it under "Connector versions". A policy test (<code>internal/policy/pins_test.go</code>) fails on <code>latest</code>, <code>@latest</code>, <code>:latest</code>, a version range, a package runner such as <code>uvx</code> or <code>npx</code> without an exact version, a container image without a digest, and a file fetched from a branch. It reads the manifests, the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and the code blocks in <code>docs/</code>. Meru's own <code>releases/latest</code> link passes: it fetches Meru, not a dependency. The places that break the rule today, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, sit on a short list in the test and keep working until steps 4 and 5 replace them; the list can only shrink.</p>
+
+<h3 id="connector-config">Config and secrets</h3>
+
+<p>The values a user gives go in <code>config.toml</code>, one table per connector:</p>
+
+<pre><code>[connectors.obsidian]
+enabled    = true
+vault_path = "~/Notes/vault"</code></pre>
+
+<p><code>enabled</code> is true or false; every other value is a string. <code>config.Load</code> checks the shape only: an ID and its keys are lower-case letters, digits and <code>_</code>. It doesn't know the connectors, because the clients import <code>config</code> and must not reach <code>internal/connectors</code>; <code>merud</code> will check each table against its manifest. A secret field never goes in <code>config.toml</code>: its value goes in <code>secrets.toml</code> as <code>secret:connector_&lt;id&gt;_&lt;field&gt;</code>. <code>[[mcp.servers]]</code> stays for the servers you add by hand, and the supervisor never manages those.</p>
+
+<h3 id="connector-runtime">The runtime folder (planned)</h3>
+
+<p><code>merud</code> will download pinned Node and uv into <code>~/.meru/runtime/node-&lt;v&gt;/</code> and <code>~/.meru/runtime/uv-&lt;v&gt;/</code>, and check each against its SHA-256 before unpacking it. Each connector installs into <code>~/.meru/runtime/pkg/&lt;id&gt;-&lt;version&gt;/</code>: npm with <code>npm install --prefix</code>, pip with <code>uv venv</code> and <code>uv pip install &lt;pkg&gt;==&lt;version&gt;</code>, a binary by download and checksum, a container by <code>docker pull &lt;image@digest&gt;</code>. A version in the manifest that differs from the installed one means a new install, and the old folder goes once the new one passes its health check. Every program runs by absolute path from one file, with no shell and a short environment. Meru never touches your global npm, pip or Homebrew. The runtime folder also keeps each connector's last tool list, in <code>state/&lt;id&gt;.json</code>, and its log, in <code>logs/&lt;id&gt;.log</code>.</p>
+
+<h3 id="supervisor">The supervisor (planned)</h3>
+
+<p><code>merud</code> will run one small state machine per connector. You see four states:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>State</th><th>Meaning</th><th>Inside it</th></tr></thead>
+  <tbody>
+    <tr><td><code>ok</code></td><td>ready to use</td><td><code>ok</code> (running) or <code>ready</code> (installed, idle, tools known)</td></tr>
+    <tr><td><code>needs_config</code></td><td>a field is missing or wrong</td><td><code>off</code>, <code>needs_config</code></td></tr>
+    <tr><td><code>starting</code></td><td>on its way</td><td><code>installing</code>, <code>starting</code>, backoff after a crash</td></tr>
+    <tr><td><code>failed(reason)</code></td><td>stopped; the reason says why</td><td><code>failed</code></td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li><b>Lazy start.</b> The model sees a ready connector's tools from the list kept at its last health check. The first call starts the program and waits for it at most the connect timeout. A program left unused for <code>idle_timeout</code> stops, and goes back to <code>ready</code>.</li>
+  <li><b>Crashes.</b> A crash leads to a restart after a backoff of 1, 2, 4 and so on up to 60 seconds. The call that was running fails with its error, and <code>merud</code> never sends it again, as for a hand-added server. Five crashes in ten minutes set <code>failed("keeps stopping: &lt;last line of its error output&gt;")</code>.</li>
+  <li><b>Health checks</b> run after an install, at each start and on Fix. A container also gets one every 60 seconds while in use; for SearXNG that is <code>/healthz</code>, which sends nothing off the machine.</li>
+  <li><b>Tools follow health.</b> A connector that isn't <code>ok</code> offers no tools, so <code>web_search</code> goes away while SearXNG is down.</li>
+  <li><b>Reloads.</b> The supervisor outlives the MCP pool's reload. The pool asks it for a connector's session; a hand-added server keeps today's code.</li>
+</ul>
+
+<p>A new socket op, <code>connectors</code>, will return one status per connector with a plain sentence ("Obsidian needs your vault folder.") and a Fix that names the fields to ask again. Settings, the rail, <code>/mcp</code> and <code>meru mcp status</code> will all show it.</p>
+
+<h3 id="connector-searxng-ollama">SearXNG and Ollama (planned)</h3>
+
+<p><b>SearXNG</b> runs as the container <code>meru-searxng</code> from the pinned image, on <code>127.0.0.1:8888</code>. A SearXNG that already answers there and isn't <code>meru-searxng</code>, such as one you run with Docker Compose, counts as <b>external</b>: Meru reports on it and never starts, stops or changes it.</p>
+
+<p><b>Ollama</b> is a status-only dependency. Meru never installs or starts it; the health check is <code>GET /api/version</code> on <code>[ollama] base_url</code>. <code>merud</code> will open its socket before it checks Ollama, so a client can show "Ollama isn't running" rather than finding no <code>merud</code> at all. It checks again every 30 seconds until Ollama answers, then warms the models, and a question asked meanwhile gets that sentence as its error.</p>
+
+<h3 id="connector-adopt">Moving to connectors (planned)</h3>
+
+<p>A working setup keeps working. At start, an <code>[[mcp.servers]]</code> entry named <code>google</code> or <code>obsidian</code> with no <code>[connectors.*]</code> table runs as it does today, and its status says "set up by hand" with an <b>Adopt</b> action. Adopt, after you confirm:</p>
+<ol>
+  <li>writes <code>[connectors.&lt;id&gt;]</code> from the old entry: the vault path from <code>--vault</code>, the Google address and client ID, and the client secret into <code>secrets.toml</code>;</li>
+  <li>keeps the allow and confirm lists;</li>
+  <li>comments out the old block and stops the old launchd job;</li>
+  <li>starts the connector on the same port, so Google's sign-in callback and saved tokens still work.</li>
+</ol>
+
+<p>Undoing it takes one step: restore the commented block. The connector IDs stay <code>google</code> and <code>obsidian</code>, so tool names such as <code>google.search_gmail_messages</code> don't change in <code>tool_calls</code>, transcripts or the router.</p>
 
 <!-- ============================================================ -->
 <h2 id="local-commands">Local commands</h2>
