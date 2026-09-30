@@ -2139,7 +2139,7 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
 
 <p>Today you install, start and repair every server Meru uses: SearXNG for web search, the Obsidian and Google MCP servers, and Ollama. When one is down, Meru says little. A <b>connector</b> is one of those programs that Meru will install, configure, start, check and restart for you, at a version pinned in Meru's own release. Issue #87 holds the plan, which lands in seven steps.</p>
 
-<p><b>What exists now (step 1):</b> the manifests, the checks on them, the <code>[connectors.&lt;id&gt;]</code> config table and a policy test that refuses unpinned versions. <code>merud</code> reads none of them yet, so Meru behaves as before. Everything else in this section is <b>planned</b>, and arrives over the next steps.</p>
+<p><b>What exists now (steps 1 and 2):</b> the manifests, the checks on them, the <code>[connectors.&lt;id&gt;]</code> config table, a policy test that refuses unpinned versions, and the code that downloads the pinned runtimes and installs each connector into <code>~/.meru/runtime</code>. <code>merud</code> calls none of it yet, so Meru behaves as before. Everything else in this section is <b>planned</b>, and arrives over the next steps.</p>
 
 <h3 id="connector-manifest">The manifest</h3>
 
@@ -2159,7 +2159,7 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
 <ul>
   <li><code>id</code>, <code>name</code>, <code>kind</code> (<code>stdio</code>, <code>http</code>, <code>container</code> or <code>dependency</code>), <code>required</code>, <code>default_on</code> and <code>idle_timeout</code>;</li>
   <li><code>[install]</code>: <code>type</code> (<code>npm</code>, <code>pip</code>, <code>binary</code>, <code>container</code> or <code>none</code>), and the <code>package</code> and exact <code>version</code>, or a container <code>image</code> with its digest, or a <code>url_&lt;os&gt;_&lt;arch&gt;</code> and <code>sha256_&lt;os&gt;_&lt;arch&gt;</code> per platform for a download;</li>
-  <li><code>[launch]</code>: the <code>command</code>, <code>args</code> and <code>env</code> that start it, the loopback <code>url</code> and <code>port</code> it answers on, <code>auth</code> (<code>none</code> or <code>oauth</code>), and a container's <code>volumes</code>. <code>{pkg}</code> stands for the install folder, <code>{meru_dir}</code> for <code>~/.meru</code>, and <code>{field.&lt;id&gt;}</code> for a value the user gave;</li>
+  <li><code>[launch]</code>: the <code>command</code>, <code>args</code> and <code>env</code> that start it, the loopback <code>url</code> and <code>port</code> it answers on, <code>auth</code> (<code>none</code> or <code>oauth</code>), and a container's <code>volumes</code>. For an npm or pip connector, <code>command</code> is the bare name of a program the package installs, such as <code>obsidian-mcp</code>, and Meru finds it in the install folder (see <a href="#connector-runtime">The runtime folder</a>); for a binary it is a path under <code>{pkg}</code>. <code>{pkg}</code> stands for the install folder, <code>{meru_dir}</code> for <code>~/.meru</code>, and <code>{field.&lt;id&gt;}</code> for a value the user gave;</li>
   <li><code>[[field]]</code>: what to ask the user, each with an <code>id</code>, a <code>type</code> (<code>text</code>, <code>folder</code>, <code>secret</code>, <code>email</code>, <code>choice</code> or <code>oauth</code>), a <code>label</code>, <code>help</code>, <code>required</code>, and an optional <code>pattern</code>, <code>default</code> and <code>choices</code>. Every client will draw the same form from these;</li>
   <li><code>[health]</code>: how to tell it works. An MCP server gets a cheap tool call (<code>tool</code>, <code>args</code>); a container or a dependency gets an HTTP GET (<code>path</code>). <code>expect</code> is <code>nonempty</code>, <code>contains:&lt;text&gt;</code> or <code>json_key:&lt;key&gt;</code>;</li>
   <li><code>[mcp]</code>: <code>allow</code>, <code>confirm</code> and <code>always_confirm</code>, with the same meaning as in an <code>[[mcp.servers]]</code> entry.</li>
@@ -2176,6 +2176,7 @@ obsidian   stdio      not connected     —        5        1   exec: "uvx": exe
   <li>a <code>pattern</code> that doesn't compile;</li>
   <li>an http or container connector whose <code>url</code> isn't loopback;</li>
   <li>a launch placeholder that names no field, or a secret on the command line, where other users can read it in the process list;</li>
+  <li>an npm or pip <code>command</code> that holds a folder, or a binary <code>command</code> outside <code>{pkg}</code>;</li>
   <li>a wildcard in a tool list, or a <code>confirm</code> tool that <code>allow</code> doesn't list.</li>
 </ul>
 
@@ -2193,9 +2194,55 @@ vault_path = "~/Notes/vault"</code></pre>
 
 <p><code>enabled</code> is true or false; every other value is a string. <code>config.Load</code> checks the shape only: an ID and its keys are lower-case letters, digits and <code>_</code>. It doesn't know the connectors, because the clients import <code>config</code> and must not reach <code>internal/connectors</code>; <code>merud</code> will check each table against its manifest. A secret field never goes in <code>config.toml</code>: its value goes in <code>secrets.toml</code> as <code>secret:connector_&lt;id&gt;_&lt;field&gt;</code>. <code>[[mcp.servers]]</code> stays for the servers you add by hand, and the supervisor never manages those.</p>
 
-<h3 id="connector-runtime">The runtime folder (planned)</h3>
+<h3 id="connector-runtime">The runtime folder</h3>
 
-<p><code>merud</code> will download pinned Node and uv into <code>~/.meru/runtime/node-&lt;v&gt;/</code> and <code>~/.meru/runtime/uv-&lt;v&gt;/</code>, and check each against its SHA-256 before unpacking it. Each connector installs into <code>~/.meru/runtime/pkg/&lt;id&gt;-&lt;version&gt;/</code>: npm with <code>npm install --prefix</code>, pip with <code>uv venv</code> and <code>uv pip install &lt;pkg&gt;==&lt;version&gt;</code>, a binary by download and checksum, a container by <code>docker pull &lt;image@digest&gt;</code>. A version in the manifest that differs from the installed one means a new install, and the old folder goes once the new one passes its health check. Every program runs by absolute path from one file, with no shell and a short environment. Meru never touches your global npm, pip or Homebrew. The runtime folder also keeps each connector's last tool list, in <code>state/&lt;id&gt;.json</code>, and its log, in <code>logs/&lt;id&gt;.log</code>.</p>
+<p>Built in step 2; <code>merud</code> doesn't call it until the supervisor lands.</p>
+
+<p>Everything a connector needs lands under <code>~/.meru/runtime/</code>, so deleting that folder removes every install:</p>
+
+<pre><code>~/.meru/runtime/
+  node-24.21.0/            pinned Node, with its npm
+  uv-0.12.21/              pinned uv
+  python/                  the Python uv downloads (3.12)
+  cache/npm/, cache/uv/    download caches
+  home/                    HOME for npm and uv, so nothing lands in yours
+  npmrc                    an empty npm settings file
+  pkg/obsidian-2.0.1/      one folder per connector and version
+  pkg/google-1.30.0/
+  state/&lt;id&gt;.json          (planned) the tool list from the last health check
+  logs/&lt;id&gt;.log            (planned) the connector's error output</code></pre>
+
+<p><b>The runtimes.</b> <code>internal/connectors/runtimes.go</code> pins Node 24.21.0, the newest Long Term Support release on 30 September 2026, and uv 0.12.21, each with a download URL and a SHA-256 for macOS and Linux on arm64 and amd64. Windows has no pin yet. The first time a connector needs one, <code>merud</code> downloads the <code>.tar.gz</code> into a temporary folder under <code>~/.meru/runtime</code>, checks its SHA-256 against the pin, and unpacks it only if the two match. Unpacking refuses an entry that is absolute, climbs out with <code>..</code>, links outside the folder, or is a hard link or a device. The finished folder gets a marker file, <code>.meru-installed</code>, and then moves to <code>node-&lt;v&gt;</code> or <code>uv-&lt;v&gt;</code> in one rename, so a runtime folder either doesn't exist or is complete. Once a new pin's folder is in place, older versions of the same runtime go.</p>
+
+<p><b>The installs.</b> Each connector installs into <code>~/.meru/runtime/pkg/&lt;id&gt;-&lt;version&gt;/</code>, by its install type:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Type</th><th>What <code>merud</code> runs</th></tr></thead>
+  <tbody>
+    <tr><td><code>npm</code></td><td><code>&lt;node&gt;/bin/node &lt;node&gt;/lib/node_modules/npm/bin/npm-cli.js install --prefix &lt;dir&gt; &lt;pkg&gt;@&lt;version&gt; --no-audit --no-fund --no-update-notifier --ignore-scripts</code></td></tr>
+    <tr><td><code>pip</code></td><td><code>&lt;uv&gt;/uv venv &lt;dir&gt;/.venv --python 3.12</code>, then <code>&lt;uv&gt;/uv pip install --python &lt;dir&gt;/.venv/bin/python &lt;pkg&gt;==&lt;version&gt;</code></td></tr>
+    <tr><td><code>binary</code></td><td>download this platform's file into <code>&lt;dir&gt;</code>, check its SHA-256, mark it runnable</td></tr>
+    <tr><td><code>container</code></td><td><code>docker info</code>, then <code>docker pull &lt;image&gt;@sha256:&lt;digest&gt;</code></td></tr>
+  </tbody>
+</table></div>
+
+<ul>
+  <li><b>npm</b> gets <code>npm_config_cache</code> under <code>cache/npm</code> and <code>npm_config_userconfig</code> pointing at the empty <code>npmrc</code>, so your <code>~/.npm</code> and <code>~/.npmrc</code> play no part. <code>--ignore-scripts</code> stops the code a package may run while it installs; <code>obsidian-mcp</code> 2.0.1 and its dependencies need none.</li>
+  <li><b>uv</b> gets every folder it would put in your home moved under <code>~/.meru/runtime</code>: <code>UV_CACHE_DIR</code>, <code>UV_PYTHON_INSTALL_DIR</code>, <code>UV_PYTHON_BIN_DIR</code>, <code>UV_PYTHON_CACHE_DIR</code>, <code>UV_TOOL_DIR</code> and <code>UV_TOOL_BIN_DIR</code>. <code>UV_PYTHON_PREFERENCE=only-managed</code> makes it use a Python it downloaded there, never one from Homebrew or the system, and <code>UV_NO_CONFIG=1</code> skips your <code>uv.toml</code>. Each uv release fixes the list of Python builds it knows, so the uv pin also fixes the Python patch release.</li>
+  <li><b>docker</b> comes from a fixed list of absolute paths (Docker Desktop, OrbStack, Homebrew, <code>/usr/bin</code>). None there is "Docker isn't installed"; a failing <code>docker info</code> is "Docker isn't running". Only docker gets your real <code>HOME</code>, where Docker keeps its socket and settings.</li>
+</ul>
+
+<p>Install works in the final folder, because a Python environment can't move once made. It deletes a folder that has no marker, a leftover from an install that stopped part way, before it starts; writes the marker last; and deletes the folder again if any step fails. The marker records the connector, the version and the runtime folder it used. A manifest version or a runtime pin that differs from the marker means a new install, and the connector's older folders go once the new one is complete. npm resolves the package's own dependencies within the ranges the package names; only the package itself is pinned.</p>
+
+<p><b>Starting a program.</b> <code>LaunchCommand</code> turns the manifest's <code>[launch]</code> table into a program, its arguments and the variables to add to its short environment, with every placeholder filled in:</p>
+<ul>
+  <li><b>npm:</b> it reads <code>node_modules/&lt;pkg&gt;/package.json</code>, finds the script behind the program name in its <code>bin</code> key, and returns the pinned <code>node</code> as the program with the script as its first argument. <code>obsidian-mcp</code>'s script starts with <code>#!/usr/bin/env node</code>, which asks <code>PATH</code> for <code>node</code>. Running it through that line would work only while the child's <code>PATH</code> finds the pinned Node, and launchd's short <code>PATH</code> finds none; naming <code>node</code> by its absolute path works with any <code>PATH</code>.</li>
+  <li><b>pip:</b> it returns <code>&lt;dir&gt;/.venv/bin/&lt;name&gt;</code>. uv writes that script's first line as the environment's own Python, by absolute path.</li>
+  <li><b>binary:</b> it returns the file under <code>{pkg}</code>.</li>
+</ul>
+<p>In each case the child's <code>PATH</code> starts with the runtime's <code>bin</code> folder, so a <code>node</code> or <code>python</code> the connector starts in turn is the pinned one.</p>
+
+<p><b>One place runs programs.</b> <code>internal/connectors/run.go</code> is the only file in the package that imports <code>os/exec</code>, and a policy test holds it to that. It runs each program by absolute path, with no shell, with only the environment the caller lists, streams each output line to a progress callback, and keeps the last 40 lines for the error message.</p>
 
 <h3 id="supervisor">The supervisor (planned)</h3>
 
@@ -2832,6 +2879,7 @@ capture_content  = false                     # prompt/response text in spans</co
   <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code>, apply the same rules through the indexer's own code, so outside the output folder and your own session transcripts the model can read no file that search couldn't reach.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
   <li>The Mac installer downloads only what a step names, after you press Continue: Ollama and uv through Homebrew, the models through Ollama, the SearXNG image through Docker, and Ollama.app from Ollama's site on a Mac with no Homebrew. It runs only the programs on its allowlist, with no shell, and keeps the Google client secret in the start script, readable only by you (see <a href="#installer">The Mac installer</a>).</li>
+  <li>A connector's install downloads only what its pins name: Node from nodejs.org and uv from its GitHub release, each checked against a SHA-256 compiled into <code>merud</code>; the package and its dependencies from the npm registry or PyPI; a Python build through uv; and a container image by digest through Docker (see <a href="#connector-runtime">The runtime folder</a>). Nothing downloads until a connector needs it, and today no code in <code>merud</code> calls the installer yet.</li>
   <li>The desktop app loads nothing from the network. Its page, fonts and libraries ship inside the binary, its Content-Security-Policy blocks remote scripts, images and connections, and its Wails updater stays unconfigured, so it never checks for updates.</li>
 </ul>
 

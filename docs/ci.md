@@ -84,6 +84,7 @@ violation blocks a merge like any failing test.
 | `TestClientImports`, `TestClientDependencies` for the installer | The Mac installer (`cmd/meru-installer`, `internal/installer`) reaches the engine, the agent loop, the store, `index`, `dispatch`, the MCP or A2A clients, `builtin` or `commands` |
 | `TestInstallerRunsOnlyThroughRun` | An installer file other than `internal/installer/run.go` imports `os/exec`, or any installer file imports `syscall` or calls `os.StartProcess` |
 | `TestInstallerAllowlist` | The installer's allowlist names a shell, an interpreter or a downloader, or a path that isn't absolute |
+| `TestConnectorsRunOnlyThroughRun` | A file in `internal/connectors` other than `run.go` imports `os/exec`, any of its files imports `syscall` or calls `os.StartProcess`, or `run.go` stops importing `os/exec` |
 
 Each failure names the file and line. A few rules decide what counts:
 

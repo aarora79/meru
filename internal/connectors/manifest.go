@@ -404,6 +404,9 @@ func Validate(m Manifest) error {
 	fields, fieldErrs := checkFields(m.Fields)
 	errs = append(errs, fieldErrs...)
 	errs = append(errs, checkLaunch(m.Kind, m.Launch, fields)...)
+	if err := checkCommand(m.Install.Type, m.Launch.Command); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, checkHealth(m.Kind, m.Health)...)
 	errs = append(errs, checkMCP(m.Kind, m.MCP)...)
 
@@ -678,6 +681,36 @@ func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
 		check(fmt.Sprintf("launch.volumes[%d]", i), v, false)
 	}
 	return errs
+}
+
+// programName is what launch.command holds for an npm or pip connector:
+// the bare name of a program the package installs, such as
+// "obsidian-mcp", with no folder and no placeholder.
+var programName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// checkCommand checks launch.command against the install type, and
+// returns nil when it fits or is empty (checkLaunch reports a missing
+// one). An npm or pip connector names a program of its package, and
+// LaunchCommand finds it in the install folder: for npm it runs the
+// script with Meru's own Node, so the command must not be a path that
+// would run the script's "#!/usr/bin/env node" line. A binary names a
+// file under {pkg}.
+func checkCommand(installType, command string) error {
+	if command == "" {
+		return nil
+	}
+	switch installType {
+	case InstallNPM, InstallPip:
+		if !programName.MatchString(command) {
+			return fmt.Errorf("launch.command %q must be the name of a program the package installs, such as \"obsidian-mcp\", with no folder; Meru finds it in the install folder", command)
+		}
+	case InstallBinary:
+		rest, ok := strings.CutPrefix(command, "{pkg}/")
+		if !ok || rest == "" || slices.Contains(strings.Split(rest, "/"), "..") {
+			return fmt.Errorf("launch.command %q must be a file under {pkg}/, the folder the download goes in", command)
+		}
+	}
+	return nil
 }
 
 // urlPort returns the port in a URL, or 0 when it has none or it isn't a

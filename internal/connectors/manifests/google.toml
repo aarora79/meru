@@ -16,8 +16,9 @@ package = "workspace-mcp"
 version = "1.30.0"
 
 [launch]
-# uv venv {pkg} puts the program in bin/.
-command = "{pkg}/bin/workspace-mcp"
+# The package's program, by name. Meru runs it from the package's own
+# Python environment, {pkg}/.venv/bin/workspace-mcp.
+command = "workspace-mcp"
 args = ["--transport", "streamable-http", "--tools", "gmail", "calendar", "drive", "docs", "--tool-tier", "extended"]
 url = "http://127.0.0.1:8000/mcp"
 # The sign-in link's callback is fixed to this port.

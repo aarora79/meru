@@ -5,15 +5,26 @@
 // says how to install it, how to start it, what to ask the user and how to
 // tell that it works. See ARCHITECTURE.md, "Connectors and the supervisor".
 //
-// This first part of the package only reads and checks the manifests.
-// Load parses every embedded manifest and refuses one that breaks a rule:
-// a version that isn't exact, a container image without a digest, a
-// download without a checksum, a secret with a default, and the rest that
-// Validate lists. merud doesn't call Load yet; the supervisor that uses the
-// manifests arrives in later changes (issue #87).
+// The package has two parts so far (issue #87, steps 1 and 2):
 //
-// What the package chooses not to do: it runs no program, reads no user
-// file and touches no network. The clients never import it
+//   - The manifests. Load parses every embedded manifest and refuses one
+//     that breaks a rule: a version that isn't exact, a container image
+//     without a digest, a download without a checksum, a secret with a
+//     default, and the rest that Validate lists.
+//   - The installs. An Installer downloads the pinned Node and uv into
+//     ~/.meru/runtime (runtimes.go), checking each archive's SHA-256
+//     before it unpacks it (download.go); installs a connector's package
+//     into ~/.meru/runtime/pkg/<id>-<version>/ (install.go); and says how
+//     to start the installed program (launch.go). Every program it runs
+//     goes through run.go, by absolute path, with no shell and a short
+//     environment.
+//
+// merud calls none of this yet. The supervisor that will start, check and
+// restart connectors arrives in step 3.
+//
+// What the package chooses not to do: it never asks PATH for a program,
+// never touches the user's own npm, pip, uv or Homebrew folders, and
+// starts no connector itself. The clients never import it
 // (internal/policy): merud owns the connectors, and a client asks merud
 // about them over the socket.
 package connectors

@@ -45,7 +45,7 @@ Read them in this order; each builds on the ones before it.
 24. [desktop](desktop.md): the desktop app, its Bridge to `merud`, and the page in its window
 25. [about](about.md): the tagline, the version and the links both clients show
 26. [installer](installer.md): the Mac installer's nine steps, its allowlist of programs, and its window
-27. [connectors](connectors.md): the connector manifests, their pinned versions, and the checks on them
+27. [connectors](connectors.md): the connector manifests, their pinned versions and checks, and the installs of Node, uv and each connector into ~/.meru/runtime
 28. [testing](testing.md): how Meru tests itself, from unit tests to fakes
 29. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 
@@ -72,6 +72,7 @@ Read them in this order; each builds on the ones before it.
 - [os/exec](go-basics/os-exec.md)
 - [encoding/json](go-basics/json.md)
 - [embed](go-basics/embed.md)
+- [os.Root](go-basics/os-root.md)
 
 ## Rules for writing a note
 

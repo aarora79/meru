@@ -44,6 +44,9 @@ fmt.Print(string(out))
   Unix it sets `SysProcAttr.Setpgid` and a `Cancel` function that kills the
   whole process group, and `WaitDelay` so a child that keeps the output open
   can't hang the call.
+- `internal/connectors/run.go` — the one file in `internal/connectors` that runs
+  a program: npm, uv and docker, by absolute path, with only the environment
+  each `Cmd` lists, and each output line passed on for progress.
 - `internal/mcp/testserver_test.go` — the test binary starts itself as a child
   that serves MCP.
 - `internal/policy/layout_test.go` — runs `go list` to read the client's imports.

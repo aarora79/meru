@@ -3195,10 +3195,12 @@ says little. A **connector** is one of those programs that Meru will install,
 configure, start, check and restart for you, at a version pinned in Meru's own
 release. Issue #87 holds the plan, which lands in seven steps.
 
-**What exists now (step 1):** the manifests, the checks on them, the
-`[connectors.<id>]` config table and a policy test that refuses unpinned
-versions. `merud` reads none of them yet, so Meru behaves as before.
-Everything else in this section is **planned**, and arrives over the next steps.
+**What exists now (steps 1 and 2):** the manifests, the checks on them, the
+`[connectors.<id>]` config table, a policy test that refuses unpinned
+versions, and the code that downloads the pinned runtimes and installs each
+connector into `~/.meru/runtime`. `merud` calls none of it yet, so Meru
+behaves as before. Everything else in this section is **planned**, and
+arrives over the next steps.
 
 ### The manifest
 
@@ -3221,8 +3223,11 @@ A manifest names:
   `url_<os>_<arch>` and `sha256_<os>_<arch>` per platform for a download;
 - `[launch]`: the `command`, `args` and `env` that start it, the loopback `url`
   and `port` it answers on, `auth` (`none` or `oauth`), and a container's
-  `volumes`. `{pkg}` stands for the install folder, `{meru_dir}` for `~/.meru`,
-  and `{field.<id>}` for a value the user gave;
+  `volumes`. For an npm or pip connector, `command` is the bare name of a
+  program the package installs, such as `obsidian-mcp`, and Meru finds it in
+  the install folder (see [The runtime folder](#the-runtime-folder)); for a
+  binary it is a path under `{pkg}`. `{pkg}` stands for the install folder,
+  `{meru_dir}` for `~/.meru`, and `{field.<id>}` for a value the user gave;
 - `[[field]]`: what to ask the user, each with an `id`, a `type` (`text`,
   `folder`, `secret`, `email`, `choice` or `oauth`), a `label`, `help`,
   `required`, and an optional `pattern`, `default` and `choices`. Every client
@@ -3248,6 +3253,8 @@ breaks a rule:
 - an http or container connector whose `url` isn't loopback;
 - a launch placeholder that names no field, or a secret on the command line,
   where other users can read it in the process list;
+- an npm or pip `command` that holds a folder, or a binary `command` outside
+  `{pkg}`;
 - a wildcard in a tool list, or a `confirm` tool that `allow` doesn't list.
 
 ### Pinned versions
@@ -3282,19 +3289,98 @@ manifest. A secret field never goes in `config.toml`: its value goes in
 `secrets.toml` as `secret:connector_<id>_<field>`. `[[mcp.servers]]` stays for
 the servers you add by hand, and the supervisor never manages those.
 
-### The runtime folder (planned)
+### The runtime folder
 
-`merud` will download pinned Node and uv into `~/.meru/runtime/node-<v>/` and
-`~/.meru/runtime/uv-<v>/`, and check each against its SHA-256 before unpacking
-it. Each connector installs into `~/.meru/runtime/pkg/<id>-<version>/`: npm
-with `npm install --prefix`, pip with `uv venv` and `uv pip install
-<pkg>==<version>`, a binary by download and checksum, a container by
-`docker pull <image@digest>`. A version in the manifest that differs from the
-installed one means a new install, and the old folder goes once the new one
-passes its health check. Every program runs by absolute path from one file,
-with no shell and a short environment. Meru never touches your global npm, pip
-or Homebrew. The runtime folder also keeps each connector's last tool list, in
-`state/<id>.json`, and its log, in `logs/<id>.log`.
+Built in step 2; `merud` doesn't call it until the supervisor lands.
+
+Everything a connector needs lands under `~/.meru/runtime/`, so deleting that
+folder removes every install:
+
+```text
+~/.meru/runtime/
+  node-24.21.0/            pinned Node, with its npm
+  uv-0.12.21/              pinned uv
+  python/                  the Python uv downloads (3.12)
+  cache/npm/, cache/uv/    download caches
+  home/                    HOME for npm and uv, so nothing lands in yours
+  npmrc                    an empty npm settings file
+  pkg/obsidian-2.0.1/      one folder per connector and version
+  pkg/google-1.30.0/
+  state/<id>.json          (planned) the tool list from the last health check
+  logs/<id>.log            (planned) the connector's error output
+```
+
+**The runtimes.** `internal/connectors/runtimes.go` pins Node 24.21.0, the
+newest Long Term Support release on 30 September 2026, and uv 0.12.21, each
+with a download URL and a SHA-256 for macOS and Linux on arm64 and amd64.
+Windows has no pin yet. The first time a connector needs one, `merud`
+downloads the `.tar.gz` into a temporary folder under `~/.meru/runtime`, checks
+its SHA-256 against the pin, and unpacks it only if the two match. Unpacking
+refuses an entry that is absolute, climbs out with `..`, links outside the
+folder, or is a hard link or a device. The finished folder gets a marker file,
+`.meru-installed`, and then moves to `node-<v>` or `uv-<v>` in one rename, so a
+runtime folder either doesn't exist or is complete. Once a new pin's folder is
+in place, older versions of the same runtime go.
+
+**The installs.** Each connector installs into
+`~/.meru/runtime/pkg/<id>-<version>/`, by its install type:
+
+| Type | What `merud` runs |
+| --- | --- |
+| `npm` | `<node>/bin/node <node>/lib/node_modules/npm/bin/npm-cli.js install --prefix <dir> <pkg>@<version> --no-audit --no-fund --no-update-notifier --ignore-scripts` |
+| `pip` | `<uv>/uv venv <dir>/.venv --python 3.12`, then `<uv>/uv pip install --python <dir>/.venv/bin/python <pkg>==<version>` |
+| `binary` | download this platform's file into `<dir>`, check its SHA-256, mark it runnable |
+| `container` | `docker info`, then `docker pull <image>@sha256:<digest>` |
+
+- **npm** gets `npm_config_cache` under `cache/npm` and `npm_config_userconfig`
+  pointing at the empty `npmrc`, so your `~/.npm` and `~/.npmrc` play no part.
+  `--ignore-scripts` stops the code a package may run while it installs;
+  `obsidian-mcp` 2.0.1 and its dependencies need none.
+- **uv** gets every folder it would put in your home moved under
+  `~/.meru/runtime`: `UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`,
+  `UV_PYTHON_BIN_DIR`, `UV_PYTHON_CACHE_DIR`, `UV_TOOL_DIR` and
+  `UV_TOOL_BIN_DIR`. `UV_PYTHON_PREFERENCE=only-managed` makes it use a Python
+  it downloaded there, never one from Homebrew or the system, and
+  `UV_NO_CONFIG=1` skips your `uv.toml`. Each uv release fixes the list of
+  Python builds it knows, so the uv pin also fixes the Python patch release.
+- **docker** comes from a fixed list of absolute paths (Docker Desktop,
+  OrbStack, Homebrew, `/usr/bin`). None there is "Docker isn't installed"; a
+  failing `docker info` is "Docker isn't running". Only docker gets your real
+  `HOME`, where Docker keeps its socket and settings.
+
+Install works in the final folder, because a Python environment can't move
+once made. It deletes a folder that has no marker, a leftover from an install
+that stopped part way, before it starts; writes the marker last; and deletes
+the folder again if any step fails. The marker records the connector, the
+version and the runtime folder it used. A manifest version or a runtime pin
+that differs from the marker means a new install, and the connector's older
+folders go once the new one is complete. npm resolves the package's own
+dependencies within the ranges the package names; only the package itself is
+pinned.
+
+**Starting a program.** `LaunchCommand` turns the manifest's `[launch]` table
+into a program, its arguments and the variables to add to its short
+environment, with every placeholder filled in:
+
+- **npm:** it reads `node_modules/<pkg>/package.json`, finds the script behind
+  the program name in its `bin` key, and returns the pinned `node` as the
+  program with the script as its first argument. `obsidian-mcp`'s script starts
+  with `#!/usr/bin/env node`, which asks `PATH` for `node`. Running it through
+  that line would work only while the child's `PATH` finds the pinned Node, and
+  launchd's short `PATH` finds none; naming `node` by its absolute path works
+  with any `PATH`.
+- **pip:** it returns `<dir>/.venv/bin/<name>`. uv writes that script's first
+  line as the environment's own Python, by absolute path.
+- **binary:** it returns the file under `{pkg}`.
+
+In each case the child's `PATH` starts with the runtime's `bin` folder, so a
+`node` or `python` the connector starts in turn is the pinned one.
+
+**One place runs programs.** `internal/connectors/run.go` is the only file in
+the package that imports `os/exec`, and a policy test holds it to that. It runs
+each program by absolute path, with no shell, with only the environment the
+caller lists, streams each output line to a progress callback, and keeps the
+last 40 lines for the error message.
 
 ### The supervisor (planned)
 
@@ -4023,6 +4109,13 @@ transcript lines hold. No level writes question or answer text. With
   runs only the programs on its allowlist, with no shell, and keeps the Google
   client secret in the start script, readable only by you (see
   [Installer](#installer)).
+- A connector's install downloads only what its pins name: Node from
+  nodejs.org and uv from its GitHub release, each checked against a SHA-256
+  compiled into `merud`; the package and its dependencies from the npm
+  registry or PyPI; a Python build through uv; and a container image by
+  digest through Docker (see [The runtime folder](#the-runtime-folder)).
+  Nothing downloads until a connector needs it, and today no code in `merud`
+  calls the installer yet.
 - The desktop app loads nothing from the network. Its page, fonts and libraries
   ship inside the binary, its Content-Security-Policy blocks remote scripts,
   images and connections, and its Wails updater stays unconfigured, so it never
