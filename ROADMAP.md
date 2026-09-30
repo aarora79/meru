@@ -202,8 +202,12 @@ fastest, with a median of 6.5 s to the last token.
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
 - Digests, notifications, `meru brief`
+- Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
+  user service, answer models picked by GPU memory, and the desktop app
+  ([#84](https://github.com/aarora79/meru/issues/84))
 
-**Done when:** a morning brief lands without you asking.
+**Done when:** a morning brief lands without you asking, and one documented
+command sets up the same Meru on a fresh Ubuntu machine.
 
 ## Later, maybe
 - Voice: local speech-to-text, text-to-speech and a wake word
@@ -212,4 +216,4 @@ fastest, with a median of 6.5 s to the last token.
   the switch unloads the old one first, but Meru never picks the larger model itself
 - `LlamaCppEngine`: llama.cpp embedded via cgo, no Ollama needed
 - `MLXEngine`, if Go bindings become practical
-- Windows service and a Windows test pass
+- Windows service and a Windows test pass ([#85](https://github.com/aarora79/meru/issues/85))
