@@ -30,13 +30,20 @@ USER_GOOGLE_EMAIL = "{field.email}"
 GOOGLE_OAUTH_CLIENT_ID = "{field.client_id}"
 GOOGLE_OAUTH_CLIENT_SECRET = "{field.client_secret}"
 # Where the server saves a mail attachment, so read_file can read it. The
-# server expands the "~" itself.
+# server expands the "~" itself, with the user's real HOME, which the
+# supervisor passes on; so do the saved sign-in tokens in
+# ~/.google_workspace_mcp/credentials/.
 WORKSPACE_ATTACHMENT_DIR = "~/meru-output/attachments"
+# The server binds 127.0.0.1 on its own in this mode (main.py,
+# resolve_bind_host_for_transport); saying so keeps it there if that
+# default changes. The port is the one in url, and the sign-in callback's.
+WORKSPACE_MCP_HOST = "127.0.0.1"
+WORKSPACE_MCP_PORT = "8000"
 
 [[field]]
 id = "email"
 type = "email"
-label = "Google address"
+label = "Email address"
 help = "The Google account whose mail, calendar and files Meru may read."
 required = true
 
@@ -56,6 +63,8 @@ help = "From the same OAuth client. Meru keeps it in secrets.toml."
 required = true
 
 [[field]]
+# No value in config: the server signs you in. Until you do, the
+# connector says "Google needs you to sign in." with the server's link.
 id = "sign_in"
 type = "oauth"
 label = "Sign in to Google"
@@ -63,6 +72,16 @@ help = "The server gives you a link; sign in there once."
 required = true
 
 [health]
+# list_calendars, from the "core" calendar tools, marked readOnlyHint: one
+# read of the calendar list, nothing sent or changed. It needs no
+# arguments: with USER_GOOGLE_EMAIL set, the server fills in
+# user_google_email (core/server.py, call_tool). Before the user signs in
+# it asks Google nothing and fails with a text that holds the line
+# "Authorization URL: https://accounts.google.com/o/oauth2/auth?…"
+# (auth/google_auth.py, start_auth_flow); the supervisor shows that link
+# and waits for the sign-in. It needn't be in [mcp] allow, since the
+# supervisor calls it itself and the model never sees it. Checked in
+# workspace-mcp 1.30.0 and by TestIntegrationGoogle.
 tool = "list_calendars"
 args = {}
 expect = "nonempty"

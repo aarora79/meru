@@ -447,7 +447,8 @@ var connectorKey = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // checkConnectors checks the [connectors.<id>] tables and returns one error
 // per problem: a connector ID or key of the wrong shape, an enabled that
-// isn't true or false, or a value that isn't a string or a bool.
+// isn't true or false, a tool list (ListKeys) that isn't a list of
+// strings, or any other value that isn't a string or a bool.
 func checkConnectors(conns map[string]Connector) []error {
 	var errs []error
 	// Sort the IDs so the errors come out in the same order each run; a
@@ -469,6 +470,17 @@ func checkConnectors(conns map[string]Connector) []error {
 			case string:
 				if k == "enabled" {
 					errs = append(errs, fmt.Errorf("connectors.%s.enabled is %q; write true or false, with no quotes", id, v))
+				}
+			case []any:
+				if !slices.Contains(ListKeys, k) {
+					errs = append(errs, fmt.Errorf("connectors.%s.%s must be a string; only %s hold lists", id, k, strings.Join(ListKeys, ", ")))
+					continue
+				}
+				for _, item := range v {
+					if _, ok := item.(string); !ok {
+						errs = append(errs, fmt.Errorf("connectors.%s.%s must list tool names, each in quotes", id, k))
+						break
+					}
 				}
 			default:
 				errs = append(errs, fmt.Errorf("connectors.%s.%s must be a string, or true or false", id, k))

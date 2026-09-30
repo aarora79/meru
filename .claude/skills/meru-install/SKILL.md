@@ -267,7 +267,19 @@ with no restart. Without the app, set `main = "<model>"` under `[models]` in
 Ask whether they want Meru to read their Google mail, calendar and Drive. If
 not, skip to step 7. If yes, say it takes about 20 minutes in a browser, and
 follow [docs/google-setup.md](../../../docs/google-setup.md) with them, one
-step at a time. Read that file now; it has every screen. In short:
+step at a time. Read that file now; it has every screen.
+
+First check whether their Meru runs Google as a connector: `meru mcp` prints
+its usage with `meru mcp adopt` when it does. If so, do items 1 and 2 below,
+then google-setup.md steps 6 and 7 instead of items 3 to 7: add
+`[connectors.google]` with their address and client ID to
+`~/.meru/config.toml`, put the secret in `~/.meru/secrets.toml` as
+`connector_google_client_secret` (mode 600; the same care as below: never
+print it), restart `merud`, and have them open the link after `Sign in:` in
+`meru mcp status`. `merud` installs and runs the server itself, so they need
+no uv, start script or launchd job. If they already run the server by hand,
+`meru mcp adopt google` moves it over; it asks before it changes anything.
+With an older Meru, follow the items below. In short:
 
 1. **Google Cloud.** They make a project named `meru`, turn on the Gmail,
    Calendar, Drive and Docs APIs, set up the consent screen (External), add
@@ -285,7 +297,7 @@ step at a time. Read that file now; it has every screen. In short:
    700 from reference.md, "Google start script". Check its mode with
    `ls -l ~/.config/workspace-mcp/start.sh`, and never `cat` it.
 5. **Start it at login.** Ask, then install the launchd job from
-   google-setup.md step 11, as reference.md, "Start the Google server at
+   google-setup.md step F, as reference.md, "Start the Google server at
    login", writes it. Check with
    `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/mcp`: any
    number but `000` means the server answers.

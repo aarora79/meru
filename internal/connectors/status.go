@@ -44,6 +44,10 @@ type Status struct {
 	// Fix lists the IDs of the fields to ask the user again, for
 	// needs_config.
 	Fix []string
+	// Link is the sign-in link an oauth connector's server gave, while
+	// the connector waits for the user to sign in; empty otherwise. It
+	// holds a one-time state value, so merud never logs it.
+	Link string
 }
 
 // FieldStatus is one field of a connector with its current value. Value
@@ -78,12 +82,18 @@ type settings struct {
 	// and fix the fields to ask again.
 	problem string
 	fix     []string
+	// tools holds the tool lists the model gets: the manifest's, with any
+	// list the table sets in its place.
+	tools MCP
 }
 
 // same reports whether a and b would start the connector the same way,
-// so a reload that changes nothing leaves a running connector alone.
+// so a reload that changes nothing leaves a running connector alone. The
+// tool lists count too: the pool takes them from the supervisor.
 func (a settings) same(b settings) bool {
-	return a.enabled == b.enabled && a.problem == b.problem && sameValues(a.values, b.values)
+	return a.enabled == b.enabled && a.problem == b.problem && sameValues(a.values, b.values) &&
+		slices.Equal(a.tools.Allow, b.tools.Allow) && slices.Equal(a.tools.Confirm, b.tools.Confirm) &&
+		slices.Equal(a.tools.AlwaysConfirm, b.tools.AlwaysConfirm)
 }
 
 // sameValues reports whether two string maps hold the same keys and values.
@@ -106,10 +116,13 @@ func sameValues(a, b map[string]string) bool {
 //
 // The rules, one per field type: a required field needs a value; a folder
 // must exist; an email needs an "@"; a choice must be one of the choices;
-// and a value must match the field's pattern. A key the manifest has no
-// field for is a problem too, since it is most often a typo.
+// and a value must match the field's pattern. An oauth field has no value
+// in config: the server signs the user in, and the supervisor reports it
+// (phaseSignIn). A key the manifest has no field for is a problem too,
+// since it is most often a typo; the tool lists allow, confirm and
+// always_confirm are the exception, and checkTools checks them.
 func checkSettings(m Manifest, table config.Connector, sec *secrets.Secrets, home string) settings {
-	st := settings{enabled: m.DefaultOn, values: map[string]string{}, shown: map[string]string{}, saved: map[string]bool{}}
+	st := settings{enabled: m.DefaultOn, values: map[string]string{}, shown: map[string]string{}, saved: map[string]bool{}, tools: m.MCP}
 	if on, ok := table.Enabled(); ok {
 		st.enabled = on
 	}
@@ -127,6 +140,9 @@ func checkSettings(m Manifest, table config.Connector, sec *secrets.Secrets, hom
 	known := map[string]bool{"enabled": true}
 	for _, f := range m.Fields {
 		known[f.ID] = true
+		if f.Type == FieldOAuth {
+			continue
+		}
 		var v string
 		if f.Type == FieldSecret {
 			name := SecretName(m.ID, f.ID)
@@ -177,12 +193,53 @@ func checkSettings(m Manifest, table config.Connector, sec *secrets.Secrets, hom
 	}
 	slices.Sort(keys)
 	for _, k := range keys {
-		if !known[k] {
+		if !known[k] && !(isMCP(m) && slices.Contains(config.ListKeys, k)) {
 			problem("", fmt.Sprintf("%s has no setting called %s; remove it from [connectors.%s].", m.Name, k, m.ID))
+		}
+	}
+	if isMCP(m) {
+		var sentence string
+		st.tools, sentence = checkTools(m, table)
+		if sentence != "" {
+			problem("", sentence)
 		}
 	}
 	fillMadeUp(m, st.values)
 	return st
+}
+
+// isMCP reports whether m is an MCP server, stdio or http, which has tool
+// lists.
+func isMCP(m Manifest) bool {
+	return m.Kind == KindStdio || m.Kind == KindHTTP
+}
+
+// checkTools returns the tool lists for connector m: the manifest's, with
+// each list the table sets in its place. The lists follow the rules of an
+// [[mcp.servers]] entry: each entry names one tool, with no wildcard, and
+// every tool in confirm or always_confirm is also in allow. When one
+// breaks a rule, it returns the manifest's lists and the sentence that
+// says what to fix. A tool the server doesn't offer isn't checked here:
+// the MCP pool reports it, as for a server added by hand ("offers no such
+// tool" in meru tools), since only the running server knows its tools.
+func checkTools(m Manifest, table config.Connector) (MCP, string) {
+	lists := m.MCP
+	if l, ok := table.List("allow"); ok {
+		lists.Allow = l
+	}
+	if l, ok := table.List("confirm"); ok {
+		lists.Confirm = l
+	}
+	if l, ok := table.List("always_confirm"); ok {
+		lists.AlwaysConfirm = l
+	}
+	// checkMCP is the manifest's own rule for its lists. Its messages name
+	// the manifest's keys, "mcp.confirm"; the table's keys have no "mcp.".
+	if errs := checkMCP(m.Kind, lists); len(errs) > 0 {
+		msg := strings.ReplaceAll(errs[0].Error(), "mcp.", "")
+		return m.MCP, fmt.Sprintf("%s's tool lists in [connectors.%s] need a fix: %s.", m.Name, m.ID, strings.TrimSuffix(msg, "."))
+	}
+	return lists, ""
 }
 
 // fillMadeUp fills in the values Meru makes up for the user when a field

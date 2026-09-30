@@ -1642,14 +1642,16 @@ the server.
 #### The google entry
 
 `google` runs [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
-for Gmail, Calendar, Drive and Docs. You start it and keep it running; `merud`
-connects to it at `http://127.0.0.1:8000/mcp` and never starts, restarts or
-watches it. `meru mcp add google` prints the command:
+for Gmail, Calendar, Drive and Docs. Meru can run it for you as a connector (see
+[Google as a connector](#google-as-a-connector)); this entry is the other way,
+where you start it and keep it running, and `merud` connects to it at
+`http://127.0.0.1:8000/mcp` and never starts, restarts or watches it. `meru mcp
+add google` prints the command, pinned to the connector's version:
 
 ```sh
 USER_GOOGLE_EMAIL=<your Google address> WORKSPACE_ATTACHMENT_DIR=~/meru-output/attachments \
 GOOGLE_OAUTH_CLIENT_ID=<your client ID> GOOGLE_OAUTH_CLIENT_SECRET=<your client secret> \
-  uvx workspace-mcp --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
+  uvx workspace-mcp==1.30.0 --transport streamable-http --tools gmail calendar drive docs --tool-tier extended
 ```
 
 `--tool-tier extended` loads 45 tools from the four services. Reading a mail
@@ -1817,10 +1819,65 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 | `set up by hand` | `[[mcp.servers]]` has an entry named `obsidian`, which runs instead |
 
 An `[[mcp.servers]]` entry of the same name always wins, so a setup that works
-today keeps working: the connector only reports `set up by hand`. To move to the
-connector, take that entry out (`meru mcp remove obsidian`) and turn the
-connector on. Settings in the desktop app shows the same state on the
+today keeps working: the connector only reports `set up by hand`, and adds how
+to move over. Settings in the desktop app shows the same state on the
 connector's card.
+
+#### Move a server you set up by hand to its connector
+
+`meru mcp adopt` moves an `obsidian` or `google` entry over to its connector:
+
+```sh
+meru mcp adopt obsidian
+```
+
+It prints every change and asks first; `--yes` skips the question. For
+Obsidian it takes the vault from the entry's `--vault name=path`, and it takes
+only an entry that runs `obsidian-mcp`, through `npx`, `node` or its own
+program; an entry for `mcp-obsidian`, the Local REST API server, stays as it
+is. For Google, see [google-setup.md](google-setup.md#move-a-server-you-run-over-to-meru).
+Adopt comments the entry out between two marker lines, writes
+`[connectors.<id>]` right after it with the entry's allow and confirm lists
+where they differ from the connector's, and reloads, so `merud` installs and
+runs the connector. `meru mcp unadopt obsidian` puts the entry back as it
+was, byte for byte:
+
+```toml
+# adopted by merud on 2026-09-30; meru mcp unadopt obsidian restores it
+# [[mcp.servers]]
+# name    = "obsidian"
+# command = "npx"
+# args    = ["-y", "obsidian-mcp", "serve", "--vault", "notes=/Users/dana/Notes"]
+# end of the adopted obsidian entry
+[connectors.obsidian]
+enabled = true
+vault_name = "notes"
+vault_path = "/Users/dana/Notes"
+```
+
+#### Google as a connector
+
+Meru runs `workspace-mcp` 1.30.0 for you on `127.0.0.1:8000` once
+`[connectors.google]` turns it on, with your address and OAuth client ID
+there and the client secret in `secrets.toml`:
+
+```toml
+[connectors.google]
+enabled   = true
+email     = "<your Gmail address>"
+client_id = "<your client ID>"
+```
+
+```toml
+# ~/.meru/secrets.toml
+connector_google_client_secret = "<your client secret>"
+```
+
+Until you sign in, the connector says "Google needs you to sign in." and shows
+the link after `Sign in:` in `meru mcp status` and `/mcp`, and as a button in
+Settings. [google-setup.md](google-setup.md) walks through it, from a new Google
+Cloud project to the first sign-in. If a server you started yourself still
+holds port 8000, the connector waits and says so; Meru never stops it.
 
 #### See and remove servers
 

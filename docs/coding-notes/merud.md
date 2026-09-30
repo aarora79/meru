@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -617,8 +617,8 @@ without `web_search`, and a turn offers the model no `web_search`.
 ### merud: connectors.go
 
 This file joins the connector supervisors (see [connectors](connectors.md)) to
-the rest of `merud`. `connectorSet` holds one `*connectors.Supervisor` per stdio
-connector, in manifest order, and `web`, the `*connectors.Container` for
+the rest of `merud`. `connectorSet` holds one `*connectors.Supervisor` per MCP
+connector, Obsidian over stdio and Google over HTTP, in manifest order, and `web`, the `*connectors.Container` for
 SearXNG. `newConnectorSet` loads the manifests, makes an `Installer` over
 `~/.meru` and the home folder, and builds each supervisor. It hands the
 container two functions: `checkSearXNG`, which wraps `catalog.CheckSearXNG`
@@ -634,10 +634,11 @@ for sessions.
 | `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name, then calls `configureWeb` |
 | `configureWeb(cfg)` | hands the SearXNG container its table, `[web] searxng_url`, and whether `[builtin] tools` lists `web_search`; `reloadBuiltin` calls it too |
 | `webOK()` | whether web search works now, with the sentence; the built-in tools' `UseWebCheck` |
-| `serverConfigs()` | one managed pool entry per connector that isn't off or set up by hand: its ID as the name, the manifest's tool lists, the supervisor as `Spawn` |
+| `serverConfigs()` | one managed pool entry per connector that isn't off or set up by hand: its ID as the name, its tool lists from the supervisor's `Lists` (the manifest's, or those its table sets), the supervisor as `Spawn` |
 | `routerServers(cfg)` | `cfg` with an `[[mcp.servers]]` entry added per connector the pool runs, for the router's list |
 | `statuses(extra...)` | every connector's `rpc.ConnectorStatus`, Ollama's row passed in as `extra`, sorted by ID, for the `connectors` op |
-| `byID(id)` | one stdio connector's status, for `connections.go` |
+| `byID(id)` | one MCP connector's status, for `connections.go` |
+| `manifest(id)` | one MCP connector's manifest, for Adopt and for an http connector's transport and URL in `mcp_status` and Settings |
 | `Close()` | stops each supervisor and waits for its goroutines |
 
 **The hand-added entry wins.** An `[[mcp.servers]]` entry named `obsidian`
@@ -649,6 +650,24 @@ either, so it stays out of `mcp_status`.
 `handleConnectors` answers the `connectors` op from what each supervisor holds,
 so it answers at once while a connector installs or restarts.
 
+`handleAdopt` answers `connector_adopt` and, with `undo`, `connector_unadopt`.
+It builds a `connectors.Adopter` (`adopter`) over `config.toml`,
+`secrets.toml`, the home folder, `connectors.ExecRunner()` for `launchctl`,
+`os.Getuid()` and `runtime.GOOS`. Inside `bt.EditConfig`, the lock every
+`config.toml` write takes, it works out the plan and, when the request says
+`Apply`, carries it out with `reloadMCP` as the reload. The reload runs with
+`context.WithoutCancel`, as `handleSecretSet`'s does, so a client that hangs
+up can't leave it half done. The reply is one `adopt` event with the plan's
+lines; the secret from the request never goes in it. Neither op goes through
+`dispatch`: like the memory ops, each is a command the user runs, not a tool
+the model calls.
+
+`handleMCPStatus` (`tools.go`) fixes one thing the pool can't know: the pool
+sees a connector only through its `Spawn` hook and calls it `stdio`, so for an
+http connector, Google, it writes `http` and the manifest's URL.
+`connectorConnection` does the same for the Settings card, and passes on the
+sign-in `Link`.
+
 `connectors_test.go` builds a real set over a temporary `~/.meru`.
 `TestConnectorsJoinThePool` walks the join table-driven: no table gives `off`;
 a hand-added entry gives `by_hand`, with or without a table that turns the
@@ -658,7 +677,10 @@ that the pool and the router each hold one `obsidian`, or none when it is off.
 One case is the owner's own setup, an `npx obsidian-mcp` entry with no
 `[connectors.obsidian]` table, which must keep working as it did.
 `TestConnectorsOp` checks the op's reply for a connector that needs config,
-and that it lists obsidian, ollama and searxng in manifest order.
+and that it lists google, obsidian, ollama and searxng in manifest order, with
+Google an http connector that is off. `TestConnectorListsReachThePool` checks
+that the tool lists a `[connectors.<id>]` table sets reach the connector's
+pool entry.
 `TestWebConnectorRule` runs the SearXNG connector against a fake SearXNG and a
 closed port: a config from before connectors is checked and reported, a
 working SearXNG reads "uses the SearXNG already running", and `enabled =
@@ -1285,6 +1307,28 @@ since another server may use the same key.
 the function behind `meru tools`. A reload that fails doesn't fail the command:
 `config.toml` is already written, so `reload` prints how to restart `merud`
 instead.
+
+### meru: adopt.go
+
+`meru mcp adopt <id>` and `meru mcp unadopt <id>` run through one function,
+`adopt`, with `undo` telling them apart. Unlike `remove`, it edits no file
+itself: the work needs the connectors' manifests, `secrets.toml` and
+`launchctl`, which the thin client may not touch, so `merud` does it. The
+command asks twice. The first `connector_adopt` request carries no `Apply`,
+so `merud` only sends back the plan, and the command prints each step,
+numbered, with a table's lines indented under its step. After a yes, or with
+`--yes`, a second request carries `Apply`, and `merud` makes the changes. Then
+`connectorRows` shows where the connector stands, with the sign-in link when
+Google waits for one. `--email` and `--client-id` give Google's values when
+there is no start script; the command then reads the client secret with
+`readSecret`, which turns echo off on a terminal, and sends all three in
+`Adopt.Values`. `adoptOp` sends one request and returns merud's
+`AdoptResult`, or merud's refusal as the error.
+
+`adopt_test.go` runs the command against a fake `merud` served by
+`startServer`: a yes applies once, a no applies nothing, `--yes` asks nothing,
+the flags make it ask for the secret and send it but never print it, and bad
+words print the usage.
 
 ### meru: probe.go
 

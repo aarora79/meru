@@ -522,13 +522,16 @@ mouse_copy = true
 # timeout = "60s"
 
 # Connectors: programs Meru installs, starts and checks for you, such as
-# the Obsidian server and SearXNG. Each has a manifest built into merud that
-# pins its version and names its fields. One [connectors.<id>] table per
-# connector holds enabled (true or false) and the values of its fields, each
-# a string. A secret field never goes here: its value lives in secrets.toml
-# as secret:connector_<id>_<field>. An [[mcp.servers]] entry with the same
-# name wins over a connector (ARCHITECTURE.md, "Connectors and the
-# supervisor").
+# the Obsidian and Google servers and SearXNG. Each has a manifest built into
+# merud that pins its version and names its fields. One [connectors.<id>]
+# table per connector holds enabled (true or false) and the values of its
+# fields, each a string. Obsidian's and Google's tables may also hold allow,
+# confirm and always_confirm, lists of tool names that take the place of the
+# manifest's. A secret field never goes here: its value lives in
+# secrets.toml as connector_<id>_<field>. An [[mcp.servers]] entry with the
+# same name wins over a connector; meru mcp adopt <id> moves such an entry
+# over, and meru mcp unadopt <id> puts it back (ARCHITECTURE.md,
+# "Connectors and the supervisor").
 #
 # SearXNG: with enabled = true, merud pulls the pinned image and runs the
 # container meru-searxng on 127.0.0.1:8888, unless a SearXNG already answers
@@ -543,3 +546,12 @@ mouse_copy = true
 # enabled    = true
 # vault_path = "~/Notes/vault"
 # vault_name = "notes"
+#
+# Google: merud runs workspace-mcp on 127.0.0.1:8000. The client secret goes
+# in secrets.toml as connector_google_client_secret. Until you sign in,
+# meru mcp status shows the sign-in link. docs/google-setup.md has the steps.
+#
+# [connectors.google]
+# enabled   = true
+# email     = "you@example.com"
+# client_id = "123-abc.apps.googleusercontent.com"

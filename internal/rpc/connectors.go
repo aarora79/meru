@@ -49,6 +49,34 @@ type ConnectorStatus struct {
 	// Fix lists the IDs of the fields to ask again when State is
 	// ConnectorNeedsConfig.
 	Fix []string `json:"fix,omitempty"`
+	// Link is the sign-in link a connector's server gave, while the
+	// connector waits for the user to sign in ("Google needs you to sign
+	// in."). A client shows it for the user to open.
+	Link string `json:"link,omitempty"`
+}
+
+// AdoptRequest says how OpConnectorAdopt or OpConnectorUnadopt runs.
+type AdoptRequest struct {
+	// Apply makes the changes; without it merud only works them out, for
+	// the client to show the user before it asks.
+	Apply bool `json:"apply,omitempty"`
+	// Values gives a connector's field values the old entry doesn't
+	// hold, by field ID, such as Google's email, client_id and
+	// client_secret. A secret goes to secrets.toml, never to config.toml,
+	// and merud never sends it back.
+	Values map[string]string `json:"values,omitempty"`
+}
+
+// AdoptResult is what an adopt or unadopt changes, or would change.
+type AdoptResult struct {
+	ID string `json:"id"`
+	// Changes says each change in one line, in order. A line may hold a
+	// table of config lines after a line break.
+	Changes []string `json:"changes"`
+	// Applied is true once merud has made the changes.
+	Applied bool `json:"applied,omitempty"`
+	// Nothing is true when there is nothing to change; Changes says why.
+	Nothing bool `json:"nothing,omitempty"`
 }
 
 // ConnectorField is one thing a connector asks the user for, from its

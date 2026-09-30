@@ -64,7 +64,7 @@ func (in GoogleInput) check() error {
 }
 
 // StartScript returns the start script for in, the one in
-// docs/google-setup.md, step 7. check has made sure no value holds a
+// docs/google-setup.md, step B. check has made sure no value holds a
 // quote or a space, so single quotes keep each value as it is.
 func StartScript(in GoogleInput) string {
 	return `#!/bin/sh
@@ -74,7 +74,7 @@ export GOOGLE_OAUTH_CLIENT_ID='` + in.ClientID + `'
 export GOOGLE_OAUTH_CLIENT_SECRET='` + in.Secret + `'
 export USER_GOOGLE_EMAIL='` + in.Email + `'
 export WORKSPACE_ATTACHMENT_DIR="$HOME/meru-output/attachments"
-exec uvx workspace-mcp --transport streamable-http \
+exec uvx workspace-mcp==1.30.0 --transport streamable-http \
   --tool-tier extended --tools gmail calendar drive docs
 `
 }
@@ -119,7 +119,7 @@ func xmlText(s string) string {
 }
 
 // GooglePlist returns the launchd job that starts the start script at
-// login and again if it stops, as docs/google-setup.md, step 11, writes
+// login and again if it stops, as docs/google-setup.md, step F, writes
 // it by hand.
 func GooglePlist(p Paths) string {
 	script := filepath.Join(p.Workspace(), "start.sh")
@@ -127,7 +127,7 @@ func GooglePlist(p Paths) string {
 	path := strings.Join([]string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(p.Home, ".local", "bin"), "/usr/bin", "/bin"}, ":")
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The Meru installer wrote this; docs/google-setup.md, step 11, explains it. -->
+<!-- The Meru installer wrote this; docs/google-setup.md, step F, explains it. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>` + googleLabel + `</string>

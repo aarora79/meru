@@ -216,6 +216,14 @@ function connectionCard(body, c, title, key) {
   card.append(el("p", "card-sub", where.join(" · ")));
   if (connectorManaged(c)) {
     card.append(el("p", c.connector === "ok" ? "card-note" : "card-error", c.sentence));
+    // A connector that waits for a sign-in carries the link its server
+    // gave; the button opens it in the browser, where the user signs in.
+    if (c.link) {
+      card.append(button("Sign in to " + c.name.charAt(0).toUpperCase() + c.name.slice(1), {
+        className: "text-button",
+        onClick: () => bridge.openURL(c.link).catch((err) => current.pages.notice(errorText(err))),
+      }));
+    }
     const fix = c.kind === "builtin" ? [] : c.fix || [];
     if (fix.length) {
       card.append(el("p", "card-note",
@@ -224,6 +232,9 @@ function connectionCard(body, c, title, key) {
   } else if (!up && c.err) {
     card.append(el("p", "card-error", c.err));
   }
+  // A server set up by hand in a connector's place says how Meru can run
+  // it instead: "… To have Meru run it, run meru mcp adopt obsidian."
+  if (c.connector === "by_hand" && c.sentence) card.append(el("p", "card-note", c.sentence));
 
   const on = c.tools.filter((t) => t.policy !== "off").length;
   const total = c.offered >= 0 && c.kind !== "builtin" ? Math.max(c.offered, c.tools.length) : c.tools.length;

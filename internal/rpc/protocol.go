@@ -85,6 +85,18 @@ const (
 	// supervisor holds and starts nothing. The reply is one "connectors"
 	// event and "done".
 	OpConnectors Op = "connectors"
+	// OpConnectorAdopt moves the [[mcp.servers]] entry named Request.ID,
+	// obsidian or google, over to its connector. Without Request.Adopt's
+	// Apply it only works out what it would change; with Apply it makes
+	// the changes and reloads the MCP servers. Adopt's Values give what
+	// the entry doesn't, such as Google's email, client_id and
+	// client_secret. The reply is one "adopt" event and "done".
+	OpConnectorAdopt Op = "connector_adopt"
+	// OpConnectorUnadopt undoes OpConnectorAdopt for the connector named
+	// Request.ID: it puts the entry back as it was and takes out
+	// [connectors.<id>], with the same two steps. The reply is one
+	// "adopt" event and "done".
+	OpConnectorUnadopt Op = "connector_unadopt"
 	// OpSessions lists the past conversations, the most recent first, at
 	// most Request.Limit of them. merud reads them from the session
 	// transcripts. The reply is one "sessions" event and "done".
@@ -266,6 +278,9 @@ type Request struct {
 	Incognito bool `json:"incognito,omitempty"`
 	// Tags is the change OpSessionTag makes. A pointer, as Policy is.
 	Tags *TagChange `json:"tags,omitempty"`
+	// Adopt says how OpConnectorAdopt and OpConnectorUnadopt run. A
+	// pointer, as Policy is. nil means: work out the changes, make none.
+	Adopt *AdoptRequest `json:"adopt,omitempty"`
 }
 
 // TagChange says which tags OpSessionTag adds to a chat and which it
@@ -368,6 +383,9 @@ const (
 	EventConnections EventType = "connections"
 	// EventConnectors answers OpConnectors, in Connectors.
 	EventConnectors EventType = "connectors"
+	// EventAdopt answers OpConnectorAdopt and OpConnectorUnadopt, in
+	// Adopted.
+	EventAdopt EventType = "adopt"
 	// EventFolders answers the folder ops, in Folders and Suggested.
 	EventFolders EventType = "folders"
 	// EventSaved answers OpSaveFile and OpAttachFile; Text holds the
@@ -450,6 +468,8 @@ type Event struct {
 
 	// Connectors is set on a "connectors" event.
 	Connectors []ConnectorStatus `json:"connectors,omitempty"`
+	// Adopted is set on an "adopt" event.
+	Adopted *AdoptResult `json:"adopted,omitempty"`
 
 	// The turn's stats, on the "done" event that ends an ask.
 

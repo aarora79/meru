@@ -381,15 +381,22 @@ type CommandParam struct {
 }
 
 // Connector is one [connectors.<id>] table: "enabled", a true or false,
-// and one key per field of the connector's manifest, such as vault_path.
-// Each value is a string or a bool. A secret field never appears here;
-// its value lives in secrets.toml as secret:connector_<id>_<field>.
+// and one key per field of the connector's manifest, such as vault_path,
+// each a string. It may also hold the tool lists allow, confirm and
+// always_confirm, each a list of tool names, which then take the place of
+// the manifest's lists; Adopt writes them when a hand-added entry's lists
+// differ from the manifest's. A secret field never appears here; its
+// value lives in secrets.toml as secret:connector_<id>_<field>.
 //
 // It is a map rather than a struct because each connector has its own
 // fields, named in its manifest. `any` is Go's name for "a value of any
-// type"; checkConnectors in load.go makes sure each one is a string or a
-// bool.
+// type"; checkConnectors in load.go makes sure each one is a string, a
+// bool, or a list of strings under one of the ListKeys.
 type Connector map[string]any
+
+// ListKeys are the keys of a [connectors.<id>] table that hold a list of
+// tool names rather than a string.
+var ListKeys = []string{"allow", "confirm", "always_confirm"}
 
 // Enabled reports whether the table says enabled = true. ok is false when
 // the table leaves enabled out, so the caller can fall back on the
@@ -406,4 +413,23 @@ func (c Connector) Enabled() (enabled, ok bool) {
 func (c Connector) Value(key string) (string, bool) {
 	v, ok := c[key].(string)
 	return v, ok
+}
+
+// List returns the list of strings under key, such as allow, and false
+// when the table has no such key or it isn't a list. checkConnectors has
+// made sure a list holds only strings.
+func (c Connector) List(key string) ([]string, bool) {
+	// The TOML library decodes a list into []any, a list of values of any
+	// type.
+	items, ok := c[key].([]any)
+	if !ok {
+		return nil, false
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out, true
 }

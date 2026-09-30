@@ -1059,13 +1059,18 @@ obsidian   stdio      ok                3        3        0   Obsidian is ready.
 `ConnectorTable` lays out the reply to the `connectors` op, which `meru mcp`
 prints under the table: a `CONNECTOR  STATE` header, then one line per
 connector with its sentence, and for one that needs config, `rpc.FixHint`'s
-line on where to set the field. With no rows it returns nothing.
+line on where to set the field. A connector that waits for a sign-in adds
+"Sign in:" and its `Link`, so the user can open it from the terminal. With no
+rows it returns nothing.
 
 The `/mcp` box is the app's Connections. It sends `OpConnections`, and `mcpRows`
 lays out the reply: a heading per source, a row per tool with its policy in the
 app's words (`policyWords`), then the catalog servers not added yet.
 `connHeading` writes a connector's heading with its kind, state, tool count,
-sentence and fix hint. The built-in tools' heading ends with web search's state
+sentence, fix hint and, while it waits for a sign-in, "Sign in:" with the
+link. A server set up by hand in a connector's place ends its heading with
+the part of merud's sentence after "[[mcp.servers]]. ", which says how to
+move it over: "To have Meru run it, run meru mcp adopt obsidian." The built-in tools' heading ends with web search's state
 and sentence, from the connection's `Web` and `WebSentence`, such as "web search
 needs config: Web search can't start: Docker isn't running.":
 

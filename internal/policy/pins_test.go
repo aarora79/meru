@@ -78,29 +78,19 @@ type pinOffender struct {
 	file, match, why string
 }
 
-// movesToConnector is the note on the offenders that the connector
-// supervisor replaces.
-const movesToConnector = "moves to a pinned connector in delivery steps 4-5 of #87"
-
 // pinOffenders lists the existing places that break the pinning rule.
 // Each keeps working as it does today until the change named in why
 // replaces it, and then its entry goes. Add nothing here for new code.
+// Step 5 of #87 took off the Google start commands in the catalog, the
+// installer and the docs: each now names workspace-mcp 1.30.0, the
+// Google connector's pin.
 var pinOffenders = []pinOffender{
-	// The Mac installer's SearXNG container and Google start script.
+	// The Mac installer's SearXNG container.
 	{"internal/installer/websearch.go", "docker.io/searxng/searxng:latest", "the installer hands web search to merud's pinned connector in delivery step 6 of #87"},
-	{"internal/installer/google.go", "exec uvx workspace-mcp", movesToConnector},
 	// Ollama names a model with no tag "<name>:latest". That is a model
 	// tag, not a program version, and Ollama itself is the user's to
 	// update, so it stays.
 	{"internal/installer/ollama.go", ":latest", "an Ollama model tag, not a program version"},
-	// The catalog's start commands and install hints for google and
-	// obsidian.
-	{"internal/catalog/catalog.go", "uvx workspace-mcp", movesToConnector},
-	{"internal/catalog/catalog.go", "uvx downloads the server", movesToConnector},
-	// The google start commands in the docs.
-	{"docs/running.md", "uvx workspace-mcp", movesToConnector},
-	{"docs/coding-notes/catalog.md", "uvx workspace-mcp", movesToConnector},
-	{"docs/google-setup.md", "exec uvx workspace-mcp", movesToConnector},
 	// An example of adding any server by hand, with a made-up name.
 	{"docs/running.md", "npx -y some-mcp", "a made-up server name in an example of meru mcp add"},
 	// The local Grafana stack, which only the owner runs to watch merud.

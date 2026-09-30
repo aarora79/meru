@@ -285,7 +285,7 @@ func TestMCPAddCatalogProbe(t *testing.T) {
 	if s.URL != "http://127.0.0.1:8000/mcp" || s.Command != "" || len(s.Env) != 0 {
 		t.Errorf("server = %+v, want the url entry with no env", s)
 	}
-	for _, want := range []string{"off    delete_gmail_label", "uvx workspace-mcp --transport streamable-http"} {
+	for _, want := range []string{"off    delete_gmail_label", "uvx workspace-mcp==1.30.0 --transport streamable-http"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
