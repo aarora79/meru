@@ -5,7 +5,7 @@
 // says how to install it, how to start it, what to ask the user and how to
 // tell that it works. See ARCHITECTURE.md, "Connectors and the supervisor".
 //
-// The package has three parts so far (issue #87, steps 1 to 3):
+// The package has four parts so far (issue #87, steps 1 to 4):
 //
 //   - The manifests. Load parses every embedded manifest and refuses one
 //     that breaks a rule: a version that isn't exact, a container image
@@ -25,12 +25,18 @@
 //     tool call, stops it when idle, and restarts it after a crash with a
 //     growing wait. The MCP pool asks it for a session through its Spawn
 //     method, and the connectors op reports its Status.
+//   - The container. merud builds one Container, for SearXNG
+//     (container.go). It checks the URL at start and every minute, and
+//     when config turns it on and nothing answers, pulls the pinned image
+//     and runs Meru's own container, labelled as Meru's. A server that
+//     isn't Meru's container is external, and never touched.
 //
 // What the package chooses not to do: it never asks PATH for a program,
 // never touches the user's own npm, pip, uv or Homebrew folders, and
-// leaves alone a connector the user set up by hand in [[mcp.servers]]. It
-// supervises no container, HTTP server or dependency yet: SearXNG,
-// Ollama and Google come in later steps. The clients never import it
+// leaves alone a connector the user set up by hand in [[mcp.servers]] or
+// a SearXNG it didn't start. It supervises no HTTP server yet: Google
+// comes in a later step. Ollama, the one dependency, has no supervisor
+// here; merud only reports on it (cmd/merud/ollama.go). The clients never import it
 // (internal/policy): merud owns the connectors, and a client asks merud
 // about them over the socket.
 package connectors

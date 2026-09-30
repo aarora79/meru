@@ -23,6 +23,7 @@ import (
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
+	"github.com/aarora79/meru/internal/engine"
 )
 
 // webTools returns built-in tools with only the web tools configured.
@@ -421,6 +422,7 @@ func TestWebToolsOffered(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tools := New(filepath.Join(t.TempDir(), "config.toml"), config.Builtin{Tools: tt.tools}, tt.web, nil, "", nil, nil, nil)
+			tools.UseWebCheck(func() (bool, string) { return true, "" })
 			var specs, listed []string
 			for _, s := range tools.Tools() {
 				if s.Name == WebSearch || s.Name == WebFetch {
@@ -454,5 +456,37 @@ func TestWebToolsOffered(t *testing.T) {
 	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888"}, WebFetch)
 	if tools.Confirm(WebSearch) != dispatch.ConfirmNever || tools.Confirm(WebFetch) != dispatch.ConfirmAsk {
 		t.Errorf("Confirm = %v, %v; want web_search never, web_fetch ask", tools.Confirm(WebSearch), tools.Confirm(WebFetch))
+	}
+}
+
+// TestWebSearchFollowsCheck checks that web_search is offered, listed and
+// run only while the check UseWebCheck gave passes, as merud's SearXNG
+// connector says, and that web_fetch doesn't depend on it.
+func TestWebSearchFollowsCheck(t *testing.T) {
+	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888"})
+	ok, why := false, "Web search can't start: Docker isn't running."
+	tools.UseWebCheck(func() (bool, string) { return ok, why })
+	offered := func() (spec, listed bool) {
+		for _, s := range tools.Tools() {
+			spec = spec || s.Name == WebSearch
+		}
+		for _, ti := range tools.Status()[0].Tools {
+			listed = listed || ti.Name == WebSearch
+		}
+		return spec, listed
+	}
+	if spec, listed := offered(); spec || listed {
+		t.Errorf("web_search offered %v, listed %v while the check fails", spec, listed)
+	}
+	if !slices.ContainsFunc(tools.Tools(), func(s engine.ToolSpec) bool { return s.Name == WebFetch }) {
+		t.Error("web_fetch went with web_search")
+	}
+	text, isErr := call(t, tools, WebSearch, `{"query":"go"}`)
+	if !isErr || !strings.Contains(text, why) {
+		t.Errorf("web_search while off = %q, %v; want an error with the sentence", text, isErr)
+	}
+	ok = true
+	if spec, listed := offered(); !spec || !listed {
+		t.Errorf("web_search offered %v, listed %v once the check passes", spec, listed)
 	}
 }

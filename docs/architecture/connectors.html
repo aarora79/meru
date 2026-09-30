@@ -235,8 +235,8 @@
   </svg></a>
   <h1>Connectors: how Meru will run its own servers</h1>
   <p class="standfirst">A connector is a program Meru needs, such as the search engine behind web search, that Meru installs, starts, checks and restarts for you. This page walks through the design in issue #87: what you set, what Meru's developers set, what happens on disk, and which parts exist today.</p>
-  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 to 3 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. Step 3, whose pull request is still to come, adds the supervisor inside <code>merud</code>, which runs the Obsidian connector, and the <code>connectors</code> status op. A connector stays off until you turn it on, and an <code>[[mcp.servers]]</code> entry with the same name wins over it, so a working setup behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 4 to 7.</p></aside>
-  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step3</code></p>
+  <aside class="aside"><p><b>Where the work stands.</b> Steps 1 to 4 of 7 are built. Step 1, merged in PR #90, added the manifests, their checks, the config table and a test that refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node and uv and the code that installs each connector into <code>~/.meru/runtime</code>. Step 3, merged in PR #92, added the supervisor inside <code>merud</code>, which runs the Obsidian connector, and the <code>connectors</code> status op. Step 4, whose pull request is still to come, runs SearXNG as a container, offers <code>web_search</code> only while SearXNG answers, and keeps <code>merud</code> up while Ollama is down. A connector that Meru starts stays off until you turn it on, and an <code>[[mcp.servers]]</code> entry with the same name wins over it, so a working setup behaves as before. Anything marked <span class="plan">planned</span> below arrives in steps 5 to 7.</p></aside>
+  <p class="byline">Meru · 30 September 2026 · written from branch <code>connectors-step4</code></p>
 </header>
 
 <div class="strip" role="list">
@@ -291,7 +291,7 @@ args    = [
 
 <p><b>Google runs by hand.</b> <code>merud</code> connects to the Google server at <code>127.0.0.1:8000</code> but never starts it. The installer writes a start script and a launchd job for it. When that job is missing, you start the server in a terminal and leave the terminal open.</p>
 
-<p><code>merud</code> can't repair any of this, because of how it holds its servers today. The MCP pool, the part of <code>merud</code> that keeps its server connections, connects to each server once at start, one after another, with 30 seconds for each. It has no restart and no timer. At the start of each turn that offers tools it tries a dead server once more, and it never sends a failed call a second time. SearXNG sits outside the pool. <code>merud</code> checks Ollama once, and if Ollama doesn't answer, <code>merud</code> exits before it opens its socket, the file the clients talk to it through, so no client can show you why.</p>
+<p><code>merud</code> can't repair any of this, because of how it holds its servers today. The MCP pool, the part of <code>merud</code> that keeps its server connections, connects to each server once at start, one after another, with 30 seconds for each. It has no restart and no timer. At the start of each turn that offers tools it tries a dead server once more, and it never sends a failed call a second time. SearXNG sits outside the pool. Until step 4, <code>merud</code> checked Ollama once, and if Ollama didn't answer, <code>merud</code> exited before it opened its socket, the file the clients talk to it through, so no client could show you why.</p>
 
 <!-- ============================================================ -->
 <h2 id="what-a-connector-is">What a connector is</h2>
@@ -648,7 +648,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
 <div class="tbl"><table>
 <thead><tr><th>ID</th><th>Kind</th><th>Pin</th><th>Health check</th><th>You give</th></tr></thead>
 <tbody>
-<tr><td><code>searxng</code></td><td>container</td><td>image <code>searxng/searxng</code> by digest</td><td><code>GET /healthz</code>, expects <code>OK</code></td><td>nothing</td></tr>
+<tr><td><code>searxng</code></td><td>container</td><td>image <code>searxng/searxng</code> by digest</td><td><code>GET /search?q=&amp;format=json</code>, expects a JSON object</td><td>nothing</td></tr>
 <tr><td><code>obsidian</code></td><td>stdio</td><td>npm <code>obsidian-mcp</code> 2.0.1</td><td><code>obsidian_list_vaults</code>, nonempty</td><td>vault folder, vault name</td></tr>
 <tr><td><code>google</code></td><td>http</td><td>PyPI <code>workspace-mcp</code> 1.30.0</td><td><code>list_calendars</code>, nonempty</td><td>address, client ID, client secret, sign-in</td></tr>
 <tr><td><code>ollama</code></td><td>dependency</td><td>none; Meru installs nothing</td><td><code>GET /api/version</code>, has <code>version</code></td><td>nothing</td></tr>
@@ -656,15 +656,19 @@ func (c Connector) Enabled() (enabled, ok bool) {
 
 <h3 id="searxng-for-web-search">SearXNG, for web search</h3>
 
-<p>SearXNG is the only connector on by default. It runs as a Docker container named <code>meru-searxng</code>, from an image pinned by digest, the hash of the image's contents:</p>
+<p>SearXNG is the only connector on by default, and by default Meru only checks it. With <code>[connectors.searxng] enabled = true</code>, Meru runs it as a Docker container named <code>meru-searxng</code>, from an image pinned by digest, the hash of the image's contents:</p>
 
 <pre><code class="language-toml">[install]
 type = "container"
 image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df284ae8c48a26851ae2eff6f99b4b0b18ec3da5a4d9095c3"</code></pre>
 
-<p>A tag such as <code>2026.9.29-4e2c1ea7f</code> can move to a new image; the digest can't, so the pin holds even if someone retags. Docker maps <code>127.0.0.1:8888</code> to the container's port 8080 and mounts <code>~/.meru/searxng</code> as its settings folder. The health check asks <code>/healthz</code>, which answers <code>OK</code> without running a search, so a check sends nothing off the machine.</p>
+<p>A tag such as <code>2026.9.29-4e2c1ea7f</code> can move to a new image; the digest can't, so the pin holds even if someone retags. Docker maps <code>127.0.0.1:8888</code> to the container's port 8080 and mounts <code>~/.meru/searxng</code> as its settings folder, where Meru writes a <code>settings.yml</code> with JSON on before the first start. The container runs with <code>--restart no</code> and the label <code>meru.connector=searxng</code>: Meru alone restarts it, 1, 2, 4 and 8 seconds after it stops answering, and the label tells Meru's container apart from any other.</p>
 
-<p>Some people already run SearXNG, with Docker Compose for example. If something that isn't <code>meru-searxng</code> already answers on port 8888, Meru calls it <b>external</b>: it reports on it and never starts, stops or changes it <span class="plan">planned</span>.</p>
+<p>The health check runs at start and every minute: an empty search with <code>format=json</code>. SearXNG refuses it without asking any search engine, in JSON when JSON is on and as a web page when it's off, so the check sends nothing off the machine and also catches a SearXNG that <code>web_search</code> can't read. A test against the pinned image on 30 September 2026 showed why <code>/healthz</code> isn't enough: it answered <code>OK</code> with JSON off, while the empty search answered <code>403</code> and a web page.</p>
+
+<p>The model gets <code>web_search</code> only while the check passes. Without Docker the status reads "Web search needs Docker, which isn't installed." or "Web search can't start: Docker isn't running.", and the next minute's check tries again.</p>
+
+<p>Some people already run SearXNG, with Docker Compose for example, or have the container the Mac installer started. If a healthy SearXNG that isn't Meru's container already answers at <code>[web] searxng_url</code>, Meru calls it <b>external</b>: the status reads "Web search uses the SearXNG already running at http://127.0.0.1:8888.", and Meru never starts, stops or pulls anything for it. A config from before connectors, with no <code>[connectors.searxng]</code> table, gets the check alone, so an upgrade starts no container.</p>
 
 <h3 id="obsidian-for-notes">Obsidian, for notes</h3>
 
@@ -678,7 +682,7 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 
 <h3 id="ollama-reported-and-never-run">Ollama, reported and never run</h3>
 
-<p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. Today a missing Ollama stops <code>merud</code> before it opens its socket. The plan reverses that order <span class="plan">planned</span>: <code>merud</code> opens its socket first, checks Ollama every 30 seconds until it answers, then warms the models. A question asked meanwhile gets "Ollama isn't running" as its error, and every status view shows the same sentence.</p>
+<p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. <code>merud</code> opens its socket first, checks Ollama every 30 seconds, and at once when you ask something, until it answers with 0.12.11 or later, then warms the models and opens the rest. A question asked meanwhile gets "Ollama isn't running, so Meru can't answer yet.", and <code>meru mcp status</code> and the desktop app's status block show "Ollama isn't running at http://127.0.0.1:11434." or the version that is too old.</p>
 
 <!-- ============================================================ -->
 <h2 id="status-and-fix">Status and Fix <span class="plan built">built</span> <span class="plan">Fix planned</span></h2>
@@ -731,7 +735,7 @@ func TestManifestsPinned(t *testing.T) {
 
 <p>A second test, <code>TestNoUnpinnedVersions</code>, reads more than the manifests. It scans the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and every code block in the Markdown under <code>docs/</code>. It fails on <code>@latest</code>, <code>:latest</code>, a version range, <code>npx</code> or <code>uvx</code> with no exact version, an image with no digest, and a file fetched from a branch such as <code>main</code>. Meru's own <code>releases/latest</code> link passes, because it fetches Meru and not a dependency.</p>
 
-<p>Thirteen places break the rule today and keep working, each listed in the test with a reason. Ten of them, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, go away in steps 4 and 5. The other three stay: an Ollama model tag, a made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything also fails the test.</p>
+<p>Ten places break the rule today and keep working, each listed in the test with a reason. Step 4 took three off: <code>meru setup</code>'s SearXNG recipe and the two docs that repeated it. Seven of the rest, such as the installer's <code>searxng:latest</code> and the catalog's <code>uvx workspace-mcp</code>, go away in steps 5 and 6. The other three stay: an Ollama model tag, a made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything also fails the test.</p>
 
 <p>A pin moves only in a Meru release. Its developers pick the new version, test it, and list it in the release notes under "Connector versions". Your installed Meru never picks up a new connector version by itself.</p>
 
@@ -757,10 +761,11 @@ func TestManifestsPinned(t *testing.T) {
 <ul>
   <li><b>Servers you add by hand stay unsupervised.</b> An <code>[[mcp.servers]]</code> entry keeps today's rules: one connect try per tools turn, no restart, no health check. To have Meru run a server for you, it needs a manifest, and only a Meru release can add one.</li>
   <li><b>Web search still needs Docker.</b> Meru pulls and runs the SearXNG image, but you install Docker and keep it running. Without it the status reads "Web search can't start: Docker isn't running."</li>
+  <li><b>A foreign <code>meru-searxng</code> stays put.</b> A container of that name without Meru's label, such as the one the Mac installer starts today, is never removed. While it answers, Meru uses it; when it doesn't, the status says to start it or remove it.</li>
   <li><b>The first run needs the internet and takes time.</b> Node.js, uv, each package and the SearXNG image download once. Node.js for Apple silicon is 52,909,993 bytes (nodejs.org), uv 17,001,427 bytes (its GitHub release), and the SearXNG image 96 MB compressed (Docker Hub), all read on 30 September 2026. Offline, the install fails and the connector reads <code>failed</code>.</li>
   <li><b>Only the package itself is pinned.</b> npm picks the package's own dependencies within the ranges the package names, so they can move between two installs of the same <code>obsidian-mcp</code> 2.0.1. The same holds for pip.</li>
   <li><b>Windows has no runtime pin yet.</b> Node.js ships a <code>.zip</code> there and uv an <code>.exe</code>, and the runtime folder, the <code>{pkg}</code> paths and <code>.venv/bin</code> follow macOS and Linux.</li>
-  <li><b>Two health checks are still open.</b> The plan's first draft checked SearXNG with an empty JSON search; the manifest uses <code>/healthz</code>. Google's check calls <code>list_calendars</code>, which nobody has yet confirmed against <code>workspace-mcp</code> 1.30.0, and which isn't in the model's allow list.</li>
+  <li><b>Google's health check is still open.</b> It calls <code>list_calendars</code>, which nobody has yet confirmed against <code>workspace-mcp</code> 1.30.0, and which isn't in the model's allow list.</li>
   <li><b>An older <code>merud</code> refuses the new config.</b> <code>config.Load</code> rejects any key it doesn't know, so a <code>config.toml</code> with a <code>[connectors.*]</code> table fails to load in a Meru from before this change. The release notes have to say so.</li>
   <li><b>No sandbox.</b> A connector runs as an ordinary process with your user's permissions, like any MCP server. Meru decides which tools the model may call, and the program decides what each call does.</li>
 </ul>
@@ -775,8 +780,8 @@ func TestManifestsPinned(t *testing.T) {
 <tbody>
 <tr><td>1</td><td>ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, <code>[connectors.&lt;id&gt;]</code> parsing and the pin test</td><td><span class="plan built">built</span> merged in PR #90</td></tr>
 <tr><td>2</td><td>Node.js and uv download and check; npm, pip, binary and container installs into <code>~/.meru/runtime</code>; Node run by Meru; uv's folders under <code>~/.meru/runtime</code></td><td><span class="plan built">built</span> merged in PR #91</td></tr>
-<tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan built">built</span> pull request to come</td></tr>
-<tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan">planned</span></td></tr>
+<tr><td>3</td><td>the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the <code>connectors</code> op and the new states in every status view</td><td><span class="plan built">built</span> merged in PR #92</td></tr>
+<tr><td>4</td><td>SearXNG as a container with the external rule; <code>web_search</code> only while healthy; <code>merud</code> stays up without Ollama</td><td><span class="plan built">built</span> pull request to come</td></tr>
 <tr><td>5</td><td>Google over HTTP with sign-in, and Adopt for existing entries</td><td><span class="plan">planned</span></td></tr>
 <tr><td>6</td><td>the config flow and Fix in the clients; the installer and <code>meru setup</code> hand connectors to <code>merud</code></td><td><span class="plan">planned</span></td></tr>
 <tr><td>7</td><td>docs, the install skill and the release notes</td><td><span class="plan">planned</span></td></tr>
@@ -785,16 +790,16 @@ func TestManifestsPinned(t *testing.T) {
 <!-- ============================================================ -->
 <h2 id="sources">Sources</h2>
 
-<p>Repository files, as of branch <code>connectors-step3</code> (30 September 2026):</p>
+<p>Repository files, as of branch <code>connectors-step4</code> (30 September 2026):</p>
 
 <ul>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
-  <li><a href="https://github.com/aarora79/meru/tree/connectors-step3/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>); <code>runtimes.go</code>, <code>download.go</code>, <code>install.go</code>, <code>launch.go</code> and <code>run.go</code> for the installs; <code>supervisor.go</code>, <code>status.go</code> and <code>health.go</code> for the supervisor</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step4/ARCHITECTURE.md#connectors-and-the-supervisor">ARCHITECTURE.md, "Connectors and the supervisor"</a>, the design contract; <a href="300.html#connectors">level 300</a> is its web page</li>
+  <li><a href="https://github.com/aarora79/meru/tree/connectors-step4/internal/connectors">internal/connectors/</a>: <code>manifest.go</code> and <code>manifests/</code> (<code>searxng.toml</code>, <code>obsidian.toml</code>, <code>google.toml</code>, <code>ollama.toml</code>); <code>runtimes.go</code>, <code>download.go</code>, <code>install.go</code>, <code>launch.go</code> and <code>run.go</code> for the installs; <code>supervisor.go</code>, <code>status.go</code> and <code>health.go</code> for the supervisor; <code>container.go</code> for SearXNG</li>
   <li><code>internal/mcp/pool.go</code>: the <code>Spawner</code> hook the pool calls for a connector; <code>cmd/merud/connectors.go</code>: one supervisor per stdio connector, joined to the pool; <code>internal/rpc/connectors.go</code>: the <code>connectors</code> op</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders; <code>connectors_test.go</code>: the one exec site</li>
-  <li><a href="https://github.com/aarora79/meru/blob/connectors-step3/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
-  <li>Today's wiring for hand-added servers: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>cmd/merud/connections.go</code> (web search always "connected"), <code>internal/installer/websearch.go</code> and <code>google.go</code>, <code>cmd/merud/main.go</code> and <code>runtime.go</code> (the Ollama check before the socket)</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step4/internal/config/config.go">internal/config/config.go</a> and <code>load.go</code>: the <code>[connectors.&lt;id&gt;]</code> table</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step4/internal/policy/pins_test.go">internal/policy/pins_test.go</a>: the pin rules and the list of today's offenders; <code>connectors_test.go</code>: the one exec site</li>
+  <li><a href="https://github.com/aarora79/meru/blob/connectors-step4/docs/coding-notes/connectors.md">docs/coding-notes/connectors.md</a>: the code, walked through for readers new to Go</li>
+  <li>Today's wiring for hand-added servers: <code>internal/mcp/pool.go</code> (connect once, 30 s each, no restart), <code>internal/installer/websearch.go</code> and <code>google.go</code>; <code>cmd/merud/ollama.go</code>, the watch on Ollama behind the socket</li>
 </ul>
 
 <p>The plan and its review:</p>
@@ -803,6 +808,7 @@ func TestManifestsPinned(t *testing.T) {
   <li><a href="https://github.com/aarora79/meru/issues/87">Issue #87</a>, the connector supervisor plan and its seven steps</li>
   <li><a href="https://github.com/aarora79/meru/pull/90">PR #90</a>, step 1</li>
   <li><a href="https://github.com/aarora79/meru/pull/91">PR #91</a>, step 2</li>
+  <li><a href="https://github.com/aarora79/meru/pull/92">PR #92</a>, step 3</li>
 </ul>
 
 <p>Upstream pages for the pins, checked 30 September 2026:</p>

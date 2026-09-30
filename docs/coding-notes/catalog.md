@@ -262,8 +262,9 @@ plus this one. A block that closed the entry early, or broke the file, leaves
 ### searxng.go
 
 `CheckSearXNG(ctx, baseURL)` answers one question: does SearXNG answer JSON at
-this URL? `meru setup` asks it in its Web search step, and `merud` asks it once at
-startup to log `web search ready` or why not. It lives here because the thin
+this URL? `meru setup` asks it in its Web search step, and `merud`'s SearXNG
+connector asks it at start and every minute, to decide whether the model gets
+`web_search` (see [connectors](connectors.md)). It lives here because the thin
 client may import `catalog` and not `builtin`, which pulls in the indexer.
 
 It sends `GET <baseURL>/search?q=&format=json` with a 3-second limit, no proxy
@@ -279,10 +280,25 @@ refuses tells the two setups apart:
 | anything else | say, a `500` | an error naming the status |
 
 `classify` reads the status and the first 512 bytes. The two sentinel errors
-let `meru setup` pick its message with `errors.Is`: the container commands for
-`ErrSearXNGDown`, and `SearXNGFormatsHint`, the text that names
+let `meru setup` and `merud` pick their message with `errors.Is`: the
+`[connectors.searxng]` table for `ErrSearXNGDown`, and `SearXNGFormatsHint`, the text that names
 `search: formats:` in `settings.yml`, for `ErrSearXNGNoJSON`. `web_search` uses
 the same hint text, so the terminal and the model say the same thing.
+
+### searxngsettings.go
+
+The `settings.yml` Meru writes for the SearXNG it runs in Docker lives here,
+because two programs write it: the Mac installer's Web search step, and
+`merud`'s SearXNG connector before its container first starts. The installer
+may not import `internal/connectors`, and `merud` may import `catalog`, so this
+is the one place both reach. `SearXNGSettings(secret)` returns the file: JSON
+on, the limiter off, `base_url` on `127.0.0.1:8888`, and `secret_key`, which
+signs SearXNG's cookies. `NewSecret` makes that key from 32 bytes of
+`crypto/rand`. `WriteSearXNGSettings(dir)` writes the file with mode `0600`
+unless it exists, so a second write keeps the secret and any change the user
+made. `SearXNGContainer` and `SearXNGURL` name the container and the address.
+`searxngsettings_test.go` checks the file's lines, its mode, and that a second
+write keeps it.
 
 ## Go ideas used here
 

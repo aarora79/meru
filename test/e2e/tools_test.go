@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aarora79/meru/internal/testutil/fakeollama"
 	"github.com/aarora79/meru/internal/transcript"
@@ -144,10 +145,11 @@ func TestToolRefused(t *testing.T) {
 }
 
 // TestWebSearchMissingSearXNG runs merud with [web] searxng_url pointing at
-// a port nothing listens on. merud starts anyway and logs why web search
-// isn't ready; `meru tools` lists web_search and web_fetch; and a turn in
-// which the model calls web_search completes, with the tool's error in
-// front of the model.
+// a port nothing listens on, and no [connectors.searxng] table, as a
+// config from before connectors has. merud starts anyway and only checks
+// the URL: the connector says why web search doesn't work, `meru tools`
+// lists web_fetch without web_search, and a turn offers the model no
+// web_search.
 func TestWebSearchMissingSearXNG(t *testing.T) {
 	t.Parallel()
 	// Take a free port and close it, so nothing answers there.
@@ -166,43 +168,29 @@ func TestWebSearchMissingSearXNG(t *testing.T) {
 	m := startMerud(t, h, nil)
 	waitReady(t, h, m, readyTimeout)
 	s := &stack{home: h, fake: f, merud: m}
-	if !strings.Contains(h.log(), "web search not ready") {
-		t.Errorf("merud.log lacks the web search line:\n%s", h.log())
-	}
 
-	const answer = "I couldn't search the web: SearXNG isn't running."
+	want := "Web search can't use SearXNG at " + searxng + ": nothing answers there."
+	waitFor(t, 20*time.Second, "the web search connector's sentence", func() bool {
+		res := runMeru(t, h, "mcp", "status")
+		return res.code == 0 && strings.Contains(res.stdout, want) && strings.Contains(res.stdout, "needs config")
+	})
+
+	const answer = "I can't search the web right now."
 	s.fake.enqueue(t, fastModel, toolsRoute())
-	s.fake.enqueue(t, mainModel,
-		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "web_search", Arguments: map[string]any{"query": "latest Go release"}}}},
-		fakeollama.Reply{Text: answer})
-
+	s.fake.enqueue(t, mainModel, fakeollama.Reply{Text: answer})
 	res := runMeru(t, s.home, "search the web for the latest Go release")
 	if res.code != 0 || res.stdout != answer+"\n" {
 		t.Fatalf("meru exited %d, stdout %q, stderr:\n%s\nmerud.log:\n%s", res.code, res.stdout, res.stderr, s.home.log())
 	}
-	want := "SearXNG isn't answering on " + searxng
-	var sawError bool
 	for _, r := range s.fake.chatRequests(t, mainModel) {
-		if strings.Contains(string(r.Body), want) {
-			sawError = true
-		}
-	}
-	if !sawError {
-		t.Errorf("no request to the model carried %q", want)
-	}
-	for _, l := range readTranscript(t, sessionFiles(t, s.home)[0]) {
-		switch {
-		case l.Type == transcript.TypeToolCall && (l.Tool != "web_search" || l.Server != "meru" || l.Kind != "builtin"):
-			t.Errorf("tool_call line = %+v, want the built-in web_search", l)
-		case l.Type == transcript.TypeToolResult && l.Outcome != "error":
-			t.Errorf("tool_result line = %+v, want outcome error", l)
+		if strings.Contains(string(r.Body), `"name":"web_search"`) {
+			t.Errorf("the model was offered web_search while SearXNG is down:\n%s", r.Body)
 		}
 	}
 
 	tools := runMeru(t, s.home, "tools")
-	// [builtin] tools lists both web tools by default, so meru tools does too.
-	if tools.code != 0 || !strings.Contains(tools.stdout, "web_search") || !strings.Contains(tools.stdout, "web_fetch") {
-		t.Errorf("meru tools exited %d:\n%s%s", tools.code, tools.stdout, tools.stderr)
+	if tools.code != 0 || strings.Contains(tools.stdout, "web_search") || !strings.Contains(tools.stdout, "web_fetch") {
+		t.Errorf("meru tools exited %d, want web_fetch without web_search:\n%s%s", tools.code, tools.stdout, tools.stderr)
 	}
 }
 

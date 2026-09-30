@@ -1,6 +1,6 @@
-// This file tests the web search step: the settings.yml it writes, the
-// docker arguments, the check against a fake SearXNG, and the whole step
-// with a fake docker.
+// This file tests the web search step: the docker arguments, the check
+// against a fake SearXNG, and the whole step with a fake docker. The
+// settings.yml it writes comes from internal/catalog, which tests it.
 
 package installer
 
@@ -22,62 +22,6 @@ import (
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 )
-
-// TestSearXNGSettings checks the settings file: JSON on, the address on
-// loopback, the limiter off, and a new random secret each time.
-func TestSearXNGSettings(t *testing.T) {
-	dir := t.TempDir()
-	wrote, err := WriteSearXNGSettings(dir)
-	if err != nil || !wrote {
-		t.Fatalf("WriteSearXNGSettings = %v, %v", wrote, err)
-	}
-	path := filepath.Join(dir, "settings.yml")
-	text := readFile(t, path)
-	for _, want := range []string{
-		"use_default_settings: true",
-		"  formats:\n    - html\n    - json\n",
-		`base_url: "http://127.0.0.1:8888/"`,
-		"limiter: false",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("settings.yml lacks %q:\n%s", want, text)
-		}
-	}
-	secret := secretOf(t, text)
-	if len(secret) != 64 {
-		t.Errorf("secret %q isn't 64 hex digits", secret)
-	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
-		t.Errorf("settings.yml mode = %v, want 0600", info.Mode().Perm())
-	}
-
-	// A second run keeps the file and its secret.
-	wrote, err = WriteSearXNGSettings(dir)
-	if err != nil || wrote {
-		t.Fatalf("second WriteSearXNGSettings = %v, %v; want the file kept", wrote, err)
-	}
-	if secretOf(t, readFile(t, path)) != secret {
-		t.Error("a second run changed the secret")
-	}
-
-	// Another install gets another secret.
-	other, _ := NewSecret()
-	if other == secret {
-		t.Error("two secrets matched")
-	}
-}
-
-// secretOf returns the secret_key value in settings text.
-func secretOf(t *testing.T, text string) string {
-	t.Helper()
-	for _, line := range strings.Split(text, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "secret_key: "); ok {
-			return strings.Trim(v, `"`)
-		}
-	}
-	t.Fatal("no secret_key line")
-	return ""
-}
 
 // TestDockerRunArgs checks the docker arguments: each option is its own
 // string, the port listens on loopback only, and no shell appears.
@@ -228,7 +172,7 @@ func TestSetUpWebSearch(t *testing.T) {
 	if cfg.Web.SearXNGURL != SearXNGURL || !slices.Contains(cfg.Builtin.Tools, "web_search") || !slices.Contains(cfg.Builtin.Tools, "web_fetch") {
 		t.Errorf("config: searxng_url %q, tools %v", cfg.Web.SearXNGURL, cfg.Builtin.Tools)
 	}
-	if !strings.Contains(readFile(t, p.Config()), "# Where SearXNG, the search engine you run on this machine, answers.") {
+	if !strings.Contains(readFile(t, p.Config()), "# Where SearXNG, the search engine behind web_search, answers on this") {
 		t.Error("the config lost its comments")
 	}
 }

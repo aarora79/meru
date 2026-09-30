@@ -1,5 +1,6 @@
 // This file holds the "Web search" step: it writes a settings.yml for
-// SearXNG, pulls and starts SearXNG's container with docker, bound to
+// SearXNG (catalog.WriteSearXNGSettings, which merud's SearXNG connector
+// uses too), pulls and starts SearXNG's container with docker, bound to
 // 127.0.0.1 only, checks that it answers JSON, and points [web]
 // searxng_url at it. See ARCHITECTURE.md, "Web search" and "Installer".
 
@@ -7,15 +8,11 @@ package installer
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -31,9 +28,10 @@ const (
 	// version, so a second run of the installer brings security fixes.
 	SearXNGImage = "docker.io/searxng/searxng:latest"
 	// SearXNGContainer is the container's name, so a second run finds it.
-	SearXNGContainer = "meru-searxng"
+	// catalog holds it, since merud's SearXNG connector uses the same one.
+	SearXNGContainer = catalog.SearXNGContainer
 	// SearXNGURL is where Meru reaches it: the default [web] searxng_url.
-	SearXNGURL = "http://127.0.0.1:8888"
+	SearXNGURL = catalog.SearXNGURL
 	// searxngPublish maps port 8888 on this Mac's loopback address to
 	// port 8080 in the container. Docker listens on 127.0.0.1 only, so no
 	// other machine on the network can use this SearXNG.
@@ -50,75 +48,6 @@ const searxngStartWait = 90 * time.Second
 // ErrNoDocker means docker isn't installed. The screen offers the download
 // link and Skip.
 var ErrNoDocker = errors.New("this Mac has no Docker. Install Docker Desktop, OrbStack or colima, then press Retry, or skip web search for now")
-
-// NewSecret returns 32 random bytes as 64 hex digits, for SearXNG's
-// secret_key, which signs its cookies. It fails only when the system's
-// random source does.
-func NewSecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("make a secret key: %w", err)
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// SearXNGSettings returns the settings.yml the step writes, with secret as
-// the secret_key. use_default_settings keeps SearXNG's own defaults for
-// everything this file doesn't name.
-func SearXNGSettings(secret string) string {
-	return `# SearXNG settings, written by the Meru installer.
-# SearXNG reads this file as /etc/searxng/settings.yml in its container.
-# Change it, then restart the container: docker restart ` + SearXNGContainer + `
-use_default_settings: true
-
-general:
-  instance_name: "Meru web search"
-
-search:
-  # 1 filters adult results. 0 turns the filter off, 2 makes it strict.
-  safe_search: 1
-  autocomplete: ""
-  # Meru asks for JSON. SearXNG answers only HTML unless json is here.
-  formats:
-    - html
-    - json
-
-server:
-  # Docker publishes the container on 127.0.0.1:8888 only.
-  base_url: "` + SearXNGURL + `/"
-  # Signs SearXNG's cookies. The installer made it at random.
-  secret_key: "` + secret + `"
-  # The limiter guards a public server from bots. Only this Mac uses this
-  # one, and the limiter would need a Valkey database besides.
-  limiter: false
-  public_instance: false
-  image_proxy: false
-`
-}
-
-// WriteSearXNGSettings writes settings.yml into dir with a new secret,
-// mode 0600, unless the file is already there. A second run keeps the
-// file, and with it the secret and any change the user made. It reports
-// whether it wrote the file.
-func WriteSearXNGSettings(dir string) (bool, error) {
-	path := filepath.Join(dir, "settings.yml")
-	if _, err := os.Stat(path); err == nil {
-		return false, nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return false, fmt.Errorf("check %s: %w", path, err)
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return false, fmt.Errorf("create %s: %w", dir, err)
-	}
-	secret, err := NewSecret()
-	if err != nil {
-		return false, err
-	}
-	if err := os.WriteFile(path, []byte(SearXNGSettings(secret)), 0o600); err != nil {
-		return false, fmt.Errorf("write %s: %w", path, err)
-	}
-	return true, nil
-}
 
 // DockerRunArgs returns the arguments for docker that start SearXNG, with
 // settingsDir mounted as its settings folder. Each is a separate string,
@@ -209,7 +138,7 @@ func SetUpWebSearch(ctx context.Context, run Runner, client *http.Client, p Path
 			}
 			return "", errors.New("the Docker engine isn't running. Open Docker Desktop, OrbStack or colima, wait until it says it runs, then press Retry")
 		}
-		wrote, err := WriteSearXNGSettings(p.SearXNG())
+		wrote, err := catalog.WriteSearXNGSettings(p.SearXNG())
 		if err != nil {
 			return "", err
 		}

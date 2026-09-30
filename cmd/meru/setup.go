@@ -447,20 +447,18 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 	return nil
 }
 
-// searxngStart holds the commands that start SearXNG in Docker, as
-// docs/running.md gives them under "Web search". The .env lines bind it to
-// 127.0.0.1:8888; upstream's compose file listens on every interface, port
-// 8080, unless told otherwise. setup prints them; Meru never runs them.
-const searxngStart = `  mkdir -p ~/srv/searxng/core-config && cd ~/srv/searxng
-  curl -fsSL -O https://raw.githubusercontent.com/searxng/searxng/master/container/docker-compose.yml \
-       -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env.example
-  cp -i .env.example .env && printf 'SEARXNG_HOST=127.0.0.1\nSEARXNG_PORT=8888\n' >> .env
-  docker compose up -d`
+// searxngStart tells the user how to have merud run SearXNG: the
+// [connectors.searxng] table that turns the SearXNG connector on. merud
+// then pulls the pinned image and runs the container meru-searxng on
+// 127.0.0.1:8888, with JSON on (ARCHITECTURE.md, "SearXNG and Ollama").
+// setup prints it; the settings forms that write it come later.
+const searxngStart = `  [connectors.searxng]
+  enabled = true`
 
 // checkWebSearch checks that SearXNG answers JSON at baseURL, which is
 // [web] searxng_url. When it doesn't, it says why and what to do: the
-// container commands when nothing answers, the formats setting when it
-// answers HTML. Then it waits: Enter checks again, s skips. Web search is
+// table that has merud run SearXNG when nothing answers at Meru's own
+// address, the formats setting when it answers HTML. Then it waits: Enter checks again, s skips. Web search is
 // optional, so the step never stops setup; it fails only when the input
 // ends.
 func (c *console) checkWebSearch(ctx context.Context, baseURL string) error {
@@ -476,10 +474,14 @@ func (c *console) checkWebSearch(ctx context.Context, baseURL string) error {
 			return nil
 		case errors.Is(err, catalog.ErrSearXNGNoJSON):
 			fmt.Fprintln(c.out, catalog.SearXNGFormatsHint)
-		case errors.Is(err, catalog.ErrSearXNGDown):
+		case errors.Is(err, catalog.ErrSearXNGDown) && baseURL == catalog.SearXNGURL:
 			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Meru searches the web through SearXNG, "+
-				"a search engine you run in Docker. To start it:\n\n%s\n\n"+
-				"Then turn JSON on, as \"Web search\" in docs/running.md shows.\n", baseURL, searxngStart)
+				"a search engine that runs in Docker. To have merud run it for you, add this to "+
+				"config.toml and restart merud:\n\n%s\n\n"+
+				"merud then downloads SearXNG and starts it, which takes a minute the first time.\n", baseURL, searxngStart)
+		case errors.Is(err, catalog.ErrSearXNGDown):
+			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Start the SearXNG you run there; "+
+				"see \"Web search\" in docs/running.md.\n", baseURL)
 		default:
 			fmt.Fprintf(c.out, "%v.\n", err)
 		}

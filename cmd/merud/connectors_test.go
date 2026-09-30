@@ -1,18 +1,26 @@
 // This file tests how merud joins the connectors to the MCP pool: which
 // connectors get a pool entry, the rule that a server added by hand wins,
-// and what the connectors op reports. No test here installs or starts a
+// what the connectors op reports, and the rule that picks the SearXNG
+// connector's mode from config. No test here installs or starts a
 // connector: each config leaves Obsidian off, set up by hand, or short of
-// its vault folder.
+// its vault folder, and leaves SearXNG off or only checked, so no test
+// runs docker.
 
 package main
 
 import (
+	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/connectors"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -127,12 +135,23 @@ func TestConnectorsOp(t *testing.T) {
 	c.configure(config.Config{Connectors: map[string]config.Connector{"obsidian": {"enabled": true, "vault_name": "notes"}}},
 		&secrets.Secrets{})
 	s := &toolService{conns: c}
+	ollama, err := newOllamaWatch(config.Config{Ollama: config.Ollama{BaseURL: "http://127.0.0.1:11434"}}, &fakeEngine{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var got []rpc.Event
-	if err := s.handleConnectors(func(ev rpc.Event) error { got = append(got, ev); return nil }); err != nil {
+	if err := s.handleConnectors(ollama, func(ev rpc.Event) error { got = append(got, ev); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Type != rpc.EventConnectors {
 		t.Fatalf("events = %+v", got)
+	}
+	var ids []string
+	for _, row := range got[0].Connectors {
+		ids = append(ids, row.ID)
+	}
+	if !slices.Equal(ids, []string{"obsidian", "ollama", "searxng"}) {
+		t.Errorf("connectors = %v, want obsidian, ollama and searxng in manifest order", ids)
 	}
 	row := obsidianRow(t, c)
 	if row.Name != "Obsidian" || row.Kind != "stdio" || row.Sentence != "Obsidian needs your vault folder." ||
@@ -141,5 +160,91 @@ func TestConnectorsOp(t *testing.T) {
 	}
 	if len(row.Fields) != 2 || row.Fields[0].ID != "vault_path" || row.Fields[1].Value != "notes" {
 		t.Errorf("fields = %+v", row.Fields)
+	}
+}
+
+// closedURL returns a loopback URL where nothing listens: a port the
+// system handed out and took back.
+func closedURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return "http://" + addr
+}
+
+// TestWebConnectorRule checks the SearXNG connector against the config
+// rule: a config from before the connectors, with web_search listed and
+// no [connectors.searxng] table, only has its URL checked; a SearXNG
+// already there is used as it is; and web_search goes to the model only
+// while the connector is ok. None of these configs lets Meru run docker.
+func TestWebConnectorRule(t *testing.T) {
+	// A fake SearXNG that refuses the empty query in JSON, as a real one
+	// with JSON on does.
+	searx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error": "No query"}`))
+	}))
+	defer searx.Close()
+	down := closedURL(t)
+	listed := []string{"web_search", "web_fetch"}
+
+	tests := []struct {
+		name     string
+		cfg      config.Config
+		state    string
+		sentence string
+	}{
+		{"old config, SearXNG answers: used as it is", config.Config{
+			Web: config.Web{SearXNGURL: searx.URL}, Builtin: config.Builtin{Tools: listed},
+		}, rpc.ConnectorOK, "Web search uses the SearXNG already running at " + searx.URL + "."},
+		{"old config, nothing answers: says so", config.Config{
+			Web: config.Web{SearXNGURL: down}, Builtin: config.Builtin{Tools: listed},
+		}, rpc.ConnectorNeedsConfig, "Web search can't use SearXNG at " + down + ": nothing answers there."},
+		{"web_search not listed: off", config.Config{
+			Web: config.Web{SearXNGURL: searx.URL}, Builtin: config.Builtin{Tools: []string{"web_fetch"}},
+		}, rpc.ConnectorOff, "Web search is off."},
+		{"turned off: off", config.Config{
+			Web: config.Web{SearXNGURL: searx.URL}, Builtin: config.Builtin{Tools: listed},
+			Connectors: map[string]config.Connector{"searxng": {"enabled": false}},
+		}, rpc.ConnectorOff, "Web search is off."},
+		{"no URL: off", config.Config{Builtin: config.Builtin{Tools: listed}}, rpc.ConnectorOff, "Web search is off."},
+		{"turned on at another address: checked, not run", config.Config{
+			Web: config.Web{SearXNGURL: searx.URL}, Builtin: config.Builtin{Tools: listed},
+			Connectors: map[string]config.Connector{"searxng": {"enabled": true}},
+		}, rpc.ConnectorOK, "Web search uses the SearXNG already running at " + searx.URL + "."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testConnectors(t)
+			c.configure(tt.cfg, &secrets.Secrets{})
+			deadline := time.Now().Add(5 * time.Second)
+			var row connectors.Status
+			for {
+				row = c.web.Status()
+				if row.State == tt.state && row.Sentence == tt.sentence {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("searxng = %s %q, want %s %q", row.State, row.Sentence, tt.state, tt.sentence)
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			ok, sentence := c.webOK()
+			if ok != (tt.state == rpc.ConnectorOK) || sentence != tt.sentence {
+				t.Errorf("webOK = %v, %q", ok, sentence)
+			}
+			// The Settings card shows the same state and sentence.
+			conn := builtinConnection(tt.cfg, c.web.Status())
+			if conn.Web != tt.state || conn.WebSentence != tt.sentence {
+				t.Errorf("builtin connection web = %s %q", conn.Web, conn.WebSentence)
+			}
+		})
 	}
 }

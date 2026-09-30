@@ -128,10 +128,19 @@ tools out; the tests of `configure` use all three. `merud` expands the `~` in
 `[skills] output_dir` before it calls `New`, so this package gets an absolute
 path, and it passes a `nil` indexer when `[index] folders` is empty. An empty
 `searxng_url` leaves `web_search` out. After `New`, `merud` calls `UseModel(eng,
-cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model, and
-`UseSearch(search)`, so `search_files` can search. Both are methods, not more
+cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the fast model,
+`UseSearch(search)`, so `search_files` can search, and `UseWebCheck(ready)`,
+where `ready` is the SearXNG connector's state. These are methods, not more
 parameters of `New`, so the many tests that build `Tools` without a model or a
 store stay as they are.
+
+`webSearchOn` joins the two conditions for `web_search`: a `searxng_url`, and
+`ready` saying yes. `Tools` and `Status` leave `web_search` out while it says
+no, so the model never sees a search engine that isn't there, and `Call` answers
+a call that slips through with "web_search is off now:" and the connector's
+sentence, such as "Web search can't start: Docker isn't running." `web_fetch`
+doesn't depend on it. `TestWebSearchFollowsCheck` flips the check and watches
+`web_search` leave and come back.
 
 `[builtin] tools` decides which built-ins exist at all. `New` keeps the list in
 `t.on`, and `enabled(name)` asks `slices.Contains(t.on, name)`. Three places use

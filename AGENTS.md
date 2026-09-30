@@ -191,8 +191,9 @@ cmd/
                      memory, skills, tools, connectors, connections, folders, models, save,
                      index); connectors.go also joins the connector supervisors to the pool; sessions.go
                      replays transcripts and runs the summarizer;
-                     backends.go joins the MCP pool to dispatch; runtime.go checks Ollama and
-                     warms the models; machine.go describes the computer for the system prompt
+                     backends.go joins the MCP pool to dispatch; ollama.go watches Ollama and
+                     gates requests until merud is ready; runtime.go warms the models;
+                     machine.go describes the computer for the system prompt
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
@@ -255,7 +256,8 @@ internal/
                      versions, and the checks on them; the pinned Node and uv (runtimes.go),
                      installs into ~/.meru/runtime (install.go, launch.go), and run.go, its one
                      exec site; the supervisor merud runs per stdio connector (supervisor.go),
-                     its states and settings check (status.go) and health check (health.go)
+                     its states and settings check (status.go) and health check (health.go);
+                     the SearXNG container's supervisor (container.go)
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests

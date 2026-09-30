@@ -57,6 +57,7 @@ type About struct {
 	DBBytes       int64    // the size of meru.db on disk
 
 	Sources  []AboutSource  // the MCP servers and A2A agents
+	Web      string         // the SearXNG connector's sentence, such as "Web search is off."; "" leaves it out
 	Commands []string       // the [[commands]] tools, such as "cmd.git-log"
 	Skills   []string       // the skills that load
 	Disabled []string       // [skills] disabled
@@ -145,6 +146,9 @@ func aboutText(a About) string {
 	line("A2A agents: %s.", sources(a.Sources, "a2a"))
 	line("Local commands: %s.", nameList(a.Commands))
 	line("Built-in tools: %s.", nameList(a.builtins))
+	if a.Web != "" {
+		line("Web search: %s", a.Web)
+	}
 	skills := nameList(a.Skills)
 	if len(a.Disabled) > 0 {
 		skills += "; turned off: " + nameList(a.Disabled)

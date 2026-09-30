@@ -208,3 +208,40 @@ func TestOpenSource(t *testing.T) {
 		t.Error("OpenSource with no home = nil, want an error")
 	}
 }
+
+// TestStatusWaitingAndWeb checks the rail's two connector cases: a merud
+// that waits for Ollama reports Ollama's sentence as waiting, with no
+// advice to start merud, and a running merud names web search with its
+// state.
+func TestStatusWaitingAndWeb(t *testing.T) {
+	ollamaDown := rpc.ConnectorStatus{ID: "ollama", Name: "Ollama", Kind: "dependency", State: rpc.ConnectorFailed,
+		Sentence: "Ollama isn't running at http://127.0.0.1:11434."}
+	waiting, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		if req.Op == rpc.OpConnectors {
+			return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{ollamaDown}})
+		}
+		return errors.New("Ollama isn't running, so Meru can't answer yet.")
+	}))
+	s := waiting.Status(context.Background())
+	if s.Up || !s.Waiting || s.Hint != "" || s.Problem != ollamaDown.Sentence {
+		t.Errorf("Status while merud waits = %+v, want waiting with Ollama's sentence and no start hint", s)
+	}
+
+	web := rpc.ConnectorStatus{ID: "searxng", Name: "Web search", Kind: "container", State: rpc.ConnectorNeedsConfig}
+	up, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		switch req.Op {
+		case rpc.OpIndexStatus:
+			return emit(rpc.Event{Type: rpc.EventStatus, Status: &rpc.IndexStatus{}})
+		case rpc.OpMCPStatus:
+			return emit(rpc.Event{Type: rpc.EventMCPStatus})
+		case rpc.OpConnectors:
+			ok := rpc.ConnectorStatus{ID: "ollama", Name: "Ollama", Kind: "dependency", State: rpc.ConnectorOK}
+			return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{ok, web}})
+		}
+		return nil
+	}))
+	s = up.Status(context.Background())
+	if !s.Up || !reflect.DeepEqual(s.Connections, []string{"Web search (needs config)"}) {
+		t.Errorf("Status = %+v, want up with web search's state and no Ollama", s)
+	}
+}

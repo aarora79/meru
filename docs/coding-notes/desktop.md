@@ -169,13 +169,22 @@ the page draws both with the same code; each past turn carries its `Cited`
 sources and its `Notice` too. Both go through `one`, which sends a
 request and waits, at most five seconds, for the one event that answers it.
 
-`Status` asks for `index_status` and `mcp_status`. It never fails. When nothing
+`Status` asks for `index_status`, `mcp_status` and `connectors`. It never fails. When nothing
 listens on the socket, the connection fails at once and `Status` gives `Up: false`
 with the reason and the command that starts `merud`. When `merud` takes the
 connection but doesn't answer within the five seconds `one` allows, the error
 wraps `context.DeadlineExceeded`, and `Status` sets `Busy` instead, with no start
 hint: `merud` runs, but a long answer or a Mac short of memory slowed it. Before
 this, a busy `merud` showed as "merud isn't running" while it answered questions.
+
+When `index_status` fails some other way, `waitingFor` asks for the
+`connectors` op. A `merud` that waits for Ollama answers it with Ollama's row,
+not ok; `Status` then sets `Waiting` with Ollama's sentence, such as "Ollama
+isn't running at http://127.0.0.1:11434.", and no start hint, and the rail
+shows "Waiting for Ollama". A `merud` that runs adds the connectors
+`mcp_status` doesn't list to `Connections`: web search by its name when ok, or
+with its state, as in "Web search (needs config)", and Ollama only when it
+isn't ok. `TestStatusWaitingAndWeb` covers both.
 
 `OpenURL` checks the link with `opener.Check`; `OpenSource` turns a source's
 `~/Notes/lisbon.md` into a `file://` URL with `rpc.FileURL` first.
@@ -424,7 +433,10 @@ bundler.
   it drifts from `rpc.FixHint`. The card has no Remove button, since config has no
   `[[mcp.servers]]` entry to take out. `connectorManaged` tells the two apart; a
   server added by hand in a connector's place shows "set up by hand" and keeps
-  its Remove. Models shows
+  its Remove. The Web search card, cut from the built-in tools' connection,
+  takes that connection's `web` and `web_sentence` as its connector state, so
+  it shows the SearXNG connector's pill and sentence in place of a flat
+  "Connected". Models shows
   the tiers, then "Models you can use for answers": a card per model we tried,
   with its size, a pill per capability, "No tools" and what that means for a
   model without them, a line on what it did well and one on what it did badly,

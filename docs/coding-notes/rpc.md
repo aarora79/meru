@@ -173,6 +173,8 @@ the same:
 `settings.go`'s `Connection`, a Settings card, gained `Connector`, `Sentence`
 and `Fix`. They are set for a connector the pool runs, and `Connector` alone
 reads `by_hand` for a server added by hand that takes a connector's place.
+`Web` and `WebSentence` are set on the built-in tools' connection only: the
+SearXNG connector's state and sentence, for the Web search card and `/mcp`.
 
 The desktop app added `SourceDesktop` (`desktop`) to the sources, and two ops
 for its list of past chats, with their types in `sessions.go`:

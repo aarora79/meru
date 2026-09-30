@@ -2,11 +2,12 @@
 
 **Code:** `internal/connectors/` (`doc.go`, `manifest.go`, `manifests/*.toml`,
 `runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`, `status.go`,
-`health.go`, `supervisor.go`)
-**Milestone:** v0.5 (issue #87, steps 1 to 3)
+`health.go`, `supervisor.go`, `container.go`)
+**Milestone:** v0.5 (issue #87, steps 1 to 4)
 **Architecture:** [Connectors and the supervisor](../../ARCHITECTURE.md#connectors-and-the-supervisor),
 [The runtime folder](../../ARCHITECTURE.md#the-runtime-folder),
-[The supervisor](../../ARCHITECTURE.md#the-supervisor)
+[The supervisor](../../ARCHITECTURE.md#the-supervisor),
+[SearXNG and Ollama](../../ARCHITECTURE.md#searxng-and-ollama)
 
 ## What it does
 
@@ -16,7 +17,7 @@ only reports on. Each one has a **manifest**, a TOML file in `manifests/` that
 pins its version and says how to install it, how to start it, what to ask the
 user and how to tell that it works.
 
-The package has three parts so far. Step 1 reads and checks the manifests:
+The package has four parts so far. Step 1 reads and checks the manifests:
 `Load` parses all four and refuses the set when one breaks a rule. Step 2
 installs them: an `Installer` downloads the pinned Node and uv into
 `~/.meru/runtime`, checks each archive's SHA-256 before it unpacks it, installs
@@ -28,9 +29,13 @@ it on the first tool call, stops it when idle, and restarts it after a crash.
 The MCP pool asks the supervisor for a session through its `Spawn` method (see
 [mcp](mcp.md)); `cmd/merud/connectors.go` joins the two (see
 [merud](merud.md)). The clients never import the package; they ask `merud`
-through the `connectors` op (see [rpc](rpc.md)).
+through the `connectors` op (see [rpc](rpc.md)). Step 4 adds a `Container`,
+the supervisor for SearXNG: it checks `[web] searxng_url` every minute and, when
+config turns it on and nothing answers, pulls the pinned image and runs Meru's
+container. Ollama, the fourth manifest, needs no supervisor here: `merud` only
+reports on it (`cmd/merud/ollama.go`, see [merud](merud.md)).
 
-Still to come: SearXNG and Ollama in step 4, Google over HTTP with its sign-in
+Still to come: Google over HTTP with its sign-in
 and the move of a hand-added entry in step 5, and in step 6 the ops and forms
 that let a client set a connector's fields. Until then a user sets them in
 `config.toml`.
@@ -310,9 +315,9 @@ there, and `UV_NO_CONFIG=1` so your `uv.toml` plays no part.
 **container.** `findDocker` checks a fixed list of absolute paths, the same
 idea as the Mac installer's allowlist. None found is `ErrDockerMissing`. A
 failing `docker info` is `ErrDockerNotRunning`. Then `docker pull
-<image>@sha256:<digest>` runs. The supervisor runs only stdio connectors so
-far; when it takes on SearXNG in step 4, it will turn these errors into
-"Docker isn't installed" and "Docker isn't running".
+<image>@sha256:<digest>` runs. The `Container` supervisor checks for docker
+first and turns these errors into "Web search needs Docker, which isn't
+installed." and "Web search can't start: Docker isn't running."
 
 ### launch.go: how to start what's installed
 
@@ -570,6 +575,88 @@ needs no `implements` line: any type with the right methods satisfies an
 interface. That lets `mcp` define the interface it uses without importing
 `connectors`.
 
+### container.go: SearXNG
+
+`ContainerMode(m, table, url, toolListed)` picks what `merud` does for a
+container connector, from config:
+
+| Config | Mode |
+| --- | --- |
+| no `url` | `ModeOff` |
+| `enabled = false` | `ModeOff` |
+| `enabled = true`, and `url` is the manifest's `launch.url` | `ModeRun` |
+| `enabled = true`, another `url` | `ModeWatch` |
+| no `enabled` key, `default_on` and the tool listed | `ModeWatch` |
+| anything else | `ModeOff` |
+
+`ModeWatch` is how a config from before connectors keeps working: `merud`
+checks the URL and reports, and never runs docker. `Mode` is an `int` with
+constants counted by `iota`.
+
+A `Container` holds the manifest, the `Installer` (its `Run` and docker paths),
+a `check` function and a `prepare` function. `merud` passes
+`catalog.CheckSearXNG`, wrapped so a refused connection wraps
+`ErrNothingListens`, and a `prepare` that writes SearXNG's `settings.yml`. The
+package imports neither `catalog` nor anything SearXNG-specific for the check:
+the two functions come in from the caller.
+
+`Configure(table, url, toolListed)` stops the old loop, waits for it, and
+starts a new one in a goroutine, unless nothing changed. The loop runs `pass`,
+then sleeps the time `pass` returned on the `Clock`, until its context ends.
+Leaving `ModeRun` first stops Meru's own container with `docker stop`.
+
+`pass` checks the URL once:
+
+1. It passes: `ok`. In run mode, `isOurs` asks `docker inspect` whether a
+   running container named `meru-searxng` carries the label
+   `meru.connector=searxng`; the sentence says "running in the container
+   meru-searxng" or "uses the SearXNG already running at …".
+2. Watch mode: `needs_config`, with the reason.
+3. Meru's container was `ok` and stopped answering: `crash`, which waits 1, 2,
+   4 and 8 seconds and sets `failed` at the fifth crash in ten minutes, the
+   same rule and constants as the stdio supervisor.
+4. `failed`: nothing more; the next minute's check can still find it healthy.
+5. Something answers, badly, and it isn't Meru's container: `needs_config`.
+6. No docker, or its engine down: `needs_config`.
+7. A container of Meru's name without Meru's label: `needs_config`, and
+   nothing is pulled or run.
+8. Otherwise: `Install` (the `docker pull`), then `start`, then `waitHealthy`,
+   which checks every 2 seconds for up to 90.
+
+`start` reads `inspect` and picks: `runNew` when no container exists, `docker
+rm --force` then `runNew` when the image is an older pin, `docker restart` when
+it runs, and `docker start` when it is stopped. `runArgs` builds `docker run`'s
+arguments from the manifest: the name, the label, `--restart no`, `--publish`
+from the URL's host and port and `launch.port`, each volume with `{meru_dir}`
+filled in, and the environment in sorted order.
+
+`sleep` shows how to wait on a clock that tests replace: the timer's function
+closes a channel, and a `select` waits for that channel or the context.
+
+```go
+fired := make(chan struct{})
+t := c.clock.AfterFunc(d, func() { close(fired) })
+select {
+case <-fired:
+	return true
+case <-ctx.Done():
+	t.Stop()
+	return false
+}
+```
+
+`container_test.go` drives a `Container` with a fake docker, a `Runner` that
+keeps one container's state and records each command, and a fake check.
+`TestContainerStartsMeruContainer` checks the pull, the settings, and every
+`docker run` argument. `TestContainerStartFailsBacksOff` moves the fake clock
+through the 1, 2, 4 and 8 second waits to `failed`.
+`TestContainerRestartsAfterItStops` stops Meru's container at a minute's check.
+`TestContainerDocker` covers Docker missing and stopped. `TestContainerExternal`
+checks that a server Meru doesn't own, working or not, in run or watch mode,
+and a foreign `meru-searxng` never see a `pull`, `run`, `start`, `restart`,
+`stop` or `rm`. `TestContainerOffStopsOurs` checks that turning the connector
+off stops Meru's container and nothing else.
+
 ## Go ideas used here
 
 - **embed** — `//go:embed` copies the manifests into the binary. More in
@@ -700,6 +787,14 @@ crash fails once, and closing the pool leaves the program to the supervisor.
   launchd would restart a crashed program, but only `merud` knows when a tool
   call needs one, when it sits idle, and what to tell the user. One mutex, one
   worker at a time and a `gen` counter keep it to one file.
+- **Docker restarts nothing.** Meru's container runs with `--restart no`, so
+  the supervisor alone decides when it starts and counts every crash. With
+  `unless-stopped`, Docker would restart a crashing container on its own, the
+  crash count would mean nothing, and SearXNG would come back after a reboot
+  with no `merud` to use it.
+- **A label, not a name, marks Meru's container.** The Mac installer and users
+  have made containers named `meru-searxng`. Only the label tells Meru which one
+  it may stop, restart or replace.
 - **Start on first use.** Most questions call no Obsidian tool. The tool cache
   lets the model see the tools without a Node process running all day.
 - **No retry of a failed call.** The pool never sends a call twice, for a

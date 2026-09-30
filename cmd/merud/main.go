@@ -118,14 +118,20 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 	return nil
 }
 
-// serve does the work between reading config and shutting down: telemetry,
-// the engine, the runtime check, claiming the socket, warming the fast and
-// embedding models, opening the store and replaying the transcripts into
-// it, and then these jobs side by side until ctx is cancelled: loading the
-// answer model, answering requests, the
-// startup scan of the [index] folders, the file watcher, and the session
-// summarizer. Questions get answers while the first scan runs; they search
-// whatever the index holds so far.
+// serve does the work between reading config and shutting down:
+// telemetry, the engine, claiming the socket, the wait for Ollama, warming
+// the fast and embedding models, opening the store and replaying the
+// transcripts into it, and then these jobs side by side until ctx is
+// cancelled: loading the answer model, answering requests, the startup
+// scan of the [index] folders, the file watcher, the session summarizer
+// and the watch on Ollama. Questions get answers while the first scan
+// runs; they search whatever the index holds so far.
+//
+// The socket opens before merud checks Ollama, so a client can hear why
+// merud can't answer yet (see ollama.go) instead of finding no merud.
+// Until merud is ready, requests go through a gate that waits, or answers
+// from the watch while Ollama fails; nothing that needs the engine starts
+// before Ollama is ready.
 func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
 	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
 	if err != nil {
@@ -145,43 +151,52 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}
-	version, err := checkRuntime(ctx, eng)
+	ollama, err := newOllamaWatch(cfg, eng, log)
 	if err != nil {
 		return err
 	}
-	log.Info("ollama ok", "version", version)
 
-	// Claim the socket before warming: a second merud then fails at once
-	// instead of loading models for nothing. Clients that connect meanwhile
-	// wait in the socket's queue until Serve starts accepting, a few
-	// seconds, since the large answer model loads after Serve starts.
+	// Claim the socket first: a second merud then fails at once, and a
+	// client can ask what merud is waiting for.
 	ln, err := rpc.Listen(ctx, socketPath)
 	if err != nil {
 		return err
 	}
-	// served turns true once rpc.Serve owns the listener; until then, any
-	// return below must close it. This deferred function reads served when
-	// serve returns, not now.
-	served := false
-	defer func() {
-		if !served {
-			_ = ln.Close()
-		}
-	}()
+	log.Info("listening", "socket", socketPath)
 
-	if err := warm(ctx, eng, cfg.Models, log); err != nil {
-		if ctx.Err() != nil {
-			return nil // stopped during warm-up
-		}
+	// An errgroup runs each function in its own goroutine and Wait waits
+	// for all of them. gctx is cancelled when ctx is, when stop is
+	// called, or when one of them returns an error, so a failed server
+	// stops the other jobs too. The scan, the summarizer, the watch on
+	// Ollama and the two watchers, of the [index] folders and of the
+	// memory folder, log their own errors and return nil.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	g, gctx := errgroup.WithContext(ctx)
+	requests := newGate(ollama)
+	g.Go(func() error { return rpc.Serve(gctx, ln, requests.handle, log) })
+	// fail stops the server and returns err, for a startup step that
+	// fails once the server runs.
+	fail := func(err error) error {
+		stop()
+		_ = g.Wait()
 		return err
 	}
-	warnMissingSetModels(ctx, eng, cfg.Models.Sets, log)
-	st, err := openStore(ctx, cfg, eng, log)
+
+	// Wait for Ollama: it must answer, be new enough, and load the fast
+	// and embedding models. Until the gate opens, a request waits, or
+	// hears from the watch while Ollama fails.
+	if !ollama.waitReady(gctx) {
+		return g.Wait() // stopped while waiting
+	}
+	g.Go(func() error { ollama.watch(gctx); return nil })
+	warnMissingSetModels(gctx, eng, cfg.Models.Sets, log)
+	st, err := openStore(gctx, cfg, eng, log)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil
+		if gctx.Err() != nil {
+			return g.Wait()
 		}
-		return err
+		return fail(err)
 	}
 	defer func() {
 		if err := st.Close(); err != nil {
@@ -189,11 +204,11 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		}
 	}()
 	sessionsDir := filepath.Join(cfg.Dir, "sessions")
-	replayTurns(ctx, st, sessionsDir, log)
-	replaySessions(ctx, st, sessionsDir, log)
+	replayTurns(gctx, st, sessionsDir, log)
+	replaySessions(gctx, st, sessionsDir, log)
 	ix, err := index.New(cfg.Index, st, eng, log)
 	if err != nil {
-		return fmt.Errorf("index: %w", err)
+		return fail(fmt.Errorf("index: %w", err))
 	}
 
 	// merud owns the memory folder: the agent reads the profile from it,
@@ -201,31 +216,30 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// syncer copies the files into the store, where recall searches them.
 	mem, err := memory.Open(filepath.Join(cfg.Dir, "memory"))
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	mems := memoryService{mem: mem, sync: index.NewMemories(mem, st, eng, log), log: log}
 	// merud owns the skills folder too: the agent lists and loads skills
 	// from it each turn, and the skill ops answer `meru skills`.
 	sk, err := newSkillService(filepath.Join(cfg.Dir, "skills"), cfg.Skills.Disabled, log)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	// The file tools read through the indexer. With no [index] folders
 	// they have nothing to read, so merud leaves them out and the model
 	// never sees them, until the desktop app adds a folder.
 	search := searchAdapter{st: st, eng: eng}
-	tools, err := newToolService(ctx, cfg, configPath, st, mem, ix, search, eng, mems.syncNow, log)
+	tools, err := newToolService(gctx, cfg, configPath, st, mem, ix, search, eng, mems.syncNow, log)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	defer tools.Close()
-	logWebSearch(ctx, cfg, log)
 	idx := newIndexService(ix, st, mems, cfg.Index, configPath, tools.bt.EditConfig, log)
 	// The router comes after the tools, because its prompt names what the
 	// tool service connects.
 	rt, err := newRouter(cfg, eng, tools.connectedTools, idx.currentFolders, log)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	turns := turnRecorder{st: st, sessionsDir: sessionsDir, log: log}
 	a := agent.New(cfg, eng, rt, search, tools.dispatcher, turns, profileAdapter{mem: mem, st: st, eng: eng}, log)
@@ -237,12 +251,12 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// An answer model that can't call tools, such as gemma3:12b, answers
 	// with none; see internal/agent/notools.go.
 	a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))
-	machine := machineLine(ctx)
+	machine := machineLine(gctx)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)
 	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	// The session ops show source paths as ~/... like a live turn does, and
 	// so does about_meru. A home folder merud can't find leaves the paths
@@ -253,33 +267,27 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
 		cfg: cfg, main: a.Main, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
-		skills: sk, mem: mem, machine: machine, home: home, log: log,
+		skills: sk, mem: mem, machine: machine, home: home, web: tools.conns.webOK, log: log,
 	}.facts)
 	// config.Load has checked output_dir, so expandHome fails only when
 	// the OS can't say where home is; then saves have nowhere to go.
 	outputDir, _ := expandHome(cfg.Skills.OutputDir)
 	svc := services{
 		agent: a, idx: idx, tools: tools, mems: mems, skills: sk, hist: hist, st: st, configPath: configPath,
+		ollama: ollama,
 		save:   saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
 		models: newModelService(cfg, configPath, outputDir, eng, a, tools.bt.EditConfig, log),
 	}
-	log.Info("listening", "socket", socketPath)
 
-	// An errgroup runs each function in its own goroutine and Wait waits
-	// for all of them. gctx is cancelled when ctx is, or when one of them
-	// returns an error, so a failed server stops the other jobs too. The
-	// scan, the summarizer and the two watchers, of the [index] folders and
-	// of the memory folder, log their own errors and return nil.
-	served = true
-	g, gctx := errgroup.WithContext(ctx)
 	// The answer model loads beside the server, so ping, settings and the
-	// router answer at once. StartWarm runs before Serve, so a question
-	// that comes during the load waits for it instead of starting another.
-	// newModelService has already told the agent which model answers and
-	// whether it thinks.
+	// router answer at once. StartWarm runs before the full handler takes
+	// over, so a question that comes during the load waits for it instead
+	// of starting another. newModelService has already told the agent
+	// which model answers and whether it thinks.
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })
-	g.Go(func() error { return rpc.Serve(gctx, ln, handler(svc), log) })
+	requests.open(handler(svc))
+	log.Info("ready")
 	g.Go(func() error { idx.startupScan(gctx); return nil })
 	g.Go(func() error { idx.watchAndRescan(gctx); return nil })
 	g.Go(func() error { sum.Run(gctx); return nil })
@@ -354,6 +362,7 @@ type services struct {
 	st         *store.Store
 	save       saveService
 	models     *modelService
+	ollama     *ollamaWatch
 	configPath string
 }
 
@@ -386,7 +395,7 @@ func handler(svc services) rpc.Handler {
 		case rpc.OpMCPStatus:
 			return tools.handleMCPStatus(emit)
 		case rpc.OpConnectors:
-			return tools.handleConnectors(emit)
+			return tools.handleConnectors(svc.ollama, emit)
 		case rpc.OpUsage:
 			return handleUsage(ctx, st, req, emit)
 		case rpc.OpMemoryList:

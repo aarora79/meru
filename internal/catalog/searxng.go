@@ -1,8 +1,9 @@
 // This file holds the SearXNG check: one request that says whether the
 // SearXNG instance web search uses answers, and answers in JSON. `meru
-// setup` runs it in its "Web search" step and merud runs it once at
-// startup, so it lives here, where the thin client may import it. See
-// ARCHITECTURE.md, "Web search".
+// setup` runs it in its "Web search" step and merud's SearXNG connector
+// runs it at start and every minute, so it lives here, where the thin
+// client may import it. See ARCHITECTURE.md, "Web search" and "SearXNG and
+// Ollama".
 
 package catalog
 
@@ -24,8 +25,8 @@ const SearXNGDocs = `See "Web search" in docs/running.md.`
 // SearXNGFormatsHint explains the one setting SearXNG needs for Meru. A
 // fresh SearXNG answers only HTML, and refuses format=json with a 403.
 const SearXNGFormatsHint = "SearXNG answered with a web page instead of JSON, because JSON is off. " +
-	"Add json under search: formats: in SearXNG's settings.yml (~/srv/searxng/core-config/settings.yml " +
-	"in the docs' setup), then restart it with docker compose restart."
+	"Add json under search: formats: in SearXNG's settings.yml, then restart SearXNG. For the SearXNG " +
+	"Meru runs, the file is ~/.meru/searxng/settings.yml and the restart is docker restart meru-searxng."
 
 // Errors CheckSearXNG wraps, so callers can pick their message with
 // errors.Is.
@@ -45,7 +46,7 @@ const searxngCheckTimeout = 3 * time.Second
 // refuses an empty query with 400 and {"error": "No query"} when JSON is
 // on, and with a 403 HTML page when JSON is off, and in neither case asks
 // any search engine. So the check tells the two apart and sends nothing
-// off this machine, which matters because merud runs it at every start.
+// off this machine, which matters because merud runs it every minute.
 //
 // It fails with ErrSearXNGDown when nothing listens, with ErrSearXNGNoJSON
 // when SearXNG answers HTML, and with a plain error for anything else,

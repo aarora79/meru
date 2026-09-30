@@ -1061,8 +1061,9 @@ real session hit. So the warm-up stays on for every start.
 
 The `fast` tier needs a runtime that reports log probabilities, because
 [routing](#routing) reads them. Ollama added them in v0.12.11; `merud` reads
-`/api/version` at startup and refuses to start on anything older, naming both
-versions. Routing costs no extra model: the `fast` model is already loaded.
+`/api/version` when it starts and every 30 seconds after. On anything older it
+stays up, answers no question, and names both versions (see
+[SearXNG and Ollama](#searxng-and-ollama)). Routing costs no extra model: the `fast` model is already loaded.
 
 A new embedding model makes vectors of a different size, and every stored vector
 goes stale. The store records the embedding model's name and vector size. When
@@ -3203,15 +3204,15 @@ says little. A **connector** is one of those programs that Meru will install,
 configure, start, check and restart for you, at a version pinned in Meru's own
 release. Issue #87 holds the plan, which lands in seven steps.
 
-**What exists now (steps 1 to 3):** the manifests, the checks on them, the
+**What exists now (steps 1 to 4):** the manifests, the checks on them, the
 `[connectors.<id>]` config table, a policy test that refuses unpinned
 versions, the code that downloads the pinned runtimes and installs each
-connector into `~/.meru/runtime`, and the supervisor for stdio connectors,
-which runs Obsidian. A connector stays off until its table says
-`enabled = true`, and an `[[mcp.servers]]` entry with the same name wins
-over it, so a working setup behaves as before. SearXNG, Ollama, Google,
-Adopt and the settings forms are **planned**, and arrive over the next
-steps.
+connector into `~/.meru/runtime`, the supervisor for stdio connectors, which
+runs Obsidian, the SearXNG container, and the watch on Ollama. A connector
+that Meru starts stays off until its table says `enabled = true`, and an
+`[[mcp.servers]]` entry with the same name wins over it, so a working setup
+behaves as before. Google, Adopt and the settings forms are **planned**, and
+arrive over the next steps.
 
 ### The manifest
 
@@ -3280,7 +3281,9 @@ file fetched from a branch. It reads the manifests, the installer, the catalog,
 `releases/latest` link passes: it fetches Meru, not a dependency. The places
 that break the rule today, such as the installer's `searxng:latest` and the
 catalog's `uvx workspace-mcp`, sit on a short list in the test and keep working
-until steps 4 and 5 replace them; the list can only shrink.
+until steps 5 and 6 replace them; the list can only shrink. Step 4 took off
+`meru setup`'s SearXNG recipe and the docs that repeated it, which fetched
+files from SearXNG's main branch.
 
 ### Config and secrets
 
@@ -3295,10 +3298,10 @@ vault_path = "~/Notes/vault"
 `enabled` is true or false; every other value is a string. `config.Load` checks
 the shape only: an ID and its keys are lower-case letters, digits and `_`. It
 doesn't know the connectors, because the clients import `config` and must not
-reach `internal/connectors`. `merud` checks each stdio connector's table
-against its manifest, and a key or value that doesn't fit leaves the
-connector at needs config, with the field to fix; the other kinds get the
-same check when they join in steps 4 and 5. A secret field never goes in `config.toml`: its value goes in
+reach `internal/connectors`. `merud` checks each stdio connector's table,
+and SearXNG's, against its manifest, and a key or value that doesn't fit
+leaves the connector at needs config, with the field to fix; Google's table
+gets the same check when it joins in step 5. A secret field never goes in `config.toml`: its value goes in
 `secrets.toml` as `secret:connector_<id>_<field>`. `[[mcp.servers]]` stays for
 the servers you add by hand, and the supervisor never manages those.
 
@@ -3492,19 +3495,107 @@ connector says which key to set: "Set vault_path under
 [connectors.obsidian] in config.toml, then restart merud." A connector's
 tool lists come from its manifest, so its card's switches don't move yet.
 
-### SearXNG and Ollama (planned)
+### SearXNG and Ollama
 
-**SearXNG** runs as the container `meru-searxng` from the pinned image, on
-`127.0.0.1:8888`. A SearXNG that already answers there and isn't `meru-searxng`,
-such as one you run with Docker Compose, counts as **external**: Meru reports on
-it and never starts, stops or changes it.
+Built in step 4 (`internal/connectors/container.go`, `cmd/merud/ollama.go`).
 
-**Ollama** is a status-only dependency. Meru never installs or starts it; the
-health check is `GET /api/version` on `[ollama] base_url`. `merud` will open its
-socket before it checks Ollama, so a client can show "Ollama isn't running"
-rather than finding no `merud` at all. It checks again every 30 seconds until
-Ollama answers, then warms the models, and a question asked meanwhile gets that
-sentence as its error.
+**SearXNG** is the one container connector. Its own supervisor, a
+`Container`, runs one loop while the connector is on: it checks
+`[web] searxng_url`, acts on what it finds, and waits a minute, or the
+backoff after a crash, before the next check. The check is
+`catalog.CheckSearXNG`: `GET /search?q=&format=json`. SearXNG with JSON on
+refuses the empty query with `400` and `{"error": "No query"}`, and with JSON
+off answers a `403` web page; either way it asks no search engine, so the
+check sends nothing off the machine. The pinned image's `/healthz` answers
+`OK` even with JSON off, when `web_search` can't work, so Meru doesn't use it.
+
+The mode comes from config (`connectors.ContainerMode`):
+
+| Config | Mode | What `merud` does |
+| --- | --- | --- |
+| `[connectors.searxng] enabled = true`, and `searxng_url` is `http://127.0.0.1:8888` | run | checks, and runs its own container when nothing answers |
+| `enabled = true` with another `searxng_url` | watch | checks and reports; Meru's container answers only at 8888 |
+| no `enabled` key, and `[builtin] tools` lists `web_search` | watch | checks and reports, as `merud` did before connectors; it starts nothing |
+| `enabled = false`, `web_search` not listed, or `searxng_url = ""` | off | nothing |
+
+The watch mode is the back-compat rule: a config from before connectors,
+which lists `web_search` and names a URL by default, keeps working, and an
+upgrade starts no container nobody asked for.
+
+In run mode, one pass goes:
+
+1. **Healthy:** ok. `docker inspect meru-searxng` says whether it is Meru's
+   container, for the sentence.
+2. **Meru's container stopped answering:** a crash. The restarts wait 1, 2, 4
+   and 8 seconds, and the fifth crash in ten minutes sets failed, as for a
+   stdio connector. Once failed, the loop only checks, and turns ok if the
+   server comes back.
+3. **Something answers, badly, and it isn't Meru's container:** needs config,
+   with the reason. Meru doesn't start a second server to fight it for the
+   port.
+4. **No Docker, or Docker not running:** needs config, and the next minute's
+   check tries again.
+5. **A container named `meru-searxng` without Meru's label:** needs config.
+   Meru leaves it alone.
+6. **Otherwise:** `docker pull` of the pinned image by digest (the install),
+   then `docker run` of a new container, `docker start` of a stopped one, or
+   `docker restart` of one that runs but fails its check. A container from an
+   older pin goes first. The container then gets 90 seconds to pass its check.
+
+`docker run` gets `--name meru-searxng`, `--label meru.connector=searxng`,
+`--restart no`, `--publish 127.0.0.1:8888:8080`, the settings volume
+`~/.meru/searxng:/etc/searxng` and `SEARXNG_BASE_URL`. Before the first run,
+`merud` writes `settings.yml` there, with JSON on and a random secret key,
+unless the file exists; the Mac installer writes the same file, from
+`catalog.WriteSearXNGSettings`. The supervisor alone restarts the container,
+so it counts each crash, and Docker never starts it on its own: after a reboot
+the next `merud` does. Closing `merud` leaves it running, and turning the
+connector off stops it.
+
+**External SearXNG.** A healthy server at `searxng_url` that isn't Meru's
+container, such as one you run with Docker Compose or the one the Mac
+installer started, counts as external: the connector is ok with "Web search
+uses the SearXNG already running at http://127.0.0.1:8888.", and Meru never
+starts, stops or pulls anything for it.
+
+**Tools follow health.** The model gets `web_search` only while the connector
+is ok; `web_fetch` doesn't depend on it. The sentences:
+
+| State | Sentence |
+| --- | --- |
+| `ok` | Web search is running in the container meru-searxng. / Web search uses the SearXNG already running at … |
+| `off` | Web search is off. |
+| `needs_config` | Web search needs Docker, which isn't installed. / Web search can't start: Docker isn't running. / Web search can't use SearXNG at …: nothing answers there. (and, at Meru's own address, how to turn the connector on) |
+| `starting` | Meru is checking Web search at … / Meru is downloading Web search (image sha256-…) and starting it. / Web search stopped (…) and starts again in 2 s. |
+| `failed` | Web search couldn't install: … / Web search keeps stopping: … |
+
+Settings shows them on the Web search card, `/mcp` on the built-in tools'
+line, `meru mcp status` in its connector table, `about_meru` in a "Web
+search" line, and the desktop app's rail names web search with its state.
+
+**Ollama** is a status-only dependency. Meru never installs or starts it.
+`merud` opens its socket before it checks Ollama, so a client hears why
+`merud` can't answer instead of finding no `merud` at all. The check asks
+`GET /api/version` through the engine's `Info`, at start, then every 30
+seconds, and at once when a request comes while Ollama fails. Once Ollama
+answers with 0.12.11 or later, `merud` loads the fast and embedding models
+and only then opens the store and builds the rest. Until then:
+
+- the connectors op lists Ollama alone, `failed`, with "Ollama isn't running
+  at http://127.0.0.1:11434.", "Ollama 0.12.0 is too old; Meru needs 0.12.11
+  or later." or "Ollama … couldn't load a model: …";
+- `mcp_status` answers with no servers, so `meru mcp status` prints the
+  connector table;
+- every other request gets "Ollama isn't running, so Meru can't answer yet.",
+  or "Meru can't answer yet: " and the sentence;
+- while Ollama answers and the models load, a request waits, as it waited in
+  the socket's queue before.
+
+`merud` answers `ping` from the start. The desktop app's status block says
+"Waiting for Ollama" with the sentence, and no advice to start `merud`. After
+`merud` is ready it keeps checking every 30 seconds, so the connectors op stays
+true; a question asked while Ollama is down fails with Ollama's own error, as
+before.
 
 ### Moving to connectors (planned)
 
@@ -3662,9 +3753,10 @@ their `under` names `~/Documents`, not the home folder.
 Meru searches the web through SearXNG, a metasearch engine you run on your own
 machine. SearXNG keeps no index of its own. It passes the search words to engines
 such as Google, Bing, DuckDuckGo and Wikipedia, drops the cookies and headers that
-identify you, and merges what comes back. It needs no account and no API key. You
-start it once, in Docker ([docs/running.md](docs/running.md), "Web search"), and
-`merud` reaches it on loopback, as it reaches Ollama.
+identify you, and merges what comes back. It needs no account and no API key. It runs in Docker: `merud` runs it
+as a connector when config turns that on, or uses one you run (see
+[SearXNG and Ollama](#searxng-and-ollama)), and reaches it on loopback, as it
+reaches Ollama.
 
 Two built-in tools use it. Both go through `dispatch`, so every search, page and
 download lands in the transcript and in `tool_calls`. While `web_search` is on,
@@ -3674,7 +3766,7 @@ tools route:
 
 | Tool | Offered when | What it does |
 | --- | --- | --- |
-| `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
+| `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default, and the SearXNG connector is ok | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
 | `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. |
 
 ```toml
@@ -3769,13 +3861,13 @@ itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS
 name that points inside your network, and the model can't use the tool to read a
 service on your machine or LAN.
 
-**When SearXNG isn't there.** `merud` starts anyway, and logs one line that says
-whether SearXNG answers JSON. The check sends an empty query, which SearXNG refuses
-without asking any engine, so it sends nothing off the machine. A `web_search` call
-then fails with "SearXNG isn't answering on <url>. See "Web search" in
-docs/running.md.", and the model tells you. A SearXNG that answers HTML has JSON
-turned off, and the error names the `search.formats` setting in `settings.yml`.
-`meru setup` runs the same check in its Web search step.
+**When SearXNG isn't there.** `merud` starts anyway. The SearXNG connector
+checks it at start and every minute (see [SearXNG and Ollama](#searxng-and-ollama)),
+and the model gets `web_search` only while the check passes. A call that comes
+between a failed check and the next turn's tool list fails with the connector's
+sentence. A SearXNG that answers HTML has JSON turned off, and the sentence
+names the `search.formats` setting in `settings.yml`. `meru setup` runs the same
+check in its Web search step.
 
 ### Web first
 

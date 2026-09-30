@@ -1,19 +1,28 @@
 // This file joins the connector supervisors to the rest of merud. merud
-// builds one supervisor per stdio connector at startup, from the embedded
-// manifests and the [connectors.<id>] tables, and keeps them for its whole
-// life: a reload of the MCP servers hands them the new config but never
-// replaces them, so a running connector survives it. The MCP pool reaches
-// each one through its Spawn hook, and the connectors op reports them.
-// See ARCHITECTURE.md, "The supervisor".
+// builds one supervisor per stdio connector and one for the SearXNG
+// container at startup, from the embedded manifests and the
+// [connectors.<id>] tables, and keeps them for its whole life: a reload
+// of the MCP servers hands them the new config but never replaces them,
+// so a running connector survives it. The MCP pool reaches each stdio
+// connector through its Spawn hook, web_search asks the SearXNG one
+// whether it works, and the connectors op reports them all, Ollama
+// included (ollama.go). See ARCHITECTURE.md, "The supervisor" and
+// "SearXNG and Ollama".
 
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 
+	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/connectors"
 	"github.com/aarora79/meru/internal/mcp"
@@ -21,18 +30,21 @@ import (
 	"github.com/aarora79/meru/internal/secrets"
 )
 
-// connectorSet holds merud's supervisors, in manifest order. The slice
-// never changes after newConnectorSet; each supervisor guards its own
-// state.
+// connectorSet holds merud's supervisors: one per stdio connector, in
+// manifest order, and web, the SearXNG container's. None of the fields
+// changes after newConnectorSet; each supervisor guards its own state.
 type connectorSet struct {
 	sups []*connectors.Supervisor
+	web  *connectors.Container
 }
 
 // newConnectorSet loads the manifests and builds a supervisor for each
-// stdio connector, installing under meruDir/runtime. Each stands off until
-// configure hands it config (newPool does, at startup and on each
-// reload). It fails when the manifests don't load, which only a broken
-// build can cause, or when the home folder is unknown.
+// stdio connector and for the SearXNG container, installing under
+// meruDir/runtime. Each stands off until configure hands it config
+// (newPool does, at startup and on each reload). Ollama, the one
+// dependency, has its own watcher (ollama.go). It fails when the
+// manifests don't load, which only a broken build can cause, or when the
+// home folder is unknown.
 func newConnectorSet(meruDir string, log *slog.Logger) (*connectorSet, error) {
 	manifests, err := connectors.Load()
 	if err != nil {
@@ -45,19 +57,57 @@ func newConnectorSet(meruDir string, log *slog.Logger) (*connectorSet, error) {
 	in := connectors.NewInstaller(meruDir, home)
 	c := &connectorSet{}
 	for _, m := range manifests {
-		// The supervisor runs stdio connectors so far; SearXNG, Ollama
-		// and Google join in later steps of issue #87.
-		if m.Kind != connectors.KindStdio {
-			continue
+		// A switch with no value runs the first case that is true.
+		// Google, an http connector, joins in a later step of issue #87.
+		switch {
+		case m.Kind == connectors.KindStdio:
+			sup, err := connectors.New(m, in, log)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			c.sups = append(c.sups, sup)
+		case m.Kind == connectors.KindContainer && m.ID == "searxng":
+			settings := filepath.Join(meruDir, "searxng")
+			// prepare writes settings.yml, with JSON on and a new secret,
+			// before Meru's container first starts; a file already there,
+			// from the Mac installer or the user, stays as it is.
+			prepare := func() error {
+				_, err := catalog.WriteSearXNGSettings(settings)
+				return err
+			}
+			web, err := connectors.NewContainer(m, in, checkSearXNG, prepare, log)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			c.web = web
 		}
-		sup, err := connectors.New(m, in, log)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		c.sups = append(c.sups, sup)
+	}
+	if c.web == nil {
+		c.Close()
+		return nil, errors.New("connectors: no searxng manifest")
 	}
 	return c, nil
+}
+
+// checkSearXNG is the SearXNG connector's health check:
+// catalog.CheckSearXNG, the empty search with format=json that asks no
+// search engine. It says why a check failed in words that fit the
+// connector's sentence, and wraps connectors.ErrNothingListens when
+// nothing accepts the connection, which is the one case where Meru may
+// start its own container at the URL.
+func checkSearXNG(ctx context.Context, url string) error {
+	err := catalog.CheckSearXNG(ctx, url)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, catalog.ErrSearXNGDown):
+		return connectors.ErrNothingListens
+	case errors.Is(err, catalog.ErrSearXNGNoJSON):
+		return errors.New("it answers web pages, not JSON; add json under search: formats: in its settings.yml")
+	}
+	return err
 }
 
 // configure hands each supervisor its [connectors.<id>] table and the
@@ -71,6 +121,23 @@ func (c *connectorSet) configure(cfg config.Config, sec *secrets.Secrets) {
 		id := sup.Manifest().ID
 		sup.Configure(cfg.Connectors[id], sec, byHand(cfg.MCP.Servers, id))
 	}
+	c.configureWeb(cfg)
+}
+
+// configureWeb hands the SearXNG connector its part of cfg: its table,
+// [web] searxng_url, and whether [builtin] tools lists web_search, which
+// together pick its mode (connectors.ContainerMode). A reload of the
+// built-in tools' lists calls it too, since turning web_search on in
+// Settings can turn the connector on.
+func (c *connectorSet) configureWeb(cfg config.Config) {
+	c.web.Configure(cfg.Connectors[c.web.Manifest().ID], cfg.Web.SearXNGURL, slices.Contains(cfg.Builtin.Tools, builtin.WebSearch))
+}
+
+// webOK reports whether web search works now, with the SearXNG
+// connector's sentence. The built-in tools offer web_search only while it
+// is true.
+func (c *connectorSet) webOK() (bool, string) {
+	return c.web.OK()
 }
 
 // byHand reports whether servers has an entry named id.
@@ -113,30 +180,43 @@ func (c *connectorSet) routerServers(cfg config.Config) config.Config {
 	return out
 }
 
-// statuses reports every connector for the connectors op, in manifest
-// order. A secret field's value never goes in; only whether it is saved.
-func (c *connectorSet) statuses() []rpc.ConnectorStatus {
-	out := make([]rpc.ConnectorStatus, 0, len(c.sups))
+// statuses reports every connector for the connectors op, sorted by ID,
+// which is manifest order: the stdio ones, the SearXNG container, and
+// extra, the rows merud builds elsewhere (Ollama's). A secret field's
+// value never goes in; only whether it is saved.
+func (c *connectorSet) statuses(extra ...connectors.Status) []rpc.ConnectorStatus {
+	all := make([]connectors.Status, 0, len(c.sups)+1+len(extra))
 	for _, sup := range c.sups {
-		st := sup.Status()
-		row := rpc.ConnectorStatus{
-			ID: st.ID, Name: st.Name, Kind: st.Kind, State: st.State, Sentence: st.Sentence,
-			Required: st.Required, Fix: st.Fix,
-			Fields: make([]rpc.ConnectorField, 0, len(st.Fields)), // [] rather than null in the JSON
-		}
-		for _, f := range st.Fields {
-			row.Fields = append(row.Fields, rpc.ConnectorField{
-				ID: f.ID, Type: f.Type, Label: f.Label, Help: f.Help, Required: f.Required,
-				Pattern: f.Pattern, Default: f.Default, Choices: f.Choices, Value: f.Value, Saved: f.Saved,
-			})
-		}
-		out = append(out, row)
+		all = append(all, sup.Status())
+	}
+	all = append(all, c.web.Status())
+	all = append(all, extra...)
+	slices.SortFunc(all, func(a, b connectors.Status) int { return strings.Compare(a.ID, b.ID) })
+	out := make([]rpc.ConnectorStatus, 0, len(all))
+	for _, st := range all {
+		out = append(out, connectorRow(st))
 	}
 	return out
 }
 
-// byID returns the status of connector id, and false when merud runs no
-// connector of that name.
+// connectorRow turns one connector's status into the protocol's shape.
+func connectorRow(st connectors.Status) rpc.ConnectorStatus {
+	row := rpc.ConnectorStatus{
+		ID: st.ID, Name: st.Name, Kind: st.Kind, State: st.State, Sentence: st.Sentence,
+		Required: st.Required, Fix: st.Fix,
+		Fields: make([]rpc.ConnectorField, 0, len(st.Fields)), // [] rather than null in the JSON
+	}
+	for _, f := range st.Fields {
+		row.Fields = append(row.Fields, rpc.ConnectorField{
+			ID: f.ID, Type: f.Type, Label: f.Label, Help: f.Help, Required: f.Required,
+			Pattern: f.Pattern, Default: f.Default, Choices: f.Choices, Value: f.Value, Saved: f.Saved,
+		})
+	}
+	return row
+}
+
+// byID returns the status of stdio connector id, and false when merud
+// runs no stdio connector of that name.
 func (c *connectorSet) byID(id string) (connectors.Status, bool) {
 	for _, sup := range c.sups {
 		if sup.Manifest().ID == id {
@@ -146,16 +226,21 @@ func (c *connectorSet) byID(id string) (connectors.Status, bool) {
 	return connectors.Status{}, false
 }
 
-// Close stops every connector's program and waits for them.
+// Close stops every connector's program and the SearXNG connector's
+// checks, and waits for them. Meru's SearXNG container keeps running, so
+// the next merud uses it at once.
 func (c *connectorSet) Close() {
 	for _, sup := range c.sups {
 		sup.Close()
 	}
+	if c.web != nil {
+		c.web.Close()
+	}
 }
 
-// handleConnectors answers OpConnectors with one "connectors" event. It
-// reads what each supervisor holds and starts nothing, so it answers at
-// once while a connector installs or restarts.
-func (s *toolService) handleConnectors(emit func(rpc.Event) error) error {
-	return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: s.conns.statuses()})
+// handleConnectors answers OpConnectors with one "connectors" event,
+// Ollama's row included. It reads what each supervisor holds and starts
+// nothing, so it answers at once while a connector installs or restarts.
+func (s *toolService) handleConnectors(ollama *ollamaWatch, emit func(rpc.Event) error) error {
+	return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: s.conns.statuses(ollama.status())})
 }

@@ -10,6 +10,10 @@ id = "searxng"
 name = "Web search"
 kind = "container"
 required = false
+# On by default means merud checks [web] searxng_url when config leaves
+# [connectors.searxng] out and [builtin] tools lists web_search, as a
+# config from before the connectors does. merud runs its own container
+# only when [connectors.searxng] says enabled = true.
 default_on = true
 
 [install]
@@ -25,7 +29,11 @@ volumes = ["{meru_dir}/searxng:/etc/searxng"]
 env = { SEARXNG_BASE_URL = "http://127.0.0.1:8888/" }
 
 [health]
-# /healthz answers "OK" without running a search, so the check sends
-# nothing off this machine.
-path = "/healthz"
-expect = "contains:OK"
+# An empty search with format=json. SearXNG refuses it with 400 and
+# {"error": "No query"} when JSON is on, and with a 403 web page when JSON
+# is off, and asks no search engine either way, so the check sends
+# nothing off this machine. /healthz answers "OK" even with JSON off,
+# when web_search can't work. merud runs the check with
+# catalog.CheckSearXNG, which passes a JSON object with status 200 or 400.
+path = "/search?q=&format=json"
+expect = "json_key:error"

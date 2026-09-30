@@ -5,17 +5,19 @@ search, that Meru installs, starts, checks and restarts for you. This page walks
 through the design in issue #87: what you set, what Meru's developers set, what
 happens on disk, and which parts exist today.
 
-> **Where the work stands.** Steps 1 to 3 of 7 are built. Step 1, merged in
+> **Where the work stands.** Steps 1 to 4 of 7 are built. Step 1, merged in
 > PR #90, added the manifests, their checks, the config table and a test that
 > refuses unpinned versions. Step 2, merged in PR #91, added the pinned Node
 > and uv and the code that installs each connector into `~/.meru/runtime`.
-> Step 3, whose pull request is still to come, adds the supervisor inside
-> `merud`, which runs the Obsidian connector, and the `connectors` status op.
-> A connector stays off until you turn it on, and an `[[mcp.servers]]` entry
-> with the same name wins over it, so a working setup behaves as before.
-> Anything marked (planned) below arrives in steps 4 to 7.
+> Step 3, merged in PR #92, added the supervisor inside `merud`, which runs
+> the Obsidian connector, and the `connectors` status op. Step 4, whose pull
+> request is still to come, runs SearXNG as a container, offers `web_search`
+> only while SearXNG answers, and keeps `merud` up while Ollama is down. A
+> connector that Meru starts stays off until you turn it on, and an
+> `[[mcp.servers]]` entry with the same name wins over it, so a working setup
+> behaves as before. Anything marked (planned) below arrives in steps 5 to 7.
 
-Meru · 30 September 2026 · written from branch `connectors-step3`
+Meru · 30 September 2026 · written from branch `connectors-step4`
 
 | Figure | What it counts | Source |
 | --- | --- | --- |
@@ -90,9 +92,9 @@ MCP pool, the part of `merud` that keeps its server connections, connects to
 each server once at start, one after another, with 30 seconds for each. It has
 no restart and no timer. At the start of each turn that offers tools it tries a
 dead server once more, and it never sends a failed call a second time. SearXNG
-sits outside the pool. `merud` checks Ollama once, and if Ollama doesn't answer,
-`merud` exits before it opens its socket, the file the clients talk to it
-through, so no client can show you why.
+sits outside the pool. Until step 4, `merud` checked Ollama once, and if Ollama
+didn't answer, `merud` exited before it opened its socket, the file the clients
+talk to it through, so no client could show you why.
 
 ## What a connector is
 
@@ -493,16 +495,17 @@ came from and on what date.
 
 | ID | Kind | Pin | Health check | You give |
 | --- | --- | --- | --- | --- |
-| `searxng` | container | image `searxng/searxng` by digest | `GET /healthz`, expects `OK` | nothing |
+| `searxng` | container | image `searxng/searxng` by digest | `GET /search?q=&format=json`, expects a JSON object | nothing |
 | `obsidian` | stdio | npm `obsidian-mcp` 2.0.1 | `obsidian_list_vaults`, nonempty | vault folder, vault name |
 | `google` | http | PyPI `workspace-mcp` 1.30.0 | `list_calendars`, nonempty | address, client ID, client secret, sign-in |
 | `ollama` | dependency | none; Meru installs nothing | `GET /api/version`, has `version` | nothing |
 
 ### SearXNG, for web search
 
-SearXNG is the only connector on by default. It runs as a Docker container named
-`meru-searxng`, from an image pinned by digest, the hash of the image's
-contents:
+SearXNG is the only connector on by default, and by default Meru only checks
+it. With `[connectors.searxng] enabled = true`, Meru runs it as a Docker
+container named `meru-searxng`, from an image pinned by digest, the hash of the
+image's contents:
 
 ```toml
 [install]
@@ -512,13 +515,31 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 
 A tag such as `2026.9.29-4e2c1ea7f` can move to a new image; the digest can't,
 so the pin holds even if someone retags. Docker maps `127.0.0.1:8888` to the
-container's port 8080 and mounts `~/.meru/searxng` as its settings folder. The
-health check asks `/healthz`, which answers `OK` without running a search, so a
-check sends nothing off the machine.
+container's port 8080 and mounts `~/.meru/searxng` as its settings folder,
+where Meru writes a `settings.yml` with JSON on before the first start. The
+container runs with `--restart no` and the label `meru.connector=searxng`:
+Meru alone restarts it, 1, 2, 4 and 8 seconds after it stops answering, and the
+label tells Meru's container apart from any other.
 
-Some people already run SearXNG, with Docker Compose for example. If something
-that isn't `meru-searxng` already answers on port 8888, Meru calls it
-**external**: it reports on it and never starts, stops or changes it (planned).
+The health check runs at start and every minute: an empty search with
+`format=json`. SearXNG refuses it without asking any search engine, in JSON
+when JSON is on and as a web page when it's off, so the check sends nothing off
+the machine and also catches a SearXNG that `web_search` can't read. A test
+against the pinned image on 30 September 2026 showed why `/healthz` isn't
+enough: it answered `OK` with JSON off, while the empty search answered `403`
+and a web page.
+
+The model gets `web_search` only while the check passes. Without Docker the
+status reads "Web search needs Docker, which isn't installed." or "Web search
+can't start: Docker isn't running.", and the next minute's check tries again.
+
+Some people already run SearXNG, with Docker Compose for example, or have the
+container the Mac installer started. If a healthy SearXNG that isn't Meru's
+container already answers at `[web] searxng_url`, Meru calls it **external**:
+the status reads "Web search uses the SearXNG already running at
+http://127.0.0.1:8888.", and Meru never starts, stops or pulls anything for it.
+A config from before connectors, with no `[connectors.searxng]` table, gets
+the check alone, so an upgrade starts no container.
 
 ### Obsidian, for notes
 
@@ -550,11 +571,12 @@ and `manage_event`, ask you first.
 ### Ollama, reported and never run
 
 Ollama is a `dependency`: Meru never installs or starts it, and only checks `GET
-/api/version` at `[ollama] base_url`. Today a missing Ollama stops `merud`
-before it opens its socket. The plan reverses that order (planned): `merud`
-opens its socket first, checks Ollama every 30 seconds until it answers, then
-warms the models. A question asked meanwhile gets "Ollama isn't running" as its
-error, and every status view shows the same sentence.
+/api/version` at `[ollama] base_url`. `merud` opens its socket first, checks
+Ollama every 30 seconds, and at once when you ask something, until it answers
+with 0.12.11 or later, then warms the models and opens the rest. A question
+asked meanwhile gets "Ollama isn't running, so Meru can't answer yet.", and
+`meru mcp status` and the desktop app's status block show "Ollama isn't running
+at http://127.0.0.1:11434." or the version that is too old.
 
 ## Status and Fix
 
@@ -637,9 +659,11 @@ range, `npx` or `uvx` with no exact version, an image with no digest, and a file
 fetched from a branch such as `main`. Meru's own `releases/latest` link passes,
 because it fetches Meru and not a dependency.
 
-Thirteen places break the rule today and keep working, each listed in the test
-with a reason. Ten of them, such as the installer's `searxng:latest` and the
-catalog's `uvx workspace-mcp`, go away in steps 4 and 5. The other three stay:
+Ten places break the rule today and keep working, each listed in the test
+with a reason. Step 4 took three off: `meru setup`'s SearXNG recipe and the two
+docs that repeated it. Seven of the rest, such as the installer's
+`searxng:latest` and the catalog's `uvx workspace-mcp`, go away in steps 5 and
+6. The other three stay:
 an Ollama model tag, a made-up server name in an example, and the local Grafana
 stack. The list can only shrink, since an entry that no longer matches anything
 also fails the test.
@@ -678,6 +702,10 @@ question. To undo Adopt, restore the commented block.
 - **Web search still needs Docker.** Meru pulls and runs the SearXNG image, but
   you install Docker and keep it running. Without it the status reads "Web
   search can't start: Docker isn't running."
+- **A foreign `meru-searxng` stays put.** A container of that name without
+  Meru's label, such as the one the Mac installer starts today, is never
+  removed. While it answers, Meru uses it; when it doesn't, the status says to
+  start it or remove it.
 - **The first run needs the internet and takes time.** Node.js, uv, each package
   and the SearXNG image download once. Node.js for Apple silicon is 52,909,993
   bytes (nodejs.org), uv 17,001,427 bytes (its GitHub release), and the SearXNG
@@ -689,10 +717,9 @@ question. To undo Adopt, restore the commented block.
 - **Windows has no runtime pin yet.** Node.js ships a `.zip` there and uv an
   `.exe`, and the runtime folder, the `{pkg}` paths and `.venv/bin` follow
   macOS and Linux.
-- **Two health checks are still open.** The plan's first draft checked SearXNG
-  with an empty JSON search; the manifest uses `/healthz`. Google's check calls
-  `list_calendars`, which nobody has yet confirmed against `workspace-mcp`
-  1.30.0, and which isn't in the model's allow list.
+- **Google's health check is still open.** It calls `list_calendars`, which
+  nobody has yet confirmed against `workspace-mcp` 1.30.0, and which isn't in
+  the model's allow list.
 - **An older `merud` refuses the new config.** `config.Load` rejects any key it
   doesn't know, so a `config.toml` with a `[connectors.*]` table fails to load
   in a Meru from before this change. The release notes have to say so.
@@ -708,39 +735,38 @@ The plan lands in seven pull requests, each of which keeps `main` working.
 | --- | --- | --- |
 | 1 | ARCHITECTURE.md rule change, the manifest types, the four manifests, their checks, `[connectors.<id>]` parsing and the pin test | **built**, merged in PR #90 |
 | 2 | Node.js and uv download and check; npm, pip, binary and container installs into `~/.meru/runtime`; Node run by Meru; uv's folders under `~/.meru/runtime` | **built**, merged in PR #91 |
-| 3 | the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the `connectors` op and the new states in every status view | **built**, pull request to come |
-| 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | (planned) |
+| 3 | the supervisor for Obsidian: lazy start, idle stop, backoff, health checks, the pool's hook, the `connectors` op and the new states in every status view | **built**, merged in PR #92 |
+| 4 | SearXNG as a container with the external rule; `web_search` only while healthy; `merud` stays up without Ollama | **built**, pull request to come |
 | 5 | Google over HTTP with sign-in, and Adopt for existing entries | (planned) |
 | 6 | the config flow and Fix in the clients; the installer and `meru setup` hand connectors to `merud` | (planned) |
 | 7 | docs, the install skill and the release notes | (planned) |
 
 ## Sources
 
-Repository files, as of branch `connectors-step3` (30 September 2026):
+Repository files, as of branch `connectors-step4` (30 September 2026):
 
 - [ARCHITECTURE.md, "Connectors and the
-  supervisor"](https://github.com/aarora79/meru/blob/connectors-step3/ARCHITECTURE.md#connectors-and-the-supervisor),
+  supervisor"](https://github.com/aarora79/meru/blob/connectors-step4/ARCHITECTURE.md#connectors-and-the-supervisor),
   the design contract; [level
   300](../../ARCHITECTURE.md#connectors-and-the-supervisor) is its web page
-- [internal/connectors/](https://github.com/aarora79/meru/tree/connectors-step3/internal/connectors):
+- [internal/connectors/](https://github.com/aarora79/meru/tree/connectors-step4/internal/connectors):
   `manifest.go` and `manifests/` (`searxng.toml`, `obsidian.toml`,
   `google.toml`, `ollama.toml`); `runtimes.go`, `download.go`, `install.go`,
   `launch.go` and `run.go` for the installs; `supervisor.go`, `status.go` and
-  `health.go` for the supervisor
+  `health.go` for the supervisor; `container.go` for SearXNG
 - `internal/mcp/pool.go`: the `Spawner` hook the pool calls for a connector;
   `cmd/merud/connectors.go`: one supervisor per stdio connector, joined to the
   pool; `internal/rpc/connectors.go`: the `connectors` op
-- [internal/config/config.go](https://github.com/aarora79/meru/blob/connectors-step3/internal/config/config.go)
+- [internal/config/config.go](https://github.com/aarora79/meru/blob/connectors-step4/internal/config/config.go)
   and `load.go`: the `[connectors.<id>]` table
-- [internal/policy/pins_test.go](https://github.com/aarora79/meru/blob/connectors-step3/internal/policy/pins_test.go):
+- [internal/policy/pins_test.go](https://github.com/aarora79/meru/blob/connectors-step4/internal/policy/pins_test.go):
   the pin rules and the list of today's offenders; `connectors_test.go`: the
   one exec site
-- [docs/coding-notes/connectors.md](https://github.com/aarora79/meru/blob/connectors-step3/docs/coding-notes/connectors.md):
+- [docs/coding-notes/connectors.md](https://github.com/aarora79/meru/blob/connectors-step4/docs/coding-notes/connectors.md):
   the code, walked through for readers new to Go
 - Today's wiring for hand-added servers: `internal/mcp/pool.go` (connect once, 30 s each, no restart),
-  `cmd/merud/connections.go` (web search always "connected"),
-  `internal/installer/websearch.go` and `google.go`, `cmd/merud/main.go` and
-  `runtime.go` (the Ollama check before the socket)
+  `internal/installer/websearch.go` and `google.go`; `cmd/merud/ollama.go`, the
+  watch on Ollama behind the socket
 
 The plan and its review:
 
@@ -748,6 +774,7 @@ The plan and its review:
   supervisor plan and its seven steps
 - [PR #90](https://github.com/aarora79/meru/pull/90), step 1
 - [PR #91](https://github.com/aarora79/meru/pull/91), step 2
+- [PR #92](https://github.com/aarora79/meru/pull/92), step 3
 
 Upstream pages for the pins, checked 30 September 2026:
 

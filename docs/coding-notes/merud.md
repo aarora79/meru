@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -67,11 +67,21 @@ builder as a parameter, so `TestRunServesAndStops` runs the whole daemon over
 a fake engine. `TestRunLogLevel` does the same with and without `-v`, and
 checks what `merud.log` holds at each level.
 
-`serve` claims the socket **before** warming the models, so a second
-`merud` fails at once rather than after the warm-up. Clients that connect
-during warm-up wait in the socket's queue. That wait is short now: `warm`
-loads only the fast and embedding models, and the answer model, which can
-take minutes, loads in the background once the server runs (see below).
+`serve` claims the socket **before** it checks Ollama, and starts
+`rpc.Serve` at once, so a second `merud` fails at once and a client can hear
+why `merud` can't answer yet. Until `merud` is ready, every request goes
+through a `gate` (see [ollama.go](#merud-ollamago)): it waits while Ollama is
+checked and the fast and embedding models load, and it answers from the watch
+on Ollama while Ollama is down or too old. `ollama.waitReady` returns once
+Ollama answers and the models are warm; only then does `serve` build anything
+that needs the engine. The answer model, which can take minutes, loads in the
+background once the server runs (see below).
+
+Because `rpc.Serve` runs from the start, a step that fails later must stop it
+before `serve` returns. `fail` does that: it cancels the errgroup's context,
+waits for the group, and returns the error. A test that waits for a ready
+`merud` asks for `index_status`, which goes through the gate; `ping`, which the
+rpc server answers itself, succeeds as soon as the socket opens.
 
 After warming, `serve` opens the store with `openStore`. The store needs the
 embedding model's vector size, and `embedDims` learns it by embedding one
@@ -79,16 +89,23 @@ short probe text, so config never holds a number that could go stale. When
 the model or the size changed since the last run, the store drops the old
 vectors (`store.NeedsReembed` then reports true).
 
-Then six jobs run side by side in an **errgroup** from
-`golang.org/x/sync`:
+Then seven jobs run side by side in an **errgroup** from
+`golang.org/x/sync`, the server first and the rest once `merud` is ready:
 
 ```go
 g, gctx := errgroup.WithContext(ctx)
+requests := newGate(ollama)
+g.Go(func() error { return rpc.Serve(gctx, ln, requests.handle, log) })
+if !ollama.waitReady(gctx) {
+	return g.Wait() // stopped while waiting
+}
+g.Go(func() error { ollama.watch(gctx); return nil })
+// ... the store, the tools, the agent ...
 warmAnswer := a.StartWarm()
 g.Go(func() error { warmAnswer(gctx); return nil })
-g.Go(func() error { return rpc.Serve(gctx, ln, handler(svc), log) })
+requests.open(handler(svc))
 g.Go(func() error { idx.startupScan(gctx); return nil })
-g.Go(func() error { idx.watch(gctx); return nil })
+g.Go(func() error { idx.watchAndRescan(gctx); return nil })
 g.Go(func() error { sum.Run(gctx); return nil })
 g.Go(func() error { mems.watch(gctx); return nil })
 return g.Wait()
@@ -96,14 +113,14 @@ return g.Wait()
 
 `g.Go` starts a function in its own goroutine, and `g.Wait` waits for all of
 them. `gctx` ends when `ctx` does, or when one function returns an error, so
-all six stop together. The answer model's load, the scan, the summarizer and the two watchers log their
+all seven stop together. The answer model's load, the scan, the summarizer and the two watchers log their
 own errors and return `nil`, so a folder that can't be read never stops `merud`. Because the
 scan runs beside the server, questions get answers during a long first scan;
 they search whatever the index holds so far.
 
 `a.StartWarm()` returns a function, and a Go function can do that: the
 function it returns keeps the variables it uses, here a channel, and runs
-later. `serve` calls `StartWarm` before `rpc.Serve` starts, so the agent knows
+later. `serve` calls `StartWarm` before the gate opens, so the agent knows
 a load is on its way before any question can arrive; the errgroup then runs
 the load in its own goroutine. A question that reaches the answer model before
 the load ends waits for it (`agent.WaitWarm`), and so does a model switch, so
@@ -164,21 +181,78 @@ and how many `[index]` folders it indexes.
 
 ### merud: runtime.go
 
-`checkRuntime` asks the engine for Ollama's version and refuses anything older
-than 0.12.11, the first release that reports log probabilities.
 `versionAtLeast` compares versions number by number, so `0.12.11` beats
-`0.9.99`, which a plain string comparison gets wrong.
+`0.9.99`, which a plain string comparison gets wrong. `checkOllama` in
+`ollama.go` uses it to refuse an Ollama older than 0.12.11, the first release
+that reports log probabilities.
 
 `warm` sends a one-token request to the fast model and one embedding
 request, and logs `warmed` with the time each took. The router needs the
 first on every question, and `openStore` needs the second. At debug level the
 engine's own lines show each call's status and Ollama's load time. A failure
-says which model and suggests `ollama pull`, and `merud` stops. The answer
+says which model and suggests `ollama pull`; the watch on Ollama reports it
+as failed and tries again in 30 seconds. The answer
 model isn't here: the agent loads it in the background (see `StartWarm`
 above), logs `answer model warm` when it is, and logs `couldn't load the
 answer model` with the `ollama pull` command when it can't, without stopping
 `merud`. In the `lite` profile the fast model is the answer model, so `warm`
 has loaded it already and the background load is quick.
+
+### merud: ollama.go
+
+This file holds the watch on Ollama, the one connector `merud` only reports on,
+and the `gate` in front of `merud`'s handler (ARCHITECTURE.md, "SearXNG and
+Ollama").
+
+`ollamaWatch` keeps Ollama's state and sentence under a mutex, as a
+`connectors.Status` with the ollama manifest's name, kind and `Required`:
+
+| Method | What it does |
+| --- | --- |
+| `waitReady(ctx)` | `tryReady` now, then after each `wait`, until it passes or `ctx` ends |
+| `tryReady(ctx)` | `checkOllama`, then `warm`; sets `failed`, `starting` or `ok` with the sentence |
+| `wait(ctx)` | sleeps 30 seconds, or until `poke` |
+| `poke()` | asks for a check now; never blocks |
+| `watch(ctx)` | after `merud` is ready, checks every 30 seconds so the status stays true |
+| `answer(req, emit)` | while Ollama fails: Ollama's row for `connectors`, no servers for `mcp_status`, and `notReady`'s error for the rest |
+
+`checkOllama` returns the version and a sentence: "Ollama isn't running at
+http://127.0.0.1:11434.", "Ollama 0.12.0 is too old; Meru needs 0.12.11 or
+later.", or "" when all is well. A down Ollama gives every request the error
+"Ollama isn't running, so Meru can't answer yet."; any other failure gives
+"Meru can't answer yet: " and the sentence.
+
+`poke` sends on a **buffered channel** of size 1 inside a `select` with a
+`default`. The buffer holds one signal, so many requests at once make one
+check, and the `default` case makes the send give up at once when the buffer
+is full, so a request never blocks:
+
+```go
+select {
+case o.nudge <- struct{}{}:
+default:
+}
+```
+
+`set` closes `changed` and makes a new one at each change of state, the same
+trick the connector supervisor uses: a closed channel is ready to read for
+every reader at once, so each request waiting in the gate wakes up.
+
+`gate.handle` answers one request. Once `open` has run, it calls the full
+handler. Before that, while Ollama fails, it pokes the watch and answers from
+it. Otherwise it waits for whichever comes first: the gate opening, Ollama's
+state changing, or the client hanging up. `open` writes `full` before it
+closes `ready`, and `handle` reads `full` only after `ready` is closed, so
+`full` needs no lock: Go's memory model orders a channel's close before any
+receive that sees it.
+
+`ollama_test.go` runs `merud` over a fake engine whose `Info` fails, then
+reports 0.11.0, then 0.13.0 (`TestServeWaitsForOllama`), and checks the
+connectors op, the error a question gets, `mcp_status` with no servers, and
+the answer once Ollama is ready. `TestServeStopsWhileWaiting` stops `merud`
+before Ollama ever answers, and `TestOllamaWatchAfterReady` stops and starts
+Ollama under a ready `merud`. `TestCheckOllama` in `main_test.go` covers each
+sentence.
 
 ### merud: index.go
 
@@ -455,7 +529,7 @@ reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides
 | `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
 | `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
 | `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order, then one per connector the pool runs |
-| `connectors` | `handleConnectors`: `conns.statuses()`, read from each supervisor; starts nothing | one `connectors` event, a row per stdio connector in manifest order, off and set up by hand included |
+| `connectors` | `handleConnectors`: `conns.statuses(ollama.status())`, read from each supervisor and the watch on Ollama; starts nothing | one `connectors` event, a row per connector in manifest order (obsidian, ollama, searxng), off and set up by hand included |
 
 **Status.** `handleMCPStatus` takes the current pool under `s.mu`, since a reload
 may swap it, and reads `pool.Status()`. That reads what the pool holds and sends
@@ -532,35 +606,38 @@ as `Options.Attachments`, so a result that names an attachment the call just sav
 gets its text (see [dispatch](dispatch.md)). After `New`, it calls
 `bt.UseModel(eng, cfg.Models.Fast)`, so `web_fetch` can answer a prompt with the
 fast model. `newToolService` takes the engine as a `builtin.Generator`, the one
-method that needs. Right after, `run` calls `logWebSearch`, which runs
-`catalog.CheckSearXNG` and writes one info line: `web search ready`,
-`web search not ready` with the reason, or `web search off`, which also covers
-`[builtin] tools` leaving `web_search` out. Each line says whether `web_fetch`
-is on. The check never
-stops `merud`: SearXNG may start later, and `web_search` tells the model what's
-wrong when it runs. It sends SearXNG an empty query, which SearXNG refuses before
-it asks any search engine, so starting `merud` sends nothing off the machine.
-`TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with nothing on the
-SearXNG port, checks the log line, and runs a turn in which the model calls
-`web_search` and still answers.
+method that needs. Then it calls `bt.UseWebCheck(conns.webOK)`, so the model
+gets `web_search` only while the SearXNG connector is ok. `merud` no longer
+logs a web search line of its own at startup: the connector logs each change
+of state. `TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with
+nothing on the SearXNG port and no `[connectors.searxng]` table, and checks
+that `meru mcp status` gives the reason, `meru tools` lists `web_fetch`
+without `web_search`, and a turn offers the model no `web_search`.
 
 ### merud: connectors.go
 
 This file joins the connector supervisors (see [connectors](connectors.md)) to
 the rest of `merud`. `connectorSet` holds one `*connectors.Supervisor` per stdio
-connector, in manifest order. `newConnectorSet` loads the manifests, makes an
-`Installer` over `~/.meru` and the home folder, and builds each supervisor.
+connector, in manifest order, and `web`, the `*connectors.Container` for
+SearXNG. `newConnectorSet` loads the manifests, makes an `Installer` over
+`~/.meru` and the home folder, and builds each supervisor. It hands the
+container two functions: `checkSearXNG`, which wraps `catalog.CheckSearXNG`
+and turns a refused connection into `connectors.ErrNothingListens`, and a
+`prepare` that writes `~/.meru/searxng/settings.yml` with
+`catalog.WriteSearXNGSettings` before Meru's container first starts.
 The set is built once and never swapped: `toolService.conns` keeps it for
 `merud`'s whole life, and every pool a reload builds asks the same supervisors
 for sessions.
 
 | Method | What it does |
 | --- | --- |
-| `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name |
+| `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name, then calls `configureWeb` |
+| `configureWeb(cfg)` | hands the SearXNG container its table, `[web] searxng_url`, and whether `[builtin] tools` lists `web_search`; `reloadBuiltin` calls it too |
+| `webOK()` | whether web search works now, with the sentence; the built-in tools' `UseWebCheck` |
 | `serverConfigs()` | one managed pool entry per connector that isn't off or set up by hand: its ID as the name, the manifest's tool lists, the supervisor as `Spawn` |
 | `routerServers(cfg)` | `cfg` with an `[[mcp.servers]]` entry added per connector the pool runs, for the router's list |
-| `statuses()` | every connector's `rpc.ConnectorStatus`, for the `connectors` op |
-| `byID(id)` | one connector's status, for `connections.go` |
+| `statuses(extra...)` | every connector's `rpc.ConnectorStatus`, Ollama's row passed in as `extra`, sorted by ID, for the `connectors` op |
+| `byID(id)` | one stdio connector's status, for `connections.go` |
 | `Close()` | stops each supervisor and waits for its goroutines |
 
 **The hand-added entry wins.** An `[[mcp.servers]]` entry named `obsidian`
@@ -580,7 +657,13 @@ Each case checks that the hand-added entry reaches the pool unchanged, and
 that the pool and the router each hold one `obsidian`, or none when it is off.
 One case is the owner's own setup, an `npx obsidian-mcp` entry with no
 `[connectors.obsidian]` table, which must keep working as it did.
-`TestConnectorsOp` checks the op's reply for a connector that needs config.
+`TestConnectorsOp` checks the op's reply for a connector that needs config,
+and that it lists obsidian, ollama and searxng in manifest order.
+`TestWebConnectorRule` runs the SearXNG connector against a fake SearXNG and a
+closed port: a config from before connectors is checked and reported, a
+working SearXNG reads "uses the SearXNG already running", and `enabled =
+false`, a missing URL or `web_search` left out turn it off. No case lets it run
+docker.
 
 ### merud: connections.go
 
@@ -709,6 +792,7 @@ Each fact comes from a place `merud` already keeps:
 | the computer | the `machineLine` the prompt carries |
 | folders, files, chunks, database size | `idx.currentFolders`, `st.Stats`, `st.DiskBytes` |
 | MCP servers, A2A agents, commands | `tools.dispatcher.Servers`, the list `meru tools` prints, with a connector's sentence |
+| web search | `web`, the SearXNG connector's `webOK`: its sentence, such as "Web search is off." |
 | skills on and off | `skillService.names` |
 | memories by kind | `mem.List`, keeping only each memory's kind |
 
@@ -1139,9 +1223,11 @@ text through `config.Load` before it renames it into place, as before.
 
 Step 4, Web search, is `checkWebSearch`. It calls `c.searxng`, which is
 `catalog.CheckSearXNG` outside tests, on `[web] searxng_url`. When SearXNG answers
-JSON it says so and moves on. When nothing answers (`ErrSearXNGDown`) it prints
-`searxngStart`, the commands from docs/running.md that start SearXNG in Docker
-on `127.0.0.1:8888`; when SearXNG answers HTML (`ErrSearXNGNoJSON`) it prints
+JSON it says so and moves on. When nothing answers (`ErrSearXNGDown`) at
+Meru's own address, `http://127.0.0.1:8888`, it prints `searxngStart`, the
+`[connectors.searxng]` table that has `merud` run SearXNG, and says to restart
+`merud`; at another address it says to start the SearXNG the user runs there.
+When SearXNG answers HTML (`ErrSearXNGNoJSON`) it prints
 `catalog.SearXNGFormatsHint`. Then it waits: Enter checks again, `s` skips. Web
 search is optional, so the step never stops setup. An empty `searxng_url` says
 web search is off and asks nothing.

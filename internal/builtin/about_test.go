@@ -39,6 +39,7 @@ func sampleAbout() About {
 		Skills:   []string{"web-research", "writing"},
 		Disabled: []string{"explainer"},
 		Memories: map[string]int{"preferences": 2, "me": 3, "projects": 0},
+		Web:      "Web search uses the SearXNG already running at http://127.0.0.1:8888.",
 	}
 }
 
@@ -56,6 +57,7 @@ func TestAboutText(t *testing.T) {
 		"MCP servers: google (connected, 9 tools), obsidian (not connected), notes (not connected; Notes needs your vault folder.).",
 		"A2A agents: none.",
 		"Local commands: cmd.git-log.",
+		"Web search: Web search uses the SearXNG already running at http://127.0.0.1:8888.\n",
 		"Skills: web-research, writing; turned off: explainer.",
 		"Memories: me 3, preferences 2.",
 	} {
