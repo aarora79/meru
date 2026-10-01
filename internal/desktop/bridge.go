@@ -375,6 +375,18 @@ func (b *Bridge) event(t *turn, ev rpc.Event) {
 			t.steps = append(t.steps, s)
 			u.Step = &s
 		}
+	case rpc.EventProgress:
+		if ev.Tool == nil {
+			break
+		}
+		for i := range t.steps {
+			if t.steps[i].ID == ev.Tool.ID && t.steps[i].Outcome == "" {
+				t.steps[i].Progress = ev.Text
+				s := t.steps[i]
+				u.Step = &s
+				break
+			}
+		}
 	case rpc.EventToolResult:
 		if ev.Tool == nil {
 			break

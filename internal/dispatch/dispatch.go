@@ -240,3 +240,25 @@ func CiteNumbers(ctx context.Context, n int) int {
 	}
 	return next(n)
 }
+
+// progressKey is the key under which the agent puts a call's progress
+// function on the context, as citeKey does for the citation counter.
+type progressKey struct{}
+
+// WithProgress returns a copy of ctx that carries send. The agent sets it
+// for each call, before Dispatch, with the call's ID already inside send,
+// so a line reaches the client beside the right tool. Like the citation
+// counter, it rides on the context because Backend.Call takes no turn.
+func WithProgress(ctx context.Context, send func(text string)) context.Context {
+	return context.WithValue(ctx, progressKey{}, send)
+}
+
+// Progress sends one line about the call ctx belongs to, for a client to
+// show under the running tool, such as "Installing Meru's page reader". A
+// backend calls it for work that takes more than a few seconds. Outside a
+// turn it does nothing.
+func Progress(ctx context.Context, text string) {
+	if send, ok := ctx.Value(progressKey{}).(func(string)); ok {
+		send(text)
+	}
+}

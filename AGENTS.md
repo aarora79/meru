@@ -138,7 +138,9 @@ repo tool only and doesn't ship. Update those two built-ins by copying from
    when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
    loopback and private addresses at connect time, and asks the user before it
    fetches a URL that no search result or question of the user's gave in the same
-   session, and before any download.
+   session, and before any download. A page that needs JavaScript loads in a
+   headless Chrome whose every request goes through a proxy in `merud` with the
+   same check; the proxy refuses everything while no page loads.
 4. **Every tool call goes through `dispatch`**, which logs it to `tool_calls` and the
    session transcript. That covers MCP tools, A2A agents, local commands and
    built-in tools such as `configure` and `remember`. Never add a second path.
@@ -230,6 +232,9 @@ internal/
                      `grep` and `search_files`, and `web_search` and `web_fetch` (web.go,
                      webguard.go, webdownload.go); chats.go lets the first three read
                      the past chats in ~/.meru/sessions
+  render/            web_fetch's page reader: a fresh headless Chrome per page that needs
+                     JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
+                     web_fetch's address check (proxy.go)
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and SearXNG, the safe append to config.toml, and
                      one-list edits and removals in it; Adopt's edit and its undo (adopt.go)
@@ -257,9 +262,10 @@ internal/
   installer/         the Mac installer minus the window: its ten steps, the Bridge, the
                      allowlist of programs it runs (run.go), and the page in web/
   connectors/        the connector manifests (manifests/*.toml, compiled in) with pinned
-                     versions, and the checks on them; the pinned Node and uv (runtimes.go),
-                     installs into ~/.meru/runtime (install.go, launch.go), and run.go, its one
-                     exec site; the supervisor merud runs per MCP connector, Obsidian over
+                     versions, and the checks on them; the pinned Node, uv and
+                     chrome-headless-shell (runtimes.go), installs into ~/.meru/runtime
+                     (install.go, launch.go), and run.go, its one exec site, which also starts
+                     Chrome for render (StartPiped); the supervisor merud runs per MCP connector, Obsidian over
                      stdio and Google over HTTP with its sign-in (supervisor.go), its states
                      and settings check (status.go) and health check (health.go); the SearXNG
                      container's supervisor (container.go); Adopt, which moves a hand-added
@@ -307,7 +313,7 @@ docs/
 `about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
-`dispatch`, `a2a`, `builtin`, `commands`, `connectors` or anything else that talks to a model, stores data
+`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
@@ -315,7 +321,7 @@ and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
 `memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
-`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands` or `connectors`. It starts programs
+`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors` or `render`. It starts programs
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through

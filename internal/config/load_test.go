@@ -123,6 +123,7 @@ disabled = ["explainer", "not-yet"]
 [web]
 searxng_url = "http://localhost:8889"
 max_results = 5
+render = "off"
 
 [chat]
 mouse_copy = false
@@ -173,7 +174,7 @@ remote  = false
 			Retrieval:     RetrievalAgentic,
 		},
 		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},
-		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5},
+		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5, Render: RenderOff},
 		Chat:    Chat{MouseCopy: false}, // false in the file beats the default, true
 		MCP: MCP{Servers: []MCPServer{
 			{
@@ -259,6 +260,7 @@ func TestLoadErrors(t *testing.T) {
 		{"searxng scheme", "[web]\nsearxng_url = \"127.0.0.1:8888\"", "web.searxng_url"},
 		{"web max_results zero", "[web]\nmax_results = 0", "web.max_results"},
 		{"web max_results high", "[web]\nmax_results = 21", "web.max_results"},
+		{"web render unknown", "[web]\nrender = \"on\"", "web.render"},
 		{"web unknown key", "[web]\nread_page = true", "unknown keys: web.read_page"},
 		{"old web read_pages key", "[web]\nread_pages = true", movedFetch},
 		{"old web fetch key", "[web]\nfetch = false", movedFetch},
@@ -330,13 +332,13 @@ func TestBuiltinToolsDefault(t *testing.T) {
 }
 
 // TestWebDefaults checks the [web] defaults: search on at the SearXNG
-// port the docs use, and an empty URL turning search off.
+// port the docs use, rendering on, and an empty URL turning search off.
 func TestWebDefaults(t *testing.T) {
 	cfg, err := Load(writeConfig(t, ""))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8}
+	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto}
 	if cfg.Web != want {
 		t.Errorf("default web = %+v, want %+v", cfg.Web, want)
 	}
@@ -344,7 +346,7 @@ func TestWebDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want = Web{SearXNGURL: "", MaxResults: 20}
+	want = Web{SearXNGURL: "", MaxResults: 20, Render: RenderAuto}
 	if cfg.Web != want {
 		t.Errorf("web = %+v, want %+v", cfg.Web, want)
 	}

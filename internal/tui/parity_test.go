@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -390,4 +391,46 @@ func TestHelpAndAboutScroll(t *testing.T) {
 	if !strings.Contains(m.View(), "Read the license") {
 		t.Errorf("End didn't scroll to the last link:\n%s", m.View())
 	}
+}
+
+// TestToolProgress checks that a running tool's "progress" line shows on
+// its tool line, as the desktop app shows it beside the step's label, and
+// that the line goes when the call ends.
+func TestToolProgress(t *testing.T) {
+	const line = "Installing Meru's page reader (about 95 MB, once)"
+	merud := &fakeMerud{
+		events: []rpc.Event{
+			{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch", Kind: "builtin"}},
+			{Type: rpc.EventProgress, Text: line, Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch", Kind: "builtin"}},
+		},
+		block: true,
+	}
+	snd := newFakeSender()
+	m, cmd := update(t, testModel(merud.ask, snd), typeText("summarize the job"), press(tea.KeyEnter))
+	result := make(chan tea.Msg, 1)
+	go func() { result <- finishTurn(cmd) }()
+	for range 2 {
+		select {
+		case msg := <-snd.ch:
+			m, _ = update(t, m, msg)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for an event")
+		}
+	}
+	tc := m.turns[0].tools[0]
+	if tc.progress != line || toolText(tc) != "→ web_fetch · "+line {
+		t.Fatalf("tool line = %q", toolText(tc))
+	}
+	if !strings.Contains(m.View(), line) {
+		t.Error("the screen doesn't show the progress line")
+	}
+	m, _ = update(t, m, press(tea.KeyCtrlC))
+	<-result
+
+	// When the call ends, its line shows the outcome, not the news.
+	tc.outcome, tc.millis = "ok", 4000
+	if got := toolText(tc); strings.Contains(got, line) {
+		t.Errorf("a finished call still shows its progress: %q", got)
+	}
+	_ = m
 }

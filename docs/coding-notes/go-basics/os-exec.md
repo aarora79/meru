@@ -46,7 +46,9 @@ fmt.Print(string(out))
   can't hang the call.
 - `internal/connectors/run.go` — the one file in `internal/connectors` that runs
   a program: npm, uv and docker, by absolute path, with only the environment
-  each `Cmd` lists, and each output line passed on for progress.
+  each `Cmd` lists, and each output line passed on for progress. `StartPiped`
+  there also starts `web_fetch`'s headless Chrome, handing it two pipes as
+  `ExtraFiles` (see [Pipes and extra files](pipes-and-extra-files.md)).
 - `internal/mcp/testserver_test.go` — the test binary starts itself as a child
   that serves MCP.
 - `internal/policy/layout_test.go` — runs `go list` to read the client's imports.

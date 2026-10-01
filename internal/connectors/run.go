@@ -5,8 +5,10 @@
 // A running connector starts here too: stdioTransport turns a Cmd into
 // the child process the supervisor talks MCP to over its stdin and
 // stdout, and httpTransport starts an http connector's program and waits
-// for it to listen on its loopback port. internal/policy fails the build
-// if another file in this package imports os/exec.
+// for it to listen on its loopback port. StartPiped starts a program
+// that is driven through two extra pipes, the way web_fetch's page reader
+// drives chrome-headless-shell. internal/policy fails the build if another
+// file in this package imports os/exec.
 
 package connectors
 
@@ -19,8 +21,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -305,4 +309,152 @@ func waitListening(ctx context.Context, addr string, exited <-chan struct{}) err
 		}
 	}
 	return nil
+}
+
+// ErrNoPipes means this system can't hand a child the two extra pipes
+// StartPiped needs. Go passes extra files to a child only on Unix systems,
+// so on Windows a piped program can't start.
+var ErrNoPipes = errors.New("this system can't pass extra pipes to a program, as Go does only on Unix")
+
+// pipedStopWait is how long Stop waits, after closing the pipes, for the
+// program to exit on its own before it kills it.
+const pipedStopWait = 3 * time.Second
+
+// Piped is a running program with two extra pipes: the program reads
+// commands from its file descriptor 3 and writes replies to its file
+// descriptor 4. That is how Chrome's --remote-debugging-pipe works. When
+// merud dies, the operating system closes merud's ends of the pipes, and
+// Chrome, reading end-of-file on fd 3, exits on its own, so no browser
+// outlives merud.
+type Piped struct {
+	// In is merud's end of the program's fd 3: what merud writes here,
+	// the program reads.
+	In io.WriteCloser
+	// Out is merud's end of the program's fd 4: what the program writes
+	// there, merud reads here.
+	Out io.ReadCloser
+
+	cmd *exec.Cmd
+	// done closes when the program has exited; err then holds Wait's
+	// result. One goroutine, started by StartPiped, waits for the program
+	// and owns both.
+	done chan struct{}
+	err  error
+	// tail keeps the last lines the program wrote to stderr, for the
+	// error a crash reports.
+	tail *lineTail
+}
+
+// StartPiped starts c and returns at once, with the program running. It
+// keeps every rule ExecRunner keeps: an absolute path, each argument its
+// own string with no shell, and only the environment c lists. The
+// program's stdout is discarded and its stderr kept, its last tailLines
+// lines, for Stop's error. It fails with ErrNotAbsolute on a relative
+// path, ErrNoPipes on Windows, and when the program can't start.
+func StartPiped(c Cmd) (*Piped, error) {
+	if !filepath.IsAbs(c.Path) {
+		return nil, fmt.Errorf("%s: %w", c.Path, ErrNotAbsolute)
+	}
+	if runtime.GOOS == "windows" {
+		return nil, fmt.Errorf("%s: %w", filepath.Base(c.Path), ErrNoPipes)
+	}
+	// os.Pipe returns two connected files: what is written to the second
+	// can be read from the first. The program gets one end of each pipe,
+	// merud keeps the other.
+	cmdR, cmdW, err := os.Pipe() // the program reads commands from cmdR
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Base(c.Path), err)
+	}
+	repR, repW, err := os.Pipe() // the program writes replies to repW
+	if err != nil {
+		_ = cmdR.Close()
+		_ = cmdW.Close()
+		return nil, fmt.Errorf("%s: %w", filepath.Base(c.Path), err)
+	}
+
+	// As in ExecRunner: the program runs by its absolute path, with each
+	// argument as its own string and no shell. exec.Command, not
+	// CommandContext: the program outlives the call that starts it, and
+	// Stop ends it.
+	cmd := exec.Command(c.Path, c.Args...) // #nosec G204 -- the path is absolute and comes from a pinned runtime
+	cmd.Env = append([]string{}, c.Env...)
+	cmd.Dir = c.Dir
+	// ExtraFiles become the child's file descriptors 3, 4 and so on, after
+	// stdin, stdout and stderr (0, 1 and 2).
+	cmd.ExtraFiles = []*os.File{cmdR, repW}
+	tail := &lineTail{}
+	cmd.Stderr = tail
+	if err := cmd.Start(); err != nil {
+		for _, f := range []*os.File{cmdR, cmdW, repR, repW} {
+			_ = f.Close()
+		}
+		return nil, fmt.Errorf("%s: %w", filepath.Base(c.Path), err)
+	}
+	// The child holds its own copies of cmdR and repW now. merud closes
+	// its copies, so that when the child exits, merud's read of repR ends
+	// instead of waiting forever.
+	_ = cmdR.Close()
+	_ = repW.Close()
+
+	p := &Piped{In: cmdW, Out: repR, cmd: cmd, done: make(chan struct{}), tail: tail}
+	go func() {
+		p.err = cmd.Wait()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+// Done returns a channel that closes when the program has exited.
+func (p *Piped) Done() <-chan struct{} { return p.done }
+
+// Stop ends the program. It closes merud's ends of the pipes, which tells
+// Chrome to exit, waits up to pipedStopWait for it to, and kills it if it
+// hasn't. It returns nil when the program exited cleanly, and otherwise an
+// error with its exit status and the last lines of its stderr. Calling it
+// twice is safe.
+func (p *Piped) Stop() error {
+	_ = p.In.Close()
+	_ = p.Out.Close()
+	select {
+	case <-p.done:
+	case <-time.After(pipedStopWait):
+		_ = p.cmd.Process.Kill()
+		<-p.done
+	}
+	if p.err != nil {
+		return fmt.Errorf("%s: %w; it wrote: %s", filepath.Base(p.cmd.Path), p.err, p.tail.String())
+	}
+	return nil
+}
+
+// lineTail is an io.Writer that keeps the last tailLines lines written
+// to it. The program's stderr goes here. The mutex guards lines, since
+// exec copies stderr from its own goroutine while Stop may read it.
+type lineTail struct {
+	mu      sync.Mutex
+	partial string
+	lines   []string
+}
+
+// Write keeps the lines in p, joining a line split across writes.
+func (t *lineTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	text := t.partial + string(p)
+	parts := strings.Split(text, "\n")
+	t.partial = parts[len(parts)-1]
+	for _, l := range parts[:len(parts)-1] {
+		t.lines = append(t.lines, strings.TrimRight(l, "\r"))
+		if len(t.lines) > tailLines {
+			t.lines = t.lines[1:]
+		}
+	}
+	return len(p), nil
+}
+
+// String returns the kept lines, joined by newlines.
+func (t *lineTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(append(append([]string{}, t.lines...), t.partial), "\n")
 }

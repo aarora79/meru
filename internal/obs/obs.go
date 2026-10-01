@@ -187,6 +187,21 @@ func RecordContextTokens(ctx context.Context, section string, tokens int) {
 		metric.WithAttributes(attr(keySection, bounded(section, sections...))))
 }
 
+// renderOutcomes are the outcomes RecordRender keeps; any other becomes
+// "other".
+var renderOutcomes = []string{"ok", "error", "timeout", "cancelled"}
+
+// RecordRender records meru.web.render.duration for one page web_fetch
+// rendered, with its outcome: "ok", "error", "timeout" or "cancelled".
+func RecordRender(ctx context.Context, outcome string, d time.Duration) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.renderDuration.Record(ctx, d.Seconds(),
+		metric.WithAttributes(attr(keyOutcome, bounded(outcome, renderOutcomes...))))
+}
+
 // RecordRetrieval records meru.retrieval.duration for one retrieval stage:
 // "vector", "fts", "fusion", "memories" or "sessions". Any other stage
 // becomes "other".

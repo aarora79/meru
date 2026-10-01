@@ -1,6 +1,7 @@
-// This file pins the two runtimes Meru downloads for itself, Node and uv,
-// and holds EnsureRuntime, which fetches one into ~/.meru/runtime the
-// first time a connector needs it. See ARCHITECTURE.md, "The runtime
+// This file pins the runtimes Meru downloads for itself: Node and uv for
+// connectors, and chrome-headless-shell for web_fetch's page reader. It
+// also holds EnsureRuntime, which fetches one into ~/.meru/runtime the
+// first time something needs it. See ARCHITECTURE.md, "The runtime
 // folder".
 
 package connectors
@@ -17,8 +18,9 @@ import (
 
 // The runtimes Meru can download.
 const (
-	RuntimeNode = "node" // runs npm and every npm connector
-	RuntimeUV   = "uv"   // makes each pip connector's Python environment
+	RuntimeNode   = "node"                  // runs npm and every npm connector
+	RuntimeUV     = "uv"                    // makes each pip connector's Python environment
+	RuntimeChrome = "chrome-headless-shell" // renders pages that need JavaScript, for web_fetch
 )
 
 // Runtime is one pinned runtime: its version and, for each platform, the
@@ -27,10 +29,11 @@ type Runtime struct {
 	Name    string
 	Version string
 	// Downloads maps a platform, <GOOS>_<GOARCH> such as "darwin_arm64",
-	// to its .tar.gz archive. A platform missing here has no runtime yet.
+	// to its .tar.gz or .zip archive. A platform missing here has no
+	// runtime yet.
 	Downloads map[string]Binary
 	// Program is the runtime's main program, relative to its folder once
-	// unpacked: "bin/node" or "uv".
+	// unpacked: "bin/node", "uv" or "chrome-headless-shell".
 	Program string
 }
 
@@ -44,8 +47,9 @@ func (r Runtime) DirName() string {
 // Runtimes returns the pinned runtimes by name. It builds a new map on
 // each call, so no caller can change a pin for the rest of the program.
 //
-// Windows isn't pinned yet: Node ships a .zip there and uv an .exe, and
-// the rest of the connector code assumes macOS and Linux paths.
+// Windows isn't pinned yet: Node ships a .zip there and uv an .exe, the
+// rest of the connector code assumes macOS and Linux paths, and Go can't
+// hand Chrome the two pipes it is driven through on Windows.
 func Runtimes() map[string]Runtime {
 	return map[string]Runtime{
 		// Node 24.21.0 "Krypton", the newest Long Term Support release on
@@ -104,6 +108,35 @@ func Runtimes() map[string]Runtime {
 				},
 			},
 		},
+		// chrome-headless-shell 154.0.8037.92, Chrome for Testing's Stable
+		// build on 2026-10-01 (built 2026-09-28), listed in
+		// https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json.
+		// Google publishes MD5 and CRC32C for these zips, not SHA-256: each
+		// zip was downloaded on 2026-10-01, its MD5 matched the bucket's
+		// x-goog-hash header, and the SHA-256 below was computed from it.
+		RuntimeChrome: {
+			Name:    RuntimeChrome,
+			Version: "154.0.8037.92",
+			Program: "chrome-headless-shell",
+			Downloads: map[string]Binary{
+				"darwin_arm64": {
+					URL:    "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/mac-arm64/chrome-headless-shell-mac-arm64.zip",
+					SHA256: "77da14e75d7f2568e6f7898d3df7cdc6faac74b15e903b2c9d486ebb6ca9b929",
+				},
+				"darwin_amd64": {
+					URL:    "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/mac-x64/chrome-headless-shell-mac-x64.zip",
+					SHA256: "a54292aaacbb77f76f6ef47558e7c51ab884044e0adacca315567f83c060bcc4",
+				},
+				"linux_amd64": {
+					URL:    "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/linux64/chrome-headless-shell-linux64.zip",
+					SHA256: "636aa5c79f2693632e9921b8bbb050038ba11672e02346c06c20f991aed096f9",
+				},
+				"linux_arm64": {
+					URL:    "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.92/linux-arm64/chrome-headless-shell-linux-arm64.zip",
+					SHA256: "0ed0e47d9e9f639197f508d62ada09e5c6b4c4c60edab3160a9312a733091df6",
+				},
+			},
+		},
 	}
 }
 
@@ -155,7 +188,7 @@ func (in *Installer) RuntimeDir(name string) (string, bool) {
 func (in *Installer) EnsureRuntime(ctx context.Context, name string, progress func(string)) (string, error) {
 	rt, ok := in.Runtimes[name]
 	if !ok {
-		return "", fmt.Errorf("runtime %q: Meru pins only node and uv", name)
+		return "", fmt.Errorf("runtime %q: Meru has no pin by that name", name)
 	}
 	if dir, done := in.RuntimeDir(name); done {
 		return dir, nil
@@ -177,7 +210,11 @@ func (in *Installer) EnsureRuntime(ctx context.Context, name string, progress fu
 	}
 	defer os.RemoveAll(tmp)
 
+	// The archive keeps its kind in its name, so unpack knows how to read it.
 	archive := filepath.Join(tmp, "archive.tar.gz")
+	if strings.HasSuffix(dl.URL, ".zip") {
+		archive = filepath.Join(tmp, "archive.zip")
+	}
 	if err := download(ctx, in.Client, dl.URL, dl.SHA256, archive); err != nil {
 		return "", fmt.Errorf("runtime %s: %w", rt.Name, err)
 	}
@@ -186,7 +223,7 @@ func (in *Installer) EnsureRuntime(ctx context.Context, name string, progress fu
 	if err := os.Mkdir(unpacked, 0o750); err != nil {
 		return "", fmt.Errorf("runtime %s: %w", rt.Name, err)
 	}
-	if err := unpackTarGz(archive, unpacked); err != nil {
+	if err := unpack(archive, unpacked); err != nil {
 		return "", fmt.Errorf("runtime %s: %w", rt.Name, err)
 	}
 	if info, err := os.Stat(filepath.Join(unpacked, filepath.FromSlash(rt.Program))); err != nil || info.IsDir() {

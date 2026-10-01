@@ -181,6 +181,15 @@ confirm = ["write_file"]
 searxng_url = "http://127.0.0.1:8888"
 # How many results web_search returns when the model doesn't say, 1 to 20.
 max_results = 8
+# How web_fetch reads a page whose text comes from JavaScript, such as a
+# job posting on Workday.
+#   "auto"  read the HTML first; when it is an empty shell with a script,
+#           load the page in a headless Chrome that merud installs the
+#           first time (about 95 MB, under ~/.meru/runtime) and runs only
+#           while it reads that page. Every request the page makes goes
+#           through merud, which refuses this machine and your network.
+#   "off"   read the HTML alone; such a page comes back nearly empty.
+render = "auto"
 
 [skills]
 # The one folder write_file may write in. web_fetch saves downloads in its

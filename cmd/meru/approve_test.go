@@ -138,6 +138,8 @@ func TestToolLine(t *testing.T) {
 		{"call without args", rpc.Event{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{Name: "remember"}}, "→ remember"},
 		{"ok", rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{Name: "notes.search", Outcome: "ok", DurationMillis: 120}}, "✓ notes.search 120 ms"},
 		{"timeout", rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{Name: "notes.search", Outcome: "timeout"}}, "✗ notes.search timeout"},
+		{"progress", rpc.Event{Type: rpc.EventProgress, Text: "Installing Meru's page reader (about 95 MB, once)", Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch"}},
+			"  web_fetch · Installing Meru's page reader (about 95 MB, once)"},
 		{"no tool", rpc.Event{Type: rpc.EventToolCall}, ""},
 	}
 	for _, tt := range tests {

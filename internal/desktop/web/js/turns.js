@@ -137,6 +137,9 @@ export function drawStrip(t, h) {
     const failed = s.outcome && s.outcome !== "ok";
     const step = el("span", "step" + (failed ? " failed" : ""));
     step.append(icon(failed ? "alert" : "tool", 13), document.createTextNode(" " + s.label));
+    // A running call with news, such as "Installing Meru's page reader",
+    // shows it beside its label until the call ends.
+    if (s.progress && !s.outcome) step.append(el("span", "step-progress", " · " + s.progress));
     strip.append(step);
   }
   if (t.approval && !t.approval.answered) {

@@ -1,6 +1,6 @@
 # testing
 
-**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`),
+**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`, `render_test.go`),
 `internal/testutil/fakeollama/` (`fake.go`, `api.go`, `wire.go`), `cmd/fakeollama/` (`main.go`)
 **Milestone:** v0.1
 **Architecture:** [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -152,9 +152,19 @@ installs and starts the connectors, and a client asks it about them.
 `internal/connectors/run.go` may import `os/exec`, so every npm, uv and docker
 command it runs goes through one Runner, and every connector the supervisor
 starts goes through `stdioTransport`, both by absolute path and with no shell.
-The runtime downloads, Node from nodejs.org and uv from its GitHub release,
-are the one other place besides the Mac installer where `allowed_urls.txt`
-lists a URL that Meru fetches.
+The runtime downloads, Node from nodejs.org, uv from its GitHub release and
+`chrome-headless-shell` from Chrome for Testing, are the one other place
+besides the Mac installer where `allowed_urls.txt` lists a URL that Meru
+fetches.
+
+`render_test.go` holds `internal/render`, `web_fetch`'s page reader, to the
+same rule. `TestRenderStartsNoProgram` fails when a file there imports
+`os/exec`, `syscall` or `golang.org/x/sys`, or calls `os.StartProcess`. The
+reader starts Chrome only through `connectors.StartPiped`, so
+`internal/connectors/run.go` stays the one file that shows every program
+`merud` starts for a connector or a page. `layout_test.go` keeps
+`internal/render` out of both clients and the Mac installer, as it does
+`internal/connectors`.
 
 `pins_test.go` checks that every program Meru installs, or tells you to install,
 names one exact version. It reads the connector manifests, the string literals in

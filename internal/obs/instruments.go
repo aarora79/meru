@@ -36,6 +36,7 @@ const (
 	metricTurnTokens        = "meru.turn.tokens" // #nosec G101 -- a metric name, not a credential
 	metricTurnDocs          = "meru.turn.docs"
 	metricMalformedCalls    = "meru.model.malformed_calls"
+	metricRenderDuration    = "meru.web.render.duration"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -147,6 +148,7 @@ type instruments struct {
 	turnTokens        metric.Int64Counter
 	turnDocs          metric.Int64Histogram
 	malformedCalls    metric.Int64Counter
+	renderDuration    metric.Float64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -217,6 +219,12 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 	in.activeStreams, err = meter.Int64UpDownCounter(metricActiveStreams,
 		metric.WithUnit("{stream}"),
 		metric.WithDescription("Client sessions streaming from merud right now."))
+	keep(err)
+	// A rendered page takes seconds, the same spread as a model call.
+	in.renderDuration, err = meter.Float64Histogram(metricRenderDuration,
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of one page web_fetch rendered in a headless Chrome, Chrome's start included."),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	keep(err)
 	in.retrievalDuration, err = meter.Float64Histogram(metricRetrievalDuration,
 		metric.WithUnit("s"),

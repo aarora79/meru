@@ -48,6 +48,7 @@ var forbiddenClientPackages = []forbiddenPackage{
 	{"internal/a2a", "merud owns the A2A clients"},
 	{"internal/scheduler", "the scheduler runs in merud"},
 	{"internal/connectors", "merud installs, starts and checks the connectors; a client asks it over the socket"},
+	{"internal/render", "merud runs web_fetch's page reader; a client only shows its progress line"},
 }
 
 // forbiddenDesktopPackages adds what the desktop app, unlike `meru`, has no
@@ -93,6 +94,7 @@ var forbiddenInstallerPackages = []forbiddenPackage{
 	{"internal/scheduler", "the scheduler runs in merud"},
 	{"internal/tui", "the terminal UI belongs to meru chat"},
 	{"internal/connectors", "merud installs, starts and checks the connectors; the installer will hand them to merud over the socket"},
+	{"internal/render", "merud runs web_fetch's page reader and installs its browser on first need"},
 }
 
 // thinClient is one client the tests check: the directories that hold its

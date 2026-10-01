@@ -91,6 +91,13 @@ moved the folder", and no tool call in the turn succeeded (see
 [agent.md](agent.md)). It adds a type and no field, so an older client passes
 over it, as `meru chat` passes over any type it doesn't know.
 
+The `progress` event (`EventProgress`) has a second use, on the ask stream.
+While a tool does slow work, such as `web_fetch` installing its page reader,
+`merud` sends `progress` events between that call's `tool_call` and
+`tool_result`, with the line in `Text` and the call's ID in `Tool.ID`, so a
+client shows it under the right tool. It reuses a type and fields that
+already exist, and an older client skips a type it doesn't expect on an ask.
+
 Two MCP ops back `meru mcp add`. `mcp_probe` carries the server to try in
 `Server`, a `ProbeServer` with the fields of an `[[mcp.servers]]` entry minus the
 allow lists, and answers with one `probe` event. Its `Probe`, a `ProbeResult`,

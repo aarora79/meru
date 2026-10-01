@@ -418,6 +418,10 @@ function onEvent(u) {
     }
     case "tool_call":
     case "tool_result":
+    // "progress" carries a line from a slow tool, such as web_fetch
+    // installing its page reader; the Bridge puts it on the step, which the
+    // strip shows until the call's tool_result.
+    case "progress":
       if (u.step) {
         const i = t.steps.findIndex((s) => s.id === u.step.id);
         if (i >= 0) t.steps[i] = u.step;

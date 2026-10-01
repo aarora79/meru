@@ -48,6 +48,7 @@ Read them in this order; each builds on the ones before it.
 27. [connectors](connectors.md): the connector manifests, their pinned versions and checks, the installs of Node, uv and each connector into ~/.meru/runtime, the supervisor that runs each stdio connector, and the one that runs the SearXNG container
 28. [testing](testing.md): how Meru tests itself, from unit tests to fakes
 29. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
+30. [render](render.md): `web_fetch`'s page reader, a headless Chrome per page that needs JavaScript, behind a proxy
 
 ### Go basics
 
@@ -70,6 +71,7 @@ Read them in this order; each builds on the ones before it.
 - [filepath](go-basics/filepath.md)
 - [select](go-basics/select.md)
 - [os/exec](go-basics/os-exec.md)
+- [Pipes and extra files](go-basics/pipes-and-extra-files.md)
 - [encoding/json](go-basics/json.md)
 - [embed](go-basics/embed.md)
 - [os.Root](go-basics/os-root.md)

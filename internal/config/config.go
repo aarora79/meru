@@ -303,9 +303,9 @@ type Builtin struct {
 	Confirm []string `toml:"confirm"`
 }
 
-// Web configures web search. merud searches through a SearXNG instance the
-// user runs on this machine. See ARCHITECTURE.md, "Web search". web_fetch
-// has no key here: [builtin] tools turns it on or off.
+// Web configures web search and how web_fetch reads a page. merud searches
+// through a SearXNG instance on this machine. See ARCHITECTURE.md, "Web
+// search". [builtin] tools turns web_fetch itself on or off.
 type Web struct {
 	// SearXNGURL is where SearXNG answers, such as http://127.0.0.1:8888.
 	// It must be loopback, because merud connects to it. Empty turns
@@ -314,7 +314,18 @@ type Web struct {
 	// MaxResults is how many results web_search returns when the model
 	// doesn't say. Default 8, at most 20.
 	MaxResults int `toml:"max_results"`
+	// Render says how web_fetch reads a page whose text comes from
+	// JavaScript: RenderAuto loads it in a headless Chrome that merud
+	// installs on first need; RenderOff reads the HTML alone. Default
+	// RenderAuto. See ARCHITECTURE.md, "Pages that need JavaScript".
+	Render string `toml:"render"`
 }
+
+// The values [web] render takes.
+const (
+	RenderAuto = "auto"
+	RenderOff  = "off"
+)
 
 // Chat tunes the `meru chat` screen. Only the client reads it; merud
 // ignores it.

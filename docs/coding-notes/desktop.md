@@ -91,7 +91,10 @@ new goroutine with `wg.Go`, which counts it so `ServiceShutdown` can wait for it
 to `event`. `event` checks that the turn is still the running one, since `Stop` may
 have ended it, and emits an `Update`. For a `session` event it keeps the ID, so the
 queued questions continue the same chat. For a tool event it adds a `Step` with a
-friendly label from views.go. It also collects the answer's tokens in a
+friendly label from views.go. A `progress` event, which a slow tool such as
+`web_fetch` sends while it installs its page reader, goes to the step with the
+same ID that hasn't ended: the Bridge sets its `Progress` field to the line and
+emits the step again. It also collects the answer's tokens in a
 `strings.Builder` and keeps the latest `sources` list, so the turn's end can say
 which sources the answer cites.
 
@@ -477,7 +480,11 @@ bundler.
   turn with neither, and "Answering" while text streams. It never reads the
   route: the router's pick says what the turn could do, and a `tools` turn
   whose model called no tool once said "Used tools". `app.js` redraws the strip
-  on `sources`, on each tool event and on the first token. The route and the
+  on `sources`, on each tool event and on the first token. `app.js` treats a
+  `"progress"` update like `tool_call` and `tool_result`: it swaps in the new
+  step. While a step has `progress` and no outcome, the strip shows the line
+  in a `.step-progress` span beside the label; the span goes when the call
+  ends. The route and the
   router's confidence stay behind Show steps. `TestWorkLabelReadsWhatHappened`
   in `assets_test.go` reads `workLabel`'s source, since the page has no test
   runner, and fails if it reads `t.route`. The sources line shows only the cited sources, closed, as "3 sources"
@@ -616,6 +623,8 @@ test releases it. A test that stops a turn waits for that turn's handler to
 return before it releases the next one: until the server notices the stop, the
 stopped handler still waits too and could take the release meant for the next
 turn, which made `TestStopDropsQueue` fail on a slow CI runner.
+`TestProgressStep` checks that a `progress` event lands on its running step
+and that the `tool_result` after it carries the outcome.
 `settings_test.go` checks that each settings method sends
 the request `merud` expects, that `UseModel` changes the model the status block
 names, passes a warning on and leaves the model alone when `merud` refuses, that a save shows its card and returns the path,

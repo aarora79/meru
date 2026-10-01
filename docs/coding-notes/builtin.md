@@ -4,7 +4,8 @@
 `about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
 `web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, and the
 tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
-`chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`, `upload_test.go` and
+`chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
+`webrender_test.go`, `upload_test.go` and
 `images_test.go`, with the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
@@ -14,6 +15,7 @@ tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
 [Memory](../../ARCHITECTURE.md#memory),
 [Built-in skills](../../ARCHITECTURE.md#built-in-skills),
 [Web search](../../ARCHITECTURE.md#web-search),
+[Pages that need JavaScript](../../ARCHITECTURE.md#pages-that-need-javascript),
 [Retrieval](../../ARCHITECTURE.md#retrieval),
 [Facts and episodes](../../ARCHITECTURE.md#facts-and-episodes)
 
@@ -690,6 +692,35 @@ refused type costs no download, then `pageText` picks the reader:
 The body stops at 5 MiB. Each call fetches the page again, because a cache would
 be one more thing to keep fresh and to size.
 
+**Pages that need JavaScript.** Some pages, such as a Workday job posting,
+send an empty shell and fill in the text with a script. `fetchPage` returns
+the body along with the text, so `needsRender` can spot such a shell without
+a second GET: an HTML page with under 500 characters of text and a
+`<script>` in it. It searches the body for `<script` and `<SCRIPT` as they
+are, since lowercasing a copy of up to 5 MiB to search once costs more. When
+`[web] render` is `"auto"` (see [config](config.md)) and `merud` has called
+`UseRenderer`, `renderPage` hands the URL to the page reader:
+
+```go
+limit := renderTimeout // 20 s
+if !w.renderer.Ready() {
+    limit = installTimeout // 2 min: the first render installs Chrome
+}
+p, err := w.renderer.Render(rctx, rawURL, func(line string) { dispatch.Progress(ctx, line) })
+```
+
+`Renderer` is an interface with the two methods `web_fetch` calls, declared
+here; `merud` passes `*render.Renderer`, which loads the page in a headless
+Chrome, and the tests pass a fake. The first render downloads about 95 MB, so
+it sends lines such as "Installing Meru's page reader" through
+`dispatch.Progress`, and the client shows them under the running tool (see
+[dispatch](dispatch.md)). A rendered page's header line names its kind as
+`HTML, rendered`. When rendering fails, `renderPage` returns the static text
+with a first line that says the page builds its text with JavaScript and why
+the reader couldn't load it, so the model doesn't guess at an empty page. `PublicDialContext` hands `web_fetch`'s dialer, `checkPublic` and all,
+to the page reader's proxy, so each request the page makes faces the same
+check as a fetch.
+
 **The prompt.** `answerFromPage` takes up to 48,000 characters from `offset`,
 about 12,000 tokens, and sends two messages to the fast model: a four-rule
 system message (`fetchInstructions`: answer only from the page, quote numbers,
@@ -870,7 +901,8 @@ It returns the bytes, and the agent puts them on the question's message.
   `dispatch.CallConfirmer`. The test lines
   `var _ dispatch.Backend = (*Tools)(nil)` and its `CallConfirmer` twin fail to
   compile if a method goes missing. `Generator` is an interface with the one
-  engine method `web_fetch` calls, and `FileSearcher` one with the one search
+  engine method `web_fetch` calls, `Renderer` one with the two page-reader
+  methods it calls, and `FileSearcher` one with the one search
   `search_files` runs, each defined here, where it is used. More in
   [go-basics/interfaces.md](go-basics/interfaces.md).
 - **Struct tags and `encoding/json`** — `configureArgs` maps the JSON keys to
@@ -916,6 +948,13 @@ server on `127.0.0.1`, of a redirect to it, of `::1`, `192.168.1.1` and
 `169.254.169.254`. `TestWebFetchNameToLoopback` keeps the real check and asks
 for `http://localhost:<port>/`, a DNS name that resolves to `127.0.0.1`, and
 checks the server never saw a request. `TestCheckPublic` pins the address table.
+
+`webrender_test.go` hands pages to a fake `Renderer`, so no browser runs.
+`TestNeedsRender` pins the shell check, `TestWebFetchRenders` reads a shell
+through the fake and checks the `HTML, rendered` header,
+`TestWebFetchRenderFails` checks the fallback's first line, `TestRenderOff`
+checks that `"off"` never calls the reader, and `TestRenderProgress` checks
+that a first render's install line reaches `dispatch.Progress`.
 
 `webfetch_test.go` covers what `web_fetch` adds. `TestWebFetchPrompt` answers
 with a fake model and checks the result line, the options (fast model,

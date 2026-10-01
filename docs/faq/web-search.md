@@ -51,6 +51,16 @@ minute asks SearXNG for an empty search, which reaches no engine.
 address that no search result or question of yours gave, and before every
 download.
 
+**Pages that need JavaScript.** Some pages, such as job postings on Workday,
+arrive empty and build their text with JavaScript. When `web_fetch` gets one,
+it opens the page in a hidden Chrome and reads what the page shows. The first
+time, `merud` downloads that Chrome (about 95 MB) into `~/.meru/runtime`, and
+the tool line says "Installing Meru's page reader (about 95 MB, once)" while it
+does. Each such page gets its own Chrome, which stops once the page is read.
+Every request the page makes goes through `merud`, which refuses your machine
+and your network. To read every page as plain HTML instead, set
+`render = "off"` under `[web]` in `~/.meru/config.toml` and restart `merud`.
+
 **Turn it off.** For search, flip the Web search card's switch off, or run
 `meru mcp set searxng enabled=false`; `merud` stops its container. For page
 reads, set `web_fetch` to Off under the Web search tools in the same section.

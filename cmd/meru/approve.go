@@ -161,10 +161,11 @@ func pickChoice(input string, choices []rpc.Choice) (rpc.Choice, bool) {
 	return "", false
 }
 
-// toolLine writes a "tool_call" or "tool_result" event as one line for
-// stderr:
+// toolLine writes a "tool_call", "progress" or "tool_result" event as one
+// line for stderr:
 //
 //	→ notes.search {"query":"garden"}
+//	  web_fetch · Installing Meru's page reader (about 95 MB, once)
 //	✓ notes.search 120 ms
 //	✗ mail.send declined
 //
@@ -174,8 +175,12 @@ func toolLine(ev rpc.Event) string {
 	if t == nil {
 		return ""
 	}
-	if ev.Type == rpc.EventToolCall {
+	switch ev.Type {
+	case rpc.EventToolCall:
 		return strings.TrimSpace("→ " + t.Name + " " + rpc.ArgsLine(t.Args, toolArgsWidth))
+	case rpc.EventProgress:
+		// A slow tool's news, such as web_fetch installing its page reader.
+		return "  " + t.Name + " · " + ev.Text
 	}
 	if t.Outcome == "ok" {
 		return "✓ " + t.Name + " " + millis(t.DurationMillis)
