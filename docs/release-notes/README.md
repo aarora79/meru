@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.4.11](v0.4.11.md): pages that need JavaScript, Google as a connector, and connectors you set up and fix from Settings, `meru chat` and the installer
 - [v0.4.10](v0.4.10.md): connectors: Meru installs, runs and restarts Obsidian and web search for you, and waits for Ollama
 - [v0.4.9](v0.4.9.md): past chats you can find, file, tag and delete, and honest answers about time and tools
 - [v0.4.8](v0.4.8.md): the Mac installer opens after a download, and the benchmark in the README
