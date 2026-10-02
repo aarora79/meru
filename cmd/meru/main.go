@@ -290,7 +290,7 @@ func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer,
 		switch ev.Type {
 		case rpc.EventSources:
 			sources = ev.Sources
-		case rpc.EventToolCall, rpc.EventToolResult:
+		case rpc.EventToolCall, rpc.EventProgress, rpc.EventToolResult:
 			if line := toolLine(ev); line != "" {
 				breakLine()
 				fmt.Fprintln(stderr, dim.Render(line))

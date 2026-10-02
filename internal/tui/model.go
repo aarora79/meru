@@ -142,6 +142,10 @@ type toolCall struct {
 	host    string // for web_fetch, the site it asked for; the /used box names it
 	outcome string // "" while the call runs, then "ok", "declined" and so on
 	millis  int64  // how long the call took, from "tool_result"
+	// progress is the latest "progress" line for the running call, such
+	// as "Installing Meru's page reader"; the tool line shows it until the
+	// call ends.
+	progress string
 }
 
 // pendingApproval is a tool call waiting for the user's answer.
@@ -604,6 +608,10 @@ func (m *Model) handleEvent(msg eventMsg) {
 		}
 	case rpc.EventMemories:
 		cur.memories = ev.Memories
+	case rpc.EventProgress:
+		if ev.Tool != nil {
+			cur.toolProgress(ev.Tool.ID, ev.Text)
+		}
 	case rpc.EventToolResult:
 		if ev.Tool != nil {
 			cur.finishTool(*ev.Tool)
@@ -690,6 +698,17 @@ func (e *exchange) finishTool(t rpc.ToolEvent) {
 		}
 	}
 	e.tools = append(e.tools, toolCall{id: t.ID, name: t.Name, outcome: t.Outcome, millis: t.DurationMillis})
+}
+
+// toolProgress puts text on the running call id's tool line. A line for a
+// call that isn't running is dropped.
+func (e *exchange) toolProgress(id, text string) {
+	for i := len(e.tools) - 1; i >= 0; i-- {
+		if e.tools[i].id == id && e.tools[i].outcome == "" {
+			e.tools[i].progress = text
+			return
+		}
+	}
 }
 
 // stopTurn cancels the running turn, if any, closes any open approval box,

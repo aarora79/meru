@@ -350,11 +350,15 @@ func (m *Model) renderTurn(t *exchange) string {
 // toolText writes one tool call as the turn shows it:
 //
 //	→ notes.search              while it runs
+//	→ web_fetch · Installing…   while it runs and has sent a progress line
 //	✓ notes.search · 120 ms     when it worked
 //	✗ mail.send · declined      when it didn't
 func toolText(tc toolCall) string {
 	switch tc.outcome {
 	case "":
+		if tc.progress != "" {
+			return "→ " + tc.name + " · " + tc.progress
+		}
 		return "→ " + tc.name
 	case "ok":
 		return "✓ " + tc.name + " · " + millis(tc.millis)

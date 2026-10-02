@@ -418,8 +418,13 @@ const (
 	EventSaved EventType = "saved"
 	// EventModels answers OpModels, in Models.
 	EventModels EventType = "models"
-	// EventProgress carries one line of news from a running OpIndex, such
-	// as "scanning 2 folders", in Text.
+	// EventProgress carries one line of news, in Text. From a running
+	// OpIndex it says what the indexer does, such as "scanning 2
+	// folders". On an ask stream it comes between a call's "tool_call" and
+	// "tool_result", with the call's ID in Tool, while a tool does slow
+	// work, such as "Installing Meru's page reader (about 95 MB, once)"; a
+	// client shows it under the running tool. A client that doesn't know
+	// the type skips it.
 	EventProgress EventType = "progress"
 	// EventReport carries what an OpIndex run did, in Report.
 	EventReport EventType = "report"

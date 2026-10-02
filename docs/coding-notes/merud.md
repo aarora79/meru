@@ -598,8 +598,8 @@ e2e test `TestBuiltinToolsSwitch` cuts the list to `datetime` and `grep`, and
 checks what `meru tools` shows and that the log says why `grep` is off.
 
 **Web search.** `newToolService` also hands `cfg.Web` to `builtin.New`, which
-offers `web_search` when `searxng_url` is set. `web_fetch` needs no `[web]`
-key. `builtin.New` calls `ix.ReadAlso` on the output folder, so the file tools
+offers `web_search` when `searxng_url` is set. `web_fetch` reads one `[web]`
+key, `render`. `builtin.New` calls `ix.ReadAlso` on the output folder, so the file tools
 can read what `web_fetch` downloads and the mail attachments the `google`
 server saves. `newToolService` passes `bt.AttachmentText` to `dispatch.New`
 as `Options.Attachments`, so a result that names an attachment the call just saved
@@ -613,6 +613,21 @@ of state. `TestWebSearchMissingSearXNG` in `test/e2e` starts `merud` with
 nothing on the SearXNG port and no `[connectors.searxng]` table, and checks
 that `meru mcp status` gives the reason, `meru tools` lists `web_fetch`
 without `web_search`, and a turn offers the model no `web_search`.
+
+**The page reader.** `newToolService` builds `web_fetch`'s page reader, which
+loads a page whose text comes from JavaScript in a headless Chrome (see
+[builtin](builtin.md)), and hands it to the built-in tools:
+
+```go
+s.renderer = render.New(connectors.NewInstaller(cfg.Dir, home), builtin.PublicDialContext(), log)
+bt.UseRenderer(s.renderer)
+```
+
+The `Installer` fetches the pinned `chrome-headless-shell` into
+`~/.meru/runtime` the first time a page needs it, and `PublicDialContext`
+gives the reader's proxy the same address check a fetch has. No Chrome runs
+until then, and none runs between pages. `Close` calls `s.renderer.Close()`,
+which cancels any render still running and waits for it to stop.
 
 ### merud: connectors.go
 
@@ -1029,6 +1044,10 @@ Last scan:  2026-09-23T10:15:00-04:00, 3 files indexed (5 chunks), 9 unchanged, 
 ```
 
 ### meru: approve.go
+
+`toolLine` writes each tool event as one dim line on standard error: `→` when a
+call starts, an indented `web_fetch · <line>` for a `progress` event such as
+"Installing Meru's page reader (about 95 MB, once)", and `✓` or `✗` when it ends.
 
 When a tool is in a `confirm` list, `merud` sends an `approval` event and holds
 the call until the client answers. `rpc.Do` calls the `ApproveFunc` it was given

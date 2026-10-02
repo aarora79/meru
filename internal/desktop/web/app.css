@@ -859,6 +859,11 @@ pre {
   color: var(--danger);
 }
 
+/* A running call's news, such as "Installing Meru's page reader". */
+.step-progress {
+  color: var(--caption);
+}
+
 .working {
   color: var(--caption);
   animation: pulse 1.4s ease-in-out infinite;

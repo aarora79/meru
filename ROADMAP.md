@@ -148,6 +148,9 @@ No milestone names these, and each is on `main`:
   skill (#38, #39)
 - The landing page (#41)
 - The Apache-2.0 license (#44)
+- `web_fetch` reads pages that build their text with JavaScript, through a
+  headless Chrome that `merud` installs on first need and runs for one page at a
+  time behind its own proxy (#100)
 
 ## Headless mode
 

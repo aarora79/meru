@@ -85,6 +85,7 @@ violation blocks a merge like any failing test.
 | `TestInstallerRunsOnlyThroughRun` | An installer file other than `internal/installer/run.go` imports `os/exec`, or any installer file imports `syscall` or calls `os.StartProcess` |
 | `TestInstallerAllowlist` | The installer's allowlist names a shell, an interpreter or a downloader, or a path that isn't absolute |
 | `TestConnectorsRunOnlyThroughRun` | A file in `internal/connectors` other than `run.go` imports `os/exec`, any of its files imports `syscall` or calls `os.StartProcess`, or `run.go` stops importing `os/exec` |
+| `TestRenderStartsNoProgram` | A file in `internal/render`, `web_fetch`'s page reader, imports `os/exec`, `syscall` or `golang.org/x/sys`, or calls `os.StartProcess`: it starts Chrome only through `connectors.StartPiped` |
 
 Each failure names the file and line. A few rules decide what counts:
 

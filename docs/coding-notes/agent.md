@@ -1639,8 +1639,25 @@ Each gets a block of numbers that doesn't overlap the other's, in the order
 they asked. The model reads those numbers in the tool results and cites them;
 `addSources` then sorts the list by number for the client.
 
+**Progress lines.** Each goroutine wraps `gctx` with `dispatch.WithProgress`
+before it calls `Dispatch`, so a slow tool can send a line while it runs:
+
+```go
+cctx := dispatch.WithProgress(gctx, func(text string) {
+    _ = t.emit(rpc.Event{Type: rpc.EventProgress, Text: text,
+        Tool: &rpc.ToolEvent{ID: ids[i], Name: c.Name, Kind: toolKind(c.Name)}})
+})
+```
+
+The function already holds the call's ID, so the client puts the line beside
+the right tool. `web_fetch` sends one while it installs its page reader (see
+[builtin](builtin.md)). The function drops `emit`'s error: a progress line
+that can't reach a gone client changes nothing, and the call's
+`tool_result` emit fails in its turn and ends the round.
+
 **Events from several goroutines.** While calls run, `emit` runs from
-several goroutines at once, and dispatch may call `approve` from them too.
+several goroutines at once, for `tool_result` and `progress` events, and
+dispatch may call `approve` from them too.
 The rpc server's `emit` takes a lock around each write, so that is safe; the
 tests' collector takes a lock too.
 

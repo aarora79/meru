@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/memory"
+	"github.com/aarora79/meru/internal/render"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 	"github.com/aarora79/meru/internal/store"
@@ -57,6 +59,10 @@ type toolService struct {
 	// swapped: a reload hands it new config, and the pool it builds asks
 	// the same supervisors for sessions.
 	conns *connectorSet
+
+	// renderer is web_fetch's page reader, which loads a page that needs
+	// JavaScript in a headless Chrome. Close stops any render in flight.
+	renderer *render.Renderer
 
 	mu        sync.Mutex       // guards secrets, pool, a2a and connected
 	secrets   *secrets.Secrets // swapped on reload
@@ -131,6 +137,16 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// web_search goes to the model only while the SearXNG connector is
 	// ok, so a model never calls a search engine that isn't there.
 	bt.UseWebCheck(conns.webOK)
+	// web_fetch loads a page whose text comes from JavaScript in a
+	// headless Chrome, which merud installs under ~/.meru/runtime the
+	// first time a page needs it ([web] render). The page's requests dial
+	// through web_fetch's own check.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("find the home folder: %w", err)
+	}
+	s.renderer = render.New(connectors.NewInstaller(cfg.Dir, home), builtin.PublicDialContext(), log)
+	bt.UseRenderer(s.renderer)
 	// search_files runs the same hybrid search a turn runs before the
 	// answer, through the same store and embedding model.
 	bt.UseSearch(search)
@@ -353,6 +369,9 @@ func (s *toolService) Close() {
 	pool.Close()
 	s.conns.Close()
 	ac.Close()
+	if s.renderer != nil {
+		_ = s.renderer.Close()
+	}
 }
 
 // handleTools answers OpTools with one "tools" event listing every source.

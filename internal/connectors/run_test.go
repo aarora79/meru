@@ -6,6 +6,8 @@
 package connectors
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -30,6 +32,9 @@ func TestHelperProcess(t *testing.T) {
 			args = args[i+1:]
 			break
 		}
+	}
+	if args[0] == "pipe" {
+		pipeHelper()
 	}
 	fmt.Printf("seen=%s\n", os.Getenv("MERU_SEEN"))
 	fmt.Printf("secret=%s\n", os.Getenv("MERU_TEST_SECRET"))
@@ -87,5 +92,56 @@ func TestExecRunner(t *testing.T) {
 
 	if _, err := run(ctx, Cmd{Path: "node"}, nil); !errors.Is(err, ErrNotAbsolute) {
 		t.Errorf("run node: %v, want ErrNotAbsolute", err)
+	}
+}
+
+// pipeHelper plays a program driven over two pipes, as Chrome is: it
+// reads NUL-ended messages from fd 3 and writes each back in upper case
+// to fd 4, writes one line to stderr, and exits 0 when fd 3 closes.
+func pipeHelper() {
+	in := os.NewFile(3, "commands")
+	out := os.NewFile(4, "replies")
+	fmt.Fprintln(os.Stderr, "helper: started")
+	r := bufio.NewReader(in)
+	for {
+		msg, err := r.ReadBytes(0)
+		if err != nil {
+			os.Exit(0)
+		}
+		_, _ = out.Write(bytes.ToUpper(msg))
+	}
+}
+
+// TestStartPiped starts the helper over two pipes, sends a message and
+// reads the answer, then stops it; and refuses a relative path.
+func TestStartPiped(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Go passes extra pipes only on Unix")
+	}
+	p, err := StartPiped(helperCmd("pipe"))
+	if err != nil {
+		t.Fatalf("StartPiped: %v", err)
+	}
+	if _, err := p.In.Write([]byte("hello\x00")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := bufio.NewReader(p.Out).ReadBytes(0)
+	if err != nil || string(got) != "HELLO\x00" {
+		t.Fatalf("reply = %q, %v", got, err)
+	}
+	if err := p.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	select {
+	case <-p.Done():
+	default:
+		t.Error("Done isn't closed after Stop")
+	}
+	if !strings.Contains(p.tail.String(), "helper: started") {
+		t.Errorf("stderr tail = %q", p.tail.String())
+	}
+
+	if _, err := StartPiped(Cmd{Path: "chrome-headless-shell"}); !errors.Is(err, ErrNotAbsolute) {
+		t.Errorf("a relative path: %v, want ErrNotAbsolute", err)
 	}
 }

@@ -61,9 +61,9 @@ flowchart LR
     validate -- "a rule broken" --> err["one error naming<br/>every problem"]
     validate -- ok --> list["[]Manifest"]
     list --> install["Installer.Install"]
-    install --> ensure["EnsureRuntime<br/>node or uv"]
+    install --> ensure["EnsureRuntime<br/>node, uv or chrome"]
     ensure --> dl["download<br/>check SHA-256"]
-    dl --> unpack["unpackTarGz<br/>through os.Root"]
+    dl --> unpack["unpackTarGz or unpackZip<br/>through os.Root"]
     install --> run["Runner (run.go)<br/>npm, uv, docker"]
     install --> marker[".meru-installed<br/>written last"]
     marker --> launch["LaunchCommand<br/>pinned node + script"]
@@ -242,13 +242,38 @@ knows nothing of the program behind it, so the supervisor watches `exited` to
 learn of a crash. `loopbackClient` refuses a redirect off this machine, as the
 pool's client for a hand-added server does.
 
+`StartPiped` starts one program that stays running and talks over two extra
+pipes in place of stdin and stdout: `chrome-headless-shell`, for web_fetch's
+page reader (see [render](render.md)). It makes two pipes with
+`os.Pipe` and hands the child one end of each:
+
+```go
+cmd.ExtraFiles = []*os.File{cmdR, repW}
+...
+_ = cmdR.Close()
+_ = repW.Close()
+```
+
+`ExtraFiles` become the child's file descriptors 3 and 4, after stdin, stdout
+and stderr. Chrome reads commands from fd 3 and writes replies to fd 4. Once
+the child has started, `merud` closes its own copies of the child's ends; if it
+kept them open, a read of the reply pipe would never see the end of the stream,
+even after Chrome exits. `StartPiped` returns a `Piped`: `In` and `Out` are
+`merud`'s ends, `Done` closes when the program exits, and `Stop` closes both
+pipes, waits up to 3 seconds for Chrome to exit, and kills it if it hasn't.
+Chrome exits when it reads the end of fd 3, so when `merud` dies and the
+system closes its ends, no browser lives on. A `lineTail` keeps the last
+lines of Chrome's stderr for the error a crash returns. Go passes extra files
+only on Unix, so on Windows `StartPiped` fails with `ErrNoPipes` (see
+[go-basics/pipes-and-extra-files.md](go-basics/pipes-and-extra-files.md)).
+
 A policy test, `TestConnectorsRunOnlyThroughRun`, fails the build if another
 file in the package imports `os/exec`. Adopt runs `launchctl` through the same
 `Runner`, by its absolute path, `/bin/launchctl`.
 
-### runtimes.go and download.go: Node and uv
+### runtimes.go and download.go: Node, uv and Chrome
 
-`Runtimes()` returns the two pins. Each `Runtime` has a version, one download
+`Runtimes()` returns the three pins. Each `Runtime` has a version, one download
 per platform with its SHA-256, and the path of its main program once unpacked:
 
 ```go
@@ -276,7 +301,9 @@ each pin names the page its hashes came from and the date.
    the file and to the SHA-256 hash at once, and `io.LimitReader` caps the
    download at 512 MiB. The file keeps a temporary name until the hash matches;
    on a mismatch `download` deletes it and the error wraps `ErrChecksum`.
-4. `unpackTarGz` unpacks it, dropping the archive's one top folder.
+4. `unpack` unpacks it, dropping the archive's one top folder. A URL ending in
+   `.zip` keeps the name `archive.zip`, and `unpack` picks `unpackZip` by
+   that suffix; anything else goes to `unpackTarGz`.
 5. It checks that `bin/node` (or `uv`) is there, writes the marker, and renames
    the whole folder into place. A rename on one disk happens in one step, so
    the final folder is either missing or complete.
@@ -290,6 +317,17 @@ that leaves it, even through a link (see [go-basics/os-root.md](go-basics/os-roo
 The name checks give a clear error; `os.Root` catches anything they miss.
 Node's archive holds relative links such as `bin/npm ->
 ../lib/node_modules/npm/bin/npm-cli.js`, which stay inside and pass.
+
+The third pin, `RuntimeChrome`, is `chrome-headless-shell` 154.0.8037.92 from
+Chrome for Testing, which web_fetch's page reader runs (see
+[builtin](builtin.md)). Google ships it as a `.zip` and publishes MD5 and
+CRC32C hashes, not SHA-256. Each pinned SHA-256 comes from a download whose
+MD5 matched the one Google's storage reported, and the comment above the pin
+says so. `unpackZip` keeps every rule `unpackTarGz` keeps and writes through
+the same `os.Root`. A zip stores a symbolic link as a small entry with the
+link bit in its mode and the target as its content, so `zipLinkTarget` reads
+that content, refuses one over 4 KiB, and `linkInside` checks it as it checks
+a tar link.
 
 ### install.go: one folder per connector and version
 
@@ -850,6 +888,9 @@ off stops Meru's container and nothing else.
   `errors.Is`. More in [go-basics/errors.md](go-basics/errors.md).
 - **os/exec** — runs npm, uv and docker with no shell, in `run.go` only. More in
   [go-basics/os-exec.md](go-basics/os-exec.md).
+- **Pipes and extra files** — `os.Pipe` and `cmd.ExtraFiles` give Chrome its
+  fd 3 and fd 4, in `StartPiped`. More in
+  [go-basics/pipes-and-extra-files.md](go-basics/pipes-and-extra-files.md).
 - **os.Root** — a folder handle whose methods refuse paths that leave it, used
   to unpack archives. More in [go-basics/os-root.md](go-basics/os-root.md).
 - **Function types** — `Runner` is a type for any function with its signature,
@@ -899,7 +940,11 @@ platform, `test_os`, at them:
 
 - `TestDownload` and `TestEnsureRuntimeRefuses` check that a wrong SHA-256
   leaves no file and no runtime folder;
-- `TestUnpackTarGz` tries each unsafe entry and checks nothing lands outside;
+- `TestUnpackTarGz` and `TestUnpackZip` try each unsafe entry and check
+  nothing lands outside, and `TestEnsureRuntimeZip` installs a runtime from a
+  `.zip`;
+- `TestStartPiped` runs the test binary as a child that reads NUL-ended
+  messages on fd 3 and writes each back in upper case on fd 4, then stops it;
 - `TestEnsureRuntimeReplacesPartial` and `TestInstallReinstall` leave a folder
   with no marker and check that Install replaces it, and that a new version removes the
   old one;

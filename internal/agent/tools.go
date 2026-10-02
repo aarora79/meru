@@ -734,7 +734,15 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 	gctx = dispatch.WithCiteNumbers(gctx, t.nextCites)
 	for i, c := range calls {
 		g.Go(func() error {
-			res, outcome := a.tools.Dispatch(gctx, dispatch.Call{
+			// A tool that takes a while, such as web_fetch installing its
+			// page reader, sends a line through dispatch.Progress; it
+			// reaches the client as a progress event with this call's ID.
+			// emit is safe to call from these goroutines.
+			cctx := dispatch.WithProgress(gctx, func(text string) {
+				_ = t.emit(rpc.Event{Type: rpc.EventProgress, Text: text,
+					Tool: &rpc.ToolEvent{ID: ids[i], Name: c.Name, Kind: toolKind(c.Name)}})
+			})
+			res, outcome := a.tools.Dispatch(cctx, dispatch.Call{
 				ID:       ids[i],
 				Name:     c.Name,
 				Args:     argsOf(c.Arguments),

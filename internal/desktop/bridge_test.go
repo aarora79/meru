@@ -466,3 +466,46 @@ func TestDropNotice(t *testing.T) {
 		}
 	}
 }
+
+// TestProgressStep checks that a "progress" event lands on its running
+// step, so the strip can show it beside the label until the call ends.
+func TestProgressStep(t *testing.T) {
+	const line = "Installing Meru's page reader (about 95 MB, once)"
+	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		for _, ev := range []rpc.Event{
+			{Type: rpc.EventToolCall, Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch", Kind: "builtin", Args: json.RawMessage(`{"url":"https://jobs.example.com/R1"}`)}},
+			{Type: rpc.EventProgress, Text: line, Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch", Kind: "builtin"}},
+			{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{ID: "c1", Name: "web_fetch", Kind: "builtin", Outcome: "ok", DurationMillis: 4000}},
+			{Type: rpc.EventDone},
+		} {
+			if err := emit(ev); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	b, r := newBridge(sock)
+	defer b.ServiceShutdown()
+	if err := b.Send("", "summarize the job", "", false); err != nil {
+		t.Fatal(err)
+	}
+	r.waitFor(t, "end", isEnd(1))
+	var progress, result *Step
+	for _, u := range r.all() {
+		if u.Event == nil || u.Step == nil {
+			continue
+		}
+		switch u.Event.Type {
+		case rpc.EventProgress:
+			progress = u.Step
+		case rpc.EventToolResult:
+			result = u.Step
+		}
+	}
+	if progress == nil || progress.Progress != line || progress.Outcome != "" {
+		t.Fatalf("progress step = %+v, want the line on the running call", progress)
+	}
+	if result == nil || result.Outcome != "ok" {
+		t.Errorf("result step = %+v", result)
+	}
+}

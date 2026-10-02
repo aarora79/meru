@@ -191,6 +191,19 @@ turn, or for `n` of 0, it reserves nothing and returns 1. The value on the
 context is a plain function, `func(int) int`; the agent's version takes a lock,
 so two calls that run at once get ranges that don't overlap.
 
+**Progress.** A slow tool, such as `web_fetch` installing its page reader,
+can tell the user what it is doing before it returns. The agent puts a send
+function on the context for each call, with the call's ID already inside it,
+and the backend calls `Progress`:
+
+```go
+ctx = dispatch.WithProgress(ctx, send)            // the agent, per call
+dispatch.Progress(ctx, "Installing Meru's page reader") // web_fetch, in Call
+```
+
+It rides on the context for the same reason the counter does: `Backend.Call`
+takes no turn. Outside a turn, `Progress` finds no function and does nothing.
+
 ### dispatcher.go: the Dispatcher
 
 ```go
@@ -377,6 +390,8 @@ the arguments and the error text and checks it reaches no line, row or prompt.
 `SessionFrom`. `TestCiteNumbersAndSources` puts a counter that has handed out
 ten numbers on the context, has a backend reserve two, and checks that the
 backend's `Sources` come back through `Dispatch` as `[11]` and `[12]`.
+`TestProgress` checks that a line reaches the function on the context, and
+that a context without one drops it.
 `TestAuditor` checks that an Auditor's arguments reach the line,
 the prompt and the row, redacted. `TestCallConfirmer` checks that a per-call
 answer wins, that `Confirm` decides when there is none, that the question

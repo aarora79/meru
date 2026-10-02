@@ -398,6 +398,9 @@ never to store a context in a struct.
 - `sources`: keep the excerpts for the list under the answer.
 - `tool_call`: add a tool line. `tool_result`: `finishTool` finds the line with the
   same ID and fills in the outcome and the time.
+- `progress` with a `Tool`: `toolProgress` finds the running call with that ID
+  and keeps the line in its `progress` field. A line for a call that has
+  ended goes nowhere.
 - `token`: add the text to the answer.
 - `notice`: keep `merud`'s warning about the answer, for the line under it.
 - `done`: keep the stats for the line under the answer.
@@ -485,7 +488,10 @@ asks you to do something, and the ID only labels the chat. The status always sta
 
 `renderTurn` draws one turn. Under the "Meru" label come the tool lines first, one
 per call, dim, drawn by `toolText`: `→ notes.search` while the call runs, then
-`✓ notes.search · 120 ms` or `✗ mail.send · declined`. On the newest turn, the
+`✓ notes.search · 120 ms` or `✗ mail.send · declined`. A running call that
+has sent a progress line shows it after the name, as in
+`→ web_fetch · Installing Meru's page reader (about 95 MB, once)`, until its
+result replaces the line. On the newest turn, the
 approval box follows them while it is open. What comes next depends on the state:
 
 - waiting for the first token: the spinner and "thinking…", unless the approval box
@@ -1446,7 +1452,9 @@ checks what each command sends and what the screen does with the reply: `/scope`
 `/retry`, `/attach` (the full path, the "Read this file" line, the images, the scope
 switch, a refusal), `/save` with its approval, Edit first, forgetting from `/used`
 and `/me`, `contacted`, reopening a chat, the folder and skill keys, `/me add` and
-`/me prefer`, `/copy answer`, and scrolling `/help` and `/about`.
+`/me prefer`, `/copy answer`, scrolling `/help` and `/about`, and
+(`TestToolProgress`) a running tool's progress line, which goes when the call
+ends.
 
 ## Why it's built this way
 

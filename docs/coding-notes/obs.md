@@ -150,6 +150,14 @@ calls paid for a cold load.
 `RecordMalformedCall(ctx, model)` adds one to `meru.model.malformed_calls`. The
 agent calls it from `internal/agent/malformed.go`.
 
+`RecordRender(ctx, outcome, d)` records `meru.web.render.duration`, a
+histogram in seconds of one page `web_fetch` loaded in a headless Chrome,
+Chrome's start included. Its one attribute is the outcome, bounded to `ok`,
+`error`, `timeout` and `cancelled`. It uses the model calls' buckets, since a
+rendered page takes seconds, as a model call does. `internal/render` calls it
+once per page, and records the site and the request counts on its span,
+where they can't grow a metric's series.
+
 ### setup.go
 
 `Setup` runs once when `merud` starts:

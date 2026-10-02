@@ -98,6 +98,10 @@ type Step struct {
 	Label          string `json:"label"`
 	Outcome        string `json:"outcome,omitempty"`
 	DurationMillis int64  `json:"duration_ms,omitempty"`
+	// Progress is the latest line a running call sent, such as
+	// "Installing Meru's page reader (about 95 MB, once)". The strip shows
+	// it beside the label until the call ends.
+	Progress string `json:"progress,omitempty"`
 }
 
 // stepOf builds the Step for a tool call.

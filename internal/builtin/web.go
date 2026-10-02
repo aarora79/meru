@@ -4,12 +4,15 @@
 // asks the fast model a question about it. [builtin] tools turns each on;
 // both are on by default, and web_search also needs [web] searxng_url.
 // web_fetch's download mode lives in webdownload.go, and the
-// guard that decides when it asks first in webguard.go. See
-// ARCHITECTURE.md, "Web search" and "Privacy boundary".
+// guard that decides when it asks first in webguard.go. A page whose text
+// comes from JavaScript goes to internal/render, which loads it in a
+// headless Chrome. See ARCHITECTURE.md, "Web search", "Pages that need
+// JavaScript" and "Privacy boundary".
 
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +27,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
@@ -31,6 +35,7 @@ import (
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/render"
 )
 
 // The web tools' names, as the model sees them.
@@ -69,6 +74,16 @@ const (
 	// answerTokens caps the fast model's answer to a prompt. A fact or a
 	// short summary needs far less; the cap stops a model that rambles.
 	answerTokens = 600
+	// shellChars is the most text a page may have and still count as a
+	// JavaScript shell. The Workday job page that led to rendering had 0;
+	// an article has thousands. 500 leaves room for a shell's "Skip to
+	// main content", its sign-in link and its footer.
+	shellChars = 500
+	// renderTimeout covers one rendered page, Chrome's start included.
+	renderTimeout = 20 * time.Second
+	// installTimeout covers a render that first installs the browser:
+	// about 95 MB to download, check and unpack.
+	installTimeout = 2 * time.Minute
 )
 
 // timeRanges lists the time_range values SearXNG accepts.
@@ -133,6 +148,39 @@ type webClients struct {
 	// uses. UseModel sets both; with model nil, a prompt fails.
 	model     Generator
 	fastModel string
+
+	// render is [web] render: config.RenderAuto lets renderer read a page
+	// whose text comes from JavaScript. UseRenderer sets renderer; nil
+	// leaves every page to plain HTTP.
+	render   string
+	renderer Renderer
+}
+
+// Renderer loads a page in a browser and returns the HTML it shows once
+// its scripts have run. merud passes *render.Renderer; tests pass a fake.
+// The interface lives here, in the package that calls it, with only the
+// methods it calls.
+type Renderer interface {
+	Render(ctx context.Context, rawURL string, progress func(string)) (render.Page, error)
+	// Ready reports whether the browser is installed, so web_fetch can
+	// give a first render the time an install takes.
+	Ready() bool
+}
+
+// UseRenderer lets web_fetch render pages that need JavaScript, when
+// [web] render is "auto". merud calls it once, before the first turn.
+// Without it, web_fetch reads every page as plain HTML.
+func (t *Tools) UseRenderer(r Renderer) {
+	t.web.renderer = r
+}
+
+// PublicDialContext returns web_fetch's dialer as a plain function: it
+// connects only to public addresses, checked after DNS, as a fetch does.
+// merud hands it to the page reader's proxy, so every request a rendered
+// page makes faces the same check.
+func PublicDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
+	w := &webClients{allowAddr: func(ap netip.AddrPort) error { return checkPublic(ap.Addr()) }}
+	return w.publicDialer().DialContext
 }
 
 // newWebClients builds the web tools' clients from cfg.
@@ -144,6 +192,7 @@ func newWebClients(cfg config.Web) *webClients {
 		// tests replace.
 		allowAddr: func(ap netip.AddrPort) error { return checkPublic(ap.Addr()) },
 		known:     newKnownURLs(),
+		render:    cfg.Render,
 	}
 	if w.maxResults < 1 {
 		w.maxResults = 8
@@ -416,9 +465,12 @@ func (t *Tools) webFetch(ctx context.Context, raw json.RawMessage) (string, erro
 		return t.download(ctx, u.String())
 	}
 
-	page, err := t.web.fetchPage(ctx, u.String())
+	page, body, err := t.web.fetchPage(ctx, u.String())
 	if err != nil {
 		return "", err
+	}
+	if t.web.render == config.RenderAuto && t.web.renderer != nil && needsRender(page, body) {
+		page = t.web.renderPage(ctx, u.String(), page)
 	}
 	runes := []rune(page.text)
 	if a.Offset > len(runes) {
@@ -560,39 +612,81 @@ func (w *webClients) get(ctx context.Context, rawURL, accept string, limit time.
 	return resp, final, nil
 }
 
-// fetchPage GETs rawURL and converts the body to text. It fails when get
-// fails, the body passes pageBodyCap or takes past pageTimeout, or the
-// content type isn't HTML, PDF or plain text.
-func (w *webClients) fetchPage(ctx context.Context, rawURL string) (fetched, error) {
+// fetchPage GETs rawURL and converts the body to text. It returns the body
+// too, so web_fetch can tell a JavaScript shell without a second GET. It
+// fails when get fails, the body passes pageBodyCap or takes past
+// pageTimeout, or the content type isn't HTML, PDF or plain text.
+func (w *webClients) fetchPage(ctx context.Context, rawURL string) (fetched, []byte, error) {
 	// WithTimeout returns a ctx that ends after pageTimeout; cancel frees
 	// its timer when fetchPage returns. The deadline covers the body too.
 	ctx, cancel := context.WithTimeout(ctx, pageTimeout)
 	defer cancel()
 	resp, final, err := w.get(ctx, rawURL, "text/html, application/xhtml+xml, application/pdf, text/plain;q=0.9", pageTimeout)
 	if err != nil {
-		return fetched{}, err
+		return fetched{}, nil, err
 	}
 	defer resp.Body.Close()
 	// A header that can't be parsed leaves mediaType "", which the check
 	// below refuses.
 	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if !slices.Contains(textTypes, mediaType) {
-		return fetched{}, fmt.Errorf("web_fetch: %s is %q; Meru reads HTML, PDF and plain text pages. "+
+		return fetched{}, nil, fmt.Errorf("web_fetch: %s is %q; Meru reads HTML, PDF and plain text pages. "+
 			"To keep the file itself, call web_fetch with save", final, mediaType)
 	}
 	body, err := readCapped(resp.Body, pageBodyCap)
 	if err != nil {
 		if isTimeout(err) {
-			return fetched{}, fmt.Errorf("web_fetch: %s took longer than %v", final, pageTimeout)
+			return fetched{}, nil, fmt.Errorf("web_fetch: %s took longer than %v", final, pageTimeout)
 		}
-		return fetched{}, fmt.Errorf("web_fetch: %s: %v", final, err)
+		return fetched{}, nil, fmt.Errorf("web_fetch: %s: %v", final, err)
 	}
 	p, err := pageText(mediaType, body)
 	if err != nil {
-		return fetched{}, fmt.Errorf("web_fetch: %s: %v", final, err)
+		return fetched{}, nil, fmt.Errorf("web_fetch: %s: %v", final, err)
 	}
 	p.url = final
-	return p, nil
+	return p, body, nil
+}
+
+// needsRender reports whether a fetched page looks like a JavaScript
+// shell: HTML with under shellChars characters of text and at least one
+// <script>. It searches the body for "<script" and "<SCRIPT" rather than
+// lowercase a copy of up to 5 MiB.
+func needsRender(p fetched, body []byte) bool {
+	return p.kind == "HTML" &&
+		utf8.RuneCountInString(strings.TrimSpace(p.text)) < shellChars &&
+		(bytes.Contains(body, []byte("<script")) || bytes.Contains(body, []byte("<SCRIPT")))
+}
+
+// renderPage loads rawURL in the page reader and returns its text in place
+// of static, the shell plain HTTP brought back. The first render, which
+// installs the browser, gets installTimeout and sends a progress line the
+// client shows under the running tool; later ones get renderTimeout. When
+// rendering fails, it returns static with a first line that says the page
+// needs JavaScript and why it couldn't be rendered, so the model doesn't
+// guess at an empty page.
+func (w *webClients) renderPage(ctx context.Context, rawURL string, static fetched) fetched {
+	limit := renderTimeout
+	if !w.renderer.Ready() {
+		limit = installTimeout
+	}
+	rctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	p, err := w.renderer.Render(rctx, rawURL, func(line string) { dispatch.Progress(ctx, line) })
+	if err != nil {
+		static.text = "[This page builds its text with JavaScript, and Meru couldn't load it in its page reader: " +
+			err.Error() + ". What follows is the text in its HTML alone.]\n\n" + static.text
+		return static
+	}
+	title, text := index.HTMLText(p.HTML)
+	if title == "" {
+		title = p.Title
+	}
+	final := p.URL
+	if final == "" || final == "about:blank" {
+		final = static.url
+	}
+	return fetched{url: final, title: title, kind: "HTML, rendered", text: text, size: len(p.HTML)}
 }
 
 // pageText turns a body of one of the textTypes into text, with the

@@ -95,6 +95,7 @@ entry, because `merud` starts no process whose environment it could set (see
 type Web struct {
     SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
     MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
+    Render     string `toml:"render"`      // RenderAuto ("auto", the default) or RenderOff ("off")
 }
 ```
 
@@ -104,6 +105,13 @@ empty URL, which is how you turn web search off. The default URL isn't empty, so
 a file that leaves `[web]` out searches at `127.0.0.1:8888`, and `web_search`
 explains what to do when nothing answers there. `MaxWebResults` is exported
 because `web_search` checks a call's own `max_results` against the same cap.
+
+`render` says what `web_fetch` does with a page whose text comes from
+JavaScript. With `"auto"`, it loads such a page in a headless Chrome that
+`merud` installs the first time a page needs it; with `"off"`, it reads the
+HTML alone (see [builtin](builtin.md)). `web_fetch` and `validate` both use
+the constants `RenderAuto` and `RenderOff` for the two values. `validate`
+refuses any other value and names both.
 
 `Chat` is the `[chat]` section, which only `meru chat` reads; `merud` loads it
 with the rest and ignores it:

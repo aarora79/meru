@@ -728,7 +728,9 @@ A script can drive the harness with no one at the keyboard.
 and exits non-zero when the turn fails. The command denies a tool call that asks
 first, as any client with no one to ask does, and `dispatch` logs it as
 `declined`. The command also writes the approval event to stdout, so the script
-sees which call it refused. Every tool call still goes through `dispatch`; the
+sees which call it refused. A tool doing slow work sends `progress` events
+between its `tool_call` and `tool_result`, with the call's ID, such as the line
+`web_fetch` sends while it installs its page reader. Every tool call still goes through `dispatch`; the
 mode adds no second path.
 
 ---
@@ -3377,6 +3379,8 @@ folder removes every install:
   cache/npm/, cache/uv/    download caches
   home/                    HOME for npm and uv, so nothing lands in yours
   npmrc                    an empty npm settings file
+  chrome-headless-shell-154.0.8037.92/   pinned headless Chrome, web_fetch's page reader
+  chrome-profile-*/        one page's Chrome profile, removed when the page is read
   pkg/obsidian-2.0.1/      one folder per connector and version
   pkg/google-1.30.0/
   state/<id>.json          the tool list from the last health check
@@ -3385,7 +3389,11 @@ folder removes every install:
 
 **The runtimes.** `internal/connectors/runtimes.go` pins Node 24.21.0, the
 newest Long Term Support release on 30 September 2026, and uv 0.12.21, each
-with a download URL and a SHA-256 for macOS and Linux on arm64 and amd64.
+with a download URL and a SHA-256 for macOS and Linux on arm64 and amd64. It
+also pins `chrome-headless-shell` 154.0.8037.92 for `web_fetch`'s page reader
+(see [Pages that need JavaScript](#pages-that-need-javascript)), a `.zip` from
+Google's Chrome for Testing. Google publishes MD5, not SHA-256, for those zips,
+so each SHA-256 was computed from a download whose MD5 matched Google's.
 Windows has no pin yet. The first time a connector needs one, `merud`
 downloads the `.tar.gz` into a temporary folder under `~/.meru/runtime`, checks
 its SHA-256 against the pin, and unpacks it only if the two match. Unpacking
@@ -4004,15 +4012,17 @@ tools route:
 | Tool | Offered when | What it does |
 | --- | --- | --- |
 | `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default, and the SearXNG connector is ok | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
-| `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. |
+| `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see [Pages that need JavaScript](#pages-that-need-javascript)). |
 
 ```toml
 [web]
 searxng_url = "http://127.0.0.1:8888"   # loopback only; "" turns web_search off
 max_results = 8                         # 1 to 20
+render      = "auto"                    # "off" reads every page as plain HTML
 ```
 
-`web_fetch` has no key under `[web]`: `[builtin] tools` is its one switch. A
+`[builtin] tools` is `web_fetch`'s switch; `[web] render` decides only whether it
+may render a page that needs JavaScript. A
 config that still says `fetch` or the older `read_pages` under `[web]` stops
 `merud` with a message that says to list `web_fetch` in `[builtin] tools`, or
 leave it out to turn page fetching off.
@@ -4096,7 +4106,8 @@ networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local addresses
 multicast addresses, 0.0.0.0/8 and 100.64.0.0/10. The check runs on the connection
 itself, so it catches a link, a redirect (the tool follows at most 5) or a DNS
 name that points inside your network, and the model can't use the tool to read a
-service on your machine or LAN.
+service on your machine or LAN. A rendered page's own requests pass the same
+check, through `merud`'s proxy (see [Pages that need JavaScript](#pages-that-need-javascript)).
 
 **When SearXNG isn't there.** `merud` starts anyway. The SearXNG connector
 checks it at start and every minute (see [SearXNG and Ollama](#searxng-and-ollama)),
@@ -4105,6 +4116,54 @@ between a failed check and the next turn's tool list fails with the connector's
 sentence. A SearXNG that answers HTML has JSON turned off, and the sentence
 names the `search.formats` setting in `settings.yml`. `meru setup` runs the same
 check in its Web search step.
+
+### Pages that need JavaScript
+
+Many pages send an empty HTML shell and fill it in with JavaScript: job boards
+such as Workday, many docs sites, most single-page apps. `web_fetch` runs no
+scripts, so it found no text there. On 1 October 2026 the Workday page for one
+job came back as 6.1 KB of HTML with no text, and the model answered from search
+snippets and got the place and the date wrong. The same page in a headless
+Chrome gave 10,855 characters in about 3 seconds.
+
+So when `[web] render = "auto"`, as it is by default, `web_fetch` reads the HTML
+first, and when that is a shell (under 500 characters of text and a `<script>`
+on the page) it loads the same URL in a headless Chrome and reads the text the
+page shows. A page with its text in the HTML never reaches the browser.
+
+- **The browser.** `merud` installs a pinned `chrome-headless-shell` from Google's
+  Chrome for Testing into `~/.meru/runtime` the first time a page needs it
+  (about 95 MB; see [The runtime folder](#the-runtime-folder)). That first call
+  waits up to 2 minutes, and both clients show "Installing Meru's page reader
+  (about 95 MB, once)" under the running tool, through a `progress` event on the
+  ask stream.
+- **One Chrome per page.** `internal/render` starts a fresh Chrome with a fresh
+  profile for each page, drives it over the DevTools Protocol through two pipes
+  (`--remote-debugging-pipe`; no port), and stops it when the page is read. No
+  browser runs between pages, and no cookie outlives a call.
+- **When the page is ready.** Scripts often fill a page after it loads. The
+  reader takes the page once it has loaded, its text length has held still for
+  750 ms and no bytes have moved through the proxy for 500 ms, or 8 seconds after
+  it began. A rendered call gets 20 seconds in all.
+- **The proxy.** Chrome reaches the network only through a proxy that `merud`
+  runs on loopback for that page (`--proxy-server`, with no exception for
+  loopback). The proxy dials with `web_fetch`'s own check, so a page and its
+  scripts can't reach this machine or your network. It refuses everything until
+  the page starts to load, so Chrome's own start-up requests go nowhere.
+  `--disable-quic` and a WebRTC policy keep UDP, which an HTTP proxy doesn't
+  carry, off the network; a test proves a page's WebRTC sends no packet. While a
+  page loads, another program on this machine could use the proxy too, but it
+  reaches only public addresses, which that program could reach anyway.
+- **What the model sees.** The text goes through the indexer's HTML reader, as a
+  fetched page's does, and the header line says `HTML, rendered`. When rendering
+  fails, `web_fetch` returns the HTML's own text with a first line saying the page
+  needs JavaScript and why it couldn't be loaded.
+- **Off.** `[web] render = "off"` reads every page as plain HTML. Windows has no
+  pin yet: Go can't pass a child the two pipes there.
+
+`meru.web.render.duration` times each rendered page, and a `meru.web.render`
+span under the call's `meru.dispatch` span records the requests the proxy let
+through and refused.
 
 ### Web first
 
@@ -4382,6 +4441,7 @@ for the rest.
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
 | `meru.model.malformed_calls` | counter | model | tool calls the main model wrote that Meru couldn't run as written |
 | `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories/sessions) | retrieval cost (v0.2; memories and sessions stages v0.4) |
+| `meru.web.render.duration` | histogram | outcome (ok/error/timeout/cancelled) | how long a page that needs JavaScript takes in the page reader, Chrome's start included |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
 
@@ -4479,6 +4539,13 @@ transcript lines hold. No level writes question or answer text. With
   asks for the web, and for a name your files don't cover, in quotes with a few
   words of the question. A question that says "my" or "our", or one about mail,
   a calendar or notes, never gets the second search.
+- A page that needs JavaScript loads in a headless Chrome that `merud` installs
+  from a pinned zip and starts for that one page. Chrome reaches the network only
+  through a proxy in `merud`, which applies `web_fetch`'s check to every request
+  the page makes and refuses everything while no page loads. QUIC and WebRTC's
+  UDP stay off. Each page gets a fresh profile, deleted when the page is read.
+  `[web] render = "off"` turns this off (see
+  [Pages that need JavaScript](#pages-that-need-javascript)).
 - `web_fetch` makes `merud` fetch public pages off this machine, by default,
   when the model asks; taking it out of `[builtin] tools` turns it off. It refuses any address
   on this machine or your network. It runs without asking only for a URL that a

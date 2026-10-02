@@ -1,12 +1,13 @@
 // This file downloads a file, checks its SHA-256 before anything else
-// reads it, and unpacks a .tar.gz archive into a folder that no entry can
-// climb out of. The runtimes (runtimes.go) and binary installs
+// reads it, and unpacks a .tar.gz or .zip archive into a folder that no
+// entry can climb out of. The runtimes (runtimes.go) and binary installs
 // (install.go) use it.
 
 package connectors
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -94,6 +95,16 @@ func download(ctx context.Context, client *http.Client, rawURL, wantSHA, dest st
 	return nil
 }
 
+// unpack unpacks archive into dest by its kind, which its name gives: a
+// name ending in .zip is a zip file, and anything else a .tar.gz. Both
+// follow the same rules; see unpackTarGz.
+func unpack(archive, dest string) error {
+	if strings.HasSuffix(archive, ".zip") {
+		return unpackZip(archive, dest)
+	}
+	return unpackTarGz(archive, dest)
+}
+
 // unpackTarGz unpacks the .tar.gz file archive into the folder dest,
 // which must exist and be empty. It drops the first part of every entry's
 // name, since the Node and uv archives each hold one top folder, such as
@@ -150,7 +161,7 @@ func unpackTarGz(archive, dest string) error {
 			if hdr.Size > maxUnpacked-written {
 				return fmt.Errorf("unpack %s: it unpacks to more than %d MiB", archive, maxUnpacked>>20)
 			}
-			if err := writeEntry(root, name, hdr, tr); err != nil {
+			if err := writeEntry(root, name, hdr.FileInfo().Mode(), hdr.Size, tr); err != nil {
 				return fmt.Errorf("unpack %s: %w", archive, err)
 			}
 			written += hdr.Size
@@ -211,15 +222,116 @@ func linkInside(name, target string) error {
 	return nil
 }
 
-// writeEntry writes one regular file from the archive. It keeps the
-// entry's execute bit, which Node's bin/node needs, and drops every other
-// permission bit but the owner's and group's read.
-func writeEntry(root *os.Root, name string, hdr *tar.Header, r io.Reader) error {
+// unpackZip unpacks the .zip file archive into the folder dest, by the
+// same rules as unpackTarGz: it drops the first part of every entry's name
+// (Chrome for Testing's zips hold one top folder, such as
+// chrome-headless-shell-mac-arm64/), refuses names that are absolute or
+// climb with "..", links that leave dest, and anything but folders, files
+// and symbolic links, and writes through os.Root.
+//
+// A zip keeps a symbolic link as a small entry whose content is the link's
+// target, with the link bit in its mode; unpackZip reads it that way.
+func unpackZip(archive, dest string) error {
+	zr, err := zip.OpenReader(archive)
+	if err != nil {
+		return fmt.Errorf("unpack %s: %w", archive, err)
+	}
+	defer zr.Close()
+
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return fmt.Errorf("unpack %s: %w", archive, err)
+	}
+	defer root.Close()
+
+	var written int64
+	for _, f := range zr.File {
+		name, err := entryName(f.Name)
+		if err != nil {
+			return fmt.Errorf("unpack %s: %w", archive, err)
+		}
+		if name == "" {
+			continue
+		}
+		mode := f.Mode()
+		switch {
+		case mode.IsDir():
+			if err := root.MkdirAll(name, 0o750); err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+		case mode.IsRegular():
+			// The header's size can lie; writeEntry copies exactly that many
+			// bytes, and the zip reader checks each entry's CRC at its end.
+			// The check runs on the uint64 first, so the conversion below
+			// can't overflow.
+			if f.UncompressedSize64 > uint64(maxUnpacked-written) {
+				return fmt.Errorf("unpack %s: it unpacks to more than %d MiB", archive, maxUnpacked>>20)
+			}
+			size := int64(f.UncompressedSize64) // #nosec G115 -- at most maxUnpacked, checked above
+			if err := writeZipEntry(root, name, f, size); err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+			written += size
+		case mode&os.ModeSymlink != 0:
+			target, err := zipLinkTarget(f)
+			if err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+			if err := linkInside(name, target); err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+			if err := root.MkdirAll(path.Dir(name), 0o750); err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+			if err := root.Symlink(target, name); err != nil {
+				return fmt.Errorf("unpack %s: %w", archive, err)
+			}
+		default:
+			return fmt.Errorf("unpack %s: %q has mode %v: %w", archive, f.Name, mode, ErrUnsafeArchive)
+		}
+	}
+	return nil
+}
+
+// writeZipEntry opens one regular file in the zip and writes it with
+// writeEntry.
+func writeZipEntry(root *os.Root, name string, f *zip.File, size int64) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	return writeEntry(root, name, f.Mode(), size, rc)
+}
+
+// zipLinkTarget reads a symbolic link's target from its zip entry. A
+// target longer than 4 KiB isn't a real link, so it counts as unsafe.
+func zipLinkTarget(f *zip.File) (string, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, 4097))
+	if err != nil {
+		return "", err
+	}
+	if len(b) > 4096 {
+		return "", fmt.Errorf("link %q: %w", f.Name, ErrUnsafeArchive)
+	}
+	return string(b), nil
+}
+
+// writeEntry writes one regular file of size bytes from an archive. It
+// keeps the entry's execute bit, which Node's bin/node and
+// chrome-headless-shell need, and drops every other permission bit but the
+// owner's and group's read.
+func writeEntry(root *os.Root, name string, mode os.FileMode, size int64, r io.Reader) error {
 	if err := root.MkdirAll(path.Dir(name), 0o750); err != nil {
 		return err
 	}
 	perm := os.FileMode(0o640)
-	if hdr.FileInfo().Mode()&0o111 != 0 {
+	if mode&0o111 != 0 {
 		perm = 0o750
 	}
 	out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
@@ -228,7 +340,7 @@ func writeEntry(root *os.Root, name string, hdr *tar.Header, r io.Reader) error 
 	}
 	// CopyN copies exactly the size the header gave; a short entry is an
 	// error rather than a truncated program.
-	_, err = io.CopyN(out, r, hdr.Size)
+	_, err = io.CopyN(out, r, size)
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}

@@ -139,7 +139,7 @@ func defaults() Config {
 		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
-		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8},
+		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto},
 		Chat: Chat{MouseCopy: true},
 	}
 }
@@ -300,6 +300,9 @@ func validate(cfg Config) error {
 	// 20 results already fill a few thousand tokens of the prompt.
 	if n := cfg.Web.MaxResults; n < 1 || n > MaxWebResults {
 		add("web.max_results is %d; it must be between 1 and %d", n, MaxWebResults)
+	}
+	if r := cfg.Web.Render; r != RenderAuto && r != RenderOff {
+		add("web.render is %q; it must be %q (render pages that need JavaScript) or %q", r, RenderAuto, RenderOff)
 	}
 
 	for _, err := range checkSets(cfg.Models.Sets) {

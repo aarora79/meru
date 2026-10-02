@@ -51,6 +51,7 @@ allows only code inside this repo to import.
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
 | `internal/builtin` | tools that live inside `merud`: `configure`, `datetime` and `about_meru`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder`, `grep` and `search_files`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
+| `internal/render` | `web_fetch`'s page reader: for a page whose text comes from JavaScript, it installs the pinned `chrome-headless-shell` on first need, starts a proxy on loopback and a fresh Chrome for that page, drives Chrome over two pipes, waits for the text and the traffic to settle, and returns the HTML (see [Pages that need JavaScript](../ARCHITECTURE.md#pages-that-need-javascript)) | `render.go`: `New`, `Render`, `Ready`, `Close`; `browser.go`: `startBrowser`; `cdp.go`: `call`; `proxy.go`: `startProxy`, `arm` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, the safe append to `config.toml`, and the edits of one list in it | `catalog.go`: `Entries`, then `block.go`, `append.go` and `edit.go` |
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
@@ -81,7 +82,7 @@ flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
     merud --> index & retrieve & store
     merud --> dispatch & mcp & a2a & builtin & commands & secrets
-    merud --> memory & skills & summarize
+    merud --> memory & skills & summarize & render
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     desktopapp["cmd/meru-desktop"] --> desktop
     desktop --> rpc & config & opener & about
@@ -90,7 +91,8 @@ flowchart TD
     tui --> rpc & opener & about
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
-    builtin --> dispatch & catalog & secrets & config & memory & index
+    builtin --> dispatch & catalog & secrets & config & memory & index & render
+    render --> connectors & obs
     commands --> dispatch & engine & rpc & config
     summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
@@ -111,7 +113,10 @@ flowchart TD
 `skills`, `memory` and `secrets` import only the standard library. `agent`
 reads the profile and the skills through them, `builtin` saves memories, and
 `index` copies the memory files into the store. `builtin` imports `index` so the
-file tools apply the indexer's skip rules instead of a copy, and `agent` imports
+file tools apply the indexer's skip rules instead of a copy, and `render` for the
+`Page` type `web_fetch`'s page reader returns; `render` starts Chrome through
+`connectors.StartPiped` and never imports `builtin`, so `cmd/merud` hands it
+`builtin.PublicDialContext` as its dialer, and `agent` imports
 `builtin` for `IsFileTool`, which names the file tools the `search` route offers. `mcp` doesn't
 know `dispatch`: `cmd/merud/backends.go` wraps the pool in `mcpBackend`, so the
 pool stays a plain MCP client.
@@ -703,6 +708,13 @@ The same path as a reading list, in order:
    secrets, cuts the result (16,000 characters for the model, 4,000 for the log),
    and writes the `tool_result` line, the `tool_calls` row, the metrics and the
    `meru.dispatch` span.
+   When the call is `web_fetch` and the page is an empty shell that needs
+   JavaScript, **`internal/builtin/web.go` → `renderPage`** hands the URL to
+   **`internal/render/render.go` → `Render`**, which starts a proxy and a fresh
+   Chrome for that page, reads it, and stops both. A first render installs the
+   browser and sends a line through `dispatch.Progress`, which the agent set per
+   call with `dispatch.WithProgress`; it reaches the client as a `progress` event
+   between `tool_call` and `tool_result`.
 10. **`internal/engine/ollama.go` → `Generate` and `Stream`** turn Meru's types into
     Ollama's JSON (`ollama_wire.go`), send the HTTP request, and turn the reply back.
     Ollama sends each tool call whole, in a chunk of its own.

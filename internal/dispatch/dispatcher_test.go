@@ -849,3 +849,15 @@ func TestCallerAndHint(t *testing.T) {
 		t.Errorf("rows = %+v, want merud's call, then the model's denied one", rows)
 	}
 }
+
+// TestProgress checks that a backend's progress line reaches the function
+// the agent put on the context, and that outside a turn it goes nowhere.
+func TestProgress(t *testing.T) {
+	var got []string
+	ctx := WithProgress(context.Background(), func(s string) { got = append(got, s) })
+	Progress(ctx, "Installing the page reader")
+	Progress(context.Background(), "nobody hears this")
+	if len(got) != 1 || got[0] != "Installing the page reader" {
+		t.Errorf("progress = %q", got)
+	}
+}
