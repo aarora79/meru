@@ -209,7 +209,7 @@ allow   = ["obsidian_list_vaults", "search"]
 	waitReady(t, h, m, readyTimeout)
 
 	st := obsidianStatus(t, h.socket)
-	if st.State != rpc.ConnectorByHand || !strings.Contains(st.Sentence, "run meru mcp adopt obsidian") {
+	if st.State != rpc.ConnectorByHand || !strings.Contains(st.Sentence, "Optional: meru mcp adopt obsidian") {
 		t.Fatalf("obsidian = %s %q, want by_hand with the adopt hint", st.State, st.Sentence)
 	}
 
@@ -288,7 +288,7 @@ allow   = ["search"]
 	waitReady(t, h, m, readyTimeout)
 
 	st := obsidianStatus(t, h.socket)
-	if st.State != rpc.ConnectorByHand || st.Sentence != "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian." {
+	if st.State != rpc.ConnectorByHand || st.Sentence != "Obsidian runs from your own setup, the obsidian entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt obsidian lets Meru run and restart it." {
 		t.Errorf("obsidian = %s %q, want by_hand", st.State, st.Sentence)
 	}
 	tools := runMeru(t, h, "tools")

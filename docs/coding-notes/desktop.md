@@ -214,7 +214,10 @@ event says the chat is incognito, the Bridge remembers its ID, and
 `ServiceShutdown` sends `session_delete` for it as the app quits.
 
 In the page, `drawSessions` in `app.js` draws the folders first, each a group
-whose head folds it, then the day groups. `organize.js` holds the right-click
+whose head folds it, then the day groups. A folder starts closed, so a few
+folders don't fill the rail, unless it holds the open chat; a search opens them
+all. `state.folderOpen`, a `Map` from folder name to open or closed, keeps each
+choice the user makes until the window closes. `organize.js` holds the right-click
 menu, positioned at the pointer with `element.style`, which the page's policy
 allows because it isn't an inline `style` attribute, and one `<dialog>` for
 Delete, Move to folder, Tags, New folder, Rename and Delete folder. Delete asks
@@ -548,16 +551,19 @@ fields draws a new card with `mark` set, which gives those fields an amber
 edge (`.connector-field.needs`) and moves the cursor to the first. `askFields`
 picks them by `rpc.AskFields`'s rule; `TestAskFieldsMatchesRPC` reads it.
 
-A connector set up by hand gets only Adopt. `adoptDialog` asks the Bridge for
+A connector set up by hand works and needs nothing, so its card says so: a green "Your setup" pill, merud's sentence up to " Optional: " as a plain note, and a line saying Adopt is optional. It gets only Adopt, as a secondary button, not the green one that asks for action. `adoptDialog` asks the Bridge for
 the plan and fills the page's one `<dialog>` with it, each change in an
 ordered list and a table's lines in a `<pre>`, with Cancel, which has the
 focus, and Adopt, which applies. The page has no `window.confirm`: the
 viewer blocks it, and the dialog shows the plan in full.
 
-In app.js, the rail draws `status.connectors` as a row of dots, each a
-button that opens Settings at the card: `goSettings("connections",
-"connector:" + id)`, which the section's focus code scrolls to. The
-Connections line lists only the servers the dots don't cover.
+In app.js, the rail draws `status.connectors` as one comma-separated list of
+names that wraps like text, each a link that opens Settings at the card:
+`goSettings("connections", "connector:" + id)`, which the section's focus code
+scrolls to. A connector that needs nothing, `ok` or `by_hand` (a server the
+user set up, which works as they set it up), shows its name alone; one that
+needs attention gets an amber dot before its name. The Connections
+line lists only the servers the dots don't cover.
 
 ### cmd/meru-desktop/main.go
 

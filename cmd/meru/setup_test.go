@@ -416,7 +416,7 @@ func TestSetupConnectors(t *testing.T) {
 	rows := map[string]rpc.ConnectorStatus{
 		"obsidian": {ID: "obsidian", Name: "Obsidian", State: rpc.ConnectorOff, Sentence: "Obsidian is off.", Fields: obsidianFields},
 		"google": {ID: "google", Name: "Google", State: rpc.ConnectorByHand,
-			Sentence: "Google is set up by hand, as the google entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt google."},
+			Sentence: "Google runs from your own setup, the google entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt google lets Meru run and restart it."},
 	}
 	var changes []rpc.Request
 	sock := startServer(t, func(_ context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {

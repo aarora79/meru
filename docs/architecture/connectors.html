@@ -565,7 +565,7 @@ func (c Connector) Enabled() (enabled, ok bool) {
 
 <ul>
   <li><b>Off by default.</b> A connector runs only when its <code>[connectors.&lt;id&gt;]</code> table says <code>enabled = true</code>. A manifest can say <code>default_on</code>; of the four, SearXNG and Ollama do, and neither runs through this supervisor.</li>
-  <li><b>Set up by hand wins.</b> An <code>[[mcp.servers]]</code> entry named <code>obsidian</code> or <code>google</code> runs as it did before, through the pool's own rules, and the connector shows <code>by_hand</code>, with a sentence that ends "To have Meru run it, run meru mcp adopt obsidian." Adopt moves such an entry over (see <a href="#moving-a-working-setup-over">Moving a working setup over</a>).</li>
+  <li><b>Set up by hand wins.</b> An <code>[[mcp.servers]]</code> entry named <code>obsidian</code> or <code>google</code> runs as it did before, through the pool's own rules, and the connector shows <code>by_hand</code>, with a sentence that says there is nothing to do and ends "Optional: meru mcp adopt obsidian lets Meru run and restart it." Adopt moves such an entry over (see <a href="#moving-a-working-setup-over">Moving a working setup over</a>).</li>
   <li><b>Fields.</b> <code>merud</code> checks the table against the manifest: a required field needs a value, a folder must exist, an email needs an <code>@</code>, a choice must be one of its choices, a value must match its pattern, and a key the manifest doesn't name is a mistake. The first problem becomes the sentence.</li>
   <li><b>Lazy start.</b> A <code>ready</code> connector's tools reach the model from the list saved at its last health check, in <code>state/&lt;id&gt;.json</code>, with no process running. So a restart of <code>merud</code> offers them without starting anything. The first call starts the process, checks it again, and waits for it up to the connect timeout of 30 seconds. So Obsidian uses no memory until you ask for it.</li>
   <li><b>Idle stop.</b> A process that gets no call for its <code>idle_timeout</code>, 10 minutes for Obsidian, stops and goes back to <code>ready</code>. A call still running holds it up.</li>
@@ -705,7 +705,7 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 <tr><td><code>ok</code></td><td>Obsidian is ready. It starts when a question needs it.</td><td>runs the check again</td></tr>
 <tr><td><code>ok</code></td><td>Obsidian is running.</td><td>runs the check again</td></tr>
 <tr><td><code>off</code></td><td>Obsidian is off.</td><td>asks every field, then turns it on</td></tr>
-<tr><td><code>by_hand</code></td><td>Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian.</td><td>none; Adopt moves it over</td></tr>
+<tr><td><code>by_hand</code></td><td>Obsidian runs from your own setup, the obsidian entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt obsidian lets Meru run and restart it.</td><td>none; Adopt moves it over</td></tr>
 <tr><td><code>needs_config</code></td><td>Obsidian needs your vault folder.</td><td>asks for the vault folder</td></tr>
 <tr><td><code>needs_config</code></td><td>Google needs you to sign in.</td><td>starts the server again for a new link; the Sign in button opens the link</td></tr>
 <tr><td><code>needs_config</code></td><td>Google can't start: another program listens on 127.0.0.1:8000. …</td><td>looks at the port again; stop that program first</td></tr>

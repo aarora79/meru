@@ -390,8 +390,9 @@ These rules govern the machine.
   and Ollama do, and neither runs through this supervisor.
 - **Set up by hand wins.** An `[[mcp.servers]]` entry named `obsidian` or `google` runs as
   it did before, through the pool's own rules, and the connector shows
-  `by_hand`, with a sentence that ends "To have Meru run it, run meru mcp
-  adopt obsidian." Adopt moves such an entry over (see [Moving a working setup
+  `by_hand`, with a sentence that says there is nothing to do and ends
+  "Optional: meru mcp adopt obsidian lets Meru run and restart it." Adopt
+  moves such an entry over (see [Moving a working setup
   over](#moving-a-working-setup-over)).
 - **Fields.** `merud` checks the table against the manifest: a required field
   needs a value, a folder must exist, an email needs an `@`, a choice must be
@@ -632,7 +633,7 @@ some, and otherwise runs the check again and follows it the same way.
 | `ok` | Obsidian is ready. It starts when a question needs it. | runs the check again |
 | `ok` | Obsidian is running. | runs the check again |
 | `off` | Obsidian is off. | asks every field, then turns it on |
-| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian. | none; Adopt moves it over |
+| `by_hand` | Obsidian runs from your own setup, the obsidian entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt obsidian lets Meru run and restart it. | none; Adopt moves it over |
 | `needs_config` | Obsidian needs your vault folder. | asks for the vault folder |
 | `needs_config` | Google needs you to sign in. | starts the server again for a new link; the Sign in button opens the link |
 | `needs_config` | Google can't start: another program listens on 127.0.0.1:8000. … | looks at the port again; stop that program first |

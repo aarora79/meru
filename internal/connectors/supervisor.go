@@ -1015,7 +1015,7 @@ func (s *Supervisor) sentenceLocked() string {
 	case phaseOff:
 		return name + " is off."
 	case phaseByHand:
-		return fmt.Sprintf("%s is set up by hand, as the %s entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt %s.", name, s.m.ID, s.m.ID)
+		return fmt.Sprintf("%s runs from your own setup, the %s entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt %s lets Meru run and restart it.", name, s.m.ID, s.m.ID)
 	case phaseNeedsConfig:
 		if s.reason != "" {
 			return s.reason // the port is taken (blockLocked)

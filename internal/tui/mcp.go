@@ -284,9 +284,10 @@ func connHeading(c rpc.Connection) string {
 		}
 		if c.Connector == rpc.ConnectorByHand {
 			s += " · set up by hand"
-			// The sentence ends with how Meru can run it instead.
-			if _, how, ok := strings.Cut(c.Sentence, "[[mcp.servers]]. "); ok {
-				s += " · " + how
+			// The sentence ends with the optional way to have Meru run it
+			// instead; nothing needs doing.
+			if _, how, ok := strings.Cut(c.Sentence, "Optional: "); ok {
+				s += " · optional: " + how
 			}
 		}
 	}

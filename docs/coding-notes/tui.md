@@ -1076,8 +1076,9 @@ app's words (`policyWords`), then the catalog servers not added yet.
 sentence and, while it waits for a sign-in, "Sign in:" with the link; the
 connector's own row, under Connectors at the top of the box, is where `f`
 asks for a missing field (see connectors.go below). A server set up by hand in a connector's place ends its heading with
-the part of merud's sentence after "[[mcp.servers]]. ", which says how to
-move it over: "To have Meru run it, run meru mcp adopt obsidian." The built-in tools' heading ends with web search's state
+"optional:" and the part of merud's sentence after "Optional: ", which says how
+Meru could run it instead: "optional: meru mcp adopt obsidian lets Meru run and
+restart it." Nothing needs doing; the heading only says the choice exists. The built-in tools' heading ends with web search's state
 and sentence, from the connection's `Web` and `WebSentence`, such as "web search
 needs config: Web search can't start: Docker isn't running.":
 

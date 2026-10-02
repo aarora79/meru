@@ -22,7 +22,7 @@ var connectorsFixture = []rpc.ConnectorStatus{
 			{ID: "vault_path", Type: "folder", Label: "Vault folder", Help: "The folder that holds your Obsidian notes.", Required: true},
 			{ID: "vault_name", Type: "text", Label: "Vault name"}}},
 	{ID: "google", Name: "Google", Kind: "http", State: rpc.ConnectorByHand,
-		Sentence: "Google is set up by hand, as the google entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt google."},
+		Sentence: "Google runs from your own setup, the google entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt google lets Meru run and restart it."},
 	{ID: "searxng", Name: "Web search", Kind: "container", State: rpc.ConnectorOff, Sentence: "Web search is off."},
 }
 

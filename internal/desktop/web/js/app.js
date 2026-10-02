@@ -51,7 +51,9 @@ const state = {
   quietDrop: false, // the next queue notice is part of /new's own notice
   sessions: [], // the rail's list
   folders: [], // the chat folders, in the rail's order
-  collapsed: new Set(), // the folders the user folded; until the window closes
+  // folderOpen holds the user's choice for each folder they opened or
+  // closed, until the window closes; a folder with no choice starts closed.
+  folderOpen: new Map(),
   sessionsError: "",
   filter: "",
   selected: null, // the turn the side panel shows
@@ -774,11 +776,16 @@ function drawSessions() {
 }
 
 // folderGroup draws one chat folder: a head that folds and opens it, with
-// its name and how many chats it holds, and its chats. A right-click on
-// the head, or the context-menu key, opens Rename and Delete folder.
+// its name and how many chats it holds, and its chats. A folder starts
+// closed, so a few folders don't fill the rail, unless it holds the open
+// chat; a search opens every folder, and a click on the head records the
+// user's choice. A right-click on the head, or the context-menu key, opens
+// Rename and Delete folder.
 function folderGroup(name, i, rows, searching) {
   const section = el("section", "group folder-group");
-  const open = searching || !state.collapsed.has(name);
+  const holdsOpenChat = rows.some((s) => s.id === state.session);
+  const chosen = state.folderOpen.get(name);
+  const open = searching || (chosen === undefined ? holdsOpenChat : chosen);
   const head = button("", { className: "folder-head" });
   head.id = "folder-" + i;
   head.setAttribute("aria-expanded", String(open));
@@ -787,8 +794,7 @@ function folderGroup(name, i, rows, searching) {
   head.append(chevron, icon("folder", 14), el("span", "folder-name", name), el("span", "folder-count", String(rows.length)));
   head.title = name;
   head.addEventListener("click", () => {
-    if (state.collapsed.has(name)) state.collapsed.delete(name);
-    else state.collapsed.add(name);
+    state.folderOpen.set(name, !open);
     drawSessions();
     document.getElementById(head.id).focus();
   });
@@ -991,7 +997,7 @@ function drawStatus() {
   box.append(head);
   if (s.model) box.append(row("Answer model", s.model));
   box.append(row("Files", s.documents.toLocaleString() + (s.scanning ? " · indexing" : "")));
-  // The connectors get a dot each, which opens their card in Settings;
+  // The connectors get a link each, which opens their card in Settings;
   // the Connections line names the rest, the servers added by hand.
   const dots = s.connectors || [];
   const named = new Set(dots.flatMap((d) => [d.id.toLowerCase(), d.name.toLowerCase()]));
@@ -1000,22 +1006,27 @@ function drawStatus() {
   box.append(row("Connections", others.length ? others.join(", ") : "none"));
 }
 
-// connectorDots draws the rail's connector line: a dot per connector,
-// green when it is ok and amber otherwise, each a button that opens its
-// card in Settings.
+// connectorDots draws the rail's connector line: the connectors' names as
+// one comma-separated list that wraps like text, each a link that opens
+// its card in Settings. A connector that needs nothing (ok, or a server
+// the user set up by hand, which works as they set it up) shows its name
+// alone; one that needs attention gets an amber dot before its name.
 function connectorDots(dots) {
   const p = el("p", "status-row");
-  const list = el("span", "status-value connector-dots");
-  for (const d of dots) {
+  const list = el("span", "status-value connector-list");
+  dots.forEach((d, i) => {
+    if (i > 0) list.append(document.createTextNode(", "));
+    const fine = d.state === "ok" || d.state === "by_hand";
     const b = button("", {
-      className: "link-button connector-dot",
+      className: "link-button",
       ariaLabel: d.name + ": " + d.words + ". Open its settings.",
       onClick: () => goSettings("connections", "connector:" + d.id),
     });
     b.title = d.name + ": " + d.words;
-    b.append(el("span", "dot" + (d.state === "ok" ? "" : " warn")), document.createTextNode(" " + d.name));
+    if (!fine) b.append(el("span", "dot warn"), document.createTextNode(" "));
+    b.append(document.createTextNode(d.name));
     list.append(b);
-  }
+  });
   p.append(el("span", "status-label", "Connectors"), list);
   return p;
 }
