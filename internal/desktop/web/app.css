@@ -407,16 +407,20 @@ pre {
   color: var(--caption);
 }
 
+/* The chat list sets its own, tighter type: at the body's 15px and 1.55
+   line height each row took about 35px, and folders stacked up fast. */
 .sessions {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   margin: 0 -6px;
   padding: 0 6px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .group-head {
-  margin: 12px 8px 4px;
+  margin: 10px 8px 2px;
   font-size: 12px;
   font-weight: 600;
   color: var(--caption);
@@ -435,7 +439,7 @@ pre {
   align-items: baseline;
   gap: 6px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 7px;
   background: none;
@@ -472,8 +476,8 @@ pre {
   align-items: center;
   gap: 6px;
   width: 100%;
-  margin-top: 8px;
-  padding: 5px 8px;
+  margin-top: 2px;
+  padding: 3px 8px;
   border: 0;
   border-radius: 7px;
   background: none;
@@ -512,7 +516,13 @@ pre {
 }
 
 .folder-group ul {
-  padding-left: 12px;
+  padding-left: 10px;
+}
+
+/* A chat inside a folder sits a little tighter still. */
+.folder-group .session {
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 
 .folder-empty {
