@@ -547,11 +547,12 @@ ordered list and a table's lines in a `<pre>`, with Cancel, which has the
 focus, and Adopt, which applies. The page has no `window.confirm`: the
 viewer blocks it, and the dialog shows the plan in full.
 
-In app.js, the rail draws `status.connectors` as a row of dots, each a
-button that opens Settings at the card: `goSettings("connections",
-"connector:" + id)`, which the section's focus code scrolls to. A dot is
-green when the connector needs nothing, `ok` or `by_hand` (a server the user
-set up, which works as they set it up), and amber otherwise. The Connections
+In app.js, the rail draws `status.connectors` as one comma-separated list of
+names that wraps like text, each a link that opens Settings at the card:
+`goSettings("connections", "connector:" + id)`, which the section's focus code
+scrolls to. A connector that needs nothing, `ok` or `by_hand` (a server the
+user set up, which works as they set it up), shows its name alone; one that
+needs attention gets an amber dot before its name. The Connections
 line lists only the servers the dots don't cover.
 
 ### cmd/meru-desktop/main.go

@@ -987,7 +987,7 @@ function drawStatus() {
   box.append(head);
   if (s.model) box.append(row("Answer model", s.model));
   box.append(row("Files", s.documents.toLocaleString() + (s.scanning ? " · indexing" : "")));
-  // The connectors get a dot each, which opens their card in Settings;
+  // The connectors get a link each, which opens their card in Settings;
   // the Connections line names the rest, the servers added by hand.
   const dots = s.connectors || [];
   const named = new Set(dots.flatMap((d) => [d.id.toLowerCase(), d.name.toLowerCase()]));
@@ -996,24 +996,27 @@ function drawStatus() {
   box.append(row("Connections", others.length ? others.join(", ") : "none"));
 }
 
-// connectorDots draws the rail's connector line: a dot per connector,
-// green when it needs nothing (ok, or a server the user set up by hand,
-// which works as they set it up) and amber otherwise, each a button that
-// opens its card in Settings.
+// connectorDots draws the rail's connector line: the connectors' names as
+// one comma-separated list that wraps like text, each a link that opens
+// its card in Settings. A connector that needs nothing (ok, or a server
+// the user set up by hand, which works as they set it up) shows its name
+// alone; one that needs attention gets an amber dot before its name.
 function connectorDots(dots) {
   const p = el("p", "status-row");
-  const list = el("span", "status-value connector-dots");
-  for (const d of dots) {
+  const list = el("span", "status-value connector-list");
+  dots.forEach((d, i) => {
+    if (i > 0) list.append(document.createTextNode(", "));
+    const fine = d.state === "ok" || d.state === "by_hand";
     const b = button("", {
-      className: "link-button connector-dot",
+      className: "link-button",
       ariaLabel: d.name + ": " + d.words + ". Open its settings.",
       onClick: () => goSettings("connections", "connector:" + d.id),
     });
     b.title = d.name + ": " + d.words;
-    const fine = d.state === "ok" || d.state === "by_hand";
-    b.append(el("span", "dot" + (fine ? "" : " warn")), document.createTextNode(" " + d.name));
+    if (!fine) b.append(el("span", "dot warn"), document.createTextNode(" "));
+    b.append(document.createTextNode(d.name));
     list.append(b);
-  }
+  });
   p.append(el("span", "status-label", "Connectors"), list);
   return p;
 }

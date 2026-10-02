@@ -2389,17 +2389,20 @@ textarea.text-input {
 }
 
 /* The rail's connector line: a dot per connector, amber unless ok. */
-.connector-dots {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 2px 8px;
+/* The rail's connectors: names separated by commas, wrapping like a line
+   of text, right-aligned as the other values are. */
+.connector-list {
+  white-space: normal;
+  overflow: visible;
 }
 
-.connector-dot {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.connector-list .link-button {
+  display: inline;
+  text-align: inherit;
+}
+
+.connector-list .dot {
+  vertical-align: middle;
 }
 
 .dot.warn {
