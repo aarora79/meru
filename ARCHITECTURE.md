@@ -347,7 +347,8 @@ the line as its tooltip.
   in Settings, then New chat, with **Incognito chat** and **New folder** under
   it, a search box that filters the list by title, folder or tag, the past
   chats, a status block, and a Settings button at its foot. The chat folders
-  come first, each a group with a head that folds it; the chats in no folder
+  come first, each a group with a head that folds it, closed until you open it
+  unless it holds the open chat; a search opens them all. The chats in no folder
   follow, grouped Today, Yesterday and Earlier. Each chat's tags show small
   after its title. A right-click on a chat, or the context-menu key, opens
   Move to folder, Remove from its folder, Tags and Delete; on a folder's head,

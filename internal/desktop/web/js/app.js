@@ -51,7 +51,9 @@ const state = {
   quietDrop: false, // the next queue notice is part of /new's own notice
   sessions: [], // the rail's list
   folders: [], // the chat folders, in the rail's order
-  collapsed: new Set(), // the folders the user folded; until the window closes
+  // folderOpen holds the user's choice for each folder they opened or
+  // closed, until the window closes; a folder with no choice starts closed.
+  folderOpen: new Map(),
   sessionsError: "",
   filter: "",
   selected: null, // the turn the side panel shows
@@ -770,11 +772,16 @@ function drawSessions() {
 }
 
 // folderGroup draws one chat folder: a head that folds and opens it, with
-// its name and how many chats it holds, and its chats. A right-click on
-// the head, or the context-menu key, opens Rename and Delete folder.
+// its name and how many chats it holds, and its chats. A folder starts
+// closed, so a few folders don't fill the rail, unless it holds the open
+// chat; a search opens every folder, and a click on the head records the
+// user's choice. A right-click on the head, or the context-menu key, opens
+// Rename and Delete folder.
 function folderGroup(name, i, rows, searching) {
   const section = el("section", "group folder-group");
-  const open = searching || !state.collapsed.has(name);
+  const holdsOpenChat = rows.some((s) => s.id === state.session);
+  const chosen = state.folderOpen.get(name);
+  const open = searching || (chosen === undefined ? holdsOpenChat : chosen);
   const head = button("", { className: "folder-head" });
   head.id = "folder-" + i;
   head.setAttribute("aria-expanded", String(open));
@@ -783,8 +790,7 @@ function folderGroup(name, i, rows, searching) {
   head.append(chevron, icon("folder", 14), el("span", "folder-name", name), el("span", "folder-count", String(rows.length)));
   head.title = name;
   head.addEventListener("click", () => {
-    if (state.collapsed.has(name)) state.collapsed.delete(name);
-    else state.collapsed.add(name);
+    state.folderOpen.set(name, !open);
     drawSessions();
     document.getElementById(head.id).focus();
   });

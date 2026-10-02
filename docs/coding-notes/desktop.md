@@ -211,7 +211,10 @@ event says the chat is incognito, the Bridge remembers its ID, and
 `ServiceShutdown` sends `session_delete` for it as the app quits.
 
 In the page, `drawSessions` in `app.js` draws the folders first, each a group
-whose head folds it, then the day groups. `organize.js` holds the right-click
+whose head folds it, then the day groups. A folder starts closed, so a few
+folders don't fill the rail, unless it holds the open chat; a search opens them
+all. `state.folderOpen`, a `Map` from folder name to open or closed, keeps each
+choice the user makes until the window closes. `organize.js` holds the right-click
 menu, positioned at the pointer with `element.style`, which the page's policy
 allows because it isn't an inline `style` attribute, and one `<dialog>` for
 Delete, Move to folder, Tags, New folder, Rename and Delete folder. Delete asks
