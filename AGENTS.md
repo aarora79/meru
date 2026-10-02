@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.4.10**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.4.11**. ROADMAP.md ticks every item from v0.1
 to v0.4:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -58,8 +58,10 @@ change. `meru chat` does the same things in a terminal. The headless mode,
 as an agent harness, one JSON event per line. Since v0.4.9 both clients can file,
 tag, delete and start incognito chats, and the file tools read past chats. Since
 v0.4.10 `merud` runs connectors: it installs, starts and restarts the Obsidian
-server and SearXNG from pinned manifests, and waits for Ollama when it's down
-(#87 plans the rest). Outside the milestones,
+server and SearXNG from pinned manifests, and waits for Ollama when it's down.
+Since v0.4.11 it runs Google too, the clients and the installer set up, fix and
+adopt connectors through `merud`, and `web_fetch` reads pages that need
+JavaScript through a headless Chrome (#101). Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
 through `make release`, a one-line installer, and a Mac installer on a disk image
