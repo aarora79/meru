@@ -997,8 +997,9 @@ function drawStatus() {
 }
 
 // connectorDots draws the rail's connector line: a dot per connector,
-// green when it is ok and amber otherwise, each a button that opens its
-// card in Settings.
+// green when it needs nothing (ok, or a server the user set up by hand,
+// which works as they set it up) and amber otherwise, each a button that
+// opens its card in Settings.
 function connectorDots(dots) {
   const p = el("p", "status-row");
   const list = el("span", "status-value connector-dots");
@@ -1009,7 +1010,8 @@ function connectorDots(dots) {
       onClick: () => goSettings("connections", "connector:" + d.id),
     });
     b.title = d.name + ": " + d.words;
-    b.append(el("span", "dot" + (d.state === "ok" ? "" : " warn")), document.createTextNode(" " + d.name));
+    const fine = d.state === "ok" || d.state === "by_hand";
+    b.append(el("span", "dot" + (fine ? "" : " warn")), document.createTextNode(" " + d.name));
     list.append(b);
   }
   p.append(el("span", "status-label", "Connectors"), list);

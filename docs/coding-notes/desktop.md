@@ -549,8 +549,10 @@ viewer blocks it, and the dialog shows the plan in full.
 
 In app.js, the rail draws `status.connectors` as a row of dots, each a
 button that opens Settings at the card: `goSettings("connections",
-"connector:" + id)`, which the section's focus code scrolls to. The
-Connections line lists only the servers the dots don't cover.
+"connector:" + id)`, which the section's focus code scrolls to. A dot is
+green when the connector needs nothing, `ok` or `by_hand` (a server the user
+set up, which works as they set it up), and amber otherwise. The Connections
+line lists only the servers the dots don't cover.
 
 ### cmd/meru-desktop/main.go
 
