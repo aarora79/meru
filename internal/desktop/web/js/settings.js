@@ -256,8 +256,9 @@ function connectionCard(body, c, title, key) {
   } else if (!up && c.err) {
     card.append(el("p", "card-error", c.err));
   }
-  // A server set up by hand in a connector's place says how Meru can run
-  // it instead: "… To have Meru run it, run meru mcp adopt obsidian."
+  // A server set up by hand in a connector's place says it needs nothing,
+  // and how Meru could run it instead: "… Optional: meru mcp adopt
+  // obsidian lets Meru run and restart it."
   if (c.connector === "by_hand" && c.sentence) card.append(el("p", "card-note", c.sentence));
 
   const on = c.tools.filter((t) => t.policy !== "off").length;

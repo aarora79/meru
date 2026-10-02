@@ -14,14 +14,15 @@ import { bridge, errorText } from "./api.js";
 import { el, button } from "./turns.js";
 
 // PILLS says each connector state on a card's pill, with the pill's
-// colour: ok is green, the rest amber.
+// colour: green when nothing needs doing, amber when something does. A
+// server set up by hand works as the user set it up, so it is green too.
 const PILLS = {
   ok: ["ok", "Ready"],
   starting: ["down", "Starting"],
   needs_config: ["down", "Needs setup"],
   failed: ["down", "Failed"],
   off: ["down", "Off"],
-  by_hand: ["down", "Set up by hand"],
+  by_hand: ["ok", "Your setup"],
 };
 
 // KINDS says where each kind of connector runs, under the card's title.
@@ -159,7 +160,14 @@ export function connectorCard(c, ctx, mark) {
   head.append(el("span", "pill " + look, words));
   card.append(head);
   card.append(el("p", "card-sub", KINDS[c.kind] || ""));
-  card.append(el("p", c.state === "ok" ? "card-note" : "card-error", c.sentence));
+  if (c.state === "by_hand") {
+    // merud's sentence ends "Optional: meru mcp adopt <id> lets Meru run and
+    // restart it."; the card shows the part before as a plain note and
+    // words the optional part around its own Adopt button below.
+    card.append(el("p", "card-note", c.sentence.split(" Optional: ")[0]));
+  } else {
+    card.append(el("p", c.state === "ok" ? "card-note" : "card-error", c.sentence));
+  }
 
   const progress = el("p", "card-note connector-progress");
   progress.setAttribute("aria-live", "polite");
@@ -186,10 +194,12 @@ export function connectorCard(c, ctx, mark) {
   };
   const settled = (st) => ctx.done(st, c.name + ": " + (PILLS[st.state] || ["", st.state])[1].toLowerCase() + ". " + st.sentence);
 
-  // A connector set up by hand runs as the user's [[mcp.servers]] entry:
-  // the card offers Adopt and nothing else.
+  // A connector set up by hand runs as the user's [[mcp.servers]] entry
+  // and needs nothing. The card offers Adopt as a quiet, optional step,
+  // not the green button that asks for action.
   if (c.state === "by_hand") {
-    const adopt = button("Adopt", { className: "button primary", onClick: () => adoptDialog(c, ctx, adopt) });
+    card.append(el("p", "card-note", "Optional: Adopt lets Meru run " + c.name + " and restart it if it stops."));
+    const adopt = button("Adopt", { className: "button secondary", onClick: () => adoptDialog(c, ctx, adopt) });
     buttons.push(adopt);
     const actions = el("div", "card-actions");
     actions.append(adopt);

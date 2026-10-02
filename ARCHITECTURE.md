@@ -3487,9 +3487,11 @@ installing, starting ──port taken──▶ needs_config ──30 s, or a rel
   today.
 - **Set up by hand wins.** When `[[mcp.servers]]` has an entry with the
   connector's ID, that entry runs through the pool's own rules, unchanged, and
-  the connector shows `by_hand` with the sentence "Obsidian is set up by hand,
-  as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru
-  mcp adopt obsidian." Adopt moves such an entry over (see
+  the connector shows `by_hand` with the sentence "Obsidian runs from your own
+  setup, the obsidian entry in [[mcp.servers]]. There is nothing to do.
+  Optional: meru mcp adopt obsidian lets Meru run and restart it." The desktop
+  app shows the state on a green pill, "Your setup", with Adopt as a quiet
+  secondary button: the server works and needs nothing. Adopt moves such an entry over (see
   [Moving to connectors](#moving-to-connectors)).
 - **Fields.** `merud` checks the table against the manifest's fields: a
   required field needs a value, a folder must exist, an email needs an `@`, a
@@ -3544,7 +3546,7 @@ waits for one. The sentences:
 | `ok`, not running | Obsidian is ready. It starts when a question needs it. |
 | `ok`, running | Obsidian is running. |
 | `off` | Obsidian is off. |
-| `by_hand` | Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian. |
+| `by_hand` | Obsidian runs from your own setup, the obsidian entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt obsidian lets Meru run and restart it. |
 | `needs_config` | Obsidian needs your vault folder. / Obsidian can't find the vault folder ~/Notes. / Google needs you to sign in. / Google can't start: another program listens on 127.0.0.1:8000. Stop that program; Meru looks again every 30 seconds. |
 | `starting` | Meru is installing Obsidian 2.0.1 and checking it. / Obsidian is starting. / Obsidian stopped (…) and starts again in 2 s. |
 | `failed` | Obsidian couldn't install: … / Obsidian failed its check: … / Obsidian keeps stopping: … |

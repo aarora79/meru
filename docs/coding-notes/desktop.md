@@ -541,7 +541,7 @@ fields draws a new card with `mark` set, which gives those fields an amber
 edge (`.connector-field.needs`) and moves the cursor to the first. `askFields`
 picks them by `rpc.AskFields`'s rule; `TestAskFieldsMatchesRPC` reads it.
 
-A connector set up by hand gets only Adopt. `adoptDialog` asks the Bridge for
+A connector set up by hand works and needs nothing, so its card says so: a green "Your setup" pill, merud's sentence up to " Optional: " as a plain note, and a line saying Adopt is optional. It gets only Adopt, as a secondary button, not the green one that asks for action. `adoptDialog` asks the Bridge for
 the plan and fills the page's one `<dialog>` with it, each change in an
 ordered list and a table's lines in a `<pre>`, with Cancel, which has the
 focus, and Adopt, which applies. The page has no `window.confirm`: the

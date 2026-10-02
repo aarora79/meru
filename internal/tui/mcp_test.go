@@ -107,8 +107,8 @@ func TestConnHeadingForConnectors(t *testing.T) {
 		t.Errorf("connHeading = %q", got)
 	}
 	// With merud's sentence, the heading says how to adopt it.
-	hand.Sentence = "Obsidian is set up by hand, as the obsidian entry in [[mcp.servers]]. To have Meru run it, run meru mcp adopt obsidian."
-	if got := connHeading(hand); !strings.HasSuffix(got, "· set up by hand · To have Meru run it, run meru mcp adopt obsidian.") {
+	hand.Sentence = "Obsidian runs from your own setup, the obsidian entry in [[mcp.servers]]. There is nothing to do. Optional: meru mcp adopt obsidian lets Meru run and restart it."
+	if got := connHeading(hand); !strings.HasSuffix(got, "· set up by hand · optional: meru mcp adopt obsidian lets Meru run and restart it.") {
 		t.Errorf("connHeading = %q", got)
 	}
 	// A connector that waits for a sign-in shows the link.
