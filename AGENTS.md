@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.4.11**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.4.12**. ROADMAP.md ticks every item from v0.1
 to v0.4:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -61,7 +61,9 @@ v0.4.10 `merud` runs connectors: it installs, starts and restarts the Obsidian
 server and SearXNG from pinned manifests, and waits for Ollama when it's down.
 Since v0.4.11 it runs Google too, the clients and the installer set up, fix and
 adopt connectors through `merud`, and `web_fetch` reads pages that need
-JavaScript through a headless Chrome (#101). Outside the milestones,
+JavaScript through a headless Chrome (#101). Since v0.4.12 both clients chart
+use on a Usage screen from `meru.db`, `merud` serves `/metrics` for a Prometheus
+the user runs, and the Grafana stack is gone (#107). Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
 through `make release`, a one-line installer, and a Mac installer on a disk image
