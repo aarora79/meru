@@ -2,7 +2,7 @@ module github.com/aarora79/meru
 
 go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/term v0.46.0
 )
