@@ -141,15 +141,15 @@ retrieval = "auto"
 level = "info"
 
 [observability]
-# Settings → Usage in the app, and /usage in meru chat, chart your use and
+# The Usage screen in the app, and /usage in meru chat, chart your use and
 # speed from merud's own records with nothing set here. The keys below are
 # for your own tools, and merud refuses any address off this machine.
 #
-# Serve your metrics for Prometheus at http://<address>/metrics. Empty
-# serves nothing. Point your Prometheus at it, or read it with curl; the
-# counters start again from zero each time merud starts. For example:
-#   prometheus = "127.0.0.1:9464"
-prometheus       = ""
+# To serve your metrics for Prometheus at http://127.0.0.1:9464/metrics,
+# uncomment the next line and restart merud. Point your Prometheus at that
+# address, or read it with curl; the counters start again from zero each time
+# merud starts. Left commented out, merud serves nothing.
+# prometheus       = "127.0.0.1:9464"
 # Push metrics and traces over OTLP/HTTP to a collector you run on this
 # machine, such as an OpenTelemetry Collector. Empty turns the push off.
 #   otlp_endpoint = "http://127.0.0.1:4318"

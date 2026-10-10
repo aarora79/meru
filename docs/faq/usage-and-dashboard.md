@@ -21,7 +21,9 @@ the slowest tasks of the week, and tool calls by outcome. A task is one
 question or request that Meru answered. In the desktop app each slow task
 links to its chat. `/usage by model` adds a row per answer model: tasks, time to the first token, speed, tool calls and bad calls.
 
-**In Prometheus.** Add this to `~/.meru/config.toml` and restart `merud`:
+**In Prometheus.** In `~/.meru/config.toml`, under `[observability]`, take the
+`# ` off the `prometheus` line, or add the line if your file is older, and
+restart `merud`:
 
 ```toml
 [observability]

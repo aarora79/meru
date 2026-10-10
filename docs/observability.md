@@ -40,8 +40,9 @@ the tools whose calls failed.
 
 ## Serve `/metrics` for Prometheus
 
-**1. Turn the page on.** Add this to `~/.meru/config.toml`, under
-`[observability]`, and restart `merud`:
+**1. Turn the page on.** In `~/.meru/config.toml`, under `[observability]`,
+take the `# ` off the `prometheus` line, or add the line if your file is older,
+and restart `merud`:
 
 ```toml
 [observability]

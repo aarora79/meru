@@ -2264,8 +2264,9 @@ show how much you use Meru, with charts of tasks, tokens and time to first token
 per day, the slowest tasks of the week and the tools whose calls failed. They read `meru.db`, so
 they need nothing else running.
 
-To read the same numbers in a Prometheus you run, add one line to
-`~/.meru/config.toml` and restart `merud`:
+To read the same numbers in a Prometheus you run, take the `# ` off the
+`prometheus` line under `[observability]` in `~/.meru/config.toml`, or add the
+line if your file is older, and restart `merud`:
 
 ```toml
 [observability]
