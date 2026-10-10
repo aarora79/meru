@@ -167,7 +167,7 @@ Create the folder from the table above, then write the issue file.
 - From a script: {`meru run --json` event, or "nothing new"}
 
 ## Acceptance criteria
-- [ ] {Observable from a client, the store, a transcript or the dashboard}
+- [ ] {Observable from a client, the store, a transcript or the Usage screen}
 - [ ] {...}
 
 ## Out of scope
@@ -390,8 +390,8 @@ CREATE TABLE IF NOT EXISTS {table} (
 |-----------|-------|-------------------------------------|
 
 Use GenAI and MCP semantic-convention names where they exist. No prompt or response
-text in spans unless `capture_content = true`. Add a dashboard panel in
-`deploy/observability/dashboards/` if the metric answers a question the owner will ask.
+text in spans unless `capture_content = true`. Add it to the Usage screen
+(`internal/store/usagedetail.go`) if the metric answers a question the owner will ask.
 
 ## 14. Performance
 Meru serves one user on one machine, so the questions are local ones:
@@ -510,7 +510,7 @@ programs, secrets, file modes, incognito, the desktop page.
 **Verdict:**
 
 ## SRE / observability (Monitor)
-Can you tell from Grafana or `merud.log` where a slow or failed turn spent its time?
+Can you tell from a trace, the Usage screen or `merud.log` where a slow or failed turn spent its time?
 Span names, metric cardinality, time to first token, restart under launchd or systemd,
 rebuild time, what happens when Ollama or an MCP server is down.
 - ...
@@ -671,10 +671,10 @@ go test ./internal/config -run TestExampleIsTemplate
 - [ ] Default, validation error message, and the Settings screen or slash command if any
 
 ## 7. Observability
-With the stack from `deploy/observability/` running and
-`otlp_endpoint = "http://127.0.0.1:4318"`:
+With `prometheus = "127.0.0.1:9464"`, and an OTLP collector at
+`otlp_endpoint = "http://127.0.0.1:4318"` for traces:
 - [ ] Span `meru.{stage}` appears under `meru.turn`
-- [ ] Metric `meru.{name}` shows in Grafana with bounded attributes only
+- [ ] Metric `meru.{name}` shows at `/metrics` with bounded attributes only
 - [ ] With `capture_content = false`, no prompt or response text in any span
 - [ ] `merud.log` holds no question or answer text at `debug`
 

@@ -16,7 +16,7 @@ import {
   appendToken, approvalCard, thumb,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
-import { openSettings, settingsPanel, policyWords } from "./settings.js";
+import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
 import { connectorProgress } from "./connectors.js";
 import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
@@ -38,7 +38,7 @@ const SCOPES = [
 ];
 
 const state = {
-  view: "chat", // "chat", "settings" or "setup"
+  view: "chat", // "chat", "settings", "usage" or "setup"
   session: "", // the open conversation's ID; "" for a new one
   // incognito is true while the open chat is an incognito one: merud
   // keeps it in memory only, and the page tells merud to forget it when
@@ -151,9 +151,11 @@ function showView(view) {
   state.view = view;
   $("chat-view").hidden = view !== "chat";
   $("settings-view").hidden = view !== "settings";
+  $("usage-view").hidden = view !== "usage";
   $("setup-view").hidden = view !== "setup";
   $("app").classList.toggle("no-panel", view === "setup");
   $("open-settings").setAttribute("aria-current", String(view === "settings"));
+  $("open-usage").setAttribute("aria-current", String(view === "usage"));
   drawPanel();
   if (view === "chat") $("question").focus();
 }
@@ -168,14 +170,30 @@ const pages = {
   status: () => state.status,
   refreshStatus: () => loadStatus(),
   openSettings: (section, focus) => goSettings(section, focus),
+  openUsage: () => goUsage(),
   openSetup: () => goSetup(),
+  // chatTitle and openChat let the Usage section name and open a chat from
+  // its slowest questions. A chat the rail doesn't list has no title here.
+  chatTitle: (id) => (state.sessions.find((x) => x.id === id) || {}).title || "",
+  openChat: (id, title) => openSession(state.sessions.find((x) => x.id === id) || { id, title }),
 };
 
 // goSettings opens Settings at section, and at the connection focus
-// when given.
+// when given. Usage has its own screen now, so "usage" opens that.
 function goSettings(section, focus) {
+  if (section === "usage") {
+    goUsage();
+    return;
+  }
   showView("settings");
   openSettings($("settings-view"), section || "connections", focus, pages);
+}
+
+// goUsage opens the Usage screen, which asks merud for fresh numbers each
+// time.
+function goUsage() {
+  showView("usage");
+  openUsage($("usage-view"), pages);
 }
 
 // goSetup opens the Setup screen.
@@ -945,7 +963,7 @@ function loadStatus() {
       state.setupShown = true;
       goSetup();
     }
-    if (state.view === "settings") drawPanel();
+    if (state.view === "settings" || state.view === "usage") drawPanel();
   });
 }
 
@@ -1055,7 +1073,7 @@ function setRail(open) {
 function drawPanel() {
   const body = $("panel-body");
   body.replaceChildren();
-  if (state.view === "settings") {
+  if (state.view === "settings" || state.view === "usage") {
     $("panel-title").textContent = "On this Mac";
     settingsPanel(body, state.status);
     return;
@@ -1243,6 +1261,8 @@ function wire() {
   $("mini-new").append(icon("plus", 18));
   $("mini-chats").append(icon("chats", 18));
   $("mini-settings").append(icon("sliders", 18));
+  $("mini-usage").append(icon("chart", 18));
+  $("open-usage").prepend(icon("chart", 16), document.createTextNode(" "));
   $("open-settings").prepend(icon("sliders", 16), document.createTextNode(" "));
   $("share").prepend(icon("share", 15), document.createTextNode(" "));
   $("attach").append(icon("clip", 17));
@@ -1267,6 +1287,8 @@ function wire() {
     $("search").focus();
   });
   $("mini-settings").addEventListener("click", () => goSettings("connections"));
+  $("mini-usage").addEventListener("click", goUsage);
+  $("open-usage").addEventListener("click", goUsage);
   $("open-settings").addEventListener("click", () => goSettings("connections"));
   // The logo and the name at the top of the rail open About in Settings.
   $("open-about").addEventListener("click", () => goSettings("about"));

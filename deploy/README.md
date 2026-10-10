@@ -1,14 +1,11 @@
 # deploy
 
-Files that run Meru as a service and show what it is doing:
+Files that run Meru as a service:
 
 | Path | What it does |
 | --- | --- |
 | `launchd/com.meru.merud.plist` | starts `merud` at login on macOS and restarts it if it exits |
 | `systemd/merud.service` | the same on Linux, as a systemd user unit |
-| `observability/compose.yaml` | a local Grafana stack that receives `merud`'s metrics and traces |
-| `observability/dashboards/meru.json` | the Meru dashboard that stack loads |
-| `observability/dashboards/meru-usage.json` | the Meru usage dashboard: totals for the chosen range, then one bar per hour over the last 24 hours |
 
 All the steps below assume you built and installed `merud` with:
 
@@ -84,11 +81,8 @@ journalctl --user -u merud -f
 Meru has no Windows service wrapper yet; that is future work. Until then, start
 `merud.exe` by hand or from a Task Scheduler task that runs at log on.
 
-## Observability stack
+## Metrics
 
-`observability/compose.yaml` runs one container, `grafana/otel-lgtm`, which holds an
-OpenTelemetry Collector, Prometheus, Tempo, Loki and Grafana, with Meru's two
-dashboards in `observability/dashboards/`.
-[docs/observability.md](../docs/observability.md) shows how to start it, point
-`merud` at it, read the dashboards, query the metrics from the command line and
-stop it.
+Meru needs no dashboard stack. The Usage page in both clients charts its numbers,
+and `[observability] prometheus` serves them to a Prometheus you run.
+[docs/observability.md](../docs/observability.md) shows both.

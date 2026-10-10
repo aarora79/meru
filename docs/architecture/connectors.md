@@ -700,15 +700,15 @@ range, `npx` or `uvx` with no exact version, an image with no digest, and a file
 fetched from a branch such as `main`. Meru's own `releases/latest` link passes,
 because it fetches Meru and not a dependency.
 
-Three places break the rule today and keep working, each listed in the test
+Two places break the rule today and keep working, each listed in the test
 with a reason. Step 4 took three off: `meru setup`'s SearXNG recipe and the two
 docs that repeated it. Step 5 took six: the Google start commands in the
 catalog, the installer, `running.md`, `google-setup.md` and the catalog's
 coding note, which now all run `uvx workspace-mcp==1.30.0`, the Google
 connector's own pin, and the catalog's install hint. Step 6 took the
 installer's `searxng:latest`: the installer hands web search to `merud`, which
-runs the pinned image. The other three stay: an Ollama model tag, a
-made-up server name in an example, and the local Grafana stack. The list can only shrink, since an entry that no longer matches anything
+runs the pinned image. Dropping the local Grafana stack took one more. Two stay: an Ollama model tag and a
+made-up server name in an example. The list can only shrink, since an entry that no longer matches anything
 also fails the test.
 
 A pin moves only in a Meru release. Its developers pick the new version, test

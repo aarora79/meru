@@ -9,8 +9,8 @@ Meru मेरु v0.4.3 lite · minic… ● connected
   │ gemma4:26b-mxfp8          38       │
   │ (not recorded)            12       │
   │                                    │
-  │ Every answered question, by the    │
-  │ model that wrote the answer. CALLS │
+  │ Every finished task, by the model  │
+  │ that wrote the answer. CALLS       │
   │ counts tool calls, and BAD CALLS   │
   │ the ones Meru couldn't run as the  │
   │ model wrote them. CAPPED counts    │

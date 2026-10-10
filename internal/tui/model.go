@@ -405,6 +405,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case usageMsg:
 		m.applyUsage(msg)
 		return m, nil
+	case usageDetailMsg:
+		m.applyUsageDetail(msg)
+		return m, nil
 	case meMsg:
 		m.applyMe(msg)
 		return m, nil

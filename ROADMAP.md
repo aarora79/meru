@@ -11,7 +11,8 @@ Each milestone is useful on its own. We ship them in this order.
 - Model tiers (`fast`, `main`, `embed`) kept warm in Ollama; `lite` profile by default,
   `full` profile in config
 - OpenTelemetry metrics + traces for turns and model calls, OTLP export (loopback only)
-- `deploy/` observability stack (`grafana/otel-lgtm`) with a Meru dashboard
+- `deploy/` observability stack (`grafana/otel-lgtm`) with a Meru dashboard; the
+  Usage page and `/metrics` replaced it after v0.4.11 (#106)
 - `meru "..."` for one question (plain streamed text) and `meru chat`, a terminal UI
   built with Bubble Tea
 - `config.toml` + `~/.meru/` layout
@@ -151,6 +152,8 @@ No milestone names these, and each is on `main`:
 - `web_fetch` reads pages that build their text with JavaScript, through a
   headless Chrome that `merud` installs on first need and runs for one page at a
   time behind its own proxy (#100)
+- Charts on the Usage page in both clients, from `meru.db`, and a `/metrics` page
+  for a Prometheus you run, in place of the Grafana stack (#106)
 
 ## Headless mode
 

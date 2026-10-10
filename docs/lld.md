@@ -791,6 +791,33 @@ the probe and writes the catalog's lists.
    answer. `store.turnsOf` reads that line when it rebuilds `turns`, and
    `Store.UsageByModel` adds the rows up for `/usage by model`.
 
+### The Usage screen, function by function
+
+1. **`internal/desktop/web/js/settings.js` → `usage`** asks the Bridge for the
+   windows, draws the table, then calls `bridge.usageDetail()`. In `meru chat`,
+   `usageCommand` sends both requests at once with `tea.Batch`.
+2. **`internal/desktop/settings.go` → `Bridge.UsageDetail`** sends `usage` with
+   `Kind` `detail`, and turns an older `merud`'s plain reply into `errOldMerud`.
+3. **`cmd/merud/main.go` → `handleUsage`** calls `store.UsageDetail(ctx,
+   time.Now())`, sets `Metrics` to the `/metrics` address, and emits one
+   `usage_detail` event.
+4. **`internal/store/usagedetail.go` → `UsageDetail`** runs three queries over
+   `turns` and `tool_calls`, groups turns into local days in Go, and works out
+   each day's p50 and p95 by nearest rank.
+5. **The page** draws four SVG charts and three tables; the Prometheus queries
+   tab shows `Metrics` or the line that turns it on.
+
+### `/metrics`, function by function
+
+1. **`cmd/merud/main.go` → `serve`** calls `listenMetrics` after the socket
+   when `[observability] prometheus` is set, and `serveMetrics` adds the server
+   and its `Shutdown` to the errgroup.
+2. **`internal/obs/setup.go` → `setup`** adds a `ManualReader` to the meter
+   provider beside the OTLP reader, if any.
+3. **`internal/obs/prometheus.go` → `MetricsHandler`** checks the path, the
+   `Host` and the method, calls `manual.Collect`, and `writeText` writes each
+   metric in Prometheus's text format.
+
 ### `meru mcp` and `/mcp`, function by function
 
 1. **`cmd/meru/mcp.go` → `mcpStatus`** sends `mcp_status` and collects the rows,

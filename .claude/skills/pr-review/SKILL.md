@@ -59,7 +59,7 @@ Merge Specialist, Go Mentor and Chief Architect review every PR. Add the others 
 | `internal/dispatch/**`, `internal/mcp/**`, `internal/a2a/**`, `internal/commands/**`, `internal/builtin/**` | AI/Agent, Security, Go Developer, SRE |
 | `internal/catalog/**`, `internal/secrets/**`, `internal/config/**` | Security, Go Developer, Release Engineer |
 | `internal/store/**`, `internal/retrieve/**`, `internal/index/**`, `internal/transcript/**` | Go Developer, Security, SRE |
-| `internal/obs/**`, `deploy/observability/**` | SRE, Security (loopback, content capture) |
+| `internal/obs/**`, `cmd/merud/metrics.go` | SRE, Security (loopback, content capture) |
 | `internal/opener/**`, `internal/loopback/**` | Security, Go Developer |
 | `internal/policy/**` | Security, Chief Architect (a weaker policy test is a weaker non-negotiable) |
 | `Makefile`, `.github/**`, `scripts/**`, `deploy/launchd/**`, `deploy/systemd/**` | Release Engineer, Security |

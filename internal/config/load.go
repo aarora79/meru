@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"maps"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -284,6 +285,11 @@ func validate(cfg Config) error {
 			add("observability.otlp_endpoint: %w", err)
 		}
 	}
+	if o.Prometheus != "" {
+		if err := checkPrometheus(o.Prometheus); err != nil {
+			add("observability.prometheus %q: %w", o.Prometheus, err)
+		}
+	}
 	if d, err := time.ParseDuration(o.MetricsInterval); err != nil || d <= 0 {
 		add("observability.metrics_interval %q must be a positive duration such as \"10s\"", o.MetricsInterval)
 	}
@@ -525,4 +531,24 @@ func ProfileModels(name string) (Models, bool) {
 func renamedNetwork(k toml.Key) bool {
 	return len(k) == 3 && k[2] == "network" &&
 		((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
+}
+
+// checkPrometheus fails unless addr is host:port with a loopback host and a
+// port from 1 to 65535, such as 127.0.0.1:9464. merud listens there, so the
+// rule is the same one loopback.CheckURL holds for every address merud uses.
+func checkPrometheus(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("write it as host:port, such as 127.0.0.1:9464")
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("the port must be a number from 1 to 65535")
+	}
+	if host == "" {
+		return fmt.Errorf("name the host, such as 127.0.0.1; an empty host listens on every network")
+	}
+	if err := loopback.CheckURL("http://" + addr); err != nil {
+		return fmt.Errorf("%w; merud serves metrics on this machine only", err)
+	}
+	return nil
 }

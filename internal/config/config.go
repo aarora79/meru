@@ -165,6 +165,11 @@ type Observability struct {
 	Traces bool `toml:"traces"`
 	// CaptureContent puts prompt and response text into spans. Off by default.
 	CaptureContent bool `toml:"capture_content"`
+	// Prometheus is the loopback address, host:port such as
+	// 127.0.0.1:9464, where merud serves its metrics for Prometheus at
+	// /metrics. Empty, the default, serves nothing. A non-loopback host is
+	// refused.
+	Prometheus string `toml:"prometheus"`
 }
 
 // Log controls merud.log.

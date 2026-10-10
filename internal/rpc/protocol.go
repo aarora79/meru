@@ -381,6 +381,10 @@ const (
 	EventLog EventType = "log"
 	// EventUsage answers OpUsage, in Usage.
 	EventUsage EventType = "usage"
+	// EventUsageDetail answers OpUsage with Kind UsageDetail, in
+	// UsageDetail. An older merud answers that request with "usage"
+	// instead, which a client takes as "charts need a newer merud".
+	EventUsageDetail EventType = "usage_detail"
 	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories. On
 	// an OpAsk reply it lists the memories recall put in this turn's
 	// prompt, before the first "token"; a turn that recalled none sends
@@ -470,6 +474,8 @@ type Event struct {
 	Log     []LogEntry   `json:"log,omitempty"`
 	// Usage is set on a "usage" event.
 	Usage []UsageWindow `json:"usage,omitempty"`
+	// UsageDetail is set on a "usage_detail" event.
+	UsageDetail *UsageDetailReply `json:"usage_detail,omitempty"`
 	// Memories is set on a "memories" event.
 	Memories []MemoryInfo `json:"memories,omitempty"`
 	// Skills is set on a "skills" event, and on a "route" event that
@@ -736,6 +742,78 @@ const (
 // UsageByModel is the Request.Kind that asks OpUsage for one window per
 // answer model.
 const UsageByModel = "model"
+
+// UsageDetail is the Request.Kind that asks OpUsage for the dashboard: the
+// last UsageDays days day by day, the slowest questions of the last
+// SlowestDays days, tool calls by outcome, and use by model. merud answers
+// with one "usage_detail" event.
+const UsageDetail = "detail"
+
+// The dashboard's windows and list sizes.
+const (
+	UsageDays      = 30               // days the per-day numbers cover, today included
+	SlowestDays    = 7                // days the slowest questions come from
+	SlowestCount   = 10               // how many slowest questions the reply holds
+	ToolsCount     = 12               // how many tools the reply holds, busiest first
+	MetricsExample = "127.0.0.1:9464" // the [observability] prometheus value the clients suggest
+)
+
+// UsageDetailReply is the dashboard: every number comes from meru.db's
+// turns and tool_calls, which rebuild from the transcripts, so it needs
+// nothing else running.
+type UsageDetailReply struct {
+	// Days holds the last UsageDays local days, oldest first, a day with
+	// no questions included as zeros.
+	Days []UsageDay `json:"days"`
+	// Slowest holds the slowest answered questions of the last SlowestDays
+	// days, slowest first.
+	Slowest []SlowQuestion `json:"slowest"`
+	// Tools holds each tool's calls of the last UsageDays days by outcome,
+	// busiest first.
+	Tools []ToolOutcomes `json:"tools"`
+	// Models is what a UsageByModel request returns.
+	Models []UsageWindow `json:"models"`
+	// Metrics is the address merud serves Prometheus metrics at, such as
+	// "http://127.0.0.1:9464/metrics", or "" when [observability]
+	// prometheus is off.
+	Metrics string `json:"metrics"`
+}
+
+// UsageDay is one local calendar day's answered questions.
+type UsageDay struct {
+	// Date is the local date, "2026-10-09".
+	Date      string `json:"date"`
+	Questions int    `json:"questions"`
+	TokensIn  int64  `json:"tokens_in"`
+	TokensOut int64  `json:"tokens_out"`
+	// TTFTp50Millis and TTFTp95Millis are the day's times to first token
+	// at the 50th and 95th percentile, by nearest rank; 0 on a day with
+	// none.
+	TTFTp50Millis int64 `json:"ttft_p50_ms"`
+	TTFTp95Millis int64 `json:"ttft_p95_ms"`
+}
+
+// SlowQuestion is one slow answered question. It holds no question text:
+// a client names it from its own chat list, by Session.
+type SlowQuestion struct {
+	Session string `json:"session"`
+	// At is when the question came, RFC 3339.
+	At       string `json:"at"`
+	Route    string `json:"route"`
+	Model    string `json:"model"`
+	Millis   int64  `json:"ms"`
+	TTFT     int64  `json:"ttft_ms"`
+	TokensIn int64  `json:"tokens_in"`
+}
+
+// ToolOutcomes counts one tool's calls by outcome: "ok", "error",
+// "denied", "declined", "cancelled" or "timeout".
+type ToolOutcomes struct {
+	Tool     string         `json:"tool"`
+	Kind     string         `json:"kind"`
+	Calls    int            `json:"calls"`
+	Outcomes map[string]int `json:"outcomes"`
+}
 
 // UsageWindow is how much Meru was used in one window of time, counting
 // answered questions only: a turn that failed or was cancelled has no

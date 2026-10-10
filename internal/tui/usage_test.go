@@ -5,9 +5,12 @@
 package tui
 
 import (
+	"context"
 	"errors"
+	"iter"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,8 +21,8 @@ import (
 // usageReply is merud's answer to OpUsage in these tests.
 var usageReply = []rpc.Event{{Type: rpc.EventUsage, Usage: usageFixture}, {Type: rpc.EventDone}}
 
-// openUsageBox types /usage, presses Enter, runs the usage request against
-// merud and feeds its answer back, as Bubble Tea would.
+// openUsageBox types /usage, presses Enter, runs the usage requests against
+// merud and feeds their answers back, as Bubble Tea would.
 func openUsageBox(t *testing.T, m Model) Model {
 	t.Helper()
 	m, cmd := update(t, m, typeText("/usage"), press(tea.KeyEnter))
@@ -27,9 +30,27 @@ func openUsageBox(t *testing.T, m Model) Model {
 		t.Fatalf("usage box = %+v after /usage, want it open and waiting", m.usageBox)
 	}
 	if cmd == nil {
-		t.Fatal("/usage returned no command, want the usage request")
+		t.Fatal("/usage returned no command, want the usage requests")
 	}
-	m, _ = update(t, m, cmd())
+	return runBatch(t, m, cmd)
+}
+
+// runBatch runs cmd and feeds its message back. tea.Batch returns a
+// command whose message is a tea.BatchMsg, a list of commands; runBatch
+// runs each of those in turn, as Bubble Tea would.
+func runBatch(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		m, _ = update(t, m, msg)
+		return m
+	}
+	for _, c := range batch {
+		if c != nil {
+			m, _ = update(t, m, c())
+		}
+	}
 	return m
 }
 
@@ -37,8 +58,9 @@ func TestSlashUsageOpensBox(t *testing.T) {
 	merud := &fakeMerud{events: usageReply}
 	m := openUsageBox(t, testModel(merud.ask, newFakeSender()))
 
-	if len(merud.reqs) != 1 || merud.reqs[0].Op != rpc.OpUsage {
-		t.Errorf("requests = %+v, want one usage request", merud.reqs)
+	want := []rpc.Request{{Op: rpc.OpUsage}, {Op: rpc.OpUsage, Kind: rpc.UsageDetail}}
+	if len(merud.reqs) != 2 || merud.reqs[0] != want[0] || merud.reqs[1] != want[1] {
+		t.Errorf("requests = %+v, want %+v", merud.reqs, want)
 	}
 	if len(m.turns) != 0 || m.streaming {
 		t.Errorf("turns = %+v, streaming = %v; /usage must not ask the model", m.turns, m.streaming)
@@ -110,8 +132,8 @@ func TestUsageBoxKeys(t *testing.T) {
 			if m.input.Value() != "" {
 				t.Errorf("input = %q, want the key kept out of it", m.input.Value())
 			}
-			if len(merud.reqs) != 1 {
-				t.Errorf("requests = %d, want only the usage request", len(merud.reqs))
+			if len(merud.reqs) != 2 {
+				t.Errorf("requests = %d, want only the two usage requests", len(merud.reqs))
 			}
 			if tt.streaming && m.streaming {
 				t.Error("still streaming after Ctrl-C")
@@ -263,9 +285,9 @@ func TestLastHour(t *testing.T) {
 	}{
 		{"none", nil, ""},
 		{"no 1h window", []rpc.UsageWindow{{Name: rpc.UsageToday, Turns: 3}}, ""},
-		{"idle hour", []rpc.UsageWindow{{Name: rpc.Usage1h}}, "1h: 0 questions"},
-		{"one question", []rpc.UsageWindow{{Name: rpc.Usage1h, Turns: 1, TokensIn: 950, TokensOut: 120}}, "1h: 1 question · 950 in · 120 out"},
-		{"busy hour", usageFixture, "1h: 4 questions · 18k in · 2.1k out"},
+		{"idle hour", []rpc.UsageWindow{{Name: rpc.Usage1h}}, "1h: 0 tasks"},
+		{"one question", []rpc.UsageWindow{{Name: rpc.Usage1h, Turns: 1, TokensIn: 950, TokensOut: 120}}, "1h: 1 task · 950 in · 120 out"},
+		{"busy hour", usageFixture, "1h: 4 tasks · 18k in · 2.1k out"},
 	}
 	for _, tt := range tests {
 		if got := lastHour(tt.windows); got != tt.want {
@@ -328,5 +350,105 @@ func TestHeaderDropsUsageFirst(t *testing.T) {
 	}
 	if !sawSizesWithoutUsage {
 		t.Error("no width showed the sizes without the usage")
+	}
+}
+
+// detailFixture is a dashboard as merud sends it: 14 days with questions
+// on some, two slow questions, one tool with failed calls and one without,
+// and the /metrics address. The slow questions' times are built from local
+// time, so the box shows "3 Oct 10:12" in any time zone.
+func detailFixture() rpc.UsageDetailReply {
+	var days []rpc.UsageDay
+	first := time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)
+	for i := range 14 {
+		days = append(days, rpc.UsageDay{Date: first.AddDate(0, 0, i).Format(time.DateOnly), Questions: i % 5})
+	}
+	days[13].Questions = 8
+	days[13].TTFTp50Millis, days[13].TTFTp95Millis = 1200, 4800
+	at := func(day, hour, minute int) string {
+		return time.Date(2026, 10, day, hour, minute, 0, 0, time.Local).UTC().Format(time.RFC3339)
+	}
+	return rpc.UsageDetailReply{
+		Days: days,
+		Slowest: []rpc.SlowQuestion{
+			{Session: "s1", At: at(3, 10, 12), Model: "qwen3.6:35b", Millis: 42100, TTFT: 38000},
+			{Session: "s2", At: at(8, 9, 5), Model: "qwen3.6:35b", Millis: 12500, TTFT: 900},
+		},
+		Tools: []rpc.ToolOutcomes{
+			{Tool: "web_fetch", Kind: "builtin", Calls: 12, Outcomes: map[string]int{"ok": 9, "error": 2, "timeout": 1}},
+			{Tool: "datetime", Kind: "builtin", Calls: 4, Outcomes: map[string]int{"ok": 4}},
+		},
+		Metrics: "http://127.0.0.1:9464/metrics",
+	}
+}
+
+// TestUsageBoxDetail checks the dashboard under /usage's table: the bar
+// line, today's time to first token, the slowest questions, only the tools
+// with failed calls, and the Prometheus line, with the address or with how
+// to turn it on. A merud too old for the dashboard leaves a line that says
+// so.
+func TestUsageBoxDetail(t *testing.T) {
+	// byKind answers the windows request and the dashboard request apart,
+	// which fakeMerud, with one list of events, can't.
+	byKind := func(_ context.Context, req rpc.Request, _ rpc.ApproveFunc) iter.Seq2[rpc.Event, error] {
+		return func(yield func(rpc.Event, error) bool) {
+			if req.Kind == rpc.UsageDetail {
+				d := detailFixture()
+				yield(rpc.Event{Type: rpc.EventUsageDetail, UsageDetail: &d}, nil)
+				return
+			}
+			for _, ev := range usageReply {
+				if !yield(ev, nil) {
+					return
+				}
+			}
+		}
+	}
+	m := openUsageBox(t, testModel(byKind, newFakeSender()))
+	if m.usageBox.detail == nil {
+		t.Fatalf("usage box = %+v, want the dashboard", m.usageBox)
+	}
+	text := strings.Join(m.usageDetailLines(m.usageBox, 76), "\n")
+	for _, want := range []string{
+		"Tasks per day, last 14 days (most 8)", "Tokens in per day", "Tokens today:", "█", "26 Sep to 9 Oct",
+		"First token today: p50 1.2s · p95 4.8s",
+		"Slowest this week", "42s  first token 38s", "3 Oct 10:12", "qwen3.6:35b",
+		"web_fetch  12 calls · error 2 · timeout 1",
+		"Prometheus can read these at http://127.0.0.1:9464/metrics",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("dashboard lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "datetime") {
+		t.Errorf("dashboard lists a tool with no failed calls:\n%s", text)
+	}
+
+	m.usageBox.detail.Metrics = ""
+	if text := strings.Join(m.usageDetailLines(m.usageBox, 76), "\n"); !strings.Contains(text, `prometheus = "127.0.0.1:9464"`) {
+		t.Errorf("with /metrics off, the dashboard doesn't say how to turn it on:\n%s", text)
+	}
+
+	// An older merud answers the dashboard request with plain windows.
+	old := openUsageBox(t, testModel((&fakeMerud{events: usageReply}).ask, newFakeSender()))
+	if text := strings.Join(old.usageDetailLines(old.usageBox, 76), "\n"); !strings.Contains(text, "need a newer merud") {
+		t.Errorf("against an older merud the box says:\n%s", text)
+	}
+}
+
+func TestBarLine(t *testing.T) {
+	tests := []struct {
+		in   []int64
+		want string
+	}{
+		{nil, ""},
+		{[]int64{0, 0}, "  "},
+		{[]int64{1, 8, 0, 4}, "▁█ ▄"},
+		{[]int64{1, 1000}, "▁█"},
+	}
+	for _, tt := range tests {
+		if got := barLine(tt.in); got != tt.want {
+			t.Errorf("barLine(%v) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }

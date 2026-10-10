@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -163,6 +164,17 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return err
 	}
 	log.Info("listening", "socket", socketPath)
+	// The /metrics port is claimed next, for the same reason: a port another
+	// program holds stops merud now, with the key to change, rather than
+	// after the models load.
+	var metricsLn net.Listener
+	if addr := cfg.Observability.Prometheus; addr != "" {
+		if metricsLn, err = listenMetrics(addr); err != nil {
+			_ = ln.Close()
+			return err
+		}
+		log.Info("metrics page", "addr", metricsURL(metricsLn))
+	}
 
 	// An errgroup runs each function in its own goroutine and Wait waits
 	// for all of them. gctx is cancelled when ctx is, when stop is
@@ -175,6 +187,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	g, gctx := errgroup.WithContext(ctx)
 	requests := newGate(ollama)
 	g.Go(func() error { return rpc.Serve(gctx, ln, requests.handle, log) })
+	if metricsLn != nil {
+		serveMetrics(gctx, g, metricsLn, log)
+	}
 	// fail stops the server and returns err, for a startup step that
 	// fails once the server runs.
 	fail := func(err error) error {
@@ -274,7 +289,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	outputDir, _ := expandHome(cfg.Skills.OutputDir)
 	svc := services{
 		agent: a, idx: idx, tools: tools, mems: mems, skills: sk, hist: hist, st: st, configPath: configPath,
-		ollama: ollama,
+		ollama: ollama, metrics: metricsURL(metricsLn),
 		save:   saveService{dispatcher: tools.dispatcher, sessionsDir: sessionsDir, outputDir: outputDir, home: home, now: time.Now},
 		models: newModelService(cfg, configPath, outputDir, eng, a, tools.bt.EditConfig, log),
 	}
@@ -336,7 +351,17 @@ func replayTurns(ctx context.Context, st *store.Store, sessionsDir string, log *
 // handleUsage answers OpUsage with one "usage" event: the turns table added
 // up over each usage window, with today, week and month in merud's local
 // time, or, when req.Kind is rpc.UsageByModel, added up per answer model.
-func handleUsage(ctx context.Context, st *store.Store, req rpc.Request, emit func(rpc.Event) error) error {
+// When req.Kind is rpc.UsageDetail it answers with one "usage_detail"
+// event instead: the dashboard, with metrics, the /metrics address or "".
+func handleUsage(ctx context.Context, st *store.Store, req rpc.Request, metrics string, emit func(rpc.Event) error) error {
+	if req.Kind == rpc.UsageDetail {
+		detail, err := st.UsageDetail(ctx, time.Now())
+		if err != nil {
+			return err
+		}
+		detail.Metrics = metrics
+		return emit(rpc.Event{Type: rpc.EventUsageDetail, UsageDetail: &detail})
+	}
 	var windows []rpc.UsageWindow
 	var err error
 	if req.Kind == rpc.UsageByModel {
@@ -364,6 +389,9 @@ type services struct {
 	models     *modelService
 	ollama     *ollamaWatch
 	configPath string
+	// metrics is the /metrics address the Usage page shows, or "" when
+	// [observability] prometheus is off.
+	metrics string
 }
 
 // handler returns the rpc.Handler merud serves: questions go to the agent,
@@ -403,7 +431,7 @@ func handler(svc services) rpc.Handler {
 		case rpc.OpConnectorFix:
 			return tools.handleConnectorFix(ctx, req, svc.ollama, emit)
 		case rpc.OpUsage:
-			return handleUsage(ctx, st, req, emit)
+			return handleUsage(ctx, st, req, svc.metrics, emit)
 		case rpc.OpMemoryList:
 			return mems.handleList(emit)
 		case rpc.OpMemoryAdd:

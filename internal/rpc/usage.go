@@ -35,7 +35,7 @@ func UsageTable(windows []UsageWindow) [][]string {
 		value func(UsageWindow) string
 	}{
 		{"sessions", func(w UsageWindow) string { return ShortCount(int64(w.Sessions)) }},
-		{"questions", func(w UsageWindow) string { return ShortCount(int64(w.Turns)) }},
+		{"tasks", func(w UsageWindow) string { return ShortCount(int64(w.Turns)) }},
 		{"tokens in", func(w UsageWindow) string { return ShortCount(w.TokensIn) }},
 		{"tokens out", func(w UsageWindow) string { return ShortCount(w.TokensOut) }},
 		{"active time", func(w UsageWindow) string { return ShortDuration(w.ActiveMillis) }},
@@ -59,7 +59,7 @@ func UsageTable(windows []UsageWindow) [][]string {
 
 // ModelUsageNote is the line both clients print under the per-model
 // table: what the numbers cover, and what counts as a bad call.
-const ModelUsageNote = "Every answered question, by the model that wrote the answer. " +
+const ModelUsageNote = "Every finished task, by the model that wrote the answer. " +
 	"CALLS counts tool calls, and BAD CALLS the ones Meru couldn't run as the model wrote them. " +
 	"CAPPED counts turns that used every round and wrote no answer."
 

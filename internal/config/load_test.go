@@ -232,6 +232,12 @@ func TestLoadErrors(t *testing.T) {
 		{"tools_threshold nan", "[router]\ntools_threshold = nan", "router.tools_threshold"},
 		{"otlp not loopback", "[observability]\notlp_endpoint = \"http://collector.example.com:4318\"", "observability.otlp_endpoint"},
 		{"otlp all interfaces", "[observability]\notlp_endpoint = \"http://0.0.0.0:4318\"", "observability.otlp_endpoint"},
+		{"prometheus all interfaces", "[observability]\nprometheus = \"0.0.0.0:9464\"", "observability.prometheus"},
+		{"prometheus lan", "[observability]\nprometheus = \"192.168.1.5:9464\"", "observability.prometheus"},
+		{"prometheus hostname", "[observability]\nprometheus = \"example.com:9464\"", "observability.prometheus"},
+		{"prometheus no port", "[observability]\nprometheus = \"127.0.0.1\"", "host:port"},
+		{"prometheus big port", "[observability]\nprometheus = \"127.0.0.1:70000\"", "1 to 65535"},
+		{"prometheus no host", "[observability]\nprometheus = \":9464\"", "name the host"},
 		{"interval bad", "[observability]\nmetrics_interval = \"often\"", "observability.metrics_interval"},
 		{"interval zero", "[observability]\nmetrics_interval = \"0s\"", "observability.metrics_interval"},
 		{"log level unknown", "[log]\nlevel = \"loud\"", `log.level "loud" is unknown`},
@@ -627,5 +633,20 @@ func TestRetrievalDefault(t *testing.T) {
 	}
 	if cfg.Index.Retrieval != RetrievalAuto {
 		t.Errorf("index.retrieval = %q, want %q", cfg.Index.Retrieval, RetrievalAuto)
+	}
+}
+
+// TestPrometheusKey checks the loopback addresses [observability]
+// prometheus takes; TestLoadErrors has the ones it refuses.
+func TestPrometheusKey(t *testing.T) {
+	for _, addr := range []string{"", "127.0.0.1:9464", "[::1]:9464", "localhost:9464"} {
+		cfg, err := Load(writeConfig(t, "[observability]\nprometheus = \""+addr+"\""))
+		if err != nil {
+			t.Errorf("prometheus = %q: %v", addr, err)
+			continue
+		}
+		if cfg.Observability.Prometheus != addr {
+			t.Errorf("prometheus = %q loaded as %q", addr, cfg.Observability.Prometheus)
+		}
 	}
 }

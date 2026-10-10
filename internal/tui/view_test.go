@@ -168,7 +168,8 @@ func TestViewGolden(t *testing.T) {
 				m, _ = update(t, m, pingMsg{index: tt.index}, usageMsg{windows: tt.usage, answered: true})
 			}
 			if tt.usageBox {
-				m, _ = update(t, m, typeText("/usage"), press(tea.KeyEnter), usageMsg{windows: tt.usage, answered: true})
+				m, _ = update(t, m, typeText("/usage"), press(tea.KeyEnter), usageMsg{windows: tt.usage, answered: true},
+					usageDetailMsg{detail: detailFixture()})
 			}
 			if tt.meBox {
 				m, _ = update(t, m, typeText("/me"), press(tea.KeyEnter), meMsg{memories: profileFixture})

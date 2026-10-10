@@ -1931,6 +1931,15 @@ pre {
   color: var(--ink);
 }
 
+.subtabs {
+  margin: 0 0 14px;
+}
+
+.subtabs .tab {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 .section-intro {
   color: var(--ink-3);
 }
@@ -2177,6 +2186,72 @@ pre {
 .log .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* The Usage section's bar charts, two to a row where they fit. Colors
+   come from the theme's variables, so the charts follow light and dark
+   mode. */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px 24px;
+  margin: 16px 0 8px;
+}
+
+.chart-cell {
+  min-width: 0;
+}
+
+.chart-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.chart-note {
+  margin: 2px 0 0;
+  color: var(--caption);
+  font-size: 12px;
+}
+
+.chart-cell svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 6px;
+}
+
+.chart-cell .bar {
+  fill: var(--pine);
+}
+
+.chart-cell .bar.p95 {
+  fill: var(--border-strong);
+}
+
+.chart-cell .axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.chart-cell .grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.chart-cell .tick,
+.chart-cell .axis-title {
+  fill: var(--caption);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.query-label {
+  margin: 12px 0 0;
+  color: var(--caption);
+  font-size: 13px;
 }
 
 .mono {

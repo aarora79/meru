@@ -141,13 +141,21 @@ retrieval = "auto"
 level = "info"
 
 [observability]
-# OpenTelemetry export over OTLP/HTTP. Empty turns export off. merud
-# refuses an endpoint off this machine. To send to the local Grafana stack
-# in deploy/, use:
+# Settings → Usage in the app, and /usage in meru chat, chart your use and
+# speed from merud's own records with nothing set here. The keys below are
+# for your own tools, and merud refuses any address off this machine.
+#
+# Serve your metrics for Prometheus at http://<address>/metrics. Empty
+# serves nothing. Point your Prometheus at it, or read it with curl; the
+# counters start again from zero each time merud starts. For example:
+#   prometheus = "127.0.0.1:9464"
+prometheus       = ""
+# Push metrics and traces over OTLP/HTTP to a collector you run on this
+# machine, such as an OpenTelemetry Collector. Empty turns the push off.
 #   otlp_endpoint = "http://127.0.0.1:4318"
 otlp_endpoint    = ""
-metrics_interval = "10s"   # how often merud sends metrics
-traces           = true    # send traces too, when an endpoint is set
+metrics_interval = "10s"   # how often merud pushes metrics over OTLP
+traces           = true    # push traces too, when an endpoint is set
 capture_content  = false   # put question and answer text into spans
 
 [builtin]

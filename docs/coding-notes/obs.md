@@ -1,7 +1,7 @@
 # obs
 
-**Code:** `internal/obs/` (`doc.go`, `obs.go`, `instruments.go`, `setup.go`, `spans.go`,
-`log.go`, `obs_test.go`, `log_test.go`)
+**Code:** `internal/obs/` (`doc.go`, `obs.go`, `instruments.go`, `setup.go`,
+`prometheus.go`, `spans.go`, `log.go`, `obs_test.go`, `prometheus_test.go`, `log_test.go`)
 **Milestone:** v0.1; the `sessions` section and stage in v0.4
 **Architecture:** [Observability](../../ARCHITECTURE.md#observability)
 
@@ -12,7 +12,9 @@ functions such as `obs.RecordTurn` and `obs.RecordModelCall`, and `obs` turns ea
 into OpenTelemetry (OTel) metrics: numbers such as "this turn took 1.2 s" or "this call
 used 120 input tokens". It can also hand out a tracer for spans, the timed steps inside
 one turn. When config names an endpoint, `obs` sends both to it over OTLP (the
-OpenTelemetry Protocol) on HTTP. The endpoint must be on this machine.
+OpenTelemetry Protocol) on HTTP. When config names a `prometheus` address, `obs`
+also serves the metrics as a `/metrics` page for a Prometheus to read. Both
+addresses must be on this machine.
 
 It also holds the helpers that tie the log to the traces: a `slog` handler that
 stamps each log line with its turn's trace ID, the `gen_ai.chat` span every model
@@ -28,7 +30,10 @@ flowchart LR
     end
     inst --> sdk["OTel SDK: meter provider"]
     sdk -- "every 10 s" --> exp["OTLP/HTTP exporter"]
-    exp -- "POST /v1/metrics" --> lgtm["grafana/otel-lgtm on 127.0.0.1:4318"]
+    exp -- "POST /v1/metrics" --> col["a collector you run, 127.0.0.1:4318"]
+    sdk -- "on each request" --> man["manual reader"]
+    man --> page["MetricsHandler: GET /metrics on 127.0.0.1:9464"]
+    prom["a Prometheus you run"] -- "scrapes" --> page
 ```
 
 Before `Setup`, `current` holds nil, so every record call returns at once.
@@ -53,8 +58,8 @@ Names that start with `gen_ai.` come from the OTel GenAI semantic conventions, a
 shared list of names for AI metrics. Dashboards built for those conventions work
 with Meru unchanged. Names that start with `meru.` cover what the conventions don't.
 
-Each metric carries attributes, the labels a dashboard groups by: model, tier, route.
-The storage behind the dashboard keeps one series per distinct set of labels, so a
+Each metric carries attributes, the labels a query groups by: model, tier, route.
+A metrics store such as Prometheus keeps one series per distinct set of labels, so a
 label that could take any value (a session ID, a file path) would make it grow
 without end. `bounded` guards against that:
 
@@ -68,12 +73,12 @@ func bounded(v string, allowed ...string) string {
 ```
 
 `RecordRoute(ctx, "fifth-route", "ok")` records the route as `other`. A bug that
-passes the wrong value shows up as an `other` line on the dashboard rather than as
+passes the wrong value shows up as an `other` line in a query rather than as
 thousands of new series.
 
 `newInstruments` creates one handle per metric and sets its unit and histogram
 buckets. A histogram counts values into buckets (under 0.5 s, under 1 s, and so on)
-so Grafana can work out percentiles. The SDK's default buckets suit milliseconds,
+so Prometheus can work out percentiles. The SDK's default buckets suit milliseconds,
 and Meru records seconds, so each histogram gets its own edges. Time to first token
 has an edge at exactly 1 s, the v0.1 target.
 
@@ -122,8 +127,8 @@ v0.4 adds `sessions` to two bounded sets: the prompt sections of
 `meru.context.tokens`, for the "From earlier conversations" section, and the
 retrieval stages of `meru.retrieval.duration`, for the recall of past sessions.
 
-Three functions (v0.3) feed the "Meru usage" dashboard, which shows the same
-trends as `meru usage`:
+Three functions (v0.3) record the same trends `meru usage` shows, so a
+Prometheus reading `/metrics` can chart them over a longer time:
 
 - `RecordSession` adds one to `meru.sessions`, by source, when a turn starts a
   new session.
@@ -144,7 +149,7 @@ it leaves out turns that failed, so its totals match the `turns` table that
 `RecordModelCall` writes five metrics from one struct. It works out decode speed as
 `EvalDuration / OutputTokens`, using Ollama's own clock, and skips it when either
 number is zero. It skips time to first token for calls that didn't stream. It records
-model load time on every call, zero included, so the dashboard can count how many
+model load time on every call, zero included, so a query can count how many
 calls paid for a cold load.
 
 `RecordMalformedCall(ctx, model)` adds one to `meru.model.malformed_calls`. The
@@ -162,15 +167,24 @@ where they can't grow a metric's series.
 
 `Setup` runs once when `merud` starts:
 
-1. With no endpoint, it installs the ID-only tracer provider (below), stores
-   `capture_content` and returns a shutdown function that does nothing.
+1. With neither `otlp_endpoint` nor `prometheus` set, it installs the ID-only
+   tracer provider (below), stores `capture_content` and returns a shutdown
+   function that does nothing.
 2. `loopbackURL` checks the endpoint. It accepts a literal loopback address
    (`127.0.0.1`, `::1`) and the name `localhost`, and only when every address
    `localhost` resolves to is loopback. It refuses every other name without looking
    it up, since DNS could point that name somewhere else later.
-3. It builds a metric exporter and, when `traces = true`, a trace exporter. Both get
-   `noProxy`, so an `HTTPS_PROXY` variable can't route the data off the machine.
-4. It installs the providers with `otel.SetMeterProvider` and `otel.SetTracerProvider`,
+3. With an endpoint, it builds a metric exporter and, when `traces = true`, a
+   trace exporter. Both get `noProxy`, so an `HTTPS_PROXY` variable can't route
+   the data off the machine. It also hands OTel an error handler,
+   `exportErrors`, that logs a failed push at most once an hour, so a collector
+   that isn't running doesn't fill the log every 10 seconds.
+4. With `prometheus` set, it adds a `ManualReader` to the same meter provider. A
+   manual reader collects only when asked, which is what `/metrics` wants: one
+   collection per request. Each reader sees every instrument, so the push and
+   the page report the same numbers. The reader and the resource go in `state`
+   for the handler.
+5. It installs the providers with `otel.SetMeterProvider` and `otel.SetTracerProvider`,
    starts the Go runtime metrics (heap, garbage collection, goroutines) and stores the
    new state. With `traces = false` it installs the ID-only tracer provider instead.
 
@@ -186,6 +200,63 @@ so a release build reports `v0.4.1`. Every other build leaves it empty, and
 `BuildVersion` falls back to what `debug.ReadBuildInfo` holds: a tag for
 `go install …@v0.4.1`, or `(devel)`. [releasing.md](../releasing.md) shows the
 flag.
+
+### prometheus.go
+
+`MetricsHandler` returns the `http.Handler` that `merud` serves at `/metrics`.
+Before it collects anything it makes three checks, in this order:
+
+1. The path must be `/metrics`, or the answer is 404.
+2. The `Host` header must name this machine: `127.0.0.1`, `localhost` or `::1`,
+   with or without a port. Anything else gets 403. A browser sends the name it
+   used in the URL, so a web page at `evil.example`, whose DNS points at
+   127.0.0.1, sends `Host: evil.example` and can't read the page. This is the
+   defence against DNS rebinding.
+3. The method must be GET or HEAD, or the answer is 405 with an `Allow` header.
+
+Then it calls `manual.Collect`, which fills a `metricdata.ResourceMetrics`: the
+SDK's snapshot of every instrument. `writeText` turns that into Prometheus's text
+format. A counter and a histogram with one label each come out like this:
+
+```text
+# HELP meru_tool_calls_total Tool calls.
+# TYPE meru_tool_calls_total counter
+meru_tool_calls_total{gen_ai_tool_name="web_fetch",meru_outcome="ok"} 2
+# TYPE meru_turn_duration_seconds histogram
+meru_turn_duration_seconds_bucket{meru_route="direct",le="1"} 1
+meru_turn_duration_seconds_bucket{meru_route="direct",le="5"} 2
+meru_turn_duration_seconds_bucket{meru_route="direct",le="+Inf"} 3
+meru_turn_duration_seconds_sum{meru_route="direct"} 11.5
+meru_turn_duration_seconds_count{meru_route="direct"} 3
+```
+
+`promName` makes the names: `sanitize` turns the dots into `_`, the unit adds a
+suffix (`s` adds `_seconds`), and a counter ends in `_total`. A bucket line
+counts every value at or under its `le` ("less than or equal"), so the SDK's
+count per bucket becomes a running total, and the last bucket, `+Inf`, holds
+them all.
+
+`addMetric` picks the code for each kind of data with a type switch:
+
+```go
+switch d := m.Data.(type) {
+case metricdata.Sum[int64]:
+    ...
+case metricdata.Histogram[float64]:
+    ...
+default:
+    log.Debug("metrics: left out a kind the text format here doesn't write", ...)
+}
+```
+
+`metricdata.Sum[int64]` and `metricdata.Sum[float64]` are one generic type with
+two type arguments, and each is its own case. A kind Meru doesn't make, such as an
+exponential histogram, falls to `default` and is left out rather than written
+half right.
+
+Families come out sorted by name, and each family's series sorted by their
+labels, so two scrapes of the same numbers give the same text. A histogram's
+lines stay together as one series, so sorting never splits its buckets.
 
 ### spans.go
 
@@ -251,6 +322,11 @@ providers so the last batch reaches the collector.
 - **Interfaces** — `traceHandler` satisfies `slog.Handler` by having its four
   methods; there is no "implements" keyword. More in
   [go-basics/interfaces.md](go-basics/interfaces.md).
+- **Type switches** — `addMetric` branches on the type inside `m.Data`. More in
+  [go-basics/type-switches.md](go-basics/type-switches.md).
+- **HTTP handlers** — `MetricsHandler` returns an `http.HandlerFunc`, a plain
+  function that the `net/http` server calls once per request. More in
+  [go-basics/http-servers.md](go-basics/http-servers.md).
 
 ## Try it
 
@@ -263,17 +339,17 @@ in-memory exporter and span recorder, and run the real exporters against an
 `httptest` server on 127.0.0.1. `log_test.go` logs into a buffer and checks that
 the trace ID appears only on lines logged with a span in their context.
 
-To see the dashboard, start the stack and point `merud` at it (details in
+`prometheus_test.go` records one metric of each kind and compares the text
+format line by line, sends requests with each kind of `Host` header, and checks
+that export errors reach the log once an hour.
+
+To see the page, set `prometheus = "127.0.0.1:9464"` under `[observability]`,
+restart `merud`, ask a question and run (details in
 [observability.md](../observability.md)):
 
 ```sh
-docker compose -f deploy/observability/compose.yaml up -d
-# then browse to http://127.0.0.1:3000 (user admin, password admin)
+curl -s http://127.0.0.1:9464/metrics | grep '^meru_turn'
 ```
-
-Grafana opens on the Meru dashboard. The "Meru usage" dashboard, in the same
-folder, shows totals for the chosen time range, then one bar per hour over the
-last 24 hours.
 
 ## Why it's built this way
 
@@ -299,3 +375,13 @@ and exports nothing.
 checking the answer would accept a name that points at 127.0.0.1 today and at a
 remote host tomorrow. Only `localhost` gets resolved, and every address must be
 loopback.
+
+**Writing the text format by hand.** The Prometheus client library would write
+the page, but it brings its own registry and a dozen modules, and the
+OpenTelemetry bridge to it brings more. The format needs about 150 lines: a
+`# TYPE` line, then one line per value. A test compares the output with a
+fixed text, and `promtool check metrics` reads it cleanly.
+
+**The Host check.** A loopback address keeps other machines out, but a web page
+in the user's own browser runs on this machine. Checking `Host` is the standard
+defence, and costs one comparison.

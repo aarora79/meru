@@ -384,6 +384,17 @@ chat`'s `/usage by model` shows them, with `ShortMillis` for the time to first
 token (`820ms`, `1.2s`) and tokens per second worked out as `TokensOut` over
 `EvalMillis`. `ModelUsageNote` goes under it and says what the columns count.
 
+`UsageDetail` is the third `Kind`, the one the Usage screen and the `/usage` box
+send. `merud` answers it with one `usage_detail` event, whose `UsageDetail`
+field holds a `UsageDetailReply`: `Days` (one `UsageDay` per local day,
+oldest first, with tasks, tokens and the p50 and p95 time to first token),
+`Slowest` (`SlowQuestion` rows), `Tools` (`ToolOutcomes`, a count per
+outcome in a map), `Models` (the by-model windows) and `Metrics`, the
+`/metrics` address or `""`. `UsageDays`, `SlowestDays`, `SlowestCount` and
+`ToolsCount` fix the sizes in one place both sides read. An older `merud`
+doesn't know the kind and answers with plain windows, so a client that wants
+the detail checks the event's type, not only that a reply came.
+
 ### client.go
 
 `Do` dials the socket, sends the request and returns the events as an

@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `metrics.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -131,6 +131,19 @@ Ollama never loads the answer model twice. See the agent's coding note,
 and `index_status` to the index service, `tools` and `log` to the tool service,
 the three memory ops to the memory service, the three skill ops to the skill
 service, and `usage` to `handleUsage`. The rpc server answers `ping` itself.
+`handleUsage` answers kind `detail` with one `usage_detail` event from
+`store.UsageDetail`, and fills in the `/metrics` address, which `services`
+keeps in its `metrics` field.
+
+**The `/metrics` page.** When `[observability] prometheus` is set, `serve`
+claims the port right after the socket, with `listenMetrics`, so a taken port
+stops `merud` at once with the key to change. `serveMetrics` (metrics.go) then
+adds two functions to the errgroup: one runs `http.Server.Serve`, and one waits
+for `gctx` to end and calls `Shutdown`, which makes `Serve` return
+`http.ErrServerClosed`. That error means "asked to stop", so the first
+function returns `nil`. `ReadHeaderTimeout` stops a client that sends its
+headers slowly from holding a connection. `obs.MetricsHandler` does the rest.
+More in [go-basics/http-servers.md](go-basics/http-servers.md).
 
 **Memory.** Before the tools, `serve` opens the memory folder with
 `memory.Open(<home>/memory)`, which creates the six default kind folders. One
@@ -1114,7 +1127,7 @@ window of time:
 ```text
                   1h   today     week   month     30d     all
 sessions           1       2        5      12      14      30
-questions          4       9       31      88      97     212
+tasks              4       9       31      88      97     212
 tokens in        18k     41k     150k    420k    468k    1.4M
 tokens out      2.1k    5.3k      19k     61k     66k    180k
 active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m

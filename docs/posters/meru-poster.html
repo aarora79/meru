@@ -168,7 +168,7 @@ tr:last-child td{border-bottom:none}
   <div class="card">
     <h2><span class="chip">01</span>Everything runs inside the dashed line<span class="tail">the parts of Meru</span></h2>
     <div class="dg">
-<svg viewBox="0 0 710 488" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The parts of Meru. A dashed line marks your machine. You type into meru, which passes the question to merud. merud holds the scheduler, the agent loop and dispatch. The agent loop uses local models, your data and skills. Dispatch reaches other agents over A2A and tools over MCP. An optional dashboard runs locally. Only tools you allow reach internet services outside the line.">
+<svg viewBox="0 0 710 488" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The parts of Meru. A dashed line marks your machine. You type into meru, which passes the question to merud. merud holds the scheduler, the agent loop and dispatch. The agent loop uses local models, your data and skills. Dispatch reaches other agents over A2A and tools over MCP. An optional metrics page for Prometheus runs locally. Only tools you allow reach internet services outside the line.">
   <defs>
     <marker id="dk" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker>
     <marker id="dc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#E4552F"/></marker>
@@ -216,8 +216,8 @@ tr:last-child td{border-bottom:none}
   <!-- dashboard -->
   <path d="M268 326 L268 346" class="lnd" marker-end="url(#dk)"/>
   <rect x="166" y="348" width="204" height="46" rx="9" class="bxd"/>
-  <text x="178" y="367" class="ttl">dashboard (optional)</text>
-  <text x="178" y="384" class="sm">Grafana, local only</text>
+  <text x="178" y="367" class="ttl">metrics (optional)</text>
+  <text x="178" y="384" class="sm">Prometheus, local only</text>
 
   <!-- local models -->
   <rect x="424" y="36" width="268" height="78" rx="9" class="bx0"/>
@@ -327,7 +327,7 @@ tr:last-child td{border-bottom:none}
       <div class="q"><div class="k">4 &#183; Dispatch</div><div class="a">Checks, asks if needed, runs and logs each call.</div></div>
       <div class="q"><div class="k">5 &#183; Repeat</div><div class="a">Until the answer needs no tool, or 8 rounds.</div></div>
     </div>
-    <p class="fine" style="margin-top:5px"><span class="mono">merud</span> traces each step with OpenTelemetry and sends the data only to a loopback endpoint, such as the bundled Grafana, with no prompt text unless you opt in.</p>
+    <p class="fine" style="margin-top:5px"><span class="mono">merud</span> traces each step with OpenTelemetry and hands the data only to a program on this machine, such as a Prometheus you run, with no prompt text unless you opt in. The Usage page charts it with nothing to install.</p>
   </div>
 
   <div class="card">
