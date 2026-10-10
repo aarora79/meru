@@ -650,3 +650,21 @@ func TestPrometheusKey(t *testing.T) {
 		}
 	}
 }
+
+// TestTemplatePrometheusLine checks that the template's commented-out
+// prometheus line loads once a user takes away its "# ", and turns /metrics
+// on at the address the comment above it names.
+func TestTemplatePrometheusLine(t *testing.T) {
+	const line = `# prometheus       = "127.0.0.1:9464"`
+	if !strings.Contains(Template(), line) {
+		t.Fatalf("the template lacks the line %q", line)
+	}
+	on := strings.Replace(Template(), line, strings.TrimPrefix(line, "# "), 1)
+	cfg, err := Load(writeConfig(t, on))
+	if err != nil {
+		t.Fatalf("Load with the line uncommented: %v", err)
+	}
+	if cfg.Observability.Prometheus != "127.0.0.1:9464" {
+		t.Errorf("prometheus = %q, want 127.0.0.1:9464", cfg.Observability.Prometheus)
+	}
+}
