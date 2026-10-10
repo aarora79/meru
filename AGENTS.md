@@ -200,7 +200,8 @@ cmd/
                      replays transcripts and runs the summarizer;
                      backends.go joins the MCP pool to dispatch; ollama.go watches Ollama and
                      gates requests until merud is ready; runtime.go warms the models;
-                     machine.go describes the computer for the system prompt
+                     machine.go describes the computer for the system prompt; metrics.go serves
+                     /metrics
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
@@ -252,7 +253,8 @@ internal/
                      sessions held in memory
   rpc/               newline-delimited JSON over the Unix socket: client, server, and the types
                      of every op and event
-  obs/               OpenTelemetry metrics and traces, loopback only, and the slog handler
+  obs/               OpenTelemetry metrics and traces, loopback only, the /metrics page
+                     for Prometheus (prometheus.go), and the slog handler
   loopback/          the one rule for "this address is on this machine"
   tui/               the Bubble Tea UI behind `meru chat`, with the desktop app's features as
                      slash commands and boxes
@@ -276,8 +278,7 @@ internal/
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
-deploy/              launchd/ and systemd/ service files; observability/ holds the local
-                     Grafana stack (compose.yaml), its provisioning and the dashboards
+deploy/              launchd/ and systemd/ service files
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
                      installer; dmg-readme.txt, the read-me on the installer's disk image;
                      bench.sh, which `make bench` runs
@@ -293,7 +294,7 @@ docs/
   faq/               one page per "how do I…" question, listed in index.md
   benchmarks/        the benchmark: README.md (how it works, how to build your own dataset) and
                      results.md, which `make bench-report` writes; the dataset stays in bench/
-  observability.md   the local Grafana stack: setup, dashboards, command-line queries
+  observability.md   reading the metrics: the Usage page, /metrics for Prometheus, traces
   ci.md              what each check in CI does
   fast-router.md     how the one-token router works
   google-setup.md    setting up Gmail, Calendar and Drive for the `google` server

@@ -61,7 +61,7 @@ func TestUsageTable(t *testing.T) {
 	want := [][]string{
 		{"", "1h", "all"},
 		{"sessions", "1", "30"},
-		{"questions", "4", "1.2k"},
+		{"tasks", "4", "1.2k"},
 		{"tokens in", "18k", "1.4M"},
 		{"tokens out", "2.1k", "95k"},
 		{"active time", "2m 14s", "3h 05m"},

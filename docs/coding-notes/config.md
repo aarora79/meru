@@ -99,6 +99,12 @@ type Web struct {
 }
 ```
 
+`[observability] prometheus` is a `host:port`, not a URL, since `merud` listens
+there rather than connects. `checkPrometheus` splits it with
+`net.SplitHostPort`, wants a port from 1 to 65535 and a host, and runs
+`http://` plus the address through `loopback.CheckURL`, so `0.0.0.0:9464` or a
+LAN address stops `merud` with the key named. An empty value turns the page off.
+
 `validate` runs `searxng_url` through the same `loopback.CheckURL` as the Ollama
 and OTLP addresses, because `merud` connects to it. It skips the check for an
 empty URL, which is how you turn web search off. The default URL isn't empty, so

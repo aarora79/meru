@@ -1,5 +1,6 @@
-// Settings: the settings screen, with a back link and eight sections.
-// Connections, Folders, About you, Skills, Models, Activity and Usage each
+// Settings: the settings screen, with a back link and seven sections, and
+// the Usage screen, which the rail opens beside Settings.
+// Connections, Folders, About you, Skills, Models and Activity each
 // ask the Bridge for their data when they open, and every change goes to
 // merud, which writes config.toml or the memory folder and reloads.
 // Connections opens with the connector cards, which connectors.js draws
@@ -21,7 +22,6 @@ const SECTIONS = [
   { id: "skills", label: "Skills" },
   { id: "models", label: "Models" },
   { id: "activity", label: "Activity" },
-  { id: "usage", label: "Usage" },
   { id: "about", label: "About" },
 ];
 
@@ -121,8 +121,24 @@ function draw() {
   body.setAttribute("aria-labelledby", "tab-" + current.section);
   root.append(body);
   body.append(el("p", "panel-note", "Loading…"));
-  const drawers = { connections, folders, you, skills, models, activity, usage, about };
+  const drawers = { connections, folders, you, skills, models, activity, about };
   drawers[current.section](body);
+}
+
+// openUsage draws the Usage screen in root: a back link, the title, and
+// the Charts and Prometheus queries tabs that usage fills.
+export function openUsage(root, pages) {
+  current.pages = pages;
+  root.replaceChildren();
+  const head = el("header", "page-head");
+  const back = button("Back to chat", { className: "text-button back", iconName: "back", onClick: pages.back });
+  const title = el("h1", "", "Usage");
+  title.id = "usage-title";
+  head.append(back, title);
+  const body = el("section", "page-body");
+  body.append(el("p", "panel-note", "Loading…"));
+  root.append(head, body);
+  usage(body);
 }
 
 // fail shows err in body, with a hint when merud isn't running.
@@ -1128,35 +1144,384 @@ function activity(body) {
 // WINDOWS names the usage windows, as merud sends them.
 const WINDOWS = { "1h": "Last hour", today: "Today", week: "This week", month: "This month", "30d": "Last 30 days", all: "All time" };
 
-// usage draws how much Meru has been used, window by window, as the
-// chat's /usage box does.
+// USAGE_TABS are the Usage section's two sub-tabs. Charts opens first.
+const USAGE_TABS = [
+  { id: "charts", label: "Charts" },
+  { id: "prometheus", label: "Prometheus queries" },
+];
+
+// usage draws the Usage section as two sub-tabs. Charts holds, in the
+// order you look at them most, the usage windows, four charts, the
+// slowest tasks, tool calls by outcome and use by model. Prometheus
+// queries says how to read the same numbers in a Prometheus you run. The
+// windows come first and alone, so an older merud, which can't send the
+// rest, still fills the table.
 function usage(body) {
   bridge.usage().then(
     (windows) => {
       body.replaceChildren();
-      intro(body, "Counted from the session transcripts on this Mac: answered questions only.");
-      const table = el("table", "log");
-      const head = el("tr");
-      for (const h of ["", "Questions", "Chats", "Tokens in", "Tokens out", "Time answering", "Files read", "Tool calls"]) {
-        head.append(el("th", "", h));
-      }
-      const thead = el("thead");
-      thead.append(head);
-      const tbody = el("tbody");
-      for (const w of windows || []) {
-        const tr = el("tr");
-        tr.append(el("th", "", WINDOWS[w.name] || w.name));
-        for (const v of [w.turns, w.sessions, w.tokens_in, w.tokens_out]) tr.append(el("td", "num", Number(v).toLocaleString()));
-        tr.append(el("td", "num", seconds(w.active_ms || 0)), el("td", "num", String(w.docs)), el("td", "num", String(w.tool_calls)));
-        tbody.append(tr);
-      }
-      table.append(thead, tbody);
-      const wrap = el("div", "table-wrap");
-      wrap.append(table);
-      body.append(wrap);
+      const panels = usageTabs(body);
+      const charts = panels.charts;
+      intro(charts, "Counted from the session transcripts on this Mac. A task is one question or request that Meru answered.");
+      charts.append(usageTable(windows || []));
+      const more = el("div", "usage-detail");
+      more.append(el("p", "panel-note", "Loading the charts…"));
+      charts.append(more);
+      prometheusSection(panels.prometheus, "");
+      bridge.usageDetail().then(
+        (d) => {
+          drawDetail(more, d);
+          panels.prometheus.replaceChildren();
+          prometheusSection(panels.prometheus, d.metrics || "");
+        },
+        (err) => more.replaceChildren(el("p", "panel-note", errorText(err))),
+      );
     },
     (err) => fail(body, err),
   );
+}
+
+// usageTabs adds the sub-tabs to body and returns their panels by id. The
+// first tab shows; the arrow keys move between tabs, as in Settings' own
+// tabs.
+function usageTabs(body) {
+  const bar = el("div", "tabs subtabs");
+  bar.setAttribute("role", "tablist");
+  bar.setAttribute("aria-label", "Usage views");
+  body.append(bar);
+  const panels = {};
+  const tabs = [];
+  const show = (id) => {
+    for (const t of tabs) {
+      const on = t.dataset.id === id;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      panels[t.dataset.id].hidden = !on;
+    }
+  };
+  USAGE_TABS.forEach((u, i) => {
+    const t = button(u.label, { className: "tab" });
+    t.id = "usage-tab-" + u.id;
+    t.dataset.id = u.id;
+    t.setAttribute("role", "tab");
+    t.setAttribute("aria-controls", "usage-panel-" + u.id);
+    t.addEventListener("click", () => show(u.id));
+    t.addEventListener("keydown", (e) => {
+      const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = USAGE_TABS[(i + step + USAGE_TABS.length) % USAGE_TABS.length].id;
+      show(next);
+      document.getElementById("usage-tab-" + next).focus();
+    });
+    tabs.push(t);
+    bar.append(t);
+    const panel = el("div", "usage-panel");
+    panel.id = "usage-panel-" + u.id;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", t.id);
+    panels[u.id] = panel;
+    body.append(panel);
+  });
+  show(USAGE_TABS[0].id);
+  return panels;
+}
+
+// usageTable returns the table of usage windows, one row per window.
+function usageTable(windows) {
+  const table = el("table", "log");
+  const head = el("tr");
+  for (const h of ["", "Tasks", "Chats", "Tokens in", "Tokens out", "Time answering", "Files read", "Tool calls"]) {
+    head.append(el("th", "", h));
+  }
+  const thead = el("thead");
+  thead.append(head);
+  const tbody = el("tbody");
+  for (const w of windows) {
+    const tr = el("tr");
+    tr.append(el("th", "", WINDOWS[w.name] || w.name));
+    for (const v of [w.turns, w.sessions, w.tokens_in, w.tokens_out]) tr.append(el("td", "num", Number(v).toLocaleString()));
+    tr.append(el("td", "num", seconds(w.active_ms || 0)), el("td", "num", String(w.docs)), el("td", "num", String(w.tool_calls)));
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  return wrapTable(table);
+}
+
+// wrapTable puts a table in a box that scrolls sideways in a narrow window.
+function wrapTable(table) {
+  const wrap = el("div", "table-wrap");
+  wrap.append(table);
+  return wrap;
+}
+
+// drawDetail fills box with the dashboard d that merud sent: four charts,
+// two to a row where the window is wide enough, then the tables. The
+// Prometheus queries tab draws d.metrics.
+function drawDetail(box, d) {
+  box.replaceChildren();
+  const days = d.days || [];
+
+  const grid = el("div", "chart-grid");
+  box.append(grid);
+  const charts = [
+    {
+      title: "Tasks per day",
+      note: "questions and requests Meru answered",
+      axis: "tasks",
+      series: [{ key: "questions", className: "bar", say: (v) => v + (v === 1 ? " task" : " tasks") }],
+      tick: (v) => String(v),
+    },
+    {
+      title: "Time to first token",
+      note: "p50, the middle task, over p95, the slow end",
+      axis: "seconds",
+      series: [
+        { key: "ttft_p95_ms", className: "bar p95", say: (v) => "p95 " + seconds(v) },
+        { key: "ttft_p50_ms", className: "bar", say: (v) => "p50 " + seconds(v) },
+      ],
+      tick: (v) => String(Math.round(v / 100) / 10),
+    },
+    {
+      title: "Tokens in per day",
+      note: "what the models read: prompts, files and tool results",
+      axis: "tokens",
+      series: [{ key: "tokens_in", className: "bar", say: (v) => Number(v).toLocaleString() + " tokens in" }],
+      tick: shortCount,
+    },
+    {
+      title: "Tokens out per day",
+      note: "what the models wrote",
+      axis: "tokens",
+      series: [{ key: "tokens_out", className: "bar", say: (v) => Number(v).toLocaleString() + " tokens out" }],
+      tick: shortCount,
+    },
+  ];
+  // Every cell goes in the grid before any chart draws, so each cell has
+  // its final width when its chart measures it. A chart drawn at that width
+  // shows its text at its real size; one measured while its cell was
+  // alone in the grid would come out twice as wide, then shrink to half.
+  const cells = charts.map((c) => {
+    const cell = el("section", "chart-cell");
+    cell.append(el("h3", "chart-title", c.title));
+    cell.append(el("p", "chart-note", c.note));
+    grid.append(cell);
+    return cell;
+  });
+  charts.forEach((c, i) => cells[i].append(barChart(c, days, cells[i].clientWidth)));
+
+  box.append(el("h2", "section-head", "Slowest tasks this week"));
+  box.append(slowestTable(d.slowest || []));
+
+  box.append(el("h2", "section-head", "Tool calls, last 30 days"));
+  box.append(toolsTable(d.tools || []));
+
+  box.append(el("h2", "section-head", "By answer model"));
+  box.append(modelsTable(d.models || []));
+}
+
+// CHART_H is a chart's height, and the PAD values the room around its plot
+// for the axis labels, in pixels.
+const CHART_H = 180;
+const PAD = { left: 52, right: 8, top: 10, bottom: 24 };
+
+// svg makes an SVG element with attrs. SVG elements need their own
+// namespace, so el() can't make them.
+function svg(tag, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, String(v));
+  return node;
+}
+
+// shortDate writes "2026-10-09" as "9 Oct", in the page's language.
+function shortDate(date) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+// shortCount writes a count in a few characters: 950, 18k, 1.4M.
+function shortCount(v) {
+  if (v >= 1e6) return (v / 1e6).toFixed(v < 1e7 ? 1 : 0).replace(/\.0$/, "") + "M";
+  if (v >= 1e3) return (v / 1e3).toFixed(v < 1e4 ? 1 : 0).replace(/\.0$/, "") + "k";
+  return String(v);
+}
+
+// niceStep returns a round step for about four ticks up to max: 1, 2 or 5
+// times a power of ten.
+function niceStep(max) {
+  const rough = max / 4;
+  const p = Math.pow(10, Math.floor(Math.log10(rough)));
+  const f = rough / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+// barChart returns a bar chart of days, width pixels wide, for the chart
+// c: one group of bars per day, a y axis with round ticks labelled by
+// c.tick and titled c.axis, and a date under every seventh day, counting
+// back from today. Each series names a field of a day, the CSS class that
+// colors its bars, and how to say a value; later series draw over earlier
+// ones, so the taller one goes first. Each bar carries a <title>, which
+// shows on hover and which screen readers read, and the chart says its
+// peak in an aria-label.
+function barChart(c, days, width) {
+  const W = Math.max(280, Math.round(width || 600));
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = CHART_H - PAD.top - PAD.bottom;
+  const peakValue = Math.max(0, ...days.flatMap((day) => c.series.map((s) => day[s.key] || 0)));
+  const step = peakValue > 0 ? niceStep(peakValue) : 1;
+  const top = Math.max(step, Math.ceil(peakValue / step) * step);
+  const y = (v) => PAD.top + plotH - (v / top) * plotH;
+
+  const chart = svg("svg", { viewBox: "0 0 " + W + " " + CHART_H, role: "img" });
+  // The y axis: a grid line and a label at each tick, and the axis title.
+  for (let v = 0; v <= top + step / 2; v += step) {
+    chart.append(svg("line", { class: v === 0 ? "axis" : "grid", x1: PAD.left, y1: y(v), x2: W - PAD.right, y2: y(v) }));
+    chart.append(svg("line", { class: "axis", x1: PAD.left - 4, y1: y(v), x2: PAD.left, y2: y(v) }));
+    const label = svg("text", { class: "tick", x: PAD.left - 7, y: y(v) + 4, "text-anchor": "end" });
+    label.textContent = c.tick(v);
+    chart.append(label);
+  }
+  chart.append(svg("line", { class: "axis", x1: PAD.left, y1: PAD.top, x2: PAD.left, y2: PAD.top + plotH }));
+  const title = svg("text", { class: "axis-title", x: 0, y: 0, "text-anchor": "middle",
+    transform: "translate(11 " + (PAD.top + plotH / 2) + ") rotate(-90)" });
+  title.textContent = c.axis;
+  chart.append(title);
+
+  // The bars, and the x axis's ticks and dates.
+  const slot = plotW / Math.max(1, days.length);
+  const barW = Math.max(1, slot - 2);
+  days.forEach((day, i) => {
+    const x = PAD.left + i * slot;
+    for (const s of c.series) {
+      const v = day[s.key] || 0;
+      if (!v) continue;
+      const h = Math.max(1, (v / top) * plotH);
+      const bar = svg("rect", { class: s.className, x: x + 1, y: PAD.top + plotH - h, width: barW, height: h });
+      const t = svg("title");
+      t.textContent = shortDate(day.date) + ": " + s.say(v);
+      bar.append(t);
+      chart.append(bar);
+    }
+    if ((days.length - 1 - i) % 7 === 0) {
+      const mid = x + slot / 2;
+      chart.append(svg("line", { class: "axis", x1: mid, y1: PAD.top + plotH, x2: mid, y2: PAD.top + plotH + 4 }));
+      const label = svg("text", { class: "tick", x: mid, y: CHART_H - 6, "text-anchor": "middle" });
+      label.textContent = shortDate(day.date);
+      chart.append(label);
+    }
+  });
+
+  const first = c.series[0];
+  const peak = days.reduce((best, day) => ((day[first.key] || 0) > (best[first.key] || 0) ? day : best), days[0] || {});
+  let words = c.title + ", last " + days.length + " days.";
+  if (peak && peak[first.key]) words += " Highest " + first.say(peak[first.key]) + " on " + shortDate(peak.date) + ".";
+  else words += " Nothing yet.";
+  chart.setAttribute("aria-label", words);
+  return chart;
+}
+
+// slowestTable returns the slowest tasks of the week. A row opens its
+// chat; a chat the rail doesn't list goes by its date.
+function slowestTable(rows) {
+  if (!rows.length) return el("p", "panel-note", "No tasks this week.");
+  const table = el("table", "log");
+  const head = el("tr");
+  for (const h of ["Chat", "Took", "First token", "Tokens in", "Route", "Model"]) head.append(el("th", "", h));
+  const thead = el("thead");
+  thead.append(head);
+  const tbody = el("tbody");
+  for (const q of rows) {
+    const when = new Date(q.at);
+    const stamp = when.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const title = current.pages.chatTitle(q.session) || "A chat from " + stamp;
+    const tr = el("tr");
+    const cell = el("td");
+    cell.append(button(title, { className: "link-button", onClick: () => current.pages.openChat(q.session, title) }));
+    tr.append(cell);
+    tr.append(el("td", "num", seconds(q.ms || 0)), el("td", "num", q.ttft_ms ? seconds(q.ttft_ms) : "–"));
+    tr.append(el("td", "num", Number(q.tokens_in || 0).toLocaleString()), el("td", "", q.route || ""), el("td", "mono", q.model || ""));
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  return wrapTable(table);
+}
+
+// toolsTable returns each tool's calls by outcome; the outcomes other than
+// ok show in the danger color, as the Activity section shows them.
+function toolsTable(tools) {
+  if (!tools.length) return el("p", "panel-note", "No tool calls in the last 30 days.");
+  const table = el("table", "log");
+  const head = el("tr");
+  for (const h of ["Tool", "Kind", "Calls", "Outcomes"]) head.append(el("th", "", h));
+  const thead = el("thead");
+  thead.append(head);
+  const tbody = el("tbody");
+  for (const t of tools) {
+    const tr = el("tr");
+    tr.append(el("td", "mono", t.tool), el("td", "", t.kind || ""), el("td", "num", String(t.calls)));
+    const cell = el("td");
+    const names = Object.keys(t.outcomes || {}).sort((a, b) => t.outcomes[b] - t.outcomes[a]);
+    names.forEach((name, i) => {
+      if (i) cell.append(document.createTextNode(" · "));
+      cell.append(el("span", "outcome " + name, name + " " + t.outcomes[name]));
+    });
+    tr.append(cell);
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  return wrapTable(table);
+}
+
+// modelsTable returns use by answer model, as /usage by model shows it in
+// meru chat.
+function modelsTable(models) {
+  if (!models.length) return el("p", "panel-note", "No finished tasks yet.");
+  const table = el("table", "log");
+  const head = el("tr");
+  for (const h of ["Model", "Tasks", "Tokens in", "Tokens out", "First token (p50)", "Tokens a second"]) head.append(el("th", "", h));
+  const thead = el("thead");
+  thead.append(head);
+  const tbody = el("tbody");
+  for (const m of models) {
+    const tr = el("tr");
+    tr.append(el("td", "mono", m.model || "(before model switches were logged)"));
+    for (const v of [m.turns, m.tokens_in, m.tokens_out]) tr.append(el("td", "num", Number(v || 0).toLocaleString()));
+    tr.append(el("td", "num", m.ttft_p50_ms ? seconds(m.ttft_p50_ms) : "–"));
+    tr.append(el("td", "num", m.eval_ms ? (m.tokens_out / (m.eval_ms / 1000)).toFixed(1) : "–"));
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  return wrapTable(table);
+}
+
+// QUERIES are the PromQL queries the Usage section offers, each with what
+// it answers. The names are the ones merud's /metrics page writes.
+const QUERIES = [
+  ["Tasks per day", "sum(increase(meru_turn_duration_seconds_count[1d]))"],
+  ["Time to first token, p95 over the last hour", "histogram_quantile(0.95, sum by (le) (rate(gen_ai_server_time_to_first_token_seconds_bucket[1h])))"],
+  ["Turn time by route, p95", "histogram_quantile(0.95, sum by (le, meru_route) (rate(meru_turn_duration_seconds_bucket[1h])))"],
+  ["Tool calls that failed today", 'sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_outcome!="ok"}[1d]))'],
+  ["Tokens per model today", "sum by (gen_ai_request_model, gen_ai_token_type) (increase(gen_ai_client_token_usage_sum[1d]))"],
+  ["Model loads today", "sum(increase(meru_engine_load_duration_seconds_count[1d]))"],
+];
+
+// prometheusSection tells the user how to read the same numbers in a
+// Prometheus they run: the address when merud serves /metrics, or the
+// line that turns it on, then the queries, each with a Copy button.
+function prometheusSection(box, metrics) {
+  intro(box, "merud can serve the numbers behind the charts to a Prometheus you run on this Mac, for longer history and your own queries.");
+  if (metrics) {
+    box.append(el("p", "panel-note", "merud serves its metrics at this address, on this Mac only. Point a Prometheus you run at it:"));
+    box.append(copyBlock(metrics));
+  } else {
+    box.append(el("p", "panel-note", "To read these numbers in a Prometheus you run, add this line under [observability] in ~/.meru/config.toml and restart merud:"));
+    box.append(copyBlock('prometheus = "127.0.0.1:9464"'));
+  }
+  box.append(el("p", "panel-note", "Counts start again from zero when merud restarts; increase() and rate() allow for that."));
+  for (const [what, q] of QUERIES) {
+    box.append(el("p", "query-label", what));
+    box.append(copyBlock(q));
+  }
 }
 
 // ---- About ----

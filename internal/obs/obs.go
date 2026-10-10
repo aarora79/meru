@@ -14,6 +14,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/aarora79/meru/internal/config"
@@ -25,6 +27,10 @@ type state struct {
 	inst *instruments
 	// captureContent mirrors config's capture_content.
 	captureContent bool
+	// manual is the reader /metrics collects through, nil when
+	// [observability] prometheus is off; res is the resource it reports.
+	manual *sdkmetric.ManualReader
+	res    *resource.Resource
 }
 
 // current holds the live state. AGENTS.md rules out package-level mutable
@@ -46,10 +52,11 @@ func load() *instruments {
 	return s.inst
 }
 
-// Setup starts metric and trace export to cfg.OTLPEndpoint. With no endpoint
-// it leaves OpenTelemetry's no-op providers in place. It refuses a
-// non-loopback endpoint. Call the returned shutdown function before exiting,
-// so the last batch of data is sent.
+// Setup starts metric and trace export to cfg.OTLPEndpoint, and the reader
+// MetricsHandler serves when cfg.Prometheus is set. With neither it leaves
+// OpenTelemetry's no-op providers in place. It refuses a non-loopback
+// endpoint. Call the returned shutdown function before exiting, so the last
+// batch of data is sent.
 //
 // The body lives in setup.go.
 func Setup(ctx context.Context, cfg config.Observability) (shutdown func(context.Context) error, err error) {

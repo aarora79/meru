@@ -1,7 +1,7 @@
 # store
 
 **Code:** `internal/store/` (`doc.go`, `store.go`, `schema.go`, `documents.go`, `search.go`,
-`toolcalls.go`, `turns.go`, `sessions.go`, `memories.go`)
+`toolcalls.go`, `turns.go`, `usagedetail.go`, `sessions.go`, `memories.go`)
 **Milestone:** v0.2; `tool_calls` and `turns` in v0.3; past conversations and `memories` in v0.4
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
@@ -322,6 +322,35 @@ SQLite has no median function, so `ttftMedians` reads each model's times to
 first token in rising order and takes the middle one in Go; with an even count it
 takes the lower of the two middle values, so the number is always the time of
 one real turn. Turns that wrote no text have a time of 0 and stay out.
+
+### usagedetail.go: the Usage screen's numbers
+
+`UsageDetail(ctx, now)` returns what the Usage screen and the `/usage` box draw
+under the windows table, in an `rpc.UsageDetailReply`. It runs three queries,
+none of them once per day, tool or task:
+
+1. `detailTurns` reads each turn of the last 30 days: its time, tokens and time
+   to first token. Go sorts them into local days, by `now`'s location, and
+   fills the days with no turn as zeros, so the charts always get 30 bars. The
+   `ts` column holds UTC text in one format, so `ts >= ?` with the window's
+   start in the same format compares correctly as text.
+2. `detailSlowest` takes the ten longest turns of the last 7 days, `ORDER BY
+   duration_ms DESC LIMIT 10`.
+3. `detailTools` counts `tool_calls` rows by tool, kind and outcome with
+   `GROUP BY`. Go folds the outcomes into one row per tool and keeps the
+   twelve busiest. Rows of incognito and deleted chats count too: they keep
+   the tool and the outcome, which is all this reads.
+
+Each day's p50 and p95 time to first token come from `nearestRank`: sort the
+day's times, and take the smallest one with at least p percent of the times at
+or below it. The answer is always one real turn's time, and p50 matches the
+median `UsageByModel` reports. SQLite has no percentile function, and a day
+holds a few dozen turns, so Go does it.
+
+Why sort days in Go and not with SQLite's `date(ts, 'localtime')`? The
+SQLite inside `ncruces/go-sqlite3` runs as WebAssembly, and its idea of local
+time may differ from Go's. Doing it in Go uses the same calendar the usage
+windows use, and a test can pass any `time.Location`.
 
 `DiskBytes` adds up the sizes of `meru.db`, `meru.db-wal` and `meru.db-shm`;
 a missing file counts as 0. The store keeps its own path for it.

@@ -9,9 +9,9 @@ Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs                       
   │ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0    │
   │ (not recorded)            12         —      —      4          0       0    │
   │                                                                            │
-  │ Every answered question, by the model that wrote the answer. CALLS counts  │
-  │ tool calls, and BAD CALLS the ones Meru couldn't run as the model wrote    │
-  │ them. CAPPED counts turns that used every round and wrote no answer.       │
+  │ Every finished task, by the model that wrote the answer. CALLS counts tool │
+  │ calls, and BAD CALLS the ones Meru couldn't run as the model wrote them.   │
+  │ CAPPED counts turns that used every round and wrote no answer.             │
   ╰────────────────────────────────────────────────────────────────────────────╯
 
 ╭──────────────────────────────────────────────────────────────────────────────╮

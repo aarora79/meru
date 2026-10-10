@@ -43,7 +43,7 @@ app already sends; `merud` got no new op for it. The short version of the audit
 | Try again | has: `/retry` |
 | What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
 | Past chats and reopening one | has: `/chats [words]` |
-| Settings: Connections, Folders, About you, Skills, Models, Activity, Usage, About | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
+| Settings: Connections, Folders, About you, Skills, Models, Activity, About, and the Usage screen | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
 | Setup | in another terminal: `meru setup` and `meru setup user` |
 | Version beside the name | has |
 | SVG preview, image previews, sidebar and panel layout | not in a terminal: they draw pictures or need a mouse-driven window |
@@ -78,7 +78,7 @@ search index is and how many memories Meru keeps, and on a wide terminal how muc
 you asked in the last hour:
 
 ```text
-Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories        1h: 4 questions · 18k in · 2.1k out  ● connected
+Meru मेरु lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB) · 7 memories        1h: 4 tasks · 18k in · 2.1k out  ● connected
 ```
 
 While Meru knows nothing about you, the header says `no profile`, and the empty
@@ -167,7 +167,7 @@ step the marked tool through Off, Ask and Allow:
   │                                                               │
   │                   1h   today     week   month     30d     all │
   │ sessions           1       2        5      12      14      30 │
-  │ questions          4       9       31      88      97     212 │
+  │ tasks              4       9       31      88      97     212 │
   │ tokens in        18k     41k     150k    420k    468k    1.4M │
   │ tokens out      2.1k    5.3k      19k     61k     66k    180k │
   │ active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m │
@@ -478,7 +478,7 @@ adds `no profile`. `noProfile` makes that call for the header and for the empty
 conversation, which adds the nudge under its usual hint.
 
 On the right sit the last hour's usage, dim, from `lastHour`
-(`1h: 4 questions · 18k in · 2.1k out`), and the connection status. When the
+(`1h: 4 tasks · 18k in · 2.1k out`), and the connection status. When the
 terminal is narrow, the header gives things up in this order: the usage first,
 because `/usage` shows it in full; then the bracket with the vectors and size, whole,
 because cutting it mid-way would leave an open `(`, and the memory count with it;
@@ -968,6 +968,17 @@ set and returns `askUsage(ask, true)`: the same request with `Kind` set to
 the header, whose summary reads windows of time. The box draws
 `rpc.ModelUsageTable`: one row per model, with turns, the median time to first
 token, tokens per second, tool calls, bad calls and capped turns.
+
+A plain `/usage` sends two requests at once with `tea.Batch`: the windows,
+and `askUsageDetail`, which asks for kind `rpc.UsageDetail`. Its reply comes
+back as a `usageDetailMsg`, and `applyUsageDetail` puts it in the open box.
+`usageDetailLines` draws it under the table: tasks and tokens in for the last
+14 days as bar lines, today's tokens and time to first token, the five slowest
+tasks of the week, the tools with failed calls, and where Prometheus can read
+the metrics. `barLine` maps each value to one of eight block characters, `▁` to
+`█`, scaled to the largest, and draws a day with nothing as a space. An older
+`merud` answers the detail request with plain windows, and the box says the
+charts need a newer `merud`.
 
 `applyUsage` takes each `usageMsg`. The header keeps the windows for `lastHour`. A
 box still loading takes the first reply that comes, whichever request it answers,

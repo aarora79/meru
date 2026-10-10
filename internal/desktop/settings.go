@@ -328,3 +328,43 @@ func (b *Bridge) Usage(ctx context.Context) ([]rpc.UsageWindow, error) {
 	}
 	return ev.Usage, nil
 }
+
+// errNoReply means merud answered a request without the event it was
+// asked for, which is what an older merud does with a kind it doesn't know.
+var errNoReply = errors.New("no reply of that kind")
+
+// errOldMerud is what UsageDetail returns when merud is too old to send the
+// dashboard. The page shows the usage table without the charts.
+var errOldMerud = errors.New("the charts need a newer merud; update Meru and restart merud")
+
+// UsageDetail returns the Usage page's dashboard: questions and time to
+// first token per day, the slowest questions, tool calls by outcome, use by
+// model, and the /metrics address. An older merud answers the request with
+// the plain usage windows, and UsageDetail then returns errOldMerud.
+func (b *Bridge) UsageDetail(ctx context.Context) (rpc.UsageDetailReply, error) {
+	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpUsage, Kind: rpc.UsageDetail}, rpc.EventUsageDetail)
+	if errors.Is(err, errNoReply) {
+		return rpc.UsageDetailReply{}, errOldMerud
+	}
+	if err != nil {
+		return rpc.UsageDetailReply{}, err
+	}
+	if ev.UsageDetail == nil {
+		return rpc.UsageDetailReply{}, errOldMerud
+	}
+	d := *ev.UsageDetail
+	// JSON writes a nil slice as null; the page wants empty lists.
+	if d.Days == nil {
+		d.Days = []rpc.UsageDay{}
+	}
+	if d.Slowest == nil {
+		d.Slowest = []rpc.SlowQuestion{}
+	}
+	if d.Tools == nil {
+		d.Tools = []rpc.ToolOutcomes{}
+	}
+	if d.Models == nil {
+		d.Models = []rpc.UsageWindow{}
+	}
+	return d, nil
+}

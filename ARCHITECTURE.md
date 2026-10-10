@@ -141,7 +141,7 @@ once, before `merud` exists, to set the Mac up (see [Installer](#installer)).
 A daemon that keeps models warm can also run scheduled jobs for almost no extra
 work. That is why we build `merud` first and add the scheduler to it later.
 
-![System diagram. Three short-lived clients, meru for one question, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the socket server and the scheduler feed the agent loop, which uses the skill registry, dispatch and the Engine. The Engine reaches Ollama and its fast, main and embed models over HTTP on 127.0.0.1:11434. Dispatch reaches MCP servers such as google and obsidian through the MCP client pool, other agents through the A2A client, and a SearXNG you run for web_search. The loop reads and writes the files under ~/.meru: session transcripts, memory files, skills, config.toml and meru.db, the index Meru can rebuild. The OTel SDK sends metrics and traces to an optional OTLP endpoint on 127.0.0.1:4318, which feeds Grafana, Prometheus and Tempo.](docs/architecture/img/300-overview.png)
+![System diagram. Three short-lived clients, meru for one question, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the socket server and the scheduler feed the agent loop, which uses the skill registry, dispatch and the Engine. The Engine reaches Ollama and its fast, main and embed models over HTTP on 127.0.0.1:11434. Dispatch reaches MCP servers such as google and obsidian through the MCP client pool, other agents through the A2A client, and a SearXNG you run for web_search. The loop reads and writes the files under ~/.meru: session transcripts, memory files, skills, config.toml and meru.db, the index Meru can rebuild. The OTel SDK serves metrics at an optional /metrics page on 127.0.0.1:9464 for a Prometheus you run, and can push metrics and traces to an optional OTLP endpoint on 127.0.0.1:4318.](docs/architecture/img/300-overview.png)
 
 *Figure 1. Arrows leave `merud` for programs it doesn't own from two places: the engine, to Ollama, and `dispatch`, to MCP servers, A2A agents and SearXNG. Each is one guarded entry point, which is where the privacy rules live.*
 
@@ -162,7 +162,7 @@ scrolling answer pane, and two more Charm libraries for its look:
   version (`v0.4.3`, or `dev` and the commit for a build between tags, from
   `internal/about`, as the desktop app's rail shows it), the profile, model, what the
   index holds (`2637 docs (11698 vectors, 84 MB)`, with `· indexing` while a
-  scan runs), the session, the last hour's use (`1h: 4 questions · 18k in ·
+  scan runs), the session, the last hour's use (`1h: 4 tasks · 18k in ·
   2.1k out`) and whether `merud` is reachable; "You" and "Meru" labels; a route badge on each
   answer, amber when the router fell back; and a stats line with time to first
   token, tokens per second and total time. Colors adapt to light and dark
@@ -172,7 +172,10 @@ scrolling answer pane, and two more Charm libraries for its look:
   and out, active time, files touched and tool calls for the last hour, today,
   this week, this month, the last 30 days and all time; `meru usage` prints
   the same table, and `/usage by model` shows one row per answer model (see
-  [Model sets](#model-sets)). Typing `/model` opens a table of the model sets,
+  [Model sets](#model-sets)). Under the table, `/usage` draws tasks and
+  tokens in per day as bar lines, today's tokens and time to first token, the
+  five slowest tasks of the week, the tools whose calls failed, and where Prometheus can read the
+  metrics (see [Reading the metrics](#reading-the-metrics)). Typing `/model` opens a table of the model sets,
   `/model <name>` switches to one and `/model save` makes it the default; the
   header names the set in use beside the usage. Typing `/new` starts a new
   session, so a conversation that went wrong stops shaping the answers after it. In both clients, each source
@@ -509,7 +512,7 @@ newest answer), `/scope <name>` (the Where Meru looks switch), `/attach` (the fi
 dialog), `/save` (Save to a note on the newest answer; `/save chat` is Share as
 file), `/used` (the side panel for the newest answer), `/copy N` (code block N of
 this chat, numbered as the chat numbers them; `/copy` alone the newest answer's
-last block, and `/copy answer` the whole answer), `/usage` (Settings, Usage), `/me`
+last block, and `/copy answer` the whole answer), `/usage` (the Usage screen), `/me`
 (Settings, About you), `/mcp` (Settings, Connections), `/folders` (Settings,
 Folders), `/skills` (Settings, Skills), `/model` (Settings, Models; `/model <name>`
 and `/model save` switch and save as in the chat), `/log` (Settings, Activity),
@@ -521,7 +524,7 @@ never reaches the model; an unknown one leaves the text in the box and lists the
 commands, as the chat does. The Bridge holds the list, and a test fails when it
 differs from `meru chat`'s.
 
-**Settings** has a back link and eight sections:
+**Settings** has a back link and seven sections:
 
 - **Connections** opens with a card per connector, drawn from the fields its
   manifest declares, with a pill, `merud`'s sentence, an on and off switch,
@@ -567,13 +570,24 @@ differs from `meru chat`'s.
   the profile change in `config.toml`, then a restart.
 - **Activity** lists the `tool_calls` log, the data `meru log` prints: time,
   tool, outcome and duration, with the arguments and result behind a button.
-- **Usage** shows the usage windows the chat's `/usage` box shows.
 - **About** says what Meru is and where its name comes from, what it does and
   why it runs on your computer, the app's version, where `config.toml` and
   Meru's folder are, and three links: the source code, the design and a new
   issue on GitHub. The Bridge hands the page the links, so the page's own files
   name no host, and each opens in the browser through `OpenURL`. Under those
   paths, "Run setup again" opens Setup.
+
+**Usage** has a button of its own beside Settings at the foot of the rail, and
+opens a screen with two tabs. **Charts**, open first, shows the usage windows
+the chat's `/usage` box shows, then four bar charts over 30 days, two to a row:
+tasks per day, time to first token per day (p50 and p95), tokens in and tokens
+out per day, each with a labelled y axis. A task is one question or request
+that Meru answered. Under the charts come the ten slowest tasks of the week,
+each a link to its chat, tool calls by outcome, and use by answer model.
+**Prometheus queries** says how to read the same metrics in a Prometheus you
+run, with the `/metrics` address or the line that turns it on, and queries to
+copy (see [Reading the metrics](#reading-the-metrics)). Everything on the
+screen comes from `meru.db`.
 
 **Setup** has four steps, and opens on its own when `merud` reports no folders
 and no profile memory; after that, "Run setup again" in Settings, About opens
@@ -2009,7 +2023,7 @@ reads the newest rows. When `merud` starts and finds the table empty, it rebuild
 the table from the transcripts, pairing each call's lines by `call_id`; a call with
 no `tool_result` line, because `merud` stopped mid-call, gets the outcome
 `cancelled`. `messages` and `tool_calls` store the trace ID of their turn, so you
-can jump from a slow trace in Grafana to the rows it produced, and back.
+can jump from a slow trace in your OTLP backend to the rows it produced, and back.
 
 When the embedding model's name or vector size in `meta` stops matching config, the
 store deletes every row of `chunk_vec`, `memory_vec` and `session_vec` and keeps
@@ -4338,8 +4352,10 @@ traces.
 ## Observability
 
 Every stage of a turn emits OpenTelemetry (OTel) metrics and traces: routing,
-retrieval, each model call and each tool call. A dashboard can then show where a slow
-answer spent its time, how many tokens it used, and which tool failed.
+retrieval, each model call and each tool call. Meru needs no dashboard program to
+show them: the Usage screen in both clients draws its charts from `meru.db`, and a
+Prometheus you run can read the same metrics from `merud` (see
+[Reading the metrics](#reading-the-metrics)).
 
 ### Local only
 
@@ -4352,12 +4368,18 @@ only to an endpoint you run on this machine:
   the transcript can name the turn. Instrumentation then costs almost nothing.
 - `merud` **refuses to start if the endpoint isn't a loopback address.** No setting
   sends metrics or traces anywhere else.
+- The **`/metrics` page stays off until you set `observability.prometheus`** to a
+  loopback `host:port`, and `merud` refuses any other address. It answers GET and
+  HEAD on `/metrics` alone, and only to a request whose `Host` names this
+  machine, so a web page can't read it through your browser by pointing its own
+  domain name at 127.0.0.1.
 - **Spans carry no prompt or response text** unless you set `capture_content = true`.
   They always carry token counts, durations, model names and tool names, which reveal
   nothing about what you asked.
 
 ```toml
 [observability]
+prometheus       = "127.0.0.1:9464"         # serves /metrics; loopback only; unset = off
 otlp_endpoint    = "http://127.0.0.1:4318"   # OTLP/HTTP; loopback only; unset = off
 metrics_interval = "10s"
 traces           = true
@@ -4372,7 +4394,7 @@ route with one round of tool calls looks like this:
 
 ![Trace tree for one v0.3 turn on the search+tools route with one tool round. rpc.request, with op, source and question length, holds meru.turn, with route, source, session, iterations and outcome. Under meru.turn, in order: meru.session; meru.transcript.append for the user line; meru.route, with a gen_ai.chat fast span and its POST /api/chat; meru.search, with meru.retrieve and its POST /api/embed; meru.prompt; gen_ai.chat main for round 1, with its POST /api/chat; meru.dispatch, one per call, holding a tools/call span for MCP or an invoke_agent span for A2A; meru.transcript.append for the call's lines; gen_ai.chat main for round 2, the answer, with its POST /api/chat; and meru.transcript.append for the assistant line. The same trace ID goes on the transcript lines, the messages and tool_calls rows, and every log line of the turn.](docs/architecture/img/300-trace.png)
 
-*Figure 7. One v0.3 turn on the `search+tools` route with one tool round. The router's one-token call and each round of the main model get a `gen_ai.chat` span with its HTTP request under it; the search sits before the first round, and each tool call gets a `meru.dispatch` span between the rounds. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in Grafana leads to the exact lines, and a line leads back to its timing.*
+*Figure 7. One v0.3 turn on the `search+tools` route with one tool round. The router's one-token call and each round of the main model get a `gen_ai.chat` span with its HTTP request under it; the search sits before the first round, and each tool call gets a `meru.dispatch` span between the rounds. The trace ID also sits on the transcript lines and every log line of the turn, so a slow bar in a trace viewer leads to the exact lines, and a line leads back to its timing.*
 
 A turn on the `direct` route has no `meru.search`, unless the question names an
 indexed folder. A turn on `direct` or `search` has no tool spans, and one
@@ -4482,20 +4504,47 @@ keeps the real names. `meru.tool.duration` covers only the time a tool ran, so a
 call that never ran (denied, declined, or cancelled before it started) adds to
 `meru.tool.calls` and records no duration.
 
-### The stack
+### Reading the metrics
 
-`merud` speaks plain OTLP/HTTP, so any OTLP backend works. The reference setup is one
-container, **`grafana/otel-lgtm`**, which bundles an OTel Collector, Prometheus,
-Tempo and Grafana. The repo ships its compose file and a ready-made Meru dashboard.
-The compose file:
+Meru ships no dashboard program. There are three ways to read the numbers, and
+the first needs nothing installed.
 
-- binds ports to `127.0.0.1` only (4318 for OTLP, 3000 for Grafana);
-- turns off Grafana's own reporting and update checks:
-  `GF_ANALYTICS_REPORTING_ENABLED=false`, `GF_ANALYTICS_CHECK_FOR_UPDATES=false`,
-  `GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false`.
+- **The Usage screen.** The Usage button in the desktop app's rail and `/usage` in
+  `meru chat` draw their charts from the `turns` and `tool_calls` tables in
+  `meru.db`, which rebuild from the transcripts. The socket op `usage` with
+  kind `detail` returns the data: 30 days of tasks, tokens and time to first
+  token (p50 and p95 by nearest rank, in local days), the ten slowest tasks
+  of the last 7 days, the twelve busiest tools by outcome, use by answer model,
+  and the `/metrics` address. An older `merud` answers that kind with the plain
+  windows, and both clients then say the charts need a newer `merud`.
+- **`/metrics` for Prometheus.** With `prometheus = "127.0.0.1:9464"`, `merud`
+  serves every metric above in Prometheus's text format, version 0.0.4, at
+  `http://127.0.0.1:9464/metrics`. A manual reader beside the OTLP push collects
+  the instruments on each request, and `merud` writes the text itself, with no
+  Prometheus library. Names follow the OpenTelemetry Collector's rule: dots
+  become `_`, the unit adds `_seconds` or `_bytes`, and a counter ends in
+  `_total`, so `meru.tool.calls` is `meru_tool_calls_total` and
+  `meru.turn.duration` is `meru_turn_duration_seconds`. A `target_info` line
+  carries `service_name="merud"` and the version. Counters start from zero
+  when `merud` restarts; `rate()` and `increase()` allow for that. A taken port
+  stops `merud` at start, with the key to change.
+- **OTLP.** `otlp_endpoint` pushes metrics, and traces when `traces = true`, to
+  any OTLP/HTTP collector you run on this machine, such as an OpenTelemetry
+  Collector in front of Jaeger. Traces go only this way. When the push fails,
+  `merud` logs it once an hour, with the hint to blank `otlp_endpoint` if no
+  collector runs there.
 
-To run the parts as separate binaries (Collector, Prometheus, Jaeger or Tempo), point
-`otlp_endpoint` at the Collector. `merud` needs no change.
+`/metrics` and OTLP can run at once; each reader sees every instrument, so they
+report the same numbers. A few PromQL queries for the page:
+
+```promql
+# Tasks per day
+sum(increase(meru_turn_duration_seconds_count[1d]))
+# Time to first token, p95 over the last hour
+histogram_quantile(0.95, sum by (le) (rate(gen_ai_server_time_to_first_token_seconds_bucket[1h])))
+# Tool calls that failed today, by tool and outcome
+sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_outcome!="ok"}[1d]))
+```
 
 ### Logs
 
@@ -4563,6 +4612,9 @@ transcript lines hold. No level writes question or answer text. With
 - No telemetry leaves the machine. Meru's own metrics and traces are off by default,
   go only to loopback when on, and leave out prompt text unless you opt in. Meru
   sends no crash reports and never checks for updates.
+- Any program on this machine can read the `/metrics` page while it's on. It
+  holds counts, durations and names from small fixed sets: models, routes,
+  servers, tools and outcomes, never a question, a path or a session ID.
 - The store is a plain file, readable only by you (mode `0600`). Back it up or
   delete it; it's yours.
 - Deleting a chat removes its transcript and its content in `meru.db`; its

@@ -10,6 +10,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -250,7 +251,9 @@ func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (
 		}
 	}
 	if got == nil {
-		return rpc.Event{}, errors.New("merud sent no " + string(want) + " reply")
+		// %w wraps errNoReply, so a caller can tell with errors.Is that an
+		// older merud answered with some other event.
+		return rpc.Event{}, fmt.Errorf("merud sent no %s reply: %w", want, errNoReply)
 	}
 	return *got, nil
 }

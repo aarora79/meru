@@ -23,7 +23,7 @@ func TestUsageCommand(t *testing.T) {
 	}
 	table := `                  1h   today     week   month     30d     all
 sessions           1       2        5      12      14      30
-questions          4       9       31      88      97     212
+tasks              4       9       31      88      97     212
 tokens in        18k     41k     150k    420k    468k    1.4M
 tokens out      2.1k    5.3k      19k     61k     66k    180k
 active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m

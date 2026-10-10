@@ -221,3 +221,35 @@ func askUsage(ask askFunc, byModel bool) tea.Cmd {
 		return usageMsg{err: errors.New("merud sent no reply"), byModel: byModel}
 	}
 }
+
+// usageDetailMsg carries merud's answer to /usage's dashboard request, or
+// err when there is none. An older merud answers the request with plain
+// usage windows, which gives an err.
+type usageDetailMsg struct {
+	detail rpc.UsageDetailReply
+	err    error
+}
+
+// askUsageDetail returns a command that asks merud once for the dashboard
+// the /usage box shows under its table.
+func askUsageDetail(ask askFunc) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		defer cancel()
+		req := rpc.Request{Op: rpc.OpUsage, Kind: rpc.UsageDetail}
+		for ev, err := range ask(ctx, req, nil) {
+			if err != nil {
+				return usageDetailMsg{err: err}
+			}
+			switch ev.Type {
+			case rpc.EventUsageDetail:
+				if ev.UsageDetail != nil {
+					return usageDetailMsg{detail: *ev.UsageDetail}
+				}
+			case rpc.EventError:
+				return usageDetailMsg{err: errors.New(ev.Error)}
+			}
+		}
+		return usageDetailMsg{err: errors.New("update Meru and restart merud")}
+	}
+}

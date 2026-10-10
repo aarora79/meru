@@ -84,7 +84,8 @@ type pinOffender struct {
 // Step 5 of #87 took off the Google start commands in the catalog, the
 // installer and the docs: each now names workspace-mcp 1.30.0, the
 // Google connector's pin. Step 6 took off the installer's SearXNG
-// container: merud's connector runs the pinned image now.
+// container: merud's connector runs the pinned image now. #106 took off
+// the local Grafana stack, which merud's /metrics page replaced.
 var pinOffenders = []pinOffender{
 	// Ollama names a model with no tag "<name>:latest". That is a model
 	// tag, not a program version, and Ollama itself is the user's to
@@ -92,8 +93,6 @@ var pinOffenders = []pinOffender{
 	{"internal/installer/ollama.go", ":latest", "an Ollama model tag, not a program version"},
 	// An example of adding any server by hand, with a made-up name.
 	{"docs/running.md", "npx -y some-mcp", "a made-up server name in an example of meru mcp add"},
-	// The local Grafana stack, which only the owner runs to watch merud.
-	{"deploy/observability/compose.yaml", "grafana/otel-lgtm:latest", "the observability stack is a developer tool; pinning it is a separate change"},
 }
 
 // TestManifestsPinned loads the embedded connector manifests, whose
@@ -283,8 +282,8 @@ func TestPinRulesCatch(t *testing.T) {
 		{"docker pull docker.io/searxng/searxng:latest", true},
 		{"docker pull docker.io/searxng/searxng:2026.9.29", true},
 		{"docker pull docker.io/searxng/searxng:2026.9.29" + digest, false},
-		{"    image: grafana/otel-lgtm:0.8.1", true},
-		{"    image: grafana/otel-lgtm" + digest, false},
+		{"    image: docker.io/searxng/searxng:2026.9.29", true},
+		{"    image: docker.io/searxng/searxng" + digest, false},
 		{`version = "latest"`, true},
 		{`version = "2.0.1"`, false},
 		{"npm install obsidian-mcp@^2.0.0", true},

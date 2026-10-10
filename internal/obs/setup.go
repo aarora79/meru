@@ -1,7 +1,8 @@
 // This file turns the [observability] section of config.toml into running
-// OpenTelemetry exporters: it checks that the endpoint is loopback, builds the
-// metric and trace pipelines, installs them as the process-wide providers,
-// and hands back a function that flushes them on exit.
+// OpenTelemetry pipelines: it checks that the OTLP endpoint is loopback,
+// builds the metric pipeline (an OTLP push, a reader for /metrics, or both)
+// and the trace pipeline, installs them as the process-wide providers, and
+// hands back a function that flushes them on exit.
 
 package obs
 
@@ -9,10 +10,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aarora79/meru/internal/loopback"
@@ -46,7 +49,7 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	// like this one is a value, so it can be stored and returned.
 	noop := func(context.Context) error { return nil }
 
-	if cfg.OTLPEndpoint == "" {
+	if cfg.OTLPEndpoint == "" && cfg.Prometheus == "" {
 		// Export is off. OpenTelemetry's global meter provider starts as a
 		// no-op, so metrics need nothing installed. Traces get the ID-only
 		// provider, so the log still has trace IDs. Keep capture_content
@@ -56,18 +59,28 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 		return noop, nil
 	}
 
-	// Check the endpoint before anything else, so a bad address never gets
-	// as far as an exporter. This is the "Local only" rule in
-	// ARCHITECTURE.md, "Observability".
-	u, err := loopbackURL(ctx, cfg.OTLPEndpoint)
-	// `if err != nil` is Go's error check: a non-nil error means the call
-	// failed, and we pass it up with context added.
-	if err != nil {
-		return nil, err
+	// u stays nil when only /metrics is on: then nothing is pushed, and no
+	// traces go anywhere.
+	var u *url.URL
+	if cfg.OTLPEndpoint != "" {
+		// Check the endpoint before anything else, so a bad address never
+		// gets as far as an exporter. This is the "Local only" rule in
+		// ARCHITECTURE.md, "Observability".
+		var err error
+		u, err = loopbackURL(ctx, cfg.OTLPEndpoint)
+		// `if err != nil` is Go's error check: a non-nil error means the
+		// call failed, and we pass it up with context added.
+		if err != nil {
+			return nil, err
+		}
+		// A push that fails, because nothing listens at the endpoint, goes
+		// to the log once an hour rather than every interval.
+		otel.SetErrorHandler(newExportErrors(cfg.OTLPEndpoint, slog.Default()))
 	}
 
 	interval := defaultInterval
 	if cfg.MetricsInterval != "" {
+		var err error
 		interval, err = time.ParseDuration(cfg.MetricsInterval)
 		if err != nil {
 			return nil, fmt.Errorf("observability.metrics_interval %q: %w", cfg.MetricsInterval, err)
@@ -78,7 +91,7 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	}
 
 	// The resource says which program sent the data. Backends turn
-	// service.name into a label, so the dashboard can filter on "merud".
+	// service.name into a label, so a query can filter on "merud".
 	// NewWithAttributes skips the environment detectors on purpose: an
 	// OTEL_RESOURCE_ATTRIBUTES variable shouldn't be able to change what
 	// merud reports about itself.
@@ -87,21 +100,33 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 		semconv.ServiceVersion(BuildVersion()),
 	)
 
-	metricExporter, err := otlpmetrichttp.New(ctx, metricOptions(u)...)
-	if err != nil {
-		return nil, fmt.Errorf("create OTLP metric exporter: %w", err)
+	// One meter provider feeds every reader, and each reader sees every
+	// instrument, so /metrics and the OTLP push report the same numbers.
+	opts := []sdkmetric.Option{sdkmetric.WithResource(res)}
+	if u != nil {
+		metricExporter, err := otlpmetrichttp.New(ctx, metricOptions(u)...)
+		if err != nil {
+			return nil, fmt.Errorf("create OTLP metric exporter: %w", err)
+		}
+		// The periodic reader collects every instrument each interval and
+		// hands the batch to the exporter, which POSTs it to
+		// <endpoint>/v1/metrics.
+		opts = append(opts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(interval))))
 	}
-	// The periodic reader collects every instrument each interval and hands
-	// the batch to the exporter, which POSTs it to <endpoint>/v1/metrics.
-	meterProvider := sdkmetric.NewMeterProvider(
-		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(interval))),
-	)
+	// manual stays nil unless /metrics is on. A manual reader holds nothing
+	// between collections: each request to /metrics collects once.
+	var manual *sdkmetric.ManualReader
+	if cfg.Prometheus != "" {
+		manual = sdkmetric.NewManualReader()
+		opts = append(opts, sdkmetric.WithReader(manual))
+	}
+	meterProvider := sdkmetric.NewMeterProvider(opts...)
 
 	// tracerProvider stays nil when traces are off. A nil pointer is Go's
-	// "no value"; the shutdown function below checks for it.
+	// "no value"; the shutdown function below checks for it. Traces go out
+	// only over OTLP.
 	var tracerProvider *sdktrace.TracerProvider
-	if cfg.Traces {
+	if u != nil && cfg.Traces {
 		traceExporter, err := otlptracehttp.New(ctx, traceOptions(u)...)
 		if err != nil {
 			// Undo the metric side before failing, so nothing is left running.
@@ -137,7 +162,7 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 	} else {
 		otel.SetTracerProvider(idOnlyProvider())
 	}
-	current.Store(&state{inst: inst, captureContent: cfg.CaptureContent})
+	current.Store(&state{inst: inst, captureContent: cfg.CaptureContent, manual: manual, res: res})
 
 	shutdown := func(ctx context.Context) error {
 		// Stop recording first, so nothing lands in a provider that is
@@ -240,4 +265,38 @@ func BuildVersion() string {
 		return "(devel)"
 	}
 	return info.Main.Version
+}
+
+// exportErrorEvery is how often a failing OTLP push reaches the log: the
+// first failure at once, then at most one line an hour while it lasts, so
+// a collector that isn't running doesn't fill merud.log every interval.
+const exportErrorEvery = time.Hour
+
+// exportErrors is OpenTelemetry's error handler while an OTLP endpoint is
+// set. It logs a failed push once an hour, with the endpoint and the fix.
+type exportErrors struct {
+	endpoint string
+	log      *slog.Logger
+	// mu guards last, since the SDK reports errors from its own goroutines.
+	mu   sync.Mutex
+	last time.Time
+	now  func() time.Time // time.Now outside tests
+}
+
+// newExportErrors returns the handler for endpoint, logging to log.
+func newExportErrors(endpoint string, log *slog.Logger) *exportErrors {
+	return &exportErrors{endpoint: endpoint, log: log, now: time.Now}
+}
+
+// Handle logs err, unless it already logged one within exportErrorEvery.
+// It is the one method otel.ErrorHandler asks for, so *exportErrors fits
+// otel.SetErrorHandler with no adapter.
+func (e *exportErrors) Handle(err error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if t := e.now(); e.last.IsZero() || t.Sub(e.last) >= exportErrorEvery {
+		e.last = t
+		e.log.Warn("observability: the OTLP push failed; set otlp_endpoint = \"\" unless a collector runs there",
+			"endpoint", e.endpoint, "err", err)
+	}
 }

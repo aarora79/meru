@@ -229,7 +229,7 @@ Shift+F10 open the same menus from the keyboard.
 One method per thing Settings and Setup show or change, each a single request:
 `Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SetSecret`,
 `Folders`, `AddFolder`, `RemoveFolder`, `Memories`, `AddMemory`, `ForgetMemory`,
-`Skills`, `SetSkill`, `Models`, `UseModel`, `Activity` and `Usage`. Each hands
+`Skills`, `SetSkill`, `Models`, `UseModel`, `Activity`, `Usage` and `UsageDetail`. Each hands
 back what `merud` sent, shaped for the page: a view struct such as
 `ConnectionsView`, with an empty list in place of `nil`, since `nil` reaches
 JavaScript as `null`.
@@ -247,6 +247,12 @@ answer model, and any client can switch it, so `models` keeps the name each
 models reply gives in the Bridge's `model` field.
 That field now sits under the Bridge's mutex, `mu`, since `Status` reads it
 while a call from Settings may write it.
+
+`UsageDetail` sends `usage` with `Kind` set to `rpc.UsageDetail` and returns
+the dashboard. `one` wraps `errNoReply` when `merud` answers with some other
+event, and an older `merud` answers this kind with the plain windows, so
+`UsageDetail` checks with `errors.Is` and returns `errOldMerud`, whose text
+tells the user to update. The page then shows the windows table alone.
 
 `AddConnection` saves the key first, with `secret_set`, then adds the server with
 `mcp_add`: `merud` refuses to add a catalog server whose key it lacks.
@@ -443,9 +449,19 @@ bundler.
   option the arrow keys point at. `/copy N` counts the code blocks in the chat's
   finished answers in order, as `meru chat` does, and each block's header shows its
   number.
-- `js/settings.js` draws the eight sections of Settings: Connections, with an Off /
-  Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity, Usage
-  and About. Under the catalog cards, "Add your own MCP server" opens a form: a
+- `js/settings.js` draws the seven sections of Settings: Connections, with an Off /
+  Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity
+  and About. It also draws the Usage screen, which the Usage button at the foot
+  of the rail opens: two tabs, Charts and Prometheus queries, built with
+  `role="tab"` and arrow-key moves like Settings' own tabs. Charts holds four
+  bar charts, drawn as SVG elements one attribute at a time, so the page's
+  security policy, which allows no inline styles, still holds; colors come from
+  CSS classes that read the theme's variables. Every chart cell goes into the
+  grid before any chart measures its cell's `clientWidth`, so each chart draws at
+  its final width and its axis text shows at real size. `niceStep` picks round
+  y-axis ticks (1, 2 or 5 times a power of ten), and each bar carries a
+  `<title>` for hover and screen readers. A slowest-task row opens its chat
+  through `pages.openChat`, and one the rail doesn't list goes by its date. Under the catalog cards, "Add your own MCP server" opens a form: a
   name, then a program with its arguments and environment variables, or a URL with
   a tick for a server on another computer. Each argument gets a field of its own,
   so an argument with a space in it needs no quotes, and no quoting rule can cut

@@ -1,7 +1,7 @@
 # Running Meru
 
 This guide takes you from nothing to asking Meru a question, then covers settings,
-indexing your files, running it as a service, the dashboard, and fixing common
+indexing your files, running it as a service, the Usage page, and fixing common
 problems. It describes v0.3: questions, streamed answers, session transcripts,
 routing, answers from your own files with citations, web search through a
 SearXNG you run, and tools from MCP servers and A2A agents you allow. Memory and scheduled jobs arrive in later milestones
@@ -406,7 +406,7 @@ The index part counts the files Meru searches, the vectors it holds for them, an
 the size of `meru.db` on disk; `· indexing` follows while a scan runs. Then comes
 the number of memories, and `· no profile` while Meru knows nothing about you. On
 the right, a wide terminal shows the last hour's use, such as
-`1h: 4 questions · 18k in · 2.1k out`, then a scope you set with `/scope`, in
+`1h: 4 tasks · 18k in · 2.1k out`, then a scope you set with `/scope`, in
 amber, then the model set in use, then whether `merud` is running. A narrow one drops the last hour first, then the vectors,
 size and memory count. The model set stays.
 
@@ -649,7 +649,7 @@ the list. They run at once, even while an answer runs, and never reach the model
 | `/save` | Save to a note on the newest answer; `/save chat` is Share as file |
 | `/used` | opens the side panel for the newest answer |
 | `/copy N` | copies code block N of this chat; `/copy` alone copies the newest answer's last block, and `/copy answer` the whole answer |
-| `/usage` | opens Settings, Usage |
+| `/usage` | opens the Usage screen |
 | `/me` | opens Settings, About you |
 | `/mcp` | opens Settings, Connections |
 | `/folders` | opens Settings, Folders |
@@ -998,7 +998,7 @@ meru usage
 ```text
                   1h   today     week   month     30d     all
 sessions           1       2        5      12      14      30
-questions          4       9       31      88      97     212
+tasks              4       9       31      88      97     212
 tokens in        18k     41k     150k    420k    468k    1.4M
 tokens out      2.1k    5.3k      19k     61k     66k    180k
 active time   2m 14s  5m 01s  20m 10s  1h 01m  1h 07m  3h 05m
@@ -2257,25 +2257,24 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
 
-## 10. Watch it on a dashboard (optional)
+## 10. See how you use Meru
 
-`merud` can send its metrics and traces to a local Grafana stack, which runs in
-one Docker container. The setup takes one command and one line in
-`~/.meru/config.toml`:
+The Usage button at the foot of the desktop app's rail and `/usage` in `meru chat`
+show how much you use Meru, with charts of tasks, tokens and time to first token
+per day, the slowest tasks of the week and the tools whose calls failed. They read `meru.db`, so
+they need nothing else running.
 
-```sh
-docker compose -f deploy/observability/compose.yaml up -d
-```
+To read the same numbers in a Prometheus you run, add one line to
+`~/.meru/config.toml` and restart `merud`:
 
 ```toml
 [observability]
-otlp_endpoint = "http://127.0.0.1:4318"
+prometheus = "127.0.0.1:9464"
 ```
 
-Restart `merud` and open <http://127.0.0.1:3000> (user `admin`, password
-`admin`). [observability.md](observability.md) walks through each step, says which
-dashboard to open for what, explains empty panels, shows how to query the metrics
-from the command line, and how to find one question's trace.
+`merud` then serves its metrics at <http://127.0.0.1:9464/metrics>, on this
+machine only. [observability.md](observability.md) shows the Prometheus scrape
+job, queries to try, and how to send traces to a collector you run.
 
 ## 11. Update to a newer version
 

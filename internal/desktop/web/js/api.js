@@ -67,6 +67,7 @@ export const bridge = {
   saveModels: () => call("SaveModels"),
   activity: () => call("Activity"),
   usage: () => call("Usage"),
+  usageDetail: () => call("UsageDetail"),
   // The About section of Settings (about.go).
   about: () => call("About"),
   // Slash commands (commands.go).

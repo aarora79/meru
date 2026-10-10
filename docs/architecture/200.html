@@ -293,7 +293,7 @@
 <div class="figbox">
 <svg viewBox="0 0 800 470" role="img" aria-labelledby="f1t f1d">
   <title id="f1t">System overview</title>
-  <desc id="f1d">Three short-lived clients, meru one-shot, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the agent loop sends model requests over loopback HTTP to Ollama, which holds the fast, main and embed models. The scheduler feeds the agent loop. The agent loop hands tool calls to dispatch, which checks the allowlist, asks you when needed and logs every call, then reaches MCP servers and other agents over A2A. The agent loop reads and writes files under ~/.meru: transcripts, memory, skills, config and the meru.db index. Timing data goes to an optional dashboard on the same machine.</desc>
+  <desc id="f1d">Three short-lived clients, meru one-shot, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the agent loop sends model requests over loopback HTTP to Ollama, which holds the fast, main and embed models. The scheduler feeds the agent loop. The agent loop hands tool calls to dispatch, which checks the allowlist, asks you when needed and logs every call, then reaches MCP servers and other agents over A2A. The agent loop reads and writes files under ~/.meru: transcripts, memory, skills, config and the meru.db index. Timing data goes to an optional Prometheus or OTLP collector on the same machine.</desc>
   <defs>
     <marker id="f1a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mk"/></marker>
     <marker id="f1b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
@@ -380,10 +380,10 @@
 
   <!-- observability -->
   <rect x="620" y="340" width="168" height="104" rx="10" class="bg"/>
-  <text x="634" y="362" class="t1" font-size="13" font-weight="700">dashboard</text>
+  <text x="634" y="362" class="t1" font-size="13" font-weight="700">metrics</text>
   <text x="634" y="382" class="t3" font-size="11">optional · off by default</text>
   <text x="634" y="400" class="t3" font-size="11">loopback only</text>
-  <text x="634" y="420" class="t3" font-size="11">Grafana</text>
+  <text x="634" y="420" class="t3" font-size="11">Prometheus · OTLP</text>
   <path d="M500 294 L500 324 L600 324 L600 392 L618 392" class="lnd" marker-end="url(#f1a)"/>
 
   <text x="12" y="464" class="t3" font-size="11.5">Everything runs on one machine. Servers and agents elsewhere need remote = true in their config entry.</text>
@@ -405,7 +405,7 @@
 <p>An approval shows as an amber card inside the answer, with a mail's To, Subject and Body laid out to read, and three buttons: Send, Edit first and Don't send. Edit first says no and puts the mail in the text box as a draft to change and send again; Meru asks again before it sends. The card says why Meru asks, and the right panel, once opened, adds what else that server may do.</p>
 <p><code>meru chat</code> does the same things wherever a terminal can. <code>/chats</code> reopens a past chat, <code>/scope</code> sets where Meru looks, <code>/attach</code> takes the path of a file or an image, <code>/retry</code> asks again, <code>/save</code> saves an answer or the chat, and <code>/used</code> shows what an answer used. <code>/incognito</code>, <code>/delete</code>, <code>/folder</code>, <code>/move</code>, <code>/tag</code> and <code>/untag</code> do what the Incognito chat button and the right-click menu do. Boxes for connections, folders, skills, memories, models, the tool log and About change the same settings through <code>merud</code>, and <code>e</code> in an approval box is Edit first. The chat leaves out what needs a window: drag and drop, the file dialog and image previews.</p>
 
-<p>Settings shows each connection with an Off, Ask or Allow switch per tool, the folders Meru indexes, what Meru knows about you, the skills, the models, the tool log, the usage numbers, and an About page with the project's links. Under the catalog's servers, a form adds an MCP server of your own, with every tool Off until you turn it on. Setup walks a new user through four steps: the models, the folders, the connections and a few facts about you. The app changes no file itself. It asks <code>merud</code>, which writes <code>config.toml</code> with the same code <code>meru mcp add</code> uses, keeps every comment, and applies the change without a restart.</p>
+<p>Settings shows each connection with an Off, Ask or Allow switch per tool, the folders Meru indexes, what Meru knows about you, the skills, the models, the tool log, the usage numbers with charts of the last 30 days, and an About page with the project's links. Under the catalog's servers, a form adds an MCP server of your own, with every tool Off until you turn it on. Setup walks a new user through four steps: the models, the folders, the connections and a few facts about you. The app changes no file itself. It asks <code>merud</code>, which writes <code>config.toml</code> with the same code <code>meru mcp add</code> uses, keeps every comment, and applies the change without a restart.</p>
 
 <p>Model output could hold HTML meant to run in the window, so the app sanitizes each answer before it shows it, sets a Content-Security-Policy that blocks inline scripts and anything from the network, and opens links only through Go, which allows <code>http</code>, <code>https</code> and <code>file</code>. Wails needs a C compiler and the WebView's headers, so the app builds on its own with <code>make desktop</code>, and the usual builds skip it. For now it builds on macOS; Linux and Windows come later.</p>
 
@@ -1077,15 +1077,16 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <p>Meru times every stage of a turn with <b>OpenTelemetry</b>, the open standard for timing and counting what software does. A <b>trace</b> follows one turn and splits it into timed steps: routing, search, each model call, each tool call. A slow answer then shows which step took the time. A <b>metric</b> adds numbers up across turns, such as tokens per model or how often a tool fails.</p>
 
 <ul>
-  <li>Export stays off until you set an address in config, and <code>merud</code> refuses to start if that address isn't on loopback.</li>
+  <li>The Usage page in both clients charts tasks, tokens and time to first token per day, lists the slowest tasks of the week and the tools whose calls failed, all from <code>meru.db</code>, so it needs nothing else running.</li>
+  <li>Export stays off until you set an address in config, and <code>merud</code> refuses to start if that address isn't on loopback. One address turns on a <code>/metrics</code> page that a Prometheus you run can read; another pushes metrics and traces to a collector you run.</li>
   <li>A counter of bad calls per model shows which answer model mangles its tool calls; <code>/usage by model</code> shows the same number from the transcripts.</li>
   <li>Traces carry token counts, times, model names and tool names, and no prompt or answer text unless you switch it on. Each tool call gets a span of its own, with its outcome and your approval.</li>
-  <li>The repo ships one container, <code>grafana/otel-lgtm</code>, that stores the data and shows a ready-made Meru dashboard in Grafana, listening on 127.0.0.1 only.</li>
+  <li>The Usage page lists PromQL queries to copy, such as tasks per day and the tool calls that failed today.</li>
 </ul>
 
-<p>The trace ID ties the two views together: a slow step in Grafana leads to the exact messages and tool calls in the log, and back.</p>
+<p>The trace ID ties the two views together: a slow step in a trace viewer leads to the exact messages and tool calls in the log, and back.</p>
 
-<p>Without the dashboard, <code>merud</code>'s own log file answers the same question. By default it writes one line per turn with its route, total time and time to first token. Started with <code>merud -v</code>, it writes a line for each step as well, each with the turn's trace ID and none with your text.</p>
+<p>Without a trace viewer, <code>merud</code>'s own log file answers the same question. By default it writes one line per turn with its route, total time and time to first token. Started with <code>merud -v</code>, it writes a line for each step as well, each with the turn's trace ID and none with your text.</p>
 
 <!-- ============================================================ -->
 <h2 id="privacy">The privacy rules</h2>

@@ -88,7 +88,7 @@ with nothing behind it.
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
 | **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer`, `web-research` and `file-research`; `[skills] disabled` turns one off. |
 | **Scheduled jobs** (v0.5) | Meru will run briefs and other jobs on a schedule, so it can tell you things before you ask. |
-| **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces, and shows them in Grafana on your machine. |
+| **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces. The Usage page charts them with nothing to install, and a Prometheus you run can read them from `merud` on your machine. |
 
 ## Why your own machine
 
@@ -203,7 +203,7 @@ call.
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
 - [docs/faq/](docs/faq/index.md) — short answers to "how do I…" questions, one page each
-- [docs/observability.md](docs/observability.md) — watch Meru on a local Grafana dashboard
+- [docs/observability.md](docs/observability.md) — read Meru's metrics: the Usage page, Prometheus and traces
 - [docs/releasing.md](docs/releasing.md) — how a release gets built and published
 - [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
 - [ROADMAP.md](ROADMAP.md) — milestones, in shipping order

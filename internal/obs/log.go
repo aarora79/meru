@@ -19,7 +19,8 @@ const maxPreview = 200
 
 // LogHandler wraps next so that every record logged with a context that
 // holds a span gains a trace_id attribute. The same ID names the turn's trace
-// in Tempo and sits on its transcript lines, so one grep finds all three.
+// in any OTLP backend you run and sits on its transcript lines, so one grep
+// finds all three.
 //
 // Only the *Context logging calls pass a context through, so code that wants
 // the trace ID on a line calls log.DebugContext(ctx, ...) rather than
