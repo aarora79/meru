@@ -120,7 +120,8 @@ excerpt the tool found reads the same as one the prompt held.
 ### memories.go: recall
 
 `SearchMemories(ctx, st, eng, query, exclude, n)` finds the `n` memories that best
-fit a question. It embeds the query once, then asks the store for three lists of up
+fit a question. It embeds the query once, as `engine.Input{Text: query, Query:
+true}` so the engine adds the model's query prefix, then asks the store for three lists of up
 to 50 memories each, leaving out the kinds in `exclude`:
 
 1. by meaning: `SearchMemoryVector`;

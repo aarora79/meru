@@ -524,13 +524,17 @@ type engineBuilder func(config.Config, *slog.Logger) (engine.Engine, error)
 // loopback address from config, which also knows the embed model for Embed.
 // A nil *http.Client makes the engine use its own default client. The
 // engine asks Ollama for [ollama] context_length tokens of room on every
-// chat call.
+// chat call, and gives the embed model the prefixes and context that
+// config.FindEmbedModel lists for it, or none for a model it doesn't know.
 func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
 	e, err := engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil, log)
 	if err != nil {
 		return nil, err
 	}
 	e.ContextLength = cfg.Ollama.ContextLength
+	em := config.FindEmbedModel(cfg.Models.Embed)
+	e.EmbedPrompts = engine.Prompts{Query: em.Query, Document: em.Document}
+	e.EmbedContext = em.Context
 	return e, nil
 }
 

@@ -82,7 +82,7 @@ func Search(ctx context.Context, st *store.Store, eng engine.Engine, query strin
 	}()
 
 	start := time.Now()
-	vecs, err := eng.Embed(ctx, []string{query})
+	vecs, err := eng.Embed(ctx, []engine.Input{{Text: query, Query: true}})
 	if err != nil {
 		return nil, fmt.Errorf("retrieve: embed query: %w", err)
 	}

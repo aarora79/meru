@@ -1344,7 +1344,7 @@ The interface has four methods:
 type Engine interface {
     Generate(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (Completion, error)
     Stream(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (iter.Seq2[Delta, error], error)
-    Embed(ctx context.Context, texts []string) ([]Vector, error)
+    Embed(ctx context.Context, inputs []Input) ([]Vector, error)
     Info(ctx context.Context) (ModelInfo, error)
 }
 ```
@@ -1368,6 +1368,22 @@ For [routing](#routing), `Options` gains two fields, `LogProbs` and `TopLogProbs
 and `Completion` gains `LogProbs`: for each generated position, the chosen token and
 the alternatives the model weighed, each with its log probability. Both default to
 off, so other callers see no change, and the interface keeps its four methods.
+
+`Embed` takes `[]Input`, not plain strings. An `Input` is a text, an image's
+bytes, or both, with a `Title` for a document and a `Query` flag for a search
+query. Images reached the embed call as a field, the way they reached the chat
+call as `Message.Images`, so the interface kept its four methods. The engine
+applies the embedding model's task prefixes, which `merud` hands it from
+`config.EmbedModels`: for `embeddinggemma-2`, `task: search result | query:
+{query}` on a query and `title: {title} | text: {text}` on a document, and none on
+an image. A model Meru doesn't list gets the text as it is. A text-only input goes
+to `/api/embed` as a plain string, and anything with an image as `{"text",
+"image"}` with the image in base64. Ollama also accepts two shapes that look right
+and aren't: an `images` list beside `input`, which it ignores, and a
+`data:image/...;base64,` string, which it embeds as text. Both return a vector
+that has nothing to do with the picture. `Embed` also sends the model's full
+context as `num_ctx` on every call, because Ollama may load an embedding model
+with less and cuts a longer input without an error.
 
 Two more methods sit outside the interface, for the model ops alone.
 `Unload` drops a model from Ollama's memory with a `POST /api/generate` that

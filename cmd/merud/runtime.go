@@ -37,7 +37,7 @@ func warm(ctx context.Context, eng engine.Engine, m config.Models, log *slog.Log
 
 	start = time.Now()
 	log.DebugContext(ctx, "warming", "model", m.Embed)
-	if _, err := eng.Embed(ctx, []string{"hi"}); err != nil {
+	if _, err := eng.Embed(ctx, engine.Texts("hi")); err != nil {
 		return fmt.Errorf("warm %s: %w (try `ollama pull %s`)", m.Embed, err, m.Embed)
 	}
 	log.Info("warmed", "model", m.Embed, "ms", time.Since(start).Milliseconds())

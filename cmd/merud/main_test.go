@@ -113,7 +113,16 @@ const holdMarker = "HOLD-THE-SCAN"
 
 // Embed returns one vector per text, each the length of its text in every
 // place, so the vectors differ between texts.
-func (f *fakeEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector, error) {
+func (f *fakeEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine.Vector, error) {
+	// The text each input stood for before engine.Input: title, blank
+	// line, text, as the indexer sent it.
+	texts := make([]string, len(inputs))
+	for i, in := range inputs {
+		texts[i] = in.Text
+		if in.Title != "" {
+			texts[i] = in.Title + "\n\n" + in.Text
+		}
+	}
 	f.mu.Lock()
 	f.embeds++
 	f.mu.Unlock()

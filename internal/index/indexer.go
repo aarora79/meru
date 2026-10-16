@@ -763,37 +763,35 @@ func chunkFile(kind, p string, data []byte, lim limits) ([]store.Chunk, error) {
 	}
 }
 
-// embed turns the chunks into vectors, embedBatch texts per Embed call. The
-// result has one vector per chunk, in order.
+// embed turns the chunks into vectors, embedBatch chunks per Embed call.
+// The result has one vector per chunk, in order.
 func (ix *Indexer) embed(ctx context.Context, chunks []store.Chunk) ([]engine.Vector, error) {
 	vecs := make([]engine.Vector, 0, len(chunks))
 	for i := 0; i < len(chunks); i += embedBatch {
 		end := min(i+embedBatch, len(chunks))
-		texts := make([]string, 0, end-i)
+		inputs := make([]engine.Input, 0, end-i)
 		for _, c := range chunks[i:end] {
-			texts = append(texts, embedText(c))
+			inputs = append(inputs, embedInput(c))
 		}
-		got, err := ix.eng.Embed(ctx, texts)
+		got, err := ix.eng.Embed(ctx, inputs)
 		if err != nil {
 			return nil, err
 		}
-		if len(got) != len(texts) {
-			return nil, fmt.Errorf("engine returned %d vectors for %d texts", len(got), len(texts))
+		if len(got) != len(inputs) {
+			return nil, fmt.Errorf("engine returned %d vectors for %d chunks", len(got), len(inputs))
 		}
 		vecs = append(vecs, got...)
 	}
 	return vecs, nil
 }
 
-// embedText is what gets embedded for a chunk: its heading path, then its
-// text. The second chunk of a long "Garden > Spring" section doesn't repeat the
-// heading line, and without the path its vector would lose what the section
-// is about.
-func embedText(c store.Chunk) string {
-	if c.Heading == "" {
-		return c.Text
-	}
-	return c.Heading + "\n\n" + c.Text
+// embedInput is what gets embedded for a chunk: its heading path as the
+// title, then its text. The second chunk of a long "Garden > Spring"
+// section doesn't repeat the heading line, and without the path its vector
+// would lose what the section is about. The engine puts the title where
+// the embedding model wants it.
+func embedInput(c store.Chunk) engine.Input {
+	return engine.Input{Title: c.Heading, Text: c.Text}
 }
 
 // tokens totals the estimated tokens in chunks, for the debug log.

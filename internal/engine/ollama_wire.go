@@ -117,8 +117,40 @@ type wireTopLogProb struct {
 // embedRequest is the body of POST /api/embed.
 type embedRequest struct {
 	Model     string          `json:"model"`
-	Input     []string        `json:"input"`
+	Input     []embedItem     `json:"input"`
 	KeepAlive json.RawMessage `json:"keep_alive,omitempty"`
+	Options   *embedOptions   `json:"options,omitempty"`
+}
+
+// embedOptions are the model options an embed call sets. num_ctx matters:
+// Ollama may load an embedding model with a shorter context than it
+// supports, and /api/embed cuts a longer input without an error.
+type embedOptions struct {
+	NumCtx int `json:"num_ctx,omitempty"`
+}
+
+// embedItem is one entry of an embed request's input. Ollama takes a
+// plain string for text, and an object {"text", "image"} for anything with
+// an image. Two shapes that look right don't work: an "images" list beside
+// "input" is ignored, and a "data:image/png;base64,..." string is embedded
+// as text. Both return a vector that has nothing to do with the picture.
+type embedItem struct {
+	Text  string
+	Image []byte
+}
+
+// MarshalJSON writes item in the shape Ollama wants: a JSON string for
+// text alone, and an object for anything with an image. A type with a
+// MarshalJSON method takes over how encoding/json writes it.
+func (it embedItem) MarshalJSON() ([]byte, error) {
+	if it.Image == nil {
+		return json.Marshal(it.Text)
+	}
+	// A []byte field is written as base64, which is what Ollama reads.
+	return json.Marshal(struct {
+		Text  string `json:"text,omitempty"`
+		Image []byte `json:"image"`
+	}{it.Text, it.Image})
 }
 
 // embedResponse is the reply from /api/embed: one vector per input.

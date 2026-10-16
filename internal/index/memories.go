@@ -160,7 +160,7 @@ func (ms *Memories) store(ctx context.Context, rows []store.Memory) error {
 		for j, r := range batch {
 			texts[j] = cutText(r.Text, maxMemoryEmbedBytes)
 		}
-		vecs, err := ms.eng.Embed(ctx, texts)
+		vecs, err := ms.eng.Embed(ctx, engine.Texts(texts...))
 		if err != nil {
 			return fmt.Errorf("sync memories: embed: %w", err)
 		}

@@ -80,7 +80,7 @@ func TestIntegrationOllama(t *testing.T) {
 	})
 
 	t.Run("embed", func(t *testing.T) {
-		vs, err := e.Embed(ctx, []string{"hello", "world"})
+		vs, err := e.Embed(ctx, Texts("hello", "world"))
 		if err != nil {
 			t.Fatalf("Embed: %v", err)
 		}

@@ -50,7 +50,16 @@ func (f *fakeEngine) Stream(ctx context.Context, msgs []engine.Message, tools []
 	return nil, errors.New("not used")
 }
 
-func (f *fakeEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector, error) {
+func (f *fakeEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine.Vector, error) {
+	// The text each input stood for before engine.Input: title, blank
+	// line, text, as the indexer sent it.
+	texts := make([]string, len(inputs))
+	for i, in := range inputs {
+		texts[i] = in.Text
+		if in.Title != "" {
+			texts[i] = in.Title + "\n\n" + in.Text
+		}
+	}
 	f.mu.Lock()
 	f.embeds += len(texts)
 	f.mu.Unlock()

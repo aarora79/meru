@@ -30,9 +30,11 @@ type Engine interface {
 	// Delta has Done set and carries the usage counters.
 	Stream(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (iter.Seq2[Delta, error], error)
 
-	// Embed turns each text into a vector with the engine's embedding model.
-	// The result has one Vector per input text, in the same order.
-	Embed(ctx context.Context, texts []string) ([]Vector, error)
+	// Embed turns each input, a text, an image or both, into a vector with
+	// the engine's embedding model. The result has one Vector per input, in
+	// the same order. Inputs are a struct, not one method per kind, so
+	// images needed no fifth method.
+	Embed(ctx context.Context, inputs []Input) ([]Vector, error)
 
 	// Info reports what the runtime is and which models it has loaded.
 	Info(ctx context.Context) (ModelInfo, error)
@@ -170,6 +172,42 @@ type PositionLogProbs struct {
 // Vector is one embedding: a list of numbers that places a text in "meaning
 // space". Texts with similar meaning get vectors that point the same way.
 type Vector []float32
+
+// Input is one thing for Embed to turn into a vector: a piece of text, an
+// image, or both. Text and Title form a document unless Query is set.
+type Input struct {
+	// Text is the text to embed; empty for an image alone.
+	Text string
+	// Title names the text, such as a Markdown heading. With a model whose
+	// document prefix has a {title}, it goes there ("none" when empty);
+	// otherwise it goes before the text, a blank line between.
+	Title string
+	// Query marks a search query rather than a document. A model trained
+	// for search wants a different prefix on each; Prompts holds them.
+	Query bool
+	// Image holds a PNG, JPEG, GIF or WebP file's bytes, for a model that
+	// embeds images. Images take no prefix.
+	Image []byte
+}
+
+// Texts wraps plain texts as document inputs, for a caller that has only
+// strings, such as a warm-up call.
+func Texts(texts ...string) []Input {
+	out := make([]Input, len(texts))
+	for i, t := range texts {
+		out[i] = Input{Text: t}
+	}
+	return out
+}
+
+// Prompts holds an embedding model's task prefixes, from its model card.
+// Query takes the text where it says {query}; Document takes {title} and
+// {text}. The zero value adds nothing, which suits a model that wants no
+// prefix and any model Meru doesn't know.
+type Prompts struct {
+	Query    string // such as "task: search result | query: {query}"
+	Document string // such as "title: {title} | text: {text}"
+}
 
 // ModelInfo describes the runtime behind an Engine.
 type ModelInfo struct {

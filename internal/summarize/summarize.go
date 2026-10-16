@@ -232,7 +232,7 @@ func (s *Summarizer) embed(ctx context.Context) {
 	for i, t := range todo {
 		texts[i] = t.Summary
 	}
-	vecs, err := s.eng.Embed(ctx, texts)
+	vecs, err := s.eng.Embed(ctx, engine.Texts(texts...))
 	if ctx.Err() != nil {
 		return
 	}

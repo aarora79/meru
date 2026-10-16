@@ -201,7 +201,16 @@ func TestNoProfileNoRecall(t *testing.T) {
 // where it makes "my boss" match "manager" with no shared word.
 type meaningEngine struct{}
 
-func (meaningEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector, error) {
+func (meaningEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine.Vector, error) {
+	// The text each input stood for before engine.Input: title, blank
+	// line, text, as the indexer sent it.
+	texts := make([]string, len(inputs))
+	for i, in := range inputs {
+		texts[i] = in.Text
+		if in.Title != "" {
+			texts[i] = in.Title + "\n\n" + in.Text
+		}
+	}
 	out := make([]engine.Vector, len(texts))
 	for i, t := range texts {
 		l := strings.ToLower(t)
