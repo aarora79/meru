@@ -84,7 +84,7 @@ func (ix *Indexer) kindIn(root, p string) (kind, reason string) {
 			return KindCode, ""
 		}
 	}
-	return kindOf(p)
+	return ix.kindOf(p)
 }
 
 // Checked is what Check learns about one path.
@@ -171,6 +171,12 @@ func (ix *Indexer) locate(p string) (path, root string) {
 // 8 KB. It returns "" to keep the file. A file it can't open counts as
 // kept; the read that follows reports the real problem.
 func (ix *Indexer) contentReason(p string, info fs.FileInfo) string {
+	// The file tools read text. The index may hold an image, but read_file
+	// can't show one, so to them it stays media, as before images were
+	// indexed.
+	if IsImageName(p) {
+		return ReasonMedia
+	}
 	if info.Size() > ix.maxBytes {
 		return ReasonTooLarge
 	}

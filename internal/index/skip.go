@@ -35,6 +35,10 @@ const (
 	KindCode     = "code"
 	KindHTML     = "html"
 	KindPDF      = "pdf"
+	// KindImage is a PNG, JPEG, GIF or WebP file, indexed only when
+	// [index] images is on and the embedding model takes images. Its
+	// document holds one chunk whose vector comes from the picture.
+	KindImage = "image"
 )
 
 // ignoreFiles are the per-folder rule files, read in this order. A later
@@ -115,8 +119,19 @@ func IsSecret(name string) bool {
 	return false
 }
 
+// kindOf is the package-level kindOf, plus images when this indexer reads
+// them (Indexer.images). The file tools still read an image as media: see
+// contentReason.
+func (ix *Indexer) kindOf(name string) (kind, reason string) {
+	if ix.images && IsImageName(name) {
+		return KindImage, ""
+	}
+	return kindOf(name)
+}
+
 // kindOf returns the kind of file name holds, from its extension. When the
-// indexer has no chunker for it, kind is empty and reason says why.
+// indexer has no chunker for it, kind is empty and reason says why. Images
+// count as media here; Indexer.kindOf lets them in.
 func kindOf(name string) (kind, reason string) {
 	ext := strings.ToLower(filepath.Ext(name))
 	if k, ok := kinds[ext]; ok {

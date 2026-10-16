@@ -18,6 +18,7 @@ func TestCitationString(t *testing.T) {
 		{Citation{N: 2, Path: "~/notes/a.md", StartLine: 7, EndLine: 7}, `[2] ~/notes/a.md, line 7`},
 		{Citation{N: 3, Path: "/srv/paper.pdf", Page: 4}, `[3] /srv/paper.pdf, page 4`},
 		{Citation{N: 4, Path: "~/x.txt"}, `[4] ~/x.txt`},
+		{Citation{N: 5, Path: "~/img/shot.png", Heading: "shot.png", Kind: "image"}, `[5] ~/img/shot.png (image)`},
 	}
 	for _, tt := range tests {
 		if got := tt.c.String(); got != tt.want {

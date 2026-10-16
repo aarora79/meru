@@ -4,6 +4,7 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"iter"
 	"os"
@@ -96,6 +97,7 @@ func (s *fakeSink) entry(path string) (fakeEntry, bool) {
 type fakeEngine struct {
 	mu      sync.Mutex
 	batches []int
+	images  int // image inputs embedded
 }
 
 func (e *fakeEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine.Vector, error) {
@@ -114,6 +116,15 @@ func (e *fakeEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine
 	out := make([]engine.Vector, len(texts))
 	for i, t := range texts {
 		out[i] = engine.Vector{float32(len(t))}
+		if img := inputs[i].Image; img != nil {
+			// Ollama answers 400 to an image it can't read; bytes that
+			// say "refuse-me" stand in for one.
+			if bytes.Contains(img, []byte("refuse-me")) {
+				return nil, &engine.APIError{Path: "/api/embed", StatusCode: 400, Message: "bad image"}
+			}
+			e.images++
+			out[i] = engine.Vector{float32(1000 + len(img))}
+		}
 	}
 	return out, nil
 }

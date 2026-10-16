@@ -13,7 +13,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
   el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
-  appendToken, approvalCard, thumb,
+  appendToken, approvalCard, thumb, isImageSource,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
@@ -1105,7 +1105,7 @@ function drawPanel() {
     for (const s of t.sources) {
       const li = el("li");
       const b = button("", { className: "panel-source", onClick: () => handlers.onOpenSource(s.path) });
-      b.append(icon("file", 14), el("span", "", " " + baseName(s.path)));
+      b.append(icon(isImageSource(s) ? "image" : "file", 14), el("span", "", " " + baseName(s.path)));
       b.title = "Open " + s.path;
       li.append(b, el("span", "dim path", s.path));
       ul.append(li);

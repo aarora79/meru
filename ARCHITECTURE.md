@@ -2113,6 +2113,7 @@ max_file_mb    = 5
 chunk_tokens   = 500
 overlap_tokens = 50
 watch          = true
+images         = true                   # PNG, JPEG, GIF and WebP files too
 ```
 
 Inside those folders the indexer checks each entry against these rules, in order,
@@ -2125,9 +2126,9 @@ and skips it at the first one that matches:
 | 3 | `hidden` | a name that starts with `.` |
 | 4 | `build-folder` | `node_modules`, `.venv`, `venv`, `vendor`, `target`, `dist`, `build`, `__pycache__` |
 | 5 | `ignored` | `[index] ignore`, then each folder's `.gitignore` and `.meruignore`, from the top folder down |
-| 6 | `media`, `binary`, `unsupported` | by extension: images, audio, video, archives, programs, databases, and any type with no chunker |
-| 7 | `too-large` | over `max_file_mb` |
-| 8 | `binary` | a NUL byte in the first 8 KB (PDFs excepted) |
+| 6 | `media`, `binary`, `unsupported` | by extension: audio, video, archives, programs, databases, HEIC and other images Ollama can't embed, any image when `[index] images` is off, and any type with no chunker |
+| 7 | `too-large` | over `max_file_mb`, or over 20 MiB for an image |
+| 8 | `binary` | a NUL byte in the first 8 KB (PDFs and images excepted) |
 
 - **Secrets sit beyond any ignore file's reach.** No `.gitignore` or `.meruignore`
   line can bring one back, because a key in the index would end up in a prompt.
@@ -2143,6 +2144,18 @@ the last matching line wins, and a deeper folder's file beats a shallower one's.
 Meru reads `.meruignore` after `.gitignore` in the same folder, so it can skip more
 for Meru alone, or bring back with `!name` a file git ignores.
 
+**Images.** With `[index] images = true`, the default, and an embedding model that
+takes images (`embeddinggemma-2:440m` does; `config.EmbedModels` marks it), the
+indexer reads PNG, JPEG, GIF and WebP files too. It checks the first bytes really
+are an image, sends the whole file to Ollama as `{"image": base64}`, and stores one
+document of kind `image` with one chunk and one vector, in the same tables as text.
+The chunk's text, "Image shot.png in ~/Documents/img", lets keyword search find a
+picture by its name; its vector, from the picture itself, lets a question find it by
+what it shows. Ollama scales every image to the same 268 tokens, so Meru sends the
+file as it is. HEIC, which iPhone photos and some Mac screenshots use, stays out:
+Ollama refuses it and Go can't decode it. The file tools (`read_file`, `grep` and the
+rest) still see an image as media, since they read text.
+
 ### Chunking
 
 The indexer cuts each file into chunks along its own structure:
@@ -2154,6 +2167,7 @@ The indexer cuts each file into chunks along its own structure:
 | other code, plain text | blank-line blocks | none | lines |
 | HTML | `<h1>` to `<h6>`, then paragraphs; scripts, styles and `<head>` dropped | the heading path | none |
 | PDF | page, then paragraphs; plain text, no layout | none | page |
+| Image (PNG, JPEG, GIF, WebP) | not split: one chunk whose text names the file and its folder | the file name | the file |
 
 - **Size.** A chunk holds about `chunk_tokens` (500) tokens and repeats the last
   `overlap_tokens` (50) of the chunk before it, so a sentence cut at a boundary
@@ -4658,6 +4672,10 @@ transcript lines hold. No level writes question or answer text. With
   `list_folder`, `grep` and `search_files`, apply the same rules through the
   indexer's own code, so outside the output folder and your own session
   transcripts the model can read no file that search couldn't reach.
+- An image in those folders goes to Ollama on loopback to be embedded, EXIF data
+  and all, and nowhere else. The answer model never sees an indexed image: a search
+  hands it the file's name and path, and you open the picture. `[index] images =
+  false` keeps images out of the index.
 - `meru log` and the `tool_calls` table let you review every external action.
 - The Mac installer downloads only what a step names, after you press Continue:
   Ollama and uv through Homebrew, the models through Ollama, the SearXNG image

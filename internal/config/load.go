@@ -128,6 +128,7 @@ func defaults() Config {
 			ChunkTokens:   500,
 			OverlapTokens: 50,
 			Watch:         true,
+			Images:        true,
 			Retrieval:     RetrievalAuto,
 		},
 		// Every built-in tool is on. web_fetch, which fetches public pages

@@ -1421,7 +1421,8 @@ ignore         = ["*.log", "drafts/"]   # .gitignore-style, on top of the built-
 max_file_mb    = 5
 chunk_tokens   = 500
 overlap_tokens = 50
-watch          = true</code></pre>
+watch          = true
+images         = true                   # PNG, JPEG, GIF and WebP files too</code></pre>
 
 <p>Inside those folders the indexer checks each entry against these rules, in order, and skips it at the first one that matches:</p>
 
@@ -1433,9 +1434,9 @@ watch          = true</code></pre>
     <tr><td class="num-col">3</td><td><code>hidden</code></td><td>a name that starts with <code>.</code></td></tr>
     <tr><td class="num-col">4</td><td><code>build-folder</code></td><td><code>node_modules</code>, <code>.venv</code>, <code>venv</code>, <code>vendor</code>, <code>target</code>, <code>dist</code>, <code>build</code>, <code>__pycache__</code></td></tr>
     <tr><td class="num-col">5</td><td><code>ignored</code></td><td><code>[index] ignore</code>, then each folder's <code>.gitignore</code> and <code>.meruignore</code>, from the top folder down</td></tr>
-    <tr><td class="num-col">6</td><td><code>media</code>, <code>binary</code>, <code>unsupported</code></td><td>by extension: images, audio, video, archives, programs, databases, and any type with no chunker</td></tr>
-    <tr><td class="num-col">7</td><td><code>too-large</code></td><td>over <code>max_file_mb</code></td></tr>
-    <tr><td class="num-col">8</td><td><code>binary</code></td><td>a NUL byte in the first 8 KB (PDFs excepted)</td></tr>
+    <tr><td class="num-col">6</td><td><code>media</code>, <code>binary</code>, <code>unsupported</code></td><td>by extension: audio, video, archives, programs, databases, HEIC and other images Ollama can't embed, any image when <code>[index] images</code> is off, and any type with no chunker</td></tr>
+    <tr><td class="num-col">7</td><td><code>too-large</code></td><td>over <code>max_file_mb</code>, or over 20 MiB for an image</td></tr>
+    <tr><td class="num-col">8</td><td><code>binary</code></td><td>a NUL byte in the first 8 KB (PDFs and images excepted)</td></tr>
   </tbody>
 </table></div>
 
@@ -1446,6 +1447,8 @@ watch          = true</code></pre>
 </ul>
 
 <p>A <code>.meruignore</code> uses <code>.gitignore</code> syntax: one pattern per line, <code>#</code> for a comment, <code>*</code> for any run of characters within a name, <code>**/</code> for any number of folders, a trailing <code>/</code> for folders only, a <code>/</code> at the start to anchor the pattern to the file's own folder, and <code>!</code> to re-include. Git's rule holds across the ignore files: the last matching line wins, and a deeper folder's file beats a shallower one's. Meru reads <code>.meruignore</code> after <code>.gitignore</code> in the same folder, so it can skip more for Meru alone, or bring back with <code>!name</code> a file git ignores.</p>
+
+<p><b>Images.</b> With <code>[index] images = true</code>, the default, and an embedding model that takes images (<code>embeddinggemma-2:440m</code> does; <code>config.EmbedModels</code> marks it), the indexer reads PNG, JPEG, GIF and WebP files too. It checks the first bytes really are an image, sends the whole file to Ollama as <code>{"image": base64}</code>, and stores one document of kind <code>image</code> with one chunk and one vector, in the same tables as text. The chunk's text, "Image shot.png in ~/Documents/img", lets keyword search find a picture by its name; its vector, from the picture itself, lets a question find it by what it shows. Ollama scales every image to the same 268 tokens, so Meru sends the file as it is. HEIC, which iPhone photos and some Mac screenshots use, stays out: Ollama refuses it and Go can't decode it. The file tools (<code>read_file</code>, <code>grep</code> and the rest) still see an image as media, since they read text.</p>
 
 <h3>Chunking</h3>
 
@@ -1459,6 +1462,7 @@ watch          = true</code></pre>
     <tr><td>other code, plain text</td><td>blank-line blocks</td><td>none</td><td>lines</td></tr>
     <tr><td>HTML</td><td><code>&lt;h1&gt;</code> to <code>&lt;h6&gt;</code>, then paragraphs; scripts, styles and <code>&lt;head&gt;</code> dropped</td><td>the heading path</td><td>none</td></tr>
     <tr><td>PDF</td><td>page, then paragraphs; plain text, no layout</td><td>none</td><td>page</td></tr>
+    <tr><td>Image (PNG, JPEG, GIF, WebP)</td><td>not split: one chunk whose text names the file and its folder</td><td>the file name</td><td>the file</td></tr>
   </tbody>
 </table></div>
 
@@ -3076,6 +3080,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <li>Deleting a chat removes its transcript and its content in <code>meru.db</code>; its <code>tool_calls</code> rows stay without arguments or results. An incognito chat writes no transcript, no session rows and no summary, and saves no memory; <code>tool_calls</code> records each of its calls without arguments or results (see <a href="#incognito">Incognito chats</a>).</li>
   <li>A file outside those folders reaches the model only when you attach it in the desktop app. <code>merud</code> copies that one file into <code>~/meru-output/uploads/</code>, and refuses a link, a folder and a file whose name looks like a secret's. An attached image goes to Ollama on loopback with that one question, like its text, and nowhere else.</li>
   <li>The indexer reads only the folders you list, never follows a symlink, and never indexes a file that looks like a secret. The file tools, <code>read_file</code>, <code>list_folder</code>, <code>grep</code> and <code>search_files</code>, apply the same rules through the indexer's own code, so outside the output folder and your own session transcripts the model can read no file that search couldn't reach.</li>
+  <li>An image in those folders goes to Ollama on loopback to be embedded, EXIF data and all, and nowhere else. The answer model never sees an indexed image: a search hands it the file's name and path, and you open the picture. <code>[index] images = false</code> keeps images out of the index.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
   <li>The Mac installer downloads only what a step names, after you press Continue: Ollama and uv through Homebrew, the models through Ollama, the SearXNG image through Docker, and Ollama.app from Ollama's site on a Mac with no Homebrew. It runs only the programs on its allowlist, with no shell, and keeps the Google client secret in the start script, readable only by you (see <a href="#installer">The Mac installer</a>).</li>
   <li>A connector's install downloads only what its pins name: Node from nodejs.org and uv from its GitHub release, each checked against a SHA-256 compiled into <code>merud</code>; the package and its dependencies from the npm registry or PyPI; a Python build through uv; and a container image by digest through Docker (see <a href="#connector-runtime">The runtime folder</a>). Nothing downloads until a connector needs it, and today no code in <code>merud</code> calls the installer yet.</li>

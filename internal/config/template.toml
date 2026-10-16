@@ -124,6 +124,11 @@ overlap_tokens = 50
 # Re-index a file as soon as it changes. merud also rescans every folder
 # when it starts, so edits made while it was stopped get in.
 watch = true
+# Index the PNG, JPEG, GIF and WebP files in these folders, so a question
+# can find a picture, and an image you attach can find ones like it. Each
+# image goes to Ollama on this machine to be embedded. HEIC files are
+# skipped. false leaves images out.
+images = true
 # How a question finds text in these folders:
 #   "auto"     merud searches before the model answers, on every route but
 #              direct, and puts the ten best excerpts in the prompt. The

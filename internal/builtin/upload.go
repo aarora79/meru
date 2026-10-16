@@ -60,7 +60,7 @@ func (t *Tools) Upload(src string) (Uploaded, error) {
 		return Uploaded{}, errors.New("there is no output folder to copy the file into; set [skills] output_dir in config.toml")
 	}
 	name := filepath.Base(src)
-	image := IsImageName(name)
+	image := index.IsImageName(name)
 	limit := int64(uploadCap)
 	if image {
 		limit = imageCap

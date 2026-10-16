@@ -201,6 +201,12 @@ type Index struct {
 	// Watch re-indexes a file as soon as it changes while merud runs. Default
 	// true. merud also rescans every folder at startup.
 	Watch bool `toml:"watch"`
+	// Images indexes the PNG, JPEG, GIF and WebP files in these folders, so
+	// a question can find a picture. Default true. It takes effect only with
+	// an embedding model that takes images (EmbedModel.Images); merud
+	// passes the indexer the two together. Images go to Ollama on this
+	// machine to be embedded, and nowhere else.
+	Images bool `toml:"images"`
 	// Retrieval says how a turn finds text in these folders. "auto", the
 	// default, searches before the model answers on the search routes and
 	// also offers the search_files tool. "agentic" skips that search and
