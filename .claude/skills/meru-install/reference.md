@@ -92,11 +92,12 @@ rm -rf /Applications/Meru.app
 
 # The models, one at a time; `ollama list` names them.
 ollama rm hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
-ollama rm nomic-embed-text
+ollama rm embeddinggemma-2:440m
+ollama rm nomic-embed-text          # if an older Meru pulled it
 ollama rm gemma4:26b-a4b-it-qat     # if they pulled it
 ollama rm qwen3.6:35b               # if they pulled it
 ollama rm qwen3.6:35b-a3b-mxfp8     # if they pulled it
-ollama rm qwen3-embedding:0.6b      # if they used the full profile
+ollama rm qwen3-embedding:0.6b      # if an older Meru's full profile pulled it
 ```
 
 Only after an explicit yes to a question that names what goes:

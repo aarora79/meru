@@ -50,8 +50,11 @@ type Status struct {
 	Documents int  `json:"documents"`
 	Scanning  bool `json:"scanning,omitempty"`
 	// Chunks counts the pieces those files were cut into, for the
-	// "On this Mac" panel in Settings.
-	Chunks int `json:"chunks"`
+	// "On this Mac" panel in Settings. Vectors counts the chunks with a
+	// vector; it falls behind Chunks while merud re-embeds every file after
+	// a change of embedding model.
+	Chunks  int `json:"chunks"`
+	Vectors int `json:"vectors"`
 	// Folders counts the [index] folders, and Profile the memories that go
 	// into every prompt. With both at zero Meru knows nothing yet, and the
 	// page opens Setup on its own.
@@ -101,7 +104,7 @@ func (b *Bridge) Status(ctx context.Context) Status {
 	}
 	s.Up = true
 	if st := ev.Status; st != nil {
-		s.Documents, s.Chunks, s.Scanning = st.Documents, st.Chunks, st.Scanning
+		s.Documents, s.Chunks, s.Vectors, s.Scanning = st.Documents, st.Chunks, st.Vectors, st.Scanning
 		s.Folders, s.Profile = len(st.Folders), st.Profile
 	}
 	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpMCPStatus}, rpc.EventMCPStatus); err == nil {

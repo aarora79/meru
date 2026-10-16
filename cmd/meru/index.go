@@ -109,7 +109,9 @@ func statusText(s rpc.IndexStatus) string {
 	fmt.Fprintf(&b, "Folders:    %s\n", folders)
 	fmt.Fprintf(&b, "Index:      %s, %d chunks, %d vectors\n", plural(s.Documents, "file"), s.Chunks, s.Vectors)
 	if s.Vectors < s.Chunks {
-		fmt.Fprintf(&b, "            %d chunks still need a vector; keyword search covers them until then\n", s.Chunks-s.Vectors)
+		// Vectors fall behind chunks after a change of embedding model,
+		// while merud re-embeds every file.
+		fmt.Fprintf(&b, "            re-indexing with the search model: %d of %d chunks done; keyword search covers the rest until then\n", s.Vectors, s.Chunks)
 	}
 	if s.DBBytes > 0 {
 		fmt.Fprintf(&b, "On disk:    %s (meru.db and its -wal and -shm files)\n", rpc.ShortBytes(s.DBBytes))

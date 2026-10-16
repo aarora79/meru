@@ -101,7 +101,7 @@ func TestIndexCommand(t *testing.T) {
 		{"outside", []string{"index", "/tmp/outside"}, 1, "/tmp/outside", "", "restart merud"},
 		{"status", []string{"index", "-status"}, 0, "", "Folders:    ~/notes\n" +
 			"Index:      3 files, 7 chunks, 5 vectors\n" +
-			"            2 chunks still need a vector; keyword search covers them until then\n" +
+			"            re-indexing with the search model: 5 of 7 chunks done; keyword search covers the rest until then\n" +
 			"On disk:    8.4 MB (meru.db and its -wal and -shm files)\n" +
 			"Scanning:   yes\n" +
 			"Last scan:  2026-09-23T10:15:00Z, 3 files indexed (7 chunks), 0 unchanged, 0 removed, 0 failed, 1 skipped, in 1.2s\n", ""},

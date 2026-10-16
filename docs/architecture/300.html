@@ -1076,14 +1076,16 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <tbody>
     <tr><td><code>fast</code></td><td><code>hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M</code> (1.6 GB)</td><td>same</td></tr>
     <tr><td><code>main</code></td><td>same model as <code>fast</code></td><td><code>qwen3.6:35b-a3b-mxfp8</code> (38 GB, 8-bit)</td></tr>
-    <tr><td><code>embed</code></td><td><code>nomic-embed-text</code> (~260 MB, 768 dims)</td><td><code>qwen3-embedding:0.6b</code> (1024 dims)</td></tr>
+    <tr><td><code>embed</code></td><td><code>embeddinggemma-2:440m</code> (713 MB, 768 dims, text and images)</td><td>same</td></tr>
     <tr><td>Hardware</td><td>16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon</td><td>Apple silicon with 64 GB or more</td></tr>
   </tbody>
 </table></div>
 
+<p>Both profiles embed with <code>embeddinggemma-2:440m</code>, EmbeddingGemma 2 with its vision encoder. It puts text and images in one 768-number space, so a question can find a picture as well as a page, and it replaced <code>nomic-embed-text</code> and <code>qwen3-embedding:0.6b</code>. Changing the embedding model makes <code>merud</code> drop every vector and re-embed every file on its next start (see <a href="#storage">Storage</a>).</p>
+
 <ul>
   <li><b><code>lite</code></b> uses two small models. It downloads in a couple of minutes and runs on almost any computer. One model fills both <code>fast</code> and <code>main</code>, so only two models sit in memory.</li>
-  <li><b><code>full</code></b> swaps in Qwen 3.6 35B-A3B, a mixture of experts that runs about 3B of its 36B parameters per token, and a stronger embedding model. Its MXFP8 build runs on Ollama's MLX backend on Apple silicon. It was the fastest model in our benchmark (see <a href="#models-we-tried">Models we tried</a>), and Ollama held 36 to 52 GiB for it while it answered, so <code>full</code> needs a 64 GB Mac.</li>
+  <li><b><code>full</code></b> swaps in Qwen 3.6 35B-A3B, a mixture of experts that runs about 3B of its 36B parameters per token. Its MXFP8 build runs on Ollama's MLX backend on Apple silicon. It was the fastest model in our benchmark (see <a href="#models-we-tried">Models we tried</a>), and Ollama held 36 to 52 GiB for it while it answered, so <code>full</code> needs a 64 GB Mac.</li>
 </ul>
 
 <p><code>merud</code> keeps each model loaded by asking Ollama for <code>keep_alive: -1</code>, and warms every tier at startup. Ollama must allow enough models in memory at once: <code>OLLAMA_MAX_LOADED_MODELS</code> set to 3 for <code>full</code>.</p>
@@ -1152,7 +1154,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 <div class="tbl"><table>
   <thead><tr><th>Memory</th><th>Answer model</th><th>Why</th></tr></thead>
   <tbody>
-    <tr><td>16 GB</td><td>MiniCPM5-2B, the <code>lite</code> profile (about 2 GB with <code>nomic-embed-text</code>)</td><td>the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools</td></tr>
+    <tr><td>16 GB</td><td>MiniCPM5-2B, the <code>lite</code> profile (about 2.3 GB with <code>embeddinggemma-2:440m</code>)</td><td>the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools</td></tr>
     <tr><td>32 GB</td><td><code>gemma4:26b-a4b-it-qat</code> (15 GB)</td><td>Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router</td></tr>
     <tr><td>48 GB</td><td><code>qwen3.6:35b</code> (23 GB)</td><td>Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. <code>gemma4:26b-mxfp8</code> peaked at 40 GiB and <code>qwen3.6:35b-a3b-mxfp8</code> at 52, more than a 48 GB Mac can give them</td></tr>
     <tr><td>64 GB or more</td><td><code>qwen3.6:35b-a3b-mxfp8</code>, the <code>full</code> profile; <code>gemma4:26b-mxfp8</code> for work across several tools</td><td>the benchmark's figures above</td></tr>
@@ -3126,7 +3128,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
     <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers count as "a machine you control".</td></tr>
     <tr><td>Agent harness</td><td>Our own loop plus the official MCP and A2A Go SDKs. We looked at Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and neither saves much once the allowlist, audit and budget logic are ours.</td></tr>
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
-    <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>nomic-embed-text</code>), and <code>full</code> for Apple silicon with 64 GB or more (<code>qwen3.6:35b-a3b-mxfp8</code> + <code>qwen3-embedding:0.6b</code>).</td></tr>
+    <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>embeddinggemma-2:440m</code>), and <code>full</code> for Apple silicon with 64 GB or more (<code>qwen3.6:35b-a3b-mxfp8</code> + <code>embeddinggemma-2:440m</code>).</td></tr>
     <tr><td>Storage</td><td>JSONL transcripts as the source of truth; SQLite via <code>ncruces/go-sqlite3</code> as the index, with vectors in a plain table and vec1's distance function. No separate vector database.</td></tr>
     <tr><td>Routing</td><td>A one-token classification read from log probabilities, falling back to search and tools when unsure (<a href="https://github.com/aarora79/meru/blob/main/docs/fast-router.md">docs/fast-router.md</a>). Temperature 1.25 and <code>min_confidence = 0.45</code>, fitted with <code>make router-eval</code>.</td></tr>
     <tr><td>Hybrid search</td><td>FTS5 BM25 plus vector distance over every stored vector, merged in Go with reciprocal-rank fusion. The query is the question, plus on a short follow-up the session's latest earlier question that isn't only filler words; no model call rewrites it. List sizes are constants (50, 50, 10) until measurements say otherwise.</td></tr>

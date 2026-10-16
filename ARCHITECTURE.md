@@ -1032,14 +1032,20 @@ Two profiles ship in `config.toml`. **`lite` is the default.**
 | --- | --- | --- |
 | `fast` | `hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M` (1.6 GB) | same |
 | `main` | same model as `fast` | `qwen3.6:35b-a3b-mxfp8` (38 GB, 8-bit) |
-| `embed` | `nomic-embed-text` (~260 MB, 768 dims) | `qwen3-embedding:0.6b` (1024 dims) |
+| `embed` | `embeddinggemma-2:440m` (713 MB, 768 dims, text and images) | same |
 | Hardware | 16 GB of RAM; runs on a CPU, faster with a GPU or Apple silicon | Apple silicon with 64 GB or more |
+
+Both profiles embed with `embeddinggemma-2:440m`, EmbeddingGemma 2 with its
+vision encoder. It puts text and images in one 768-number space, so a question
+can find a picture as well as a page, and it replaced `nomic-embed-text` and
+`qwen3-embedding:0.6b`. Changing the embedding model makes `merud` drop every
+vector and re-embed every file on its next start (see [Storage](#storage)).
 
 - **`lite`** uses two small models. It downloads in a couple of
   minutes and runs on almost any computer. One model fills both `fast` and `main`, so
   only two models sit in memory.
 - **`full`** swaps in Qwen 3.6 35B-A3B, a mixture of experts that runs about 3B of
-  its 36B parameters per token, and a stronger embedding model. Its MXFP8 build
+  its 36B parameters per token. Its MXFP8 build
   runs on Ollama's MLX backend on Apple silicon. It was the fastest model in our
   benchmark (see [Models we tried](#models-we-tried)), and Ollama held 36 to 52 GiB
   for it while it answered, so `full` needs a 64 GB Mac.
@@ -1191,7 +1197,7 @@ router fit beside macOS and a few open apps:
 
 | Memory | Answer model | Why |
 | --- | --- | --- |
-| 16 GB | MiniCPM5-2B, the `lite` profile (about 2 GB with `nomic-embed-text`) | the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools |
+| 16 GB | MiniCPM5-2B, the `lite` profile (about 2.3 GB with `embeddinggemma-2:440m`) | the only answer model we tried that leaves room for the rest of the Mac; it passed 102 of 150, weakest where a task needs tools |
 | 32 GB | `gemma4:26b-a4b-it-qat` (15 GB) | Gemma 4 at 4 bits: 120 of 150 tasks passed. Ollama loaded it in 15 GB with a 32,768-token context, about 18 GB with the router |
 | 48 GB | `qwen3.6:35b` (23 GB) | Qwen 3.6 35B at 4 bits passed 133 of 150, as many as the 8-bit build. Ollama loaded it in 23 GB with a 32,768-token context, about 27 GB with the router. `gemma4:26b-mxfp8` peaked at 40 GiB and `qwen3.6:35b-a3b-mxfp8` at 52, more than a 48 GB Mac can give them |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | the benchmark's figures above |
@@ -4745,9 +4751,9 @@ We'll settle these with working code and measurements.
   Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and
   neither saves much once the allowlist, audit and budget logic are ours.
 - **Model runtime:** Ollama on loopback for now (see open question 4).
-- **Models:** the `lite` profile by default (MiniCPM5-2B + `nomic-embed-text`), and
-  `full` for Apple silicon with 64 GB or more (`qwen3.6:35b-a3b-mxfp8` +
-  `qwen3-embedding:0.6b`).
+- **Models:** the `lite` profile by default (MiniCPM5-2B + `embeddinggemma-2:440m`),
+  and `full` for Apple silicon with 64 GB or more (`qwen3.6:35b-a3b-mxfp8` +
+  `embeddinggemma-2:440m`).
 - **Storage:** JSONL transcripts as the source of truth; SQLite via
   `ncruces/go-sqlite3` as the index, with vectors in a plain table and vec1's
   distance function. No separate vector database.

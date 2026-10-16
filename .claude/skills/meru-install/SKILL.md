@@ -56,7 +56,7 @@ Then recommend models by memory. The figures come from ARCHITECTURE.md,
 
 | Memory | Recommend | Download |
 | --- | --- | --- |
-| under 32 GB, 16 GB included | the `lite` profile: MiniCPM5-2B answers and routes, `nomic-embed-text` searches your files | about 2 GB |
+| under 32 GB, 16 GB included | the `lite` profile: MiniCPM5-2B answers and routes, `embeddinggemma-2:440m` searches your files and images | about 2.3 GB |
 | 32 GB | `lite`, plus `gemma4:26b-a4b-it-qat` as the answer model | about 17 GB |
 | 48 GB | `lite`, plus `qwen3.6:35b` (Qwen 3.6 35B at 4 bits) as the answer model | about 25 GB |
 | 64 GB or more | `lite`, plus `qwen3.6:35b-a3b-mxfp8` as the answer model | about 40 GB |
@@ -149,7 +149,7 @@ Pull the models chosen in step 1. Ask first, and say how large each is:
 
 ```sh
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
-ollama pull nomic-embed-text
+ollama pull embeddinggemma-2:440m
 ollama pull gemma4:26b-a4b-it-qat   # 32 to 47 GB
 ollama pull qwen3.6:35b             # 48 to 63 GB
 ollama pull qwen3.6:35b-a3b-mxfp8   # 64 GB or more

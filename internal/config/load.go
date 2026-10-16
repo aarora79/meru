@@ -58,12 +58,12 @@ var profiles = map[string]Models{
 	"lite": {
 		Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
 		Main:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
-		Embed: "nomic-embed-text",
+		Embed: "embeddinggemma-2:440m",
 	},
 	"full": {
 		Fast:  "hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M",
 		Main:  "qwen3.6:35b-a3b-mxfp8",
-		Embed: "qwen3-embedding:0.6b",
+		Embed: "embeddinggemma-2:440m",
 	},
 }
 
