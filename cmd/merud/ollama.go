@@ -193,19 +193,19 @@ func (o *ollamaWatch) watch(ctx context.Context) {
 // checkOllama asks Ollama at url, through eng, for its version. It
 // returns the version, or "" when Ollama didn't answer, and a sentence
 // that says what is wrong, or "" when nothing is: Ollama isn't running,
-// or it is older than minOllama, which the router needs for log
-// probabilities (ARCHITECTURE.md, "Model tiers").
+// or it is older than config.MinOllama, the first release that serves
+// Meru's search model (ARCHITECTURE.md, "Model tiers").
 func checkOllama(ctx context.Context, eng engine.Engine, url string) (version, problem string) {
 	info, err := eng.Info(ctx)
 	if err != nil {
 		return "", "Ollama isn't running at " + url + "."
 	}
-	ok, err := versionAtLeast(info.RuntimeVersion, minOllama)
+	ok, err := config.OllamaAtLeast(info.RuntimeVersion)
 	switch {
 	case err != nil:
-		return info.RuntimeVersion, fmt.Sprintf("Ollama answered with a version Meru can't read, %q; Meru needs %s or later.", info.RuntimeVersion, minOllama)
+		return info.RuntimeVersion, fmt.Sprintf("Ollama answered with a version Meru can't read, %q; Meru needs %s or later from %s.", info.RuntimeVersion, config.MinOllama, config.OllamaUpdate)
 	case !ok:
-		return info.RuntimeVersion, fmt.Sprintf("Ollama %s is too old; Meru needs %s or later.", info.RuntimeVersion, minOllama)
+		return info.RuntimeVersion, config.OllamaTooOld(info.RuntimeVersion)
 	}
 	return info.RuntimeVersion, ""
 }

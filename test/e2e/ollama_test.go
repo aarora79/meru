@@ -86,7 +86,7 @@ func TestOllamaTooOld(t *testing.T) {
 	h.writeConfig(t, fakeConfig(f.url, ""))
 	m := startMerud(t, h, nil)
 
-	waitMCPStatus(t, h, "Ollama 0.12.0 is too old; Meru needs 0.12.11 or later.")
+	waitMCPStatus(t, h, "Ollama 0.12.0 is too old for Meru's search model. Update it from ollama.com/download.")
 	res := runMeru(t, h, "is anyone there?")
 	if res.code != 1 || !strings.Contains(res.stderr, "Meru can't answer yet: Ollama 0.12.0 is too old") {
 		t.Errorf("a question with an old Ollama: exit %d, stderr %q", res.code, res.stderr)

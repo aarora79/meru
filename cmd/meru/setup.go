@@ -560,23 +560,32 @@ func (c *console) offerProfile(ctx context.Context, socket string, merudUp bool)
 	return setupUserCmd(ctx, socket, c)
 }
 
-// waitForOllama checks that Ollama answers at baseURL. When it doesn't, it
-// prints how to install it and waits for the user to press Enter, then
-// checks again. It fails when the user types q.
+// waitForOllama checks that Ollama answers at baseURL and is
+// config.MinOllama or later. When it doesn't answer, it prints how to
+// install it; when it is too old, the sentence merud shows. Either way it
+// waits for the user to press Enter, then checks again. It fails when the
+// user types q.
 func (c *console) waitForOllama(ctx context.Context, baseURL string) error {
 	for {
 		v, err := c.ollamaVersion(ctx, baseURL)
+		prompt, stopped := "Start Ollama, then press Enter to check again, or type q to stop:", "setup stopped: Ollama isn't running"
 		if err == nil {
-			fmt.Fprintf(c.out, "Ollama %s is running at %s.\n", v, baseURL)
-			return nil
+			ok, verr := config.OllamaAtLeast(v)
+			if verr == nil && ok {
+				fmt.Fprintf(c.out, "Ollama %s is running at %s.\n", v, baseURL)
+				return nil
+			}
+			fmt.Fprintln(c.out, config.OllamaTooOld(v))
+			prompt, stopped = "Update Ollama, then press Enter to check again, or type q to stop:", "setup stopped: Ollama is too old"
+		} else {
+			fmt.Fprintf(c.out, "Ollama isn't answering at %s.\n%s\n", baseURL, ollamaInstallHint(runtime.GOOS))
 		}
-		fmt.Fprintf(c.out, "Ollama isn't answering at %s.\n%s\n", baseURL, ollamaInstallHint(runtime.GOOS))
-		a, err := c.ask("Start Ollama, then press Enter to check again, or type q to stop:")
+		a, err := c.ask(prompt)
 		if err != nil {
 			return err
 		}
 		if strings.EqualFold(a, "q") {
-			return errors.New("setup stopped: Ollama isn't running")
+			return errors.New(stopped)
 		}
 	}
 }

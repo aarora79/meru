@@ -111,7 +111,7 @@ func TestMCPProbeOp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "secrets.toml"), []byte(fmt.Sprintf("tok = %q\n", token)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	d := startDaemon(t, dir, "", &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, "", &fakeEngine{version: "0.40.5"})
 
 	evs := call(t, d.sock, rpc.Request{Op: rpc.OpMCPProbe, Server: &rpc.ProbeServer{
 		Name: "files", URL: url, Headers: map[string]string{"Authorization": "secret:tok"},
@@ -173,7 +173,7 @@ func TestMCPProbeOp(t *testing.T) {
 func TestMCPReloadOp(t *testing.T) {
 	dir := shortDir(t)
 	url := startMCPServer(t)
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	d := startDaemon(t, dir, "", eng)
 	cfgPath := filepath.Join(dir, "config.toml")
 
@@ -248,7 +248,7 @@ func TestMCPReloadOp(t *testing.T) {
 func TestCommandsAtStartup(t *testing.T) {
 	dir := shortDir(t)
 	good := "[[commands]]\nname = \"disk-free\"\nargv = [\"df\", \"-h\"]\n"
-	d := startDaemon(t, dir, good, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, good, &fakeEngine{version: "0.40.5"})
 	var found bool
 	for _, ev := range call(t, d.sock, rpc.Request{Op: rpc.OpTools}) {
 		for _, s := range ev.Servers {
@@ -269,7 +269,7 @@ func TestCommandsAtStartup(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(bad), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
+	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.40.5"}, nil }
 	err := run(context.Background(), []string{"-config", cfgPath, "-socket", filepath.Join(dir, "d.sock")}, io.Discard, build)
 	if err == nil || !strings.Contains(err.Error(), `command "shell"`) || !strings.Contains(err.Error(), "runs code given as text") {
 		t.Errorf("run = %v, want a refusal naming the command", err)

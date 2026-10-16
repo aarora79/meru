@@ -600,7 +600,7 @@ and `manage_event`, ask you first.
 Ollama is a `dependency`: Meru never installs or starts it, and only checks `GET
 /api/version` at `[ollama] base_url`. `merud` opens its socket first, checks
 Ollama every 30 seconds, and at once when you ask something, until it answers
-with 0.12.11 or later, then warms the models and opens the rest. A question
+with 0.40.5 or later, then warms the models and opens the rest. A question
 asked meanwhile gets "Ollama isn't running, so Meru can't answer yet.", and
 `meru mcp status` and the desktop app's status block show "Ollama isn't running
 at http://127.0.0.1:11434." or the version that is too old.

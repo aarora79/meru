@@ -441,40 +441,6 @@ func TestUnload(t *testing.T) {
 	}
 }
 
-func TestCheckVersion(t *testing.T) {
-	tests := []struct {
-		version string
-		wantErr bool
-	}{
-		{"0.34.0", false},
-		{"0.12.11", false},
-		{"0.13.0-rc1", false},
-		{"v1.0", false},
-		{"0.12.10", true},
-		{"0.11.99", true},
-		{"0.0.0", true},
-		{"banana", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.version, func(t *testing.T) {
-			f := newFakeOllama(t, map[string]route{"/api/version": {200, `{"version":"` + tt.version + `"}`}})
-			e := newTestEngine(t, f, "")
-			err := e.CheckVersion(context.Background())
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("CheckVersion(%s) error = %v, wantErr %v", tt.version, err, tt.wantErr)
-			}
-			// A too-old version names both versions, so the user knows
-			// what they have and what to install.
-			if err != nil && tt.version != "banana" {
-				msg := err.Error()
-				if !strings.Contains(msg, tt.version) || !strings.Contains(msg, MinOllamaVersion) {
-					t.Errorf("error %q should name %s and %s", msg, tt.version, MinOllamaVersion)
-				}
-			}
-		})
-	}
-}
-
 func TestNon2xxSurfacesOllamaError(t *testing.T) {
 	tests := []struct {
 		name    string

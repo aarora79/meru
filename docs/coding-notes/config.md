@@ -1,6 +1,6 @@
 # config
 
-**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `recommend.go`, `loopback.go`)
+**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `recommend.go`, `ollama.go`, `loopback.go`)
 **Milestone:** v0.1
 **Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
 
@@ -407,6 +407,24 @@ func Recommend(memGB int) Recommendation {
 The table sits here, next to `profiles`, so a change of default models changes
 one file and the installer follows. The memory lines come from the benchmark's
 peak memory. `TestRecommend` checks each size of Mac.
+
+### ollama.go
+
+`MinOllama` is the oldest Ollama Meru runs on, 0.40.5: the first release
+tested to serve `embeddinggemma-2` and to embed images. `merud`, `meru setup`
+and the Mac installer all check it, and none of them may import `engine`, so the
+check lives here, where all three may reach it:
+
+```go
+ok, err := config.OllamaAtLeast("0.34.0") // false, nil
+msg := config.OllamaTooOld("0.34.0")
+// "Ollama 0.34.0 is too old for Meru's search model. Update it from ollama.com/download."
+```
+
+`VersionAtLeast` compares number by number, so `0.40.5` beats `0.9.99`, which
+a plain string comparison gets wrong. `parseVersion` drops a leading `v` and
+anything after `-` or `+`, so `0.40.5-rc1` counts as 0.40.5, and returns a
+`[3]int`, an array whose length is part of its type.
 
 ### loopback.go
 

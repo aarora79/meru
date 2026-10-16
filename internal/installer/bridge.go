@@ -501,6 +501,12 @@ func (b *Bridge) runOllama(ctx context.Context, say func(string)) (string, error
 	if err != nil {
 		return "", err
 	}
+	// An Ollama older than config.MinOllama can't pull Meru's search model,
+	// so the step stops here, before any download, with the sentence merud
+	// and meru setup show. Once Ollama is updated, the step runs again.
+	if err := ollamaNewEnough(v); err != nil {
+		return "", err
+	}
 	done = append(done, "Ollama "+v+" runs at "+base+".")
 
 	rec := b.chosen()

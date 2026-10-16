@@ -16,11 +16,11 @@ search.
 - **Go 1.26 or later**, to build Meru. Download it from <https://go.dev/dl/>, or on
   macOS run `brew install go`. Check with `go version`. The repo pins Go 1.26.6;
   if yours is older, `go` downloads 1.26.6 by itself the first time you build.
-- **Ollama 0.12.11 or later**, to run the models. Download it from
+- **Ollama 0.40.5 or later**, to run the models. Download it from
   <https://ollama.com/download>. It runs in the background and listens on
   `http://127.0.0.1:11434`. Check with `curl http://127.0.0.1:11434/api/version`.
-  `merud` answers no question with an older Ollama, because the router needs
-  log probabilities, which Ollama added in 0.12.11; it stays up and says so.
+  `merud` answers no question with an older Ollama, because older releases
+  can't serve Meru's search model; it stays up and says so.
 - **Docker**, only for web search. Meru searches the web through SearXNG, which
   runs in a container (see [Web search](#web-search)). Meru runs without Docker;
   the model just doesn't get `web_search`. On macOS, Docker Desktop, OrbStack or
@@ -2404,7 +2404,7 @@ later.
 | --- | --- |
 | `connect to merud at …: … (is merud running?)` | `merud` isn't running, or it uses a different socket. Start `merud`, or pass `-socket` to `meru`. |
 | `Ollama isn't running, so Meru can't answer yet.` | `merud` runs but can't reach Ollama. Start Ollama (open the app, or run `ollama serve`) and check `curl http://127.0.0.1:11434/api/version`. `merud` checks again every 30 seconds, and at once when you ask something, then loads the models. `meru mcp status` and the desktop app's status block show the same sentence. |
-| `Meru can't answer yet: Ollama … is too old` | Update Ollama to 0.12.11 or later. `merud` notices within 30 seconds. |
+| `Meru can't answer yet: Ollama … is too old for Meru's search model` | Update Ollama to 0.40.5 or later from ollama.com/download. `merud` notices within 30 seconds. |
 | `model … not found` in the answer or the log | Pull the model named in the error with `ollama pull`. |
 | `secrets … so other users can read it; run chmod 600 …` | Run the `chmod 600` command in the message. `meru mcp add` also fixes the mode when it saves a key. |
 | `merud` says another merud is running | One `merud` per socket. Stop the other one, or give this one its own `-config` home. |

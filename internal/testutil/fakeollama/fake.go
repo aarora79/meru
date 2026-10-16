@@ -19,9 +19,9 @@ import (
 )
 
 // Config sets up a Fake. The zero value works: it accepts any model name and
-// reports version 0.12.11, the first Ollama release with log probabilities.
+// reports version 0.40.5, the oldest Ollama Meru runs on (config.MinOllama).
 type Config struct {
-	// Version is what /api/version reports. Empty means "0.12.11".
+	// Version is what /api/version reports. Empty means "0.40.5".
 	Version string `json:"version,omitempty"`
 	// Models lists the model names the fake accepts. A request for any other
 	// model gets a 404, as Ollama sends for a model that isn't pulled. Empty
@@ -160,7 +160,7 @@ type errorAt struct {
 // hand it to an http.Server, or use Start in tests.
 func New(cfg Config) *Fake {
 	if cfg.Version == "" {
-		cfg.Version = "0.12.11"
+		cfg.Version = "0.40.5"
 	}
 	if cfg.EmbedDims <= 0 {
 		cfg.EmbedDims = 8

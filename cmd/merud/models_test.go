@@ -87,7 +87,7 @@ var testSets = []config.ModelSet{
 // the sets testSets.
 func testModelService(t *testing.T, pulled, loaded []string, caps map[string][]string) (*modelService, *fixedAnswer, *fakeollama.Server) {
 	t.Helper()
-	srv := fakeollama.Start(t, fakeollama.Config{Version: "0.34.0", Models: pulled, Loaded: loaded, Capabilities: caps})
+	srv := fakeollama.Start(t, fakeollama.Config{Version: "0.40.5", Models: pulled, Loaded: loaded, Capabilities: caps})
 	eng, err := engine.NewOllama(srv.URL, "-1", "nomic-embed-text", nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ var everyModel = []string{miniCPM, qwen, gemma, qwenMoE, gemmaMoE, "nomic-embed-
 func TestModelChoices(t *testing.T) {
 	m, _, _ := testModelService(t, []string{miniCPM, qwen, "nomic-embed-text:latest"}, nil, ollamaCaps)
 	info := m.info(t.Context(), "")
-	if info.Main != qwen || info.RuntimeVersion != "0.34.0" || info.Err != "" {
+	if info.Main != qwen || info.RuntimeVersion != "0.40.5" || info.Err != "" {
 		t.Errorf("info = %+v", info)
 	}
 	tests := []struct {
@@ -511,7 +511,7 @@ func TestModelSet(t *testing.T) {
 // it, and that config.toml kept the rest.
 func TestModelSetOp(t *testing.T) {
 	dir, _ := meruHome(t)
-	eng := &fakeEngine{version: "0.34.0", pulled: []string{miniCPM, qwen, "nomic-embed-text:latest"}}
+	eng := &fakeEngine{version: "0.40.5", pulled: []string{miniCPM, qwen, "nomic-embed-text:latest"}}
 	d := startDaemon(t, dir, settingsHeader, eng)
 
 	m := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpModelSet, ID: qwen}), rpc.EventModels).Models
@@ -543,7 +543,7 @@ func TestModelSetOp(t *testing.T) {
 // model, and the save writes it.
 func TestModelUseOp(t *testing.T) {
 	dir, _ := meruHome(t)
-	eng := &fakeEngine{version: "0.34.0", pulled: []string{miniCPM, qwenMoE, "nomic-embed-text:latest"}}
+	eng := &fakeEngine{version: "0.40.5", pulled: []string{miniCPM, qwenMoE, "nomic-embed-text:latest"}}
 	body := settingsHeader + "\n[[models.sets]]\nname = \"qwen-moe\"\nmain = \"" + qwenMoE + "\"\nthink = false\n"
 	d := startDaemon(t, dir, body, eng)
 

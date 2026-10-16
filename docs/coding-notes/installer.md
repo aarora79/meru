@@ -129,7 +129,12 @@ clears the quarantine mark with `xattr` only when the user ticked the box.
 
 `InstallOllama` tries `brew install ollama`; when the Runner says `brew` is
 missing, it downloads Ollama.app from Ollama's site, unpacks it with `ditto`, and
-checks its signature with `codesign`. `PullModel` sends `POST /api/pull` and reads
+checks its signature with `codesign`. Once Ollama runs, `runOllama` checks its
+version with `ollamaNewEnough`, which wraps `config.OllamaAtLeast`, and stops the
+step with the shared "too old" sentence before any download; the step runs
+again once Ollama is updated. `PullModel` sends `POST /api/pull` and turns a 412,
+Ollama's answer for a model it is too old to serve, into "update it from
+ollama.com/download". Otherwise it reads
 the answer one JSON object per line. `readPull` adds up each layer's `completed`
 and `total`, so the bar shows the whole model:
 

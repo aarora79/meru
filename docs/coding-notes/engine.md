@@ -1,6 +1,6 @@
 # engine
 
-**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`, `version.go`,
+**Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`,
 `observe_test.go`, `images_test.go`), and the loopback check in `internal/loopback/loopback.go`
 **Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
 `Capabilities` with the desktop app's image attachments; `Details` with the
@@ -22,7 +22,7 @@ flowchart LR
     router["router.Decide"] -->|Generate, 1 token| E
     agent["agent loop"] -->|Stream| E
     retrieval["retrieval (v0.2)"] -->|Embed| E
-    merud["merud startup"] -->|Info, CheckVersion| E
+    merud["merud startup"] -->|Info| E
     E["OllamaEngine"] -->|POST /api/chat| O["Ollama on 127.0.0.1:11434"]
     E -->|POST /api/embed| O
     E -->|GET /api/version, /api/ps| O
@@ -216,12 +216,6 @@ nanoseconds, so `time.Duration(r.LoadDuration)` converts one to the other.
 each image as a base64 string, and `encoding/json` writes any `[]byte` as
 base64, so the conversion needs no code. `showRequest` and `showResponse` are
 the two shapes of `/api/show`; Meru reads only `capabilities` from the reply.
-
-### version.go
-
-`CheckVersion` reads `/api/version` and fails below `MinOllamaVersion` (0.12.11,
-the first release with log probabilities). The error names both versions, so the
-user knows what they have and what to install.
 
 ## Go ideas used here
 

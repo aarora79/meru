@@ -124,7 +124,7 @@ func loadConfig(t *testing.T, dir string) config.Config {
 func TestToolPolicyOp(t *testing.T) {
 	dir, _ := meruHome(t)
 	pid := filepath.Join(dir, "srv.pid")
-	d := startDaemon(t, dir, settingsHeader+stdioServerEntry(t, "local", pid, ""), &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader+stdioServerEntry(t, "local", pid, ""), &fakeEngine{version: "0.40.5"})
 
 	// The server offers echo; config allows nothing, so it shows off.
 	ev := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpConnections}), rpc.EventConnections)
@@ -217,7 +217,7 @@ func TestCatalogOps(t *testing.T) {
 	// which would fetch it from the network; the server just shows as not
 	// connected.
 	t.Setenv("PATH", dir)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 
 	// obsidian needs an API key: without one nothing is written.
 	for _, bad := range []struct {
@@ -303,7 +303,7 @@ func TestFolderOps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 
 	ev := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpFolders}), rpc.EventFolders)
 	if len(ev.Folders) != 0 {
@@ -367,7 +367,7 @@ func TestFolderOps(t *testing.T) {
 
 func TestSkillToggleOps(t *testing.T) {
 	dir, _ := meruHome(t)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 
 	disabled := func(evs []rpc.Event) []string {
 		var out []string
@@ -397,7 +397,7 @@ func TestSkillToggleOps(t *testing.T) {
 
 func TestSaveFileOp(t *testing.T) {
 	dir, home := meruHome(t)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 	session := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "What time is check-in at the Lisbon hotel?"}), rpc.EventSession).Session
 
 	// write_file asks first; a yes saves the chat under chats/.
@@ -455,9 +455,9 @@ func TestSaveFileOp(t *testing.T) {
 
 func TestModelsOp(t *testing.T) {
 	dir, home := meruHome(t)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 	m := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpModels}), rpc.EventModels).Models
-	if m == nil || m.Profile != "lite" || m.Main == "" || m.Embed == "" || m.RuntimeVersion != "0.13.0" ||
+	if m == nil || m.Profile != "lite" || m.Main == "" || m.Embed == "" || m.RuntimeVersion != "0.40.5" ||
 		m.ConfigPath != filepath.Join(dir, "config.toml") || m.OutputDir != filepath.Join(home, "meru-output") {
 		t.Errorf("models = %+v", m)
 	}
@@ -465,7 +465,7 @@ func TestModelsOp(t *testing.T) {
 
 func TestAskScope(t *testing.T) {
 	dir, _ := meruHome(t)
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	d := startDaemon(t, dir, settingsHeader, eng)
 
 	route := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpAsk, Text: "hello there", Scope: rpc.ScopeTalk}), rpc.EventRoute)
@@ -508,7 +508,7 @@ func TestAttachFileOp(t *testing.T) {
 		t.Skipf("symlinks unsupported here: %v", err)
 	}
 	header := settingsHeader + "folders = [" + strconv.Quote(notes) + "]\n"
-	d := startDaemon(t, dir, header, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, header, &fakeEngine{version: "0.40.5"})
 	uploads := filepath.Join(home, "meru-output", "uploads")
 
 	tests := []struct {

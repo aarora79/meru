@@ -15,6 +15,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/aarora79/meru/internal/config"
 )
 
 // envOr returns the environment variable key, or def when it is unset.
@@ -36,11 +38,12 @@ func TestIntegrationOllama(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := e.Info(ctx); err != nil {
+	info, err := e.Info(ctx)
+	if err != nil {
 		t.Skipf("Ollama not reachable at %s: %v", baseURL, err)
 	}
-	if err := e.CheckVersion(ctx); err != nil {
-		t.Fatalf("CheckVersion: %v", err)
+	if ok, err := config.OllamaAtLeast(info.RuntimeVersion); err != nil || !ok {
+		t.Fatalf("Ollama %s: %s", info.RuntimeVersion, config.OllamaTooOld(info.RuntimeVersion))
 	}
 
 	t.Run("generate with logprobs", func(t *testing.T) {

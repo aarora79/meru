@@ -89,7 +89,7 @@ func fakeOllama(t *testing.T, have []string, pulled *[]string) *httptest.Server 
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, `{"version":"0.34.0"}`)
+		io.WriteString(w, `{"version":"0.40.5"}`)
 	})
 	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {
 		var body struct {
@@ -107,6 +107,11 @@ func fakeOllama(t *testing.T, have []string, pulled *[]string) *httptest.Server 
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !req.Stream {
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if req.Model == "needs-newer-ollama" {
+			// What an old Ollama answers for a model it is too old to serve.
+			http.Error(w, `{"error":"pull model manifest: 412"}`, http.StatusPreconditionFailed)
 			return
 		}
 		if req.Model == "no-such-model" {
@@ -143,6 +148,37 @@ func TestPullModel(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "file does not exist") {
 		t.Errorf("pull of an unknown model = %v", err)
 	}
+	// A 412 means this Ollama is too old for the model; the error says
+	// where to update it rather than quoting Ollama's status.
+	err = PullModel(context.Background(), srv.Client(), srv.URL, "needs-newer-ollama", func(Pull) {})
+	if err == nil || !strings.Contains(err.Error(), "too old") || !strings.Contains(err.Error(), "ollama.com/download") {
+		t.Errorf("pull refused with 412 = %v", err)
+	}
+}
+
+// TestOllamaNewEnough checks the installer's version gate: the floor
+// passes, anything older or unreadable fails with the shared sentence.
+func TestOllamaNewEnough(t *testing.T) {
+	tests := []struct {
+		version string
+		ok      bool
+	}{
+		{"0.40.5", true},
+		{"0.41.0", true},
+		{"0.34.0", false},
+		{"dev", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			err := ollamaNewEnough(tt.version)
+			if (err == nil) != tt.ok {
+				t.Fatalf("ollamaNewEnough(%q) = %v, want ok %v", tt.version, err, tt.ok)
+			}
+			if err != nil && err.Error() != "Ollama "+tt.version+" is too old for Meru's search model. Update it from ollama.com/download." {
+				t.Errorf("sentence = %q", err)
+			}
+		})
+	}
 }
 
 // TestOllamaModelsAndVersion checks the model list, the tag rule and the
@@ -164,7 +200,7 @@ func TestOllamaModelsAndVersion(t *testing.T) {
 			t.Errorf("HasModel(%q) = %v, want %v", name, !want, want)
 		}
 	}
-	if v, err := OllamaVersion(context.Background(), srv.Client(), srv.URL); err != nil || v != "0.34.0" {
+	if v, err := OllamaVersion(context.Background(), srv.Client(), srv.URL); err != nil || v != "0.40.5" {
 		t.Errorf("OllamaVersion = %q, %v", v, err)
 	}
 	if _, err := OllamaVersion(context.Background(), deadClient(), "http://127.0.0.1:11434"); err == nil {
@@ -178,7 +214,7 @@ func TestStartOllamaRunning(t *testing.T) {
 	srv := fakeOllama(t, nil, new([]string))
 	r := &fakeRunner{}
 	v, err := StartOllama(context.Background(), r.run, srv.Client(), t.TempDir(), srv.URL, func(string) {})
-	if err != nil || v != "0.34.0" {
+	if err != nil || v != "0.40.5" {
 		t.Fatalf("StartOllama = %q, %v", v, err)
 	}
 	if calls := r.called(); len(calls) != 0 {

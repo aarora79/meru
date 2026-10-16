@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
 
@@ -42,8 +43,8 @@ func TestIntegrationDecide(t *testing.T) {
 	if err != nil {
 		t.Skipf("Ollama not reachable at %s: %v", baseURL, err)
 	}
-	if err := eng.CheckVersion(ctx); err != nil {
-		t.Fatalf("CheckVersion: %v", err)
+	if ok, err := config.OllamaAtLeast(info.RuntimeVersion); err != nil || !ok {
+		t.Fatalf("Ollama %s: %s", info.RuntimeVersion, config.OllamaTooOld(info.RuntimeVersion))
 	}
 	t.Logf("Ollama %s, model %s", info.RuntimeVersion, model)
 

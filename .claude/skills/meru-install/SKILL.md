@@ -131,7 +131,7 @@ can't see the repository; the person needs access from its owner.
 
 ## 3. Ollama and the models
 
-Meru needs Ollama 0.12.11 or later. If `ollama` is missing, offer two ways and
+Meru needs Ollama 0.40.5 or later. If `ollama` is missing, offer two ways and
 let the person pick:
 
 - the Ollama app from <https://ollama.com/download>, which the person downloads

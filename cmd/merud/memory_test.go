@@ -36,7 +36,7 @@ func (f *fakeEngine) lastSystem() string {
 
 func TestMemoryOps(t *testing.T) {
 	dir := shortDir(t)
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	d := startDaemon(t, dir, "", eng)
 
 	// merud creates the memory folder at start, so an empty one counts 0.
@@ -119,7 +119,7 @@ func TestMemoryOps(t *testing.T) {
 // while it runs: the watcher syncs it, and the next question recalls it.
 func TestMemoryHandEdit(t *testing.T) {
 	dir := shortDir(t)
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	d := startDaemon(t, dir, "", eng)
 
 	path := filepath.Join(dir, "memory", "people", "sam.md")
