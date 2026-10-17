@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.4.14](v0.4.14.md): the answer model reads the pictures a search finds, and a text-only model names one that can
 - [v0.4.13](v0.4.13.md): image search, by words or like a picture you attach, and one search model for text and images
 - [v0.4.12](v0.4.12.md): usage charts in the app, a /metrics page for Prometheus, and no Grafana stack
 - [v0.4.11](v0.4.11.md): pages that need JavaScript, Google as a connector, and connectors you set up and fix from Settings, `meru chat` and the installer
