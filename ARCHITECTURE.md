@@ -2752,7 +2752,7 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 | `writing` | Plain-English rules for any prose Meru writes: emails, summaries, reports |
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
 | `web-research` | For how to use a program or command, and for questions that need current facts: search the user's own words first, with a name in double quotes; never swap in a product or company the model knows for the one named; search again when the results are about something else; read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
-| `file-research` | For questions about the user's own files, and not for how to use a program: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those four tools |
+| `file-research` | For questions about the user's own files and pictures, and not for how to use a program: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text, `search_images` for pictures and `view_image` to look at one; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those six tools |
 
 The fast model picks from the descriptions alone, so their words decide which
 skill loads. `make pick-eval` asks the pick 21 labelled questions three times

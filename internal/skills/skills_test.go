@@ -215,7 +215,7 @@ func TestBuiltinAllowedTools(t *testing.T) {
 	}
 	want := map[string][]string{
 		"web-research":  {"web_search", "web_fetch"},
-		"file-research": {"search_files", "grep", "list_folder", "read_file"},
+		"file-research": {"search_files", "grep", "list_folder", "read_file", "search_images", "view_image"},
 		"writing":       nil,
 		"explainer":     nil,
 	}
