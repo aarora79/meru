@@ -167,6 +167,11 @@ func (f *fakeTurns) handle(ctx context.Context, req rpc.Request, emit func(rpc.E
 	if req.Op == rpc.OpModels {
 		return emit(rpc.Event{Type: rpc.EventModels, Models: &rpc.ModelsInfo{Active: "test-set", Main: "test-model"}})
 	}
+	// A check with an image first asks merud to copy it; the fake answers
+	// with the path the copy would have.
+	if req.Op == rpc.OpAttachFile {
+		return emit(rpc.Event{Type: rpc.EventSaved, Kind: rpc.AttachImage, Text: "/uploads/" + filepath.Base(req.Path)})
+	}
 	f.requests = append(f.requests, req)
 	session := req.Session
 	if session == "" {
@@ -429,4 +434,40 @@ func TestCheckErrors(t *testing.T) {
 			t.Errorf("exit %d, stderr %q", code, errOut.String())
 		}
 	})
+}
+
+// TestCheckImage checks that a check's image goes with its question, with
+// "~/" read as the home folder, and that a missing picture fails that
+// check alone while the next one still runs.
+func TestCheckImage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "receipt.png"), []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeTurns{}
+	sock := startServer(t, f.handle)
+	path := writeChecks(t,
+		`{"id": "pic", "category": "images", "question": "what is this?", "image": "~/receipt.png"}`,
+		`{"id": "gone", "category": "images", "question": "and this?", "image": "~/missing.png"}`,
+		`{"id": "text", "category": "images", "question": "no picture"}`,
+	)
+	var out, errOut bytes.Buffer
+	code := run(context.Background(), []string{"-socket", sock, "check", path}, &out, &errOut)
+	if code != exitError {
+		t.Errorf("exit code = %d, want %d: the missing picture fails its check", code, exitError)
+	}
+	var asks []rpc.Request
+	for _, r := range f.requests {
+		if r.Op == rpc.OpAsk {
+			asks = append(asks, r)
+		}
+	}
+	if len(asks) != 2 || asks[0].Images == nil || !slices.Equal(asks[0].Images.Paths, []string{"/uploads/receipt.png"}) ||
+		asks[1].Text != "no picture" || asks[1].Images != nil {
+		t.Errorf("asks = %+v; want the picture with the first question and nothing with the last", asks)
+	}
+	if !strings.Contains(out.String(), "FAIL  gone") || !strings.Contains(out.String(), "missing.png") {
+		t.Errorf("stdout lacks the failed check:\n%s", out.String())
+	}
 }

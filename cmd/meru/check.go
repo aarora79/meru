@@ -175,7 +175,19 @@ func runChecks(ctx context.Context, socket string, questions []checkQuestion, st
 	set, model := activeModels(ctx, socket)
 	var results []checkResult
 	for _, q := range questions {
-		rec, sessionID, denied, err := askCheck(ctx, socket, q.Question, sessions[q.Session])
+		// A picture merud won't take fails this question alone: the rest
+		// of the file still runs.
+		saved, imgErr := checkImage(ctx, socket, q.Image)
+		if imgErr != nil {
+			r := checkResult{Run: started.Format(time.RFC3339), ID: q.ID, Category: q.Category, Question: q.Question,
+				Group: q.Session, Reasons: []string{imgErr.Error()}, ModelSet: set, Model: model}
+			results = append(results, r)
+			if err := report(r); err != nil {
+				return results, err
+			}
+			continue
+		}
+		rec, sessionID, denied, err := askCheck(ctx, socket, q.Question, sessions[q.Session], saved)
 		if err != nil {
 			return results, fmt.Errorf("%s: %w", q.ID, err)
 		}
@@ -215,9 +227,29 @@ func activeModels(ctx context.Context, socket string) (set, model string) {
 	return set, model
 }
 
+// checkImage asks merud to copy the picture a check names into its uploads
+// folder, with attachImage, and returns the copy's path; "" when the check
+// names none. A leading "~/" becomes the home folder, so a check file can
+// name a picture the same way on any machine. It fails when merud refuses
+// the file or it isn't there.
+func checkImage(ctx context.Context, socket, image string) (string, error) {
+	if image == "" {
+		return "", nil
+	}
+	if rest, ok := strings.CutPrefix(image, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("image %s: %w", image, err)
+		}
+		image = filepath.Join(home, rest)
+	}
+	return attachImage(ctx, socket, image)
+}
+
 // askCheck asks merud one question, in the session named by session or in
-// a new one when session is empty. It returns what the turn did, the
-// session ID merud used and the approvals it refused.
+// a new one when session is empty, with the uploaded picture at image when
+// it isn't "". It returns what the turn did, the session ID merud used and
+// the approvals it refused.
 //
 // Checks run with nobody watching, so every approval gets a deny, and the
 // deny goes on the record as "approval denied: <tool>". A question that
@@ -226,7 +258,7 @@ func activeModels(ctx context.Context, socket string) (set, model string) {
 //
 // It fails only when the connection does. An error event from merud ends
 // up in the record, and the question fails on it.
-func askCheck(ctx context.Context, socket, question, session string) (turnRecord, string, []string, error) {
+func askCheck(ctx context.Context, socket, question, session, image string) (turnRecord, string, []string, error) {
 	var rec turnRecord
 	var answer strings.Builder
 	var denied []string
@@ -234,7 +266,7 @@ func askCheck(ctx context.Context, socket, question, session string) (turnRecord
 		denied = append(denied, "approval denied: "+a.Name)
 		return rpc.ChoiceDeny, nil
 	}
-	req := rpc.Request{Op: rpc.OpAsk, Text: question, Session: session, Source: rpc.SourceCLI}
+	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Session: session, Source: rpc.SourceCLI}, image)
 	start := time.Now()
 	var tookMillis int64
 	for ev, err := range rpc.Do(ctx, socket, req, deny) {

@@ -151,3 +151,12 @@
 {"q": "compare my offsite notes with the agenda doc in drive", "route": "search+tools", "why": "the user's notes plus a Drive doc", "tag": "connected"}
 {"q": "email the team the release checklist from my meru repo", "route": "search+tools", "why": "the checklist is in an indexed repo; sending mail is a tool", "tag": "connected"}
 {"q": "is the meeting from my trip notes on my calendar yet?", "route": "search+tools", "why": "the notes name the meeting; the calendar is a tool", "tag": "connected"}
+{"q": "find the photo of the whiteboard from the planning meeting", "route": "search", "why": "a picture in the indexed folders, found by what it shows", "tag": "images"}
+{"q": "do I have a screenshot of that error dialog somewhere?", "route": "search", "why": "a screenshot in the indexed folders", "tag": "images"}
+{"q": "what's the total on the dinner receipt in my trips folder?", "route": "search", "why": "a receipt picture in the indexed folders; view_image reads it on the search route", "tag": "images"}
+{"q": "itemize the taxi receipts in my travel folder and total them", "route": "search", "why": "several receipt pictures in the indexed folders, each read with view_image", "tag": "images"}
+{"q": "read the numbers off the chart image in the meru docs", "route": "search", "why": "a chart picture inside an indexed repo", "tag": "images"}
+{"q": "which of my receipts are from coffee shops?", "route": "search", "why": "receipt pictures in the indexed folders, read to sort them", "tag": "images"}
+{"q": "itemize each of those and total them by category", "route": "search", "why": "follow-up about pictures the last answer found in the user's folders", "tag": "images", "history": [{"q": "find receipts like the one from the airport cafe", "a": "I found five receipts in ~/trips: cafe-1.jpg, cafe-2.jpg, snack.png, taxi.jpg and lunch.jpg."}]}
+{"q": "email my manager the totals from the receipts in my trip folder", "route": "search+tools", "why": "receipt pictures in the indexed folders plus mail, a tool", "tag": "images"}
+{"q": "what file formats can a phone camera save photos in?", "route": "direct", "why": "general knowledge about pictures; nothing to look up", "tag": "images"}

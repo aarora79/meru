@@ -19,3 +19,7 @@
 {"q": "what is the capital of Canada?", "want": [], "kind": "chat"}
 {"q": "tell me a joke about cats", "want": [], "kind": "chat"}
 {"q": "thanks, that helped", "want": [], "kind": "chat"}
+{"q": "find pictures in my folders that look like a coffee shop receipt", "want": ["file-research"], "kind": "images"}
+{"q": "itemize the receipts in my trips folder and total them", "want": ["file-research"], "kind": "images"}
+{"q": "do I have a photo of the garden shed somewhere?", "want": ["file-research"], "kind": "images"}
+{"q": "what file formats can a phone camera save photos in?", "want": [], "kind": "images"}
