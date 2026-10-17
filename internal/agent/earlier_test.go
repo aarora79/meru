@@ -129,7 +129,16 @@ func (e recallEngine) Generate(ctx context.Context, msgs []engine.Message, tools
 // Embed gives each text a bag-of-words vector: one count per word of four
 // letters or more, in one of recallDims slots picked by a hash of the word.
 // Texts that share words point the same way.
-func (e recallEngine) Embed(ctx context.Context, texts []string) ([]engine.Vector, error) {
+func (e recallEngine) Embed(ctx context.Context, inputs []engine.Input) ([]engine.Vector, error) {
+	// The text each input stood for before engine.Input: title, blank
+	// line, text, as the indexer sent it.
+	texts := make([]string, len(inputs))
+	for i, in := range inputs {
+		texts[i] = in.Text
+		if in.Title != "" {
+			texts[i] = in.Title + "\n\n" + in.Text
+		}
+	}
 	out := make([]engine.Vector, len(texts))
 	for i, text := range texts {
 		v := make(engine.Vector, recallDims)

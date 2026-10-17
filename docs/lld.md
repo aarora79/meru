@@ -154,7 +154,7 @@ packages; learn these and the rest reads easily.
 type Engine interface {
     Generate(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (Completion, error)
     Stream(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (iter.Seq2[Delta, error], error)
-    Embed(ctx context.Context, texts []string) ([]Vector, error)
+    Embed(ctx context.Context, inputs []Input) ([]Vector, error)
     Info(ctx context.Context) (ModelInfo, error)
 }
 ```

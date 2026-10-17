@@ -407,9 +407,11 @@ func byteList(s string) []int {
 	return out
 }
 
-// serveEmbed answers POST /api/embed with one vector per input text. The
-// vectors come from a hash of the text, so the same text always gets the
-// same vector and different texts get different ones.
+// serveEmbed answers POST /api/embed with one vector per input. The
+// vectors come from a hash of the text, or of the image's bytes, so the same
+// input always gets the same vector and different inputs get different
+// ones. An image counts 268 prompt tokens, as embeddinggemma-2 reported in
+// testing.
 func (f *Fake) serveEmbed(w http.ResponseWriter, _ *http.Request, body []byte, _ int) {
 	var req embedRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -436,25 +438,77 @@ func (f *Fake) serveEmbed(w http.ResponseWriter, _ *http.Request, body []byte, _
 		dims = req.Dimensions
 	}
 	resp := embedResponse{Model: req.Model, Embeddings: [][]float32{}}
-	for _, text := range texts {
-		resp.Embeddings = append(resp.Embeddings, vectorFor(text, dims))
-		resp.PromptEvalCount += len(strings.Fields(text))
+	for _, in := range texts {
+		resp.Embeddings = append(resp.Embeddings, vectorFor(in.key(), dims))
+		resp.PromptEvalCount += len(strings.Fields(in.Text))
+		if in.Image != nil {
+			resp.PromptEvalCount += imageTokens
+		}
 	}
 	resp.TotalDuration = int64(resp.PromptEvalCount) * int64(time.Millisecond)
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// embedInputs decodes the "input" field, which may be one string or a list.
-func embedInputs(raw json.RawMessage) ([]string, error) {
-	var one string
-	if err := json.Unmarshal(raw, &one); err == nil {
-		return []string{one}, nil
+// imageTokens is what an image costs in the fake's prompt_eval_count.
+const imageTokens = 268
+
+// embedInput is one decoded entry of "input": text, an image, or both.
+// Image is decoded from base64 by encoding/json, as Ollama does.
+type embedInput struct {
+	Text  string `json:"text"`
+	Image []byte `json:"image"`
+}
+
+// key is what the fake hashes for in's vector: the text, the image's
+// bytes, or both, kept apart so text never matches an image by accident.
+func (in embedInput) key() string {
+	if in.Image == nil {
+		return in.Text
 	}
-	var many []string
-	if err := json.Unmarshal(raw, &many); err != nil {
-		return nil, fmt.Errorf("input must be a string or a list of strings")
+	return "text:" + in.Text + "|image:" + string(in.Image)
+}
+
+// embedInputs decodes the "input" field, which may be one string, one
+// object with "text" and "image", or a list mixing both, as Ollama 0.40.5
+// takes. It refuses anything else, so a test sending another shape fails.
+func embedInputs(raw json.RawMessage) ([]embedInput, error) {
+	bad := fmt.Errorf("input must be a string, an object with text and image, or a list of them")
+	one, err := embedEntry(raw)
+	if err == nil {
+		return []embedInput{one}, nil
 	}
-	return many, nil
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, bad
+	}
+	out := make([]embedInput, 0, len(list))
+	for _, r := range list {
+		in, err := embedEntry(r)
+		if err != nil {
+			return nil, bad
+		}
+		out = append(out, in)
+	}
+	return out, nil
+}
+
+// embedEntry decodes one entry: a JSON string, or an object holding at
+// least one of "text" and "image" and nothing else.
+func embedEntry(raw json.RawMessage) (embedInput, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return embedInput{Text: s}, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	var in embedInput
+	if err := dec.Decode(&in); err != nil {
+		return embedInput{}, err
+	}
+	if in.Text == "" && in.Image == nil {
+		return embedInput{}, fmt.Errorf("empty input object")
+	}
+	return in, nil
 }
 
 // vectorFor returns a unit-length vector of dims numbers made from a hash of

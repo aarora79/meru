@@ -112,7 +112,7 @@ func (f *fakeEngine) Generate(context.Context, []engine.Message, []engine.ToolSp
 	return f.gen, nil
 }
 
-func (f *fakeEngine) Embed(context.Context, []string) ([]engine.Vector, error) {
+func (f *fakeEngine) Embed(context.Context, []engine.Input) ([]engine.Vector, error) {
 	return nil, errors.New("not used")
 }
 

@@ -61,7 +61,7 @@ func SearchSessions(ctx context.Context, st *store.Store, eng engine.Engine, que
 	}()
 	start := time.Now()
 
-	vecs, err := eng.Embed(ctx, []string{query})
+	vecs, err := eng.Embed(ctx, []engine.Input{{Text: query, Query: true}})
 	if err != nil {
 		return nil, fmt.Errorf("recall sessions: embed query: %w", err)
 	}

@@ -177,7 +177,7 @@ func TestEmbedTextHasHeading(t *testing.T) {
 // failingEngine fails every Embed call.
 type failingEngine struct{ fakeEngine }
 
-func (e *failingEngine) Embed(context.Context, []string) ([]engine.Vector, error) {
+func (e *failingEngine) Embed(context.Context, []engine.Input) ([]engine.Vector, error) {
 	return nil, errors.New("ollama is down")
 }
 

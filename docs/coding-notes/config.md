@@ -1,6 +1,6 @@
 # config
 
-**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `recommend.go`, `ollama.go`, `loopback.go`)
+**Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `embed.go`, `recommend.go`, `ollama.go`, `loopback.go`)
 **Milestone:** v0.1
 **Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
 
@@ -407,6 +407,17 @@ func Recommend(memGB int) Recommendation {
 The table sits here, next to `profiles`, so a change of default models changes
 one file and the installer follows. The memory lines come from the benchmark's
 peak memory. `TestRecommend` checks each size of Mac.
+
+### embed.go
+
+`EmbedModels` lists the embedding models Meru knows something about beyond
+their name: each one's task prefixes, from its model card, and the context to
+load it with. Today that is `embeddinggemma-2:440m`. `FindEmbedModel(name)`
+returns the entry, or the zero `EmbedModel` for a model not listed, which then
+gets plain text and Ollama's own context. `merud`'s `newEngine` copies the
+entry into the engine's `EmbedPrompts` and `EmbedContext`. The prefixes live
+here, beside the model's name, because a wrong or missing prefix makes search
+worse with no error, and a model that wants none must get none.
 
 ### ollama.go
 

@@ -113,9 +113,11 @@ A file that can't be read or parsed counts as `Failed` and the scan moves on.
 An error from the engine or the store stops the scan, because Ollama being down
 would fail every file after it too.
 
-Each embedded text starts with the chunk's heading path. The third chunk of a
-long "Garden > Spring" section doesn't repeat the heading line, and the path keeps
-its vector about spring planting.
+Each chunk goes to `Embed` as `engine.Input{Title: heading path, Text: text}`
+(`embedInput`). The third chunk of a long "Garden > Spring" section doesn't
+repeat the heading line, and the path keeps its vector about spring planting.
+The engine puts the title where the embedding model wants it: before the text
+with a blank line between, or in the model's document prefix.
 
 ### The folder list can change
 

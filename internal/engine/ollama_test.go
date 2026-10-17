@@ -342,7 +342,7 @@ func TestEmbed(t *testing.T) {
 	f := newFakeOllama(t, map[string]route{"/api/embed": {200, `{"model":"nomic-embed-text","embeddings":[[0.1,0.2],[0.3,0.4]]}`}})
 	e := newTestEngine(t, f, "-1")
 
-	got, err := e.Embed(context.Background(), []string{"a", "b"})
+	got, err := e.Embed(context.Background(), Texts("a", "b"))
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestEmbed(t *testing.T) {
 	}
 
 	// The wrong number of vectors is an error.
-	if _, err := e.Embed(context.Background(), []string{"a", "b", "c"}); err == nil {
+	if _, err := e.Embed(context.Background(), Texts("a", "b", "c")); err == nil {
 		t.Errorf("Embed with 3 texts and 2 vectors: got nil error")
 	}
 	// No texts means no request.
@@ -502,7 +502,7 @@ func TestContextCancellation(t *testing.T) {
 			return err
 		},
 		"embed": func(ctx context.Context) error {
-			_, err := e.Embed(ctx, []string{"x"})
+			_, err := e.Embed(ctx, Texts("x"))
 			return err
 		},
 		"info": func(ctx context.Context) error {

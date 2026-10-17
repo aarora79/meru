@@ -59,6 +59,7 @@ Read them in this order; each builds on the ones before it.
 - [Interfaces](go-basics/interfaces.md)
 - [HTTP clients](go-basics/http-clients.md)
 - [HTTP servers](go-basics/http-servers.md)
+- [JSON marshalers](go-basics/json-marshaler.md)
 - [Iterators](go-basics/iterators.md)
 - [context](go-basics/context.md)
 - [Goroutines](go-basics/goroutines.md)

@@ -353,7 +353,7 @@ func TestErrors(t *testing.T) {
 		{"missing model", nil, http.MethodPost, "/api/chat", map[string]any{}, 400, "model is required"},
 		{"wrong method", nil, http.MethodGet, "/api/chat", nil, 405, "method not allowed"},
 		{"unknown path", nil, http.MethodGet, "/api/pull", nil, 404, "404 page not found"},
-		{"bad embed input", nil, http.MethodPost, "/api/embed", map[string]any{"model": "e", "input": 7}, 400, "input must be a string or a list of strings"},
+		{"bad embed input", nil, http.MethodPost, "/api/embed", map[string]any{"model": "e", "input": 7}, 400, "input must be a string, an object with text and image, or a list of them"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -498,6 +498,9 @@ func TestEmbed(t *testing.T) {
 		{"one string", map[string]any{"model": "e", "input": "hello"}, 1, 16},
 		{"a list", map[string]any{"model": "e", "input": []string{"hello", "world", "hello"}}, 3, 16},
 		{"asked dimensions", map[string]any{"model": "e", "input": "hello", "dimensions": 4}, 1, 4},
+		{"one image", map[string]any{"model": "e", "input": map[string]any{"image": "aW1hZ2UgQQ=="}}, 1, 16},
+		{"images and text", map[string]any{"model": "e", "input": []any{
+			map[string]any{"image": "aW1hZ2UgQQ=="}, map[string]any{"image": "aW1hZ2UgQg=="}, map[string]any{"image": "aW1hZ2UgQQ=="}}}, 3, 16},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -521,9 +524,11 @@ func TestEmbed(t *testing.T) {
 					t.Errorf("vector has %d dims and norm² %v, want %d and 1", len(v), norm, tt.wantDims)
 				}
 			}
+			// The second list holds image A, image B, image A again: the
+			// same bytes give the same vector, other bytes another.
 			if tt.wantVecs == 3 {
 				if !slices.Equal(out.Embeddings[0], out.Embeddings[2]) || slices.Equal(out.Embeddings[0], out.Embeddings[1]) {
-					t.Error("same text should give the same vector, different text a different one")
+					t.Error("the same input should give the same vector, a different one another")
 				}
 			}
 		})

@@ -46,7 +46,7 @@ func TestIntegrationSummarize(t *testing.T) {
 	if _, err := eng.Info(ctx); err != nil {
 		t.Skipf("Ollama not reachable at %s: %v", baseURL, err)
 	}
-	vecs, err := eng.Embed(ctx, []string{"probe"})
+	vecs, err := eng.Embed(ctx, engine.Texts("probe"))
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
 	}

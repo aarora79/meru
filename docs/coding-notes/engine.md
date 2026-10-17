@@ -42,6 +42,13 @@ without it, such as `gemma3:12b`. A
 Go *interface* is a list of method signatures; any type with those methods counts
 as that interface. See [go-basics/interfaces.md](go-basics/interfaces.md).
 
+`Input` is one thing for `Embed` to turn into a vector: `Text`, `Image` bytes, or
+both, with `Title` for a document's heading and `Query` for a search query.
+`Texts("a", "b")` wraps plain strings for a caller that has nothing more, such
+as the warm-up. `Prompts` holds an embedding model's task prefixes, with
+`{query}`, `{title}` and `{text}` where the input goes; its zero value adds
+nothing.
+
 ### The loopback check
 
 `NewOllama` calls `loopback.CheckURL`, which lives in its own package,
@@ -212,6 +219,24 @@ name and arguments inside a `function` object, and a tool spec inside
 Ollama reports durations in nanoseconds. `time.Duration` also counts
 nanoseconds, so `time.Duration(r.LoadDuration)` converts one to the other.
 
+`embedItem` is one entry of an embed request's `input`, and it has its own
+`MarshalJSON`, so it can come out in two shapes:
+
+```text
+"sow tomatoes in April"                       text alone: a plain string, as always
+{"image": "iVBORw0KGgo..."}                    an image: an object, bytes in base64
+{"text": "a cat", "image": "iVBORw0KGgo..."}   both together
+```
+
+Two other shapes look right, and Ollama answers both with a valid vector that
+has nothing to do with the picture: an `images` list beside `input`, and a
+`"data:image/png;base64,..."` string, which it embeds as text. That is why the
+integration test compares two different images and checks their vectors
+differ. `Prompts.apply` builds the text: the query prefix for a query, the
+document prefix with `none` for a missing title, or, with no prefix, the title,
+a blank line and the text, the form the indexer always sent. `embedOptions`
+carries `num_ctx`, which `Embed` sends on every call from `EmbedContext`.
+
 `chatMessage.Images` is a `[][]byte` with the JSON key `images`. Ollama wants
 each image as a base64 string, and `encoding/json` writes any `[]byte` as
 base64, so the conversion needs no code. `showRequest` and `showResponse` are
@@ -229,10 +254,11 @@ the two shapes of `/api/show`; Meru reads only `capabilities` from the reply.
   `encoding/json` which key to use; `omitempty` drops empty fields.
 - **`json.RawMessage`** — bytes of JSON passed through untouched. Tool arguments
   and `keep_alive` use it.
-- **Arrays** — `[3]int` has a fixed length that is part of its type;
-  `parseVersion` returns one, and two arrays compare with `==`.
 - **`[]byte` in JSON** — `encoding/json` writes a byte slice as a base64
   string and reads one back the same way. `Message.Images` relies on it.
+- **`MarshalJSON`** — a type with this method decides its own JSON, so
+  `embedItem` is a string or an object. More in
+  [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
 - **`sync.Mutex`** — `mu.Lock()` lets one goroutine at a time into the
   capabilities map. More in [go-basics/goroutines.md](go-basics/goroutines.md).
 

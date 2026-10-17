@@ -311,7 +311,7 @@ func (s searchAdapter) SearchSessions(ctx context.Context, query, excludeSession
 // size in config, means a new embedding model can't leave a stale number
 // behind.
 func embedDims(ctx context.Context, eng engine.Engine) (int, error) {
-	vecs, err := eng.Embed(ctx, []string{"How many numbers are in this vector?"})
+	vecs, err := eng.Embed(ctx, engine.Texts("How many numbers are in this vector?"))
 	if err != nil {
 		return 0, fmt.Errorf("embed a probe text: %w", err)
 	}
