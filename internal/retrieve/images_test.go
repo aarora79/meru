@@ -122,3 +122,29 @@ func TestSearchImages(t *testing.T) {
 		t.Errorf("empty query = %+v, want nothing", got)
 	}
 }
+
+// TestFuseImages checks the weights in fuseImages: a name match lifts an
+// image that looks second best above the best look, but can't lift one that
+// looks thirtieth to the top, as equal weights would.
+func TestFuseImages(t *testing.T) {
+	byLook := make([]int64, 30)
+	for i := range byLook {
+		byLook[i] = int64(i + 1)
+	}
+	tests := []struct {
+		name   string
+		byName []int64
+		want   int64
+	}{
+		{"no name match", nil, 1},
+		{"a name match on the second best look", []int64{2}, 2},
+		{"a name match on the thirtieth look", []int64{30}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := top(fuseImages(byLook, tt.byName), 1); got[0].id != tt.want {
+				t.Errorf("first = chunk %d, want %d", got[0].id, tt.want)
+			}
+		})
+	}
+}

@@ -1582,7 +1582,7 @@ images         = true                   # PNG, JPEG, GIF and WebP files too</cod
 
 <ul>
   <li><b>Like a picture:</b> the picture's bytes are embedded with no prefix, and images rank by vector alone, since keyword search can't match pixels.</li>
-  <li><b>From words:</b> the words get the query prefix, and two lists fuse with RRF as file search does: images by meaning, and images whose names or folders hold the words.</li>
+  <li><b>From words:</b> the words get the query prefix, and two lists fuse with RRF: images by meaning, and images whose names or folders hold the words. Unlike file search, the name list counts a quarter as much. Many pictures carry names such as <code>taxi.png</code> or a folder such as <code>nyc-trip</code>, which match the words of a question about a different picture from the same trip. On the owner's 25 test images, equal weight put the right image first for 19 of 75 questions, and a quarter weight for 27.</li>
 </ul>
 
 <p>The desktop app shows an image source as a 40-pixel preview on its chip. The Bridge makes it, and only for an image <code>merud</code> cited in an answer or in a past chat the app opened, so the page can't ask it to read a file of its own choosing.</p>
