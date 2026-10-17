@@ -176,10 +176,10 @@ Meru runs wherever Ollama and Go do:
 
 Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tiers)):
 
-- **`lite` (default):** MiniCPM5-2B and `nomic-embed-text`, about 2 GB of downloads.
+- **`lite` (default):** MiniCPM5-2B and `embeddinggemma-2:440m`, about 2.3 GB of downloads.
   Needs 16 GB of RAM and runs on a CPU, faster with a GPU or Apple silicon.
 - **`full`:** `qwen3.6:35b-a3b-mxfp8`, a 38 GB mixture of experts, and
-  `qwen3-embedding:0.6b`. Needs Apple silicon with 64 GB or more.
+  `embeddinggemma-2:440m`. Needs Apple silicon with 64 GB or more.
 
 [How good are the local models?](#how-good-are-the-local-models) gives the
 answer model each installer picks for your Mac's memory, with its benchmark

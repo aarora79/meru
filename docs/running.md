@@ -28,11 +28,11 @@ search.
 
 ## 2. Download the models
 
-The default `lite` profile uses two small models, about 2 GB in total:
+The default `lite` profile uses two small models, about 2.3 GB in total:
 
 ```sh
 ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M   # answers and routes questions
-ollama pull nomic-embed-text                         # embeddings, for searching your files
+ollama pull embeddinggemma-2:440m                    # embeddings, for searching your files
 ```
 
 `meru setup` (step 8) can run these downloads for you once Meru is built.
@@ -41,7 +41,6 @@ For the `full` profile (Apple silicon with 64 GB or more), also pull:
 
 ```sh
 ollama pull qwen3.6:35b-a3b-mxfp8   # 38 GB, writes the answers
-ollama pull qwen3-embedding:0.6b
 ```
 
 ### Which model for which Mac
@@ -53,7 +52,7 @@ your apps:
 
 | Memory | Answer model | Download |
 | --- | --- | --- |
-| 16 GB | MiniCPM5-2B, the `lite` default | about 2 GB with `nomic-embed-text` |
+| 16 GB | MiniCPM5-2B, the `lite` default | about 2.3 GB with `embeddinggemma-2:440m` |
 | 32 GB | `gemma4:26b-a4b-it-qat` | 15 GB more |
 | 48 GB | `qwen3.6:35b`, the same Qwen model at 4 bits | 23 GB more |
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8`, the `full` profile; `gemma4:26b-mxfp8` for work across several tools | 38 GB, or 28 GB |

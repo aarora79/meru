@@ -76,8 +76,9 @@ scheduler) ahead of the milestone that owns them.
 Decided (details in ARCHITECTURE.md):
 
 - **Agent loop:** hand-written. No agent framework.
-- **Models:** Ollama on loopback. `lite` profile by default (MiniCPM5-2B +
-  `nomic-embed-text`); `full` profile uses `qwen3.6:35b-a3b-mxfp8` + `qwen3-embedding:0.6b`.
+- **Models:** Ollama 0.40.5 or later, on loopback. `lite` profile by default
+  (MiniCPM5-2B + `embeddinggemma-2:440m`); `full` profile uses
+  `qwen3.6:35b-a3b-mxfp8` + `embeddinggemma-2:440m`.
 - **Storage:** JSONL session transcripts are the source of truth; SQLite via
   `ncruces/go-sqlite3` (no cgo) is the rebuildable index. Vectors sit in a plain
   table and vec1, bundled with the driver, supplies the distance function.

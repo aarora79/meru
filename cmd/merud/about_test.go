@@ -151,7 +151,7 @@ argv        = ["df", "-h"]
 		"Answer model (main): qwen3.6:35b.",
 		"36.0B parameters, Q4_K_M, a context of 262144 tokens. It can: vision, tools, thinking.",
 		"Fast model: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M.",
-		"Embedding model: nomic-embed-text.",
+		"Embedding model: embeddinggemma-2:440m.",
 		"Apple M4 Max",
 		"The index holds 1 file in 1 chunk",
 		"files (connected, 2 tools)",

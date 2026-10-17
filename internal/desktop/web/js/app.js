@@ -1014,7 +1014,15 @@ function drawStatus() {
   head.append(el("span", "dot"), document.createTextNode(" Running on " + s.machine));
   box.append(head);
   if (s.model) box.append(row("Answer model", s.model));
-  box.append(row("Files", s.documents.toLocaleString() + (s.scanning ? " · indexing" : "")));
+  // While merud re-embeds every file after a change of search model, the
+  // count of chunks with a vector shows how far it has got.
+  let files = s.documents.toLocaleString();
+  if (s.scanning && s.vectors < s.chunks) {
+    files += " · re-indexing for the new search model, " + s.vectors.toLocaleString() + " of " + s.chunks.toLocaleString();
+  } else if (s.scanning) {
+    files += " · indexing";
+  }
+  box.append(row("Files", files));
   // The connectors get a link each, which opens their card in Settings;
   // the Connections line names the rest, the servers added by hand.
   const dots = s.connectors || [];

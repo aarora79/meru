@@ -270,7 +270,7 @@ func defaultsTable(sets []setStats) string {
 	var b strings.Builder
 	b.WriteString("## Default model for each Mac\n\n")
 	b.WriteString("The Mac installer and `install.sh` pick the answer model by the Mac's memory. Every Mac gets the\n")
-	b.WriteString("`lite` models too: MiniCPM5-2B routes each question and `nomic-embed-text` searches your files.\n\n")
+	b.WriteString("`lite` models too: MiniCPM5-2B routes each question and `embeddinggemma-2:440m` searches your files.\n\n")
 	b.WriteString("| Mac memory | Default answer model | Model set here | Passed | TTFT p50 | TTLT p50 |\n")
 	b.WriteString("| --- | --- | --- | ---: | ---: | ---: |\n")
 	table := config.Recommendations()

@@ -309,6 +309,7 @@ func TestDocCountSizes(t *testing.T) {
 		{"older merud sends no size", &rpc.IndexStatus{Documents: 2637, Vectors: 11698}, true, "2637 docs (11698 vectors)"},
 		{"one of each", &rpc.IndexStatus{Documents: 1, Vectors: 1, DBBytes: 4096}, true, "1 doc (1 vector, 4.0 KB)"},
 		{"scanning", &rpc.IndexStatus{Documents: 5, Vectors: 9, DBBytes: 1 << 30, Scanning: true}, true, "5 docs (9 vectors, 1.0 GB) · indexing"},
+		{"re-indexing for a new embedding model", &rpc.IndexStatus{Documents: 900, Chunks: 8400, Vectors: 1200, Scanning: true}, false, "900 docs · re-indexing 1.2k of 8.4k"},
 	}
 	for _, tt := range tests {
 		if got := docCount(tt.ix, tt.sizes); got != tt.want {

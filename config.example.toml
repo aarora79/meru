@@ -13,10 +13,10 @@
 # `meru config template` prints this template again.
 
 # Which models fill the three tiers (see ARCHITECTURE.md, "Model tiers").
-#   "lite": MiniCPM5-2B for fast and main, nomic-embed-text for embed.
+#   "lite": MiniCPM5-2B for fast and main, embeddinggemma-2:440m for embed.
 #           Needs about 16 GB of memory.
 #   "full": MiniCPM5-2B for fast, qwen3.6:35b-a3b-mxfp8 for main,
-#           qwen3-embedding:0.6b for embed. Needs 64 GB or more.
+#           embeddinggemma-2:440m for embed. Needs 64 GB or more.
 profile = "lite"
 
 [models]
@@ -25,7 +25,7 @@ profile = "lite"
 # model. The comments show what "lite" gives; `ollama list` shows names.
 fast  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; routes and quick answers
 main  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; writes the answer
-embed = ""   # lite: nomic-embed-text; turns text into vectors for search
+embed = ""   # lite: embeddinggemma-2:440m; turns text into vectors for search
 # true lets the main model think before it answers, when no set below is
 # in use. Off by default: the benchmark ran every model with thinking off,
 # and thinking makes each answer take far longer.

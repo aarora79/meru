@@ -38,7 +38,7 @@ func Recommendations() []Recommendation {
 			MinMemoryGB: 0,
 			Profile:     "lite",
 			Label:       "Lite",
-			Why:         "MiniCPM5-2B answers and routes, and nomic-embed-text reads your files. Both fit in 16 GB beside your other apps.",
+			Why:         "MiniCPM5-2B answers and routes, and EmbeddingGemma 2 reads your files. Both fit in 16 GB beside your other apps.",
 			Download:    "about 2 GB",
 		},
 		{

@@ -91,7 +91,7 @@ elif [ "$has_brew" = 1 ]; then
 else
   echo "    - Ollama: install it yourself from https://ollama.com/download"
 fi
-echo "    - the lite models, about 2 GB: MiniCPM5-2B and nomic-embed-text"
+echo "    - the lite models, about 2.3 GB: MiniCPM5-2B and embeddinggemma-2:440m"
 if [ -n "$answer_model" ]; then
   echo "    - $answer_model, $answer_size, a stronger answer model for this Mac's $mem_gb GB"
 fi
@@ -202,9 +202,9 @@ fi
 
 if command -v ollama >/dev/null 2>&1; then
   echo "This Mac has $mem_gb GB of memory. Meru's lite models need about 2 GB."
-  if ask "Download the lite models (MiniCPM5-2B and nomic-embed-text)?"; then
+  if ask "Download the lite models (MiniCPM5-2B and embeddinggemma-2:440m)?"; then
     ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
-    ollama pull nomic-embed-text
+    ollama pull embeddinggemma-2:440m
   fi
   if [ -n "$answer_model" ] && ask "Also download $answer_model ($answer_size), a stronger answer model?"; then
     ollama pull "$answer_model"

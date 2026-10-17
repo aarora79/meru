@@ -613,7 +613,11 @@ func docCount(ix *rpc.IndexStatus, sizes bool) string {
 		}
 		s += " (" + inside + ")"
 	}
-	if ix.Scanning {
+	switch {
+	case ix.Scanning && ix.Vectors < ix.Chunks:
+		// After a change of embedding model, merud re-embeds every file.
+		s += fmt.Sprintf(" · re-indexing %s of %s", rpc.ShortCount(int64(ix.Vectors)), rpc.ShortCount(int64(ix.Chunks)))
+	case ix.Scanning:
 		s += " · indexing"
 	}
 	return s
