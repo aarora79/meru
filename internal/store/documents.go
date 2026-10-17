@@ -23,9 +23,15 @@ import (
 // isn't in the index.
 func (s *Store) Document(ctx context.Context, path string) (doc Document, ok bool, err error) {
 	var mtime string
+	// The NOT EXISTS clause looks for a chunk of this document with no row
+	// in chunk_vec; with none, every chunk has its vector.
 	err = s.db.QueryRowContext(ctx,
-		`SELECT id, path, mtime, hash, kind FROM documents WHERE path = ?`, path).
-		Scan(&doc.ID, &doc.Path, &mtime, &doc.Hash, &doc.Kind)
+		`SELECT d.id, d.path, d.mtime, d.hash, d.kind,
+		        NOT EXISTS (SELECT 1 FROM chunks c
+		                    WHERE c.doc_id = d.id
+		                      AND NOT EXISTS (SELECT 1 FROM chunk_vec v WHERE v.chunk_id = c.id))
+		 FROM documents d WHERE d.path = ?`, path).
+		Scan(&doc.ID, &doc.Path, &mtime, &doc.Hash, &doc.Kind, &doc.Vectored)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Document{}, false, nil
 	}

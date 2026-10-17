@@ -136,7 +136,9 @@ and the memory syncer re-embed and the summarizer embeds the summaries again.
 `NeedsReembed` reports that gap. It counts rows instead of keeping a flag:
 some chunks lack a vector exactly when the model changed and the indexer
 hasn't finished. The count stays right if `merud` crashes halfway through
-re-embedding.
+re-embedding. `Document` reports the same gap for one file: its `Vectored`
+field is true when no chunk of the file lacks a row in `chunk_vec`, which
+lets the indexer skip the files a re-embed has done already.
 
 ### documents.go: writing documents
 

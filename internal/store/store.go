@@ -230,7 +230,11 @@ type Document struct {
 	Path  string    // absolute path on disk
 	MTime time.Time // modification time when it was indexed
 	Hash  string    // hex SHA-256 of the file's bytes
-	Kind  string    // "markdown", "text", "code", "pdf" or "html"
+	Kind  string    // "markdown", "text", "code", "pdf", "html" or "image"
+	// Vectored is true when every chunk of the document has a vector. A
+	// change of embedding model drops every vector, so after one it tells
+	// a re-embed which files the new model has done already.
+	Vectored bool
 }
 
 // Chunk is one piece of a document's text, the unit that search returns.
