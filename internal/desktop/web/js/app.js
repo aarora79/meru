@@ -103,6 +103,10 @@ const handlers = {
       (err) => notice(errorText(err)),
     );
   },
+  // sourceThumb asks the Bridge for an image source's preview.
+  sourceThumb(path) {
+    return bridge.sourceThumb(path);
+  },
   onOpenSource(path) {
     bridge.openSource(path).catch((err) => notice(errorText(err)));
   },

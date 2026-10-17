@@ -1645,6 +1645,15 @@ pre {
   object-fit: cover;
 }
 
+/* An image source's preview, in place of its icon on the chip. */
+.source-thumb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .attachment-size {
   color: var(--caption);
   font-size: 12px;

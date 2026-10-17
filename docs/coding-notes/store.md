@@ -175,6 +175,12 @@ path; the indexer's startup scan uses that to find files whose folder left
 
 ### search.go: the two searches
 
+`SearchVectorKind` and `SearchKeywordKind` are the same two searches limited to
+documents of one kind, such as `"image"`. Each is one query that joins `chunks`
+and `documents` and filters on `d.kind`, so no lookup runs per hit. In the
+keyword query the table's own name, `chunk_fts`, goes before `MATCH`: FTS5 reads
+it as the whole-row column, and an alias doesn't work there.
+
 `SearchVector` computes the distance from the query to every stored vector
 and keeps the `k` nearest:
 

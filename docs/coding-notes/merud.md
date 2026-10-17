@@ -978,6 +978,16 @@ set names that Ollama doesn't list. It doesn't stop `merud`.
 `handler` takes one `services` value, which holds each service, in place of a
 long list of parameters, and sends each op to its service.
 
+### meru: image.go
+
+`-image <file>` sends a picture with one question, or with `run --json`.
+`attachImage` sends `attach_file` with the file's full path, as `meru chat`'s
+`/attach` does, so `merud` applies the same rules and copies the file into the
+uploads folder; it fails unless the reply's kind is `image`. `withImage` puts the
+copy's path in the request's `Images`. In `main.go`, `withAttached` runs the
+attach only on the two commands that send a question, so `meru -image x.png ping`
+copies nothing.
+
 ### meru: main.go
 
 ```go

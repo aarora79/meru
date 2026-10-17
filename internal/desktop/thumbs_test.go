@@ -238,3 +238,53 @@ func TestAttachImages(t *testing.T) {
 		t.Errorf("turns = %+v, want the image with its preview", turns)
 	}
 }
+
+// TestSourceThumb checks that the Bridge previews an image source merud
+// cited, and nothing else: not a path it never cited, not a cited path
+// that is now a link, and not a text source.
+func TestSourceThumb(t *testing.T) {
+	home := t.TempDir()
+	pics := filepath.Join(home, "Documents", "img")
+	if err := os.MkdirAll(pics, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	shot := filepath.Join(pics, "shot.png")
+	writeBytes(t, shot, pngOf(t, 8, 8, false))
+	other := filepath.Join(pics, "other.png")
+	writeBytes(t, other, pngOf(t, 8, 8, false))
+	b := &Bridge{home: home}
+
+	if got := b.SourceThumb("~/Documents/img/shot.png"); got != "" {
+		t.Errorf("a preview before merud cited the image: %.40s", got)
+	}
+	b.allowThumbs([]rpc.Citation{
+		{N: 1, Path: "~/Documents/img/shot.png", Kind: "image"},
+		{N: 2, Path: "~/notes/garden.md"},
+	})
+	if got := b.SourceThumb("~/Documents/img/shot.png"); !strings.HasPrefix(got, "data:image/png;base64,") {
+		t.Errorf("SourceThumb(cited image) = %.40q, want a data: URL", got)
+	}
+	if got := b.SourceThumb("~/Documents/img/other.png"); got != "" {
+		t.Error("a preview of an image merud never cited")
+	}
+	if got := b.SourceThumb("~/notes/garden.md"); got != "" {
+		t.Error("a preview of a text source")
+	}
+
+	// A cited image that has since become a link gets no preview.
+	if err := os.Remove(shot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, shot); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.SourceThumb("~/Documents/img/shot.png"); got != "" {
+		t.Error("a preview through a link")
+	}
+
+	// A past chat's sources carry paths only; the ending marks an image.
+	b.allowThumbs([]rpc.Citation{{N: 1, Path: other}})
+	if got := b.SourceThumb(other); got == "" {
+		t.Error("no preview of an image from a past chat")
+	}
+}

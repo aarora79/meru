@@ -64,7 +64,16 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 	specs := a.scopeSpecs(ctx, t.scope)
 	fileTurn := t.scope == rpc.ScopeFiles
 	var files string
-	if a.searchesFirst(fileTurn) {
+	// A turn with an attached image found similar images before it got
+	// here. Those are its search: it doesn't search the files' text too, so
+	// the numbers in its answer point at one list.
+	if len(t.similar.sources) > 0 {
+		if err := a.emitSimilar(t); err != nil {
+			return res, err
+		}
+		files = t.similar.section
+		res.docs = t.similar.docs
+	} else if a.searchesFirst(fileTurn) {
 		found, err := a.searchFiles(ctx, searchQuery(question, history), false)
 		if err != nil {
 			return res, err

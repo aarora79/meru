@@ -360,7 +360,15 @@ export function drawSources(t, h) {
   for (const s of t.cited) {
     const li = el("li");
     const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
-    chip.append(icon(isImageSource(s) ? "image" : "file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
+    const mark = icon(isImageSource(s) ? "image" : "file", 14);
+    chip.append(mark, el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
+    // An image source swaps its icon for a preview once the Bridge makes
+    // one; thumb accepts only a data: URL of an image type.
+    if (isImageSource(s) && h.sourceThumb) {
+      h.sourceThumb(s.path).then((url) => {
+        if (url) mark.replaceWith(thumb({ thumb: url, name: baseName(s.path) }, "source-thumb"));
+      }, () => {});
+    }
     chip.title = "Open " + s.path;
     chip.setAttribute("aria-label", "Open source " + s.n + ", " + s.path);
     li.append(chip);

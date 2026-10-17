@@ -739,6 +739,9 @@ Four places tie the loop to Meru today:
   the store's `tool_calls` table as a `store.ToolCall`.
 
 A script can drive the harness with no one at the keyboard.
+`meru -image shot.png "find images like this"` sends a picture with one
+question, through the same `attach_file` step and rules as the desktop app's
+attach button; `-image` works with `run --json` too.
 `meru run --json "question"` writes each socket event as one JSON line on stdout
 and exits non-zero when the turn fails. The command denies a tool call that asks
 first, as any client with no one to ask does, and `dispatch` logs it as
@@ -826,7 +829,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   [builtin]
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
              "read_file", "list_folder", "grep", "search_files",
-             "web_search", "web_fetch"]   # all eleven, the default
+             "search_images", "web_search", "web_fetch"]   # all twelve, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -856,6 +859,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
+  | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the model can't see them, so it names and cites them. Offered when the index reads images. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
@@ -1629,7 +1633,7 @@ ends without a full answer still answers, with an outcome of its own:
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
-| `no_vision` | the question carried images and the main model lacks the `vision` capability | "<model> can't look at images, so Meru didn't send it this question. Pick a model with vision for [models] main in config.toml. To check a model, run `ollama show <model>` and look for "vision" under Capabilities." |
+| `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question. Pick a model with vision for [models] main in config.toml. To check a model, run `ollama show <model>` and look for "vision" under Capabilities." |
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
@@ -1653,7 +1657,17 @@ before the turn starts, then asks `OllamaEngine.Capabilities` whether the `main`
 model lists `vision`. When it doesn't, the turn calls no model and answers with
 the `no_vision` message above; the message names the model from config and says
 how to check another, and names none of its own, since the list of models with
-vision changes with each release. When it does:
+vision changes with each release.
+
+**Images like it.** When the index reads images (see [What gets
+indexed](#what-gets-indexed)), `merud` first embeds the question's first image
+and finds the eight indexed images nearest to it, before the vision check and
+with no model call. The search is the turn's search: it goes out as the `sources`
+event, numbered from `[1]`, and the turn searches no text, so the answer's numbers
+point at one list. Without vision, the answer is that list. With vision, the list
+joins the prompt, and the model, which sees the attached image and only the names
+of the found ones, can say which fit. A failed or empty search leaves the turn as
+it was. When the model has vision:
 
 - **No router.** The `fast` model reads text alone, so its guess would ignore
   what the question is about. The turn takes the route its scope gives, as a
@@ -2225,6 +2239,29 @@ standard keyword-ranking formula, misses paraphrase. Meru runs both.
 and [Getting your content in](#getting-your-content-in) shows how files become
 chunks: Markdown by heading, code by declaration or blank-line block, PDFs by page as
 plain text with no layout.
+
+### Image search
+
+The index holds images beside text (see [What gets indexed](#what-gets-indexed)),
+and `embeddinggemma-2` puts both in one vector space, so a file search can find a
+picture by what it shows. It keeps at most two images among its ten results: an
+image's chunk text is only its name, and the answer model can't see the picture,
+so more would crowd out text it can use. Each image result's citation carries
+`kind: "image"` and reads `[1] ~/Documents/img/shot.png (image)`.
+
+`retrieve.SearchImages` searches images alone, for `search_images` and for a
+question with an attached image. Both store queries join `documents` and keep
+`kind = 'image'`, in one query each:
+
+- **Like a picture:** the picture's bytes are embedded with no prefix, and images
+  rank by vector alone, since keyword search can't match pixels.
+- **From words:** the words get the query prefix, and two lists fuse with RRF as
+  file search does: images by meaning, and images whose names or folders hold the
+  words.
+
+The desktop app shows an image source as a 40-pixel preview on its chip. The
+Bridge makes it, and only for an image `merud` cited in an answer or in a past chat
+the app opened, so the page can't ask it to read a file of its own choosing.
 
 ### How hybrid search works
 

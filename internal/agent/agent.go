@@ -160,6 +160,9 @@ type Agent struct {
 	// and say whether a model can look at them; see images.go.
 	readImage func(path string) ([]byte, error)
 	vision    func(ctx context.Context, model string) (bool, error)
+	// imageSearch, set by UseImageSearch, finds indexed images like an
+	// attached one; nil turns that off. See similar.go.
+	imageSearch ImageSearcher
 	// canCallTools, set by UseToolCheck, says whether a model can call
 	// tools; see notools.go.
 	canCallTools func(ctx context.Context, model string) (bool, error)
@@ -561,8 +564,19 @@ type response struct {
 func (a *Agent) respond(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
 	if len(t.images) > 0 {
+		// Images like the attached one, found before the vision check, so a
+		// model that can't look at pictures still gets an answer: the list.
+		if a.imageSearch != nil {
+			t.similar = a.findSimilar(ctx, t.images[0])
+			res.docs = t.similar.docs
+		}
 		if err := a.checkVision(ctx, t); err != nil {
 			res.route = "direct"
+			if errors.Is(err, errNoVision) && len(t.similar.sources) > 0 {
+				if eerr := a.emitSimilar(t); eerr != nil {
+					return res, eerr
+				}
+			}
 			return res, err
 		}
 	}
@@ -826,7 +840,10 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	var add string
 	switch {
 	case ended == endNoVision:
-		add = noVisionAnswer(a.Main())
+		add = similarAnswer(a.Main(), t.similar)
+		if add == "" {
+			add = noVisionAnswer(a.Main())
+		}
 	case ended == endBadOutput:
 		add = badOutputOnce
 		if t.outputRetry {

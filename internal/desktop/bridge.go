@@ -87,6 +87,14 @@ type Bridge struct {
 	// so ServiceShutdown can wait for them.
 	wg sync.WaitGroup
 
+	// citedMu guards cited, the full paths of the images merud has cited
+	// in a live answer or a past chat the page opened. SourceThumb makes a
+	// preview only for one of these, so the page can't ask the Bridge to
+	// read a file of its choosing. It has its own mutex because the event
+	// loop adds to it while it holds mu.
+	citedMu sync.Mutex
+	cited   map[string]bool
+
 	mu sync.Mutex // guards the fields below
 	// model is the answer model the status block names: config's at
 	// start, then the one UseModel picked last.
@@ -369,6 +377,7 @@ func (b *Bridge) event(t *turn, ev rpc.Event) {
 	case rpc.EventSources:
 		// Each "sources" event replaces the one before it.
 		t.sources = ev.Sources
+		b.allowThumbs(ev.Sources)
 	case rpc.EventToolCall:
 		if ev.Tool != nil {
 			s := stepOf(ev.Tool.ID, ev.Tool.Kind, ev.Tool.Name, ev.Tool.Args)

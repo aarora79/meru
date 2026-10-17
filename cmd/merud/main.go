@@ -267,6 +267,11 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// A question's images come from the uploads folder through the
 	// built-in tools' Image, which refuses any other path.
 	a.UseImages(tools.bt.Image, capabilityCheck(eng, engine.Vision))
+	// With images in the index, search_images and a turn with an attached
+	// image can find pictures like it; see internal/agent/similar.go.
+	if ix.ReadsImages() {
+		a.UseImageSearch(search)
+	}
 	// An answer model that can't call tools, such as gemma3:12b, answers
 	// with none; see internal/agent/notools.go.
 	a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))

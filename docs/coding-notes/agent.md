@@ -697,6 +697,26 @@ over a fake engine whose answer model loads until the test lets it go: a ping
 answers during the load, a question waits for it, the model loads once, and
 the load carries thinking off and the system prompt.
 
+### Images like an attached one (similar.go)
+
+When the index reads images, `merud` calls `UseImageSearch`, and a turn with an
+attached image runs `findSimilar` first, in `respond`, before `checkVision`. It
+embeds the first image through `ImageSearcher.SearchImages` and keeps the eight
+nearest indexed images in `t.similar`, a `fileHits` like the one `searchFiles`
+returns. The order matters: a model without vision answers with that list, so
+the search must run before the vision check stops the turn.
+
+- **No vision:** `checkVision` sends the route event, `emitSimilar` sends the
+  images as the `sources` event, and `endTurn` answers with `similarAnswer`: the
+  list as `[1]`, `[2]`, and a line saying the model can't look at pictures. The
+  numbers let `rpc.Cited` show them under the answer in both clients.
+- **Vision:** `respondScoped` sends the sources after its route event and puts
+  the list in the prompt. It skips the text search, so the answer's numbers point
+  at one list.
+
+A failed or empty search logs a warning and leaves `t.similar` empty, and the
+turn runs as it did before image search.
+
 ### Images (images.go)
 
 A question from the desktop app can carry images in `Request.Images`: the full

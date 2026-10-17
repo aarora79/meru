@@ -18,6 +18,7 @@ steps and links to [running.md](../running.md) for the full story.
 
 - [How do I make Meru search my files?](search-my-files.md)
 - [Why doesn't Meru find one of my files?](file-not-found.md)
+- [How do I find an image?](find-images.md)
 - [How do I give Meru a file or an image?](attach-files.md)
 - [How do I save an answer, a chat or a file Meru makes?](save-answers.md)
 

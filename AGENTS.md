@@ -233,11 +233,11 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
                      `meru mcp add` runs before it saves a server
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           the eleven tools inside merud: `configure`, `datetime`, `about_meru`,
+  builtin/           the twelve tools inside merud: `configure`, `datetime`, `about_meru`,
                      `remember`, `write_file`, the read-only `read_file`, `list_folder`,
-                     `grep` and `search_files`, and `web_search` and `web_fetch` (web.go,
-                     webguard.go, webdownload.go); chats.go lets the first three read
-                     the past chats in ~/.meru/sessions
+                     `grep`, `search_files` and `search_images` (searchimages.go), and
+                     `web_search` and `web_fetch` (web.go, webguard.go, webdownload.go);
+                     chats.go lets the first three read the past chats in ~/.meru/sessions
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)
@@ -250,7 +250,8 @@ internal/
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
   summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
   agent/             one turn: route, build the prompt within the budget (budget.go), pick a
-                     skill, recall memories and earlier chats, run tool rounds, stream the answer
+                     skill, recall memories and earlier chats, find images like an attached
+                     one (similar.go), run tool rounds, stream the answer
   transcript/        append-only JSONL session files, and listing them; meta lines for a
                      chat's folder and tags, folders.json, deleting a chat, and incognito
                      sessions held in memory

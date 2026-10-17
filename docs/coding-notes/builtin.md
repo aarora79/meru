@@ -25,8 +25,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are eleven built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all eleven by default. When you say "connect my Gmail" in chat, the model calls
+There are twelve built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all twelve by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -556,6 +556,25 @@ leaves room for its text.
 With no `[index] folders`, `merud` passes no indexer, the file tools are off,
 and `AttachmentText` returns "".
 
+### searchimages.go
+
+`search_images` finds pictures in the indexed folders. It takes `query`, words
+for what a picture shows, or `image`, the path of a picture to find others like,
+and `limit`, 8 by default. `merud` turns it on with `UseImageSearch` only when
+the index reads images; until then `missing` says why it is off. Like
+`search_files`, it defines the one method it calls, `ImageSearcher.SearchImages`,
+and `merud` passes the adapter around `retrieve.SearchImages`.
+
+An `image` path goes through `readImageFile`. The path must pass `Check`, the
+file tools' rules, which also covers attached images in the output folder;
+`Check` calls an image media, since `read_file` reads text, so here media counts
+as allowed and any other reason, such as a secret's name, refuses it. Then the
+name must end like an image, the size must be under `imageCap`, `SameFile`
+catches a swap between the check and the open, and `index.IsImageData` checks the
+bytes. The result is a numbered list from `dispatch.CiteNumbers`, each line from
+`retrieve.Cite`, with citations whose `Kind` is `"image"`. The model can't see
+the pictures, so the text tells it to name and cite them.
+
 ### search.go
 
 `search_files` needs the store and the embedding model, which live in `merud`.
@@ -1008,7 +1027,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the eleven names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the twelve names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1095,7 +1114,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all eleven. `web_fetch` had its own key under `[web]` before; two
+  same way for all twelve. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

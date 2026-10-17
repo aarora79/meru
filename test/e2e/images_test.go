@@ -83,3 +83,46 @@ func TestIndexImagesE2E(t *testing.T) {
 		})
 	}
 }
+
+// TestFindLikeThisE2E attaches a copy of one indexed picture with
+// meru -image and checks that merud lists that picture first. The fake
+// main model has no vision, so merud answers with the list itself, and the
+// answer is the same on every run.
+func TestFindLikeThisE2E(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "meru-images-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir, _ = filepath.EvalSymlinks(dir)
+	pngFile(t, filepath.Join(dir, "plan.png"), 20)
+	pngFile(t, filepath.Join(dir, "beds.png"), 200)
+	// The picture to attach: the same bytes as beds.png, kept outside the
+	// indexed folder.
+	away := t.TempDir()
+	attach := filepath.Join(away, "like-this.png")
+	pngFile(t, attach, 200)
+
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fmt.Sprintf(
+		"[ollama]\nbase_url = %q\n\n[models]\nfast = %q\nmain = %q\nembed = %q\n\n[web]\nsearxng_url = \"\"\n\n[index]\nfolders = [%q]\n",
+		f.url, fastModel, mainModel, imageEmbedModel, dir))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	waitForStatus(t, h, "2 files,")
+
+	res := runMeru(t, h, "-image", attach, "find images like this")
+	if res.code != 0 {
+		t.Fatalf("meru exited %d:\n%s\nmerud.log:\n%s", res.code, res.stderr, h.log())
+	}
+	first := strings.Index(res.stdout, "beds.png")
+	second := strings.Index(res.stdout, "plan.png")
+	if first < 0 || second < 0 || first > second {
+		t.Errorf("answer doesn't list beds.png before plan.png:\n%s", res.stdout)
+	}
+	if !strings.Contains(res.stdout, "most like the one you attached") {
+		t.Errorf("answer:\n%s", res.stdout)
+	}
+}

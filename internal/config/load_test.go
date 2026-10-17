@@ -321,8 +321,8 @@ func TestBuiltinToolsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 11 {
-		t.Errorf("default builtin.tools = %q, want all eleven: %q", cfg.Builtin.Tools, builtinTools)
+	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 12 {
+		t.Errorf("default builtin.tools = %q, want all twelve: %q", cfg.Builtin.Tools, builtinTools)
 	}
 	cfg, err = Load(writeConfig(t, "[builtin]\ntools = []\nconfirm = []"))
 	if err != nil {
