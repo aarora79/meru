@@ -209,7 +209,13 @@ questions (see [agent](agent.md)). The last four, of kind `images`, ask about
 pictures. Their first run, on MiniCPM5-2B, got 3 of 12 right: a request to find
 pictures like a coffee shop receipt loaded `web-research` beside
 `file-research` every time, which is how a turn came to search the web before
-it searched the user's folders. The program-and-command words came from a
+it searched the user's folders. `file-research` now names pictures, photos,
+screenshots and receipts in its description, and `search_images` and
+`view_image` in its steps and `allowed-tools`. Two runs then got 9 of 12 on the
+picture rows and 60 of 75 overall, up from 53. A line in `web-research` saying
+it isn't for pictures in the user's folders made things worse, 44 of 75, since
+it pulled current-fact questions away from it, so that line stayed out. The
+program-and-command words came from a
 real miss: before them, the pick chose `file-research` for "help me understand
 btop with some simple commands", and the model grepped the user's folders
 instead of searching the web. The rule on names came from another real
@@ -219,25 +225,28 @@ an older product with a similar name and answered about that one. A copy of
 reset web-research`.
 
 Both name their tools in `allowed-tools`: `web-research` lists `web_search,
-web_fetch` and `file-research` its four file tools. A copy installed before the
+web_fetch` and `file-research` its six file tools. A copy installed before the
 key existed doesn't have it; `meru skills reset <name>` brings the new one.
 
-`file-research` does the same job for your own files. It names the four file
+`file-research` does the same job for your own files. It names the six file
 tools and when each fits: `search_files` for a topic in any words, `grep` for
-an exact name, code or phrase, `list_folder` to see a folder, and `read_file`
-for a whole file once a search has named it. It says to try other words once
+an exact name, code or phrase, `list_folder` to see a folder, `read_file`
+for a whole file once a search has named it, `search_images` for pictures, and
+`view_image` to look at one, such as a receipt to read. It says to try other words once
 when a search misses, to stop after two or three rounds of tool calls, to cite
 `search_files`' excerpts by number and name any other file by its path, and to
 say where it looked when nothing answers. Its description names the questions
-it fits: what your files, notes or knowledge base say, or a file to find or
-read. It ends "Not for how to use a program or command", the half of the btop
+it fits: what your files, notes or knowledge base say, or a file or picture to
+find, read or compare. It ends "Not for how to use a program or command", the half of the btop
 fix that keeps the pick off this skill. It matters most with `[index] retrieval = "agentic"`, where no excerpts
 sit in the prompt.
 
 `merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
 folder is missing. So a user who installed Meru before `web-research` or
 `file-research` shipped gets them on the next start, and keeps any edits to the
-others.
+others. The same rule means a changed built-in, such as `file-research` once it
+named pictures, reaches an existing install only through `meru skills reset
+<name>`.
 
 The explainer skill tells the model to build a printable poster with the
 `poster-making` skill. Meru doesn't ship `poster-making` (AGENTS.md keeps it a repo
