@@ -446,7 +446,7 @@ func TestSearchKeyword(t *testing.T) {
 		{"q3 plan", []int64{1, 2}},
 		{"KESTREL", []int64{3}},
 		{"kestrel", []int64{3}},
-		{"what did I write about the q3 plan?", []int64{1, 2, 3}}, // "the" matches chunk 3 too, ranked last
+		{"what did I write about the q3 plan?", []int64{1, 2}}, // "the" is filler, so chunk 3 no longer matches
 		{"東京", []int64{4}},
 		{"résumé", []int64{4}},
 		{"", nil},
@@ -456,7 +456,7 @@ func TestSearchKeyword(t *testing.T) {
 		{`"`, nil},
 		{`"plan`, []int64{1, 2}},
 		{`plan"`, []int64{1, 2}},
-		{`plan AND`, []int64{2, 1}}, // "and" is a plain word: chunk 2 holds it
+		{`plan AND`, []int64{1, 2}}, // "and" is filler, not FTS5 syntax: "plan" alone ranks them
 		{`OR`, nil},
 		{`NOT plan`, []int64{1, 2}},
 		{`NEAR(plan q3, 2)`, []int64{3, 1, 2}}, // "near" is a plain word too
@@ -500,7 +500,11 @@ func TestFTSQuery(t *testing.T) {
 		{"", ""},
 		{"hello", `"hello"`},
 		{"Q3 plan", `"Q3" OR "plan"`},
-		{`a "quoted" AND b`, `"a" OR "quoted" OR "AND" OR "b"`},
+		{`a "quoted" AND b`, `"quoted" OR "b"`},
+		// Filler words drop out, so a rare name carries the search.
+		{"I think I did some work for Fruitstand, what was it?", `"think" OR "work" OR "Fruitstand"`},
+		// A query of filler alone keeps it all.
+		{"what is it", `"what" OR "is" OR "it"`},
 		{"plan PLAN Plan", `"plan"`},
 		{"NEAR(x*, 2)", `"NEAR" OR "x" OR "2"`},
 		{"e-mail", `"e" OR "mail"`},

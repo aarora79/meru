@@ -69,10 +69,11 @@ func TestSearchMemories(t *testing.T) {
 		want    []string
 	}{
 		{
-			// Sam is first by meaning, the only keyword hit ("is") once
-			// name.md is left out, and last by recency: 1/61 + 1/61 + 1/63.
-			// Tea is last by meaning but first by recency: 1/63 + 1/61,
-			// just ahead of garden's 1/62 + 1/62.
+			// Sam is first by meaning and last by recency: 1/61 + 1/63.
+			// "who", "is" and "my" are filler and "boss" matches nothing,
+			// so no keyword list. Tea is last by meaning but first by
+			// recency, 1/63 + 1/61, a tie that Sam's lower ID wins, and
+			// both are ahead of garden's 1/62 + 1/62.
 			"meaning and keyword", "who is my boss?", profile, 5,
 			[]string{"people/sam.md", "other/tea.md", "projects/garden.md"},
 		},
@@ -158,7 +159,7 @@ func TestSearchMemoriesBlankAndSpan(t *testing.T) {
 	}
 	for key, want := range map[attribute.Key]int64{
 		"meru.recall.vector_hits": 3,
-		"meru.recall.fts_hits":    1,
+		"meru.recall.fts_hits":    0, // "who is my boss?" is filler but for "boss", which no memory holds
 		"meru.recall.recent_hits": 3,
 		"meru.recall.results":     3,
 	} {
