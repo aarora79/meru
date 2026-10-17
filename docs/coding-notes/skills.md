@@ -204,8 +204,12 @@ when the fast model picks it, so it names the questions that need it: "how to
 use a program or command, the latest version or release of something, news,
 prices", and "when asked to search the web". The integration test in
 `internal/agent` checks that the `lite` model picks it for "search the web for
-the latest Go release", and `make pick-eval` scores the pick on 21 labelled
-questions (see [agent](agent.md)). The program-and-command words came from a
+the latest Go release", and `make pick-eval` scores the pick on 25 labelled
+questions (see [agent](agent.md)). The last four, of kind `images`, ask about
+pictures. Their first run, on MiniCPM5-2B, got 3 of 12 right: a request to find
+pictures like a coffee shop receipt loaded `web-research` beside
+`file-research` every time, which is how a turn came to search the web before
+it searched the user's folders. The program-and-command words came from a
 real miss: before them, the pick chose `file-research` for "help me understand
 btop with some simple commands", and the model grepped the user's folders
 instead of searching the web. The rule on names came from another real

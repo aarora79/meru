@@ -1613,6 +1613,12 @@ web     0/1
   session ID lets questions with the same `"session"` value continue one
   session. The first of a group sends no session, and the `session` event
   gives the ID the rest send.
+- A question with an `"image"` sends a picture. `checkImage` turns a leading
+  `~/` into the home folder and asks `merud` to copy the file with
+  `attachImage`, the function behind `meru -image`. `askCheck` then puts the
+  copy's path on the request with `withImage`. When `merud` refuses the file, or
+  it isn't there, `runChecks` records that question as a FAIL with the reason
+  and goes on to the next, so one moved picture doesn't stop a long run.
 - Nobody watches a check, so the `ApproveFunc` given to `rpc.Do` denies every
   call and notes `approval denied: <tool>`. A refused call reaches the turn's
   `Tools` from its `tool_call` event but stays out of `Ran`, since its

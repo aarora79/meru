@@ -493,8 +493,9 @@ space but no wrong answer.
 
 **Scoring the pick.** `make pick-eval` runs `TestPickEval`, which asks the pick
 each question in `testdata/picks.jsonl` three times and prints the share it got
-right, by kind and overall. The file holds 21 invented questions of four kinds:
-how to use a program, current facts, the user's own files, and plain chat.
+right, by kind and overall. The file holds 25 invented questions of five kinds:
+how to use a program, current facts, the user's own files, plain chat, and
+pictures in the user's folders.
 `pickRight` in `pickeval_test.go` decides what counts: the pick names every
 wanted skill and no research skill (`file-research` or `web-research`) the
 question doesn't want. An extra `writing` or `explainer` still counts, since it
@@ -2001,7 +2002,7 @@ failed pick that still answers, a failed route, `parsePick` and the cap in
 
 ```sh
 go test -tags integration -v -run Integration ./internal/agent/
-make pick-eval   # TestPickEval: 21 labelled questions, three asks each
+make pick-eval   # TestPickEval: 25 labelled questions, three asks each
 ```
 
 `pickeval_test.go` holds `loadPicks`, `pickRight` and two plain tests, so a

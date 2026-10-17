@@ -318,15 +318,18 @@ spend tokens rather than guess.
 `make router-eval` scores the router against the local Ollama. It needs the fast
 model pulled, and skips otherwise.
 
-**The labelled set.** `internal/router/testdata/routes.jsonl` holds 153 questions
-written the way a user types them, 33 to 43 per route, each with its route and a
-reason. The last 18 carry `"tag": "connected"`: they ask for mail, the calendar,
+**The labelled set.** `internal/router/testdata/routes.jsonl` holds 162 questions
+written the way a user types them, 34 to 48 per route, each with its route and a
+reason. 18 carry `"tag": "connected"`: they ask for mail, the calendar,
 Drive, the Obsidian vault, a local git command or the clock. Some are follow-ups that carry a `history` of earlier turns. The harness
 gives every row the same folders, `~/notes`, `~/repos/meru` and
 `~/repos/blog` (`evalFolders`), so a row can ask about "meru" by name the way
 a user asks about their own project. A fixed rule splits the set: of every ten rows
-with the same route, the 3rd, 6th and 9th go to a held-out set of 46 rows, and the
-other 107 form the fit set. New rows go at the end of the file, so the rows already
+with the same route, the 3rd, 6th and 9th go to a held-out set of 48 rows, and the
+other 114 form the fit set. The last 9 carry `"tag": "images"`: they ask about
+pictures in the folders, such as a receipt to read, and route `search`, where
+`view_image` rides with the other file tools; one asks about pictures in
+general and routes `direct`. The measurements below ran on the first 153 rows. New rows go at the end of the file, so the rows already
 there keep their side of the split. Tune on the fit set and
 report the held-out numbers.
 
@@ -341,7 +344,7 @@ a fallback never misses) and latency at p50 and p95.
 
 **Temperature.** A sweep from 0.5 to 5 picks the value with the lowest ECE over all
 rows. Temperature never changes the top pick, so fitting it on every row leaks
-nothing into the accuracy numbers. The held-out set alone, at 46 rows, gives an ECE
+nothing into the accuracy numbers. The held-out set alone, at 46 to 48 rows, gives an ECE
 too jumpy to fit on.
 
 **Threshold.** A sweep of `min_confidence` shows the fallback rate, accuracy and

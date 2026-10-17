@@ -2355,6 +2355,17 @@ session:
 {"id": "work", "category": "session", "session": "topics", "question": "What work did I do on the bakery site?", "want": {"sources_none": ["lisbon"]}}
 ```
 
+A question can send a picture with it, as `meru -image` does: put the
+picture's path in `"image"`, with `~/` for your home folder. A picture `merud`
+won't take, or one that isn't there, fails that question and the rest still run.
+A follow-up in the same session can ask about the pictures the first answer
+found:
+
+```json
+{"id": "like-this", "category": "images", "session": "receipts", "image": "~/Pictures/receipt.jpg", "question": "Find receipts like this one in my folders", "want": {"sources_any": [".jpg", ".png"]}}
+{"id": "itemize", "category": "images", "session": "receipts", "question": "Itemize each of those receipts and total them", "want": {"tools": ["view_image"]}}
+```
+
 Every field in `want` is optional. A question passes when each field it sets
 passes. Text matches ignore case.
 

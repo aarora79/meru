@@ -28,6 +28,10 @@ type checkQuestion struct {
 	ID       string `json:"id"`
 	Category string `json:"category"`
 	Question string `json:"question"`
+	// Image, when set, is the path of a picture sent with the question,
+	// as `meru -image` sends one: a PNG, JPEG, GIF or WebP file. "~/" at
+	// its start stands for the home folder.
+	Image string `json:"image,omitempty"`
 	// Session names a group. Questions with the same group run in one
 	// merud session, in file order; a question with no group gets a
 	// session of its own.
