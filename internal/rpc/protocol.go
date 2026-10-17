@@ -551,6 +551,9 @@ type Citation struct {
 	// Score is the excerpt's search score (reciprocal-rank fusion); higher
 	// is better.
 	Score float64 `json:"score,omitempty"`
+	// Kind is "image" when the source is an image file, and empty for
+	// text, so a client that predates images shows it as any other source.
+	Kind string `json:"kind,omitempty"`
 }
 
 // IndexReport says what one OpIndex run, or merud's startup scan, did.

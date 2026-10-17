@@ -12,30 +12,21 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/aarora79/meru/internal/index"
 )
 
-// imageCap refuses an image over 20 MiB. A phone photo runs from 2 to
-// 12 MB, so 20 MiB leaves room, and the model sees each image at a few
-// hundred pixels across whatever its size. The cap also bounds a turn:
-// five images at the cap, sent as base64, make a request of about 133
-// MB to Ollama.
-const imageCap = 20 << 20
+// imageCap refuses an image over index.MaxImageBytes, 20 MiB, the cap the
+// index uses too. The model sees each image at a few hundred pixels across
+// whatever its size. The cap also bounds a turn: five images at the cap,
+// sent as base64, make a request of about 133 MB to Ollama.
+const imageCap = index.MaxImageBytes
 
-// sniffBytes is how much of a file net/http's DetectContentType reads to
-// name its type.
+// sniffBytes is how much of a file index.IsImageData reads.
 const sniffBytes = 512
-
-// imageExts lists the file name endings Meru treats as images, and
-// imageTypes the types DetectContentType reports for them. Ollama's vision
-// models read these four formats.
-var (
-	imageExts  = []string{".png", ".jpg", ".jpeg", ".gif", ".webp"}
-	imageTypes = []string{"image/png", "image/jpeg", "image/gif", "image/webp"}
-)
 
 // Uploaded is a file Upload copied: the copy's full path, and its kind,
 // rpc.AttachImage for an image, which goes to the model with the
@@ -44,32 +35,6 @@ var (
 type Uploaded struct {
 	Path string
 	Kind string
-}
-
-// IsImageName reports whether name ends in one of the image endings,
-// such as ".png" or ".JPG". The name alone proves nothing: Upload and
-// Image also read the file's first bytes (see isImageData).
-func IsImageName(name string) bool {
-	ext := strings.ToLower(filepath.Ext(name))
-	for _, e := range imageExts {
-		if ext == e {
-			return true
-		}
-	}
-	return false
-}
-
-// isImageData reports whether head, the first bytes of a file, starts
-// like a PNG, JPEG, GIF or WebP file. DetectContentType reads the magic
-// bytes each format opens with, so a text file renamed to .png fails.
-func isImageData(head []byte) bool {
-	t := http.DetectContentType(head)
-	for _, it := range imageTypes {
-		if t == it {
-			return true
-		}
-	}
-	return false
 }
 
 // uploadImage copies the image f, which Upload opened from the user's
@@ -83,7 +48,7 @@ func uploadImage(root *os.Root, f *os.File, name string) (string, error) {
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("can't read %s: %w", name, err)
 	}
-	if !isImageData(head[:n]) {
+	if !index.IsImageData(head[:n]) {
 		return "", fmt.Errorf("%s has an image's name, but its content isn't a PNG, JPEG, GIF or WebP image", name)
 	}
 	// Go back to the start, so the copy gets the whole file.
@@ -130,7 +95,7 @@ func (t *Tools) Image(path string) ([]byte, error) {
 	if !filepath.IsAbs(path) || filepath.Dir(clean) != dir {
 		return nil, fmt.Errorf("%s isn't an image you attached; Meru sends only images in %s", path, dir)
 	}
-	if !IsImageName(name) {
+	if !index.IsImageName(name) {
 		return nil, fmt.Errorf("%s isn't a PNG, JPEG, GIF or WebP image", name)
 	}
 	root, err := openFolder(t.outputDir, uploadsFolder)
@@ -171,7 +136,7 @@ func (t *Tools) Image(path string) ([]byte, error) {
 	if len(b) > imageCap {
 		return nil, fmt.Errorf("%s is over %s, and Meru takes images up to that", name, size(imageCap))
 	}
-	if !isImageData(b[:min(len(b), sniffBytes)]) {
+	if !index.IsImageData(b[:min(len(b), sniffBytes)]) {
 		return nil, fmt.Errorf("%s isn't a PNG, JPEG, GIF or WebP image", name)
 	}
 	return b, nil

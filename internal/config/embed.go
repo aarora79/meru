@@ -21,6 +21,9 @@ type EmbedModel struct {
 	// Ollama may load an embedding model with less, and /api/embed cuts a
 	// longer input without an error.
 	Context int
+	// Images is true for a model that embeds images as well as text, in
+	// one space; only then does the index read image files.
+	Images bool
 }
 
 // EmbedModels returns the embedding models Meru knows. It returns a new
@@ -35,6 +38,7 @@ func EmbedModels() []EmbedModel {
 			Query:    "task: search result | query: {query}",
 			Document: "title: {title} | text: {text}",
 			Context:  8192,
+			Images:   true,
 		},
 	}
 }

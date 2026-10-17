@@ -1301,6 +1301,7 @@ func (a *Agent) searchFiles(ctx context.Context, query string, web bool) (fileHi
 		sources[i] = rpc.Citation{
 			N: i + 1, Path: r.Path, Heading: r.Heading,
 			StartLine: r.StartLine, EndLine: r.EndLine, Page: r.Page, Score: r.Score,
+			Kind: r.CitationKind(),
 		}
 	}
 	span.SetAttributes(attribute.Int("meru.search.results", len(results)))

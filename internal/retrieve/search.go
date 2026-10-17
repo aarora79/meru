@@ -24,7 +24,16 @@ import (
 const (
 	defaultListSize = 50
 	defaultTopN     = 10
+	// maxImageResults is the most images a file search keeps. An image's
+	// chunk text is only its name, and the answer model can't look at the
+	// picture, so more would crowd out text it can use. Image search
+	// (SearchImages) has no such cap.
+	maxImageResults = 2
 )
+
+// KindImage is the kind the index gives an image's document, as
+// index.KindImage does; the index tests check the two match.
+const KindImage = "image"
 
 // Options sets the list sizes for one search. The zero value means the
 // defaults: 50 from each search and 10 results.
@@ -57,6 +66,19 @@ type Result struct {
 	// Score is the chunk's RRF score. Higher is better; the most a chunk can
 	// score from two lists is 2/61, about 0.033.
 	Score float64
+}
+
+// IsImage reports whether r is an image's chunk rather than text.
+func (r Result) IsImage() bool { return r.Kind == KindImage }
+
+// CitationKind is the Kind an rpc.Citation for r carries: "image" for an
+// image, and "" for text, so a client that predates images reads it as
+// any other source.
+func (r Result) CitationKind() string {
+	if r.IsImage() {
+		return KindImage
+	}
+	return ""
 }
 
 // Search finds the chunks that best answer query, best first. It embeds the
@@ -125,10 +147,19 @@ func Search(ctx context.Context, st *store.Store, eng engine.Engine, query strin
 	loadDur := time.Since(start)
 
 	// Chunks keeps the order of ids, so results come out best first.
-	// A chunk deleted between the search and the load drops out.
-	results = make([]Result, len(chunks))
-	for i, c := range chunks {
-		results[i] = Result{ChunkWithDoc: c, Score: scores[c.ID]}
+	// A chunk deleted between the search and the load drops out, and so
+	// does any image past the first maxImageResults.
+	results = make([]Result, 0, len(chunks))
+	images := 0
+	for _, c := range chunks {
+		r := Result{ChunkWithDoc: c, Score: scores[c.ID]}
+		if r.IsImage() {
+			if images == maxImageResults {
+				continue
+			}
+			images++
+		}
+		results = append(results, r)
 	}
 
 	span.SetAttributes(

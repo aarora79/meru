@@ -493,7 +493,9 @@ bundler.
   `pages.openSetup`.
 - `js/turns.js` draws one turn. Each part (work strip, approval card, body,
   sources line, footer) has its own draw function, so a token redraws only the
-  body. The strip's first chip comes from `workLabel`, which reads what the turn
+  body. A source chip shows an image icon for an image, which `isImageSource`
+  tells by the citation's `kind`, or, in a past chat whose transcript keeps
+  paths only, by the file's ending. The strip's first chip comes from `workLabel`, which reads what the turn
   did: "Used tools" once a `tool_call` event came, "Searched your files" once a
   `sources` event came, both together, "Answered from the model" for a finished
   turn with neither, and "Answering" while text streams. It never reads the

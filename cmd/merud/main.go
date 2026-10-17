@@ -221,7 +221,11 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	sessionsDir := filepath.Join(cfg.Dir, "sessions")
 	replayTurns(gctx, st, sessionsDir, log)
 	replaySessions(gctx, st, sessionsDir, log)
-	ix, err := index.New(cfg.Index, st, eng, log)
+	// The indexer reads images only when config asks and the embedding
+	// model can embed them; nomic-embed-text, say, reads text alone.
+	ixCfg := cfg.Index
+	ixCfg.Images = cfg.Index.Images && config.FindEmbedModel(cfg.Models.Embed).Images
+	ix, err := index.New(ixCfg, st, eng, log)
 	if err != nil {
 		return fail(fmt.Errorf("index: %w", err))
 	}

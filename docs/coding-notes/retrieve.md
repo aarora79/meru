@@ -101,7 +101,11 @@ starting values: 50 from each search and 10 after the merge. `search_files`
 sets `TopN` alone, to the number of excerpts the model asked for.
 
 `Result` embeds `store.ChunkWithDoc` and adds the RRF score, so `r.Path`,
-`r.Heading` and `r.Text` work directly.
+`r.Heading` and `r.Text` work directly. `r.IsImage()` says whether the chunk
+is an image's, and `r.CitationKind()` gives the `Kind` its `rpc.Citation`
+carries: `"image"` or empty. `Search` keeps at most `maxImageResults`, two,
+images among its results: an image's chunk text is only its name, and the
+answer model can't see the picture, so more would crowd out text it can use.
 
 ### format.go: citations
 
@@ -111,9 +115,11 @@ sets `TopN` alone, to the number of excerpts the model asked for.
 [1] notes/launch.md, "Q3 launch", lines 12–40
 ```
 
-A PDF chunk gets `page 3` instead of lines, and a chunk with no heading leaves
-the heading out. `Format` writes a one-line instruction ("Cite the ones you
-use by number") and then each chunk's text under its citation line.
+A PDF chunk gets `page 3` instead of lines, an image gets `(image)` and no
+heading, and a chunk with no heading leaves the heading out. `Format` writes a
+one-line instruction ("Cite the ones you use by number") and then each chunk's
+text under its citation line; under an image it says the model can't see the
+picture and should cite it so the user can open it.
 `search_files` calls `Cite` too, with numbers that follow the prompt's, so an
 excerpt the tool found reads the same as one the prompt held.
 

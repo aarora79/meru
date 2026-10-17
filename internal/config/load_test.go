@@ -171,6 +171,7 @@ remote  = false
 			ChunkTokens:   300,
 			OverlapTokens: 0,
 			Watch:         false,
+			Images:        true,
 			Retrieval:     RetrievalAgentic,
 		},
 		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},

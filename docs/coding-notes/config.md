@@ -244,6 +244,12 @@ return errors.Join(errs...)
 read and change the outer function's variables (`errs` here). `errors.Join`
 glues the errors together and returns `nil` when the list is empty.
 
+`[index] images`, a plain bool that defaults to true, lets the indexer read
+PNG, JPEG, GIF and WebP files. It takes effect only with an embedding model
+whose `EmbedModel.Images` is set: `merud` passes the indexer
+`cfg.Index.Images && config.FindEmbedModel(cfg.Models.Embed).Images`, so
+`nomic-embed-text` keeps images out whatever the key says.
+
 `checkIndex` also checks `[index] retrieval`: `"auto"`, the default, or
 `"agentic"`, the two constants `RetrievalAuto` and `RetrievalAgentic`. Agentic
 retrieval runs no search before the answer, so `validate` refuses it when

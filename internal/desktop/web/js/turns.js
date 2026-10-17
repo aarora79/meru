@@ -332,6 +332,13 @@ export function drawNotice(t) {
 // line, "3 sources", whose button opens a chip for each; a chip's click
 // opens the file. An answer that cites nothing gets no line. The side
 // panel still lists every file the prompt held.
+// isImageSource reports whether source s is an image: merud says so in
+// its kind, and a past chat, whose transcript keeps paths only, is told
+// by the file's ending.
+export function isImageSource(s) {
+  return s.kind === "image" || /\.(png|jpe?g|gif|webp)$/i.test(s.path || "");
+}
+
 export function drawSources(t, h) {
   const line = t.el.sources;
   line.replaceChildren();
@@ -353,7 +360,7 @@ export function drawSources(t, h) {
   for (const s of t.cited) {
     const li = el("li");
     const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
-    chip.append(icon("file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
+    chip.append(icon(isImageSource(s) ? "image" : "file", 14), el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
     chip.title = "Open " + s.path;
     chip.setAttribute("aria-label", "Open source " + s.n + ", " + s.path);
     li.append(chip);

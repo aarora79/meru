@@ -844,10 +844,10 @@ file in its attachments folder an hour after it was written, by modified time,
 whoever wrote it.
 
 An image takes a different path through the same function. Before step 1,
-`IsImageName` looks at the name's ending: `.png`, `.jpg`, `.jpeg`, `.gif` or
+`index.IsImageName` looks at the name's ending: `.png`, `.jpg`, `.jpeg`, `.gif` or
 `.webp`, in any case. For an image, step 1 checks only the output folder, since
 the model looks at the image and never calls `read_file` on it; step 4 uses
-`imageCap`, 20 MiB; and in place of steps 6 and 7, `uploadImage` reads the
+`imageCap`, 20 MiB, which is `index.MaxImageBytes`; and in place of steps 6 and 7, `uploadImage` reads the
 first 512 bytes, asks `http.DetectContentType` what they are, and refuses
 anything but a PNG, JPEG, GIF or WebP before a copy exists. So a text file
 renamed `notes.png` stays out. Then it seeks back to the start and copies the
@@ -873,8 +873,9 @@ trusts none of it:
    `Lstat` saw, as in `Upload`.
 6. `io.ReadAll` behind an `io.LimitReader` of `imageCap` plus one byte reads the
    file; one byte past the cap means it grew after `Lstat`.
-7. The first bytes must pass `isImageData`, the same `DetectContentType` test
-   `Upload` runs.
+7. The first bytes must pass `index.IsImageData`, the same `DetectContentType`
+   test `Upload` and the indexer run. The image rules live in `index` so the
+   two can't drift.
 
 It returns the bytes, and the agent puts them on the question's message.
 

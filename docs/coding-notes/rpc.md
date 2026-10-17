@@ -321,8 +321,10 @@ Two helpers both clients use, so `meru` and `meru chat` show sources the same
 way:
 
 - **`Citation.String`** writes one line: `[1] ~/notes/garden.md, "Planting",
-  lines 3–5`. A method named `String` also makes `fmt.Println(c)` print it
-  this way.
+  lines 3–5`, or `[2] ~/Documents/img/shot.png (image)` for a citation whose
+  `Kind` is `"image"`. A method named `String` also makes `fmt.Println(c)` print
+  it this way. `Kind` is empty for text, so an older client shows an image as
+  any other source.
 - **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
   answer with a regular expression and returns the sources they name. No
   marks means no sources: the model decides when a source matters.

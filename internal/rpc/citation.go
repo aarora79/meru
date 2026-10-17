@@ -21,13 +21,19 @@ import (
 //	[1] ~/notes/garden.md, "Planting", lines 3–8
 //
 // The heading appears when the excerpt has one. A text file gives a line
-// range (or "line 7" for one line) and a PDF gives a page. Having a String
+// range (or "line 7" for one line) and a PDF gives a page; an image says
+// "(image)" after its path. Having a String
 // method makes Citation print this way with fmt's %s and %v too.
 func (c Citation) String() string {
 	// strings.Builder collects pieces of a string without copying the whole
 	// thing on each addition.
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%d] %s", c.N, c.Path)
+	// An image's heading would only repeat its name.
+	if c.Kind == "image" {
+		b.WriteString(" (image)")
+		return b.String()
+	}
 	if c.Heading != "" {
 		fmt.Fprintf(&b, ", %q", c.Heading)
 	}

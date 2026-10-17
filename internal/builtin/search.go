@@ -119,6 +119,7 @@ func (t *Tools) searchFiles(ctx context.Context, raw json.RawMessage) (string, [
 		sources[i] = rpc.Citation{
 			N: first + i, Path: r.Path, Heading: r.Heading,
 			StartLine: r.StartLine, EndLine: r.EndLine, Page: r.Page, Score: r.Score,
+			Kind: r.CitationKind(),
 		}
 	}
 	return b.String(), sources, nil
