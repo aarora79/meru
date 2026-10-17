@@ -25,8 +25,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are twelve built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all twelve by default. When you say "connect my Gmail" in chat, the model calls
+There are thirteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all thirteen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -572,8 +572,38 @@ as allowed and any other reason, such as a secret's name, refuses it. Then the
 name must end like an image, the size must be under `imageCap`, `SameFile`
 catches a swap between the check and the open, and `index.IsImageData` checks the
 bytes. The result is a numbered list from `dispatch.CiteNumbers`, each line from
-`retrieve.Cite`, with citations whose `Kind` is `"image"`. The model can't see
-the pictures, so the text tells it to name and cite them.
+`retrieve.Cite`, with citations whose `Kind` is `"image"`. The text holds only
+paths, so it tells the model to name and cite them; a model with vision can open
+one with `view_image`.
+
+`readImageFile` takes the calling tool's name first, `search_images` or
+`view_image`, and starts each of its errors with it, so the model reads which
+tool refused.
+
+### viewimage.go
+
+`view_image` shows the answer model one picture. It takes `path`, reads the file
+through `readImageFile` under the same rules as `search_images`, and returns a
+`dispatch.Result` that carries the bytes in `Images`, beside a one-line `Text`
+that names the file and its size, and the file as an image source numbered
+through `dispatch.CiteNumbers`. Every other built-in returns text, so `Call`
+runs `view_image` before its usual switch and hands back its whole `Result`.
+
+The bytes never go in `Text`. `dispatch` logs `Text` to the transcript and the
+`tool_calls` row, and a picture as base64 would fill both with a blob nobody
+reads. The agent puts `Images` on the tool's message, and the model looks at the
+picture on its next round (see [agent](agent.md)).
+
+A turn may open at most eight pictures. The tool can't count a turn's calls, so
+the agent counts them and marks a call past the limit with `WithViewCapped`,
+which puts a value on the call's context. The tool reads it with `viewCapped`
+and refuses before it touches the file. The key is an unexported struct type,
+`viewCappedKey`, so no other package can set or read the mark by accident; that
+is the usual Go way to keep a context value private.
+
+`view_image` needs only `[index] folders`, like `read_file`; it reads the file
+itself and needs no image index. The agent, not this package, hides it from an
+answer model that can't look at pictures.
 
 ### search.go
 
@@ -1027,12 +1057,18 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the twelve names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the thirteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
-`remember`, `write_file`, the four file tools and `web_search`, each with a
+`remember`, `write_file`, the six file tools and `web_search`, each with a
 reason.
+
+`TestViewImage` runs `view_image` on a picture in the folder and checks that the
+bytes come back in `Images` and the file as an image source, then on the paths it
+refuses: none, outside the folders, a secret's name, a link, a file that isn't an
+image by name and one that isn't by content. `TestViewImageCapped` checks that a
+call marked with `WithViewCapped` reads nothing and names the limit.
 
 `about_test.go` feeds `aboutText` a setup like the one behind the tool:
 `qwen3.6:35b` as the main model, the lite fast model, one folder and two MCP
@@ -1114,7 +1150,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all twelve. `web_fetch` had its own key under `[web]` before; two
+  same way for all thirteen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

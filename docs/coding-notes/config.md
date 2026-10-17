@@ -139,7 +139,7 @@ keeps the client thin.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all eleven, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all thirteen, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
 }
 ```

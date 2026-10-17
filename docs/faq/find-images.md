@@ -13,8 +13,18 @@ do I have a photo of the garden beds?
 
 Image results show under the answer with a small preview in the desktop app,
 and as `[1] ~/Documents/img/shot.png (image)` in the terminal. Click one, or
-open the path, to see it. The answer model can't look at the found pictures, so
-it names them and leaves the looking to you.
+open the path, to see it.
+
+**Read what an image says.** Ask about what's in a picture, such as "what did my
+Amtrak tickets cost?" An answer model that can look at pictures, such as
+`qwen3.6:35b` or `gemma4:26b-a4b-it-qat`, opens each picture it found with the
+`view_image` tool and reads it; the desktop app shows a "Looked at amtrak.png"
+step for each. One question opens at most eight pictures. MiniCPM5-2B reads text
+only: it names the pictures, and a line under the answer names a model set of
+yours that can read them, with the command to switch, such as
+`/model qwen-4bit` in `meru chat` or Use for answers in Settings, Models. If your
+`config.toml` lists `[builtin] tools`, add `"view_image"` to the list and
+restart `merud`.
 
 **Like a picture you have.** Attach it in the desktop app, with the attach button
 or by dragging it in, or in `meru chat` with `/attach ~/Desktop/shot.png`, and ask:

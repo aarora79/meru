@@ -126,7 +126,7 @@ func TestSimilarImagesNoneOrFailed(t *testing.T) {
 		}
 		// With nothing found the turn answers as it did before image
 		// search: the model can't look at the picture.
-		if a := answerOf(evs); !strings.Contains(a, noVisionAnswer(it.cfg.Models.Main)) || len(sourcesOf(evs)) != 0 {
+		if a := answerOf(evs); !strings.Contains(a, noVisionAnswer(it.cfg.Models.Main, nil)) || len(sourcesOf(evs)) != 0 {
 			t.Errorf("answer = %q, sources %+v; want the no-vision answer and no sources", a, sourcesOf(evs))
 		}
 	}

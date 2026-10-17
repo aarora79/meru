@@ -35,10 +35,11 @@ const MaxWebResults = 20
 // each name here is a tool it serves.
 var builtinTools = []string{
 	"configure", "datetime", "about_meru", "remember", "write_file",
-	"read_file", "list_folder", "grep", "search_files", "search_images", "web_search", "web_fetch",
+	"read_file", "list_folder", "grep", "search_files", "search_images", "view_image",
+	"web_search", "web_fetch",
 }
 
-// BuiltinTools returns the names of all twelve built-in tools, the default
+// BuiltinTools returns the names of all thirteen built-in tools, the default
 // for [builtin] tools. It returns a copy, so a caller can't change the
 // list the defaults use.
 func BuiltinTools() []string { return slices.Clone(builtinTools) }

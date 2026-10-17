@@ -308,6 +308,8 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// over, so a question that comes during the load waits for it instead
 	// of starting another. newModelService has already told the agent
 	// which model answers and whether it thinks.
+	// A model that can't look at pictures suggests a set whose model can.
+	a.UseVisionSets(svc.models.visionSets)
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })
 	requests.open(handler(svc))

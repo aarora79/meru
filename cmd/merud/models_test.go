@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
@@ -564,5 +565,38 @@ func TestModelUseOp(t *testing.T) {
 	mustCall(t, d.sock, rpc.Request{Op: rpc.OpModelSave})
 	if cfg := loadConfig(t, dir); cfg.Models.Main != qwenMoE {
 		t.Errorf("config main = %q after a save, want %q", cfg.Models.Main, qwenMoE)
+	}
+}
+
+// TestVisionSets checks the sets a model without vision suggests: those
+// whose answer model can look at pictures and call tools, in config order.
+// gemma-moe's model sees pictures but has no tools, so it can't call
+// view_image, and missing's model isn't pulled.
+func TestVisionSets(t *testing.T) {
+	caps := map[string][]string{
+		qwenMoE:  {"completion", "vision", "tools"},
+		gemmaMoE: {"completion", "vision"},
+	}
+	m, _, srv := testModelService(t, everyModel, nil, caps)
+	got := m.visionSets(t.Context())
+	want := []agent.VisionSet{{Set: "qwen-moe", Model: qwenMoE}, {Set: "small-router", Model: qwenMoE}, {Set: "new-embed", Model: qwenMoE}}
+	if !slices.Equal(got, want) {
+		t.Errorf("visionSets = %+v, want %+v", got, want)
+	}
+	// The engine keeps each pulled model's /api/show answer, so a second
+	// call asks Ollama again only about the model that isn't pulled, whose
+	// failed answer it doesn't keep.
+	asked := func() (n int) {
+		for _, r := range srv.Requests("/api/show") {
+			if strings.Contains(string(r.Body), qwenMoE) || strings.Contains(string(r.Body), gemmaMoE) {
+				n++
+			}
+		}
+		return n
+	}
+	before := asked()
+	m.visionSets(t.Context())
+	if after := asked(); after != before {
+		t.Errorf("a second call asked about pulled models %d more times, want 0", after-before)
 	}
 }

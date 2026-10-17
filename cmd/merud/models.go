@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
@@ -546,6 +547,25 @@ func (m *modelService) capabilities(ctx context.Context, model string, fallback 
 		}
 	}
 	return fallback
+}
+
+// visionSets returns the model sets, in config order, whose answer model
+// can look at pictures and call tools, for the agent to suggest when the
+// answer model can't see (see agent.UseVisionSets). Both matter: a model
+// needs tools to call view_image. A model Ollama hasn't pulled has no
+// capabilities here, so it's never suggested. The engine caches each
+// model's /api/show answer, so after the first turn this asks Ollama
+// nothing.
+func (m *modelService) visionSets(ctx context.Context) []agent.VisionSet {
+	var out []agent.VisionSet
+	for _, s := range m.models.Sets {
+		caps := m.capabilities(ctx, s.Main, nil)
+		if slices.Contains(caps, engine.Vision) && slices.Contains(caps, engine.ToolUse) {
+			out = append(out, agent.VisionSet{Set: s.Name, Model: s.Main})
+		}
+	}
+	m.log.DebugContext(ctx, "vision sets", "count", len(out))
+	return out
 }
 
 // names returns the names of the models in pulled.

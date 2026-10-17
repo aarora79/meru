@@ -188,6 +188,13 @@ type turn struct {
 	rounds int
 	// calls counts the tool calls so far, to number their IDs.
 	calls int
+	// viewed counts the view_image calls that may show the model a
+	// picture this turn, up to maxViewed; see runCalls.
+	viewed int
+	// blind names the answer model when it can't look at pictures, for
+	// the notice under an answer that names some; "" when it can, or when
+	// the turn never got as far as its tool list. See withoutViewing.
+	blind string
 	// called holds the name of each tool the turn called, whatever the
 	// outcome, for the check on answers that say they called one; see
 	// toolClaims.
@@ -706,7 +713,17 @@ type ranCall struct {
 // succeeded brought back to t.web (see webHitsOf).
 func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, caller string) ([]ranCall, error) {
 	ids := make([]string, len(calls))
+	// capped marks each view_image call past the turn's limit on pictures.
+	// The slots go out here, in call order, before any goroutine starts, so
+	// the goroutines below only read their own mark and need no lock.
+	capped := make([]bool, len(calls))
 	for i, c := range calls {
+		if c.Name == builtin.ViewImage {
+			capped[i] = t.viewed >= maxViewed
+			if !capped[i] {
+				t.viewed++
+			}
+		}
 		t.calls++
 		t.called = append(t.called, c.Name)
 		ids[i] = c.ID
@@ -746,6 +763,11 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				_ = t.emit(rpc.Event{Type: rpc.EventProgress, Text: text,
 					Tool: &rpc.ToolEvent{ID: ids[i], Name: c.Name, Kind: toolKind(c.Name)}})
 			})
+			// A call past the limit still goes through dispatch, so it gets
+			// its tool_calls row; view_image reads the mark and refuses.
+			if capped[i] {
+				cctx = builtin.WithViewCapped(cctx, maxViewed)
+			}
 			res, outcome := a.tools.Dispatch(cctx, dispatch.Call{
 				ID:       ids[i],
 				Name:     c.Name,
@@ -762,7 +784,10 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				// their arguments or results; see dispatch.Call.
 				Incognito: t.sess.Incognito(),
 			})
-			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text}
+			// res.Images, from view_image, rides on the tool message: the
+			// model looks at the picture on its next round. Dispatch logged
+			// res.Text alone.
+			out[i] = engine.Message{Role: engine.RoleTool, ToolName: c.Name, Content: res.Text, Images: res.Images}
 			found[i] = res.Sources
 			outcomes[i] = outcome.Outcome
 			return t.emit(rpc.Event{Type: rpc.EventToolResult, Tool: &rpc.ToolEvent{

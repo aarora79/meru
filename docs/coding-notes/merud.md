@@ -897,6 +897,13 @@ model set in use, the first `[[models.sets]]` entry whose models match the ones
 `handleModelSet` follows the same rule for a model picked in Settings. The service is a pointer, `*modelService`, because it holds a
 mutex and the name of the set in use, and a copy of either would be a bug.
 
+`visionSets` lists the sets, in config order, whose `main` model lists both
+`vision` and `tools` in Ollama's `/api/show` answer, which the engine caches.
+`run` passes it to the agent with `a.UseVisionSets(svc.models.visionSets)`, so an
+answer model that can't look at pictures can name one that can (see
+[agent](agent.md), "Looking at a picture in the folders"). A set whose model
+Ollama hasn't pulled has no capabilities and is never suggested.
+
 `modelService.handleModels`
 answers `models`, and `info` gathers the reply: the profile, the fast and embed
 models from config, and the answer model from the agent's `Main`, since a

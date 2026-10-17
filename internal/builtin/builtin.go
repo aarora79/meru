@@ -183,7 +183,7 @@ func (t *Tools) missing(name string) string {
 		if t.outputDir == "" {
 			return "[skills] output_dir is empty"
 		}
-	case ReadFile, ListFolder, Grep:
+	case ReadFile, ListFolder, Grep, ViewImage:
 		if !t.hasFiles() {
 			return "[index] folders is empty"
 		}
@@ -248,6 +248,7 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		if t.imageSearch != nil {
 			specs = append(specs, t.searchImagesSpec())
 		}
+		specs = append(specs, viewImageSpec())
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
 	search, _ := t.webSearchOn()
@@ -373,6 +374,11 @@ func (t *Tools) Status() []rpc.ServerInfo {
 				Confirm:     t.Confirm(SearchImages) != dispatch.ConfirmNever,
 			})
 		}
+		tools = append(tools, rpc.ToolInfo{
+			Name:        ViewImage,
+			Description: Summary(ViewImage),
+			Confirm:     t.Confirm(ViewImage) != dispatch.ConfirmNever,
+		})
 	}
 	if on, _ := t.webSearchOn(); on {
 		tools = append(tools, rpc.ToolInfo{
@@ -405,6 +411,15 @@ func (t *Tools) Status() []rpc.ServerInfo {
 func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (dispatch.Result, error) {
 	if !t.enabled(name) {
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool that [builtin] tools turns on", name)
+	}
+	// view_image returns pictures beside its text, so it builds its own
+	// Result.
+	if name == ViewImage && t.hasFiles() {
+		res, err := t.viewImage(ctx, args)
+		if err != nil {
+			return dispatch.Result{Text: err.Error(), IsError: true}, nil
+		}
+		return res, nil
 	}
 	var text string
 	var sources []rpc.Citation // only search_files sets these
@@ -696,6 +711,8 @@ func Summary(name string) string {
 		return "Searches the indexed folders by meaning and by words."
 	case SearchImages:
 		return "Finds pictures in the indexed folders, by words or like another picture."
+	case ViewImage:
+		return "Shows the answer model a picture in the indexed folders, when the model can see pictures."
 	case WebSearch:
 		return "Searches the web through the SearXNG instance [web] searxng_url names."
 	case WebFetch:

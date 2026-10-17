@@ -129,6 +129,12 @@ type Result struct {
 	// turn's sources and the clients can list the ones the answer cites.
 	// search_files fills it; other tools leave it nil.
 	Sources []rpc.Citation
+	// Images holds pictures for the model to look at on its next round,
+	// each the raw bytes of a PNG, JPEG, GIF or WebP file. view_image fills
+	// it; other tools leave it nil. Dispatch never logs them: the
+	// tool_result line and the tool_calls row keep Text alone, so a picture
+	// never lands in the transcript or meru.db.
+	Images [][]byte
 }
 
 // Call is one tool call the model asked for.

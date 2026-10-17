@@ -69,7 +69,7 @@ func TestCiteAndFormatImage(t *testing.T) {
 		t.Errorf("Cite = %q", got)
 	}
 	f := Format([]Result{r})
-	if !strings.Contains(f, "You can't see it") || strings.Contains(f, "Image shot.png in") {
+	if !strings.Contains(f, "this text is only its name") || strings.Contains(f, "Image shot.png in") {
 		t.Errorf("Format tells the model the wrong thing about an image:\n%s", f)
 	}
 	if (Result{}).CitationKind() != "" {

@@ -194,7 +194,7 @@ func TestImageTurnWithoutVision(t *testing.T) {
 			answer.WriteString(ev.Text)
 		}
 	}
-	if answer.String() != noVisionAnswer(it.cfg.Models.Main) {
+	if answer.String() != noVisionAnswer(it.cfg.Models.Main, nil) {
 		t.Errorf("answer = %q, want the no-vision message", answer.String())
 	}
 	if n := len(it.srv.Requests("/api/chat")); n != 0 {

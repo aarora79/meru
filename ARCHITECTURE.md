@@ -776,8 +776,8 @@ explain each step in detail.
 | When the turn ends | the `main` model, with caps | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer. A model that repeats a call twice loses its tools early. Each model call writes at most `[agent] max_output_tokens` (default 8,192, thinking included), and the whole turn has `[agent] turn_timeout` (default 5 minutes). A turn that hits a limit with no answer says sorry instead of going quiet |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
-`datetime`, `about_meru`, the four read-only file tools, `read_file`, `list_folder`, `grep` and
-`search_files`, and the local commands that don't ask first. A question such as "write about everything
+`datetime`, `about_meru`, the six read-only file tools, `read_file`, `list_folder`, `grep`,
+`search_files`, `search_images` and `view_image`, and the local commands that don't ask first. A question such as "write about everything
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
@@ -829,7 +829,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   [builtin]
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
              "read_file", "list_folder", "grep", "search_files",
-             "search_images", "web_search", "web_fetch"]   # all twelve, the default
+             "search_images", "view_image", "web_search",
+             "web_fetch"]   # all thirteen, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -848,7 +849,7 @@ and arguments and offers the choices `merud` sends, at most these three:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
-  clock tool, `datetime`; `about_meru`, which reports this setup; and four
+  clock tool, `datetime`; `about_meru`, which reports this setup; and six
   read-only file tools. `web_search`, `datetime`, `about_meru` and the file
   tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
@@ -859,7 +860,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 200 lines, 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
-  | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the model can't see them, so it names and cites them. Offered when the index reads images. |
+  | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the text holds only their paths, so the model names and cites them, and one with vision can open them with `view_image`. Offered when the index reads images. |
+  | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A turn opens at most 8 pictures, since each costs 500 to 1,500 prompt tokens; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
@@ -1633,7 +1635,7 @@ ends without a full answer still answers, with an outcome of its own:
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
-| `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question. Pick a model with vision for [models] main in config.toml. To check a model, run `ollama show <model>` and look for "vision" under Capabilities." |
+| `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question." Both end with the suggestion described in [Questions with images](#questions-with-images). |
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
@@ -1655,9 +1657,13 @@ A question from the desktop app can carry up to five images (see
 [Desktop app](#desktop-app)). `merud` reads each one from the uploads folder
 before the turn starts, then asks `OllamaEngine.Capabilities` whether the `main`
 model lists `vision`. When it doesn't, the turn calls no model and answers with
-the `no_vision` message above; the message names the model from config and says
-how to check another, and names none of its own, since the list of models with
-vision changes with each release.
+the `no_vision` message above. The message ends with a suggestion drawn from your
+own `[[models.sets]]`: the first set, in config order, whose `main` model lists
+both `vision` and `tools` and that Ollama has pulled, as in "qwen3.6:35b can:
+switch to it with `/model qwen-4bit` in meru chat, or Use for answers in
+Settings, Models." With no such set, it says to pick a model that can see
+pictures with `/model` or in Settings, Models. The names come from config, never
+from code, since the models with vision change with each release.
 
 **Images like it.** When the index reads images (see [What gets
 indexed](#what-gets-indexed)), `merud` first embeds the question's first image
@@ -1665,8 +1671,8 @@ and finds the eight indexed images nearest to it, before the vision check and
 with no model call. The search is the turn's search: it goes out as the `sources`
 event, numbered from `[1]`, and the turn searches no text, so the answer's numbers
 point at one list. Without vision, the answer is that list. With vision, the list
-joins the prompt, and the model, which sees the attached image and only the names
-of the found ones, can say which fit. A failed or empty search leaves the turn as
+joins the prompt, and the model, which sees the attached image and the paths of
+the found ones, can open any of them with `view_image` and say which fit. A failed or empty search leaves the turn as
 it was. When the model has vision:
 
 - **No router.** The `fast` model reads text alone, so its guess would ignore
@@ -2262,6 +2268,18 @@ question with an attached image. Both store queries join `documents` and keep
   question about a different picture from the same trip. On the owner's 25
   test images, equal weight put the right image first for 19 of 75 questions,
   and a quarter weight for 27.
+
+**Looking at one.** A found image's text is only its name, so to read a receipt
+or a ticket the model calls `view_image` (see [Approving a tool call](#approving-a-tool-call)).
+`dispatch.Result` carries the picture in `Images`, beside `Text`. `dispatch`
+logs `Text` alone, so the picture never reaches the transcript or `meru.db`, and
+the agent puts `Images` on the tool's message, where Ollama shows it to the model
+on its next round. The agent offers `view_image` only while the `main` model lists
+`vision`. A model without it never sees the tool. When such a model's full answer
+cites an image or names a file ending in `.png`, `.jpg`, `.jpeg`, `.gif` or
+`.webp`, a `notice` under the answer says "<model> reads text only, so it can't
+look at these pictures", with the suggestion from [Questions with
+images](#questions-with-images).
 
 The desktop app shows an image source as a 40-pixel preview on its chip. The
 Bridge makes it, and only for an image `merud` cited in an answer or in a past chat
