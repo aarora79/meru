@@ -56,14 +56,28 @@ func (a *Agent) findSimilar(ctx context.Context, image []byte) fileHits {
 	for i, r := range results {
 		sources[i] = rpc.Citation{N: i + 1, Path: r.Path, Score: r.Score, Kind: r.CitationKind()}
 	}
-	section := ""
-	if len(results) > 0 {
-		section = "Images in the user's folders that look like the one attached, best first. " +
-			"You can see the attached image but not these; name the ones that fit and cite them by number.\n\n" +
-			retrieve.Format(results)
-	}
 	a.log.DebugContext(ctx, "similar images", "found", len(results))
-	return fileHits{section: section, sources: sources, docs: docs, results: results}
+	return fileHits{section: similarSection(results), sources: sources, docs: docs, results: results}
+}
+
+// similarSection is the prompt section that lists the images like the
+// attached one, or "" when there are none. It says Meru ran the search
+// already. Under retrieve.Format's "Excerpts from the user's files", a
+// model asked to "find similar images" missed the list, said it had no
+// tool for that, and offered a web search.
+func similarSection(results []retrieve.Result) string {
+	if len(results) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Meru already searched the user's folders for pictures that look like the attached one. " +
+		"These are the results, best first, so you need no tool to find similar images. " +
+		"When the user asks for images like this one, list these and cite each by number, like [1]. " +
+		"You can see the attached image but not these.\n\n")
+	for i, r := range results {
+		b.WriteString(retrieve.Cite(i+1, r) + "\n")
+	}
+	return b.String()
 }
 
 // similarAnswer is the answer to an image turn whose model can't look at

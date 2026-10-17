@@ -712,7 +712,10 @@ the search must run before the vision check stops the turn.
   numbers let `rpc.Cited` show them under the answer in both clients.
 - **Vision:** `respondScoped` sends the sources after its route event and puts
   the list in the prompt. It skips the text search, so the answer's numbers point
-  at one list.
+  at one list. `similarSection` writes that list under its own header, which
+  tells the model Meru ran the search already. Under the usual "Excerpts from
+  the user's files", a model asked to "find similar images" missed the list,
+  said it had no tool for that, and offered a web search.
 
 A failed or empty search logs a warning and leaves `t.similar` empty, and the
 turn runs as it did before image search.

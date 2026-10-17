@@ -78,8 +78,11 @@ func TestSimilarImagesWithVision(t *testing.T) {
 	for _, m := range chatMessages(t, chats[0]) {
 		prompt.WriteString(m.Content)
 	}
-	if !strings.Contains(prompt.String(), "[1] /data/img/beds-may.png (image)") {
-		t.Errorf("the prompt lacks the similar images:\n%s", prompt.String())
+	// It says Meru ran the search, so the model doesn't look for a tool.
+	for _, want := range []string{"[1] /data/img/beds-may.png (image)", "Meru already searched"} {
+		if !strings.Contains(prompt.String(), want) {
+			t.Errorf("the prompt lacks %q:\n%s", want, prompt.String())
+		}
 	}
 }
 
