@@ -99,7 +99,7 @@ argv        = ["df", "-h"]
 		t.Fatal(err)
 	}
 
-	eng := &fakeEngine{version: "0.34.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	log := obs.Discard()
 	st, err := store.Open(ctx, store.Options{Path: filepath.Join(dir, "meru.db"), EmbedModel: cfg.Models.Embed, Dims: 1})
 	if err != nil {
@@ -147,7 +147,7 @@ argv        = ["df", "-h"]
 	t.Logf("about_meru said:\n%s", text)
 	for _, want := range []string{
 		"Profile: lite.",
-		"Ollama runs every model on this computer; no model runs in the cloud.\nOllama version: 0.34.0\n",
+		"Ollama runs every model on this computer; no model runs in the cloud.\nOllama version: 0.40.5\n",
 		"Answer model (main): qwen3.6:35b.",
 		"36.0B parameters, Q4_K_M, a context of 262144 tokens. It can: vision, tools, thinking.",
 		"Fast model: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M.",

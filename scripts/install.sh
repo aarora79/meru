@@ -111,6 +111,34 @@ if [ "$all" != 1 ] && { : </dev/tty; } 2>/dev/null; then
   esac
 fi
 
+# Meru's search model needs Ollama 0.40.5 or later, and a newer merud
+# won't answer on an older one. So an old Ollama is dealt with before
+# anything is installed: Homebrew can update its own copy; any other copy
+# the user updates from ollama.com/download.
+min_ollama="0.40.5"
+# version_ge says whether dotted version $1 is at least $2, comparing each
+# number in turn.
+version_ge() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    n = split(a, x, "."); m = split(b, y, ".")
+    for (i = 1; i <= 3; i++) { if (x[i] + 0 != y[i] + 0) { exit !(x[i] + 0 > y[i] + 0) } }
+    exit 0 }'
+}
+if command -v ollama >/dev/null 2>&1; then
+  # `ollama --version` prints "ollama version is 0.40.5", and may print a
+  # warning line first; the last number on its last line is the version.
+  ollama_version="$(ollama --version 2>/dev/null | tail -1 | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | tail -1 || true)"
+  if [ -n "$ollama_version" ] && ! version_ge "$ollama_version" "$min_ollama"; then
+    echo "Ollama $ollama_version is too old for Meru's search model; Meru needs $min_ollama or later."
+    if command -v brew >/dev/null 2>&1 && brew list ollama >/dev/null 2>&1 && ask "Update Ollama with Homebrew?"; then
+      brew upgrade ollama
+      brew services restart ollama
+    else
+      fail "update Ollama from https://ollama.com/download, then run this script again; nothing was installed"
+    fi
+  fi
+fi
+
 say "Installing Meru $version for macOS on $arch"
 
 tmp="$(mktemp -d)"

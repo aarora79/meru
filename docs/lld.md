@@ -500,7 +500,7 @@ sequenceDiagram
     M->>E: NewOllama(base URL, keep_alive, embed model, logger)
     M->>R: Listen(socket) — refuses if another merud answers
     M->>R: Serve(listener, gate) — until ready, the gate waits or answers from the Ollama watch
-    M->>E: waitReady: Info() → Ollama 0.12.11 or later? then warm() the fast and embed models; again every 30 s
+    M->>E: waitReady: Info() → Ollama 0.40.5 or later? then warm() the fast and embed models; again every 30 s
     M->>E: embedDims: embed one probe text to learn the vector size
     M->>M: openStore: store.Open(meru.db, embed model, vector size)
     M->>M: index.New(cfg.Index, store, engine)

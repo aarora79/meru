@@ -41,7 +41,7 @@ func run() error {
 	scriptPath := flag.String("script", "", "JSON file of replies to queue at start: {\"replies\": {\"model\": [Reply, ...]}}")
 	models := flag.String("models", "", "comma-separated model names to accept; empty accepts any")
 	loaded := flag.String("loaded", "", "comma-separated model names /api/ps reports at start")
-	version := flag.String("version", "", "version /api/version reports (default 0.12.11)")
+	version := flag.String("version", "", "version /api/version reports (default 0.40.5)")
 	latency := flag.Duration("latency", 0, "pause before every response")
 	vision := flag.String("vision", "", "comma-separated model names /api/show lists with the vision capability")
 	flag.Parse()

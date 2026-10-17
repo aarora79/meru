@@ -51,7 +51,7 @@ func TestConnectorSetOp(t *testing.T) {
 [[mcp.servers]]
 name    = "google"
 url     = "http://127.0.0.1:1/mcp"
-`, &fakeEngine{version: "0.13.0"})
+`, &fakeEngine{version: "0.40.5"})
 	cfgPath := filepath.Join(dir, "config.toml")
 
 	refusals := []struct {
@@ -123,7 +123,7 @@ url     = "http://127.0.0.1:1/mcp"
 // config.toml, and no event carries it.
 func TestConnectorSetSecret(t *testing.T) {
 	dir, _ := meruHome(t)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 	const secret = "fake-client-secret-5678"
 	ch := rpc.ConnectorChange{
 		Enabled: boolPtr(false),
@@ -169,7 +169,7 @@ func TestConnectorSetSecret(t *testing.T) {
 // status and nothing else happens.
 func TestConnectorFixOp(t *testing.T) {
 	dir, _ := meruHome(t)
-	d := startDaemon(t, dir, settingsHeader+"\n[connectors.obsidian]\nenabled = true\n", &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader+"\n[connectors.obsidian]\nenabled = true\n", &fakeEngine{version: "0.40.5"})
 
 	evs := mustCall(t, d.sock, rpc.Request{Op: rpc.OpConnectorFix, ID: "obsidian"})
 	st := lastConnector(t, evs)

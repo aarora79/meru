@@ -19,6 +19,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/aarora79/meru/internal/config"
 )
 
 // OllamaDownloadURL is Ollama's own download of Ollama.app for macOS, a
@@ -305,11 +307,27 @@ func PullModel(ctx context.Context, client *http.Client, baseURL, model string, 
 		return fmt.Errorf("pull %s: %w", model, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusPreconditionFailed {
+		// Ollama answers 412 when the model needs a newer Ollama than this
+		// one, as embeddinggemma-2 does before 0.40.5.
+		return fmt.Errorf("pull %s: this Ollama is too old for it. Update it from %s, then try again", model, config.OllamaUpdate)
+	}
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("pull %s: Ollama answered %s: %s", model, resp.Status, strings.TrimSpace(string(msg)))
 	}
 	return readPull(resp.Body, model, report)
+}
+
+// ollamaNewEnough returns nil when version is config.MinOllama or later,
+// and otherwise an error whose text is the sentence every client shows,
+// such as "Ollama 0.34.0 is too old for Meru's search model. Update it from
+// ollama.com/download." A version it can't read counts as too old.
+func ollamaNewEnough(version string) error {
+	if ok, err := config.OllamaAtLeast(version); err == nil && ok {
+		return nil
+	}
+	return errors.New(config.OllamaTooOld(version))
 }
 
 // pullLine is one line of Ollama's pull stream. Each part of the model,

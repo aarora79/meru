@@ -24,7 +24,7 @@ flowchart TB
         L --> G["open merud.log at [log] level"]
         G --> O["obs.Setup"]
         O --> E["build engine"]
-        E --> V["check Ollama version ≥ 0.12.11"]
+        E --> V["check Ollama version ≥ 0.40.5"]
         V --> S["rpc.Listen: claim the socket"]
         S --> W["warm fast and embed"]
         W --> D["embed a probe text: vector size"]
@@ -194,11 +194,6 @@ and how many `[index]` folders it indexes.
 
 ### merud: runtime.go
 
-`versionAtLeast` compares versions number by number, so `0.12.11` beats
-`0.9.99`, which a plain string comparison gets wrong. `checkOllama` in
-`ollama.go` uses it to refuse an Ollama older than 0.12.11, the first release
-that reports log probabilities.
-
 `warm` sends a one-token request to the fast model and one embedding
 request, and logs `warmed` with the time each took. The router needs the
 first on every question, and `openStore` needs the second. At debug level the
@@ -230,8 +225,10 @@ Ollama").
 | `answer(req, emit)` | while Ollama fails: Ollama's row for `connectors`, no servers for `mcp_status`, and `notReady`'s error for the rest |
 
 `checkOllama` returns the version and a sentence: "Ollama isn't running at
-http://127.0.0.1:11434.", "Ollama 0.12.0 is too old; Meru needs 0.12.11 or
-later.", or "" when all is well. A down Ollama gives every request the error
+http://127.0.0.1:11434.", "Ollama 0.34.0 is too old for Meru's search model.
+Update it from ollama.com/download.", or "" when all is well. It compares the
+version with `config.OllamaAtLeast`, the same check `meru setup` and the Mac
+installer make, so all three say the same sentence (see the config note). A down Ollama gives every request the error
 "Ollama isn't running, so Meru can't answer yet."; any other failure gives
 "Meru can't answer yet: " and the sentence.
 
@@ -1258,6 +1255,9 @@ type console struct {
   progress bar. More in [go-basics/os-exec.md](go-basics/os-exec.md).
 - `ollamaVersion` makes one `GET /api/version` with `net/http`. The client may
   not import the engine, and one plain call is all the check needs.
+  `waitForOllama` compares the answer with `config.OllamaAtLeast`; an Ollama
+  older than 0.40.5 gets `config.OllamaTooOld`'s sentence and a wait for Enter,
+  as a stopped Ollama does.
 - `answers` is `urlAnswers` from `probe.go`: does anything accept a TCP
   connection at a server's URL within a second?
 - `searxng` is `catalog.CheckSearXNG`: does SearXNG answer JSON at

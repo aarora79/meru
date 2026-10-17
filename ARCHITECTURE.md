@@ -1080,9 +1080,12 @@ memory, and the other choice, a load on the first question, is the wait the
 real session hit. So the warm-up stays on for every start.
 
 The `fast` tier needs a runtime that reports log probabilities, because
-[routing](#routing) reads them. Ollama added them in v0.12.11; `merud` reads
-`/api/version` when it starts and every 30 seconds after. On anything older it
-stays up, answers no question, and names both versions (see
+[routing](#routing) reads them. Ollama added them in v0.12.11. Meru needs
+v0.40.5 or later all the same, the first release tested to serve its
+embedding model, `embeddinggemma-2`, and to embed images; an older Ollama
+refuses to pull that model with HTTP 412. `merud` reads `/api/version` when it
+starts and every 30 seconds after. On anything older it stays up, answers no
+question, and says which version it found and where to update (see
 [SearXNG and Ollama](#searxng-and-ollama)). Routing costs no extra model: the `fast` model is already loaded.
 
 A new embedding model makes vectors of a different size, and every stored vector
@@ -3789,12 +3792,13 @@ search" line, and the desktop app's rail names web search with its state.
 `merud` can't answer instead of finding no `merud` at all. The check asks
 `GET /api/version` through the engine's `Info`, at start, then every 30
 seconds, and at once when a request comes while Ollama fails. Once Ollama
-answers with 0.12.11 or later, `merud` loads the fast and embedding models
+answers with 0.40.5 or later, `merud` loads the fast and embedding models
 and only then opens the store and builds the rest. Until then:
 
 - the connectors op lists Ollama alone, `failed`, with "Ollama isn't running
-  at http://127.0.0.1:11434.", "Ollama 0.12.0 is too old; Meru needs 0.12.11
-  or later." or "Ollama … couldn't load a model: …";
+  at http://127.0.0.1:11434.", "Ollama 0.34.0 is too old for Meru's search
+  model. Update it from ollama.com/download." or "Ollama … couldn't load a
+  model: …";
 - `mcp_status` answers with no servers, so `meru mcp status` prints the
   connector table;
 - every other request gets "Ollama isn't running, so Meru can't answer yet.",

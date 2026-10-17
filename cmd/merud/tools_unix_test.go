@@ -23,7 +23,7 @@ func TestMCPReloadStopsOldChildren(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.toml")
 	first := filepath.Join(dir, "first.pid")
 	second := filepath.Join(dir, "second.pid")
-	d := startDaemon(t, dir, stdioServerEntry(t, "local", first, `"echo"`), &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, stdioServerEntry(t, "local", first, `"echo"`), &fakeEngine{version: "0.40.5"})
 	pidA := readPID(t, first)
 	if !processExists(pidA) {
 		t.Fatalf("server %d isn't running after start", pidA)

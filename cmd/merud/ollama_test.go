@@ -110,13 +110,13 @@ func TestServeWaitsForOllama(t *testing.T) {
 	}
 
 	eng.setOllama("0.11.0", nil)
-	waitOllama(t, ctx, sock, "Ollama 0.11.0 is too old; Meru needs 0.12.11 or later.")
-	if _, errText := askOnce(ctx, sock); errText != "Meru can't answer yet: Ollama 0.11.0 is too old; Meru needs 0.12.11 or later." {
+	waitOllama(t, ctx, sock, "Ollama 0.11.0 is too old for Meru's search model. Update it from ollama.com/download.")
+	if _, errText := askOnce(ctx, sock); errText != "Meru can't answer yet: Ollama 0.11.0 is too old for Meru's search model. Update it from ollama.com/download." {
 		t.Errorf("a question with an old Ollama got %q", errText)
 	}
 
-	eng.setOllama("0.13.0", nil)
-	waitOllama(t, ctx, sock, "Ollama 0.13.0 is running at http://127.0.0.1:11434.")
+	eng.setOllama("0.40.5", nil)
+	waitOllama(t, ctx, sock, "Ollama 0.40.5 is running at http://127.0.0.1:11434.")
 	answer, errText := askOnce(ctx, sock)
 	if answer != "pong" || errText != "" {
 		t.Errorf("answer once Ollama runs = %q, error %q; want pong", answer, errText)
@@ -164,7 +164,7 @@ func TestServeStopsWhileWaiting(t *testing.T) {
 // TestOllamaWatchAfterReady checks the watch that runs once merud is
 // ready: Ollama stopping shows as failed, and coming back as ok.
 func TestOllamaWatchAfterReady(t *testing.T) {
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	cfg := config.Config{Ollama: config.Ollama{BaseURL: "http://127.0.0.1:11434"}, Models: config.Models{Fast: "small", Embed: "embed"}}
 	o, err := newOllamaWatch(cfg, eng, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -194,9 +194,9 @@ func TestOllamaWatchAfterReady(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	wait(connectors.StateOK, "Ollama 0.13.0 is running at http://127.0.0.1:11434.")
+	wait(connectors.StateOK, "Ollama 0.40.5 is running at http://127.0.0.1:11434.")
 	eng.setOllama("", errors.New("connection refused"))
 	wait(connectors.StateFailed, "Ollama isn't running at http://127.0.0.1:11434.")
-	eng.setOllama("0.13.1", nil)
-	wait(connectors.StateOK, "Ollama 0.13.1 is running at http://127.0.0.1:11434.")
+	eng.setOllama("0.40.6", nil)
+	wait(connectors.StateOK, "Ollama 0.40.6 is running at http://127.0.0.1:11434.")
 }

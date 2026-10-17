@@ -42,7 +42,7 @@ func scripted(input string) (c *console, out *bytes.Buffer, ran *[]string) {
 			*ran = append(*ran, name+" "+strings.Join(args, " "))
 			return nil
 		},
-		ollamaVersion: func(context.Context, string) (string, error) { return "0.12.11", nil },
+		ollamaVersion: func(context.Context, string) (string, error) { return "0.40.5", nil },
 		// Nothing answers at a server's URL unless a test says so.
 		answers: func(context.Context, string) bool { return false },
 		// SearXNG answers unless a test says otherwise.
@@ -172,7 +172,7 @@ func TestSetupWithMain(t *testing.T) {
 	input := "\n" + // download: yes, the default
 		"\n" // no folders; with merud down, the tools step asks nothing
 	c, out, ran := scripted(input)
-	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.34.0", nil }
+	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.40.5", nil }
 
 	if err := setupCmd(context.Background(), filepath.Join(dir, "merud.sock"), c, "qwen3.6:35b"); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
@@ -213,7 +213,7 @@ func TestSetupFirstRun(t *testing.T) {
 		if checks == 1 {
 			return "", errors.New("connection refused")
 		}
-		return "0.12.11", nil
+		return "0.40.5", nil
 	}
 
 	if err := setupCmd(context.Background(), filepath.Join(dir, "merud.sock"), c, ""); err != nil {
@@ -460,18 +460,49 @@ func TestSetupStopsWithoutOllama(t *testing.T) {
 	}
 }
 
+// TestSetupWaitsForNewerOllama checks that an Ollama older than
+// config.MinOllama gets the shared sentence and a wait, that an update
+// then lets setup go on, and that q stops it.
+func TestSetupWaitsForNewerOllama(t *testing.T) {
+	c, out, _ := scripted("q\n")
+	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.34.0", nil }
+	err := setupCmd(context.Background(), filepath.Join(t.TempDir(), "merud.sock"), c, "")
+	if err == nil || !strings.Contains(err.Error(), "Ollama is too old") {
+		t.Errorf("error = %v", err)
+	}
+	if want := "Ollama 0.34.0 is too old for Meru's search model. Update it from ollama.com/download."; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+
+	c, out, _ = scripted("\n")
+	checks := 0
+	c.ollamaVersion = func(context.Context, string) (string, error) {
+		checks++
+		if checks == 1 {
+			return "0.34.0", nil
+		}
+		return "0.40.5", nil
+	}
+	if err := c.waitForOllama(context.Background(), "http://127.0.0.1:11434"); err != nil {
+		t.Fatalf("waitForOllama after the update: %v", err)
+	}
+	if !strings.Contains(out.String(), "Ollama 0.40.5 is running") {
+		t.Errorf("output lacks the running line:\n%s", out)
+	}
+}
+
 func TestOllamaVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/version" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`{"version":"0.12.11"}`))
+		w.Write([]byte(`{"version":"0.40.5"}`))
 	}))
 	defer srv.Close()
 
 	v, err := ollamaVersion(context.Background(), srv.URL+"/")
-	if err != nil || v != "0.12.11" {
+	if err != nil || v != "0.40.5" {
 		t.Errorf("ollamaVersion = %q, %v", v, err)
 	}
 	if _, err := ollamaVersion(context.Background(), srv.URL+"/missing"); err == nil {

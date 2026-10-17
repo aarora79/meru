@@ -82,7 +82,7 @@ func TestCustomServerOp(t *testing.T) {
 	// An empty PATH keeps merud from finding the command, so the server
 	// shows as not connected and nothing runs.
 	t.Setenv("PATH", dir)
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 
 	const token = "t-98765432"
 	add := rpc.Request{Op: rpc.OpMCPAdd, Custom: &rpc.CustomServer{

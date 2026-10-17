@@ -688,7 +688,7 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 
 <h3 id="ollama-reported-and-never-run">Ollama, reported and never run</h3>
 
-<p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. <code>merud</code> opens its socket first, checks Ollama every 30 seconds, and at once when you ask something, until it answers with 0.12.11 or later, then warms the models and opens the rest. A question asked meanwhile gets "Ollama isn't running, so Meru can't answer yet.", and <code>meru mcp status</code> and the desktop app's status block show "Ollama isn't running at http://127.0.0.1:11434." or the version that is too old.</p>
+<p>Ollama is a <code>dependency</code>: Meru never installs or starts it, and only checks <code>GET /api/version</code> at <code>[ollama] base_url</code>. <code>merud</code> opens its socket first, checks Ollama every 30 seconds, and at once when you ask something, until it answers with 0.40.5 or later, then warms the models and opens the rest. A question asked meanwhile gets "Ollama isn't running, so Meru can't answer yet.", and <code>meru mcp status</code> and the desktop app's status block show "Ollama isn't running at http://127.0.0.1:11434." or the version that is too old.</p>
 
 <!-- ============================================================ -->
 <h2 id="status-and-fix">Status and Fix <span class="plan built">built</span></h2>

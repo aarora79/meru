@@ -1,6 +1,6 @@
-// This file holds merud's checks on the model runtime: the version
-// comparison behind the Ollama check (ollama.go) and the warm-up calls for
-// the fast and embedding models. The answer model warms in the
+// This file holds the warm-up calls merud makes to the model runtime for
+// the fast and embedding models. The Ollama version check is in ollama.go,
+// against config.MinOllama. The answer model warms in the
 // background; see agent.StartWarm.
 
 package main
@@ -9,60 +9,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
-
-// minOllama is the oldest Ollama that reports log probabilities, which the
-// router needs. See ARCHITECTURE.md, "Model tiers".
-const minOllama = "0.12.11"
-
-// versionAtLeast reports whether version have is at least want. Both are
-// dotted numbers such as "0.12.11", with an optional leading "v". Anything
-// after a "-" or "+" (a pre-release or build tag) is ignored, so "0.12.11-rc1"
-// counts as 0.12.11. It fails when either string isn't in that form.
-func versionAtLeast(have, want string) (bool, error) {
-	h, err := parseVersion(have)
-	if err != nil {
-		return false, err
-	}
-	w, err := parseVersion(want)
-	if err != nil {
-		return false, err
-	}
-	for i := range h {
-		if h[i] != w[i] {
-			return h[i] > w[i], nil
-		}
-	}
-	return true, nil
-}
-
-// parseVersion turns "v1.2.3-rc1" into [1 2 3]. Missing parts count as zero,
-// so "0.13" is [0 13 0].
-func parseVersion(s string) ([3]int, error) {
-	var v [3]int // an array: fixed length 3, all zeros to start
-	core := strings.TrimPrefix(s, "v")
-	// strings.Cut splits at the first separator and drops the rest.
-	core, _, _ = strings.Cut(core, "-")
-	core, _, _ = strings.Cut(core, "+")
-	parts := strings.Split(core, ".")
-	if core == "" || len(parts) > 3 {
-		return v, fmt.Errorf("version %q isn't in the form 1.2.3", s)
-	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return v, fmt.Errorf("version %q isn't in the form 1.2.3", s)
-		}
-		v[i] = n
-	}
-	return v, nil
-}
 
 // warm loads the fast and embedding models into Ollama with a tiny request
 // each, once Ollama answers and before merud takes questions: the router needs the fast model for

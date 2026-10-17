@@ -151,39 +151,6 @@ func (f *fakeEngine) setOllama(version string, err error) {
 	f.version, f.infoErr = version, err
 }
 
-func TestVersionAtLeast(t *testing.T) {
-	tests := []struct {
-		have string
-		want bool
-		bad  bool
-	}{
-		{"0.12.11", true, false},
-		{"0.12.12", true, false},
-		{"0.13", true, false},
-		{"1.0.0", true, false},
-		{"v0.12.11", true, false},
-		{"0.12.11-rc1", true, false},
-		{"0.12.10", false, false},
-		{"0.9.99", false, false},
-		{"0.12", false, false},
-		{"", false, true},
-		{"banana", false, true},
-		{"0.12.11.1", false, true},
-		{"0.-1.0", false, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.have, func(t *testing.T) {
-			got, err := versionAtLeast(tt.have, minOllama)
-			if (err != nil) != tt.bad {
-				t.Fatalf("versionAtLeast(%q) error = %v, want error %v", tt.have, err, tt.bad)
-			}
-			if got != tt.want {
-				t.Errorf("versionAtLeast(%q) = %v, want %v", tt.have, got, tt.want)
-			}
-		})
-	}
-}
-
 // TestCheckOllama checks the sentence each Ollama gives: none for one
 // new enough, and one each for a version too old, one Meru can't read,
 // and no answer.
@@ -195,10 +162,10 @@ func TestCheckOllama(t *testing.T) {
 		version string
 		problem string
 	}{
-		{"new enough", &fakeEngine{version: "0.13.0"}, "0.13.0", ""},
-		{"too old", &fakeEngine{version: "0.11.0"}, "0.11.0", "Ollama 0.11.0 is too old; Meru needs 0.12.11 or later."},
+		{"new enough", &fakeEngine{version: "0.40.5"}, "0.40.5", ""},
+		{"too old", &fakeEngine{version: "0.34.0"}, "0.34.0", "Ollama 0.34.0 is too old for Meru's search model. Update it from ollama.com/download."},
 		{"down", &fakeEngine{infoErr: errors.New("connection refused")}, "", "Ollama isn't running at " + url + "."},
-		{"odd version", &fakeEngine{version: "dev"}, "dev", `Ollama answered with a version Meru can't read, "dev"; Meru needs 0.12.11 or later.`},
+		{"odd version", &fakeEngine{version: "dev"}, "dev", `Ollama answered with a version Meru can't read, "dev"; Meru needs 0.40.5 or later from ollama.com/download.`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -260,7 +227,7 @@ func TestStartupWarmsAnswerModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded := make(chan struct{})
-	eng := &fakeEngine{version: "0.13.0", slowModel: "big", loaded: loaded}
+	eng := &fakeEngine{version: "0.40.5", slowModel: "big", loaded: loaded}
 	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return eng, nil }
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -370,7 +337,7 @@ func serveOneQuestion(t *testing.T, extra ...string) string {
 	dir := shortDir(t)
 	sock := filepath.Join(dir, "d.sock")
 	cfgPath := filepath.Join(dir, "config.toml") // absent: defaults
-	eng := &fakeEngine{version: "0.13.0"}
+	eng := &fakeEngine{version: "0.40.5"}
 	build := func(config.Config, *slog.Logger) (engine.Engine, error) { return eng, nil }
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -551,7 +518,7 @@ func TestRunStartupErrors(t *testing.T) {
 	}
 	good := filepath.Join(dir, "config.toml")
 	sock := filepath.Join(dir, "e.sock")
-	okEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.13.0"}, nil }
+	okEngine := func(config.Config, *slog.Logger) (engine.Engine, error) { return &fakeEngine{version: "0.40.5"}, nil }
 
 	tests := []struct {
 		name  string

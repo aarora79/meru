@@ -141,7 +141,7 @@ func notesDir(t *testing.T, dir string, files map[string]string) string {
 func TestQuestionsDuringStartupScan(t *testing.T) {
 	dir := shortDir(t)
 	notes := notesDir(t, dir, map[string]string{"slow.md": "# Slow\n\n" + holdMarker + " garden plan"})
-	eng := &fakeEngine{version: "0.13.0", hold: make(chan struct{})}
+	eng := &fakeEngine{version: "0.40.5", hold: make(chan struct{})}
 	d := startDaemon(t, dir, indexConfig(notes), eng)
 
 	// The scan starts beside the server and then waits inside Embed, so
@@ -194,7 +194,7 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 	dir := shortDir(t)
 	notes := notesDir(t, dir, map[string]string{"a.md": "# A\n\nalpha", "b.md": "# B\n\nbeta", "empty.md": ""})
 
-	d := startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.13.0", dims: 2})
+	d := startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.40.5", dims: 2})
 	waitUntil(t, "the first scan ends", func() bool { return status(t, d.sock).LastScan != nil })
 	first := status(t, d.sock)
 	if first.Documents != 3 || first.Chunks != 2 || first.Vectors != 2 {
@@ -205,7 +205,7 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 	// The same files, but the embedding model now gives 3 numbers per
 	// vector: the store drops the old vectors, and the startup scan must
 	// embed every file again even though none changed.
-	d = startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.13.0", dims: 3})
+	d = startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.40.5", dims: 3})
 	waitUntil(t, "the second scan ends", func() bool { return status(t, d.sock).LastScan != nil })
 	st := status(t, d.sock)
 	if st.Vectors != st.Chunks || st.Chunks != 2 || st.LastScan.Indexed != 3 || st.LastScan.Unchanged != 0 {
@@ -216,7 +216,7 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 func TestIndexOps(t *testing.T) {
 	dir := shortDir(t)
 	notes := notesDir(t, dir, map[string]string{"a.md": "# A\n\nalpha"})
-	d := startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.40.5"})
 	waitUntil(t, "the first scan ends", func() bool { return status(t, d.sock).LastScan != nil })
 
 	if err := os.WriteFile(filepath.Join(notes, "b.md"), []byte("# B\n\nbeta"), 0o600); err != nil {
@@ -265,7 +265,7 @@ func TestIndexOps(t *testing.T) {
 
 func TestIndexOpsWithoutFolders(t *testing.T) {
 	dir := shortDir(t)
-	d := startDaemon(t, dir, "", &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, "", &fakeEngine{version: "0.40.5"})
 	evs := call(t, d.sock, rpc.Request{Op: rpc.OpIndex})
 	if last := evs[len(evs)-1]; last.Type != rpc.EventError || !strings.Contains(last.Error, "no folders to index") {
 		t.Errorf("index without folders = %+v, want an error naming the fix", last)

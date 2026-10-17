@@ -2,7 +2,7 @@
 
 You need Ollama to run the models, then Meru itself.
 
-1. **Install Ollama** 0.12.11 or later from <https://ollama.com/download>, and
+1. **Install Ollama** 0.40.5 or later from <https://ollama.com/download>, and
    check that it answers:
 
    ```sh

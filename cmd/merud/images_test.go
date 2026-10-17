@@ -36,7 +36,7 @@ func TestAttachImageAndAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No [index] folders: an image needs no read_file.
-	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.13.0"})
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
 	uploads := filepath.Join(home, "meru-output", "uploads")
 
 	evs, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpAttachFile, Path: src}, rpc.ChoiceDeny)

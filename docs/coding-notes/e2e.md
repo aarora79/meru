@@ -162,7 +162,7 @@ makes a test slower, not flaky.
 | `TestOllamaDown` | `failure_test.go` | The fake stops: meru exits 1 naming `/api/chat` and "connection refused"; merud still answers a ping |
 | `TestStartupRefusals` | `daemon_test.go` | A non-loopback `base_url`, a non-loopback `otlp_endpoint`: merud exits 1, names the problem, leaves no socket |
 | `TestOllamaStartsLate` | `ollama_test.go` | merud starts before the fake Ollama, on a port nothing listens on: it keeps its socket, `meru mcp status` says "Ollama isn't running at …" and `failed`, and a question exits 1 with "Ollama isn't running, so Meru can't answer yet."; once the fake starts on that port, merud warms the models and answers |
-| `TestOllamaTooOld` | `ollama_test.go` | Ollama 0.12.0: merud stays up, `meru mcp status` says it is too old and needs 0.12.11, and a question gets "Meru can't answer yet: …" |
+| `TestOllamaTooOld` | `ollama_test.go` | Ollama 0.12.0: merud stays up, `meru mcp status` says it is too old for Meru's search model and where to update, and a question gets "Meru can't answer yet: …" |
 | `TestSingleInstance` | `daemon_test.go` | A second merud on a held socket exits 1; the first keeps answering |
 | `TestShutdown` | `daemon_test.go` | SIGTERM and SIGINT: merud exits 0, removes its socket, logs the stop |
 | `TestFilePermissions` | `daemon_test.go` | Session directories 0700; transcript, socket and log 0600 |

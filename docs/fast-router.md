@@ -214,9 +214,10 @@ response array across. It converts nothing else; the router owns the arithmetic.
 
 ### Ollama version
 
-Log probabilities arrived in Ollama v0.12.11. `merud` reads `/api/version` at startup
-and refuses to start below it, with a message naming the version it found and the one
-it needs. No compatibility branch, no fallback path — one way to do each thing.
+Log probabilities arrived in Ollama v0.12.11. Meru now needs v0.40.5 or later for
+its embedding model, which covers the router too. `merud` reads `/api/version` at
+startup and answers no question below it, with a message naming the version it found
+and where to update. No compatibility branch, no fallback path — one way to do each thing.
 
 ## The router package
 
@@ -491,8 +492,8 @@ Standard `testing`, table-driven, no assertion library.
   `num_predict: 1`. No test needs a real model.
 - **Outcomes.** Each of `ok`, `low_confidence` and `degraded` reached by a fixture,
   with the fallback route returned for the last two.
-- **Version gate.** A fake `/api/version` below v0.12.11 makes startup fail with a
-  message naming both versions.
+- **Version gate.** A fake `/api/version` below v0.40.5 makes `merud` answer no
+  question, with a message naming the version and where to update.
 
 `go test -race ./...` must pass.
 
