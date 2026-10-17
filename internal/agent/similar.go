@@ -73,7 +73,7 @@ func similarSection(results []retrieve.Result) string {
 	b.WriteString("Meru already searched the user's folders for pictures that look like the attached one. " +
 		"These are the results, best first, so you need no tool to find similar images. " +
 		"When the user asks for images like this one, list these and cite each by number, like [1]. " +
-		"You can see the attached image but not these.\n\n")
+		"These lines hold only paths; to compare one with the attached image, open it with view_image.\n\n")
 	for i, r := range results {
 		b.WriteString(retrieve.Cite(i+1, r) + "\n")
 	}
@@ -82,9 +82,9 @@ func similarSection(results []retrieve.Result) string {
 
 // similarAnswer is the answer to an image turn whose model can't look at
 // pictures but whose image search found some: the list, numbered as the
-// sources are, and a line on why no model answered. With nothing found it
-// returns "", and the turn answers with noVisionAnswer.
-func similarAnswer(model string, found fileHits) string {
+// sources are, a line on why no model answered, and visionSuggestion. With
+// nothing found it returns "", and the turn answers with noVisionAnswer.
+func similarAnswer(model string, found fileHits, sets []VisionSet) string {
 	if len(found.sources) == 0 {
 		return ""
 	}
@@ -93,8 +93,8 @@ func similarAnswer(model string, found fileHits) string {
 	for _, s := range found.sources {
 		fmt.Fprintf(&b, "- [%d] %s\n", s.N, s.Path)
 	}
-	fmt.Fprintf(&b, "\n%s can't look at pictures, so Meru found these by the image itself and asked no model about it. "+
-		"To ask questions about an image, pick a model with vision for [models] main in config.toml.", model)
+	fmt.Fprintf(&b, "\n%s can't look at pictures, so Meru found these by the image itself and asked no model about it. %s",
+		model, visionSuggestion(sets))
 	return b.String()
 }
 

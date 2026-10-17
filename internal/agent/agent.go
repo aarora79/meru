@@ -160,6 +160,10 @@ type Agent struct {
 	// and say whether a model can look at them; see images.go.
 	readImage func(path string) ([]byte, error)
 	vision    func(ctx context.Context, model string) (bool, error)
+	// visionSets, set by UseVisionSets, lists the model sets whose answer
+	// model can look at pictures and call tools, for the suggestion a
+	// model without vision gets. nil suggests none.
+	visionSets func(ctx context.Context) []VisionSet
 	// imageSearch, set by UseImageSearch, finds indexed images like an
 	// attached one; nil turns that off. See similar.go.
 	imageSearch ImageSearcher
@@ -469,6 +473,11 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
 	}
+	// A full answer that names pictures the answer model can't look at
+	// says so, and how to switch to a model that can. See images.go.
+	if ended == "" && t.blind != "" && namesImages(rep.text, rpc.Cited(rep.text, t.sources)) {
+		notice = strings.TrimSpace(notice + " " + noVisionText(t.blind, a.suggestSets(ctx)))
+	}
 	if notice != "" {
 		if err := emit(rpc.Event{Type: rpc.EventNotice, Text: notice}); err != nil {
 			return err
@@ -744,6 +753,8 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	picked pickedSkills, files, web string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
 	// An answer model that can't call tools gets none; see notools.go.
 	specs = a.offerable(ctx, t, specs)
+	// One that can't look at pictures doesn't get view_image.
+	specs = a.withoutViewing(ctx, t, specs)
 	if t.sess.Incognito() {
 		specs = withoutRemember(specs)
 	}
@@ -840,9 +851,10 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	var add string
 	switch {
 	case ended == endNoVision:
-		add = similarAnswer(a.Main(), t.similar)
+		sets := a.suggestSets(ctx)
+		add = similarAnswer(a.Main(), t.similar, sets)
 		if add == "" {
-			add = noVisionAnswer(a.Main())
+			add = noVisionAnswer(a.Main(), sets)
 		}
 	case ended == endBadOutput:
 		add = badOutputOnce
@@ -1417,7 +1429,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // stablePart returns the opening of the system prompt, the parts that stay
 // the same from turn to turn: the configured prompt with whoIsWho and
 // honestyRule, today's date, the line on the user's computer, the user's
-// profile, filesNote, canDoNote, chatsNote, then toolsNote and skillList,
+// profile, filesNote, canDoNote, seeNote, chatsNote, then toolsNote and skillList,
 // the tools note and the list of skills for the tools the turn offers. It
 // returns the profile on its own as well, for the memory metric. prompt
 // builds on it, and so does the startup warm-up (see warm.go), so the warm-up
@@ -1436,6 +1448,7 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 	add(profile)
 	add(a.currentFilesNote())
 	add(a.canDo())
+	add(a.seeNote(ctx))
 	add(a.chatsNote())
 	add(toolsNote)
 	add(skillList)

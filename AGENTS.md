@@ -235,10 +235,11 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
                      `meru mcp add` runs before it saves a server
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           the twelve tools inside merud: `configure`, `datetime`, `about_meru`,
+  builtin/           the thirteen tools inside merud: `configure`, `datetime`, `about_meru`,
                      `remember`, `write_file`, the read-only `read_file`, `list_folder`,
-                     `grep`, `search_files` and `search_images` (searchimages.go), and
-                     `web_search` and `web_fetch` (web.go, webguard.go, webdownload.go);
+                     `grep`, `search_files`, `search_images` (searchimages.go) and
+                     `view_image` (viewimage.go), and `web_search` and `web_fetch`
+                     (web.go, webguard.go, webdownload.go);
                      chats.go lets the first three read the past chats in ~/.meru/sessions
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies

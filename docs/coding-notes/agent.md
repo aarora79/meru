@@ -708,8 +708,9 @@ the search must run before the vision check stops the turn.
 
 - **No vision:** `checkVision` sends the route event, `emitSimilar` sends the
   images as the `sources` event, and `endTurn` answers with `similarAnswer`: the
-  list as `[1]`, `[2]`, and a line saying the model can't look at pictures. The
-  numbers let `rpc.Cited` show them under the answer in both clients.
+  list as `[1]`, `[2]`, a line saying the model can't look at pictures, and
+  `visionSuggestion`. The numbers let `rpc.Cited` show them under the answer in
+  both clients.
 - **Vision:** `respondScoped` sends the sources after its route event and puts
   the list in the prompt. It skips the text search, so the answer's numbers point
   at one list. `similarSection` writes that list under its own header, which
@@ -739,9 +740,8 @@ two functions, and `merud` decides where they come from.
    sends a `route` event, `direct` with confidence 1, and returns
    `errNoVision`. `Handle` treats that error as an ending, as it treats the
    turn's deadline: `endOf` maps it to `endNoVision`, and `endTurn` sends
-   `noVisionAnswer`, which names the model and says to check another with
-   `ollama show <model>`. No model runs, and the assistant line's outcome is
-   `no_vision`.
+   `noVisionAnswer`, which names the model and ends with `visionSuggestion`.
+   No model runs, and the assistant line's outcome is `no_vision`.
 4. Otherwise `respond` hands the turn to `respondScoped` even in `auto`. The
    router's fast model reads only text, so its guess about a photo would be
    noise. `scopeRoute` gives `auto` the route `direct`, and `scopeSpecs` the
@@ -754,6 +754,57 @@ two functions, and `merud` decides where they come from.
 
 Logs and spans get counts: `meru.turn.images` on the span, `images` on the info
 line, and a debug line `images attached` with the count and total bytes.
+
+### Looking at a picture in the folders (images.go, tools.go)
+
+The answer model sees a picture from the user's folders through the built-in
+`view_image`, which returns the bytes in `dispatch.Result.Images` (see
+[builtin](builtin.md)). Three pieces here make that work.
+
+1. **Only a model that can see gets the tool.** `finishPrompt` calls
+   `withoutViewing` beside `offerable`. It asks `a.vision` about the main model,
+   through the engine's cached `/api/show` answer, and drops `view_image` from
+   the specs when the model lacks `vision`, or when the check fails. It then
+   records the model's name in `t.blind`. `slices.Clone` copies the specs first,
+   because `slices.DeleteFunc` works in place and the caller's slice may be
+   shared.
+2. **The picture rides on the tool message.** `runCalls` builds each call's
+   message as `engine.Message{Role: RoleTool, Content: res.Text, Images:
+   res.Images}`. The engine already sends `images` for any role, so Ollama shows
+   the picture to the model on its next round. The repeat cache, `t.seen`, keeps
+   `Text` alone, so a repeated call never sends the bytes twice.
+3. **At most `maxViewed` pictures a turn.** Eight: `view_image` shrinks each to
+   about 1,800 prompt tokens, and the prompt holds 32,768. `runCalls` hands out the slots in
+   its first loop, in call order, before any goroutine starts, and marks each
+   call past the limit in `capped`. The goroutines only read their own mark, so
+   they need no lock. A marked call still goes through `dispatch`, with
+   `builtin.WithViewCapped` on its context, so it gets its `tool_calls` row and
+   the tool refuses it with text the model reads.
+
+**Telling the model.** `stablePart` adds `seeNote`, which returns
+`pictureNote` when config allows `view_image` and the main model has vision.
+A turn showed why: asked to itemize "these receipts" a turn after listing them,
+`qwen3.6:35b` was offered the tool, called nothing, and said it couldn't read
+text in images, as its own earlier answer had said. With the line, it opened
+all eight. A model without vision never gets the line.
+
+**The text-only notice.** When the turn ends with a full answer, `t.blind` is
+set, and `namesImages` finds a picture in the answer, `Handle` adds
+`noVisionText` to the `notice` event, after `noToolsText` and the unbacked-claim
+warning. `namesImages` looks for a cited source of kind `"image"`, or a file name
+that ends in `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp` in the answer's text,
+with the regular expression `imagePath`. The second test catches an answer that
+names pictures it found through `list_folder` or a command, which it doesn't
+cite.
+
+**The suggestion.** `noVisionText`, `noVisionAnswer` and `similarAnswer` all end
+with `visionSuggestion(sets)`, so the sentence lives in one place. `merud` passes
+`UseVisionSets` a function that lists the model sets in config whose `main` lists
+both `vision` and `tools`: a model needs tools to call `view_image`. The
+suggestion names the first, as in "qwen3.6:35b can: switch to it with `/model
+qwen-4bit` in meru chat, or Use for answers in Settings, Models." With none, it
+points to `/model` and Settings, Models. The names come from config, never from
+code.
 
 ### Handle
 
@@ -1413,8 +1464,8 @@ ToolRunner offers on `tools` and `search+tools`. Every other route keeps the
 tools `everyRoute` names: `datetime` and `about_meru`, which
 `builtin.EveryRoute` names, and `web_search` and `web_fetch`, which
 `builtin.IsWebTool` names, while `web_search` is on. On `search` it also keeps
-the four read-only file tools, `read_file`, `list_folder`, `grep` and
-`search_files`, which `builtin.IsFileTool` names, and the local commands
+the six read-only file tools, `read_file`, `list_folder`, `grep`,
+`search_files`, `search_images` and `view_image`, which `builtin.IsFileTool` names, and the local commands
 (`cmd.<name>`) for which `Asks` says no:
 
 ```go

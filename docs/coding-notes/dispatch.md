@@ -176,6 +176,16 @@ outside a call.
 values. `search_files` fills it; every other tool leaves it `nil`. `Dispatch`
 passes it through untouched, and the agent adds it to the turn's sources.
 
+**Result.Images.** `view_image` returns a picture for the model to look at, as
+raw bytes in `Images`, a `[][]byte`: a list of byte slices, one per picture.
+`Dispatch` changes only `Text`, field by field, so `Images` comes back as the
+backend gave it, and it never logs `Images`: the `tool_result` line and the
+`tool_calls` row take `Text` alone. A picture is the user's own file, already on
+disk, and as base64 it would turn every log line into a blob. The agent puts
+`Images` on the tool's message for the model's next round. `TestDispatchImages`
+checks both halves, in an ordinary chat and an incognito one: the result keeps
+the picture, and no line or row holds it, raw or as base64.
+
 Each excerpt needs a number that no other excerpt in the turn has, and only the
 agent knows how many it has handed out. So the agent puts a counter on the
 context, the same way the session rides there, and a backend reserves numbers
@@ -363,6 +373,8 @@ be a secret.
 
 ## Go ideas used here
 
+- **Byte slices** — `Result.Images` is a `[][]byte`, and `encoding/json` writes
+  each `[]byte` as base64. More in [go-basics/byte-slices.md](go-basics/byte-slices.md).
 - **Interfaces** — `Backend`, `Auditor`, `Refresher` and `Recorder`, and type
   assertions to find an `Auditor` or a `Refresher`. More in [go-basics/interfaces.md](go-basics/interfaces.md).
 - **`sync.Mutex`** — guards the backend list and the session approvals.

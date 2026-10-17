@@ -105,7 +105,8 @@ sets `TopN` alone, to the number of excerpts the model asked for.
 is an image's, and `r.CitationKind()` gives the `Kind` its `rpc.Citation`
 carries: `"image"` or empty. `Search` keeps at most `maxImageResults`, two,
 images among its results: an image's chunk text is only its name, and the
-answer model can't see the picture, so more would crowd out text it can use.
+answer model sees the picture only if it opens it with `view_image`, so more
+would crowd out text it can use.
 
 ### format.go: citations
 
@@ -118,8 +119,10 @@ answer model can't see the picture, so more would crowd out text it can use.
 A PDF chunk gets `page 3` instead of lines, an image gets `(image)` and no
 heading, and a chunk with no heading leaves the heading out. `Format` writes a
 one-line instruction ("Cite the ones you use by number") and then each chunk's
-text under its citation line; under an image it says the model can't see the
-picture and should cite it so the user can open it.
+text under its citation line; under an image it says the text is only the
+file's name and to cite it so the user can open it. It used to say "You can't
+see it", which kept a model with vision from opening the picture with
+`view_image`; the new line is true whether or not the model has that tool.
 `search_files` calls `Cite` too, with numbers that follow the prompt's, so an
 excerpt the tool found reads the same as one the prompt held.
 

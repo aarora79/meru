@@ -29,6 +29,8 @@ func TestStepLabel(t *testing.T) {
 		{"builtin", "read_file", `{"path":"~/Notes/lisbon.md"}`, "Read lisbon.md"},
 		{"builtin", "read_file", `{"path":"C:\\Notes\\folio.pdf"}`, "Read folio.pdf"},
 		{"builtin", "read_file", `not json`, "Read a file"},
+		{"builtin", "view_image", `{"path":"~/trips/amtrak.png"}`, "Looked at amtrak.png"},
+		{"builtin", "view_image", `{}`, "Looked at a picture"},
 		{"builtin", "list_folder", `{"path":"~/Notes/"}`, "Listed Notes"},
 		{"builtin", "search_files", ``, "Searched your files"},
 		{"builtin", "grep", ``, "Searched your files"},

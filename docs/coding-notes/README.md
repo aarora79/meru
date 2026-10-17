@@ -77,6 +77,7 @@ Read them in this order; each builds on the ones before it.
 - [encoding/json](go-basics/json.md)
 - [embed](go-basics/embed.md)
 - [os.Root](go-basics/os-root.md)
+- [Byte slices](go-basics/byte-slices.md)
 
 ## Rules for writing a note
 

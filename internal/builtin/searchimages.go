@@ -71,7 +71,7 @@ func (t *Tools) searchImages(ctx context.Context, raw json.RawMessage) (string, 
 	q := retrieve.ImageQuery{Text: a.Query}
 	what := fmt.Sprintf("%q", a.Query)
 	if a.Image != "" {
-		b, err := t.readImageFile(a.Image)
+		b, err := t.readImageFile(SearchImages, a.Image)
 		if err != nil {
 			return "", nil, err
 		}
@@ -87,7 +87,7 @@ func (t *Tools) searchImages(ctx context.Context, raw json.RawMessage) (string, 
 	first := dispatch.CiteNumbers(ctx, len(results))
 	sources := make([]rpc.Citation, len(results))
 	var b strings.Builder
-	fmt.Fprintf(&b, "Images in the user's folders for %s, best first. You can't see them; "+
+	fmt.Fprintf(&b, "Images in the user's folders for %s, best first. This text holds only their paths; "+
 		"name the ones that fit and cite them by number, like [%d], so the user can open them.\n", what, first)
 	for i, r := range results {
 		r.Path = t.show(r.Path)
@@ -97,35 +97,36 @@ func (t *Tools) searchImages(ctx context.Context, raw json.RawMessage) (string, 
 	return b.String(), sources, nil
 }
 
-// readImageFile reads the picture at p for an image search. p must be an
+// readImageFile reads the picture at p for tool, search_images or
+// view_image, whose name starts each error the model reads. p must be an
 // image the file tools may reach, in the [index] folders or Meru's output
 // folder, where attached images land, under the same rules as read_file:
 // no secret, hidden or ignored file, no symbolic link. read_file itself
 // refuses images, since it reads text; this reads the bytes, under the
 // 20 MiB cap, and checks they are a PNG, JPEG, GIF or WebP image.
-func (t *Tools) readImageFile(p string) ([]byte, error) {
-	abs, err := t.absPath(SearchImages, p)
+func (t *Tools) readImageFile(tool, p string) ([]byte, error) {
+	abs, err := t.absPath(tool, p)
 	if err != nil {
 		return nil, err
 	}
 	c, err := t.files.Check(abs)
 	switch {
 	case errors.Is(err, index.ErrOutsideFolders):
-		return nil, fmt.Errorf("search_images: %s is outside the folders Meru reads. It reads only inside: %s", p, t.rootList())
+		return nil, fmt.Errorf("%s: %s is outside the folders Meru reads. It reads only inside: %s", tool, p, t.rootList())
 	case err != nil:
-		return nil, fmt.Errorf("search_images: %s: %v", p, err)
+		return nil, fmt.Errorf("%s: %s: %v", tool, p, err)
 	case !index.IsImageName(c.Path):
-		return nil, fmt.Errorf("search_images: %s isn't a PNG, JPEG, GIF or WebP image", p)
+		return nil, fmt.Errorf("%s: %s isn't a PNG, JPEG, GIF or WebP image", tool, p)
 	// To the file tools an image is media; any other reason is a real
 	// refusal, such as a secret's name.
 	case c.Reason != "" && c.Reason != index.ReasonMedia:
-		return nil, fmt.Errorf("search_images: %s is off limits: %s", p, why(c.Reason))
+		return nil, fmt.Errorf("%s: %s is off limits: %s", tool, p, why(c.Reason))
 	case c.Info.Size() > imageCap:
-		return nil, fmt.Errorf("search_images: %s is %s, and Meru takes images up to %s", p, size(c.Info.Size()), size(imageCap))
+		return nil, fmt.Errorf("%s: %s is %s, and Meru takes images up to %s", tool, p, size(c.Info.Size()), size(imageCap))
 	}
 	f, err := os.Open(c.Path) // #nosec G304 -- a path Check kept: inside the folders, no link, no secret
 	if err != nil {
-		return nil, fmt.Errorf("search_images: can't read %s: %v", p, err)
+		return nil, fmt.Errorf("%s: can't read %s: %v", tool, p, err)
 	}
 	// defer runs f.Close() when this function returns. Nothing is written,
 	// so its error doesn't matter.
@@ -133,16 +134,16 @@ func (t *Tools) readImageFile(p string) ([]byte, error) {
 	// The file could have changed into a link between Check and Open;
 	// SameFile compares the file Open reached with the one Check saw.
 	if opened, err := f.Stat(); err != nil || !os.SameFile(c.Info, opened) {
-		return nil, fmt.Errorf("search_images: %s changed while Meru opened it", p)
+		return nil, fmt.Errorf("%s: %s changed while Meru opened it", tool, p)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, imageCap+1))
 	switch {
 	case err != nil:
-		return nil, fmt.Errorf("search_images: can't read %s: %v", p, err)
+		return nil, fmt.Errorf("%s: can't read %s: %v", tool, p, err)
 	case len(b) > imageCap:
-		return nil, fmt.Errorf("search_images: %s grew past %s while Meru read it", p, size(imageCap))
+		return nil, fmt.Errorf("%s: %s grew past %s while Meru read it", tool, p, size(imageCap))
 	case !index.IsImageData(b):
-		return nil, fmt.Errorf("search_images: %s has an image's name, but its content isn't an image", p)
+		return nil, fmt.Errorf("%s: %s has an image's name, but its content isn't an image", tool, p)
 	}
 	return b, nil
 }
@@ -153,7 +154,7 @@ func (t *Tools) searchImagesSpec() engine.ToolSpec {
 		Name: SearchImages,
 		Description: "Finds pictures in the user's indexed folders: screenshots, photos and diagrams. " +
 			"Pass query to describe what a picture shows, or image, the path of a picture, to find others like it. " +
-			"You can't see the results; name them and cite them by number so the user can open them.",
+			"The results are paths; name them and cite them by number so the user can open them.",
 		Parameters: mustSchema(map[string]any{
 			"query": prop("string", "What the picture shows, in a few words."),
 			"image": prop("string", "The path of a picture to find others like, such as one the user attached or names."),
