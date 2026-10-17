@@ -138,6 +138,10 @@ func TestViewImageHiddenWithoutVision(t *testing.T) {
 			if got := slices.Contains(offeredIn(eng, 0), builtin.ViewImage); got != tt.vision {
 				t.Errorf("view_image offered %v; want %v", got, tt.vision)
 			}
+			// Only a model that can see is told it can read pictures.
+			if got := strings.Contains(eng.calls[0].msgs[0].Content, pictureNote); got != tt.vision {
+				t.Errorf("system prompt holds pictureNote: %v; want %v", got, tt.vision)
+			}
 			n := noticeOf(evs)
 			if tt.wantNotice != (n != "") {
 				t.Fatalf("notice = %q; want one: %v", n, tt.wantNotice)

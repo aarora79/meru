@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,5 +115,34 @@ func TestViewImageOff(t *testing.T) {
 	}
 	if why := bare.missing(ViewImage); !strings.Contains(why, "folders") {
 		t.Errorf("missing = %q", why)
+	}
+}
+
+// TestShrinkImage checks that a picture over maxSide comes back scaled to
+// it with its shape kept, and that a small picture or bytes Go can't
+// decode come back as they were.
+func TestShrinkImage(t *testing.T) {
+	encode := func(w, h int) []byte {
+		var b bytes.Buffer
+		if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+			t.Fatal(err)
+		}
+		return b.Bytes()
+	}
+	big := encode(3000, 2000)
+	got, format, err := image.Decode(bytes.NewReader(shrinkImage(big)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h := got.Bounds().Dx(), got.Bounds().Dy(); w != maxSide || h != 1024 || format != "jpeg" {
+		t.Errorf("3000x2000 PNG came back %dx%d %s; want %dx1024 jpeg", w, h, format, maxSide)
+	}
+	small := encode(800, 600)
+	if !bytes.Equal(shrinkImage(small), small) {
+		t.Error("an 800x600 picture changed")
+	}
+	junk := []byte("RIFF....WEBPVP8 not decodable here")
+	if !bytes.Equal(shrinkImage(junk), junk) {
+		t.Error("bytes Go can't decode changed")
 	}
 }

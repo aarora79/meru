@@ -601,6 +601,17 @@ and refuses before it touches the file. The key is an unexported struct type,
 `viewCappedKey`, so no other package can set or read the mark by accident; that
 is the usual Go way to keep a context value private.
 
+Before it returns, `shrinkImage` scales a PNG, JPEG or GIF whose longest side
+passes `maxSide`, 1,536 pixels, down to it and sends it as a JPEG. The model's
+prompt cost grows with the pixels. Eight full-size phone photos overflowed
+`qwen3.6:35b`'s 32,768-token prompt, and at 1,536 pixels a bill costs about
+1,800 tokens and still reads line by line. `boxScale` does the scaling with the
+standard library alone: each new pixel averages the block of source pixels it
+covers, which keeps a receipt's thin digits. A 12-megapixel photo takes about a
+quarter of a second. A WebP file, which the standard library can't decode, goes
+as it is. `TestShrinkImage` checks a large picture, a small one and bytes it
+can't decode.
+
 `view_image` needs only `[index] folders`, like `read_file`; it reads the file
 itself and needs no image index. The agent, not this package, hides it from an
 answer model that can't look at pictures.

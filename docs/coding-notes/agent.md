@@ -773,13 +773,20 @@ The answer model sees a picture from the user's folders through the built-in
    res.Images}`. The engine already sends `images` for any role, so Ollama shows
    the picture to the model on its next round. The repeat cache, `t.seen`, keeps
    `Text` alone, so a repeated call never sends the bytes twice.
-3. **At most `maxViewed` pictures a turn.** Eight, since each costs 500 to 1,500
-   prompt tokens and the prompt holds 32,768. `runCalls` hands out the slots in
+3. **At most `maxViewed` pictures a turn.** Eight: `view_image` shrinks each to
+   about 1,800 prompt tokens, and the prompt holds 32,768. `runCalls` hands out the slots in
    its first loop, in call order, before any goroutine starts, and marks each
    call past the limit in `capped`. The goroutines only read their own mark, so
    they need no lock. A marked call still goes through `dispatch`, with
    `builtin.WithViewCapped` on its context, so it gets its `tool_calls` row and
    the tool refuses it with text the model reads.
+
+**Telling the model.** `stablePart` adds `seeNote`, which returns
+`pictureNote` when config allows `view_image` and the main model has vision.
+A turn showed why: asked to itemize "these receipts" a turn after listing them,
+`qwen3.6:35b` was offered the tool, called nothing, and said it couldn't read
+text in images, as its own earlier answer had said. With the line, it opened
+all eight. A model without vision never gets the line.
 
 **The text-only notice.** When the turn ends with a full answer, `t.blind` is
 set, and `namesImages` finds a picture in the answer, `Handle` adds

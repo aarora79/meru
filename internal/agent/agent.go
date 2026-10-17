@@ -1429,7 +1429,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // stablePart returns the opening of the system prompt, the parts that stay
 // the same from turn to turn: the configured prompt with whoIsWho and
 // honestyRule, today's date, the line on the user's computer, the user's
-// profile, filesNote, canDoNote, chatsNote, then toolsNote and skillList,
+// profile, filesNote, canDoNote, seeNote, chatsNote, then toolsNote and skillList,
 // the tools note and the list of skills for the tools the turn offers. It
 // returns the profile on its own as well, for the memory metric. prompt
 // builds on it, and so does the startup warm-up (see warm.go), so the warm-up
@@ -1448,6 +1448,7 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 	add(profile)
 	add(a.currentFilesNote())
 	add(a.canDo())
+	add(a.seeNote(ctx))
 	add(a.chatsNote())
 	add(toolsNote)
 	add(skillList)

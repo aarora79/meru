@@ -36,10 +36,10 @@ func noVisionAnswer(model string, sets []VisionSet) string {
 }
 
 // maxViewed caps the pictures one turn shows the model through view_image.
-// Each costs 500 to 1,500 prompt tokens (675 for Gemma 4 and 1,575 for
-// Qwen 3.6 on one ride receipt), and the prompt holds 32,768, so eight
-// leave room for the question, the excerpts and the answer. A question
-// about one trip's tickets rarely needs more.
+// view_image shrinks each to 1,536 pixels on its longest side, which costs
+// Qwen 3.6 about 1,800 prompt tokens for a phone photo, and the prompt
+// holds 32,768, so eight leave room for the question, the excerpts and the
+// answer. A question about one trip's tickets rarely needs more.
 const maxViewed = 8
 
 // VisionSet is a model set whose answer model can look at pictures and
@@ -102,6 +102,34 @@ func namesImages(text string, cited []rpc.Citation) bool {
 		}
 	}
 	return imagePath.MatchString(text)
+}
+
+// pictureNote tells a model that can look at pictures that view_image
+// reads them. A real turn showed why. Asked to itemize "these receipts" a
+// turn after it listed them, qwen3.6:35b was offered view_image, called
+// nothing, and said it couldn't read text in images: an earlier answer in
+// the same chat had said it could only match pictures by look, and the
+// model took its own words over the tool list. The same question with the
+// paths in it called view_image at once.
+const pictureNote = "You can look at pictures in the user's folders: call view_image with a picture's path " +
+	"to read a receipt, a ticket, a screenshot or a chart, even if an earlier answer in this chat said you couldn't."
+
+// seeNote returns pictureNote when config allows view_image and the main
+// model can look at pictures, and "" otherwise, so a model without vision
+// is never told it can. The vision check reads the engine's cached
+// /api/show answer, and the result changes only when the model does, so
+// the line sits with the parts of the prompt Ollama reuses.
+func (a *Agent) seeNote(ctx context.Context) string {
+	if a.tools == nil || a.vision == nil {
+		return ""
+	}
+	if !slices.ContainsFunc(a.tools.Tools(), func(s engine.ToolSpec) bool { return s.Name == builtin.ViewImage }) {
+		return ""
+	}
+	if ok, err := a.vision(ctx, a.Main()); err != nil || !ok {
+		return ""
+	}
+	return pictureNote
 }
 
 // withoutViewing drops view_image from specs when the main model can't

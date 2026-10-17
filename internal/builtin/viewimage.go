@@ -7,10 +7,15 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif" // the blank imports let image.Decode read GIF and PNG files
+	"image/jpeg"
+	_ "image/png"
 	"strings"
 
 	"github.com/aarora79/meru/internal/dispatch"
@@ -71,6 +76,7 @@ func (t *Tools) viewImage(ctx context.Context, raw json.RawMessage) (dispatch.Re
 	if err != nil {
 		return dispatch.Result{}, err
 	}
+	b = shrinkImage(b)
 	shown := t.show(p)
 	// The picture takes the next citation number, so the answer can cite
 	// it as [n] like a search result.
@@ -81,6 +87,83 @@ func (t *Tools) viewImage(ctx context.Context, raw json.RawMessage) (dispatch.Re
 		Images:  [][]byte{b},
 		Sources: []rpc.Citation{{N: n, Path: shown, Kind: "image"}},
 	}, nil
+}
+
+// maxSide is the longest side, in pixels, of a picture view_image sends.
+// The model's prompt cost grows with the pixels: qwen3.6:35b took 3,100
+// prompt tokens for a 4,000 by 3,000 phone photo of a hotel bill shrunk to
+// 2,048 pixels, 1,756 at 1,536 and 796 at 1,024, and read the bill's total
+// right at each size. Full size, eight such photos overflowed the 32,768-
+// token prompt. At 1,536 eight cost about 14,000, and small print still
+// reads.
+const maxSide = 1536
+
+// shrinkImage returns b, a picture's bytes, made small enough for the
+// model: a PNG, JPEG or GIF whose longest side is over maxSide comes back
+// scaled down to it, as a JPEG at quality 90. It returns b as it was when
+// the picture is small already, or when Go can't decode it, as with WebP,
+// which the standard library can't read; Ollama then gets the original.
+func shrinkImage(b []byte) []byte {
+	src, _, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		return b
+	}
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+	if max(w, h) <= maxSide {
+		return b
+	}
+	// The scale keeps the shape: the longest side becomes maxSide.
+	scale := float64(maxSide) / float64(max(w, h))
+	dw, dh := max(1, int(float64(w)*scale)), max(1, int(float64(h)*scale))
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, boxScale(src, dw, dh), &jpeg.Options{Quality: 90}); err != nil {
+		return b
+	}
+	return out.Bytes()
+}
+
+// boxScale returns src scaled down to dw by dh pixels. Each new pixel is
+// the average of the block of source pixels it covers, a box filter,
+// which keeps thin strokes such as a receipt's digits readable where
+// picking one source pixel per new pixel would drop them. It reads every
+// source pixel once.
+func boxScale(src image.Image, dw, dh int) *image.RGBA {
+	sb := src.Bounds()
+	sw, sh := sb.Dx(), sb.Dy()
+	// sums holds the running total of each new pixel's red, green, blue
+	// and count, so the loop over the source runs once.
+	sums := make([]uint64, dw*dh*4)
+	for y := 0; y < sh; y++ {
+		dy := y * dh / sh
+		for x := 0; x < sw; x++ {
+			dx := x * dw / sw
+			// RGBA returns 16-bit values; >> 8 brings each to 0..255.
+			r, g, bl, _ := src.At(sb.Min.X+x, sb.Min.Y+y).RGBA()
+			i := (dy*dw + dx) * 4
+			sums[i] += uint64(r >> 8)
+			sums[i+1] += uint64(g >> 8)
+			sums[i+2] += uint64(bl >> 8)
+			sums[i+3]++
+		}
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, dw, dh))
+	for i := 0; i < dw*dh; i++ {
+		n := sums[i*4+3]
+		if n == 0 {
+			continue
+		}
+		dst.Pix[i*4] = average(sums[i*4], n)
+		dst.Pix[i*4+1] = average(sums[i*4+1], n)
+		dst.Pix[i*4+2] = average(sums[i*4+2], n)
+		dst.Pix[i*4+3] = 255
+	}
+	return dst
+}
+
+// average returns sum / n as one 0..255 color value. Each of the n values
+// summed is 0..255, so the average is too, and the conversion keeps it.
+func average(sum, n uint64) uint8 {
+	return uint8(sum / n) // #nosec G115 -- an average of n values in 0..255 is in 0..255
 }
 
 // viewImageSpec returns view_image's spec.
