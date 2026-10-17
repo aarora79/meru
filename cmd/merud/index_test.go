@@ -204,11 +204,12 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 
 	// The same files, but the embedding model now gives 3 numbers per
 	// vector: the store drops the old vectors, and the startup scan must
-	// embed every file again even though none changed.
+	// embed every file again even though none changed. The empty file has
+	// no chunks, so no vectors to redo, and counts as unchanged.
 	d = startDaemon(t, dir, indexConfig(notes), &fakeEngine{version: "0.40.5", dims: 3})
 	waitUntil(t, "the second scan ends", func() bool { return status(t, d.sock).LastScan != nil })
 	st := status(t, d.sock)
-	if st.Vectors != st.Chunks || st.Chunks != 2 || st.LastScan.Indexed != 3 || st.LastScan.Unchanged != 0 {
+	if st.Vectors != st.Chunks || st.Chunks != 2 || st.LastScan.Indexed != 2 || st.LastScan.Unchanged != 1 {
 		t.Errorf("status after the model change = %+v, last scan %+v; want every file embedded again", st, st.LastScan)
 	}
 }

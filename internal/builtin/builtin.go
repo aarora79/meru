@@ -48,15 +48,17 @@ type Tools struct {
 	on      []string // [builtin] tools: the built-ins the model may use
 	confirm []string // [builtin] confirm from config.toml
 
-	memory     *memory.Store  // where remember saves; nil leaves remember out
-	outputDir  string         // where write_file writes, absolute; "" leaves write_file out
-	files      *index.Indexer // what the file tools read through; nil leaves them out
-	search     FileSearcher   // what search_files searches with; nil leaves it out
-	web        *webClients    // web_search and web_fetch, as [web] sets them
-	onChange   func(context.Context) error
-	onRemember func(context.Context)       // runs after remember saves; nil for none
-	now        func() time.Time            // the clock datetime reads; time.Now outside tests
-	about      func(context.Context) About // gathers about_meru's facts; nil leaves about_meru out
+	memory    *memory.Store  // where remember saves; nil leaves remember out
+	outputDir string         // where write_file writes, absolute; "" leaves write_file out
+	files     *index.Indexer // what the file tools read through; nil leaves them out
+	search    FileSearcher   // what search_files searches with; nil leaves it out
+	// imageSearch is what search_images searches with; nil leaves it out.
+	imageSearch ImageSearcher
+	web         *webClients // web_search and web_fetch, as [web] sets them
+	onChange    func(context.Context) error
+	onRemember  func(context.Context)       // runs after remember saves; nil for none
+	now         func() time.Time            // the clock datetime reads; time.Now outside tests
+	about       func(context.Context) About // gathers about_meru's facts; nil leaves about_meru out
 	// webReady says whether web search works now, and in one line why
 	// not; nil means it works whenever [web] searxng_url is set. See
 	// UseWebCheck.
@@ -192,6 +194,13 @@ func (t *Tools) missing(name string) string {
 		if t.search == nil {
 			return "merud has no search index"
 		}
+	case SearchImages:
+		if !t.hasFiles() {
+			return "[index] folders is empty"
+		}
+		if t.imageSearch == nil {
+			return "the index reads no images: [index] images is off, or the embedding model can't read pictures"
+		}
 	case WebSearch:
 		if t.web.searxngURL == "" {
 			return "[web] searxng_url is empty"
@@ -235,6 +244,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		specs = append(specs, t.fileToolSpecs()...)
 		if t.search != nil {
 			specs = append(specs, t.searchSpec())
+		}
+		if t.imageSearch != nil {
+			specs = append(specs, t.searchImagesSpec())
 		}
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
@@ -354,6 +366,13 @@ func (t *Tools) Status() []rpc.ServerInfo {
 				Confirm:     t.Confirm(SearchFiles) != dispatch.ConfirmNever,
 			})
 		}
+		if t.imageSearch != nil {
+			tools = append(tools, rpc.ToolInfo{
+				Name:        SearchImages,
+				Description: "Finds pictures in the indexed folders, by words or like another picture.",
+				Confirm:     t.Confirm(SearchImages) != dispatch.ConfirmNever,
+			})
+		}
 	}
 	if on, _ := t.webSearchOn(); on {
 		tools = append(tools, rpc.ToolInfo{
@@ -409,6 +428,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.grep(ctx, args)
 	case name == SearchFiles && t.hasFiles() && t.search != nil:
 		text, sources, err = t.searchFiles(ctx, args)
+	case name == SearchImages && t.hasFiles() && t.imageSearch != nil:
+		text, sources, err = t.searchImages(ctx, args)
 	case name == WebSearch:
 		// The check can change between the turn's tool list and this
 		// call, so a call that comes while web search is down says why.
@@ -673,6 +694,8 @@ func Summary(name string) string {
 		return "Finds matching lines in the indexed folders or the output folder."
 	case SearchFiles:
 		return "Searches the indexed folders by meaning and by words."
+	case SearchImages:
+		return "Finds pictures in the indexed folders, by words or like another picture."
 	case WebSearch:
 		return "Searches the web through the SearXNG instance [web] searxng_url names."
 	case WebFetch:

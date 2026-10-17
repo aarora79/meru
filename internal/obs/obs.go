@@ -210,7 +210,7 @@ func RecordRender(ctx context.Context, outcome string, d time.Duration) {
 }
 
 // RecordRetrieval records meru.retrieval.duration for one retrieval stage:
-// "vector", "fts", "fusion", "memories" or "sessions". Any other stage
+// "vector", "fts", "fusion", "memories", "sessions" or "images". Any other stage
 // becomes "other".
 func RecordRetrieval(ctx context.Context, stage string, d time.Duration) {
 	in := load()

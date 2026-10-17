@@ -154,6 +154,17 @@ func TestReembedAfterModelChange(t *testing.T) {
 	if need, err := st.NeedsReembed(ctx); err != nil || need {
 		t.Errorf("NeedsReembed after Reembed = %v, %v; want false", need, err)
 	}
+
+	// A second Reembed, as after a restart, skips the files the new model
+	// has done already.
+	before := len(eng.calls())
+	rep, err = ix.Reembed(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Unchanged != 2 || len(eng.calls()) != before {
+		t.Errorf("second Reembed = %+v with %d new Embed calls; want 2 unchanged, no embedding", rep, len(eng.calls())-before)
+	}
 }
 
 // TestScanDropsFoldersLeftConfig indexes two folders, then scans again with

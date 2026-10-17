@@ -150,6 +150,11 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// search_files runs the same hybrid search a turn runs before the
 	// answer, through the same store and embedding model.
 	bt.UseSearch(search)
+	// search_images finds pictures through the same adapter, when the
+	// index reads images.
+	if is, ok := search.(builtin.ImageSearcher); ok && ix != nil && ix.ReadsImages() {
+		bt.UseImageSearch(is)
+	}
 	// list_folder, grep and read_file also read the past chats, so the
 	// model can answer about any earlier conversation. The indexer never
 	// indexes the sessions folder; see internal/builtin/chats.go.

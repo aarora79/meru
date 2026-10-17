@@ -175,12 +175,14 @@ capture_content  = false   # put question and answer text into spans
 #   read_file, list_folder, grep
 #                 read the [index] folders; off while folders is empty
 #   search_files  searches the [index] folders by meaning and by words
+#   search_images finds pictures in the [index] folders, by words or like
+#                 another picture; off unless the index reads images
 #   web_search    searches through SearXNG at [web] searxng_url
 #   web_fetch     fetches a public web page when the model asks. merud then
 #                 connects to sites off this machine, and they see your IP
 #                 address. It asks you first for a URL no search result or
 #                 question of yours gave, and before any download.
-tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "web_search", "web_fetch"]
+tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "search_images", "web_search", "web_fetch"]
 # Tools that ask before each call; each must be in tools. configure always
 # asks, whatever this says. Add "remember" to approve each memory; take out
 # "write_file" to let it save without asking.

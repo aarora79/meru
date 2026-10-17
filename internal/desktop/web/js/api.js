@@ -68,6 +68,8 @@ export const bridge = {
   activity: () => call("Activity"),
   usage: () => call("Usage"),
   usageDetail: () => call("UsageDetail"),
+  // A preview of an image source, or "" (thumbs.go).
+  sourceThumb: (path) => call("SourceThumb", path),
   // The About section of Settings (about.go).
   about: () => call("About"),
   // Slash commands (commands.go).

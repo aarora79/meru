@@ -40,7 +40,7 @@ func isRunCmd(args []string) bool {
 // stdout can't be written, and when merud ends the turn with an error
 // event, which it has written to stdout first. run turns each failure into
 // exit status 1.
-func runCmd(ctx context.Context, socket string, args []string, stdout io.Writer) error {
+func runCmd(ctx context.Context, socket string, args []string, image string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("meru run", flag.ContinueOnError)
 	flags.SetOutput(io.Discard) // the error below says what went wrong
 	asJSON := flags.Bool("json", false, "write each event as one JSON line")
@@ -70,7 +70,7 @@ func runCmd(ctx context.Context, socket string, args []string, stdout io.Writer)
 		return rpc.ChoiceDeny, nil
 	}
 
-	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
+	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, image)
 	for ev, err := range rpc.Do(ctx, socket, req, deny) {
 		if err != nil {
 			return err

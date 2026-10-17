@@ -63,6 +63,10 @@ func IsImageData(head []byte) bool {
 	return false
 }
 
+// ReadsImages reports whether this indexer reads image files: [index]
+// images is on and the embedding model takes images.
+func (ix *Indexer) ReadsImages() bool { return ix.images }
+
 // imageChunk is the one chunk an image's document holds. The model never
 // reads an image's chunk text; keyword search does, so the text names the
 // file and the folder it sits in, and "find the screenshot in img" can

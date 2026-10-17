@@ -181,6 +181,7 @@ func (b *Bridge) SessionTurns(ctx context.Context, id string) ([]TurnView, error
 			v.Sources = append(v.Sources, rpc.Citation{N: i + 1, Path: p})
 		}
 		v.Cited = rpc.Cited(v.Answer, v.Sources)
+		b.allowThumbs(v.Sources)
 		for _, s := range t.Tools {
 			step := stepOf("", s.Kind, s.Name, s.Args)
 			step.Outcome, step.DurationMillis = s.Outcome, s.DurationMillis

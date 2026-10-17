@@ -443,7 +443,7 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 	fmt.Fprintf(c.out, "merud is running. Asking: %s\n", testQuestion)
 	// The test question needs no tools, so a nil approve denies any the
 	// model tries.
-	if err := ask(ctx, socket, testQuestion, c.out, c.out, nil); err != nil {
+	if err := ask(ctx, socket, testQuestion, "", c.out, c.out, nil); err != nil {
 		return err
 	}
 	if !haveConfig {

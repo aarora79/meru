@@ -102,8 +102,12 @@ never store two versions of one file in the wrong order:
 An empty file gets a document row and no chunks; the store accepts a
 `ReplaceDocument` with zero chunks, so the next scan sees it as unchanged.
 
-**Re-embedding.** `Reembed` is `Scan` with the "unchanged" check in step 3
-turned off: it chunks and embeds every file again. merud calls it in place of
+**Re-embedding.** `Reembed` is `Scan` with a stricter "unchanged" check in
+step 3: an unchanged file counts as unchanged only when every one of its
+chunks has a vector (`store.Document`'s `Vectored`). Every other file gets
+chunked and embedded again. A file the new model has done keeps its vectors,
+so a re-embed stopped by a restart goes on from where it stopped instead of
+redoing the files it finished. merud calls it in place of
 `Scan` when `store.NeedsReembed` says some chunks have no vector, which happens
 after the embedding model or its vector size changes. The `force` flag travels
 from `scan` through `scanTree` and `indexFile` to `indexFileLocked`;

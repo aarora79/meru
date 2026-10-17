@@ -76,3 +76,49 @@ func TestCiteAndFormatImage(t *testing.T) {
 		t.Error("a text result has a citation kind")
 	}
 }
+
+// TestSearchImages checks image search against a real store: an image
+// query ranks images by their look alone and leaves text out; a text query
+// gets the query prefix's input and also matches an image by its name.
+func TestSearchImages(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, store.Options{Path: filepath.Join(t.TempDir(), "meru.db"), EmbedModel: "fake", Dims: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	add := func(p, kind, text string, v engine.Vector) {
+		t.Helper()
+		doc := store.Document{Path: p, Kind: kind, MTime: time.Now()}
+		if err := st.ReplaceDocument(ctx, doc, []store.Chunk{{Heading: filepath.Base(p), Text: text}}, []engine.Vector{v}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("/n/notes.md", "markdown", "beds by the fence", engine.Vector{1, 0, 0})
+	add("/n/img/beds.png", KindImage, "Image beds.png in /n/img", engine.Vector{0.9, 0.2, 0})
+	add("/n/img/cat.png", KindImage, "Image cat.png in /n/img", engine.Vector{0, 0, 1})
+
+	// The fake engine looks up a vector by text; an image input has no
+	// text, so "" stands for the attached picture.
+	eng := &fakeEngine{vectors: map[string]engine.Vector{
+		"":     {1, 0, 0},
+		"cats": {0, 0, 1},
+	}}
+	got, err := SearchImages(ctx, st, eng, ImageQuery{Image: []byte("png bytes")}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Path != "/n/img/beds.png" || !got[0].IsImage() {
+		t.Fatalf("image query = %+v; want beds.png first and no text", got)
+	}
+	got, err = SearchImages(ctx, st, eng, ImageQuery{Text: "cats"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "/n/img/cat.png" {
+		t.Errorf("text query = %+v; want cat.png", got)
+	}
+	if got, _ := SearchImages(ctx, st, eng, ImageQuery{}, 5); got != nil {
+		t.Errorf("empty query = %+v, want nothing", got)
+	}
+}

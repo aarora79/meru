@@ -791,6 +791,23 @@ the probe and writes the catalog's lists.
    answer. `store.turnsOf` reads that line when it rebuilds `turns`, and
    `Store.UsageByModel` adds the rows up for `/usage by model`.
 
+### "Find images like this", function by function
+
+1. **`cmd/meru/image.go` → `attachImage`** (or the desktop's attach button, or
+   `/attach` in `meru chat`) sends `attach_file`; `merud` copies the picture into
+   the uploads folder. The question's request names the copy in `Images`.
+2. **`internal/agent/agent.go` → `respond`** sees an image and calls
+   `findSimilar` (similar.go) before `checkVision`.
+3. **`cmd/merud/index.go` → `searchAdapter.SearchImages`** calls
+   **`internal/retrieve/images.go` → `SearchImages`**, which embeds the picture
+   with `engine.Input{Image: data}` and runs `store.SearchVectorKind(..., "image")`.
+4. **No vision:** `checkVision` sends the route, `emitSimilar` the sources, and
+   `endTurn` answers with `similarAnswer`, the list. **Vision:** `respondScoped`
+   sends the sources and puts the list in the prompt for the model.
+5. **The desktop page** draws each image source's chip and asks
+   **`Bridge.SourceThumb`** for its preview, which reads only an image `merud`
+   cited.
+
 ### The Usage screen, function by function
 
 1. **`internal/desktop/web/js/settings.js` → `usage`** asks the Bridge for the

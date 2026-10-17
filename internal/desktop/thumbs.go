@@ -19,6 +19,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // Limits on a preview.
@@ -54,16 +57,81 @@ func (b *Bridge) thumbnail(path string) string {
 	if b.outputDir == "" || !inside(filepath.Join(b.outputDir, "uploads"), path) {
 		return ""
 	}
+	return thumbFile(path)
+}
+
+// imageExt reports whether name ends like a PNG, JPEG, GIF or WebP file,
+// the images merud indexes. The desktop may not import index, which owns
+// the same list, so it keeps its own; the thumbnail's own check of the
+// bytes is the one that counts.
+func imageExt(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	}
+	return false
+}
+
+// allowThumbs records the image sources in sources, by full path, as ones
+// SourceThumb may preview. A source names an image by its kind, or, from a
+// past chat, whose transcript keeps paths only, by its ending.
+func (b *Bridge) allowThumbs(sources []rpc.Citation) {
+	b.citedMu.Lock()
+	defer b.citedMu.Unlock()
+	for _, s := range sources {
+		if s.Kind != "image" && !imageExt(s.Path) {
+			continue
+		}
+		if b.cited == nil {
+			b.cited = map[string]bool{}
+		}
+		b.cited[b.fullSourcePath(s.Path)] = true
+	}
+}
+
+// fullSourcePath turns a source's path, shortened to "~/..." for display,
+// back into a full one.
+func (b *Bridge) fullSourcePath(p string) string {
+	if b.home != "" && strings.HasPrefix(p, "~/") {
+		return filepath.Join(b.home, p[2:])
+	}
+	return filepath.Clean(p)
+}
+
+// SourceThumb returns a data: URL holding a preview of the image source at
+// path, as a source chip shows it, or "" when it can't make one. It makes
+// one only for an image merud cited in this app's answers or in a past
+// chat the page opened; any other path gets "", so the page can't use it to
+// read a file of its own choosing. The file is read as thumbnail reads an
+// upload: no link, no special file, 20 MiB at most, and only a real image.
+func (b *Bridge) SourceThumb(path string) string {
+	full := b.fullSourcePath(path)
+	b.citedMu.Lock()
+	ok := b.cited[full]
+	b.citedMu.Unlock()
+	if !ok {
+		return ""
+	}
+	return thumbFile(full)
+}
+
+// thumbFile reads the image at path and returns its preview data: URL, or
+// "" when path isn't a regular file under thumbReadMax, or isn't an image.
+func thumbFile(path string) string {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0 || info.Size() > thumbReadMax {
 		return ""
 	}
-	f, err := os.Open(path) // #nosec G304 -- a copy in Meru's uploads folder, checked above
+	f, err := os.Open(path) // #nosec G304 -- an upload or an image merud cited, checked by the caller
 	if err != nil {
 		return ""
 	}
-	// defer runs f.Close() when thumbnail returns.
+	// defer runs f.Close() when thumbFile returns.
 	defer f.Close()
+	// SameFile catches a file swapped for a link between Lstat and Open.
+	if opened, err := f.Stat(); err != nil || !os.SameFile(info, opened) {
+		return ""
+	}
 	data, err := io.ReadAll(io.LimitReader(f, thumbReadMax))
 	if err != nil {
 		return ""

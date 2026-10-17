@@ -357,6 +357,16 @@ so the window's event loop never waits on `merud`.
 
 ### thumbs.go
 
+`SourceThumb(path)` gives an image source's chip its preview. The page calls it
+with a source's path, but the Bridge makes a preview only for a path in `cited`,
+the image sources `merud` sent in a `sources` event or the app read from a past
+chat (`allowThumbs`). Any other path gets `""`, so the page can't use it to read a
+file of its choosing. A past chat's transcript keeps paths alone, so there an
+image is told by its ending. `cited` has its own mutex, `citedMu`, because the
+event loop adds to it while it holds `mu`. `thumbFile` does the reading for both
+kinds of preview: `Lstat`, no link or special file, the 20 MiB cap, `SameFile`
+after the open, then `thumbFor`.
+
 `thumbnail` makes the preview an image chip and a question bubble show, as a
 `data:` URL, which the page's Content-Security-Policy allows for images. It
 reads only a regular file inside `<output_dir>/uploads/`, the folder `merud`

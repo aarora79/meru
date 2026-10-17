@@ -69,6 +69,48 @@ func (s *Store) SearchKeyword(ctx context.Context, query string, k int) ([]Hit, 
 	return hits, nil
 }
 
+// SearchVectorKind is SearchVector limited to documents of one kind, such
+// as "image" for "find images like this". It is one query: the join to
+// documents filters by kind, so no lookup runs per hit.
+func (s *Store) SearchVectorKind(ctx context.Context, v engine.Vector, kind string, k int) ([]Hit, error) {
+	if len(v) != s.dims {
+		return nil, fmt.Errorf("vector search: query has %d dimensions, want %d", len(v), s.dims)
+	}
+	if k <= 0 {
+		return nil, nil
+	}
+	hits, err := s.hits(ctx,
+		`SELECT v.chunk_id, vec1_l2_distance(v.vector, ?1) / 2 AS distance
+		 FROM chunk_vec v
+		 JOIN chunks c ON c.id = v.chunk_id
+		 JOIN documents d ON d.id = c.doc_id
+		 WHERE d.kind = ?2
+		 ORDER BY distance, v.chunk_id LIMIT ?3`, encodeVector(v), kind, k)
+	if err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
+	}
+	return hits, nil
+}
+
+// SearchKeywordKind is SearchKeyword limited to documents of one kind, in
+// one query, the same way.
+func (s *Store) SearchKeywordKind(ctx context.Context, query, kind string, k int) ([]Hit, error) {
+	match := ftsQuery(query)
+	if match == "" || k <= 0 {
+		return nil, nil
+	}
+	hits, err := s.hits(ctx,
+		`SELECT chunk_fts.rowid, chunk_fts.rank FROM chunk_fts
+		 JOIN chunks c ON c.id = chunk_fts.rowid
+		 JOIN documents d ON d.id = c.doc_id
+		 WHERE chunk_fts MATCH ? AND d.kind = ?
+		 ORDER BY chunk_fts.rank, chunk_fts.rowid LIMIT ?`, match, kind, k)
+	if err != nil {
+		return nil, fmt.Errorf("keyword search: %w", err)
+	}
+	return hits, nil
+}
+
 // hits runs a query that returns (chunk ID, score) rows, best first, and
 // numbers them from rank 0.
 func (s *Store) hits(ctx context.Context, query string, args ...any) ([]Hit, error) {

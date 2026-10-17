@@ -245,15 +245,17 @@ func (ix *Indexer) Scan(ctx context.Context) (Report, error) {
 }
 
 // Reembed is Scan for after a change of embedding model: it chunks and
-// embeds every file again, even one the store holds unchanged, because the
-// store has dropped the old model's vectors (store.NeedsReembed). merud
+// embeds again every file the store holds without vectors, even one that
+// hasn't changed, because the store has dropped the old model's vectors
+// (store.NeedsReembed). A file the new model has done already stays as it
+// is, so a re-embed stopped by a restart doesn't start over. merud
 // runs it at startup in place of Scan when the store asks for it.
 func (ix *Indexer) Reembed(ctx context.Context) (Report, error) {
 	return ix.scan(ctx, true)
 }
 
-// scan does the work of Scan and Reembed. force skips the "unchanged"
-// check, so every file gets chunked and embedded again.
+// scan does the work of Scan and Reembed. force embeds again an unchanged
+// file whose chunks lack vectors.
 func (ix *Indexer) scan(ctx context.Context, force bool) (Report, error) {
 	start := time.Now()
 	ctx, span := obs.Tracer().Start(ctx, "meru.index.scan",
@@ -486,7 +488,7 @@ func (ix *Indexer) pruneOutside(ctx context.Context, roots []string, rep *Report
 
 // scanTree walks the folder start, which sits inside root (or is root),
 // indexing every file the skip rules keep; force re-embeds unchanged files
-// too (see Reembed). Then it removes from the store
+// that lack vectors too (see Reembed). Then it removes from the store
 // every path under start that the walk didn't keep, except under folders it
 // couldn't read: a folder with a permission problem today shouldn't lose
 // its entries.
@@ -606,8 +608,9 @@ func (r *Report) add(res fileResult) {
 
 // indexFile brings the store's copy of the file at p up to date. It checks
 // the skip rules, reads the file, and compares its mtime and SHA-256 with
-// what the store holds; when both match it stops there, unless force is
-// set. Otherwise it chunks the file, embeds the chunks and replaces the
+// what the store holds; when both match it stops there. With force set it
+// stops there only when every chunk of the file has a vector already, so a
+// re-embed cut short by a restart picks up where it left off. Otherwise it chunks the file, embeds the chunks and replaces the
 // store's copy.
 //
 // A problem with the file itself (unreadable, unparseable PDF) comes back as
@@ -681,7 +684,7 @@ func (ix *Indexer) indexFileLocked(ctx context.Context, p string, force bool) (f
 	if err != nil {
 		return fileResult{}, len(data), kind, fmt.Errorf("look up %s: %w", p, err)
 	}
-	if !force && ok && old.Hash == hash && sameMTime(old.MTime, info.ModTime()) {
+	if ok && old.Hash == hash && sameMTime(old.MTime, info.ModTime()) && (!force || old.Vectored) {
 		ix.log.DebugContext(ctx, "index: unchanged", "path", p)
 		return fileResult{outcome: outUnchanged}, len(data), kind, nil
 	}

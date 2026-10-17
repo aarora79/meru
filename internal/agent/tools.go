@@ -175,7 +175,11 @@ type turn struct {
 	scope string
 	// images are the bytes of the images the question carried, for the
 	// question's message; nil for none. See images.go.
-	images  [][]byte
+	images [][]byte
+	// similar holds the indexed images like the first attached one, found
+	// before the model runs; empty for a turn with no image or no image
+	// search. See similar.go.
+	similar fileHits
 	traceID string
 	emit    func(rpc.Event) error
 	approve rpc.ApproveFunc

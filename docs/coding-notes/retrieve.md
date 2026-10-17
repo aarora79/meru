@@ -1,7 +1,7 @@
 # retrieve
 
 **Code:** `internal/retrieve/` (`doc.go`, `rrf.go`, `search.go`, `format.go`,
-`memories.go`, `sessions.go`)
+`images.go`, `memories.go`, `sessions.go`)
 **Milestone:** v0.2; memory recall and `SearchSessions` in v0.4
 **Architecture:** [Retrieval](../../ARCHITECTURE.md#retrieval) and
 [How hybrid search works](../../ARCHITECTURE.md#how-hybrid-search-works)
@@ -122,6 +122,16 @@ text under its citation line; under an image it says the model can't see the
 picture and should cite it so the user can open it.
 `search_files` calls `Cite` too, with numbers that follow the prompt's, so an
 excerpt the tool found reads the same as one the prompt held.
+
+### images.go: image search
+
+`SearchImages(ctx, st, eng, q, n)` returns the `n` indexed images nearest to an
+`ImageQuery`. With `q.Image` set, the picture's bytes go to `Embed` with no prefix,
+and images rank by vector alone, through `store.SearchVectorKind`: pixels have no
+words for keyword search to match. With `q.Text`, the words go in with `Query`
+set, so the model's query prefix applies, and `SearchKeywordKind` adds the images
+whose names or folders hold the words; `rrf` fuses the two lists, as in `Search`.
+It records its time under the `images` stage of `meru.retrieval.duration`.
 
 ### memories.go: recall
 

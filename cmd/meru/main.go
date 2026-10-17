@@ -78,6 +78,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, `usage:
   meru "question"       ask one question
+  meru -image <file> "question"
+                        ask with a picture, such as "find images like this"
   meru run --json "question"
                         ask one question and write each event as a JSON line,
                         for scripts; a tool call that asks first is denied
@@ -127,6 +129,7 @@ flags:`)
 		flags.PrintDefaults()
 	}
 	socket := flags.String("socket", "", "merud's socket (default ~/.meru/merud.sock)")
+	image := flags.String("image", "", "a PNG, JPEG, GIF or WebP `file` to send with the question, as in: meru -image shot.png \"find images like this\"")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
@@ -148,9 +151,24 @@ flags:`)
 	}
 
 	var err error
+	// withAttached copies the -image file into merud's uploads folder, for
+	// the two commands that send a question, and then runs send with the
+	// copy's path, or "" without -image.
+	withAttached := func(send func(saved string) error) error {
+		saved := ""
+		if *image != "" {
+			var err error
+			if saved, err = attachImage(ctx, *socket, *image); err != nil {
+				return err
+			}
+		}
+		return send(saved)
+	}
 	switch {
 	case isRunCmd(flags.Args()):
-		err = runCmd(ctx, *socket, flags.Args()[1:], stdout)
+		err = withAttached(func(saved string) error {
+			return runCmd(ctx, *socket, flags.Args()[1:], saved, stdout)
+		})
 	case flags.NArg() == 1 && flags.Arg(0) == "ping":
 		err = ping(ctx, *socket, stdout)
 	case flags.Arg(0) == "chat" && isChatArgs(flags.Args()[1:]):
@@ -191,7 +209,9 @@ flags:`)
 		// meru what time is it
 		// A tool call that needs approval asks on this terminal (approve.go).
 		p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
-		err = ask(ctx, *socket, strings.Join(flags.Args(), " "), stdout, stderr, p.approve)
+		err = withAttached(func(saved string) error {
+			return ask(ctx, *socket, strings.Join(flags.Args(), " "), saved, stdout, stderr, p.approve)
+		})
 	}
 
 	switch {
@@ -261,8 +281,8 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 // a claim of an action no tool took, a dim "note:" line on stderr follows
 // the answer. Keeping all of these off stdout means `meru "..." > file`
 // saves only the answer.
-func ask(ctx context.Context, socket, question string, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
-	req := rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}
+func ask(ctx context.Context, socket, question, image string, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
+	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, image)
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
 	var notice string // merud's warning about the answer; "" for none
