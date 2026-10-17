@@ -17,6 +17,13 @@ import (
 	"github.com/aarora79/meru/internal/store"
 )
 
+// nameWeight is how much a match on an image's file or folder name counts
+// beside a match on the picture itself, in the fusion of SearchImages. File
+// search gives both lists equal weight; for images that let names such as
+// "taxi" or "airport" pull in other pictures from the same trip ahead of the
+// one that shows the words asked for.
+const nameWeight = 0.25
+
 // ImageQuery is what to look for: an image's bytes, or a description in
 // words. With both, the image wins: "like this one" is the more exact ask.
 type ImageQuery struct {
@@ -59,7 +66,7 @@ func SearchImages(ctx context.Context, st *store.Store, eng engine.Engine, q Ima
 			return nil, fmt.Errorf("image search: %w", err)
 		}
 	}
-	scores := rrf(chunkIDs(vecHits), chunkIDs(kwHits))
+	scores := fuseImages(chunkIDs(vecHits), chunkIDs(kwHits))
 	best := top(scores, n)
 	ids := make([]int64, len(best))
 	for i, b := range best {
@@ -75,4 +82,19 @@ func SearchImages(ctx context.Context, st *store.Store, eng engine.Engine, q Ima
 	}
 	obs.RecordRetrieval(ctx, "images", time.Since(start))
 	return results, nil
+}
+
+// fuseImages merges two ranked lists of image chunk IDs, byLook from the
+// vectors and byName from keyword search, into one score per chunk. Each
+// list scores as rrf does, and byName's scores count nameWeight as much, so
+// the picture's own list leads and a name match lifts an image without
+// carrying a poor visual match to the top.
+func fuseImages(byLook, byName []int64) map[int64]float64 {
+	scores := rrf(byLook)
+	// range over a map gives each key and value, in no fixed order; the
+	// sum doesn't depend on the order.
+	for id, s := range rrf(byName) {
+		scores[id] += nameWeight * s
+	}
+	return scores
 }

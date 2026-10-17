@@ -2255,9 +2255,13 @@ question with an attached image. Both store queries join `documents` and keep
 
 - **Like a picture:** the picture's bytes are embedded with no prefix, and images
   rank by vector alone, since keyword search can't match pixels.
-- **From words:** the words get the query prefix, and two lists fuse with RRF as
-  file search does: images by meaning, and images whose names or folders hold the
-  words.
+- **From words:** the words get the query prefix, and two lists fuse with RRF:
+  images by meaning, and images whose names or folders hold the words. Unlike
+  file search, the name list counts a quarter as much. Many pictures carry names
+  such as `taxi.png` or a folder such as `nyc-trip`, which match the words of a
+  question about a different picture from the same trip. On the owner's 25
+  test images, equal weight put the right image first for 19 of 75 questions,
+  and a quarter weight for 27.
 
 The desktop app shows an image source as a 40-pixel preview on its chip. The
 Bridge makes it, and only for an image `merud` cited in an answer or in a past chat

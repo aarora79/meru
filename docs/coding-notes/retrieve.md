@@ -130,8 +130,22 @@ excerpt the tool found reads the same as one the prompt held.
 and images rank by vector alone, through `store.SearchVectorKind`: pixels have no
 words for keyword search to match. With `q.Text`, the words go in with `Query`
 set, so the model's query prefix applies, and `SearchKeywordKind` adds the images
-whose names or folders hold the words; `rrf` fuses the two lists, as in `Search`.
-It records its time under the `images` stage of `meru.retrieval.duration`.
+whose names or folders hold the words. `rrf` scores each list on its own, and the
+name list's scores count `nameWeight` (0.25) as much as the picture list's
+before `top` ranks them. `Search` weighs its two lists the same; images don't,
+because a file name such as `taxi.png` matches questions about other pictures
+from the same trip. It records its time under the `images` stage of
+`meru.retrieval.duration`.
+
+`images_eval_test.go`, behind the `integration` build tag, measures this on real
+pictures. It reads `bench/image-eval.jsonl`, which git ignores: the owner's
+images, each with three questions that describe it. It reports how often each
+question finds its image first and in the top five, and whether each image,
+saved again as a JPEG, finds its original. It reports against the bar in the
+testing plan and never fails on the score, as the router's eval does. The
+weight came from this eval: on 25 images, a weight of 1 put the right image
+first for 19 of 75 questions, 0.25 for 27, and 0 for 28, but at 0 a well-named
+file such as `hotel_693.32.jpg` lost to another photo of the same bill.
 
 ### memories.go: recall
 
