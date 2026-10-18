@@ -220,7 +220,8 @@ so it needs nothing from a later milestone. The design is in ARCHITECTURE.md,
 - [x] Connectors: a `service` kind and `[[install.files]]`
 - [x] The `whisper` connector, with a Whisper model per profile as its `model`
   setting's default
-- [ ] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB
+- [x] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB,
+  and `meru transcribe`
 - [ ] Meru.app: the microphone button, the microphone prompt and the
   no-microphone message
 - [ ] The installer step and a FAQ page

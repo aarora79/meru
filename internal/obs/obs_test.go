@@ -417,6 +417,28 @@ func TestRecordRetrieval(t *testing.T) {
 	histPoint[float64](t, m, attrs(keyStage, "other"))
 }
 
+// TestRecordSpeech checks that each model and outcome lands under its own
+// attributes, in seconds, and that a model or outcome outside the small
+// sets becomes "other".
+func TestRecordSpeech(t *testing.T) {
+	reader := useManualReader(t)
+	ctx := context.Background()
+	small, large := speechModels[0], speechModels[1]
+	RecordSpeech(ctx, small, "ok", 300*time.Millisecond)
+	RecordSpeech(ctx, small, "ok", 100*time.Millisecond)
+	RecordSpeech(ctx, large, "too_long", time.Millisecond)
+	RecordSpeech(ctx, "/Users/dana/model.bin", "exploded", time.Second)
+	m := collect(t, reader)[metricSpeechDuration]
+	if m.Unit != "s" {
+		t.Errorf("unit = %q, want s", m.Unit)
+	}
+	if h := histPoint[float64](t, m, attrs(keyModel, small, keyOutcome, "ok")); h.Count != 2 || !near(h.Sum, 0.4) {
+		t.Errorf("%s ok: count %d, sum %v", small, h.Count, h.Sum)
+	}
+	histPoint[float64](t, m, attrs(keyModel, large, keyOutcome, "too_long"))
+	histPoint[float64](t, m, attrs(keyModel, "other", keyOutcome, "other"))
+}
+
 // TestRecordToolCall checks both tool metrics, that a call that never ran
 // records no duration, and that a denied call's made-up names and unknown
 // values become "other".

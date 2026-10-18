@@ -13,9 +13,15 @@ import (
 	"net"
 )
 
-// maxLine is the longest single message we accept, 1 MiB. A token event is
-// small; the limit only guards against a broken peer sending endless data.
+// maxLine is the longest event or reply line we accept, 1 MiB. A token
+// event is small; the limit only guards against a broken peer sending
+// endless data.
 const maxLine = 1 << 20
+
+// MaxRequestLine is the longest request line merud reads, 4 MiB: room for
+// a transcribe request, whose 60 seconds of audio take 2.6 MB in base64.
+// Only requests get it; events and replies keep maxLine.
+const MaxRequestLine = 4 << 20
 
 // Do sends req to the merud listening on socketPath and returns its reply as
 // a sequence of events.

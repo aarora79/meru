@@ -163,6 +163,13 @@ rendered page takes seconds, as a model call does. `internal/render` calls it
 once per page, and records the site and the request counts on its span,
 where they can't grow a metric's series.
 
+`RecordSpeech(ctx, model, outcome, d)` records `meru.speech.duration`, the
+seconds one recording took to become text, the speech server's start
+included. Its model is bounded to the whisper connector's two files and its
+outcome to `ok`, `error`, `empty`, `too_long` and `cancelled`; anything else
+reads `other`, so a path or a typo can't add a series. `merud`'s transcribe
+handler calls it once per request (see [speech](speech.md)).
+
 ### setup.go
 
 `Setup` runs once when `merud` starts:

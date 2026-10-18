@@ -1133,6 +1133,15 @@ from the row.
 so `meru chat` shows them the same way. `rpc.ArgvLine` joins an argv with spaces
 and quotes an element that holds a space or a quote, for display only.
 
+### meru: transcribe.go
+
+`meru transcribe recording.wav` sends the file through the `transcribe` op
+and prints the words, or "(Meru heard no words.)". It checks the file's size
+with `os.Stat` before reading it, and refuses one over 3 MiB, so a film
+picked by mistake isn't read into memory; `merud` checks the rest. `merud`'s
+side lives in `cmd/merud/speech.go`, which the [speech](speech.md) note
+covers.
+
 ### meru: usage.go
 
 `meru usage` sends `OpUsage` and prints what `merud` counted, one column per

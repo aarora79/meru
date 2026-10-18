@@ -50,6 +50,7 @@ var forbiddenClientPackages = []forbiddenPackage{
 	{"internal/connectors", "merud installs, starts and checks the connectors; a client asks it over the socket"},
 	{"internal/render", "merud runs web_fetch's page reader; a client only shows its progress line"},
 	{"internal/applenotes", "merud reads Apple Notes for the notes tools; a client asks it over the socket"},
+	{"internal/speech", "merud turns a recording into text; a client sends the recording with the transcribe op"},
 }
 
 // forbiddenDesktopPackages adds what the desktop app, unlike `meru`, has no
@@ -94,6 +95,7 @@ var forbiddenInstallerPackages = []forbiddenPackage{
 	{"internal/a2a", "merud owns the A2A clients"},
 	{"internal/scheduler", "the scheduler runs in merud"},
 	{"internal/applenotes", "merud reads Apple Notes; the installer never does"},
+	{"internal/speech", "merud turns speech into text; the installer never does"},
 	{"internal/tui", "the terminal UI belongs to meru chat"},
 	{"internal/connectors", "merud installs, starts and checks the connectors; the installer will hand them to merud over the socket"},
 	{"internal/render", "merud runs web_fetch's page reader and installs its browser on first need"},

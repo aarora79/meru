@@ -2801,7 +2801,7 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 
 <p><b>In progress.</b> In Meru.app you press a microphone button, speak, and press it again. Meru turns the words into text in the composer, where you read them, fix them, and press Send. The text then goes as a typed question would. The answer model never hears the audio: speech to text is a step before the question, not part of it. <code>meru chat</code> keeps typing, since a terminal has no microphone without a native audio library, which the thin client can't take on.</p>
 
-<p>The work lands in six steps after this design. Three are in place: the binary built by CI, the connectors' <code>service</code> kind and <code>[[install.files]]</code>, and the <code>whisper</code> connector with a model per profile, which Settings and <code>meru mcp set whisper enabled=true</code> turn on. Three come next: the <code>transcribe</code> op in <code>merud</code>, the button in Meru.app, and the installer step with a FAQ page. Until the op lands, the connector installs and reports ready, and nothing starts the server.</p>
+<p>The work lands in six steps after this design. Four are in place: the binary built by CI, the connectors' <code>service</code> kind and <code>[[install.files]]</code>, the <code>whisper</code> connector with a model per profile, which Settings and <code>meru mcp set whisper enabled=true</code> turn on, and the <code>transcribe</code> op in <code>merud</code> with <code>meru transcribe</code>. Two come next: the button in Meru.app, and the installer step with a FAQ page.</p>
 
 <h3 id="speech-why">Why whisper.cpp, not Ollama</h3>
 
@@ -2861,9 +2861,22 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 
 <h3 id="speech-op">The transcribe op</h3>
 
-<p>The app records 16 kHz, mono, 16-bit PCM and wraps it as a WAV file, for at most 60 seconds: 1.9 MB. The Bridge sends it to <code>merud</code> in a <code>transcribe</code> request, in a new <code>Request.Audio</code> field, which Go's <code>encoding/json</code> writes as base64, 2.6 MB. That passes the socket's 1 MiB limit on a line, so the limit on what <code>merud</code> reads rises to 4 MiB.</p>
+<p>The app records 16 kHz, mono, 16-bit PCM and wraps it as a WAV file, for at most 60 seconds: 1.9 MB. The Bridge sends it to <code>merud</code> in a <code>transcribe</code> request, in <code>Request.Audio</code>, a pointer to a struct that holds the bytes, so a <code>Request</code> stays comparable with <code>==</code>. Go's <code>encoding/json</code> writes the bytes as base64, 2.6 MB. Events and replies keep the socket's 1 MiB limit on a line; a request line may run to <code>rpc.MaxRequestLine</code>, 4 MiB.</p>
 
-<p><code>merud</code> hands the bytes to <code>internal/speech</code>, which posts them to the connector's <code>/inference</code> with <code>temperature=0</code> and <code>response_format=json</code>, and replies with one <code>transcript</code> event, then <code>done</code>. It refuses audio that isn't WAV or runs over 60 seconds. With the connector off, the error says where to turn it on. Speech to text isn't part of the <code>Engine</code> interface, which serves Ollama and keeps its four methods.</p>
+<p><code>merud</code>'s <code>handleTranscribe</code> (<code>cmd/merud/speech.go</code>) does four things:</p>
+
+<ol>
+  <li><code>speech.CheckWAV</code> reads the RIFF header: it walks the chunks to <code>fmt </code> and <code>data</code> and divides the sound's bytes by the bytes per second. It refuses anything that isn't PCM or float WAV, such as an <code>.m4a</code>, which <code>whisper-server</code> would refuse anyway, and a recording over 60 seconds, with half a second of slack for a recorder that stops late.</li>
+  <li>The whisper <code>Service</code>'s <code>Use</code> gives the base URL, with the start's token path, and starts the server when it isn't running. With the connector off, installing or failed, its sentence is the error.</li>
+  <li><code>speech.Transcribe</code> posts the file to <code>&lt;base&gt;/inference</code> as a form, with <code>temperature=0</code>, so the same recording gives the same words, and <code>response_format=json</code>, through a client that follows no redirect.</li>
+  <li><code>speech.Clean</code> drops what Whisper writes in square brackets and treats text with no letter or digit as nothing heard: on silence <code>base.en</code> writes <code>[BLANK_AUDIO]</code> and <code>large-v3-turbo</code> writes <code>.</code>. The reply is one <code>transcript</code> event, its <code>Text</code> empty when nothing was heard, then <code>done</code>.</li>
+</ol>
+
+<p>Speech to text isn't part of the <code>Engine</code> interface, which serves Ollama and keeps its four methods.</p>
+
+<p><code>meru transcribe &lt;file.wav&gt;</code> sends a file through the same op and prints the words, or "(Meru heard no words.)". It lets a user try speech to text before Meru.app's button, and a script use it.</p>
+
+<p>On the development Mac, through the scratch <code>merud</code> with <code>large-v3-turbo</code>: the first recording, 20 seconds from the USB webcam, took 3.6 seconds, which includes starting the server and loading the model; after that each took 0.3 to 0.4 seconds, the 26.5-second clip included. Silence came back as no words, an <code>.m4a</code> file and a 61-second one as refusals.</p>
 
 <h3 id="speech-recording">Recording in Meru.app</h3>
 
@@ -2876,7 +2889,11 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 
 <h3 id="speech-keeps">What Meru keeps</h3>
 
-<p>Nothing of the sound. The WAV lives in the app's memory and in <code>merud</code>'s for the one request, and nothing writes it to disk: no file, no transcript line, no <code>tool_calls</code> row, since speech to text isn't a tool call. The text joins a chat only when you send it, as typed text does. <code>merud</code> logs one info line per request with the length of the audio, the time taken and the outcome, never the words.</p>
+<p>Nothing of the sound. The WAV lives in the app's memory and in <code>merud</code>'s for the one request, and nothing writes it to disk: no file, no transcript line, no <code>tool_calls</code> row, since speech to text isn't a tool call. The text joins a chat only when you send it, as typed text does. <code>merud</code> logs one info line per request with the model, the length of the audio, the time taken and the outcome, never the words:</p>
+
+<pre><code>level=INFO msg=transcribe model=ggml-large-v3-turbo-q5_0.bin seconds=20.0 ms=3525 outcome=ok</code></pre>
+
+<p>The supervisor logs <code>whisper-server</code>'s own output at debug level. Version 1.9.5 prints its startup and request lines but not the words it heard; every server log from the tests on 2026-10-18 was searched for them.</p>
 
 <!-- ============================================================ -->
 <!-- ============================================================ -->
@@ -3155,7 +3172,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>meru.tool.duration</code></td><td>histogram</td><td><code>meru.tool.kind</code>, <code>meru.tool.server</code>, <code>gen_ai.tool.name</code></td><td>tool latency, for calls that ran</td></tr>
     <tr><td><code>meru.model.malformed_calls</code></td><td>counter</td><td>model</td><td>tool calls the main model wrote that Meru couldn't run as written</td></tr>
     <tr><td><code>meru.retrieval.duration</code></td><td>histogram</td><td>stage (vector/fts/fusion/memories/sessions/images)</td><td>retrieval cost (v0.2; memories and sessions stages v0.4; images v0.4.13)</td></tr>
-    <tr><td><code>meru.speech.duration</code></td><td>histogram</td><td>model, outcome (ok/error/empty/too_long)</td><td>(planned) how long speech to text takes, the server's start included</td></tr>
+    <tr><td><code>meru.speech.duration</code></td><td>histogram</td><td>model (the whisper connector's two files), outcome (ok/error/empty/too_long/cancelled)</td><td>how long one recording takes to become text, the server's start included</td></tr>
     <tr><td><code>meru.web.render.duration</code></td><td>histogram</td><td>outcome (ok/error/timeout/cancelled)</td><td>how long a page that needs JavaScript takes in the page reader, Chrome's start included</td></tr>
     <tr><td><code>meru.rpc.active_streams</code></td><td>up-down counter</td><td>—</td><td>open client sessions</td></tr>
     <tr><td><code>meru.scheduler.job_runs</code></td><td>counter</td><td>job, outcome</td><td>(v0.5) scheduled work</td></tr>
@@ -3229,7 +3246,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
   <li>The Mac installer downloads only what a step names, after you press Continue: Ollama and uv through Homebrew, the models through Ollama, the SearXNG image through Docker, and Ollama.app from Ollama's site on a Mac with no Homebrew. It runs only the programs on its allowlist, with no shell, and keeps the Google client secret in the start script, readable only by you (see <a href="#installer">The Mac installer</a>).</li>
   <li>A connector's install downloads only what its pins name: Node from nodejs.org and uv from its GitHub release, each checked against a SHA-256 compiled into <code>merud</code>; the package and its dependencies from the npm registry or PyPI; a Python build through uv; and a container image by digest through Docker (see <a href="#connector-runtime">The runtime folder</a>). Nothing downloads until a connector needs it: <code>merud</code> installs a connector the first time it starts it, and the page reader installs chrome-headless-shell the first time a page needs JavaScript.</li>
-  <li>Speech to text, <b>planned</b>, keeps the sound on the machine: Meru.app sends it to <code>merud</code> over the socket, <code>merud</code> to whisper.cpp's server on loopback, and nothing writes it to disk. Only the text you send joins a chat. The connector downloads its program from Meru's own release and its model from Hugging Face, each pinned by SHA-256, when you turn it on.</li>
+  <li>Speech to text keeps the sound on the machine: Meru.app (planned) or <code>meru transcribe</code> sends it to <code>merud</code> over the socket, <code>merud</code> to whisper.cpp's server on loopback, and nothing writes it to disk. Only the text you send joins a chat. The connector downloads its program from Meru's own release and its model from Hugging Face, each pinned by SHA-256, when you turn it on.</li>
   <li>The desktop app loads nothing from the network. Its page, fonts and libraries ship inside the binary, its Content-Security-Policy blocks remote scripts, images and connections, and its Wails updater stays unconfigured, so it never checks for updates.</li>
 </ul>
 

@@ -256,6 +256,12 @@ The request names paths, never bytes, so an image doesn't cross the socket;
 `TurnInfo.Images` hands the same full paths back when a session reopens, so the
 app can show the images again.
 
+A `transcribe` request does send bytes: the recording, in `Request.Audio`, a
+pointer to an `Audio` struct whose `WAV` holds the whole file. The app has the
+sound in memory and nothing on disk to name, and Meru keeps no audio file, so
+the bytes ride in the request as base64. The reply is one `transcript` event
+whose `Text` is the words (see [speech](speech.md)).
+
 `ToolName(kind, server, tool)` joins a transcript line's three fields back into
 the name the model saw, such as `google.search_gmail_messages` or `cmd.backup`.
 
@@ -403,13 +409,17 @@ the detail checks the event's type, not only that a reply came.
 iterator, which callers read with `for ev, err := range rpc.Do(...)`. Cancelling
 the caller's context closes the connection.
 
+Two limits guard against a peer that sends endless data. `maxLine`, 1 MiB,
+caps an event and an approval reply. `MaxRequestLine`, 4 MiB, caps a request:
+a minute of audio takes 2.6 MB in base64, and only a request carries it.
+
 ### server.go
 
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
 `tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
 `memory_forget`), the skill ops (`skills`, `skill_show`, `skill_reset`) and the
-MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`), `connectors`, and the
-history and settings ops to the handler. Any other op gets an
+MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`), `connectors`, the
+history and settings ops, and `transcribe` to the handler. Any other op gets an
 `unknown op` error.
 
 **Listen** claims the socket. A socket file can outlive a `merud` that crashed,

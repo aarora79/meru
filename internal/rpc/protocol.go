@@ -236,6 +236,14 @@ const (
 	// The reply is one "models" event, as OpModels sends, with a Warning
 	// when the model can't call tools, and "done".
 	OpModelSet Op = "model_set"
+	// OpTranscribe turns the recording in Request.Audio, a WAV file of at
+	// most 60 seconds, into text with the whisper connector, starting its
+	// server when it isn't running. The reply is one "transcript" event,
+	// whose Text is the words, empty when the recording held none, and
+	// "done". It fails when the connector is off, still installing or
+	// failed, with the connector's sentence, and when the file isn't WAV
+	// or runs too long. merud keeps neither the audio nor the text.
+	OpTranscribe Op = "transcribe"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -301,6 +309,16 @@ type Request struct {
 	// Connector is the change OpConnectorSet makes. A pointer, as Policy
 	// is.
 	Connector *ConnectorChange `json:"connector,omitempty"`
+	// Audio is the recording OpTranscribe turns into text. A pointer, as
+	// Policy is.
+	Audio *Audio `json:"audio,omitempty"`
+}
+
+// Audio is one recording for OpTranscribe. WAV holds the whole file;
+// encoding/json writes a []byte as base64, so 60 seconds of 16 kHz mono
+// 16-bit audio, 1.9 MB, travels as 2.6 MB, under MaxRequestLine.
+type Audio struct {
+	WAV []byte `json:"wav"`
 }
 
 // TagChange says which tags OpSessionTag adds to a chat and which it
@@ -434,6 +452,8 @@ const (
 	EventReport EventType = "report"
 	// EventStatus answers OpIndexStatus, in Status.
 	EventStatus EventType = "status"
+	// EventTranscript carries the words OpTranscribe heard, in Text.
+	EventTranscript EventType = "transcript"
 	// EventDone ends a successful reply. After an ask it carries the turn's
 	// stats: TTFTMillis, DurationMillis, TokensIn, TokensOut and EvalMillis.
 	// After a ping

@@ -209,6 +209,28 @@ func RecordRender(ctx context.Context, outcome string, d time.Duration) {
 		metric.WithAttributes(attr(keyOutcome, bounded(outcome, renderOutcomes...))))
 }
 
+// speechOutcomes are the outcomes RecordSpeech keeps; any other becomes
+// "other".
+var speechOutcomes = []string{"ok", "error", "empty", "too_long", "cancelled"}
+
+// speechModels are the models RecordSpeech names, the whisper connector's
+// two files; any other becomes "other", so the attribute stays a small
+// set.
+var speechModels = []string{"ggml-base.en.bin", "ggml-large-v3-turbo-q5_0.bin"}
+
+// RecordSpeech records meru.speech.duration for one recording turned into
+// text, with the model and the outcome: "ok", "error", "empty" (nothing
+// heard), "too_long" or "cancelled".
+func RecordSpeech(ctx context.Context, model, outcome string, d time.Duration) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.speechDuration.Record(ctx, d.Seconds(), metric.WithAttributes(
+		attr(keyModel, bounded(model, speechModels...)),
+		attr(keyOutcome, bounded(outcome, speechOutcomes...))))
+}
+
 // RecordRetrieval records meru.retrieval.duration for one retrieval stage:
 // "vector", "fts", "fusion", "memories", "sessions" or "images". Any other stage
 // becomes "other".
