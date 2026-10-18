@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.4.17](v0.4.17.md): Meru reads your Apple Notes, live and read-only, and the installer helps with the grant
 - [v0.4.16](v0.4.16.md): a scope you pick fences the tools that run, and the architecture documents match the code
 - [v0.4.15](v0.4.15.md): picture questions load the right skill, and `meru check` sends pictures
 - [v0.4.14](v0.4.14.md): the answer model reads the pictures a search finds, and a text-only model names one that can
