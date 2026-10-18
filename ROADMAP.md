@@ -207,6 +207,27 @@ set passed 92% with `gemma-moe`, 90% with `qwen-dense` and 89% with `qwen-moe`.
 Chained tool calls split them most (78%, 67% and 61%), and `qwen-moe` answered
 fastest, with a median of 6.5 s to the last token.
 
+## Speech to text
+
+The owner asked for this ahead of v0.5. It turns speech into a typed question,
+so it needs nothing from a later milestone. The design is in ARCHITECTURE.md,
+[Speech to text](ARCHITECTURE.md#speech-to-text).
+
+- [x] A test of both paths, Gemma 4 in Ollama and whisper.cpp, and the design in
+  ARCHITECTURE.md, 200 and 100
+- [ ] A GitHub Actions workflow that builds `whisper-server` for Apple silicon
+  from pinned source and publishes it as the release `whisper-server-v1.9.5`
+- [ ] Connectors: a `service` kind and `[[install.files]]`
+- [ ] The `whisper` connector, a Whisper model per profile and `[models] speech`
+- [ ] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB
+- [ ] Meru.app: the microphone button, the microphone prompt and the
+  no-microphone message
+- [ ] The installer step and a FAQ page
+
+**Done when:** on a Mac with a microphone you press the button in Meru.app, say
+a question, see the words in the box, fix one, press Send, and get an answer,
+with no audio file left on disk.
+
 ## v0.5 — It acts unprompted
 - Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
 - In-daemon scheduler sharing the warm model
@@ -219,7 +240,7 @@ fastest, with a median of 6.5 s to the last token.
 command sets up the same Meru on a fresh Ubuntu machine.
 
 ## Later, maybe
-- Voice: local speech-to-text, text-to-speech and a wake word
+- Voice beyond speech to text: answers read aloud and a wake word
 - Menu-bar companion app, next to the desktop app
 - Escalation to a larger model without asking: you can switch models by hand, and
   the switch unloads the old one first, but Meru never picks the larger model itself

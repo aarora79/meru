@@ -392,7 +392,8 @@ the line as its tooltip.
   Shift+Enter; while a turn
   runs, Enter queues, and the queue shows above the composer with a remove button
   on each question. Under the text box sit the **Where Meru looks** switch and
-  the attach button.
+  the attach button, and, **planned**, a microphone button that turns speech
+  into text in the box (see [Speech to text](#speech-to-text)).
 - **The side panel** starts closed; the header's button opens it, and the choice
   lasts until the window closes. "What this answer used" lists the selected
   answer's sources, every file the prompt held, its tool calls, and under
@@ -1102,6 +1103,10 @@ vector and re-embed every file on its next start (see [Storage](#storage)).
   benchmark (see [Models we tried](#models-we-tried)), and Ollama held 36 to 52 GiB
   for it while it answered, so `full` needs a 64 GB Mac.
 
+Speech to text, **planned**, runs outside Ollama in its own process, with a
+Whisper model per profile, so it takes none of Ollama's model slots (see
+[Speech to text](#speech-to-text)).
+
 `merud` keeps each model loaded by asking Ollama for `keep_alive: -1`, and warms every
 tier at startup. Ollama must allow enough models in memory at once
 (`OLLAMA_MAX_LOADED_MODELS`, 3 for `full`).
@@ -1471,6 +1476,10 @@ hands the agent a check built on `Capabilities` for image turns and another for
 whether the answer model can take tools; `about_meru` and the models in Settings
 need `Details`, and only the models in Settings need `Pulled`. The "ollama http"
 debug line counts a request's images; no log line or span holds their bytes.
+
+Speech to text, **planned**, doesn't go through the interface: it runs in
+whisper.cpp's server, not in Ollama, and `internal/speech` talks to it (see
+[Speech to text](#speech-to-text)).
 
 Two engines may come later, behind the same interface:
 
@@ -3546,6 +3555,11 @@ breaks a rule:
   `{pkg}`;
 - a wildcard in a tool list, or a `confirm` tool that `allow` doesn't list.
 
+Speech to text, **planned**, adds a fifth manifest, `whisper`, with a new
+kind, `service` (a program on loopback that takes plain HTTP), and
+`[[install.files]]`, pinned downloads beside the program such as a model file
+(see [Speech to text](#speech-to-text)).
+
 ### Pinned versions
 
 Each connector runs one version, chosen and tested for a Meru release. A pin
@@ -4483,6 +4497,147 @@ characters of a page.
 
 ---
 
+## Speech to text
+
+**Planned.** In Meru.app you press a microphone button, speak, and press it
+again. Meru turns the words into text in the composer, where you read them,
+fix them, and press Send. The text then goes as a typed question would. The
+answer model never hears the audio: speech to text is a step before the
+question, not part of it. `meru chat` keeps typing, since a terminal has no
+microphone without a native audio library, which the thin client can't take
+on.
+
+The work lands in six steps after this design: the binary built by CI, two
+additions to the connectors, the `whisper` connector with a model per
+profile, the `transcribe` op in `merud`, the button in Meru.app, and the
+installer step with a FAQ page.
+
+### Why whisper.cpp, not Ollama
+
+A test on 2026-10-18 (Mac Studio, M4 Max, 64 GB, Ollama 0.40.5) tried both.
+
+Ollama has no transcription endpoint. Its `gemma4:e2b` and `gemma4:e4b`
+models list `audio` among their capabilities, and they transcribe a WAV file
+passed in a message's `images` field, which the API docs name for pictures
+only. Ollama ignored every field named for audio without an error. They cost too
+much for the job:
+
+- **They push Meru's models out.** Ollama keeps at most
+  `OLLAMA_MAX_LOADED_MODELS` models loaded, 3 per GPU by default, and a Mac
+  with a separate answer model already has three. A voice question loaded
+  `gemma4:e2b` (7.4 GB) and pushed out the router, so the question waited
+  about 5 seconds for its first word against 0.1 seconds typed, and 13
+  seconds when the answer model was the one pushed out. On a 16 GB Mac,
+  `lite` and `gemma4:e2b` together need more than the GPU may use.
+- **They follow what they hear.** They are chat models. Asked to transcribe
+  "In two sentences, explain why the sky is blue", `gemma4:e2b` explained why
+  the sky is blue. A system message stopped it, and half a second of silence
+  at the end stopped it losing the last word, but each new model would need
+  both checks again.
+
+whisper.cpp's `whisper-server` does only speech to text, so it has nothing
+to obey. It runs in its own process, outside Ollama's count, and on the same
+Mac it transcribed a 26-second clip in under half a second:
+
+| Profile | Model file | On disk | In memory | Languages |
+| --- | --- | --- | --- | --- |
+| `lite` | `ggml-base.en.bin` | 148 MB | 445 MB | English |
+| `full` | `ggml-large-v3-turbo-q5_0.bin` | 574 MB | 890 MB | many |
+
+On a real recording through a USB webcam's microphone, the `full` model made
+no mistake and the `lite` one heard "Porto" as "portal". `[models] speech`
+picks the other file. Both come from `huggingface.co/ggerganov/whisper.cpp`
+at commit `5359861c739e955e79d9a303bcbc70fb988958b1`, each pinned by SHA-256.
+
+### The binary
+
+whisper.cpp publishes `whisper-server` for Linux and Windows but not for
+macOS, where it ships only a library for Xcode apps. `merud` is built without
+cgo and can't load it. So a GitHub Actions workflow in Meru's repository,
+`whisper-server.yml`, run by hand, builds it:
+
+- from whisper.cpp's `v1.9.5` source tarball, checked against a SHA-256 kept
+  in the workflow (commit `d2a764c648779feb36d44363f212a29b00aad1af`);
+- on a `macos-14` runner, for Apple silicon, with Metal, the Metal shaders
+  inside the binary and static libraries, so the result is one file that
+  links only to macOS's own frameworks;
+- with `GGML_NATIVE=OFF`, so the compiler doesn't tune the code to the
+  runner's CPU, which could crash it on an older Mac, and for macOS 13.3 and
+  later.
+
+The workflow checks that `otool -L` lists only system libraries and that the
+program transcribes a test clip to the expected words. It publishes the file,
+`SHA256SUMS` and whisper.cpp's MIT licence to a release of its own,
+`whisper-server-v1.9.5`, which nothing moves or deletes, and records which
+commit and workflow built the file with GitHub's build attestation. The
+connector pins the file's SHA-256. A new whisper.cpp version is a pull request
+that changes the workflow's pin and the manifest's.
+
+Linux and Windows come later. Until then the connector has no download for
+them, and speech to text is off there.
+
+### The connector
+
+`whisper` is a connector (see [Connectors and the supervisor](#connectors-and-the-supervisor)),
+off until `[connectors.whisper] enabled = true`. It needs two things the
+connectors lack today:
+
+- **A `service` kind.** `merud` starts the program, checks it with an HTTP
+  GET, and talks plain HTTP to it on loopback. An `http` connector speaks MCP,
+  and of today's connectors only the SearXNG container takes plain HTTP.
+- **`[[install.files]]`.** Extra downloads, each an https URL and a SHA-256,
+  saved beside the program. The model file is one.
+
+The launch is `whisper-server --host 127.0.0.1 --port {port} -m {model}`, so
+the server listens on this machine only. The supervisor starts it on the
+first recording, stops it after ten idle minutes and restarts it after a
+crash, as it does for Obsidian, and its card in Settings shows its state.
+Turning it on downloads about 160 MB for `lite` or 580 MB for `full`.
+
+### The transcribe op
+
+The app records 16 kHz, mono, 16-bit PCM and wraps it as a WAV file, for at
+most 60 seconds: 1.9 MB. The Bridge sends it to `merud` in a `transcribe`
+request, in a new `Request.Audio` field, which Go's `encoding/json` writes as
+base64, 2.6 MB. That passes the socket's 1 MiB limit on a line, so the limit
+on what `merud` reads rises to 4 MiB.
+
+`merud` hands the bytes to `internal/speech`, which posts them to the
+connector's `/inference` with `temperature=0` and `response_format=json`,
+and replies with one `transcript` event, then `done`. It refuses audio that
+isn't WAV or runs over 60 seconds. With the connector off, the error says
+where to turn it on. Speech to text isn't part of the `Engine` interface,
+which serves Ollama and keeps its four methods.
+
+### Recording in Meru.app
+
+- The composer gets a microphone button beside the attach button. It shows
+  "Listening…" while it records, then "Turning speech into text…", then puts
+  the text in the box with the cursor at the end. Nothing sends without the
+  user's press of Send. Empty text says "Meru heard nothing. Try again closer
+  to the microphone."
+- The page records with `getUserMedia` and an `AudioWorklet`, and builds the
+  WAV itself. The first task of that step checks that Wails v3's WebView
+  allows `getUserMedia`; if it doesn't, a small native recorder goes in
+  `cmd/meru-desktop`, which already builds with cgo.
+- `Info.plist` gains `NSMicrophoneUsageDescription`, so macOS asks once:
+  "Meru turns what you say into text on this Mac. The sound never leaves
+  it."
+- Some Macs have no microphone: a Mac Studio or a Mac mini has none until
+  you plug one in. With no input device the button says "This Mac has no
+  microphone. Connect one, such as AirPods or a webcam."
+
+### What Meru keeps
+
+Nothing of the sound. The WAV lives in the app's memory and in `merud`'s for
+the one request, and nothing writes it to disk: no file, no transcript line,
+no `tool_calls` row, since speech to text isn't a tool call. The text joins a
+chat only when you send it, as typed text does. `merud` logs one info line
+per request with the length of the audio, the time taken and the outcome,
+never the words.
+
+---
+
 ## Other agents (A2A)
 
 Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work.
@@ -4702,6 +4857,7 @@ for the rest.
 | `meru.tool.duration` | histogram | `meru.tool.kind`, `meru.tool.server`, `gen_ai.tool.name` | tool latency, for calls that ran |
 | `meru.model.malformed_calls` | counter | model | tool calls the main model wrote that Meru couldn't run as written |
 | `meru.retrieval.duration` | histogram | stage (vector/fts/fusion/memories/sessions/images) | retrieval cost (v0.2; memories and sessions stages v0.4; images v0.4.13) |
+| `meru.speech.duration` | histogram | model, outcome (ok/error/empty/too_long) | (planned) how long speech to text takes, the server's start included |
 | `meru.web.render.duration` | histogram | outcome (ok/error/timeout/cancelled) | how long a page that needs JavaScript takes in the page reader, Chrome's start included |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
 | `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
@@ -4896,6 +5052,11 @@ transcript lines hold. No level writes question or answer text. With
   Nothing downloads until a connector needs it: `merud` installs a connector the
   first time it starts it, and the page reader installs chrome-headless-shell
   the first time a page needs JavaScript.
+- Speech to text, **planned**, keeps the sound on the machine: Meru.app
+  sends it to `merud` over the socket, `merud` to whisper.cpp's server on
+  loopback, and nothing writes it to disk. Only the text you send joins a
+  chat. The connector downloads its program from Meru's own release and its
+  model from Hugging Face, each pinned by SHA-256, when you turn it on.
 - The desktop app loads nothing from the network. Its page, fonts and libraries
   ship inside the binary, its Content-Security-Policy blocks remote scripts,
   images and connections, and its Wails updater stays unconfigured, so it never
