@@ -623,6 +623,17 @@ web tools the search route offers in `auto` (`builtin.IsWebTool` names them). Sk
 writing skill shapes an answer without a tool. The `route` event carries
 confidence 1, because nothing guessed.
 
+The offer is also a fence. `runCalls` (`tools.go`) puts the names of the round's
+offered tools on each of the model's calls as `dispatch.Call.Offered` when the
+scope isn't `auto`, and `dispatch` denies any other tool. Without it, a model on
+"My files" that wrote a `web_search` call from memory would search the web, since
+config allows the tool. The fence is built before the goroutines start, from
+`t.offer`, so every call of a round shares it; `make([]string, 0, n)` keeps it
+non-nil even when the round offered nothing. Meru's own web-first calls
+(`caller == dispatch.CallerMeru`) get no fence: the scope chose them. An `auto`
+turn passes nil and fences nothing, because a route offers fewer tools to keep
+the prompt short, not as a promise.
+
 `mailServers` groups the tools by server (`serverOf`) and keeps a server when one
 of its tool names holds a noun ending in "mail", or "calendar" or "event", read
 with `toolNouns`, the same nouns the router's prompt lists. The google server
@@ -1497,10 +1508,13 @@ it hasn't seen, and the prompt stays shorter.
 
 Two functions pick the notes `prompt` adds to the system prompt.
 `noteFor(specs)` gives `toolsNote` to a turn that offers any tool but the file
-tools and commands, `datetime` included: the model may call the tools, and
-some calls ask you first. A turn whose tools are only file tools and
-commands gets `commandsNote` when it has commands (it may run the `cmd.`
-tools). A turn with no tools gets none.
+tools, local commands and `datetime` included: the model may call the tools,
+and some calls ask you first. A turn that offers only file tools, or none,
+gets no tools note. A local command needs no note of its own: its description
+says what program it runs. A separate note for the `cmd.` tools never reached a
+prompt with the default config, because every route offers `datetime`, and
+turning it on changed no answer on the benchmark's command questions, so it
+went (issue #135).
 
 When the turn offers `web_search`, on any route, `noteFor` adds `webNote`
 after `toolsNote`:

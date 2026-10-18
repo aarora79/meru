@@ -49,12 +49,6 @@ const exploreNote = "To answer from the user's files, look in them first: call s
 	"search_files numbers each excerpt: cite the ones you use by their number in square brackets, like [1]. " +
 	"Never invent a file, a quote or a citation. If what you find doesn't answer the question, say so."
 
-// commandsNote joins the system prompt on a "search" turn that offers
-// local commands. It names them by their prefix, so the model knows the
-// cmd. tools are there to run.
-const commandsNote = "You may also run the cmd. tools offered with this question. " +
-	"Each runs one program the user declared and returns what it printed."
-
 // webFallbackNote follows toolsNote on a turn that offers both web_search
 // and a file tool. A real turn showed why. Asked "help me understand btop
 // with some simple commands", a small model grepped the user's folders,
@@ -77,10 +71,16 @@ const webNote = "When you aren't sure of a fact, such as a song, a film, a book,
 	"Never tell the user you can't search the web."
 
 // noteFor returns the tools note for a turn that offers specs: toolsNote
-// when any is an MCP tool, an A2A skill or a built-in other than the file
-// tools (datetime included); otherwise commandsNote when any is a command;
-// and "" for none. The file tools get a note of their own; see
-// fileToolsNoteFor.
+// when any is a tool other than the file tools: an MCP tool, an A2A
+// skill, a local command, or a built-in such as datetime; and "" when the
+// turn offers only file tools, or none. The file tools get a note of their
+// own; see fileToolsNoteFor.
+//
+// A local command needs no note of its own. Its description, from its
+// [[commands]] entry, says what program it runs. A separate note for the
+// cmd. tools never reached a prompt with the default config, since every
+// route offers datetime, and turning it on changed no answer on the
+// benchmark's command questions (issue #135), so it went.
 //
 // When specs hold web_search, webNote follows toolsNote, and when they
 // hold a file tool too, webFallbackNote follows that. Both depend only on
@@ -92,13 +92,11 @@ const webNote = "When you aren't sure of a fact, such as a song, a film, a book,
 // to guess a URL, and web_fetch asks the user before it fetches a URL that
 // no search result gave.
 func noteFor(specs []engine.ToolSpec) string {
-	var cmds, other, files, web bool
+	var other, files, web bool
 	for _, s := range specs {
 		switch {
 		case builtin.IsFileTool(s.Name):
 			files = true
-		case toolKind(s.Name) == dispatch.KindCommand:
-			cmds = true
 		default:
 			other = true
 			if s.Name == builtin.WebSearch {
@@ -115,8 +113,6 @@ func noteFor(specs []engine.ToolSpec) string {
 		return toolsNote + " " + webNote
 	case other:
 		return toolsNote
-	case cmds:
-		return commandsNote
 	}
 	return ""
 }
@@ -741,6 +737,21 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 	appendTo := func(l transcript.Line) error { return a.appendLine(ctx, t.sess, l) }
 	// allowed names every tool config allows, for skillHint.
 	allowed := a.offeredNames()
+	// fence names the tools the model's calls may reach on a turn whose
+	// scope the user picked: the round's offer, and nothing else. A scope
+	// such as "My files" promises what the turn touches, and a model can
+	// name a tool it wasn't shown. merud's own web-first calls aren't
+	// fenced; the scope chose them. nil, on an auto turn, fences nothing
+	// (see dispatch.Call.Offered).
+	var fence []string
+	if caller == "" && t.scope != rpc.ScopeAuto {
+		// make with length 0 gives an empty, non-nil slice, so a round
+		// that offered no tool still fences every call.
+		fence = make([]string, 0, len(t.offer))
+		for _, s := range t.offer {
+			fence = append(fence, s.Name)
+		}
+	}
 
 	// Each goroutine writes only its own slot of out and found, so they
 	// need no lock.
@@ -780,6 +791,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				TraceID:  t.traceID,
 				Caller:   caller,
 				Hint:     skillHint(t.skills, c.Name, t.offer, allowed),
+				Offered:  fence,
 				// An incognito chat's calls get a tool_calls row without
 				// their arguments or results; see dispatch.Call.
 				Incognito: t.sess.Incognito(),

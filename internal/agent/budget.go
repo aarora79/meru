@@ -98,7 +98,7 @@ type sections struct {
 	skillBodies string // the picked skills' instructions; "" for none
 	files       string // file excerpts, then earlier conversations; "" for none
 	web         string // what the web-first step found, under "From the web"; "" for none
-	toolsNote   string // toolsNote or commandsNote when the turn offers tools; "" for none
+	toolsNote   string // toolsNote, with the web lines, when the turn offers tools; "" for none
 	fileTools   string // fileToolsNote or exploreNote on a file turn with the file tools; "" otherwise
 }
 

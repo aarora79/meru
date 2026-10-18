@@ -214,9 +214,9 @@ func (d *Dispatcher) find(name string) Backend {
 //
 // In order, it:
 //
-//  1. finds the backend that offers the tool; with none, the call is
-//     "denied" and doesn't run, and the model reads c.Hint when the agent
-//     set one;
+//  1. finds the backend that offers the tool; with none, or when the tool
+//     isn't in c.Offered on a fenced call, the call is "denied" and doesn't
+//     run, and the model reads c.Hint when the agent set one;
 //  2. writes the tool_call line to the transcript;
 //  3. asks the user when the tool, or this one call, needs a yes (see
 //     confirmFor and approve);
@@ -273,6 +273,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 		outcome = OutcomeDenied
 		res = Result{IsError: true, Text: fmt.Sprintf(
 			"The tool %q isn't available, so it didn't run. Use one of the tools you were given, or answer without one.", c.Name)}
+		if c.Hint != "" {
+			res.Text = c.Hint
+		}
+	case c.Offered != nil && !slices.Contains(c.Offered, c.Name):
+		// The turn's scope fences what may run (see Call.Offered). The
+		// call is denied like a tool no backend offers, and still logged.
+		outcome = OutcomeDenied
+		res = Result{IsError: true, Text: fmt.Sprintf(
+			"The tool %q isn't offered for this question, so it didn't run. Use one of the tools you were given, or answer without one.", c.Name)}
 		if c.Hint != "" {
 			res.Text = c.Hint
 		}

@@ -226,9 +226,9 @@ func TestNoteFor(t *testing.T) {
 	}{
 		{"none", nil, ""},
 		{"file tools alone", names("read_file", "search_files"), ""},
-		{"file tools and a command", names("grep", "cmd.git-log"), commandsNote},
+		{"file tools and a command", names("grep", "cmd.git-log"), toolsNote},
 		{"with datetime", names("datetime", "grep"), toolsNote},
-		{"an MCP tool", names("obsidian.obsidian_read_note", "cmd.git-log"), toolsNote},
+		{"an MCP tool and a command", names("obsidian.obsidian_read_note", "cmd.git-log"), toolsNote},
 		{"web_search and a file tool", names("datetime", "web_search", "grep"), toolsNote + " " + webNote + " " + webFallbackNote},
 		{"web_search and a file tool alone", names("web_search", "read_file"), toolsNote + " " + webNote + " " + webFallbackNote},
 		{"web_search with no file tool", names("datetime", "web_search", "web_fetch"), toolsNote + " " + webNote},
