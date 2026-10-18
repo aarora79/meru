@@ -1026,13 +1026,13 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <!-- ============================================================ -->
 <h2 id="speech">Speech to text</h2>
 
-<p>Speech to text is planned. In the desktop app you will press a microphone button, speak, and press it again. Meru turns your words into text in the box where you type, and you read it, fix it, and press Send. Nothing goes without that press, and the answer model never hears the sound: it gets the text, as if you had typed it.</p>
+<p>In the desktop app you press a microphone button, speak, and press it again. Meru turns your words into text in the box where you type, and you read it, fix it, and press Send. Nothing goes without that press, and the answer model never hears the sound: it gets the text, as if you had typed it.</p>
 
 <p>The words come from Whisper, a model built only to write down speech, run by whisper.cpp in its own process on your machine. A test tried Gemma 4 in Ollama first. It heard well, but at 7.4 GB it pushed Meru's own models out of memory, so each spoken question waited about 5 seconds, and as a chat model it sometimes answered the spoken question instead of writing it down. Whisper takes 445 MB on <code>lite</code> and 890 MB on <code>full</code>, and turned 26 seconds of speech into text in under half a second.</p>
 
 <p><code>merud</code> runs Whisper as a connector, off until you turn it on, and downloads two pinned files: the program, which Meru's own build makes for Macs since whisper.cpp publishes none, and the model. The app sends at most 60 seconds of sound to <code>merud</code>, which passes it to Whisper on this machine. Nothing writes the sound to disk; only the text you send joins the chat. <code>meru chat</code> stays typed.</p>
 
-<p>Part of it is in place. Turning the connector on in Settings, or with <code>meru mcp set whisper enabled=true</code>, downloads the program and the model, and its card says when it is ready. <code>meru transcribe recording.wav</code> then turns a recording into text: the first one in a while takes a few seconds, while the server starts, and the next ones under half a second. The button that records comes next. The level 300 page has the details: <a href="300.html#speech-to-text">Speech to text</a>.</p>
+<p>Turning the connector on in Settings, or with <code>meru mcp set whisper enabled=true</code>, downloads the program and the model, and its card says when it is ready. Then the button works: the first recording in a while takes a few seconds, while the server starts, and the next ones under half a second. macOS asks once whether Meru may use the microphone. A Mac with no microphone, such as a Mac Studio, needs one plugged in, and the button says so. <code>meru transcribe recording.wav</code> does the same from a terminal. The level 300 page has the details: <a href="300.html#speech-to-text">Speech to text</a>.</p>
 
 <!-- ============================================================ -->
 <h2 id="jobs">Scheduled jobs</h2>

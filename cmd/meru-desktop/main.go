@@ -110,6 +110,16 @@ func run(args []string) error {
 		// overlay, and reports the drop to Go with the files' full paths,
 		// which the page itself never sees.
 		EnableFileDrop: true,
+		// Permissions answer the page's getUserMedia. The microphone is
+		// allowed without WebKit's own prompt, which would ask on every
+		// launch: the user pressed the microphone button, and macOS still
+		// asks once, with Info.plist's NSMicrophoneUsageDescription,
+		// before any app may hear the microphone. The camera stays shut;
+		// Meru never asks for it.
+		Permissions: map[application.PermissionType]application.Permission{
+			application.PermissionMicrophone: application.PermissionAllow,
+			application.PermissionCamera:     application.PermissionDeny,
+		},
 	})
 	// OnWindowEvent runs the function each time Wails reports a drop.
 	// desktop.Drop copies the files in the background, so the window's

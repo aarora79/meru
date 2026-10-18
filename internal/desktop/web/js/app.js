@@ -19,6 +19,7 @@ import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
 import { connectorProgress } from "./connectors.js";
+import { setupVoice } from "./voice.js";
 import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
 
 // How often the rail asks merud for its status, in milliseconds.
@@ -1278,6 +1279,7 @@ function wire() {
   $("open-settings").prepend(icon("sliders", 16), document.createTextNode(" "));
   $("share").prepend(icon("share", 15), document.createTextNode(" "));
   $("attach").append(icon("clip", 17));
+  $("mic").append(icon("mic", 17));
 
   $("new-chat").addEventListener("click", newChat);
   $("new-incognito").prepend(icon("lock", 14), document.createTextNode(" "));
@@ -1313,6 +1315,7 @@ function wire() {
   }).catch(() => {});
   $("share").addEventListener("click", () => save(() => bridge.saveChat(state.session), "chat"));
   $("attach").addEventListener("click", attach);
+  setupVoice($("mic"), $("question"), notice);
   $("search").addEventListener("input", (e) => {
     state.filter = e.target.value;
     drawSessions();

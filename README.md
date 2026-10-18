@@ -20,7 +20,8 @@ model that fits your Mac's memory.
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
-> On a Mac it searches and reads your Apple Notes. It installs, runs and restarts
+> On a Mac it searches and reads your Apple Notes, and turns what you say into
+> text with Whisper, on your Mac. It installs, runs and restarts
 > Google, Obsidian and SearXNG for you, set up from Settings, reads pages that
 > need JavaScript, and charts your use on its Usage screen. Scheduled jobs come
 > in v0.5.
@@ -85,6 +86,7 @@ with nothing behind it.
 | Capability | What it means |
 | --- | --- |
 | **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
+| **Voice** | Press the microphone in Meru.app, speak, and press it again: Whisper, run by whisper.cpp on your Mac, turns your words into text in the question box, and you check them before you press Send. The sound never leaves your Mac and Meru keeps no recording. Turn it on in Settings, Connections; `meru transcribe recording.wav` does the same from a terminal. Macs with Apple silicon, for now. |
 | **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
 | **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. The built-in `web_fetch` tool reads a whole public page, answers a question from it with the fast model, or downloads a file; it asks you before it opens an address no search or question of yours gave. Taking it out of `[builtin] tools` turns it off. [docs/running.md](docs/running.md#web-search) shows the setup. |
 | **MCP tools** | `meru setup` offers two servers: `google` for Gmail, Calendar and Drive, and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |

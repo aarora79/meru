@@ -392,8 +392,8 @@ the line as its tooltip.
   Shift+Enter; while a turn
   runs, Enter queues, and the queue shows above the composer with a remove button
   on each question. Under the text box sit the **Where Meru looks** switch and
-  the attach button, and, **planned**, a microphone button that turns speech
-  into text in the box (see [Speech to text](#speech-to-text)).
+  the attach button, and a microphone button that turns speech into text in
+  the box (see [Speech to text](#speech-to-text)).
 - **The side panel** starts closed; the header's button opens it, and the choice
   lasts until the window closes. "What this answer used" lists the selected
   answer's sources, every file the prompt held, its tool calls, and under
@@ -1103,7 +1103,7 @@ vector and re-embed every file on its next start (see [Storage](#storage)).
   benchmark (see [Models we tried](#models-we-tried)), and Ollama held 36 to 52 GiB
   for it while it answered, so `full` needs a 64 GB Mac.
 
-Speech to text, **planned**, runs outside Ollama in its own process, with a
+Speech to text runs outside Ollama in its own process, with a
 Whisper model per profile, so it takes none of Ollama's model slots (see
 [Speech to text](#speech-to-text)).
 
@@ -1477,7 +1477,7 @@ whether the answer model can take tools; `about_meru` and the models in Settings
 need `Details`, and only the models in Settings need `Pulled`. The "ollama http"
 debug line counts a request's images; no log line or span holds their bytes.
 
-Speech to text, **planned**, doesn't go through the interface: it runs in
+Speech to text doesn't go through the interface: it runs in
 whisper.cpp's server, not in Ollama, and `internal/speech` talks to it (see
 [Speech to text](#speech-to-text)).
 
@@ -4514,7 +4514,7 @@ characters of a page.
 
 ## Speech to text
 
-**In progress.** In Meru.app you press a microphone button, speak, and press it
+In Meru.app you press a microphone button, speak, and press it
 again. Meru turns the words into text in the composer, where you read them,
 fix them, and press Send. The text then goes as a typed question would. The
 answer model never hears the audio: speech to text is a step before the
@@ -4522,11 +4522,11 @@ question, not part of it. `meru chat` keeps typing, since a terminal has no
 microphone without a native audio library, which the thin client can't take
 on.
 
-The work lands in six steps after this design. Four are in place: the
+The work lands in six steps after this design. Five are in place: the
 binary built by CI, the connectors' `service` kind and `[[install.files]]`,
 the `whisper` connector with a model per profile, which Settings and
 `meru mcp set whisper enabled=true` turn on, and the `transcribe` op in
-`merud` with `meru transcribe`. Two come next: the button in Meru.app, and
+`merud` with `meru transcribe`, and the button in Meru.app. One comes next:
 the installer step with a FAQ page.
 
 ### Why whisper.cpp, not Ollama
@@ -4691,21 +4691,39 @@ as no words, an `.m4a` file and a 61-second one as refusals.
 
 ### Recording in Meru.app
 
-- The composer gets a microphone button beside the attach button. It shows
-  "Listening…" while it records, then "Turning speech into text…", then puts
-  the text in the box with the cursor at the end. Nothing sends without the
-  user's press of Send. Empty text says "Meru heard nothing. Try again closer
-  to the microphone."
-- The page records with `getUserMedia` and an `AudioWorklet`, and builds the
-  WAV itself. The first task of that step checks that Wails v3's WebView
-  allows `getUserMedia`; if it doesn't, a small native recorder goes in
-  `cmd/meru-desktop`, which already builds with cgo.
-- `Info.plist` gains `NSMicrophoneUsageDescription`, so macOS asks once:
+- The composer has a microphone button beside the attach button. A press
+  asks the Bridge's `SpeechStatus` whether the whisper connector is ok; when
+  it isn't, the line above the box shows the connector's sentence, such as
+  "Speech to text is off. Turn it on in Settings, Connections.", and nothing
+  records. Otherwise the button turns red and pulses, and the line reads
+  "Listening… 12 s. Press the microphone again to stop". A second press, or
+  60 seconds, stops it. "Turning speech into text…" follows, then the words
+  land in the box after any text already there, with the cursor at the end,
+  and the line says "Check the words, then press Send." Nothing sends without
+  that press. No words gives "Meru heard nothing. Try again closer to the
+  microphone."
+- The page records in `web/js/voice.js` with `getUserMedia` and
+  `MediaRecorder`, which in the macOS WebView makes AAC. When it stops,
+  `decodeAudioData` decodes it and an `OfflineAudioContext` of one channel at
+  16 kHz mixes and resamples it in one pass, faster than real time; a few
+  lines of JavaScript write the 44-byte WAV header and the 16-bit samples.
+  No audio worklet and no native recorder were needed. The microphone is
+  let go as soon as recording stops, so macOS's indicator goes out.
+- The Bridge's `Transcribe` takes the WAV as base64, decodes it, refuses
+  more than 3 MiB, and sends the `transcribe` op with a two-minute timeout;
+  it keeps no copy.
+- The window's `Permissions` (Wails v3 beta.28) allow the microphone without
+  WebKit's own prompt, which would ask on every launch, and deny the camera.
+  macOS still asks once, from `Info.plist`'s `NSMicrophoneUsageDescription`:
   "Meru turns what you say into text on this Mac. The sound never leaves
-  it."
-- Some Macs have no microphone: a Mac Studio or a Mac mini has none until
-  you plug one in. With no input device the button says "This Mac has no
-  microphone. Connect one, such as AirPods or a webcam."
+  it." Wails' WebView exposes `navigator.mediaDevices` on its own `wails://`
+  page, so `getUserMedia` works as in a browser.
+- A Mac may have no microphone: a Mac Studio or a Mac mini has none until
+  one is plugged in. With no input device the line says "This Mac has no
+  microphone. Connect one, such as AirPods or a webcam." A refused
+  permission names the System Settings pane that turns it on.
+- On 2026-10-18 the owner recorded through a USB webcam on the Mac Studio,
+  saw the words land in the box, and sent them as a question.
 
 ### What Meru keeps
 
@@ -5140,7 +5158,7 @@ transcript lines hold. No level writes question or answer text. With
   Nothing downloads until a connector needs it: `merud` installs a connector the
   first time it starts it, and the page reader installs chrome-headless-shell
   the first time a page needs JavaScript.
-- Speech to text keeps the sound on the machine: Meru.app (planned) or
+- Speech to text keeps the sound on the machine: Meru.app or
   `meru transcribe` sends it to `merud` over the socket, `merud` to
   whisper.cpp's server on loopback, and nothing writes it to disk. Only the text you send joins a
   chat. The connector downloads its program from Meru's own release and its
