@@ -14,11 +14,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/aarora79/meru/internal/a2a"
 	"github.com/aarora79/meru/internal/agent"
+	"github.com/aarora79/meru/internal/applenotes"
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/commands"
 	"github.com/aarora79/meru/internal/config"
@@ -159,6 +162,20 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// model can answer about any earlier conversation. The indexer never
 	// indexes the sessions folder; see internal/builtin/chats.go.
 	bt.ReadSessions(filepath.Join(cfg.Dir, "sessions"))
+	// search_notes, list_notes and read_note read the Notes app's own
+	// database, live and read-only, on a Mac. Reading it needs Full Disk
+	// Access for merud, which macOS grants in System Settings and never
+	// asks for; say at startup whether merud has it.
+	if runtime.GOOS == "darwin" {
+		bt.UseNotes(applenotes.DefaultPath())
+		if slices.ContainsFunc(cfg.Builtin.Tools, builtin.IsNotesTool) {
+			if err := bt.NotesAccess(ctx); err != nil {
+				log.Info("apple notes not readable", "reason", err)
+			} else {
+				log.Info("apple notes readable")
+			}
+		}
+	}
 	// A tool [builtin] tools lists but whose setting is missing stays off;
 	// say why, so the user isn't left guessing.
 	for _, off := range bt.Off() {

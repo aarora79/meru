@@ -154,6 +154,9 @@ No milestone names these, and each is on `main`:
   time behind its own proxy (#100)
 - Charts on the Usage page in both clients, from `meru.db`, and a `/metrics` page
   for a Prometheus you run, in place of the Grafana stack (#106)
+- Apple Notes, read live and read-only from the Notes app's database through the
+  built-in `search_notes`, `list_notes` and `read_note`, on a Mac with Full Disk
+  Access for `merud`
 
 ## Headless mode
 

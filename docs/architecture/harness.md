@@ -353,9 +353,10 @@ web too. Only then does the client learn the route.*
    conversations ("what were my previous conversations about?"), it becomes
    `search`, which offers the recalled sessions and the file tools that read the
    transcripts (`aboutPastChats`).
-3. **A connected tool.** `toolTarget` (`internal/agent/toolnouns.go`) looks for five
+3. **A connected tool.** `toolTarget` (`internal/agent/toolnouns.go`) looks for six
    signs that the question points at a tool: it names an MCP server or A2A agent
-   ("obsidian"), holds the word "remember", asks for the web in a phrase such as
+   ("obsidian"), holds the word "remember", names Apple Notes ("apple notes" or
+   "notes app"), asks for the web in a phrase such as
    "search the web" or "look it up", gives an `http` or `https` URL, or holds a word
    that matches a noun from a connected tool's name ("email" matches `gmail`
    because both end in "mail"). Any sign adds tools: `direct` becomes `tools`, and
@@ -444,7 +445,7 @@ list. `toolSpecs` (`internal/agent/tools.go`) gives each route a different set:
 | --- | --- |
 | `direct` | `datetime`, `about_meru`, and `web_search` and `web_fetch` while web search is on (config lists it in `[builtin] tools` and sets `[web] searxng_url`, and SearXNG answers its check) |
 | `search` | the same, plus the read-only file tools (`read_file`, `list_folder`, `grep`, `search_files`, `search_images`, `view_image`) and the local commands that don't ask first |
-| `tools`, `search+tools` | every tool config allows |
+| `tools`, `search+tools` | every tool config allows, the Apple Notes tools `search_notes`, `list_notes` and `read_note` among them on a Mac |
 
 `datetime` and `about_meru` go on every route because "what day is Christmas?" and
 "which model are you?" route to `direct`. The web tools joined every route after a

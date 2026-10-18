@@ -50,7 +50,8 @@ allows only code inside this repo to import.
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |
-| `internal/builtin` | tools that live inside `merud`: `configure`, `datetime` and `about_meru`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder`, `grep`, `search_files`, `search_images` and `view_image`, and the web tools `web_search` and `web_fetch` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall` and `webdownload.go` |
+| `internal/builtin` | tools that live inside `merud`: `configure`, `datetime` and `about_meru`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder`, `grep`, `search_files`, `search_images` and `view_image`, the web tools `web_search` and `web_fetch`, and the Apple Notes tools `search_notes`, `list_notes` and `read_note` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `web.go`, `webguard.go`: `ConfirmCall`, `webdownload.go` and `notes.go` |
+| `internal/applenotes` | reads the Notes app's `NoteStore.sqlite`, live and read-only: finds the schema at run time and decodes each note's text from its gzipped protobuf (see [the built-in tools](../ARCHITECTURE.md#approving-a-tool-call)) | `store.go`: `Open`, `Search`, `Note`, `Folders`; `body.go`: `noteText` |
 | `internal/render` | `web_fetch`'s page reader: for a page whose text comes from JavaScript, it installs the pinned `chrome-headless-shell` on first need, starts a proxy on loopback and a fresh Chrome for that page, drives Chrome over two pipes, waits for the text and the traffic to settle, and returns the HTML (see [Pages that need JavaScript](../ARCHITECTURE.md#pages-that-need-javascript)) | `render.go`: `New`, `Render`, `Ready`, `Close`; `browser.go`: `startBrowser`; `cdp.go`: `call`; `proxy.go`: `startProxy`, `arm` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
 | `internal/catalog` | the starter MCP servers, the config block for each, the safe append to `config.toml`, and the edits of one list in it | `catalog.go`: `Entries`, then `block.go`, `append.go` and `edit.go` |
@@ -91,7 +92,7 @@ flowchart TD
     tui --> rpc & opener & about
     agent --> dispatch & transcript & engine & rpc & obs & config & retrieve
     agent --> store & memory & skills & builtin
-    builtin --> dispatch & catalog & secrets & config & memory & index & render
+    builtin --> dispatch & catalog & secrets & config & memory & index & render & applenotes
     render --> connectors & obs
     commands --> dispatch & engine & rpc & config
     summarize --> store & engine & obs & transcript

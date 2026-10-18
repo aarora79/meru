@@ -362,7 +362,7 @@ func TestRememberRunsHook(t *testing.T) {
 }
 
 // TestBuiltinToolsSwitch checks [builtin] tools. With every setting there,
-// the thirteen names config.BuiltinTools gives are exactly the tools offered
+// the sixteen names config.BuiltinTools gives are exactly the tools offered
 // and listed. A name left out is neither offered, listed nor run. A listed
 // tool whose setting is missing stays off, and Off says why.
 func TestBuiltinToolsSwitch(t *testing.T) {
@@ -394,6 +394,9 @@ func TestBuiltinToolsSwitch(t *testing.T) {
 	all.UseSearch(&fakeSearcher{})
 	all.UseImageSearch(&fakeImageSearcher{})
 	all.UseAbout(func(context.Context) About { return About{} })
+	// The notes tools need only a path to be offered; nothing opens it
+	// here, so they're on with any path, on any system.
+	all.UseNotes(filepath.Join(dir, "NoteStore.sqlite"))
 	want := config.BuiltinTools()
 	slices.Sort(want)
 	if offered, listed := names(all); !slices.Equal(offered, want) || !slices.Equal(listed, want) {
@@ -421,7 +424,7 @@ func TestBuiltinToolsSwitch(t *testing.T) {
 		}
 		offTools = append(offTools, o.Tool)
 	}
-	wantOff := []string{AboutMeru, Remember, WriteFile, ReadFile, ListFolder, Grep, SearchFiles, SearchImages, ViewImage, WebSearch}
+	wantOff := []string{AboutMeru, Remember, WriteFile, ReadFile, ListFolder, Grep, SearchFiles, SearchImages, ViewImage, WebSearch, SearchNotes, ListNotes, ReadNote}
 	if !slices.Equal(offTools, wantOff) {
 		t.Errorf("Off = %v, want %v", offTools, wantOff)
 	}

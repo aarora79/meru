@@ -287,7 +287,7 @@ func TestWebConnectorRule(t *testing.T) {
 				t.Errorf("webOK = %v, %q", ok, sentence)
 			}
 			// The Settings card shows the same state and sentence.
-			conn := builtinConnection(tt.cfg, c.web.Status())
+			conn := builtinConnection(tt.cfg, c.web.Status(), "")
 			if conn.Web != tt.state || conn.WebSentence != tt.sentence {
 				t.Errorf("builtin connection web = %s %q", conn.Web, conn.WebSentence)
 			}

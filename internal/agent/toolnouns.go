@@ -118,6 +118,8 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 		return "names a tool server"
 	case asksToRemember(question, specs):
 		return "asks Meru to remember"
+	case asksForAppleNotes(question, specs):
+		return "names Apple Notes"
 	case asksForWeb(question, specs):
 		return "asks for the web"
 	case givesURL(question, specs):
@@ -126,6 +128,26 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 		return "names what a tool handles"
 	}
 	return ""
+}
+
+// asksForAppleNotes reports whether question names Apple Notes, as
+// "apple notes", "apple note" or "notes app", in any case, while specs
+// hold one of the Apple Notes tools. "my notes" alone doesn't count: it
+// may mean notes in the user's folders or an Obsidian vault. The router
+// isn't told about these tools, since adding built-ins to its prompt cut
+// its accuracy (see ConnectedTools); this rule widens the route after it.
+func asksForAppleNotes(question string, specs []engine.ToolSpec) bool {
+	if !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return builtin.IsNotesTool(s.Name) }) {
+		return false
+	}
+	ws := words(question)
+	for i := 0; i+1 < len(ws); i++ {
+		pair := ws[i] + " " + ws[i+1]
+		if pair == "apple notes" || pair == "apple note" || pair == "notes app" {
+			return true
+		}
+	}
+	return false
 }
 
 // toolNouns returns the nouns in the names of the MCP and A2A tools in
