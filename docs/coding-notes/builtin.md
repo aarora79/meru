@@ -2,10 +2,10 @@
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
 `about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
-`web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, and the
+`web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`, and the
 tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
 `chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
-`webrender_test.go`, `upload_test.go` and
+`webrender_test.go`, `upload_test.go`, `notes_test.go` and
 `images_test.go`, with the PDF in `testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
@@ -25,8 +25,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are thirteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all thirteen by default. When you say "connect my Gmail" in chat, the model calls
+There are sixteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all sixteen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -915,6 +915,33 @@ file under `imageName`, which is `safeName` with the ending kept, in lower
 case, even when a long name is cut. `Upload` returns an `Uploaded`, the copy's
 path and its kind: `rpc.AttachImage` or `rpc.AttachFile`.
 
+### notes.go
+
+`search_notes`, `list_notes` and `read_note` read your Apple Notes through
+[applenotes](applenotes.md). `merud` calls `UseNotes` with the database's
+path once at startup, on a Mac only; with no path, `notesOff` keeps the three
+tools off and gives the reason `Off` logs, "Apple Notes is only on macOS" on
+Linux and Windows. Whether macOS lets `merud` read the file is checked on each
+call, not at startup, so a user who grants Full Disk Access doesn't have to
+restart `merud`.
+
+`callNotes` opens the database, runs the tool, and closes it with `defer`. When
+`applenotes.Open` returns `ErrNoAccess`, `notesError` hands the model
+`NotesNoAccess`, a sentence that says where in System Settings to turn on Full
+Disk Access for `merud`. A real turn showed why the words matter: told only
+"unable to open database file", the model guessed that Notes was syncing.
+
+`read_note` pages a long note the way `read_file` pages a file: 12,000
+characters per call, and a line that names the offset to pass next. A locked
+note gives its title and says it's locked. `NotesAccess`, which opens and
+closes the database once, is what `merud` logs at startup and what the
+Settings screen checks before it shows `NotesNoAccess`.
+
+The three tools only read, so `Confirm` gives them `ConfirmNever`. They aren't
+on `EveryRoute`: they join the tools routes, and the agent's
+`asksForAppleNotes` rule gives a question that says "Apple Notes" or "Notes
+app" those routes (see [agent](agent.md)).
+
 ### images.go
 
 Beside the image half of `Upload`, this file holds `Image`, which the agent
@@ -1068,7 +1095,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the thirteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the sixteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1161,7 +1188,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all thirteen. `web_fetch` had its own key under `[web]` before; two
+  same way for all sixteen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

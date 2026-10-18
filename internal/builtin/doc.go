@@ -1,17 +1,20 @@
 // Package builtin holds the tools built into merud, as one dispatch.Backend.
-// There are eleven: configure, which adds an MCP server to config.toml when
+// There are sixteen: configure, which adds an MCP server to config.toml when
 // you ask in chat ("connect my Gmail"); datetime, which reads the clock;
 // about_meru, which reports merud's own facts, such as the exact name of
 // each model, so the model doesn't answer from its training; remember,
 // which saves one fact about you as a memory file; write_file, which saves
 // a file the model made inside [skills] output_dir; read_file, list_folder
 // and grep, which read the [index] folders and the output folder;
-// search_files, which runs Meru's hybrid search over them; and web_search and web_fetch, which
-// search the web through the user's SearXNG and read, answer from or
-// download one public page.
+// search_files, which runs Meru's hybrid search over them; search_images
+// and view_image, which find a picture there and show it to a model that
+// can see; web_search and web_fetch, which search the web through the
+// user's SearXNG and read, answer from or download one public page; and
+// search_notes, list_notes and read_note, which read the user's Apple Notes
+// live from the Notes app's database, on a Mac (notes.go).
 //
 // [builtin] tools in config.toml lists the ones the model may use; all
-// eleven by default. A tool it leaves out isn't offered, listed or run. A listed
+// sixteen by default. A tool it leaves out isn't offered, listed or run. A listed
 // tool whose setting is missing, such as the file tools with no [index]
 // folders, stays off too, and Off says why so merud can log it. See
 // ARCHITECTURE.md, "First run and setup", "Approving a tool call", "Memory",

@@ -2,7 +2,8 @@
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
 // the past chats those three read in chats.go, AttachmentText in attachments.go, search_files in search.go, and
-// web_search and web_fetch in web.go, webguard.go and webdownload.go.
+// web_search and web_fetch in web.go, webguard.go and webdownload.go, and
+// search_notes, list_notes and read_note in notes.go.
 
 package builtin
 
@@ -63,6 +64,10 @@ type Tools struct {
 	// not; nil means it works whenever [web] searxng_url is set. See
 	// UseWebCheck.
 	webReady func() (bool, string)
+
+	// notesPath is the Apple Notes database the notes tools read, set by
+	// UseNotes on a Mac; "" leaves them out. See notes.go.
+	notesPath string
 
 	// sessionsDir is the folder of past chats the file tools also read,
 	// set by ReadSessions; "" when they don't read it. See chats.go.
@@ -171,8 +176,8 @@ func (t *Tools) Off() []Off {
 }
 
 // missing returns why the tool name can't run, or "" when it can. Only
-// remember, write_file, the file tools, web_search and about_meru need a
-// setting.
+// remember, write_file, the file tools, web_search, about_meru and the
+// Apple Notes tools need a setting.
 func (t *Tools) missing(name string) string {
 	switch name {
 	case Remember:
@@ -209,6 +214,8 @@ func (t *Tools) missing(name string) string {
 		if t.about == nil {
 			return "merud gave it no facts to report"
 		}
+	case SearchNotes, ListNotes, ReadNote:
+		return t.notesOff()
 	}
 	return ""
 }
@@ -251,6 +258,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		specs = append(specs, viewImageSpec())
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
+	if t.notesOff() == "" {
+		specs = append(specs, notesSpecs()...)
+	}
 	search, _ := t.webSearchOn()
 	// DeleteFunc drops, in place, each spec the function returns true for.
 	return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool {
@@ -393,6 +403,15 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			"Asks first for a URL no search or question of yours gave, and before any download.",
 		Confirm: t.Confirm(WebFetch) != dispatch.ConfirmNever,
 	})
+	if t.notesOff() == "" {
+		for _, name := range []string{SearchNotes, ListNotes, ReadNote} {
+			tools = append(tools, rpc.ToolInfo{
+				Name:        name,
+				Description: Summary(name),
+				Confirm:     t.Confirm(name) != dispatch.ConfirmNever,
+			})
+		}
+	}
 	tools = slices.DeleteFunc(tools, func(ti rpc.ToolInfo) bool { return !t.enabled(ti.Name) })
 	return []rpc.ServerInfo{{
 		Name:      server,
@@ -455,6 +474,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.webSearch(ctx, args)
 	case name == WebFetch:
 		text, err = t.webFetch(ctx, args)
+	case IsNotesTool(name) && t.notesOff() == "":
+		text, err = t.callNotes(ctx, name, args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}
@@ -717,6 +738,12 @@ func Summary(name string) string {
 		return "Searches the web through the SearXNG instance [web] searxng_url names."
 	case WebFetch:
 		return "Reads a public web page. It asks first for a URL no search or question of yours gave."
+	case SearchNotes:
+		return "Searches your Apple Notes by words. Needs Full Disk Access for merud."
+	case ListNotes:
+		return "Lists your Apple Notes folders and newest notes."
+	case ReadNote:
+		return "Reads one of your Apple Notes in full."
 	}
 	return ""
 }

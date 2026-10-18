@@ -237,12 +237,16 @@ internal/
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
                      `meru mcp add` runs before it saves a server
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
-  builtin/           the thirteen tools inside merud: `configure`, `datetime`, `about_meru`,
+  builtin/           the sixteen tools inside merud: `configure`, `datetime`, `about_meru`,
                      `remember`, `write_file`, the read-only `read_file`, `list_folder`,
                      `grep`, `search_files`, `search_images` (searchimages.go) and
-                     `view_image` (viewimage.go), and `web_search` and `web_fetch`
-                     (web.go, webguard.go, webdownload.go);
+                     `view_image` (viewimage.go), `web_search` and `web_fetch`
+                     (web.go, webguard.go, webdownload.go), and the Apple Notes tools
+                     `search_notes`, `list_notes` and `read_note` (notes.go);
                      chats.go lets the first three read the past chats in ~/.meru/sessions
+  applenotes/        reads the Notes app's NoteStore.sqlite, live and read-only, for the
+                     Apple Notes tools: schema found at run time, note text decoded from
+                     its gzipped protobuf
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)
@@ -326,7 +330,7 @@ docs/
 `about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
-`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render` or anything else that talks to a model, stores data
+`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
@@ -334,7 +338,7 @@ and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
 `memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
-`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors` or `render`. It starts programs
+`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors`, `render` or `applenotes`. It starts programs
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through

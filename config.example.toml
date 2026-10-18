@@ -185,7 +185,10 @@ capture_content  = false   # put question and answer text into spans
 #                 connects to sites off this machine, and they see your IP
 #                 address. It asks you first for a URL no search result or
 #                 question of yours gave, and before any download.
-tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "search_images", "view_image", "web_search", "web_fetch"]
+#   search_notes, list_notes, read_note
+#                 read your Apple Notes, live and read-only; macOS only, and
+#                 merud needs Full Disk Access in System Settings
+tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "search_images", "view_image", "web_search", "web_fetch", "search_notes", "list_notes", "read_note"]
 # Tools that ask before each call; each must be in tools. configure always
 # asks, whatever this says. Add "remember" to approve each memory; take out
 # "write_file" to let it save without asking.

@@ -843,7 +843,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
              "read_file", "list_folder", "grep", "search_files",
              "search_images", "view_image", "web_search",
-             "web_fetch"]   # all thirteen, the default
+             "web_fetch", "search_notes", "list_notes",
+             "read_note"]   # all sixteen, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -853,8 +854,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   works without it. An unknown name stops `merud` at load, with the valid names
   in the message, and so does a `confirm` entry that `tools` doesn't list. A
   listed tool still needs what it works on: the file tools need `[index]
-  folders`, `write_file` needs `[skills] output_dir`, and `web_search` needs
-  `[web] searxng_url`. Without it the tool stays off, and `merud` logs one info
+  folders`, `write_file` needs `[skills] output_dir`, `web_search` needs
+  `[web] searxng_url`, and the Apple Notes tools need a Mac. Without it the tool stays off, and `merud` logs one info
   line at startup that names the tool and the missing setting.
 
   The built-in tools are `configure`, which always asks, whatever `confirm` says
@@ -862,8 +863,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
-  clock tool, `datetime`; `about_meru`, which reports this setup; and six
-  read-only file tools. `web_search`, `datetime`, `about_meru` and the file
+  clock tool, `datetime`; `about_meru`, which reports this setup; six
+  read-only file tools; and three read-only Apple Notes tools. `web_search`, `datetime`, `about_meru` and the file
   tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
 
@@ -879,6 +880,9 @@ and arguments and offers the choices `merud` sends, at most these three:
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
   | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it: on every route while `web_search` is on too, and on the tools routes alone otherwise. |
+  | `search_notes` | The user's Apple Notes that hold every word of `query`, in the title or the text, ignoring case: notes whose title matches first, newest first, 10 by default and at most 30, each with its id, title, folder, modified date and a snippet. `folder` limits it to one Notes folder. Offered on the tools routes, on a Mac. |
+  | `list_notes` | With no `folder`, every Notes folder with its note count, then the newest notes; with a `folder`, that folder's notes, newest first. Each note comes with its id. |
+  | `read_note` | One note's text by its id, 12,000 characters per call with the offset for the next, like `read_file`. A locked note gives its title and says it's locked. |
 
   The file tools reach only the `[index] folders`, `[skills] output_dir`
   (`~/meru-output`) and, for `read_file`, `list_folder` and `grep`, the session
@@ -899,6 +903,30 @@ and arguments and offers the choices `merud` sends, at most these three:
   file inside it stays skipped, and the rest of `~/.meru`, `config.toml` and
   `secrets.toml` among it, stays out of reach. `merud` leaves the file tools
   out when no `[index]` folder is listed.
+
+  The Apple Notes tools read the Notes app's own database,
+  `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite`, through
+  `internal/applenotes`. Each call opens it read-only, answers and closes it, so
+  an answer shows the notes as they are now, changes still in the database's
+  `-wal` file included. Meru keeps no index or copy of a note. Apple publishes
+  no schema, so the reader looks up the entity numbers for notes and folders in
+  `Z_PRIMARYKEY` and the column names with `PRAGMA table_info`, which differ
+  between macOS releases, and decodes a note's text from its gzipped protobuf
+  with `google.golang.org/protobuf`'s wire reader. Deleted notes and Recently
+  Deleted stay out, and a locked note's text is never read. The tools never
+  write: a row written behind the Notes app's back can break its iCloud sync,
+  and writing through the Notes app needs `osascript`, which Meru doesn't run
+  (see [Local commands](#local-commands)).
+
+  Reading the database needs Full Disk Access for `merud`, the program launchd
+  runs. macOS never asks for it; it refuses the open. Until the user grants it,
+  each Notes tool returns one sentence that says where to turn it on, the
+  Settings screen shows the same sentence, and `merud` logs at startup whether it
+  can read the notes. `merud` carries an ad-hoc signature, so macOS ties the
+  grant to the binary's exact build: after every update the user turns Full
+  Disk Access for `merud` off and on again. A question that says "Apple Notes"
+  or "Notes app" gets the tools on a route that lacks them (see
+  [Routing](#routing)); the router itself isn't told about them.
 
   In `tool_calls` and the metrics, a built-in call has `kind = "builtin"` and
   `server = "meru"`.
@@ -1474,8 +1502,9 @@ order.
    the model alone. Five rules then adjust the route (see [Routing](#routing)):
    a `direct` question that names an indexed folder or asks about past chats
    becomes `search`, a question that names a connected tool server gets tools, and so does a
-   question that says "remember", asks for the web, gives a URL, or names
-   what a connected server's tools act on ("email" for Gmail's tools). The
+   question that says "remember", names Apple Notes, asks for the web, gives a
+   URL, or names what a connected server's tools act on ("email" for Gmail's
+   tools). The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
@@ -1959,7 +1988,12 @@ that holds the tool schemas.
 The third: when the question holds "remember" as a whole word and the route is
 `direct` or `search`, the loop adds the rest, so the model can call `remember`. "Remember that I
 work on the registry team" reads like chit-chat to the router, and a `direct` turn
-would answer "noted" and save nothing.
+would answer "noted" and save nothing. The same rule covers Apple Notes: a
+question that says "Apple Notes" or "Notes app" gets tools while the Apple Notes
+tools are on. "My notes" alone doesn't count, since it may mean the notes in
+your folders or an Obsidian vault. The router's prompt doesn't name these
+tools: adding "web pages" and "remember" to it once cut its accuracy on the
+labelled fit set from 0.907 to 0.850.
 
 The fourth: when the question asks for the web and `web_search` exists, or gives
 an http or https URL and `web_fetch` exists, and the route is `direct` or
@@ -4836,6 +4870,12 @@ transcript lines hold. No level writes question or answer text. With
   which Meru offers while the `main` model lists `vision`; the bytes go to Ollama
   on loopback, and the transcript keeps only the file's name and size.
   `[index] images = false` keeps images out of the index.
+- The Apple Notes tools read the Notes app's database only when the model calls
+  one, and only once you give `merud` Full Disk Access. What they return goes to
+  the local model, and the transcript and `tool_calls` keep it as they keep any
+  tool result. They never write to the database, and Meru keeps no copy of a
+  note. Take the three names out of `[builtin] tools`, or turn off Full Disk
+  Access for `merud`, and Meru reads no note.
 - `meru log` and the `tool_calls` table let you review every external action.
 - The Mac installer downloads only what a step names, after you press Continue:
   Ollama and uv through Homebrew, the models through Ollama, the SearXNG image

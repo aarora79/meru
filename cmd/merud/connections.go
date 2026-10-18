@@ -17,7 +17,9 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/aarora79/meru/internal/applenotes"
 	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
@@ -60,7 +62,7 @@ func (s *toolService) connectionsEvent() (rpc.Event, error) {
 		live[info.Kind+":"+info.Name] = info
 	}
 
-	conns := []rpc.Connection{builtinConnection(cfg, s.conns.web.Status())}
+	conns := []rpc.Connection{builtinConnection(cfg, s.conns.web.Status(), s.notesNote(cfg))}
 	for _, srv := range cfg.MCP.Servers {
 		c := rpc.Connection{Name: srv.Name, Kind: dispatch.KindMCP, Transport: "stdio", Remote: srv.Remote}
 		if srv.URL != "" {
@@ -125,12 +127,13 @@ func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connec
 	return c
 }
 
-// builtinConnection lists merud's own tools, every one of the eleven, with
-// its policy from [builtin] tools and confirm. configure always asks.
-// web is the SearXNG connector's status, which the Web search card shows
-// in place of a flat "connected". Note says why web_search does nothing
-// yet when [web] searxng_url is empty.
-func builtinConnection(cfg config.Config, web connectors.Status) rpc.Connection {
+// builtinConnection lists merud's own tools, every one of them, with its
+// policy from [builtin] tools and confirm. configure always asks. web is
+// the SearXNG connector's status, which the Web search card shows in place
+// of a flat "connected". Note says why web_search does nothing yet when
+// [web] searxng_url is empty, and adds notes, the sentence notesNote
+// returns while macOS keeps merud out of Apple Notes.
+func builtinConnection(cfg config.Config, web connectors.Status, notes string) rpc.Connection {
 	c := rpc.Connection{Name: "meru", Kind: dispatch.KindBuiltin, State: rpc.MCPConnected,
 		Web: web.State, WebSentence: web.Sentence}
 	for _, name := range config.BuiltinTools() {
@@ -144,7 +147,27 @@ func builtinConnection(cfg config.Config, web connectors.Status) rpc.Connection 
 	if cfg.Web.SearXNGURL == "" {
 		c.Note = "web_search needs a SearXNG instance on this machine: set [web] searxng_url in config.toml, or run meru setup."
 	}
+	if notes != "" {
+		c.Note = strings.TrimSpace(c.Note + " " + notes)
+	}
 	return c
+}
+
+// notesNote returns builtin.NotesNoAccess while config turns on an Apple
+// Notes tool and macOS keeps merud out of the Notes database, and ""
+// otherwise. It opens and closes the database once, which takes a few
+// milliseconds; the two-second limit covers a database the Notes app
+// holds locked.
+func (s *toolService) notesNote(cfg config.Config) string {
+	if s.bt == nil || !slices.ContainsFunc(cfg.Builtin.Tools, builtin.IsNotesTool) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if errors.Is(s.bt.NotesAccess(ctx), applenotes.ErrNoAccess) {
+		return builtin.NotesNoAccess
+	}
+	return ""
 }
 
 // fillPolicies fills in c's state and tools from info, what the backend

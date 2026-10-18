@@ -49,6 +49,7 @@ Read them in this order; each builds on the ones before it.
 28. [testing](testing.md): how Meru tests itself, from unit tests to fakes
 29. [end-to-end tests](e2e.md): the real binaries, run against a fake Ollama
 30. [render](render.md): `web_fetch`'s page reader, a headless Chrome per page that needs JavaScript, behind a proxy
+31. [applenotes](applenotes.md): reading the Notes app's database, live and read-only, for the Apple Notes tools
 
 ### Go basics
 
