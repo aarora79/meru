@@ -295,6 +295,7 @@ dist/                git-ignored; `make release` packs a release here
 bench/               git-ignored; the private benchmark: tasks.jsonl, results/ and home/
 docs/
   architecture/      100.md, 200.md and the HTML pages 100.html, 200.html and 300.html;
+                     harness.md, one turn through the agent harness at level 300;
                      index.html sends old links to 100.html; img/ holds the figures
                      as PNG files and render.sh, which draws them
   coding-notes/      one note per package, and go-basics/ for Go concepts
