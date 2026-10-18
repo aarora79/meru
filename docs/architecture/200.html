@@ -1054,7 +1054,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 
 <h3 id="installer">The Mac installer</h3>
 
-<p>On a Mac, each release's disk image holds "Install Meru.app", a window that does all of the above and more, before <code>merud</code> exists. It is a program of its own, because it has to run other programs, and the clients never do. It walks through ten steps and says for each what it does, why, and what it downloads:</p>
+<p>On a Mac, each release's disk image holds "Install Meru.app", a window that does all of the above and more, before <code>merud</code> exists. It is a program of its own, because it has to run other programs, and the clients never do. It walks through eleven steps and says for each what it does, why, and what it downloads:</p>
 
 <ol>
   <li><b>Check this Mac</b>: the chip, macOS, memory and free disk, and the models that fit. Every Mac gets <code>lite</code>; with 32 GB or more it suggests a bigger answer model too, from one table in <code>internal/config</code>.</li>
@@ -1063,6 +1063,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
   <li><b>Folders to search</b>: Documents, Desktop and Notes with their file counts, and any folder you pick.</li>
   <li><b>Web search</b>: turns web search on, for <code>merud</code> to run SearXNG in Docker, listening on <code>127.0.0.1:8888</code> only. A SearXNG already there stays as it is.</li>
   <li><b>Obsidian notes</b>: asks for your vault folder.</li>
+  <li><b>Apple Notes</b>: turns on the tools that read your notes, and opens the Full Disk Access list in System Settings, where you turn it on for <code>merud</code>. macOS never asks for that access, and no program can grant it for you.</li>
   <li><b>Skills and commands</b>: turns the built-in skills on, and turns on the sample read-only commands you tick.</li>
   <li><b>Gmail, Calendar and Drive</b>: walks through Google's console and takes your address, client ID and client secret.</li>
   <li><b>About you</b>: your name, which you must give, so Meru knows who "I" means, and your email and how you like answers.</li>

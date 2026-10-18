@@ -90,10 +90,10 @@ func TestFlowOneAtATime(t *testing.T) {
 	}
 }
 
-// TestStepList checks the ten steps: their order, their text, and that
+// TestStepList checks the eleven steps: their order, their text, and that
 // only About you can't be skipped.
 func TestStepList(t *testing.T) {
-	want := []string{StepCheck, StepMeru, StepOllama, StepFolders, StepWeb, StepObsidian, StepSkills, StepGoogle, StepProfile, StepStart}
+	want := []string{StepCheck, StepMeru, StepOllama, StepFolders, StepWeb, StepObsidian, StepNotes, StepSkills, StepGoogle, StepProfile, StepStart}
 	steps := NewFlow().Steps()
 	if len(steps) != len(want) {
 		t.Fatalf("%d steps, want %d", len(steps), len(want))

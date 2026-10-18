@@ -446,6 +446,8 @@ func (b *Bridge) run(ctx context.Context, id string, in Input, say func(string))
 		return b.runConnector(id, func(cfg config.Config) (string, *HandOff, error) {
 			return SetUpObsidian(p, connectorState(cfg, "obsidian"), in.Obsidian)
 		})
+	case StepNotes:
+		return SetUpNotes(p)
 	case StepSkills:
 		return SaveSkillsAndCommands(p, in.Commands)
 	case StepGoogle:

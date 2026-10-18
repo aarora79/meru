@@ -924,7 +924,8 @@ and arguments and offers the choices `merud` sends, at most these three:
   Settings screen shows the same sentence, and `merud` logs at startup whether it
   can read the notes. `merud` carries an ad-hoc signature, so macOS ties the
   grant to the binary's exact build: after every update the user turns Full
-  Disk Access for `merud` off and on again. A question that says "Apple Notes"
+  Disk Access for `merud` off and on again. The Mac installer's Apple Notes step
+  walks the user through the grant (see [Installer](#installer)). A question that says "Apple Notes"
   or "Notes app" gets the tools on a route that lacks them (see
   [Routing](#routing)); the router itself isn't told about them.
 
@@ -3107,8 +3108,8 @@ match ordinary words. A config file you share or commit holds names only.
 ## Installer
 
 The Mac installer, "Install Meru.app", takes a Mac with Apple silicon from nothing
-to a running Meru in ten steps: Ollama and the models, folders in the index, web
-search, your Obsidian notes, skills and commands, Google if you want it, your
+to a running Meru in eleven steps: Ollama and the models, folders in the index, web
+search, your Obsidian notes, your Apple Notes, skills and commands, Google if you want it, your
 profile, and `merud` started at login, which then installs the connectors you
 turned on. Each release carries it in a disk image, `Meru-vX.Y.Z-macos-arm64.dmg`,
 beside the zip files. `scripts/install.sh` and the `meru-install` skill stay for
@@ -3131,7 +3132,7 @@ What runs where:
 | Part | Runs as | Does |
 | --- | --- | --- |
 | `cmd/meru-installer` | the window | serves the page, binds the Bridge, shows the folder dialog |
-| `internal/installer` | the installer's process | the ten steps, the Bridge the page calls, the allowlist of programs |
+| `internal/installer` | the installer's process | the eleven steps, the Bridge the page calls, the allowlist of programs |
 | programs from the allowlist | child processes, no shell | `brew`, `launchctl`, `open`, `ditto`, `xattr`, `codesign`, `sysctl`, `sw_vers`, `df` |
 | Ollama | Ollama.app, or a Homebrew service | answers `POST /api/pull`, whose stream gives each download's progress |
 | `merud` | the launchd job `com.meru.merud` | the connectors the last step hands it, and everything after the last step |
@@ -3161,7 +3162,10 @@ What runs where:
   deletes the app when the check fails. It sends no telemetry and never checks for
   updates.
 - Each link on its screens is a name that the Bridge maps to a fixed `https`
-  address. The page can't open an address of its own.
+  address. The page can't open an address of its own. The Apple Notes step's two
+  buttons have a Bridge method each: one opens the fixed System Settings address
+  of the Full Disk Access list, the other shows `~/.local/bin/merud` in Finder
+  with `open -R`.
 
 **The steps.** Each screen says what the step does, why Meru needs it, and what it
 downloads and how long it takes. Continue runs it and shows its progress line by
@@ -3176,10 +3180,11 @@ and Skip. You can skip every step but About you.
 | 4 | Folders to search | lists the folders config has, then Documents, Desktop and Notes with file counts; the system's folder dialog adds more | `[index] folders` |
 | 5 | Web search | keeps a SearXNG that already answers JSON on `127.0.0.1:8888`, which `merud` then only watches. Otherwise it looks for the `docker` command in its usual places, and hands the SearXNG connector to the last step, turned on | `[web] searxng_url`; `web_search` and `web_fetch` in `[builtin] tools` |
 | 6 | Obsidian notes | takes your vault folder from the folder dialog, checks it is a folder, and hands the Obsidian connector to the last step with it. An `obsidian` entry in `[[mcp.servers]]` stays as it is, or goes to the last step as an Adopt | nothing |
-| 7 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
-| 8 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, and hands the Google connector to the last step with them. A `google` entry stays as it is, or goes to the last step as an Adopt | `~/meru-output/attachments/` |
-| 9 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
-| 10 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, hands `merud` the connectors, then follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job; `merud` writes `[connectors.<id>]` and `secrets.toml` |
+| 7 | Apple Notes | turns on the three notes tools; a button opens the Full Disk Access list in System Settings and another shows `merud` in Finder, to drag into it. No program can grant that access, so the step can't check it; `merud` checks on each call | `search_notes`, `list_notes` and `read_note` in `[builtin] tools` |
+| 8 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
+| 9 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, and hands the Google connector to the last step with them. A `google` entry stays as it is, or goes to the last step as an Adopt | `~/meru-output/attachments/` |
+| 10 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
+| 11 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, hands `merud` the connectors, then follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job; `merud` writes `[connectors.<id>]` and `secrets.toml` |
 
 The last screen lists what each step did, or that you skipped it. It names
 `~/.meru/config.toml`, with a button that opens it in your text editor, and says

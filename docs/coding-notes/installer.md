@@ -2,7 +2,7 @@
 
 **Code:** `internal/installer/` (`doc.go`, `run.go`, `steps.go`, `bridge.go`,
 `machine.go`, `configfile.go`, `meru.go`, `ollama.go`, `folders.go`,
-`websearch.go`, `obsidian.go`, `commands.go`, `google.go`, `profile.go`,
+`websearch.go`, `obsidian.go`, `notes.go`, `commands.go`, `google.go`, `profile.go`,
 `connectors.go`, `merud.go`,
 `assets.go`, the page in `web/`, and `launchd/com.meru.merud.plist`, a copy of
 the one in `deploy/`), plus `cmd/meru-installer/main.go` and its `Info.plist`
@@ -12,7 +12,7 @@ the one in `deploy/`), plus `cmd/meru-installer/main.go` and its `Info.plist`
 ## What it does
 
 The Mac installer is "Install Meru.app" on each release's disk image. It walks a
-person through ten steps, from checking the Mac to starting `merud`, and each step
+person through eleven steps, from checking the Mac to starting `merud`, and each step
 says what it does and what it downloads before it runs.
 
 The installer runs before `merud` exists, so it has to do what the clients never
@@ -32,7 +32,7 @@ the real programs and servers.
 flowchart LR
     page["page<br/>(web/installer.js)"] -- "Run, Skip, Screen" --> bridge[Bridge]
     bridge --> flow["Flow<br/>(steps.go)"]
-    bridge --> steps["the ten steps<br/>(meru.go, ollama.go, ...)"]
+    bridge --> steps["the eleven steps<br/>(meru.go, ollama.go, ...)"]
     steps --> run["Runner<br/>(run.go)"]
     run --> progs["brew, launchctl,<br/>open, ditto, xattr, ..."]
     steps --> http["HTTP on 127.0.0.1<br/>Ollama, SearXNG"]
@@ -80,7 +80,7 @@ runs.
 
 ### steps.go
 
-`Flow` holds the ten steps and their states: pending, running, done, failed or
+`Flow` holds the eleven steps and their states: pending, running, done, failed or
 skipped. `Start` moves a step to running and refuses while another runs, `Finish`
 moves it to done or failed with the reason, and `Skip` refuses for About you,
 the one step with `Skippable` false. A `sync.Mutex` guards the list, because Wails
@@ -158,7 +158,8 @@ older installer started, and the step hands nothing over: `merud` watches it as
 an external SearXNG. Otherwise it needs Docker, which `HasDocker` looks for at
 its usual paths with `os.Stat`, and returns a `HandOff` that turns the SearXNG
 connector on. Either way it sets `[web] searxng_url` and makes sure `[builtin]
-tools` has both web tools. The Bridge passes `HasDocker`'s answer in, so the
+tools` has both web tools, through `turnOnTools`, which adds the names a list
+lacks and leaves a full list alone. The Bridge passes `HasDocker`'s answer in, so the
 tests don't depend on the Mac they run on.
 
 ### obsidian.go
@@ -169,6 +170,28 @@ returns a `HandOff` with `vault_path` as the user wrote it. `connectorState`
 reads config: when `[[mcp.servers]]` has an `obsidian` entry, the step keeps it
 unless the user picked Adopt, and then the hand-off is an adopt. `ObsidianFound`
 says what a second run finds.
+
+### notes.go
+
+`SetUpNotes` turns on `search_notes`, `list_notes` and `read_note` with
+`turnOnTools`, and that is all it can do. Reading Apple Notes needs Full Disk
+Access for `merud`, and macOS lets only the user grant that, in System Settings;
+it never asks, and no program can turn it on or read whether it is on. So the
+screen gives two buttons, each a Bridge method that runs `open`, which the
+allowlist already holds:
+
+- `OpenFullDiskAccess` opens `FullDiskAccessURL`, an
+  `x-apple.systempreferences:` address that System Settings opens at Privacy &
+  Security, Full Disk Access. The address is a constant, as each of `Links()`
+  is, so the page can't open one of its own.
+- `ShowMerud` runs `open -R ~/.local/bin/merud`, which shows the file selected
+  in a Finder window, ready to drag into the list. It refuses with a sentence
+  when `merud` isn't there, because the Install Meru step was skipped.
+
+The step sits after Install Meru, which copies `merud` in, and before Start
+Meru. The grant belongs to that copy: a new build loses it (see
+[applenotes](applenotes.md)), so after an update the screen says to turn the
+switch off and on again.
 
 ### commands.go
 

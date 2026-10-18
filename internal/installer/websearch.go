@@ -139,22 +139,30 @@ func saveWebConfig(p Paths) (string, error) {
 			return "", err
 		}
 	}
+	if err := turnOnTools(p, cfg, webTools()); err != nil {
+		return "", err
+	}
+	return "Set [web] searxng_url = \"" + SearXNGURL + "\" and turned on web_search and web_fetch in " + p.Tilde(p.Config()) + ".", nil
+}
+
+// turnOnTools adds each of names that [builtin] tools lacks to that list
+// in config.toml, which cfg holds, and leaves the file alone when the list
+// has them all. It fails when the file can't be written, or reads back
+// with a different list.
+func turnOnTools(p Paths, cfg config.Config, names []string) error {
 	tools := slices.Clone(cfg.Builtin.Tools)
-	for _, t := range webTools() {
+	for _, t := range names {
 		if !slices.Contains(tools, t) {
 			tools = append(tools, t)
 		}
 	}
-	if len(tools) != len(cfg.Builtin.Tools) {
-		err := catalog.SetTableLists(p.Config(), "builtin", map[string][]string{"tools": tools}, func(c config.Config) error {
-			if !slices.Equal(c.Builtin.Tools, tools) {
-				return fmt.Errorf("[builtin] tools came out as %v", c.Builtin.Tools)
-			}
-			return nil
-		})
-		if err != nil {
-			return "", err
-		}
+	if len(tools) == len(cfg.Builtin.Tools) {
+		return nil
 	}
-	return "Set [web] searxng_url = \"" + SearXNGURL + "\" and turned on web_search and web_fetch in " + p.Tilde(p.Config()) + ".", nil
+	return catalog.SetTableLists(p.Config(), "builtin", map[string][]string{"tools": tools}, func(c config.Config) error {
+		if !slices.Equal(c.Builtin.Tools, tools) {
+			return fmt.Errorf("[builtin] tools came out as %v", c.Builtin.Tools)
+		}
+		return nil
+	})
 }
