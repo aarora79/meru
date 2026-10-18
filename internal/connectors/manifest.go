@@ -36,6 +36,7 @@ const (
 	KindStdio      = "stdio"      // Meru starts the program and talks MCP over its stdin and stdout
 	KindHTTP       = "http"       // Meru starts the program and talks MCP to it at a loopback URL
 	KindContainer  = "container"  // Meru runs a container image and sends HTTP requests to it
+	KindService    = "service"    // Meru starts the program and sends it plain HTTP requests at a loopback URL
 	KindDependency = "dependency" // Meru only checks the program, such as Ollama, and reports on it
 )
 
@@ -112,6 +113,19 @@ type Install struct {
 	// sha256_<os>_<arch>; parse gathers them here, since a struct tag
 	// can't name a key that changes with the platform.
 	Binaries map[string]Binary `toml:"-"`
+	// Files are extra downloads a binary install may need, such as a
+	// model, each pinned by its SHA-256. The TOML writes each one as an
+	// [[install.files]] table. A file downloads only when a {file.<id>}
+	// placeholder picks it, so a choice of three models downloads one.
+	Files []File `toml:"files"`
+}
+
+// File is one extra download: the name it is saved under in the install
+// folder, where it comes from, and the SHA-256 it must have.
+type File struct {
+	Name   string `toml:"name"`
+	URL    string `toml:"url"`
+	SHA256 string `toml:"sha256"`
 }
 
 // Binary is one platform's download: where it is and the SHA-256 it must
@@ -127,20 +141,27 @@ type Binary struct {
 // Command, Args, Env values, URL and Volumes may hold placeholders that
 // merud fills in when it starts the program: {pkg} is the folder the
 // connector is installed in, {meru_dir} is the Meru home (~/.meru), and
-// {field.<id>} is the value the user gave for that field.
+// {field.<id>} is the value the user gave for that field. Two more are
+// for a service: {file.<id>} is the path of the [[install.files]] entry
+// the choice field <id> names, and {token} is a random value merud makes
+// for each start, which BasePath uses to hide the server's routes.
 type Launch struct {
 	// Command is the program to run, by absolute path once placeholders
-	// are filled in. stdio and http only.
+	// are filled in. stdio, http and service only.
 	Command string   `toml:"command"`
 	Args    []string `toml:"args"`
 	// Env adds environment variables for the program.
 	Env map[string]string `toml:"env"`
-	// URL is where Meru reaches the program, and must be loopback. http
-	// and container only.
+	// URL is where Meru reaches the program, and must be loopback. http,
+	// container and service only.
 	URL string `toml:"url"`
 	// Port is the port the program itself listens on: the URL's port for
-	// an http server, the port inside the container for a container.
+	// an http server or a service, the port inside the container for a
+	// container.
 	Port int `toml:"port"`
+	// BasePath goes in front of every path Meru asks a service for, the
+	// health check's included, such as "/{token}". service only.
+	BasePath string `toml:"base_path"`
 	// Auth is AuthNone or AuthOAuth. http only.
 	Auth string `toml:"auth"`
 	// Volumes are container mounts, "<folder on this machine>:<folder in
@@ -175,8 +196,8 @@ type Health struct {
 	// Expect says what a good answer holds: "nonempty", "contains:<text>"
 	// or "json_key:<key>". Empty means any answer that isn't an error.
 	Expect string `toml:"expect"`
-	// Path is the URL path to GET, starting with "/". container and
-	// dependency only.
+	// Path is the URL path to GET, starting with "/". container, service
+	// and dependency only.
 	Path string `toml:"path"`
 }
 
@@ -367,7 +388,8 @@ var placeholder = regexp.MustCompile(`\{([^{}]*)\}`)
 //   - a version is exact, a container image has a digest, and a binary
 //     download has a SHA-256 for each platform it names;
 //   - field IDs are unique, a secret has no default, a pattern compiles;
-//   - an http server's URL is loopback, and its port matches;
+//   - an http server's or a service's URL is loopback, and its port
+//     matches;
 //   - a launch placeholder names a field the manifest has, and a secret
 //     never goes on the command line, where any user can read it;
 //   - the health check and the tool lists fit the kind.
@@ -395,15 +417,15 @@ func Validate(m Manifest) error {
 	}
 
 	switch m.Kind {
-	case KindStdio, KindHTTP, KindContainer, KindDependency:
+	case KindStdio, KindHTTP, KindContainer, KindService, KindDependency:
 	default:
-		add("kind %q is unknown; use stdio, http, container or dependency", m.Kind)
+		add("kind %q is unknown; use stdio, http, container, service or dependency", m.Kind)
 	}
 
 	errs = append(errs, checkInstall(m.Kind, m.Install)...)
 	fields, fieldErrs := checkFields(m.Fields)
 	errs = append(errs, fieldErrs...)
-	errs = append(errs, checkLaunch(m.Kind, m.Launch, fields)...)
+	errs = append(errs, checkLaunch(m.Kind, m.Launch, fields, m.Install.Files)...)
 	if err := checkCommand(m.Install.Type, m.Launch.Command); err != nil {
 		errs = append(errs, err)
 	}
@@ -422,11 +444,13 @@ func Validate(m Manifest) error {
 
 // kindInstalls says which install types fit each kind. An MCP server comes
 // from a package or a download; a container from an image; a dependency
-// is the user's own program, so Meru installs nothing.
+// is the user's own program, so Meru installs nothing. A service is one
+// downloaded program, so it needs no runtime such as Node.
 var kindInstalls = map[string][]string{
 	KindStdio:      {InstallNPM, InstallPip, InstallBinary},
 	KindHTTP:       {InstallNPM, InstallPip, InstallBinary},
 	KindContainer:  {InstallContainer},
+	KindService:    {InstallBinary},
 	KindDependency: {InstallNone},
 }
 
@@ -464,6 +488,9 @@ func checkInstall(kind string, in Install) []error {
 	if in.Type != InstallBinary && len(in.Binaries) > 0 {
 		add("install.url_* and install.sha256_* are for type binary; take them out for type %q", in.Type)
 	}
+	if in.Type != InstallBinary && len(in.Files) > 0 {
+		add("[[install.files]] is for type binary; take it out for type %q", in.Type)
+	}
 
 	switch in.Type {
 	case InstallNPM:
@@ -485,6 +512,7 @@ func checkInstall(kind string, in Install) []error {
 			add("install.version %q isn't one exact version such as \"0.12.4\"; \"latest\", ranges and tags are refused", in.Version)
 		}
 		errs = append(errs, checkBinaries(in.Binaries)...)
+		errs = append(errs, checkFiles(in.Files)...)
 	case InstallContainer:
 		if err := checkImage(in.Image); err != nil {
 			add("install.image: %w", err)
@@ -518,6 +546,34 @@ func checkBinaries(bins map[string]Binary) []error {
 		}
 		if !sha256Hex.MatchString(b.SHA256) {
 			errs = append(errs, fmt.Errorf("install.sha256_%s must be the file's SHA-256, 64 lower-case hex digits", p))
+		}
+	}
+	return errs
+}
+
+// fileName is what an [[install.files]] name may hold: a plain file name,
+// with no folder, that starts with a letter or digit.
+var fileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// checkFiles checks the extra downloads of a binary install: each has a
+// plain file name used once, an https URL and a SHA-256.
+func checkFiles(files []File) []error {
+	var errs []error
+	seen := map[string]bool{}
+	for i, f := range files {
+		where := fmt.Sprintf("install.files[%d]", i)
+		switch {
+		case !fileName.MatchString(f.Name) || strings.Contains(f.Name, ".."):
+			errs = append(errs, fmt.Errorf("%s: name %q must be a plain file name, with no folder", where, f.Name))
+		case seen[f.Name]:
+			errs = append(errs, fmt.Errorf("%s: the name %q is used twice", where, f.Name))
+		}
+		seen[f.Name] = true
+		if u, err := url.Parse(f.URL); err != nil || u.Scheme != "https" || u.Host == "" {
+			errs = append(errs, fmt.Errorf("%s: url %q must be an https URL", where, f.URL))
+		}
+		if !sha256Hex.MatchString(f.SHA256) {
+			errs = append(errs, fmt.Errorf("%s: sha256 must be the file's SHA-256, 64 lower-case hex digits", where))
 		}
 	}
 	return errs
@@ -600,8 +656,8 @@ func checkFields(fields []Field) (map[string]Field, []error) {
 }
 
 // checkLaunch checks the [launch] table for the connector's kind, and each
-// placeholder in it against fields.
-func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
+// placeholder in it against fields and files, the [[install.files]].
+func checkLaunch(kind string, l Launch, fields map[string]Field, files []File) []error {
 	var errs []error
 	add := func(format string, args ...any) {
 		errs = append(errs, fmt.Errorf(format, args...))
@@ -617,21 +673,26 @@ func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
 		takes = map[string]bool{"command": true, "args": true, "env": true, "url": true, "port": true, "auth": true}
 	case KindContainer:
 		takes = map[string]bool{"env": true, "url": true, "port": true, "volumes": true}
+	case KindService:
+		takes = map[string]bool{"command": true, "args": true, "env": true, "url": true, "port": true, "base_path": true}
 	}
 	set := map[string]bool{
 		"command": l.Command != "", "args": len(l.Args) > 0, "env": len(l.Env) > 0, "url": l.URL != "",
-		"port": l.Port != 0, "auth": l.Auth != "", "volumes": len(l.Volumes) > 0,
+		"port": l.Port != 0, "auth": l.Auth != "", "volumes": len(l.Volumes) > 0, "base_path": l.BasePath != "",
 	}
-	for _, key := range []string{"command", "args", "env", "url", "port", "auth", "volumes"} {
+	for _, key := range []string{"command", "args", "env", "url", "port", "auth", "volumes", "base_path"} {
 		if set[key] && !takes[key] {
 			add("launch.%s isn't used by kind %q", key, kind)
 		}
 	}
 
-	if (kind == KindStdio || kind == KindHTTP) && l.Command == "" {
+	if (kind == KindStdio || kind == KindHTTP || kind == KindService) && l.Command == "" {
 		add("launch.command is missing; a %s connector starts a program", kind)
 	}
-	if kind == KindHTTP || kind == KindContainer {
+	if l.BasePath != "" && !strings.HasPrefix(l.BasePath, "/") {
+		add("launch.base_path %q must start with \"/\"", l.BasePath)
+	}
+	if kind == KindHTTP || kind == KindContainer || kind == KindService {
 		if l.Port < 1 || l.Port > 65535 {
 			add("launch.port %d must be between 1 and 65535", l.Port)
 		}
@@ -640,10 +701,10 @@ func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
 			add("launch.url is missing; Meru needs a loopback URL to reach a %s connector", kind)
 		case err != nil:
 			add("launch.url: %w", err)
-		case kind == KindHTTP && urlPort(l.URL) != l.Port:
-			// An http server listens where Meru connects. A container's
-			// port is inside the container, and Docker maps the URL's
-			// port to it, so the two may differ.
+		case (kind == KindHTTP || kind == KindService) && urlPort(l.URL) != l.Port:
+			// An http server or a service listens where Meru connects. A
+			// container's port is inside the container, and Docker maps
+			// the URL's port to it, so the two may differ.
 			add("launch.url %q must use launch.port %d", l.URL, l.Port)
 		}
 	}
@@ -654,12 +715,27 @@ func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
 	// check looks at each placeholder in one launch value. onCommandLine
 	// is true for the command and its arguments, which any user on the
 	// machine can read in the process list.
+	//
+	// A service may also use {token}, in its arguments and base_path, and
+	// {file.<id>}, where <id> is a choice field whose every choice names an
+	// [[install.files]] entry, so any value the user picks has a pinned
+	// download behind it.
 	check := func(where, value string, onCommandLine bool) {
 		for _, sub := range placeholder.FindAllStringSubmatch(value, -1) {
 			name := sub[1]
 			id, isField := strings.CutPrefix(name, "field.")
+			fileID, isFile := strings.CutPrefix(name, "file.")
 			switch {
 			case name == "pkg" || name == "meru_dir":
+			case name == "token" && kind == KindService && (strings.HasPrefix(where, "launch.args") || where == "launch.base_path"):
+			case name == "token":
+				add("%s: placeholder {token} is for a service's launch.args and launch.base_path", where)
+			case isFile && kind != KindService:
+				add("%s: placeholder {%s} is for a service", where, name)
+			case isFile:
+				if err := checkFileChoice(fields[fileID], files); err != nil {
+					add("%s: placeholder {%s}: %w", where, name, err)
+				}
 			case !isField:
 				add("%s: placeholder {%s} is unknown; use {pkg}, {meru_dir} or {field.<id>}", where, name)
 			case fields[id].ID == "":
@@ -680,7 +756,26 @@ func checkLaunch(kind string, l Launch, fields map[string]Field) []error {
 	for i, v := range l.Volumes {
 		check(fmt.Sprintf("launch.volumes[%d]", i), v, false)
 	}
+	check("launch.base_path", l.BasePath, false)
 	return errs
+}
+
+// checkFileChoice checks the field a {file.<id>} placeholder names: it
+// must be a choice field, and each of its choices must name an
+// [[install.files]] entry.
+func checkFileChoice(f Field, files []File) error {
+	if f.ID == "" {
+		return errors.New("it names no field")
+	}
+	if f.Type != FieldChoice {
+		return fmt.Errorf("the field %s must be a choice, whose choices name [[install.files]] entries", f.ID)
+	}
+	for _, c := range f.Choices {
+		if !slices.ContainsFunc(files, func(file File) bool { return file.Name == c }) {
+			return fmt.Errorf("the choice %q of field %s names no [[install.files]] entry", c, f.ID)
+		}
+	}
+	return nil
 }
 
 // programName is what launch.command holds for an npm or pip connector:
@@ -754,9 +849,9 @@ func checkHealth(kind string, h Health) []error {
 			add("health.tool is missing; name a cheap tool the check can call")
 		}
 		if h.Path != "" {
-			add("health.path is for container and dependency; a %s connector is checked with health.tool", kind)
+			add("health.path is for container, service and dependency; a %s connector is checked with health.tool", kind)
 		}
-	case KindContainer, KindDependency:
+	case KindContainer, KindService, KindDependency:
 		if !strings.HasPrefix(h.Path, "/") {
 			add("health.path %q must be a URL path starting with \"/\"", h.Path)
 		}

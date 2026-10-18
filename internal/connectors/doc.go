@@ -1,11 +1,13 @@
 // Package connectors describes the programs Meru can install, start and
 // check for the user: SearXNG for web search, the Obsidian and Google MCP
-// servers, and Ollama, which Meru only reports on. Each one has a manifest,
+// servers, whisper.cpp's server for speech to text, and Ollama, which Meru
+// only reports on. Each one has a manifest,
 // a TOML file in manifests/ compiled into merud, that pins its version and
 // says how to install it, how to start it, what to ask the user and how to
 // tell that it works. See ARCHITECTURE.md, "Connectors and the supervisor".
 //
-// The package has five parts so far (issue #87, steps 1 to 5):
+// The package has six parts so far (issue #87, steps 1 to 5, and the
+// service kind for speech to text):
 //
 //   - The manifests. Load parses every embedded manifest and refuses one
 //     that breaks a rule: a version that isn't exact, a container image
@@ -33,6 +35,11 @@
 //     when config turns it on and nothing answers, pulls the pinned image
 //     and runs Meru's own container, labelled as Meru's. A server that
 //     isn't Meru's container is external, and never touched.
+//   - The service (service.go). A Service runs a downloaded program that
+//     speaks plain HTTP, not MCP, such as whisper-server. It installs the
+//     program and the files the user's choices name when config turns it
+//     on, starts the program on loopback behind a random path when a
+//     request needs it, stops it when idle, and counts its crashes.
 //   - Adopt (adopt.go). When the user runs meru mcp adopt, an Adopter
 //     moves a hand-added obsidian or google entry over to its connector,
 //     and Unadopt puts it back, byte for byte.

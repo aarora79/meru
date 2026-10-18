@@ -266,6 +266,13 @@ func childCmd(in *Installer, m Manifest, inst Installed, values map[string]strin
 	if err != nil {
 		return Cmd{}, err
 	}
+	return Cmd{Path: program, Args: args, Env: childEnv(in, env)}, nil
+}
+
+// childEnv returns a connector program's short environment, sorted: the
+// variables env holds, which LaunchCommand made, the user's real HOME and
+// TMPDIR when merud has one.
+func childEnv(in *Installer, env map[string]string) []string {
 	list := []string{"HOME=" + in.Home}
 	if v := os.Getenv("TMPDIR"); v != "" {
 		list = append(list, "TMPDIR="+v)
@@ -274,7 +281,7 @@ func childCmd(in *Installer, m Manifest, inst Installed, values map[string]strin
 		list = append(list, k+"="+v)
 	}
 	slices.Sort(list)
-	return Cmd{Path: program, Args: args, Env: list}, nil
+	return list
 }
 
 // Manifest returns the connector's manifest.

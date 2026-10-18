@@ -2194,7 +2194,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 
 <h3 id="connector-manifest">The manifest</h3>
 
-<p>Each connector has one TOML file, <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into <code>merud</code>. Four ship:</p>
+<p>Each connector has one TOML file, <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into <code>merud</code>. Four ship, and a fifth, <code>whisper</code>, comes with speech to text:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>ID</th><th>Kind</th><th>Install</th><th>What it is</th></tr></thead>
@@ -2208,11 +2208,11 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 
 <p>A manifest names:</p>
 <ul>
-  <li><code>id</code>, <code>name</code>, <code>kind</code> (<code>stdio</code>, <code>http</code>, <code>container</code> or <code>dependency</code>), <code>required</code>, <code>default_on</code> and <code>idle_timeout</code>;</li>
-  <li><code>[install]</code>: <code>type</code> (<code>npm</code>, <code>pip</code>, <code>binary</code>, <code>container</code> or <code>none</code>), and the <code>package</code> and exact <code>version</code>, or a container <code>image</code> with its digest, or a <code>url_&lt;os&gt;_&lt;arch&gt;</code> and <code>sha256_&lt;os&gt;_&lt;arch&gt;</code> per platform for a download;</li>
-  <li><code>[launch]</code>: the <code>command</code>, <code>args</code> and <code>env</code> that start it, the loopback <code>url</code> and <code>port</code> it answers on, <code>auth</code> (<code>none</code> or <code>oauth</code>), and a container's <code>volumes</code>. For an npm or pip connector, <code>command</code> is the bare name of a program the package installs, such as <code>obsidian-mcp</code>, and Meru finds it in the install folder (see <a href="#connector-runtime">The runtime folder</a>); for a binary it is a path under <code>{pkg}</code>. <code>{pkg}</code> stands for the install folder, <code>{meru_dir}</code> for <code>~/.meru</code>, and <code>{field.&lt;id&gt;}</code> for a value the user gave;</li>
+  <li><code>id</code>, <code>name</code>, <code>kind</code> (<code>stdio</code>, <code>http</code>, <code>container</code>, <code>service</code> or <code>dependency</code>), <code>required</code>, <code>default_on</code> and <code>idle_timeout</code>. A <code>service</code> is a downloaded program that <code>merud</code> starts on loopback and sends plain HTTP requests, not MCP; the <code>Service</code> supervisor runs it;</li>
+  <li><code>[install]</code>: <code>type</code> (<code>npm</code>, <code>pip</code>, <code>binary</code>, <code>container</code> or <code>none</code>), and the <code>package</code> and exact <code>version</code>, or a container <code>image</code> with its digest, or a <code>url_&lt;os&gt;_&lt;arch&gt;</code> and <code>sha256_&lt;os&gt;_&lt;arch&gt;</code> per platform for a download. A binary install may add <code>[[install.files]]</code>, extra downloads such as a model, each a plain file <code>name</code>, an https <code>url</code> and a <code>sha256</code>, saved in the install folder. A file downloads only when a <code>{file.&lt;id&gt;}</code> placeholder picks it;</li>
+  <li><code>[launch]</code>: the <code>command</code>, <code>args</code> and <code>env</code> that start it, the loopback <code>url</code> and <code>port</code> it answers on, <code>auth</code> (<code>none</code> or <code>oauth</code>), and a container's <code>volumes</code>. For an npm or pip connector, <code>command</code> is the bare name of a program the package installs, such as <code>obsidian-mcp</code>, and Meru finds it in the install folder (see <a href="#connector-runtime">The runtime folder</a>); for a binary it is a path under <code>{pkg}</code>. <code>{pkg}</code> stands for the install folder, <code>{meru_dir}</code> for <code>~/.meru</code>, and <code>{field.&lt;id&gt;}</code> for a value the user gave. A service may also use <code>{file.&lt;id&gt;}</code>, the path of the <code>[[install.files]]</code> entry that the choice field <code>&lt;id&gt;</code> names, and <code>{token}</code>, a random value <code>merud</code> makes for each start, in its <code>args</code> and in <code>base_path</code>, which goes in front of every path <code>merud</code> asks it for;</li>
   <li><code>[[field]]</code>: what to ask the user, each with an <code>id</code>, a <code>type</code> (<code>text</code>, <code>folder</code>, <code>secret</code>, <code>email</code>, <code>choice</code> or <code>oauth</code>), a <code>label</code>, <code>help</code>, <code>required</code>, and an optional <code>pattern</code>, <code>default</code> and <code>choices</code>. Every client will draw the same form from these;</li>
-  <li><code>[health]</code>: how to tell it works. An MCP server gets a cheap tool call (<code>tool</code>, <code>args</code>); a container or a dependency gets an HTTP GET (<code>path</code>). <code>expect</code> is <code>nonempty</code>, <code>contains:&lt;text&gt;</code> or <code>json_key:&lt;key&gt;</code>;</li>
+  <li><code>[health]</code>: how to tell it works. An MCP server gets a cheap tool call (<code>tool</code>, <code>args</code>); a container, a service or a dependency gets an HTTP GET (<code>path</code>). <code>expect</code> is <code>nonempty</code>, <code>contains:&lt;text&gt;</code> or <code>json_key:&lt;key&gt;</code>;</li>
   <li><code>[mcp]</code>: <code>allow</code>, <code>confirm</code> and <code>always_confirm</code>, with the same meaning as in an <code>[[mcp.servers]]</code> entry.</li>
 </ul>
 
@@ -2225,13 +2225,15 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
   <li>a download without an https URL and a SHA-256 for each platform it names;</li>
   <li>a secret field with a default;</li>
   <li>a <code>pattern</code> that doesn't compile;</li>
-  <li>an http or container connector whose <code>url</code> isn't loopback;</li>
+  <li>an http, container or service connector whose <code>url</code> isn't loopback;</li>
+  <li>an <code>[[install.files]]</code> entry on an install that isn't binary, or with a name that holds a folder or repeats another, a URL that isn't https, or no SHA-256;</li>
+  <li>a <code>{file.&lt;id&gt;}</code> whose field isn't a choice, or has a choice that names no file, and a <code>{file.&lt;id&gt;}</code> or <code>{token}</code> outside a service;</li>
   <li>a launch placeholder that names no field, or a secret on the command line, where other users can read it in the process list;</li>
   <li>an npm or pip <code>command</code> that holds a folder, or a binary <code>command</code> outside <code>{pkg}</code>;</li>
   <li>a wildcard in a tool list, or a <code>confirm</code> tool that <code>allow</code> doesn't list.</li>
 </ul>
 
-<p>Speech to text, <b>planned</b>, adds a fifth manifest, <code>whisper</code>, with a new kind, <code>service</code> (a program on loopback that takes plain HTTP), and <code>[[install.files]]</code>, pinned downloads beside the program such as a model file (see <a href="#speech-to-text">Speech to text</a>).</p>
+<p>Speech to text, <b>planned</b>, adds the fifth manifest, <code>whisper</code> (see <a href="#speech-to-text">Speech to text</a>).</p>
 
 <h3 id="connector-pins">Pinned versions</h3>
 
@@ -2821,7 +2823,7 @@ render      = "auto"                    # "off" reads every page as plain HTML</
   </tbody>
 </table></div>
 
-<p>On a real recording through a USB webcam's microphone, the <code>full</code> model made no mistake and the <code>lite</code> one heard "Porto" as "portal". <code>[models] speech</code> picks the other file. Both come from <code>huggingface.co/ggerganov/whisper.cpp</code> at commit <code>5359861c739e955e79d9a303bcbc70fb988958b1</code>, each pinned by SHA-256.</p>
+<p>On a real recording through a USB webcam's microphone, the <code>full</code> model made no mistake and the <code>lite</code> one heard "Porto" as "portal". The connector's <code>model</code> setting, <code>[connectors.whisper] model</code>, picks the other file. Both come from <code>huggingface.co/ggerganov/whisper.cpp</code> at commit <code>5359861c739e955e79d9a303bcbc70fb988958b1</code>, each pinned by SHA-256.</p>
 
 <h3 id="speech-binary">The binary</h3>
 
@@ -2835,18 +2837,22 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 
 <p>The workflow checks that <code>otool -L</code> lists only system libraries and that the program transcribes a test clip to the expected words. It publishes the file, <code>SHA256SUMS</code> and whisper.cpp's MIT licence to a release of its own, <code>whisper-server-v1.9.5</code>, which nothing moves or deletes, and records which commit and workflow built the file with GitHub's build attestation. The connector pins the file's SHA-256. A new whisper.cpp version is a pull request that changes the workflow's pin and the manifest's.</p>
 
+<p>The first run published <code>whisper-server-darwin-arm64</code> on 2026-10-18, SHA-256 <code>8a41d4c21710a0325e35a5a5b66548b9d952e6832e2c13de81ccb64c3a56f2db</code>, built from commit <code>2a2736e</code>. On the M4 Max it used Metal, took 897 MB with the <code>full</code> model, and transcribed the real recording as before. It still needs a run on an M1 or M2 before the connector ships.</p>
+
 <p>Linux and Windows come later. Until then the connector has no download for them, and speech to text is off there.</p>
 
 <h3 id="speech-connector">The connector</h3>
 
-<p><code>whisper</code> is a connector (see <a href="#connectors">Connectors and the supervisor</a>), off until <code>[connectors.whisper] enabled = true</code>. It needs two things the connectors lack today:</p>
+<p><code>whisper</code> is a connector (see <a href="#connectors">Connectors and the supervisor</a>), off until <code>[connectors.whisper] enabled = true</code>. It uses the <code>service</code> kind and <code>[[install.files]]</code> (see <a href="#connector-manifest">The manifest</a>), and <code>merud</code> runs it with the <code>Service</code> supervisor (<code>internal/connectors/service.go</code>):</p>
 
 <ul>
-  <li><b>A <code>service</code> kind.</b> <code>merud</code> starts the program, checks it with an HTTP GET, and talks plain HTTP to it on loopback. An <code>http</code> connector speaks MCP, and of today's connectors only the SearXNG container takes plain HTTP.</li>
-  <li><b><code>[[install.files]]</code>.</b> Extra downloads, each an https URL and a SHA-256, saved beside the program. The model file is one.</li>
+  <li><b>Install when turned on.</b> When config turns the connector on, the supervisor installs the program and the model file in the background, so the first recording doesn't wait for a 574 MB download. Its card says "Meru is installing…", then "ready. It starts when you use it."</li>
+  <li><b>One model, by choice.</b> The manifest lists both model files in <code>[[install.files]]</code> and has a choice field, <code>model</code>, whose choices are their names. Only the chosen file downloads. <code>merud</code> hands the supervisor the profile's choice as the field's default, <code>base.en</code> for <code>lite</code> and <code>large-v3-turbo</code> for <code>full</code>, and a <code>model</code> key in the table wins over it. One setting, then, in the place every connector keeps its settings, and the Settings card draws it as a choice.</li>
+  <li><b>Start on use.</b> A recording starts the program, and the supervisor stops it after ten idle minutes. A program that exits on its own counts as a crash and starts again at the next recording; the fifth crash in ten minutes stops the connector until Fix, as for Obsidian.</li>
+  <li><b>A path no web page can guess.</b> <code>whisper-server</code> answers any web page in the browser (<code>Access-Control-Allow-Origin: *</code>), and its <code>/load</code> endpoint loads a model from any path it is given. So each start passes <code>--request-path /{token}</code>, where <code>{token}</code> is 128 random bits <code>merud</code> makes for that start. Every route then sits under that path, and <code>/inference</code>, <code>/load</code> and <code>/health</code> without it answer 404. Only <code>merud</code> knows the path; another user on the same Mac could read it in the process list, as for any command line.</li>
 </ul>
 
-<p>The launch is <code>whisper-server --host 127.0.0.1 --port {port} -m {model}</code>, so the server listens on this machine only. The supervisor starts it on the first recording, stops it after ten idle minutes and restarts it after a crash, as it does for Obsidian, and its card in Settings shows its state. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>.</p>
+<p>The launch is <code>whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}</code>, so the server listens on this machine only. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>.</p>
 
 <h3 id="speech-op">The transcribe op</h3>
 

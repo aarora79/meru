@@ -185,24 +185,44 @@ const (
 // httpTransport starts an http connector's program c and returns the MCP
 // transport to it at endpoint, a loopback URL such as
 // http://127.0.0.1:8000/mcp, and a channel that closes when the program
-// exits. It first makes sure nothing else listens at the endpoint's
-// address, and fails with ErrPortBusy if something does; then it starts
-// the program, with its output going to stderr, and waits, until ctx
-// ends, for it to listen. procCtx bounds the program's life: when it
-// ends, the program is killed.
+// exits. startListening starts it; see there.
 //
 // A Streamable HTTP session doesn't end when the server's program does,
 // so the caller watches the returned channel to learn of a crash.
 func httpTransport(ctx, procCtx context.Context, c Cmd, stderr io.Writer, endpoint string) (mcp.Transport, <-chan struct{}, error) {
-	if !filepath.IsAbs(c.Path) {
-		return nil, nil, fmt.Errorf("%s: %w", c.Path, ErrNotAbsolute)
-	}
-	addr, err := hostPort(endpoint)
+	exited, err := startListening(ctx, procCtx, c, stderr, endpoint)
 	if err != nil {
 		return nil, nil, err
 	}
+	return &mcp.StreamableClientTransport{
+		Endpoint:   endpoint,
+		HTTPClient: loopbackClient(),
+		// Meru lists the tools itself and ignores what the server sends
+		// on its own, as the MCP pool does for a server added by hand.
+		DisableStandaloneSSE: true,
+	}, exited, nil
+}
+
+// startListening starts the program c, which serves HTTP at endpoint, a
+// loopback URL, and returns a channel that closes when the program exits.
+// An http connector and a service both start this way.
+//
+// It first makes sure nothing else listens at the endpoint's address, and
+// fails with ErrPortBusy if something does; then it starts the program,
+// with its output going to stderr, and waits, until ctx ends, for it to
+// listen. procCtx bounds the program's life: when it ends, the program is
+// killed. It fails when c names its program by a relative path, or the
+// program exits before it listens.
+func startListening(ctx, procCtx context.Context, c Cmd, stderr io.Writer, endpoint string) (<-chan struct{}, error) {
+	if !filepath.IsAbs(c.Path) {
+		return nil, fmt.Errorf("%s: %w", c.Path, ErrNotAbsolute)
+	}
+	addr, err := hostPort(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	if err := waitPortFree(ctx, addr, portFreeWait); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// As in ExecRunner: the program runs by its absolute path, with each
 	// argument as its own string and no shell.
@@ -213,7 +233,7 @@ func httpTransport(ctx, procCtx context.Context, c Cmd, stderr io.Writer, endpoi
 	cmd.Stderr = stderr
 	cmd.WaitDelay = childStopWait
 	if err := cmd.Start(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// This goroutine reaps the program when it exits, and closes exited
 	// to say so. It ends when the program does, which procCtx makes sure
@@ -226,15 +246,9 @@ func httpTransport(ctx, procCtx context.Context, c Cmd, stderr io.Writer, endpoi
 	if err := waitListening(ctx, addr, exited); err != nil {
 		_ = cmd.Process.Kill()
 		<-exited
-		return nil, nil, err
+		return nil, err
 	}
-	return &mcp.StreamableClientTransport{
-		Endpoint:   endpoint,
-		HTTPClient: loopbackClient(),
-		// Meru lists the tools itself and ignores what the server sends
-		// on its own, as the MCP pool does for a server added by hand.
-		DisableStandaloneSSE: true,
-	}, exited, nil
+	return exited, nil
 }
 
 // loopbackClient returns the HTTP client for a connector's own server. It

@@ -365,6 +365,26 @@ func (in *Installer) installBinary(ctx context.Context, m Manifest, dir string) 
 	return os.Chmod(dest, 0o700) // #nosec G302 -- a program needs its execute bit; only the owner gets any
 }
 
+// EnsureFiles downloads each of files, extra downloads of the installed
+// connector inst, into its install folder, unless the file is already
+// there, and checks each against its SHA-256. A file in the folder passed
+// that check when it arrived: download renames it into place only after.
+// progress, when not nil, gets one line per download. It fails on a
+// download or checksum failure, and leaves no partial file behind.
+func (in *Installer) EnsureFiles(ctx context.Context, inst Installed, files []File, progress func(string)) error {
+	for _, f := range files {
+		dest := filepath.Join(inst.Dir, f.Name)
+		if info, err := os.Stat(dest); err == nil && info.Mode().IsRegular() {
+			continue
+		}
+		say(progress, "Downloading %s", f.Name)
+		if err := download(ctx, in.Client, f.URL, f.SHA256, dest); err != nil {
+			return fmt.Errorf("connector %s: %w", inst.ID, err)
+		}
+	}
+	return nil
+}
+
 // ErrDockerMissing means no docker command is at any of DockerPaths.
 var ErrDockerMissing = errors.New("docker isn't installed")
 

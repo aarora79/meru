@@ -598,7 +598,7 @@ func (c *Container) runArgs() ([]string, error) {
 		"--publish", fmt.Sprintf("%s:%s:%d", u.Hostname(), u.Port(), c.m.Launch.Port),
 	}
 	for _, v := range c.m.Launch.Volumes {
-		filled, err := fillPlaceholders(v, c.m, "", c.in.MeruDir, nil)
+		filled, err := fillPlaceholders(v, c.m, "", c.in.MeruDir, nil, "")
 		if err != nil {
 			return nil, err
 		}
