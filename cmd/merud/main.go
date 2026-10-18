@@ -323,15 +323,18 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 
 // openStore opens the search index at meru.db in the Meru home. It asks the
 // embedding model for one vector to learn the vector size first. When the
-// model or size changed since the last run, the store drops the old
-// vectors and the startup scan embeds every file again.
+// model, its task prefixes or size changed since the last run, the store
+// drops the old vectors and the startup scan embeds every file again.
 func openStore(ctx context.Context, cfg config.Config, eng engine.Engine, log *slog.Logger) (*store.Store, error) {
 	dims, err := embedDims(ctx, eng)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", cfg.Models.Embed, err)
 	}
+	em := config.FindEmbedModel(cfg.Models.Embed)
 	path := filepath.Join(cfg.Dir, "meru.db")
-	st, err := store.Open(ctx, store.Options{Path: path, EmbedModel: cfg.Models.Embed, Dims: dims})
+	st, err := store.Open(ctx, store.Options{
+		Path: path, EmbedModel: cfg.Models.Embed, EmbedPrefixHash: em.PrefixFingerprint(), Dims: dims,
+	})
 	if err != nil {
 		return nil, err
 	}

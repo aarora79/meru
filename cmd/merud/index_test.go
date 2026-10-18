@@ -19,6 +19,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/store"
 )
 
 // daemon is one merud started by startDaemon.
@@ -211,6 +212,46 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 	st := status(t, d.sock)
 	if st.Vectors != st.Chunks || st.Chunks != 2 || st.LastScan.Indexed != 2 || st.LastScan.Unchanged != 1 {
 		t.Errorf("status after the model change = %+v, last scan %+v; want every file embedded again", st, st.LastScan)
+	}
+}
+
+// TestOpenStoreReembedsAfterLegacyPrefixMetadata checks that openStore gives
+// an older database the current prefix hash and schedules its vectors again.
+func TestOpenStoreReembedsAfterLegacyPrefixMetadata(t *testing.T) {
+	ctx := context.Background()
+	dir := shortDir(t)
+	cfg := config.Config{Dir: dir, Models: config.Models{Embed: "embeddinggemma-2:440m"}}
+	path := filepath.Join(dir, "meru.db")
+
+	// The old database has vectors but no prefix hash, as it would before
+	// merud recorded the model's query and document prefixes.
+	legacy, err := store.Open(ctx, store.Options{Path: path, EmbedModel: cfg.Models.Embed, Dims: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.ReplaceDocument(ctx,
+		store.Document{Path: filepath.Join(dir, "legacy.md"), MTime: time.Now(), Hash: "legacy", Kind: "markdown"},
+		[]store.Chunk{{Text: "legacy searchable text"}}, []engine.Vector{{1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := openStore(ctx, cfg, &fakeEngine{version: "0.40.5"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
+	if need, err := st.NeedsReembed(ctx); err != nil || !need {
+		t.Errorf("NeedsReembed = %v, %v; want true for vectors without a prefix hash", need, err)
+	}
+	if hits, err := st.SearchKeyword(ctx, "legacy", 5); err != nil || len(hits) != 1 {
+		t.Errorf("SearchKeyword = %v, %v; want old text retained", hits, err)
 	}
 }
 

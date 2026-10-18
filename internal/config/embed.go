@@ -5,6 +5,12 @@
 
 package config
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
+)
+
 // EmbedModel is an embedding model Meru knows. The prefixes come from the
 // model's card; a wrong or missing prefix makes search worse without an
 // error, which is why they sit here, next to the model's name, rather than
@@ -24,6 +30,15 @@ type EmbedModel struct {
 	// Images is true for a model that embeds images as well as text, in
 	// one space; only then does the index read image files.
 	Images bool
+}
+
+// PrefixFingerprint returns a SHA-256 digest of the query and document
+// prefixes. Length prefixes keep the two strings unambiguous; the model name
+// is tracked separately by the store.
+func (m EmbedModel) PrefixFingerprint() string {
+	encoded := strconv.Itoa(len(m.Query)) + ":" + m.Query + strconv.Itoa(len(m.Document)) + ":" + m.Document
+	digest := sha256.Sum256([]byte(encoded))
+	return hex.EncodeToString(digest[:])
 }
 
 // EmbedModels returns the embedding models Meru knows. It returns a new

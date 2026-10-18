@@ -502,7 +502,7 @@ sequenceDiagram
     M->>R: Serve(listener, gate) — until ready, the gate waits or answers from the Ollama watch
     M->>E: waitReady: Info() → Ollama 0.40.5 or later? then warm() the fast and embed models; again every 30 s
     M->>E: embedDims: embed one probe text to learn the vector size
-    M->>M: openStore: store.Open(meru.db, embed model, vector size)
+    M->>M: openStore: store.Open(meru.db, model, vector size, prefix fingerprint)
     M->>M: index.New(cfg.Index, store, engine)
     M->>M: newToolService: secrets.Load, commands.New, MCP pool, A2A client, builtin.New, dispatch.New, ReplayToolCalls
     M->>M: newRouter, then agent.New(cfg, engine, routerAdapter, searchAdapter, dispatcher, store)
@@ -543,8 +543,11 @@ It joins the built-in tools, the commands, the pool and the A2A client in one
 `meru.db` loses no history. A bad `[[commands]]`, `[[mcp.servers]]` or
 `[[a2a.agents]]` entry stops `merud` here, with a message that names the entry
 and the key; a command's program missing from `PATH` only logs a warning. The probe asks the embedding model rather than config for the vector
-size, so a new embedding model can't leave a stale number behind; when the model or
-the size changed, `store.Open` drops the old vectors and the startup scan re-embeds.
+size, so a new embedding model can't leave a stale number behind. `openStore`
+also passes a fingerprint of the configured query and document prefixes. When
+the model, either prefix or the size changes, `store.Open` drops the old vectors
+and the startup scan re-embeds. An older database has no prefix fingerprint, so
+its first open rebuilds the vectors.
 
 The three last steps run side by side in an `errgroup` (from `golang.org/x/sync`),
 so `merud` answers questions while the first scan is still running. The group

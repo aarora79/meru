@@ -257,15 +257,14 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-// checkVectors makes sure the stored vectors came from model with dims
-// numbers each. Vectors from two models don't compare, so when either
-// changed since the last run, it deletes every vector: of chunks, of
-// memories and of session summaries. Documents, chunks, memories and
-// summaries stay, so keyword search still works. NeedsReembed reports the
-// gap in chunks, MemoryIDs reports each memory with no vector, so the
-// syncer embeds it again, and SummariesWithoutVector does the same for the
-// summarizer.
-func (s *Store) checkVectors(ctx context.Context, model string, dims int) error {
+// checkVectors makes sure the stored vectors match the model, its task
+// prefixes and its vector size. Vectors from different embedding inputs
+// don't compare, so a change deletes every vector: of chunks, memories and
+// session summaries. Documents, chunks, memories and summaries stay, so
+// keyword search still works. NeedsReembed reports the chunk gap, MemoryIDs
+// reports memories without vectors, and SummariesWithoutVector reports
+// summaries for their existing rebuild paths.
+func (s *Store) checkVectors(ctx context.Context, model, prefixHash string, dims int) error {
 	return s.write(ctx, func(tx *sql.Tx) error {
 		oldModel, err := getMeta(ctx, tx, "embed_model")
 		if err != nil {
@@ -275,7 +274,11 @@ func (s *Store) checkVectors(ctx context.Context, model string, dims int) error 
 		if err != nil {
 			return err
 		}
-		if oldModel == model && oldDims == strconv.Itoa(dims) {
+		oldPrefixHash, err := getMeta(ctx, tx, "embed_prefix_hash")
+		if err != nil {
+			return err
+		}
+		if oldModel == model && oldPrefixHash == prefixHash && oldDims == strconv.Itoa(dims) {
 			return nil
 		}
 		if _, err := tx.ExecContext(ctx,
@@ -283,6 +286,9 @@ func (s *Store) checkVectors(ctx context.Context, model string, dims int) error 
 			return fmt.Errorf("drop old vectors: %w", err)
 		}
 		if err := setMeta(ctx, tx, "embed_model", model); err != nil {
+			return err
+		}
+		if err := setMeta(ctx, tx, "embed_prefix_hash", prefixHash); err != nil {
 			return err
 		}
 		return setMeta(ctx, tx, "dims", strconv.Itoa(dims))

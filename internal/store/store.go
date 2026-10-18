@@ -55,21 +55,23 @@ type Store struct {
 type Options struct {
 	// Path is the database file, usually ~/.meru/meru.db.
 	Path string
-	// EmbedModel and Dims name the embedding model and its vector size. If
-	// they differ from what the database was built with, Open drops every
-	// vector so the indexer re-embeds all chunks. NeedsReembed reports it.
-	EmbedModel string
-	Dims       int
+	// EmbedModel and Dims name the embedding model and its vector size.
+	// EmbedPrefixHash fingerprints its query and document prefixes. If any
+	// differ from what the database was built with, Open drops every vector
+	// so the indexer re-embeds all chunks. NeedsReembed reports the gap.
+	EmbedModel      string
+	EmbedPrefixHash string
+	Dims            int
 }
 
 // Open opens or creates the database at opts.Path, creates or migrates the
 // schema, and checks the embedding model (see Options). The database file
 // and its -wal and -shm companions get mode 0600, so only you can read them.
 //
-// When the embedding model or vector size changed since the last run, Open
-// drops the vector index and keeps documents and chunks, so keyword search
-// still works. NeedsReembed then reports true until the indexer has stored
-// a vector for every chunk again.
+// When the embedding model, its task prefixes or vector size changed since
+// the last run, Open drops the vector index and keeps documents and chunks,
+// so keyword search still works. NeedsReembed then reports true until the
+// indexer has stored a vector for every chunk again.
 //
 // It fails when opts is incomplete, the folder doesn't exist, or the file
 // isn't a Meru database this version understands.
@@ -100,7 +102,7 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		// errors.Join keeps both errors if Close fails too.
 		return nil, errors.Join(fmt.Errorf("open store %s: %w", opts.Path, err), db.Close())
 	}
-	if err := s.checkVectors(ctx, opts.EmbedModel, opts.Dims); err != nil {
+	if err := s.checkVectors(ctx, opts.EmbedModel, opts.EmbedPrefixHash, opts.Dims); err != nil {
 		return nil, errors.Join(fmt.Errorf("open store %s: %w", opts.Path, err), db.Close())
 	}
 	return s, nil
