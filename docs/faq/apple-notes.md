@@ -7,7 +7,9 @@ own database each time you ask, so a note you wrote a minute ago is there.
 Meru keeps no copy of your notes, and it never changes one.
 
 **Turn it on.** macOS lets `merud` read the Notes database only with Full Disk
-Access. It never asks; it refuses until you grant it:
+Access. It never asks; it refuses until you grant it. The Mac installer's Apple
+Notes step opens the right page in System Settings and shows `merud` in Finder,
+so you can drag it into the list. By hand:
 
 1. Open System Settings, then Privacy & Security, then Full Disk Access.
 2. Click +, press ⌘⇧G, enter `~/.local/bin/merud` (or wherever your `merud`

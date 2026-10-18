@@ -111,8 +111,8 @@ function drawWelcome() {
   const body = $("body");
   body.replaceChildren(
     el("p", "", "This installer sets up Meru, a personal AI assistant that runs on this Mac. The models run here, and your questions and files stay here."),
-    el("p", "", "It takes ten steps. Each one says what it does, what it downloads and how long it takes, and waits for you. You can skip any step but About you, and run this installer again later to finish one."),
-    el("p", "", "At the end you have web search, your notes and your mail if you want them, your chosen folders in Meru's search index, the built-in skills and a few commands that only read, and the path of the one file that holds every setting."),
+    el("p", "", "It takes eleven steps. Each one says what it does, what it downloads and how long it takes, and waits for you. You can skip any step but About you, and run this installer again later to finish one."),
+    el("p", "", "At the end you have web search, your Obsidian notes, your Apple Notes and your mail if you want them, your chosen folders in Meru's search index, the built-in skills and a few commands that only read, and the path of the one file that holds every setting."),
     el("div", "warn", "Meru isn't signed by Apple, because it is a personal project with no Apple developer account. That is why macOS asked before it opened this installer. The second step offers to clear the same warning for Meru.app, so it opens like any other app."),
   );
   const foot = $("foot");
@@ -403,6 +403,23 @@ const FORMS = {
       }
     })));
     body.append(el("p", "dim", "Meru reads, lists and searches your notes. Writing to a note asks you first."));
+  },
+
+  notes(body) {
+    body.append(el("p", "", "Meru reads the Notes app's own database each time you ask, so a note you wrote a minute ago is there. It only reads: it never creates, changes or deletes a note, and it can't open a locked one."));
+    body.append(el("p", "", "macOS keeps that database behind Full Disk Access, and it never asks for it: you turn it on for merud yourself. Press Continue first, to turn the tools on, then:"));
+    const steps = [
+      ["Open the Full Disk Access list in System Settings.", button("Open Full Disk Access", "secondary", () => call("OpenFullDiskAccess").catch(() => {}))],
+      ["Show merud in Finder, then drag it into that list. Or press + in the list, press ⌘⇧G, type ~/.local/bin/merud and click Open.", button("Show merud in Finder", "secondary", () => call("ShowMerud").catch((err) => body.append(el("p", "error", errorText(err)))))],
+      ["Make sure merud's switch is on. The list may show it as merud or a.out.", null],
+    ];
+    const list = el("ol", "options");
+    for (const [text, action] of steps) {
+      list.append(el("li", "option", null, el("span", "", text), el("span", "spacer"), action));
+    }
+    body.append(list);
+    body.append(el("p", "dim", "Ask by name: \"search my Apple Notes for the garden plan\". Meru isn't signed by Apple, so macOS ties the grant to this build of merud. After each Meru update, turn merud's switch off and on again."));
+    body.append(el("p", "dim", "Skip this step and the tools stay as config.toml has them; without the grant, a question about your notes answers with these steps."));
   },
 
   skills(body, screen) {

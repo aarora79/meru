@@ -1,5 +1,5 @@
 // Package installer is the Mac installer's logic, minus the window: the
-// ten steps that take a Mac from nothing to a running Meru, and the
+// eleven steps that take a Mac from nothing to a running Meru, and the
 // Bridge that the installer's page calls. cmd/meru-installer opens the
 // window and binds the Bridge; everything else lives here, where tests run
 // on any machine without Wails. See ARCHITECTURE.md, "Installer".

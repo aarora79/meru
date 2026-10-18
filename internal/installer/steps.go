@@ -38,6 +38,7 @@ const (
 	StepFolders  = "folders"
 	StepWeb      = "web"
 	StepObsidian = "obsidian"
+	StepNotes    = "notes"
 	StepSkills   = "skills"
 	StepGoogle   = "google"
 	StepProfile  = "profile"
@@ -82,7 +83,7 @@ func NewFlow() *Flow {
 	return &Flow{steps: stepList()}
 }
 
-// stepList returns the ten steps with their text, every one pending.
+// stepList returns the eleven steps with their text, every one pending.
 // Every string here shows on screen. Each step but About you can be
 // skipped: Meru needs to know whose files it reads.
 func stepList() []Step {
@@ -122,6 +123,12 @@ func stepList() []Step {
 			What: "Asks for your Obsidian vault folder. When Meru starts, merud installs the Obsidian server and reads your notes from that folder.",
 			Why:  "With it Meru can list, search and read your notes. Obsidian itself needn't run, and writing a note asks you first.",
 			Cost: "merud downloads its own Node and the server, about 60 MB, in the last step. A minute.",
+		},
+		{
+			ID: StepNotes, Title: "Apple Notes",
+			What: "Turns on the tools that read your Apple Notes, and walks you through giving merud Full Disk Access in System Settings.",
+			Why:  "With it Meru can list, search and read the notes in the Notes app, as they are at that moment. It never changes a note, and keeps no copy. macOS lets merud read the Notes database only with Full Disk Access, and only you can turn that on.",
+			Cost: "No download. A minute in System Settings.",
 		},
 		{
 			ID: StepSkills, Title: "Skills and commands",

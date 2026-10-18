@@ -56,8 +56,8 @@ rates by kind of task, and charts of accuracy against speed.
 Apple silicon, open it, and open "Install Meru.app". Apple hasn't checked Meru,
 so the first time macOS refuses: click Done, then Open Anyway in System
 Settings, Privacy & Security.
-It walks you through ten steps: Meru, Ollama and the models, the folders Meru
-reads, web search in Docker, your Obsidian notes, skills and commands, Gmail
+It walks you through eleven steps: Meru, Ollama and the models, the folders Meru
+reads, web search in Docker, your Obsidian notes, your Apple Notes, skills and commands, Gmail
 and Calendar, your name, and starting `merud`, which then installs the servers
 behind web search, Obsidian and Google. Each step says what it downloads before it starts, and you
 can skip any but your name. [The Mac installer](docs/running.md#the-mac-installer)

@@ -196,7 +196,7 @@ checked by Apple, so the first time macOS refuses to open it: click Done, then
 Open Anyway in System Settings, Privacy & Security. "Read me first.txt" on the
 disk image says the same.
 
-The installer walks through ten steps. Each screen says what the step does, why,
+The installer walks through eleven steps. Each screen says what the step does, why,
 and what it downloads, and waits for Continue. It shows progress as it goes, and a
 step that fails says why and offers Retry and Skip.
 
@@ -208,6 +208,7 @@ step that fails says why and offers Retry and Skip.
 | Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |
 | Web search | turns web search on; in the last step `merud` downloads SearXNG at its pinned version and runs it in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only. A SearXNG that already answers there stays as it is. Needs Docker Desktop, OrbStack or colima; without one, the screen links Docker's download page and you can skip |
 | Obsidian notes | asks for your vault folder with the folder dialog; in the last step `merud` installs the Obsidian server with its own Node. An `obsidian` entry you set up yourself stays as it is, or moves over to Meru if you pick Adopt |
+| Apple Notes | turns on `search_notes`, `list_notes` and `read_note`, and has two buttons: one opens the Full Disk Access list in System Settings, the other shows `merud` in Finder, to drag into that list. macOS never asks for this access; see [Apple Notes](faq/apple-notes.md) |
 | Skills and commands | turns the built-in skills on and adds the sample commands you tick, all read-only |
 | Gmail, Calendar and Drive | steps 1 to 5 of [google-setup.md](google-setup.md), in three screens: it links each Google Cloud page and takes your address, client ID and secret. In the last step `merud` installs and runs the Google server. A `google` entry you set up yourself stays as it is, or moves over if you pick Adopt |
 | About you | your name, which Meru needs to tell you apart from people in your files; your email, needed after the Google step; how you like answers |
