@@ -16,10 +16,11 @@ model that fits your Mac's memory.
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
-> **Status: pre-alpha, v0.4.16.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.4.17.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
-> folders, by words or like one you attach, and a model that can see reads them. It installs, runs and restarts
+> folders, by words or like one you attach, and a model that can see reads them.
+> On a Mac it searches and reads your Apple Notes. It installs, runs and restarts
 > Google, Obsidian and SearXNG for you, set up from Settings, reads pages that
 > need JavaScript, and charts your use on its Usage screen. Scheduled jobs come
 > in v0.5.
