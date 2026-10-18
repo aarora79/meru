@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -47,11 +48,17 @@ var ErrMissingField = errors.New("a field the connector needs has no value")
 // program isn't where the install put it, or for a container, which the
 // supervisor starts with docker run instead.
 func (in *Installer) LaunchCommand(m Manifest, inst Installed, fields map[string]string) (string, []string, map[string]string, error) {
-	if m.Kind != KindStdio && m.Kind != KindHTTP {
+	return in.launchCommand(m, inst, fields, "")
+}
+
+// launchCommand is LaunchCommand with token, the value a service's
+// {token} placeholders take for this start; "" for any other kind.
+func (in *Installer) launchCommand(m Manifest, inst Installed, fields map[string]string, token string) (string, []string, map[string]string, error) {
+	if m.Kind != KindStdio && m.Kind != KindHTTP && m.Kind != KindService {
 		return "", nil, nil, fmt.Errorf("connector %s: a %s connector has no command to launch", m.ID, m.Kind)
 	}
 	fill := func(s string) (string, error) {
-		return fillPlaceholders(s, m, inst.Dir, in.MeruDir, fields)
+		return fillPlaceholders(s, m, inst.Dir, in.MeruDir, fields, token)
 	}
 
 	var (
@@ -111,11 +118,14 @@ func (in *Installer) LaunchCommand(m Manifest, inst Installed, fields map[string
 	return program, args, env, nil
 }
 
-// fillPlaceholders replaces {pkg}, {meru_dir} and each {field.<id>} in s.
-// A field with no value in fields takes the manifest's default; one with
-// neither fails with ErrMissingField. Validate has already refused any
-// other placeholder.
-func fillPlaceholders(s string, m Manifest, pkgDir, meruDir string, fields map[string]string) (string, error) {
+// fillPlaceholders replaces {pkg}, {meru_dir}, {token}, each
+// {field.<id>} and each {file.<id>} in s. A field with no value in fields
+// takes the manifest's default; one with neither fails with
+// ErrMissingField. {file.<id>} becomes the path, inside pkgDir, of the
+// file the field's value names. Validate has already refused any other
+// placeholder, and made sure each choice of a {file.<id>} field names an
+// [[install.files]] entry.
+func fillPlaceholders(s string, m Manifest, pkgDir, meruDir string, fields map[string]string, token string) (string, error) {
 	var missing error
 	out := placeholder.ReplaceAllStringFunc(s, func(match string) string {
 		name := match[1 : len(match)-1]
@@ -124,20 +134,70 @@ func fillPlaceholders(s string, m Manifest, pkgDir, meruDir string, fields map[s
 			return pkgDir
 		case "meru_dir":
 			return meruDir
+		case "token":
+			return token
 		}
-		id, _ := strings.CutPrefix(name, "field.")
-		if v := fields[id]; v != "" {
-			return v
+		id, isFile := strings.CutPrefix(name, "file.")
+		if !isFile {
+			id, _ = strings.CutPrefix(name, "field.")
 		}
-		for _, f := range m.Fields {
-			if f.ID == id && f.Default != "" {
-				return f.Default
-			}
+		v := fieldValue(m, fields, id)
+		if v == "" {
+			missing = fmt.Errorf("connector %s: field %s: %w", m.ID, id, ErrMissingField)
+			return match
 		}
-		missing = fmt.Errorf("connector %s: field %s: %w", m.ID, id, ErrMissingField)
-		return match
+		if isFile {
+			return filepath.Join(pkgDir, v)
+		}
+		return v
 	})
 	return out, missing
+}
+
+// fieldValue returns the value of field id: the one in fields, or the
+// manifest's default, or "" when there is neither.
+func fieldValue(m Manifest, fields map[string]string, id string) string {
+	if v := fields[id]; v != "" {
+		return v
+	}
+	for _, f := range m.Fields {
+		if f.ID == id {
+			return f.Default
+		}
+	}
+	return ""
+}
+
+// launchFiles returns the [[install.files]] entries a start of m needs:
+// one per {file.<id>} placeholder in its arguments and environment, the
+// one the field's value names, in the order the placeholders appear. It
+// fails when a field has no value, or names a file the manifest doesn't
+// list, which checkSettings's choice rule should already have stopped.
+func launchFiles(m Manifest, fields map[string]string) ([]File, error) {
+	values := slices.Clone(m.Launch.Args)
+	for _, v := range m.Launch.Env {
+		values = append(values, v)
+	}
+	var out []File
+	for _, v := range values {
+		for _, sub := range placeholder.FindAllStringSubmatch(v, -1) {
+			id, ok := strings.CutPrefix(sub[1], "file.")
+			if !ok {
+				continue
+			}
+			name := fieldValue(m, fields, id)
+			i := slices.IndexFunc(m.Install.Files, func(f File) bool { return f.Name == name })
+			switch {
+			case name == "":
+				return nil, fmt.Errorf("connector %s: field %s: %w", m.ID, id, ErrMissingField)
+			case i < 0:
+				return nil, fmt.Errorf("connector %s: field %s names %q, which isn't one of its files", m.ID, id, name)
+			case !slices.ContainsFunc(out, func(f File) bool { return f.Name == name }):
+				out = append(out, m.Install.Files[i])
+			}
+		}
+	}
+	return out, nil
 }
 
 // npmScript finds the script behind the program name bin in the npm

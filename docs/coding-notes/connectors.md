@@ -2,7 +2,8 @@
 
 **Code:** `internal/connectors/` (`doc.go`, `manifest.go`, `manifests/*.toml`,
 `runtimes.go`, `download.go`, `install.go`, `launch.go`, `run.go`, `status.go`,
-`health.go`, `supervisor.go`, `container.go`, `adopt.go`, `change.go`)
+`health.go`, `supervisor.go`, `container.go`, `service.go`, `adopt.go`,
+`change.go`)
 **Milestone:** v0.5 (issue #87, steps 1 to 6)
 **Architecture:** [Connectors and the supervisor](../../ARCHITECTURE.md#connectors-and-the-supervisor),
 [The runtime folder](../../ARCHITECTURE.md#the-runtime-folder),
@@ -10,7 +11,8 @@
 [Google](../../ARCHITECTURE.md#google),
 [SearXNG and Ollama](../../ARCHITECTURE.md#searxng-and-ollama),
 [Moving to connectors](../../ARCHITECTURE.md#moving-to-connectors),
-[Setting up a connector](../../ARCHITECTURE.md#setting-up-a-connector)
+[Setting up a connector](../../ARCHITECTURE.md#setting-up-a-connector),
+[Speech to text](../../ARCHITECTURE.md#speech-to-text)
 
 ## What it does
 
@@ -217,7 +219,9 @@ the backstop; the SDK first closes the child's stdin, waits `childStopWait`
 (2 seconds), sends a signal, and waits as long again. The pool waits the same
 for a server added by hand.
 
-An http connector starts here as well. `httpTransport` first looks at the
+An http connector starts here as well, and so does a service: both call
+`startListening`, which `httpTransport` wraps in an MCP transport and the
+`Service` supervisor uses as it is. `startListening` first looks at the
 connector's port with `Listening`, a TCP dial with a short timeout, and waits
 up to 3 seconds for it to come free, since Meru's own last program may still
 be exiting. If another program still holds it, it returns `ErrPortBusy` and
@@ -299,7 +303,8 @@ each pin names the page its hashes came from and the date.
    final one.
 3. `download` fetches the archive into it. `io.MultiWriter` sends each byte to
    the file and to the SHA-256 hash at once, and `io.LimitReader` caps the
-   download at 512 MiB. The file keeps a temporary name until the hash matches;
+   download at 1 GiB, which the 547 MiB speech model for the `full` profile
+   needs. The file keeps a temporary name until the hash matches;
    on a mismatch `download` deletes it and the error wraps `ErrChecksum`.
 4. `unpack` unpacks it, dropping the archive's one top folder. A URL ending in
    `.zip` keeps the name `archive.zip`, and `unpack` picks `unpackZip` by
@@ -348,6 +353,14 @@ fake; `merud` uses `NewInstaller`.
 A failure at step 4 deletes the folder, so nothing half-made stays behind. The
 install works in the final folder, not a temporary one, because a Python
 environment records its own path and can't move.
+
+`EnsureFiles(ctx, installed, files, progress)` adds the extra downloads of a
+binary install, its `[[install.files]]`, to the finished folder. It skips a
+file that is already there: `download` renames a file into place only after
+its SHA-256 matched, so a file in the folder passed the check. The marker
+doesn't list the files, because which file a start needs depends on the
+user's choice, not on the version: a service whose `model` changes downloads
+the new model into the same folder.
 
 The marker is JSON:
 
@@ -424,7 +437,19 @@ For pip it returns `<dir>/.venv/bin/<name>`, whose first line uv wrote as the
 environment's own Python by absolute path. For a binary it returns the filled-in
 path under `{pkg}`. `fillPlaceholders` fills `{pkg}`, `{meru_dir}` and each
 `{field.<id>}`; a field with no value and no default fails with
-`ErrMissingField`.
+`ErrMissingField`. For a service it also fills `{token}`, a value the
+supervisor makes for each start, and `{file.<id>}`, the path in the install
+folder of the file whose name is the value of the choice field `<id>`:
+
+```text
+args   -m {file.model} --request-path /{token}
+       -m ~/.meru/runtime/pkg/whisper-1.9.5/ggml-base.en.bin --request-path /3f9c…e1a0
+```
+
+`launchFiles(m, fields)` finds the same placeholders and returns the
+`[[install.files]]` entries they pick, so the install downloads only the
+chosen file. `LaunchCommand` keeps its three arguments; `launchCommand`, which
+it calls, takes the token too.
 
 ### status.go: states, sentences and the settings check
 
@@ -874,6 +899,60 @@ and a foreign `meru-searxng` never see a `pull`, `run`, `start`, `restart`,
 `stop` or `rm`. `TestContainerOffStopsOurs` checks that turning the connector
 off stops Meru's container and nothing else.
 
+### service.go: a program that speaks plain HTTP
+
+A `service` connector is a downloaded program that `merud` starts on
+loopback and sends plain HTTP, such as whisper.cpp's `whisper-server`. It
+has no MCP session and no tools, so it gets a small supervisor of its own,
+`Service`, rather than a corner of `Supervisor`:
+
+```text
+off ──enable──▶ installing ──▶ ready ──Use──▶ running ──idle──▶ ready
+```
+
+- **`Configure(table, defaults)`** checks the table with `checkSettings`, as
+  every connector's is checked. `defaults` holds values `merud` picks, such
+  as the speech model a profile names, which take the place of the
+  manifest's defaults; a value in the table wins over both. A copy of the
+  manifest carries them, so the check, the launch and `Status` all see the
+  same defaults. Unless nothing changed, it stops the old install and the
+  old program, then starts the install in a goroutine: `Install` for the
+  program, `EnsureFiles` for the chosen file. The first request then waits
+  for nothing but the program's start.
+- **`Use(ctx)`** returns the base URL to send requests to and a `done`
+  function. When no program runs, it starts one under the `starting` mutex,
+  so two requests at once share one start: the second waits for the lock,
+  then finds the program running. `take` counts each request in `inUse`,
+  and the last `done` arms the idle timer. `sync.Once` makes a second call
+  of the same `done` do nothing.
+- **`run`** makes a 128-bit `{token}` with `crypto/rand`, fills the
+  launch with it, starts the program with `startListening`, and checks
+  `<url><base_path><health.path>` with `expectBody`. `whisper-server`
+  answers any web page (`Access-Control-Allow-Origin: *`) and has a `/load`
+  route that loads any file path, so its routes sit behind
+  `--request-path /{token}`, a path no page in the browser can guess.
+- **`watch`** waits on the program's `exited` channel. An exit nobody asked
+  for, with no `stopping` flag and the same `gen`, is a crash:
+  `crashLocked` counts it, and the next request starts the program again.
+  The fifth crash in ten minutes moves to failed, the same rule and
+  constants as the other supervisors. A start that fails counts the same.
+
+`gen` tells one program from the next: a timer or an exit from an older
+program finds a different `gen` and does nothing. `stopLocked` cancels the
+program's context and returns a function that waits for `exited`, to call
+after the lock is released, since the program can take a moment to exit.
+
+`service_test.go` starts the test binary itself as the program, through the
+real `startListening`: `serveHelper` reads `--port` and `--request-path` as
+`whisper-server` does, answers `/health` only behind that path, and exits
+when asked for `/crash`. `TestServiceLifecycle` runs off, install, two
+requests sharing one start, a 404 without the token, the idle stop, and a
+new token at the next start. `TestServiceCrash` crashes it five times to
+failed and checks that `Recheck` brings it back. `TestServiceDefaults`,
+`TestServiceNeedsConfig` and `TestServiceInstallFails` cover the profile's
+default, a bad choice or key, and a download that doesn't match its pin.
+`TestValidateService` covers each manifest rule the kind adds.
+
 ## Go ideas used here
 
 - **embed** — `//go:embed` copies the manifests into the binary. More in
@@ -1045,6 +1124,13 @@ crash fails once, and closing the pool leaves the program to the supervisor.
   launchd would restart a crashed program, but only `merud` knows when a tool
   call needs one, when it sits idle, and what to tell the user. One mutex, one
   worker at a time and a `gen` counter keep it to one file.
+- **A service starts on use and stops when idle.** The speech model takes
+  445 to 890 MB, which a Mac shouldn't hold all day for a button pressed a
+  few times. Installing on enable, not on first use, keeps the 574 MB
+  download out of the first recording's wait.
+- **A random path, not a key.** `whisper-server` has no way to ask for a key,
+  but `--request-path` puts every route under a prefix. A prefix nobody can
+  guess does the work of a key against a web page in the browser.
 - **Docker restarts nothing.** Meru's container runs with `--restart no`, so
   the supervisor alone decides when it starts and counts every crash. With
   `unless-stopped`, Docker would restart a crashing container on its own, the

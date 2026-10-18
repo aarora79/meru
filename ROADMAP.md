@@ -215,10 +215,11 @@ so it needs nothing from a later milestone. The design is in ARCHITECTURE.md,
 
 - [x] A test of both paths, Gemma 4 in Ollama and whisper.cpp, and the design in
   ARCHITECTURE.md, 200 and 100
-- [ ] A GitHub Actions workflow that builds `whisper-server` for Apple silicon
+- [x] A GitHub Actions workflow that builds `whisper-server` for Apple silicon
   from pinned source and publishes it as the release `whisper-server-v1.9.5`
-- [ ] Connectors: a `service` kind and `[[install.files]]`
-- [ ] The `whisper` connector, a Whisper model per profile and `[models] speech`
+- [x] Connectors: a `service` kind and `[[install.files]]`
+- [ ] The `whisper` connector, with a Whisper model per profile as its `model`
+  setting's default
 - [ ] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB
 - [ ] Meru.app: the microphone button, the microphone prompt and the
   no-microphone message

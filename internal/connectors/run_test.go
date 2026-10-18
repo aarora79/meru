@@ -36,6 +36,9 @@ func TestHelperProcess(t *testing.T) {
 	if args[0] == "pipe" {
 		pipeHelper()
 	}
+	if args[0] == "serve" {
+		serveHelper(args[1:])
+	}
 	fmt.Printf("seen=%s\n", os.Getenv("MERU_SEEN"))
 	fmt.Printf("secret=%s\n", os.Getenv("MERU_TEST_SECRET"))
 	for _, a := range args[1:] {

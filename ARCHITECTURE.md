@@ -3503,7 +3503,8 @@ Step 7, the release notes and the install skill's last changes, is
 ### The manifest
 
 Each connector has one TOML file, `internal/connectors/manifests/<id>.toml`,
-compiled into `merud`. Four ship:
+compiled into `merud`. Four ship, and a fifth, `whisper`, comes with speech
+to text:
 
 | ID | Kind | Install | What it is |
 | --- | --- | --- | --- |
@@ -3514,24 +3515,35 @@ compiled into `merud`. Four ship:
 
 A manifest names:
 
-- `id`, `name`, `kind` (`stdio`, `http`, `container` or `dependency`),
-  `required`, `default_on` and `idle_timeout`;
+- `id`, `name`, `kind` (`stdio`, `http`, `container`, `service` or
+  `dependency`), `required`, `default_on` and `idle_timeout`. A `service` is
+  a downloaded program that `merud` starts on loopback and sends plain HTTP
+  requests, not MCP; the `Service` supervisor runs it;
 - `[install]`: `type` (`npm`, `pip`, `binary`, `container` or `none`), and the
   `package` and exact `version`, or a container `image` with its digest, or a
-  `url_<os>_<arch>` and `sha256_<os>_<arch>` per platform for a download;
+  `url_<os>_<arch>` and `sha256_<os>_<arch>` per platform for a download. A
+  binary install may add `[[install.files]]`, extra downloads such as a
+  model, each a plain file `name`, an https `url` and a `sha256`, saved in
+  the install folder. A file downloads only when a `{file.<id>}`
+  placeholder picks it;
 - `[launch]`: the `command`, `args` and `env` that start it, the loopback `url`
   and `port` it answers on, `auth` (`none` or `oauth`), and a container's
   `volumes`. For an npm or pip connector, `command` is the bare name of a
   program the package installs, such as `obsidian-mcp`, and Meru finds it in
   the install folder (see [The runtime folder](#the-runtime-folder)); for a
   binary it is a path under `{pkg}`. `{pkg}` stands for the install folder,
-  `{meru_dir}` for `~/.meru`, and `{field.<id>}` for a value the user gave;
+  `{meru_dir}` for `~/.meru`, and `{field.<id>}` for a value the user gave.
+  A service may also use `{file.<id>}`, the path of the `[[install.files]]`
+  entry that the choice field `<id>` names, and `{token}`, a random value
+  `merud` makes for each start, in its `args` and in `base_path`, which goes
+  in front of every path `merud` asks it for;
 - `[[field]]`: what to ask the user, each with an `id`, a `type` (`text`,
   `folder`, `secret`, `email`, `choice` or `oauth`), a `label`, `help`,
   `required`, and an optional `pattern`, `default` and `choices`. Every client
   will draw the same form from these;
 - `[health]`: how to tell it works. An MCP server gets a cheap tool call
-  (`tool`, `args`); a container or a dependency gets an HTTP GET (`path`).
+  (`tool`, `args`); a container, a service or a dependency gets an HTTP GET
+  (`path`).
   `expect` is `nonempty`, `contains:<text>` or `json_key:<key>`;
 - `[mcp]`: `allow`, `confirm` and `always_confirm`, with the same meaning as in
   an `[[mcp.servers]]` entry.
@@ -3548,17 +3560,20 @@ breaks a rule:
 - a download without an https URL and a SHA-256 for each platform it names;
 - a secret field with a default;
 - a `pattern` that doesn't compile;
-- an http or container connector whose `url` isn't loopback;
+- an http, container or service connector whose `url` isn't loopback;
+- an `[[install.files]]` entry on an install that isn't binary, or with a
+  name that holds a folder or repeats another, a URL that isn't https, or
+  no SHA-256;
+- a `{file.<id>}` whose field isn't a choice, or has a choice that names no
+  file, and a `{file.<id>}` or `{token}` outside a service;
 - a launch placeholder that names no field, or a secret on the command line,
   where other users can read it in the process list;
 - an npm or pip `command` that holds a folder, or a binary `command` outside
   `{pkg}`;
 - a wildcard in a tool list, or a `confirm` tool that `allow` doesn't list.
 
-Speech to text, **planned**, adds a fifth manifest, `whisper`, with a new
-kind, `service` (a program on loopback that takes plain HTTP), and
-`[[install.files]]`, pinned downloads beside the program such as a model file
-(see [Speech to text](#speech-to-text)).
+Speech to text, **planned**, adds the fifth manifest, `whisper` (see
+[Speech to text](#speech-to-text)).
 
 ### Pinned versions
 
@@ -4545,8 +4560,8 @@ Mac it transcribed a 26-second clip in under half a second:
 | `full` | `ggml-large-v3-turbo-q5_0.bin` | 574 MB | 890 MB | many |
 
 On a real recording through a USB webcam's microphone, the `full` model made
-no mistake and the `lite` one heard "Porto" as "portal". `[models] speech`
-picks the other file. Both come from `huggingface.co/ggerganov/whisper.cpp`
+no mistake and the `lite` one heard "Porto" as "portal". The connector's
+`model` setting, `[connectors.whisper] model`, picks the other file. Both come from `huggingface.co/ggerganov/whisper.cpp`
 at commit `5359861c739e955e79d9a303bcbc70fb988958b1`, each pinned by SHA-256.
 
 ### The binary
@@ -4573,26 +4588,50 @@ commit and workflow built the file with GitHub's build attestation. The
 connector pins the file's SHA-256. A new whisper.cpp version is a pull request
 that changes the workflow's pin and the manifest's.
 
+The first run published `whisper-server-darwin-arm64` on 2026-10-18,
+SHA-256 `8a41d4c21710a0325e35a5a5b66548b9d952e6832e2c13de81ccb64c3a56f2db`,
+built from commit `2a2736e`. On the M4 Max it used Metal, took 897 MB with
+the `full` model, and transcribed the real recording as before. It still
+needs a run on an M1 or M2 before the connector ships.
+
 Linux and Windows come later. Until then the connector has no download for
 them, and speech to text is off there.
 
 ### The connector
 
 `whisper` is a connector (see [Connectors and the supervisor](#connectors-and-the-supervisor)),
-off until `[connectors.whisper] enabled = true`. It needs two things the
-connectors lack today:
+off until `[connectors.whisper] enabled = true`. It uses the `service` kind
+and `[[install.files]]` (see [The manifest](#the-manifest)), and `merud`
+runs it with the `Service` supervisor (`internal/connectors/service.go`):
 
-- **A `service` kind.** `merud` starts the program, checks it with an HTTP
-  GET, and talks plain HTTP to it on loopback. An `http` connector speaks MCP,
-  and of today's connectors only the SearXNG container takes plain HTTP.
-- **`[[install.files]]`.** Extra downloads, each an https URL and a SHA-256,
-  saved beside the program. The model file is one.
+- **Install when turned on.** When config turns the connector on, the
+  supervisor installs the program and the model file in the background, so
+  the first recording doesn't wait for a 574 MB download. Its card says
+  "Meru is installing…", then "ready. It starts when you use it."
+- **One model, by choice.** The manifest lists both model files in
+  `[[install.files]]` and has a choice field, `model`, whose choices are
+  their names. Only the chosen file downloads. `merud` hands the
+  supervisor the profile's choice as the field's default, `base.en` for
+  `lite` and `large-v3-turbo` for `full`, and a `model` key in the table
+  wins over it. One setting, then, in the place every connector keeps its
+  settings, and the Settings card draws it as a choice.
+- **Start on use.** A recording starts the program, and the supervisor
+  stops it after ten idle minutes. A program that exits on its own counts
+  as a crash and starts again at the next recording; the fifth crash in
+  ten minutes stops the connector until Fix, as for Obsidian.
+- **A path no web page can guess.** `whisper-server` answers any web page
+  in the browser (`Access-Control-Allow-Origin: *`), and its `/load`
+  endpoint loads a model from any path it is given. So each start passes
+  `--request-path /{token}`, where `{token}` is 128 random bits `merud`
+  makes for that start. Every route then sits under that path, and
+  `/inference`, `/load` and `/health` without it answer 404. Only `merud`
+  knows the path; another user on the same Mac could read it in the
+  process list, as for any command line.
 
-The launch is `whisper-server --host 127.0.0.1 --port {port} -m {model}`, so
-the server listens on this machine only. The supervisor starts it on the
-first recording, stops it after ten idle minutes and restarts it after a
-crash, as it does for Obsidian, and its card in Settings shows its state.
-Turning it on downloads about 160 MB for `lite` or 580 MB for `full`.
+The launch is
+`whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}`,
+so the server listens on this machine only. Turning it on downloads about
+160 MB for `lite` or 580 MB for `full`.
 
 ### The transcribe op
 

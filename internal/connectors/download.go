@@ -32,9 +32,11 @@ var ErrChecksum = errors.New("the download's SHA-256 doesn't match the pin")
 // it unpacks into, or is a kind of file Meru doesn't unpack.
 var ErrUnsafeArchive = errors.New("the archive holds an unsafe entry")
 
-// maxDownload caps one download at 512 MiB. Node's archive is about
-// 50 MiB; the cap stops a broken server from filling the disk.
-const maxDownload = 512 << 20
+// maxDownload caps one download at 1 GiB. Node's archive is about 50 MiB
+// and the largest file a manifest names, the speech model
+// ggml-large-v3-turbo-q5_0.bin, 547 MiB; the cap stops a broken server
+// from filling the disk.
+const maxDownload = 1 << 30
 
 // maxUnpacked caps what one archive may unpack to, 2 GiB, for the same
 // reason: a small archive can inflate to a huge one.
