@@ -415,7 +415,9 @@ files, Mail and calendar, Web or Just talk. Auto runs the router as every other
 client does, except for a question with images, which takes the `direct` route
 because the router's model reads text alone. Any other scope skips the router, the route rules that widen a route
 and a picked skill's tools, because a scope is a promise about what the turn may
-touch:
+touch. `dispatch` keeps the promise: on a scoped turn, a call to a tool the round
+didn't offer is denied and logged, even when config allows that tool, so a model
+that names `web_search` from memory on a My files turn searches nothing:
 
 | Scope | Route | Searches first | Tools offered |
 | --- | --- | --- | --- |
@@ -1544,10 +1546,16 @@ order.
    and `search_files`, and `search_images` and `view_image` while images and
    vision allow them) and those of the local commands that don't ask.
    Every route gets the schemas of `datetime` and `about_meru`, and of
-   `web_search` and `web_fetch` while `web_search` is on. The route's list
-   decides what the model sees; it doesn't fence what runs. A call to an allowed
+   `web_search` and `web_fetch` while `web_search` is on. On an Auto turn the
+   route's list decides what the model sees, not what runs: a call to an allowed
    tool the round didn't offer still goes through `dispatch` and runs, and the
-   turn counts it as a malformed call (see [Model sets](#model-sets)).
+   turn counts it as a malformed call (see [Model sets](#model-sets)). A route
+   offers fewer tools to keep the prompt short, and a model that rightly reaches
+   for another allowed tool shouldn't fail for it. On a turn whose scope the user
+   picked, the list is a fence: the agent hands `dispatch` the round's offer as
+   `Call.Offered`, and `dispatch` denies any other tool, with a line telling the
+   model to use the tools it was given. The call still gets its `tool_call` and
+   `tool_result` lines and its `tool_calls` row, with the outcome `denied`.
    The note on the file tools says it may read whole files, list folders, grep
    and search again when the excerpts fall short. A turn that offers
    `web_search`, on any route, adds a line to the tools note: "When you aren't
@@ -1581,7 +1589,8 @@ order.
    budget for thinking: `think` only turns it on or off.
 4. **Dispatch tools.** Every call goes through one function, `dispatch`, in this
    order:
-   1. **Allowlist.** A tool that no backend offers is `denied`. It doesn't run,
+   1. **Allowlist.** A tool that no backend offers is `denied`, and on a turn
+      whose scope the user picked, so is a tool the round didn't offer. It doesn't run,
       but it still gets a `tool_call` line, a `tool_result` line and a
       `tool_calls` row, so a model that keeps reaching for forbidden tools shows
       up in the log. A call named after a skill, such as `web-research`, gets

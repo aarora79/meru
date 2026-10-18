@@ -456,11 +456,22 @@ Scopes have their own sets (`scopeSpecs`): `files` offers the `search` set witho
 the web tools, `mail` offers the tools of every server whose tool names mention mail,
 a calendar or an event, `web` offers the two web tools, and `talk` offers nothing.
 
-The offer decides what the model sees. It doesn't fence what runs: `dispatch`
-checks only that some backend allows the tool. A model can still name a tool it
-wasn't shown, from its history or by guessing, and when config allows that tool the
-call runs. The turn counts such a call as malformed (see section 6). Only a round
-that offered no tools at all runs none of the model's calls.
+A model can still name a tool it wasn't shown, from its history or by guessing.
+What happens next depends on the scope:
+
+- **Auto.** The offer decides what the model sees, not what runs. `dispatch` checks
+  that some backend allows the tool, and when config allows it the call runs. The
+  turn counts such a call as malformed (see section 6). A route offers fewer tools
+  to keep the prompt short, and a model that rightly reaches for another allowed
+  tool shouldn't fail for it.
+- **A scope the user picked.** The offer is a fence. `runCalls` puts the round's
+  offered names on each of the model's calls as `dispatch.Call.Offered`, and
+  `dispatch` denies any other tool with "The tool … isn't offered for this
+  question", while still writing its transcript lines and `tool_calls` row. So a
+  model on "My files" that writes a `web_search` call from memory searches nothing.
+  Meru's own web-first calls carry no fence: the scope chose them.
+
+Either way, a round that offered no tools at all runs none of the model's calls.
 
 Three filters run last, in `finishPrompt`:
 
@@ -546,7 +557,10 @@ Notes on some parts:
   aren't sure of a fact... call web_search before you answer... Never tell the user
   you can't search the web." With a file tool on offer too, `webFallbackNote` adds:
   when the files don't answer, search the web before answering from memory, and never
-  make up a command's flags or a version number.
+  make up a command's flags or a version number. A local command gets no note of
+  its own; its description says what program it runs. A note for the `cmd.` tools
+  once existed, never reached a prompt with the default config, and changed no
+  answer on the benchmark's command questions when turned on, so it went.
 - **The list of skills** names each skill whose tools the turn offers, or that names
   no tools, with "To use it, call web_search or web_fetch." Its header says a skill
   is a set of instructions, not a tool, because a model once called `web-research`
@@ -691,7 +705,7 @@ plus an outcome.
 
 ```mermaid
 flowchart TD
-    in([dispatch.Call]) --> find{a backend offers<br/>this tool?}
+    in([dispatch.Call]) --> find{a backend offers this tool,<br/>and, on a scoped turn,<br/>the round offered it?}
     find -- no --> denied[outcome denied<br/>result: the tool isn't available,<br/>or a hint when it named a skill]
     find -- yes --> tc[write the tool_call line]
     denied --> tcd[write the tool_call line]
@@ -721,7 +735,7 @@ flowchart TD
 ```
 
 *Figure 6. What `dispatch` does with one call. It denies a tool no backend offers,
-and still logs the call. A call it can't write to the transcript doesn't run. A tool
+or, on a scoped turn, one the round didn't offer, and still logs the call. A call it can't write to the transcript doesn't run. A tool
 that needs a yes asks the user over the socket, unless the user already approved it
 for this session; with nobody to ask, `dispatch` declines the call. The backend runs
 the call under its own timeout. Whatever the outcome, `dispatch` cleans, cuts and
@@ -791,7 +805,7 @@ asks, and writes the `approval` event to stdout so the script sees which.
 | --- | --- | --- |
 | `ok` | the tool ran and reported success | its result |
 | `error` | the tool ran and failed, or the transcript couldn't record the call | the error |
-| `denied` | no backend offers the tool | "The tool … isn't available…", or a skill hint |
+| `denied` | no backend offers the tool, or a scoped turn's round didn't offer it | "The tool … isn't available…", or a skill hint |
 | `declined` | the user said no, or nobody could answer | that the user said no, or that nobody could answer |
 | `timeout` | the backend's own timeout passed | "The tool didn't answer in time…" |
 | `cancelled` | the turn ended first | "The call was cancelled before it finished." |

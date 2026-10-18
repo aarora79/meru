@@ -335,6 +335,17 @@ as "web-research is a skill, not a tool. Call web_search or web_fetch.", so the
 model can recover in its next round. The call is still denied, with the same
 lines and row as any other.
 
+**A fenced call.** `Call.Offered`, when it isn't nil, lists the tools the call
+may reach. The agent sets it to the round's offer on a turn whose scope the user
+picked, such as "My files". `Dispatch` denies a call to any other tool, even one
+a backend offers and config allows, and the model reads "The tool ... isn't
+offered for this question", or `Call.Hint`. A model can name a tool it wasn't
+shown, from its history or a guess, and the scope promised the user what the
+turn may touch. The check sits in `Dispatch`, with the allowlist, so no second
+place decides what runs (AGENTS.md, non-negotiable 4). Go tells a nil slice from
+an empty one: nil, the zero value, fences nothing, which is what an auto turn
+and every older caller want, while an empty, non-nil slice denies every tool.
+
 **Who made the call.** `Call.Caller` is `CallerMeru` for a call `merud` made
 itself before the model's first round, such as the web search for a question
 that asks for the web, and `""` for a call the model asked for. `Dispatch`

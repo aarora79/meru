@@ -78,6 +78,45 @@ func TestScopedTurns(t *testing.T) {
 	}
 }
 
+// TestScopeFence checks that a scoped turn hands dispatch the round's
+// offer as the fence, so a call to an allowed tool the scope didn't offer
+// is denied there, and that an auto turn fences nothing.
+func TestScopeFence(t *testing.T) {
+	all := []engine.ToolSpec{spec("web_search"), spec("read_file"), spec("datetime"), spec("about_meru")}
+	tests := []struct {
+		scope     string
+		wantFence []string // nil for no fence
+	}{
+		{rpc.ScopeFiles, []string{"read_file", "datetime", "about_meru"}},
+		{rpc.ScopeAuto, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.scope, func(t *testing.T) {
+			// The model calls web_search, which "My files" doesn't offer
+			// but config allows, then answers.
+			eng := &fakeEngine{rounds: []fakeRound{
+				{calls: []engine.ToolCall{{Name: "web_search", Arguments: []byte(`{"query":"sourdough"}`)}}},
+				{pieces: []string{"done"}},
+			}}
+			router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
+			tools := &fakeTools{specs: slices.Clone(all)}
+			a := New(testConfig(t), eng, router, nil, tools, nil, nil, quietLog())
+			if _, err := run(context.Background(), a, rpc.Request{Text: "how do I bake sourdough", Scope: tt.scope}); err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			tools.mu.Lock()
+			defer tools.mu.Unlock()
+			if len(tools.calls) != 1 {
+				t.Fatalf("calls = %d, want 1", len(tools.calls))
+			}
+			got := tools.calls[0].Offered
+			if (got == nil) != (tt.wantFence == nil) || !slices.Equal(got, tt.wantFence) {
+				t.Errorf("Offered = %v (nil %v), want %v", got, got == nil, tt.wantFence)
+			}
+		})
+	}
+}
+
 func TestScopeOf(t *testing.T) {
 	for _, s := range []string{"", "auto", "files", "mail", "web", "talk"} {
 		if _, err := scopeOf(s); err != nil {
