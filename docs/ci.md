@@ -1,6 +1,7 @@
 # Continuous integration
 
-GitHub Actions runs two workflows on every push and pull request.
+GitHub Actions runs two workflows on every push and pull request, and a
+third, `whisper-server.yml`, when the owner starts it.
 `.github/workflows/ci.yml` checks that the code builds, passes its tests and
 reads cleanly. `.github/workflows/security.yml` looks for vulnerabilities,
 risky code and leaked secrets, and also runs every Monday so a newly published
@@ -12,9 +13,10 @@ run through `go run tool@version`: Go downloads and caches each one on first
 use, so you install nothing but Go. The Makefile pins every tool version at
 its top.
 
-CI builds no releases. The owner builds each one on a Mac with
+CI builds no Meru release. The owner builds each one on a Mac with
 `make release`, because `Meru.app` needs the Mac's own WebView;
-[releasing.md](releasing.md) explains how.
+[releasing.md](releasing.md) explains how. CI builds one program that isn't
+Meru's: whisper.cpp's `whisper-server` (see [whisper-server](#whisper-server)).
 
 ## The checks
 
@@ -111,6 +113,45 @@ These tests catch plain mistakes. They can't catch a host assembled from
 pieces at run time, so code review and the loopback checks in `config` and
 `obs` stay the real defence.
 
+## whisper-server
+
+whisper.cpp publishes no macOS build of `whisper-server`, the program behind
+speech to text (ARCHITECTURE.md, [Speech to text](../ARCHITECTURE.md#speech-to-text)).
+`.github/workflows/whisper-server.yml` builds it for Apple silicon and
+publishes it as a release of its own, `whisper-server-v<version>`, which the
+`whisper` connector downloads by its SHA-256. It runs only when the owner
+starts it, from `main`:
+
+```sh
+gh workflow run whisper-server.yml --ref main
+gh run watch
+```
+
+The job:
+
+1. Refuses to run when the release exists. A published file never changes,
+   since the connector pins its SHA-256.
+2. Downloads whisper.cpp's source tarball for `WHISPER_VERSION` and checks it
+   against `WHISPER_SHA256`, both at the top of the workflow.
+3. Builds with CMake for macOS 13.3 and later: Metal on, the Metal shaders
+   inside the binary, static libraries, and `GGML_NATIVE=OFF`, so the code
+   isn't tuned to the runner's CPU and runs on every Apple silicon Mac.
+4. Checks that `otool -L` lists only macOS's own libraries and that the
+   binary targets macOS 13.3.
+5. Starts it on loopback with `ggml-base.en.bin`, pinned by commit and
+   SHA-256, and checks it writes down a clip `say` spoke, word for word. The
+   runner has no GPU, so this runs on the CPU; Metal gets its check on a
+   real Mac.
+6. Records a build attestation, GitHub's signed record of the commit and
+   workflow that built the file, which `gh attestation verify
+   whisper-server-darwin-arm64 --repo aarora79/meru` checks.
+7. Publishes the binary, whisper.cpp's MIT `LICENSE` and `SHA256SUMS`, with
+   `--latest=false`, so Meru's `releases/latest` link still points at Meru.
+
+A new whisper.cpp version is a pull request that changes `WHISPER_VERSION`
+and `WHISPER_SHA256`, a run of the workflow, then a pull request that pins
+the new file in the connector.
+
 ## Dependabot
 
 `.github/dependabot.yml` asks Dependabot to check Go modules and GitHub Actions
@@ -120,9 +161,12 @@ pull request runs both workflows like any other.
 
 ## Permissions
 
-Both workflows start from `contents: read`. Only the gosec and CodeQL jobs add
-`security-events: write`, which they need to upload results. No job can push
-code or comment on a pull request.
+Every workflow starts from `contents: read`. The gosec and CodeQL jobs add
+`security-events: write`, which they need to upload results. The
+`whisper-server` job adds `contents: write`, to create its release and tag,
+and `id-token: write` and `attestations: write`, to sign and store the build
+attestation; it runs only from `main`, when the owner starts it. No job can
+push code or comment on a pull request.
 
 ## When a check fails
 

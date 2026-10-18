@@ -1,0 +1,130 @@
+# whisper-server: builds whisper.cpp's whisper-server for Apple silicon from
+# pinned source, checks it, and publishes it as a release of its own, which
+# Meru's whisper connector downloads. whisper.cpp publishes no macOS server
+# binary, so Meru builds one. ARCHITECTURE.md, "Speech to text", has the
+# design; docs/ci.md explains how to run this.
+#
+# The owner runs it by hand, from main, once per whisper.cpp version. It
+# refuses to replace a release that exists, so a pinned file never changes
+# under the SHA-256 the connector checks.
+
+name: whisper-server
+
+on:
+  workflow_dispatch:
+
+# Read-only by default; the one job below adds what it needs to publish.
+permissions:
+  contents: read
+
+env:
+  # whisper.cpp's version and its source tarball's SHA-256. A new version
+  # is a pull request that changes both, then a run of this workflow, then a
+  # pull request that pins the new file in the connector.
+  WHISPER_VERSION: "1.9.5"
+  WHISPER_SHA256: ff1a9053feb509ff9d7729703355541ae9690073a6b1c40eb692c962e0dc1720
+  # The model the smoke test transcribes with, at a fixed Hugging Face
+  # commit, never main.
+  MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin
+  MODEL_SHA256: a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002
+
+jobs:
+  darwin-arm64:
+    name: build, check and publish (macOS, Apple silicon)
+    # Only from main: a release built from a branch would pin code that
+    # never merged.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-14
+    permissions:
+      contents: write     # create the release and its tag
+      id-token: write     # sign the build attestation
+      attestations: write # store the build attestation
+    env:
+      ASSET: whisper-server-darwin-arm64
+    steps:
+      # The tag follows the version, so the two can't drift apart.
+      - name: Refuse a release that exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="whisper-server-v${WHISPER_VERSION}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG exists; a pinned file never changes. Bump the version instead."
+            exit 1
+          fi
+
+      - name: Download the source and check its SHA-256
+        run: |
+          curl -fsSL -o src.tar.gz "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_VERSION}.tar.gz"
+          echo "${WHISPER_SHA256}  src.tar.gz" | shasum -a 256 -c -
+          tar xzf src.tar.gz
+
+      # GGML_NATIVE=OFF keeps the code from being tuned to this runner's CPU,
+      # which could crash it on an older Mac. Static libraries and the Metal
+      # shaders inside the binary make it one file that needs only macOS.
+      - name: Build
+        working-directory: whisper.cpp-${{ env.WHISPER_VERSION }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_NATIVE=OFF -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
+            -DBUILD_SHARED_LIBS=OFF -DGGML_BLAS=OFF \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 -DCMAKE_OSX_ARCHITECTURES=arm64
+          cmake --build build --config Release --target whisper-server -j "$(sysctl -n hw.ncpu)"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp build/bin/whisper-server "$GITHUB_WORKSPACE/out/$ASSET"
+          cp LICENSE "$GITHUB_WORKSPACE/out/LICENSE"
+
+      - name: Check it links only macOS's own libraries
+        run: |
+          otool -L "out/$ASSET"
+          # The first line names the file; every other must be a system path.
+          if otool -L "out/$ASSET" | tail -n +2 | grep -v -E '^\s+(/System/Library/|/usr/lib/)'; then
+            echo "::error::$ASSET links a library outside macOS"
+            exit 1
+          fi
+          vtool -show-build "out/$ASSET" | grep -q 'minos 13.3' || { echo "::error::$ASSET doesn't target macOS 13.3"; exit 1; }
+
+      # The runner has no GPU, so the test runs on the CPU (--no-gpu). It
+      # checks the program loads a model, answers on loopback and writes
+      # the words it heard; Metal gets its check on a real Mac.
+      - name: Transcribe a test clip
+        run: |
+          curl -fsSL -o model.bin "$MODEL_URL"
+          echo "${MODEL_SHA256}  model.bin" | shasum -a 256 -c -
+          say -o clip.wav --data-format=LEI16@16000 "What did I write in my notes about the garden plan last spring?"
+          "out/$ASSET" -m model.bin --host 127.0.0.1 --port 18080 --no-gpu > server.log 2>&1 &
+          server=$!
+          for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:18080/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/inference -F file=@clip.wav -F temperature=0.0 -F response_format=json -o reply.json
+          kill "$server" || true
+          cat reply.json
+          heard=$(python3 -c 'import json,re;print(" ".join(re.sub(r"[^a-z ]"," ",json.load(open("reply.json"))["text"].lower()).split()))')
+          if [ "$heard" != "what did i write in my notes about the garden plan last spring" ]; then
+            echo "::error::heard \"$heard\""
+            cat server.log
+            exit 1
+          fi
+
+      - name: Write SHA256SUMS
+        working-directory: out
+        run: |
+          shasum -a 256 "$ASSET" LICENSE > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Record how it was built
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: out/${{ env.ASSET }}
+
+      # --latest=false keeps Meru's own releases/latest link on Meru: the
+      # one-line installer and the disk image download from it.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+            --title "whisper-server ${WHISPER_VERSION} for Meru" \
+            --notes "whisper.cpp v${WHISPER_VERSION}'s whisper-server, built for Apple silicon (macOS 13.3 and later, Metal) by .github/workflows/whisper-server.yml from source with SHA-256 ${WHISPER_SHA256}. Meru's whisper connector downloads it and checks the SHA-256 in SHA256SUMS. whisper.cpp is under the MIT licence; LICENSE is its text." \
+            "out/$ASSET" out/LICENSE out/SHA256SUMS
