@@ -69,6 +69,20 @@ var profiles = map[string]Models{
 	},
 }
 
+// speechModels maps each profile to its speech-to-text model, the file the
+// whisper connector downloads unless [connectors.whisper] model names the
+// other. It sits beside profiles, not in Models, because the model is the
+// connector's setting, not an Ollama tier. See ARCHITECTURE.md, "Speech to
+// text".
+var speechModels = map[string]string{
+	"lite": "ggml-base.en.bin",
+	"full": "ggml-large-v3-turbo-q5_0.bin",
+}
+
+// SpeechModel returns the speech-to-text model the config's profile picks,
+// which merud hands the whisper connector as its model's default.
+func (c Config) SpeechModel() string { return speechModels[c.Profile] }
+
 // DefaultDir returns the Meru home directory, ~/.meru. It fails only when the
 // operating system can't say where the user's home directory is.
 func DefaultDir() (string, error) {

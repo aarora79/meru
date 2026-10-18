@@ -150,8 +150,14 @@ func TestConnectorsOp(t *testing.T) {
 	for _, row := range got[0].Connectors {
 		ids = append(ids, row.ID)
 	}
-	if !slices.Equal(ids, []string{"google", "obsidian", "ollama", "searxng"}) {
-		t.Errorf("connectors = %v, want google, obsidian, ollama and searxng in manifest order", ids)
+	if !slices.Equal(ids, []string{"google", "obsidian", "ollama", "searxng", "whisper"}) {
+		t.Errorf("connectors = %v, want google, obsidian, ollama, searxng and whisper in manifest order", ids)
+	}
+	// Speech to text, a service, is off until config turns it on, and its
+	// model choice shows the profile's pick as its default.
+	w := got[0].Connectors[4]
+	if w.Kind != "service" || w.State != rpc.ConnectorOff || len(w.Fields) != 1 || w.Fields[0].ID != "model" {
+		t.Errorf("whisper = %+v, want a service that is off, with its model field", w)
 	}
 	// Google, an http connector, has a supervisor too, off until config
 	// turns it on.
@@ -165,6 +171,37 @@ func TestConnectorsOp(t *testing.T) {
 	}
 	if len(row.Fields) != 2 || row.Fields[0].ID != "vault_path" || row.Fields[1].Value != "notes" {
 		t.Errorf("fields = %+v", row.Fields)
+	}
+}
+
+// TestSpeechModelFollowsProfile checks that the profile's speech model
+// becomes the whisper connector's default, and that a model in its table
+// wins over it.
+func TestSpeechModelFollowsProfile(t *testing.T) {
+	tests := []struct {
+		name  string
+		cfg   config.Config
+		want  string
+		value string
+	}{
+		{"lite", config.Config{Profile: "lite"}, "ggml-base.en.bin", ""},
+		{"full", config.Config{Profile: "full"}, "ggml-large-v3-turbo-q5_0.bin", ""},
+		{"the user's choice", config.Config{Profile: "lite", Connectors: map[string]config.Connector{
+			"whisper": {"model": "ggml-large-v3-turbo-q5_0.bin"},
+		}}, "ggml-base.en.bin", "ggml-large-v3-turbo-q5_0.bin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testConnectors(t)
+			c.configure(tt.cfg, &secrets.Secrets{})
+			row, ok := c.row("whisper", nil)
+			if !ok || len(row.Fields) != 1 {
+				t.Fatalf("row = %+v, %v", row, ok)
+			}
+			if f := row.Fields[0]; f.Default != tt.want || f.Value != tt.value {
+				t.Errorf("model field default %q, value %q; want %q, %q", f.Default, f.Value, tt.want, tt.value)
+			}
+		})
 	}
 }
 

@@ -119,16 +119,17 @@ func (b *Bridge) Status(ctx context.Context) Status {
 			}
 		}
 	}
-	// The connectors mcp_status doesn't list: web search, which the rail
-	// names when it is on, and Ollama, when it isn't ok. A merud from
+	// The connectors mcp_status doesn't list: web search and speech to
+	// text, which the rail names when they are on, and Ollama, when it
+	// isn't ok. A merud from
 	// before the connectors op answers with an error, and adds nothing.
 	if ev, err := b.one(ctx, rpc.Request{Op: rpc.OpConnectors}, rpc.EventConnectors); err == nil {
 		s.Connectors = connectorDots(ev.Connectors)
 		for _, c := range ev.Connectors {
 			switch {
-			case c.Kind == "container" && c.State == rpc.ConnectorOK:
+			case (c.Kind == "container" || c.Kind == "service") && c.State == rpc.ConnectorOK:
 				s.Connections = append(s.Connections, c.Name)
-			case c.Kind == "container" && c.State != rpc.ConnectorOff,
+			case (c.Kind == "container" || c.Kind == "service") && c.State != rpc.ConnectorOff,
 				c.Kind == "dependency" && c.State != rpc.ConnectorOK:
 				s.Connections = append(s.Connections, c.Name+" ("+rpc.ConnectorWords(c.State)+")")
 			}

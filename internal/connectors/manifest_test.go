@@ -4,9 +4,12 @@
 package connectors
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/aarora79/meru/internal/config"
 )
 
 // TestLoadRealManifests loads the manifests compiled into the package and
@@ -29,6 +32,7 @@ func TestLoadRealManifests(t *testing.T) {
 		{"obsidian", KindStdio, InstallNPM, false},
 		{"ollama", KindDependency, InstallNone, true},
 		{"searxng", KindContainer, InstallContainer, false},
+		{"whisper", KindService, InstallBinary, false},
 	}
 	if len(ms) != len(tests) {
 		t.Errorf("Load returned %d manifests, want %d", len(ms), len(tests))
@@ -52,6 +56,21 @@ func TestLoadRealManifests(t *testing.T) {
 	}
 	if got := byID["google"].Launch.Env["WORKSPACE_ATTACHMENT_DIR"]; got != "~/meru-output/attachments" {
 		t.Errorf("google WORKSPACE_ATTACHMENT_DIR = %q", got)
+	}
+	// whisper must listen on loopback only and keep its routes behind the
+	// start's token (ARCHITECTURE.md, "Speech to text").
+	w := byID["whisper"]
+	if args := strings.Join(w.Launch.Args, " "); !strings.Contains(args, "--host 127.0.0.1") || !strings.Contains(args, "--request-path /{token}") {
+		t.Errorf("whisper args = %q", args)
+	}
+	if w.Launch.BasePath != "/{token}" || w.DefaultOn {
+		t.Errorf("whisper base_path %q, default_on %v", w.Launch.BasePath, w.DefaultOn)
+	}
+	// Each profile's speech model is one of the files the manifest pins.
+	for _, name := range []string{(config.Config{Profile: "lite"}).SpeechModel(), (config.Config{Profile: "full"}).SpeechModel()} {
+		if !slices.ContainsFunc(w.Install.Files, func(f File) bool { return f.Name == name }) {
+			t.Errorf("profile model %q isn't in whisper's [[install.files]]", name)
+		}
 	}
 }
 

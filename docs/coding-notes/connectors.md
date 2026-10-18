@@ -105,6 +105,34 @@ can't. `obsidian.toml` pins the npm package `obsidian-mcp` at `2.0.1`, and
 top of each file says where its pin came from and on what date. `ollama.toml`
 installs nothing: `merud` only asks Ollama's `/api/version`.
 
+`whisper.toml`, speech to text, is the one service. It pins one download, the
+`whisper-server` Meru's CI builds, for `darwin_arm64` only, and two model
+files from Hugging Face, each URL naming a commit:
+
+```toml
+[[install.files]]
+name = "ggml-base.en.bin"
+url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c…/ggml-base.en.bin"
+sha256 = "a03779c8…"
+
+[[field]]
+id = "model"
+type = "choice"
+choices = ["ggml-base.en.bin", "ggml-large-v3-turbo-q5_0.bin"]
+
+[launch]
+args = ["--host", "127.0.0.1", "--port", "8178", "-m", "{file.model}", "--request-path", "/{token}"]
+base_path = "/{token}"
+```
+
+`merud` passes the profile's pick, `config.Config.SpeechModel`, as the
+field's default, so a `lite` Mac downloads the 148 MB English model and a
+`full` one the 574 MB model, unless `[connectors.whisper] model` names the
+other. On a platform with no download, `Service.Configure` keeps it off with
+a sentence that names the platform, and installs nothing.
+`TestLoadRealManifests` checks that the profiles' models are among its files
+and that its launch keeps `--host 127.0.0.1` and the token path.
+
 `{pkg}`, `{meru_dir}` and `{field.vault_path}` are placeholders.
 `LaunchCommand` fills them in: the install folder, `~/.meru`, and the value the
 user gave for a field.
@@ -951,7 +979,11 @@ new token at the next start. `TestServiceCrash` crashes it five times to
 failed and checks that `Recheck` brings it back. `TestServiceDefaults`,
 `TestServiceNeedsConfig` and `TestServiceInstallFails` cover the profile's
 default, a bad choice or key, and a download that doesn't match its pin.
-`TestValidateService` covers each manifest rule the kind adds.
+`TestValidateService` covers each manifest rule the kind adds, and
+`TestServiceNoBuild` a platform with no download.
+`TestIntegrationWhisper` (`service_integration_test.go`, build tag
+`integration`) downloads the real connector, starts it, and checks that it
+writes down a clip `say` spoke and answers 404 without the token.
 
 ## Go ideas used here
 

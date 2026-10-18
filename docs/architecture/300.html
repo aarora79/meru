@@ -2194,7 +2194,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 
 <h3 id="connector-manifest">The manifest</h3>
 
-<p>Each connector has one TOML file, <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into <code>merud</code>. Four ship, and a fifth, <code>whisper</code>, comes with speech to text:</p>
+<p>Each connector has one TOML file, <code>internal/connectors/manifests/&lt;id&gt;.toml</code>, compiled into <code>merud</code>. Five ship:</p>
 
 <div class="tbl"><table>
   <thead><tr><th>ID</th><th>Kind</th><th>Install</th><th>What it is</th></tr></thead>
@@ -2203,6 +2203,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
     <tr><td><code>obsidian</code></td><td>stdio</td><td>the npm package <code>obsidian-mcp</code></td><td>notes in an Obsidian vault folder</td></tr>
     <tr><td><code>google</code></td><td>http</td><td>the Python package <code>workspace-mcp</code></td><td>Gmail, Calendar, Drive and Docs</td></tr>
     <tr><td><code>ollama</code></td><td>dependency</td><td>none</td><td>the model runtime; status only</td></tr>
+    <tr><td><code>whisper</code></td><td>service</td><td>a download and one model file, each by SHA-256</td><td>whisper.cpp's server, for speech to text</td></tr>
   </tbody>
 </table></div>
 
@@ -2233,7 +2234,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
   <li>a wildcard in a tool list, or a <code>confirm</code> tool that <code>allow</code> doesn't list.</li>
 </ul>
 
-<p>Speech to text, <b>planned</b>, adds the fifth manifest, <code>whisper</code> (see <a href="#speech-to-text">Speech to text</a>).</p>
+<p><code>whisper</code> is the speech-to-text connector (see <a href="#speech-to-text">Speech to text</a>).</p>
 
 <h3 id="connector-pins">Pinned versions</h3>
 
@@ -2798,9 +2799,9 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 <!-- ============================================================ -->
 <h2 id="speech-to-text">Speech to text</h2>
 
-<p><b>Planned.</b> In Meru.app you press a microphone button, speak, and press it again. Meru turns the words into text in the composer, where you read them, fix them, and press Send. The text then goes as a typed question would. The answer model never hears the audio: speech to text is a step before the question, not part of it. <code>meru chat</code> keeps typing, since a terminal has no microphone without a native audio library, which the thin client can't take on.</p>
+<p><b>In progress.</b> In Meru.app you press a microphone button, speak, and press it again. Meru turns the words into text in the composer, where you read them, fix them, and press Send. The text then goes as a typed question would. The answer model never hears the audio: speech to text is a step before the question, not part of it. <code>meru chat</code> keeps typing, since a terminal has no microphone without a native audio library, which the thin client can't take on.</p>
 
-<p>The work lands in six steps after this design: the binary built by CI, two additions to the connectors, the <code>whisper</code> connector with a model per profile, the <code>transcribe</code> op in <code>merud</code>, the button in Meru.app, and the installer step with a FAQ page.</p>
+<p>The work lands in six steps after this design. Three are in place: the binary built by CI, the connectors' <code>service</code> kind and <code>[[install.files]]</code>, and the <code>whisper</code> connector with a model per profile, which Settings and <code>meru mcp set whisper enabled=true</code> turn on. Three come next: the <code>transcribe</code> op in <code>merud</code>, the button in Meru.app, and the installer step with a FAQ page. Until the op lands, the connector installs and reports ready, and nothing starts the server.</p>
 
 <h3 id="speech-why">Why whisper.cpp, not Ollama</h3>
 
@@ -2852,7 +2853,11 @@ render      = "auto"                    # "off" reads every page as plain HTML</
   <li><b>A path no web page can guess.</b> <code>whisper-server</code> answers any web page in the browser (<code>Access-Control-Allow-Origin: *</code>), and its <code>/load</code> endpoint loads a model from any path it is given. So each start passes <code>--request-path /{token}</code>, where <code>{token}</code> is 128 random bits <code>merud</code> makes for that start. Every route then sits under that path, and <code>/inference</code>, <code>/load</code> and <code>/health</code> without it answer 404. Only <code>merud</code> knows the path; another user on the same Mac could read it in the process list, as for any command line.</li>
 </ul>
 
-<p>The launch is <code>whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}</code>, so the server listens on this machine only. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>.</p>
+<p>The launch is <code>whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}</code>, so the server listens on this machine only. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>: on the development Mac the first took 18.5 seconds and the second 58. A model the user picks later downloads beside the first one, which stays until the runtime folder goes. A <code>model</code> that isn't one of the two is refused before config changes.</p>
+
+<p>The manifest has a download for <code>darwin_arm64</code> only. On any other computer the connector stays off when turned on, and says why: "Speech to text isn't available on this computer yet: Meru has no linux_amd64 build of it." It never tries an install that can't work.</p>
+
+<p><code>TestIntegrationWhisper</code>, behind the <code>integration</code> build tag, installs the real connector into a temporary home, starts it through the supervisor, and checks that it writes down a clip <code>say</code> spoke and that <code>/inference</code> and <code>/load</code> answer 404 without the token.</p>
 
 <h3 id="speech-op">The transcribe op</h3>
 

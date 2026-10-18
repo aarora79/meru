@@ -218,7 +218,7 @@ so it needs nothing from a later milestone. The design is in ARCHITECTURE.md,
 - [x] A GitHub Actions workflow that builds `whisper-server` for Apple silicon
   from pinned source and publishes it as the release `whisper-server-v1.9.5`
 - [x] Connectors: a `service` kind and `[[install.files]]`
-- [ ] The `whisper` connector, with a Whisper model per profile as its `model`
+- [x] The `whisper` connector, with a Whisper model per profile as its `model`
   setting's default
 - [ ] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB
 - [ ] Meru.app: the microphone button, the microphone prompt and the
