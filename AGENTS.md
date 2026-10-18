@@ -209,14 +209,15 @@ cmd/
                      backends.go joins the MCP pool to dispatch; ollama.go watches Ollama and
                      gates requests until merud is ready; runtime.go warms the models;
                      machine.go describes the computer for the system prompt; metrics.go serves
-                     /metrics
+                     /metrics; speech.go answers the transcribe op
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
                      `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
                      `mcp adopt|unadopt` (adopt.go),
                      `check` and `check report` (check.go, checkfile.go, checkreport.go), `run --json`
-                     (run.go), the approval prompt (approve.go) and the terminal styles (look.go)
+                     (run.go), `transcribe` (transcribe.go), the approval prompt (approve.go) and
+                     the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
                      Info.plist and Meru.icns for Meru.app
   meru-installer/    the Mac installer's window, "Install Meru.app" (Wails v3, build tag
@@ -248,6 +249,8 @@ internal/
   applenotes/        reads the Notes app's NoteStore.sqlite, live and read-only, for the
                      Apple Notes tools: schema found at run time, note text decoded from
                      its gzipped protobuf
+  speech/            speech to text for the transcribe op: checks a WAV recording, posts it to
+                     the whisper connector's whisper-server, and cleans Whisper's markers
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)
@@ -331,7 +334,7 @@ docs/
 `about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
-`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes` or anything else that talks to a model, stores data
+`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes`, `speech` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
@@ -339,7 +342,7 @@ and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
 `memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
-`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors`, `render` or `applenotes`. It starts programs
+`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes` or `speech`. It starts programs
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through

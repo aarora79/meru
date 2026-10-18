@@ -965,6 +965,9 @@ off ──enable──▶ installing ──▶ ready ──Use──▶ running 
   The fifth crash in ten minutes moves to failed, the same rule and
   constants as the other supervisors. A start that fails counts the same.
 
+`Value(id)` returns the value a field has now, the user's or the default.
+`merud` reads `Value("model")` for the speech metric's model attribute.
+
 `gen` tells one program from the next: a timer or an exit from an older
 program finds a different `gen` and does nothing. `stopLocked` cancels the
 program's context and returns a function that waits for `exited`, to call

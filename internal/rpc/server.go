@@ -197,7 +197,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		OpFolderRemove, OpSaveFile, OpAttachFile, OpSkillEnable, OpSkillDisable, OpModels,
 		OpModelSet, OpModelUse, OpModelSave, OpSessionDelete, OpSessionMove, OpSessionTag, OpChatFolders,
 		OpChatFolderAdd, OpChatFolderRename, OpChatFolderRemove, OpConnectorAdopt, OpConnectorUnadopt,
-		OpConnectorSet, OpConnectorFix:
+		OpConnectorSet, OpConnectorFix, OpTranscribe:
 		// Handled below.
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
@@ -277,7 +277,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 }
 
 // readRequest reads and decodes the first line from r. It fails on a line
-// longer than maxLine, bad JSON, or a connection that closes first.
+// longer than MaxRequestLine, bad JSON, or a connection that closes first.
 func readRequest(r *bufio.Reader) (Request, error) {
 	var line []byte
 	for {
@@ -286,7 +286,7 @@ func readRequest(r *bufio.Reader) (Request, error) {
 			return Request{}, fmt.Errorf("read request: %w", err)
 		}
 		line = append(line, chunk...)
-		if len(line) > maxLine {
+		if len(line) > MaxRequestLine {
 			return Request{}, errors.New("read request: line too long")
 		}
 		if !isPrefix {

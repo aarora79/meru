@@ -24,10 +24,11 @@
 //	meru [-socket path] mcp list         the MCP server catalog and your servers
 //	meru [-socket path] mcp add ...      add an MCP server; also remove
 //	meru [-socket path] check [file]     rerun your own questions and grade the answers
+//	meru [-socket path] transcribe f.wav turn a recording into text with the whisper connector
 //	meru check report <results>...       compare saved results across model sets, as Markdown
 //
 // A question whose first word is ping, chat, index, tools, log, usage, model,
-// setup, memory, skills, mcp or check needs quotes, so meru reads it as a question and not
+// setup, memory, skills, mcp, check or transcribe needs quotes, so meru reads it as a question and not
 // as a command. So does the question "config template", and a question that
 // starts with "run --json".
 //
@@ -204,6 +205,8 @@ flags:`)
 		err = checkReportCmd(flags.Args()[2:], stdout)
 	case flags.Arg(0) == "check":
 		err = checkCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
+	case flags.Arg(0) == "transcribe":
+		err = transcribeCmd(ctx, *socket, flags.Args()[1:], stdout)
 	default:
 		// Words after the flags form the question, so quotes are optional:
 		// meru what time is it

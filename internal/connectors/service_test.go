@@ -421,6 +421,9 @@ func TestServiceDefaults(t *testing.T) {
 	s, _ := testService(t)
 	s.Configure(config.Connector{"enabled": true}, map[string]string{"model": "big.bin"})
 	st := waitState(t, s, StateOK)
+	if got := s.Value("model"); got != "big.bin" {
+		t.Errorf("Value(model) = %q, want big.bin", got)
+	}
 	if _, err := os.Stat(filepath.Join(s.in.PkgDir(s.m), "big.bin")); err != nil {
 		t.Errorf("the profile's model isn't installed: %v", err)
 	}

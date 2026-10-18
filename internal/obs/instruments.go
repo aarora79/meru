@@ -37,6 +37,7 @@ const (
 	metricTurnDocs          = "meru.turn.docs"
 	metricMalformedCalls    = "meru.model.malformed_calls"
 	metricRenderDuration    = "meru.web.render.duration"
+	metricSpeechDuration    = "meru.speech.duration"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -149,6 +150,7 @@ type instruments struct {
 	turnDocs          metric.Int64Histogram
 	malformedCalls    metric.Int64Counter
 	renderDuration    metric.Float64Histogram
+	speechDuration    metric.Float64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -224,6 +226,13 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 	in.renderDuration, err = meter.Float64Histogram(metricRenderDuration,
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of one page web_fetch rendered in a headless Chrome, Chrome's start included."),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	keep(err)
+	// Speech to text takes under a second warm, a few with the server's
+	// start: the same spread.
+	in.speechDuration, err = meter.Float64Histogram(metricSpeechDuration,
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of one recording turned into text, the speech server's start included."),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	keep(err)
 	in.retrievalDuration, err = meter.Float64Histogram(metricRetrievalDuration,

@@ -410,7 +410,8 @@ type services struct {
 // connection ops to the tool service, the memory ops to the memory
 // service, the skill ops to the skill service, the session ops and the
 // chat folder ops to the history service, save_file to the save service,
-// attach_file to the tool service, which holds the built-in tools, the
+// attach_file to the tool service, which holds the built-in tools,
+// transcribe to the tool service too, which holds the connectors, the
 // model ops to the model service, and the usage op to the store. The rpc
 // server answers pings itself.
 func handler(svc services) rpc.Handler {
@@ -503,6 +504,8 @@ func handler(svc services) rpc.Handler {
 			return svc.models.handleModelUse(ctx, req, emit)
 		case rpc.OpModelSave:
 			return svc.models.handleModelSave(ctx, emit)
+		case rpc.OpTranscribe:
+			return tools.handleTranscribe(ctx, req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

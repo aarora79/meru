@@ -589,6 +589,15 @@ func (s *Service) Status() Status {
 	return st
 }
 
+// Value returns the value field id has now, the user's or the default,
+// such as the speech model in use, for a metric attribute. It is "" for a
+// field the manifest doesn't have, or before the first Configure.
+func (s *Service) Value(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.set.values[id]
+}
+
 // shortErr turns err into one line for a sentence, without the
 // "connector <id>: " the installer puts in front.
 func (s *Service) shortErr(err error) string {
