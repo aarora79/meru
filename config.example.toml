@@ -552,7 +552,7 @@ mouse_copy = true
 # timeout = "60s"
 
 # Connectors: programs Meru installs, starts and checks for you, such as
-# the Obsidian and Google servers and SearXNG. Each has a manifest built into
+# the Obsidian and Google servers, SearXNG and speech to text. Each has a manifest built into
 # merud that pins its version and names its fields. One [connectors.<id>]
 # table per connector holds enabled (true or false) and the values of its
 # fields, each a string. Obsidian's and Google's tables may also hold allow,
@@ -585,3 +585,15 @@ mouse_copy = true
 # enabled   = true
 # email     = "you@example.com"
 # client_id = "123-abc.apps.googleusercontent.com"
+
+# Speech to text (Meru.app's microphone): merud downloads whisper.cpp's
+# server and one speech model when you turn it on, starts the server on
+# 127.0.0.1:8178 when you record, and stops it after ten idle minutes.
+# model picks the file: ggml-base.en.bin (148 MB, English; the lite
+# profile's) or ggml-large-v3-turbo-q5_0.bin (574 MB, many languages; the
+# full profile's). Left out, the profile picks. Macs with Apple silicon only
+# for now.
+#
+# [connectors.whisper]
+# enabled = true
+# model   = "ggml-base.en.bin"

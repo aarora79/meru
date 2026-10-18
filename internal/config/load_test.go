@@ -471,8 +471,8 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 3, 1, 25 and 3",
 			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands), len(cfg.Models.Sets))
 	}
-	if len(cfg.Connectors) != 3 {
-		t.Errorf("samples hold %d connector tables, want 3, searxng, obsidian and google", len(cfg.Connectors))
+	if len(cfg.Connectors) != 4 {
+		t.Errorf("samples hold %d connector tables, want 4, searxng, obsidian, google and whisper", len(cfg.Connectors))
 	}
 }
 

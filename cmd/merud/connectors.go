@@ -1,6 +1,6 @@
 // This file joins the connector supervisors to the rest of merud. merud
-// builds one supervisor per stdio connector and one for the SearXNG
-// container at startup, from the embedded manifests and the
+// builds one supervisor per stdio connector, one for the SearXNG
+// container and one for the whisper service at startup, from the embedded manifests and the
 // [connectors.<id>] tables, and keeps them for its whole life: a reload
 // of the MCP servers hands them the new config but never replaces them,
 // so a running connector survives it. The MCP pool reaches each stdio
@@ -35,12 +35,14 @@ import (
 )
 
 // connectorSet holds merud's supervisors: one per MCP connector, stdio
-// (Obsidian) or http (Google), in manifest order, and web, the SearXNG
-// container's. None of the fields changes after newConnectorSet; each
-// supervisor guards its own state.
+// (Obsidian) or http (Google), in manifest order; web, the SearXNG
+// container's; and speech, the whisper service's, for speech to text.
+// None of the fields changes after newConnectorSet; each supervisor
+// guards its own state.
 type connectorSet struct {
-	sups []*connectors.Supervisor
-	web  *connectors.Container
+	sups   []*connectors.Supervisor
+	web    *connectors.Container
+	speech *connectors.Service
 	// all holds every manifest, Ollama's included, for the ops that name
 	// a connector.
 	all []connectors.Manifest
@@ -89,11 +91,18 @@ func newConnectorSet(meruDir string, log *slog.Logger) (*connectorSet, error) {
 				return nil, err
 			}
 			c.web = web
+		case m.Kind == connectors.KindService && m.ID == "whisper":
+			speech, err := connectors.NewService(m, in, log)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			c.speech = speech
 		}
 	}
-	if c.web == nil {
+	if c.web == nil || c.speech == nil {
 		c.Close()
-		return nil, errors.New("connectors: no searxng manifest")
+		return nil, errors.New("connectors: no searxng or whisper manifest")
 	}
 	return c, nil
 }
@@ -129,6 +138,9 @@ func (c *connectorSet) configure(cfg config.Config, sec *secrets.Secrets) {
 		sup.Configure(cfg.Connectors[id], sec, byHand(cfg.MCP.Servers, id))
 	}
 	c.configureWeb(cfg)
+	// The profile picks the speech model's default; a model key in
+	// [connectors.whisper] wins over it.
+	c.speech.Configure(cfg.Connectors[c.speech.Manifest().ID], map[string]string{"model": cfg.SpeechModel()})
 }
 
 // configureWeb hands the SearXNG connector its part of cfg: its table,
@@ -189,15 +201,15 @@ func (c *connectorSet) routerServers(cfg config.Config) config.Config {
 }
 
 // statuses reports every connector for the connectors op, sorted by ID,
-// which is manifest order: the stdio ones, the SearXNG container, and
-// extra, the rows merud builds elsewhere (Ollama's). A secret field's
+// which is manifest order: the stdio ones, the SearXNG container, the
+// whisper service, and extra, the rows merud builds elsewhere (Ollama's). A secret field's
 // value never goes in; only whether it is saved.
 func (c *connectorSet) statuses(extra ...connectors.Status) []rpc.ConnectorStatus {
-	all := make([]connectors.Status, 0, len(c.sups)+1+len(extra))
+	all := make([]connectors.Status, 0, len(c.sups)+2+len(extra))
 	for _, sup := range c.sups {
 		all = append(all, sup.Status())
 	}
-	all = append(all, c.web.Status())
+	all = append(all, c.web.Status(), c.speech.Status())
 	all = append(all, extra...)
 	slices.SortFunc(all, func(a, b connectors.Status) int { return strings.Compare(a.ID, b.ID) })
 	out := make([]rpc.ConnectorStatus, 0, len(all))
@@ -254,6 +266,9 @@ func (c *connectorSet) Close() {
 	}
 	if c.web != nil {
 		c.web.Close()
+	}
+	if c.speech != nil {
+		c.speech.Close()
 	}
 }
 
@@ -357,12 +372,14 @@ func (c *connectorSet) find(id string) (connectors.Manifest, bool) {
 }
 
 // row returns connector id's status in the protocol's shape: from its
-// supervisor, the SearXNG one, or ollama's watch. ok is false for an ID
+// supervisor, the SearXNG one, the whisper one, or ollama's watch. ok is false for an ID
 // merud doesn't run.
 func (c *connectorSet) row(id string, ollama *ollamaWatch) (rpc.ConnectorStatus, bool) {
 	switch {
 	case c.web != nil && c.web.Manifest().ID == id:
 		return connectorRow(c.web.Status()), true
+	case c.speech != nil && c.speech.Manifest().ID == id:
+		return connectorRow(c.speech.Status()), true
 	case ollama != nil && id == "ollama":
 		return connectorRow(ollama.status()), true
 	}
@@ -374,11 +391,16 @@ func (c *connectorSet) row(id string, ollama *ollamaWatch) (rpc.ConnectorStatus,
 }
 
 // recheck runs connector id's check again (Fix's second half): a stdio
-// or http connector installs and checks again, and the SearXNG one looks
-// at its URL at once. It does nothing for an ID it doesn't run.
+// or http connector installs and checks again, the SearXNG one looks at
+// its URL at once, and the whisper one forgets its crashes and installs
+// what is missing. It does nothing for an ID it doesn't run.
 func (c *connectorSet) recheck(id string) {
 	if c.web != nil && c.web.Manifest().ID == id {
 		c.web.Recheck()
+		return
+	}
+	if c.speech != nil && c.speech.Manifest().ID == id {
+		c.speech.Recheck()
 		return
 	}
 	for _, sup := range c.sups {

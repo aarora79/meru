@@ -30,6 +30,7 @@ const KINDS = {
   stdio: "A program merud installs and starts on this Mac",
   http: "A server merud installs and starts on this Mac",
   container: "A container merud runs in Docker",
+  service: "A program merud installs and starts on this Mac when you use it",
   dependency: "You run it; Meru checks that it answers",
 };
 

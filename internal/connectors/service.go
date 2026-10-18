@@ -202,9 +202,15 @@ func (s *Service) configure(table config.Connector, defaults map[string]string, 
 	s.configured, s.set, s.fields, s.table, s.defaults = true, set, m.Fields, table, defaults
 	s.crashes = nil
 	waitExit := s.stopLocked()
+	// A platform the manifest has no download for, such as Linux before
+	// its build exists, stays off with a sentence that says why, rather
+	// than failing an install that can't work.
+	_, built := s.m.Install.Binaries[s.in.Platform]
 	switch {
 	case !set.enabled:
 		s.setLocked(servicePhaseOff, "")
+	case !built:
+		s.setLocked(servicePhaseOff, fmt.Sprintf("%s isn't available on this computer yet: Meru has no %s build of it.", s.m.Name, s.in.Platform))
 	case set.problem != "":
 		s.setLocked(servicePhaseNeedsConfig, set.problem)
 	default:
@@ -550,6 +556,9 @@ func (s *Service) sentenceLocked() string {
 	name := s.m.Name
 	switch s.phase {
 	case servicePhaseOff:
+		if s.sentence != "" {
+			return s.sentence
+		}
 		return name + " is off. Turn it on in Settings, Connections."
 	case servicePhaseInstalling:
 		return fmt.Sprintf("Meru is installing %s %s.", name, installVersion(s.m))

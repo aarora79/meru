@@ -513,6 +513,24 @@ func TestServiceInstallFails(t *testing.T) {
 	}
 }
 
+// TestServiceNoBuild checks that a platform the manifest has no download
+// for stays off, says why, and downloads nothing.
+func TestServiceNoBuild(t *testing.T) {
+	s, srv := testService(t)
+	s.in.Platform = "linux_amd64"
+	s.Configure(config.Connector{"enabled": true}, nil)
+	st := waitState(t, s, StateOff)
+	if !strings.Contains(st.Sentence, "isn't available on this computer yet") || !strings.Contains(st.Sentence, "linux_amd64") {
+		t.Errorf("sentence = %q", st.Sentence)
+	}
+	if _, _, err := s.Use(context.Background()); err == nil || !strings.Contains(err.Error(), "isn't available") {
+		t.Errorf("Use = %v", err)
+	}
+	if got := srv.requests.Load(); got != 0 {
+		t.Errorf("%d downloads, want none", got)
+	}
+}
+
 // TestNewServiceRefusesOtherKinds checks the kind check.
 func TestNewServiceRefusesOtherKinds(t *testing.T) {
 	if _, err := NewService(Manifest{ID: "x", Kind: KindStdio}, nil, nil); err == nil {

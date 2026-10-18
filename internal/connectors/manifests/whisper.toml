@@ -1,0 +1,64 @@
+# Speech to text: whisper.cpp's whisper-server, which turns a recording
+# from Meru.app into text. merud starts it on loopback when a recording
+# needs it and stops it after ten idle minutes. See ARCHITECTURE.md,
+# "Speech to text".
+#
+# Pins:
+#   - the program: whisper-server from whisper.cpp v1.9.5, built for Apple
+#     silicon by .github/workflows/whisper-server.yml and published on
+#     2026-10-18 as Meru's release whisper-server-v1.9.5. whisper.cpp
+#     publishes no macOS server, so Meru builds it; the SHA-256 is the one
+#     the release's SHA256SUMS lists. Linux and Windows have no build yet.
+#   - the models: ggml-base.en.bin and ggml-large-v3-turbo-q5_0.bin from
+#     huggingface.co/ggerganov/whisper.cpp at commit 5359861c, each URL
+#     naming that commit, never main. Each SHA-256 matches the
+#     x-linked-etag Hugging Face reported on 2026-10-18.
+id = "whisper"
+name = "Speech to text"
+kind = "service"
+required = false
+default_on = false
+idle_timeout = "10m"
+
+[install]
+type = "binary"
+version = "1.9.5"
+url_darwin_arm64 = "https://github.com/aarora79/meru/releases/download/whisper-server-v1.9.5/whisper-server-darwin-arm64"
+sha256_darwin_arm64 = "8a41d4c21710a0325e35a5a5b66548b9d952e6832e2c13de81ccb64c3a56f2db"
+
+# English only, 148 MB on disk and 445 MB in memory: the lite profile's.
+[[install.files]]
+name = "ggml-base.en.bin"
+url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin"
+sha256 = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
+
+# Many languages, 574 MB on disk and 890 MB in memory: the full profile's.
+[[install.files]]
+name = "ggml-large-v3-turbo-q5_0.bin"
+url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin"
+sha256 = "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+
+# merud passes the profile's pick as this field's default
+# (config.SpeechModel); a model key in [connectors.whisper] wins over it.
+[[field]]
+id = "model"
+type = "choice"
+label = "Speech model"
+help = "ggml-base.en.bin is small and hears English; ggml-large-v3-turbo-q5_0.bin is larger, more accurate and hears many languages."
+choices = ["ggml-base.en.bin", "ggml-large-v3-turbo-q5_0.bin"]
+default = "ggml-base.en.bin"
+
+[launch]
+# --request-path puts every route behind /{token}, a random path merud
+# makes for each start: whisper-server answers any web page, and its /load
+# route loads any file path, so a page in the browser mustn't reach it.
+command = "{pkg}/whisper-server-darwin-arm64"
+args = ["--host", "127.0.0.1", "--port", "8178", "-m", "{file.model}", "--request-path", "/{token}"]
+url = "http://127.0.0.1:8178"
+port = 8178
+base_path = "/{token}"
+
+[health]
+# whisper-server answers {"status":"ok"} once its model is loaded.
+path = "/health"
+expect = "json_key:status"

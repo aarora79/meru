@@ -643,8 +643,8 @@ which cancels any render still running and waits for it to stop.
 
 This file joins the connector supervisors (see [connectors](connectors.md)) to
 the rest of `merud`. `connectorSet` holds one `*connectors.Supervisor` per MCP
-connector, Obsidian over stdio and Google over HTTP, in manifest order, and `web`, the `*connectors.Container` for
-SearXNG. `newConnectorSet` loads the manifests, makes an `Installer` over
+connector, Obsidian over stdio and Google over HTTP, in manifest order; `web`, the `*connectors.Container` for
+SearXNG; and `speech`, the `*connectors.Service` for whisper, speech to text. `newConnectorSet` loads the manifests, makes an `Installer` over
 `~/.meru` and the home folder, and builds each supervisor. It hands the
 container two functions: `checkSearXNG`, which wraps `catalog.CheckSearXNG`
 and turns a refused connection into `connectors.ErrNothingListens`, and a
@@ -656,7 +656,7 @@ for sessions.
 
 | Method | What it does |
 | --- | --- |
-| `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name, then calls `configureWeb` |
+| `configure(cfg, sec)` | hands each supervisor its `[connectors.<id>]` table and the secrets, with `byHand` true when `[[mcp.servers]]` has an entry of the same name, then calls `configureWeb`, then hands `speech` its table with `cfg.SpeechModel()` as the `model` default |
 | `configureWeb(cfg)` | hands the SearXNG container its table, `[web] searxng_url`, and whether `[builtin] tools` lists `web_search`; `reloadBuiltin` calls it too |
 | `webOK()` | whether web search works now, with the sentence; the built-in tools' `UseWebCheck` |
 | `serverConfigs()` | one managed pool entry per connector that isn't off or set up by hand: its ID as the name, its tool lists from the supervisor's `Lists` (the manifest's, or those its table sets), the supervisor as `Spawn` |
@@ -700,7 +700,7 @@ refused change leaves both files as they were.
 
 `handleConnectorFix` answers `connector_fix`. It reads the connector's row
 with `connectorSet.row`, which asks the right supervisor: the stdio or http
-one, the SearXNG `Container`, or `ollamaWatch`. A row that needs fields, or
+one, the SearXNG `Container`, the whisper `Service`, or `ollamaWatch`. A row that needs fields, or
 that is off or set up by hand, goes straight back: the client asks the user
 from it. Any other row gets `recheck`, which calls the supervisor's or the
 container's `Recheck`, or, for Ollama, `ollamaWatch.recheck`, which pokes the

@@ -228,6 +228,14 @@ reports the unknown profile. `ProfileModels(name)` hands out one profile's
 models, and `false` for a name it doesn't know; `meru setup` calls it to
 download a profile's models before any `config.toml` exists.
 
+`speechModels` maps each profile to its speech-to-text model, the file the
+`whisper` connector downloads: `ggml-base.en.bin` for `lite` and
+`ggml-large-v3-turbo-q5_0.bin` for `full`. `cfg.SpeechModel()` reads it, and
+`merud` passes it to the connector as its `model` field's default. It sits
+beside `profiles` rather than in `Models` because the model is the
+connector's setting, `[connectors.whisper] model`, not an Ollama tier, so
+`[models]` gains no key.
+
 `validate` collects every problem before it returns, so the user fixes them all
 in one pass:
 

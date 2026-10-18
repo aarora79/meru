@@ -202,7 +202,9 @@ each MCP server `merud` holds a connection to, and each connector the pool
 runs that isn't `ok`, with its state in brackets: `obsidian (needs config)`.
 `rpc.ConnectorWords` writes the state, so the rail and `meru chat` say it the
 same way. A connector that is `ok` shows by name alone, like a connected
-server.
+server. Web search, a container, and speech to text, a service, aren't in
+the pool, so `Status` names them from the `connectors` op: by name when
+`ok`, with the state when on but not `ok`, and not at all when off.
 
 ### The chat list (history.go, web/js/organize.js)
 
@@ -552,7 +554,9 @@ bundler.
 `connectorCard(c, ctx, mark)` draws one connector from its status alone. It
 names no connector: `TestConnectorFormsFromSchema` fails if the file holds a
 connector's ID, a field's ID or a config key. The card has a pill from
-`PILLS`, the sentence, an on and off switch for any kind but `dependency`,
+`PILLS`, the sentence, the line under the title from `KINDS`, which says
+where each kind runs (a `service` "starts on this Mac when you use it"), an
+on and off switch for any kind but `dependency`,
 and, when the connector has fields, a form. `INPUTS` maps each field type
 to the function that draws it, and every entry returns the same three
 things: the element, the control to focus, and `read`, which returns what

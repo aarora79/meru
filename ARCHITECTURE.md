@@ -3503,8 +3503,7 @@ Step 7, the release notes and the install skill's last changes, is
 ### The manifest
 
 Each connector has one TOML file, `internal/connectors/manifests/<id>.toml`,
-compiled into `merud`. Four ship, and a fifth, `whisper`, comes with speech
-to text:
+compiled into `merud`. Five ship:
 
 | ID | Kind | Install | What it is |
 | --- | --- | --- | --- |
@@ -3512,6 +3511,7 @@ to text:
 | `obsidian` | stdio | the npm package `obsidian-mcp` | notes in an Obsidian vault folder |
 | `google` | http | the Python package `workspace-mcp` | Gmail, Calendar, Drive and Docs |
 | `ollama` | dependency | none | the model runtime; status only |
+| `whisper` | service | a download and one model file, each by SHA-256 | whisper.cpp's server, for speech to text |
 
 A manifest names:
 
@@ -3572,7 +3572,7 @@ breaks a rule:
   `{pkg}`;
 - a wildcard in a tool list, or a `confirm` tool that `allow` doesn't list.
 
-Speech to text, **planned**, adds the fifth manifest, `whisper` (see
+`whisper` is the speech-to-text connector (see
 [Speech to text](#speech-to-text)).
 
 ### Pinned versions
@@ -4514,7 +4514,7 @@ characters of a page.
 
 ## Speech to text
 
-**Planned.** In Meru.app you press a microphone button, speak, and press it
+**In progress.** In Meru.app you press a microphone button, speak, and press it
 again. Meru turns the words into text in the composer, where you read them,
 fix them, and press Send. The text then goes as a typed question would. The
 answer model never hears the audio: speech to text is a step before the
@@ -4522,10 +4522,13 @@ question, not part of it. `meru chat` keeps typing, since a terminal has no
 microphone without a native audio library, which the thin client can't take
 on.
 
-The work lands in six steps after this design: the binary built by CI, two
-additions to the connectors, the `whisper` connector with a model per
-profile, the `transcribe` op in `merud`, the button in Meru.app, and the
-installer step with a FAQ page.
+The work lands in six steps after this design. Three are in place: the
+binary built by CI, the connectors' `service` kind and `[[install.files]]`,
+and the `whisper` connector with a model per profile, which Settings and
+`meru mcp set whisper enabled=true` turn on. Three come next: the
+`transcribe` op in `merud`, the button in Meru.app, and the installer step
+with a FAQ page. Until the op lands, the connector installs and reports
+ready, and nothing starts the server.
 
 ### Why whisper.cpp, not Ollama
 
@@ -4631,7 +4634,20 @@ runs it with the `Service` supervisor (`internal/connectors/service.go`):
 The launch is
 `whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}`,
 so the server listens on this machine only. Turning it on downloads about
-160 MB for `lite` or 580 MB for `full`.
+160 MB for `lite` or 580 MB for `full`: on the development Mac the first
+took 18.5 seconds and the second 58. A model the user picks later downloads
+beside the first one, which stays until the runtime folder goes. A `model`
+that isn't one of the two is refused before config changes.
+
+The manifest has a download for `darwin_arm64` only. On any other computer
+the connector stays off when turned on, and says why: "Speech to text isn't
+available on this computer yet: Meru has no linux_amd64 build of it." It
+never tries an install that can't work.
+
+`TestIntegrationWhisper`, behind the `integration` build tag, installs the
+real connector into a temporary home, starts it through the supervisor, and
+checks that it writes down a clip `say` spoke and that `/inference` and
+`/load` answer 404 without the token.
 
 ### The transcribe op
 

@@ -236,12 +236,14 @@ func TestStatusWaitingAndWeb(t *testing.T) {
 			return emit(rpc.Event{Type: rpc.EventMCPStatus})
 		case rpc.OpConnectors:
 			ok := rpc.ConnectorStatus{ID: "ollama", Name: "Ollama", Kind: "dependency", State: rpc.ConnectorOK}
-			return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{ok, web}})
+			speech := rpc.ConnectorStatus{ID: "whisper", Name: "Speech to text", Kind: "service", State: rpc.ConnectorOK}
+			off := rpc.ConnectorStatus{ID: "whisper2", Name: "Off service", Kind: "service", State: rpc.ConnectorOff}
+			return emit(rpc.Event{Type: rpc.EventConnectors, Connectors: []rpc.ConnectorStatus{ok, web, speech, off}})
 		}
 		return nil
 	}))
 	s = up.Status(context.Background())
-	if !s.Up || !reflect.DeepEqual(s.Connections, []string{"Web search (needs config)"}) {
-		t.Errorf("Status = %+v, want up with web search's state and no Ollama", s)
+	if !s.Up || !reflect.DeepEqual(s.Connections, []string{"Web search (needs config)", "Speech to text"}) {
+		t.Errorf("Status = %+v, want up with web search's state, speech to text, and no Ollama or service that is off", s)
 	}
 }
