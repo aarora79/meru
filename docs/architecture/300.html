@@ -281,6 +281,7 @@
     <li><a href="#setup">First run and setup</a></li>
     <li><a href="#installer">The Mac installer</a></li>
     <li><a href="#web-search">Web search</a></li>
+    <li><a href="#speech-to-text">Speech to text</a></li>
     <li><a href="#a2a">Other agents over A2A</a></li>
     <li><a href="#scheduler">Scheduled jobs</a></li>
     <li><a href="#observability">Seeing where the time went</a></li>
@@ -572,7 +573,7 @@
 
   <li><b>The rail</b> holds the logo and wordmark, one button that opens About in Settings, then New chat, with <b>Incognito chat</b> and <b>New folder</b> under it, a search box that filters the list by title, folder or tag, the past chats, a status block, and a Settings button at its foot. The chat folders come first, each a group with a head that folds it, closed until you open it unless it holds the open chat; a search opens them all. The chats in no folder follow, grouped Today, Yesterday and Earlier. Each chat's tags show small after its title. A right-click on a chat, or the context-menu key, opens Move to folder, Remove from its folder, Tags and Delete; on a folder's head, Rename and Delete folder. Each opens a dialog in the page, and Delete asks before anything goes (see <a href="#organizing">Organizing past chats</a>). The status block shows the answer model, the file count and the connected MCP servers, or, when <code>merud</code> doesn't answer, that it isn't running and the command that starts it. A button folds the rail to a column of icons: the logo, a button that unfolds the rail, New chat, chats, Usage, Settings and a status dot.</li>
 
-  <li><b>The conversation</b> shows each question as a bubble and each answer as a card. The header holds the chat's title, <b>Share as file</b> and a button that shows or hides the side panel. An incognito chat gets an <b>Incognito</b> badge beside its title, a line under the header that says what it keeps, and no Share as file. A one-line work strip says what the turn did and lists each tool call by its label. Its first chip reads the turn's events, never the route: "Used tools" after a <code>tool_call</code>, "Searched your files" after a <code>sources</code> event, both together, or "Answered from the model" when neither came. A turn on the <code>tools</code> route whose model called no tool once said "Used tools" under a made-up answer; "Show steps" opens the raw tool names, outcomes and times, and an amber "Waiting for you" chip marks an open approval. The answer streams as plain text and renders as Markdown when it ends, as in <code>meru chat</code>; each code block gets its number in the chat and a Copy button, and each answer <b>Copy</b>, <b>Save to a note</b>, <b>Try again</b> (the same question, in the same session and scope, with the same images) and a dim stats line. Under the answer, one closed line, "3 sources", opens to a chip for each source the answer cites, and a chip opens its file. The Bridge picks those sources with <code>rpc.Cited</code>, as <code>meru</code> and <code>meru chat</code> do; an answer that cites none shows no line. When <code>merud</code> sends a <code>notice</code>, because the answer claims an action no tool performed, an amber note with a warning icon sits under the answer, and again when the chat reopens from history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on Shift+Enter; while a turn runs, Enter queues, and the queue shows above the composer with a remove button on each question. Under the text box sit the <b>Where Meru looks</b> switch and the attach button.</li>
+  <li><b>The conversation</b> shows each question as a bubble and each answer as a card. The header holds the chat's title, <b>Share as file</b> and a button that shows or hides the side panel. An incognito chat gets an <b>Incognito</b> badge beside its title, a line under the header that says what it keeps, and no Share as file. A one-line work strip says what the turn did and lists each tool call by its label. Its first chip reads the turn's events, never the route: "Used tools" after a <code>tool_call</code>, "Searched your files" after a <code>sources</code> event, both together, or "Answered from the model" when neither came. A turn on the <code>tools</code> route whose model called no tool once said "Used tools" under a made-up answer; "Show steps" opens the raw tool names, outcomes and times, and an amber "Waiting for you" chip marks an open approval. The answer streams as plain text and renders as Markdown when it ends, as in <code>meru chat</code>; each code block gets its number in the chat and a Copy button, and each answer <b>Copy</b>, <b>Save to a note</b>, <b>Try again</b> (the same question, in the same session and scope, with the same images) and a dim stats line. Under the answer, one closed line, "3 sources", opens to a chip for each source the answer cites, and a chip opens its file. The Bridge picks those sources with <code>rpc.Cited</code>, as <code>meru</code> and <code>meru chat</code> do; an answer that cites none shows no line. When <code>merud</code> sends a <code>notice</code>, because the answer claims an action no tool performed, an amber note with a warning icon sits under the answer, and again when the chat reopens from history. A new chat shows the logo beside "Ask Meru". The composer sends on Enter and adds a line on Shift+Enter; while a turn runs, Enter queues, and the queue shows above the composer with a remove button on each question. Under the text box sit the <b>Where Meru looks</b> switch and the attach button, and, <b>planned</b>, a microphone button that turns speech into text in the box (see <a href="#speech-to-text">Speech to text</a>).</li>
 
   <li><b>The side panel</b> starts closed; the header's button opens it, and the choice lasts until the window closes. "What this answer used" lists the selected answer's sources, every file the prompt held, its tool calls, and under <b>Remembered</b> the memories recall put in its prompt, each with a <b>Forget</b> button that sends <code>memory_forget</code>. It ends with a privacy line: "The model ran on this Mac. Only google was contacted." While an approval card is open, the panel turns into <b>Why Meru is asking</b>: why this call waits, the server's tools that are on with their policies, a link, "Change what google may do", that opens Settings at that connection, and a note that every call goes in the tool log under Settings, Activity. The panel doesn't open for a card: the card says why Meru asks, with a link to the panel. In Settings the panel is <b>On this Mac</b>: the answer and router models, what the search index holds, and a line that says there is no account and no cloud, with the path of <code>config.toml</code>. Below 1180 pixels the panel slides over the conversation on demand.</li>
 
@@ -1101,6 +1102,8 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <li><b><code>full</code></b> swaps in Qwen 3.6 35B-A3B, a mixture of experts that runs about 3B of its 36B parameters per token. Its MXFP8 build runs on Ollama's MLX backend on Apple silicon. It was the fastest model in our benchmark (see <a href="#models-we-tried">Models we tried</a>), and Ollama held 36 to 52 GiB for it while it answered, so <code>full</code> needs a 64 GB Mac.</li>
 </ul>
 
+<p>Speech to text, <b>planned</b>, runs outside Ollama in its own process, with a Whisper model per profile, so it takes none of Ollama's model slots (see <a href="#speech-to-text">Speech to text</a>).</p>
+
 <p><code>merud</code> keeps each model loaded by asking Ollama for <code>keep_alive: -1</code>, and warms every tier at startup. Ollama must allow enough models in memory at once: <code>OLLAMA_MAX_LOADED_MODELS</code> set to 3 for <code>full</code>.</p>
 <p>The warm-up runs in two parts. Before <code>merud</code> takes questions (its socket is open, and answers that Ollama isn't ready yet), it sends the <code>fast</code> model a one-token "hi" and the <code>embed</code> model one short text: the router needs the first on every question, the store the second to open, and both load in a second or two. The answer model, the one a set in use names (see <a href="#model-sets">Model sets</a>), loads next, in the background, while <code>merud</code> already answers pings, settings and the router. Its warm-up prompt is the system prompt a <code>direct</code> question gets, with the tools and skills it lists, and a one-token answer with the set's think setting. A question that reaches its first answer call before the load ends waits for that load, and a model switch waits too, so Ollama never loads the model twice or unloads it while it loads. The info log says <code>loading the answer model</code>, then <code>answer model warm</code> with the time it took; a failed load logs the error <code>couldn't load the answer model</code> with the <code>ollama pull</code> command to run. A model that isn't pulled no longer stops <code>merud</code>; the first question then fails with Ollama's reason.</p>
 <p>A real session showed why the warm-up uses a real prompt. <code>merud</code> warmed <code>qwen3.6:35b-a3b-mxfp8</code>, a 38 GB mixture-of-experts model, with "hi" before it took questions; the load took 84 seconds, and Ollama kept the model, as <code>keep_alive: -1</code> asks, with no reload in its log. Yet the first question, 26 minutes later, spent 2 minutes 17 seconds on a prompt of 1,349 tokens, and the next question spent 6 seconds on 1,460. A mixture-of-experts model runs each token through a few of its many experts, so a three-token prompt touched a sliver of the weights, and the first long prompt read the rest from disk. A warm-up prompt of a thousand tokens or more touches most experts before the user asks, and Ollama keeps its opening for the first question to reuse.</p>
@@ -1256,6 +1259,8 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 <p>Four more methods sit outside the interface, for the model ops and the capability checks. <code>Unload</code> drops a model from Ollama's memory with a <code>POST /api/generate</code> that sets <code>keep_alive: 0</code>, and <code>Pulled</code> reads <code>GET /api/tags</code> with each model's size on disk. <code>Details</code> and <code>Capabilities</code> come below.</p>
 
 <p>For images, <code>Message</code> gains <code>Images</code>, the raw bytes of each picture: on the user message for an attached image, and on the tool message for a picture <code>view_image</code> opened. <code>OllamaEngine</code> sends them as the message's <code>images</code> array in <code>/api/chat</code>, which Ollama documents as base64 strings; Go's <code>encoding/json</code> writes a <code>[]byte</code> that way with no code of ours. Only a model with the <code>vision</code> capability can read them, and Ollama's <code>POST /api/show</code> lists a model's capabilities, such as <code>["completion", "vision", "tools", "thinking"]</code>. <code>OllamaEngine.Details</code> asks it for the capabilities, the size in parameters, the quantization and the context length, and keeps each model's answer for the life of the engine; a failed call keeps nothing. <code>Capabilities</code> reads the list through <code>Details</code>, and <code>Pulled</code> reads <code>GET /api/tags</code>, the models Ollama has on disk. These sit outside the interface, which keeps its four methods: <code>merud</code> hands the agent a check built on <code>Capabilities</code> for image turns and another for whether the answer model can take tools; <code>about_meru</code> and the models in Settings need <code>Details</code>, and only the models in Settings need <code>Pulled</code>. The "ollama http" debug line counts a request's images; no log line or span holds their bytes.</p>
+
+<p>Speech to text, <b>planned</b>, doesn't go through the interface: it runs in whisper.cpp's server, not in Ollama, and <code>internal/speech</code> talks to it (see <a href="#speech-to-text">Speech to text</a>).</p>
 
 <p>Two engines may come later, behind the same interface:</p>
 <ul>
@@ -2226,6 +2231,8 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
   <li>a wildcard in a tool list, or a <code>confirm</code> tool that <code>allow</code> doesn't list.</li>
 </ul>
 
+<p>Speech to text, <b>planned</b>, adds a fifth manifest, <code>whisper</code>, with a new kind, <code>service</code> (a program on loopback that takes plain HTTP), and <code>[[install.files]]</code>, pinned downloads beside the program such as a model file (see <a href="#speech-to-text">Speech to text</a>).</p>
+
 <h3 id="connector-pins">Pinned versions</h3>
 
 <p>Each connector runs one version, chosen and tested for a Meru release. A pin moves only in a new Meru release, and the release notes list it under "Connector versions". A policy test (<code>internal/policy/pins_test.go</code>) fails on <code>latest</code>, <code>@latest</code>, <code>:latest</code>, a version range, a package runner such as <code>uvx</code> or <code>npx</code> without an exact version, a container image without a digest, and a file fetched from a branch. It reads the manifests, the installer, the catalog, <code>cmd/meru</code>, <code>scripts/</code>, <code>deploy/</code> and the code blocks in <code>docs/</code>. Meru's own <code>releases/latest</code> link passes: it fetches Meru, not a dependency. The places that break the rule today sit on a short list in the test, each with a reason; the list can only shrink. Step 6 took the installer's <code>searxng:latest</code> off it: <code>merud</code> runs the pinned image now. Step 4 took off <code>meru setup</code>'s SearXNG recipe and the docs that repeated it, which fetched files from SearXNG's main branch. Step 5 took off the Google start commands in the catalog, the installer and the docs: each now runs <code>uvx workspace-mcp==1.30.0</code>, the Google connector's pin, so a server you run by hand and the one Meru runs are the same release.</p>
@@ -2787,6 +2794,80 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 <p><b>Follow-ups remember the web.</b> Each web call that succeeds, <code>merud</code>'s or the model's, leaves notes on the turn's assistant line (see <a href="#session-transcripts">Session transcripts</a>), and a later turn's history carries them after the answer. Each note's gist comes from the result as <code>dispatch</code> returned it, after the redaction of secrets, and holds no more than 300 characters of a page.</p>
 
 <!-- ============================================================ -->
+<h2 id="speech-to-text">Speech to text</h2>
+
+<p><b>Planned.</b> In Meru.app you press a microphone button, speak, and press it again. Meru turns the words into text in the composer, where you read them, fix them, and press Send. The text then goes as a typed question would. The answer model never hears the audio: speech to text is a step before the question, not part of it. <code>meru chat</code> keeps typing, since a terminal has no microphone without a native audio library, which the thin client can't take on.</p>
+
+<p>The work lands in six steps after this design: the binary built by CI, two additions to the connectors, the <code>whisper</code> connector with a model per profile, the <code>transcribe</code> op in <code>merud</code>, the button in Meru.app, and the installer step with a FAQ page.</p>
+
+<h3 id="speech-why">Why whisper.cpp, not Ollama</h3>
+
+<p>A test on 2026-10-18 (Mac Studio, M4 Max, 64 GB, Ollama 0.40.5) tried both.</p>
+
+<p>Ollama has no transcription endpoint. Its <code>gemma4:e2b</code> and <code>gemma4:e4b</code> models list <code>audio</code> among their capabilities, and they transcribe a WAV file passed in a message's <code>images</code> field, which the API docs name for pictures only. Ollama ignored every field named for audio without an error. They cost too much for the job:</p>
+
+<ul>
+  <li><b>They push Meru's models out.</b> Ollama keeps at most <code>OLLAMA_MAX_LOADED_MODELS</code> models loaded, 3 per GPU by default, and a Mac with a separate answer model already has three. A voice question loaded <code>gemma4:e2b</code> (7.4 GB) and pushed out the router, so the question waited about 5 seconds for its first word against 0.1 seconds typed, and 13 seconds when the answer model was the one pushed out. On a 16 GB Mac, <code>lite</code> and <code>gemma4:e2b</code> together need more than the GPU may use.</li>
+  <li><b>They follow what they hear.</b> They are chat models. Asked to transcribe "In two sentences, explain why the sky is blue", <code>gemma4:e2b</code> explained why the sky is blue. A system message stopped it, and half a second of silence at the end stopped it losing the last word, but each new model would need both checks again.</li>
+</ul>
+
+<p>whisper.cpp's <code>whisper-server</code> does only speech to text, so it has nothing to obey. It runs in its own process, outside Ollama's count, and on the same Mac it transcribed a 26-second clip in under half a second:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Profile</th><th>Model file</th><th>On disk</th><th>In memory</th><th>Languages</th></tr></thead>
+  <tbody>
+    <tr><td><code>lite</code></td><td><code>ggml-base.en.bin</code></td><td>148 MB</td><td>445 MB</td><td>English</td></tr>
+    <tr><td><code>full</code></td><td><code>ggml-large-v3-turbo-q5_0.bin</code></td><td>574 MB</td><td>890 MB</td><td>many</td></tr>
+  </tbody>
+</table></div>
+
+<p>On a real recording through a USB webcam's microphone, the <code>full</code> model made no mistake and the <code>lite</code> one heard "Porto" as "portal". <code>[models] speech</code> picks the other file. Both come from <code>huggingface.co/ggerganov/whisper.cpp</code> at commit <code>5359861c739e955e79d9a303bcbc70fb988958b1</code>, each pinned by SHA-256.</p>
+
+<h3 id="speech-binary">The binary</h3>
+
+<p>whisper.cpp publishes <code>whisper-server</code> for Linux and Windows but not for macOS, where it ships only a library for Xcode apps. <code>merud</code> is built without cgo and can't load it. So a GitHub Actions workflow in Meru's repository, <code>whisper-server.yml</code>, run by hand, builds it:</p>
+
+<ul>
+  <li>from whisper.cpp's <code>v1.9.5</code> source tarball, checked against a SHA-256 kept in the workflow (commit <code>d2a764c648779feb36d44363f212a29b00aad1af</code>);</li>
+  <li>on a <code>macos-14</code> runner, for Apple silicon, with Metal, the Metal shaders inside the binary and static libraries, so the result is one file that links only to macOS's own frameworks;</li>
+  <li>with <code>GGML_NATIVE=OFF</code>, so the compiler doesn't tune the code to the runner's CPU, which could crash it on an older Mac, and for macOS 13.3 and later.</li>
+</ul>
+
+<p>The workflow checks that <code>otool -L</code> lists only system libraries and that the program transcribes a test clip to the expected words. It publishes the file, <code>SHA256SUMS</code> and whisper.cpp's MIT licence to a release of its own, <code>whisper-server-v1.9.5</code>, which nothing moves or deletes, and records which commit and workflow built the file with GitHub's build attestation. The connector pins the file's SHA-256. A new whisper.cpp version is a pull request that changes the workflow's pin and the manifest's.</p>
+
+<p>Linux and Windows come later. Until then the connector has no download for them, and speech to text is off there.</p>
+
+<h3 id="speech-connector">The connector</h3>
+
+<p><code>whisper</code> is a connector (see <a href="#connectors">Connectors and the supervisor</a>), off until <code>[connectors.whisper] enabled = true</code>. It needs two things the connectors lack today:</p>
+
+<ul>
+  <li><b>A <code>service</code> kind.</b> <code>merud</code> starts the program, checks it with an HTTP GET, and talks plain HTTP to it on loopback. An <code>http</code> connector speaks MCP, and of today's connectors only the SearXNG container takes plain HTTP.</li>
+  <li><b><code>[[install.files]]</code>.</b> Extra downloads, each an https URL and a SHA-256, saved beside the program. The model file is one.</li>
+</ul>
+
+<p>The launch is <code>whisper-server --host 127.0.0.1 --port {port} -m {model}</code>, so the server listens on this machine only. The supervisor starts it on the first recording, stops it after ten idle minutes and restarts it after a crash, as it does for Obsidian, and its card in Settings shows its state. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>.</p>
+
+<h3 id="speech-op">The transcribe op</h3>
+
+<p>The app records 16 kHz, mono, 16-bit PCM and wraps it as a WAV file, for at most 60 seconds: 1.9 MB. The Bridge sends it to <code>merud</code> in a <code>transcribe</code> request, in a new <code>Request.Audio</code> field, which Go's <code>encoding/json</code> writes as base64, 2.6 MB. That passes the socket's 1 MiB limit on a line, so the limit on what <code>merud</code> reads rises to 4 MiB.</p>
+
+<p><code>merud</code> hands the bytes to <code>internal/speech</code>, which posts them to the connector's <code>/inference</code> with <code>temperature=0</code> and <code>response_format=json</code>, and replies with one <code>transcript</code> event, then <code>done</code>. It refuses audio that isn't WAV or runs over 60 seconds. With the connector off, the error says where to turn it on. Speech to text isn't part of the <code>Engine</code> interface, which serves Ollama and keeps its four methods.</p>
+
+<h3 id="speech-recording">Recording in Meru.app</h3>
+
+<ul>
+  <li>The composer gets a microphone button beside the attach button. It shows "Listening…" while it records, then "Turning speech into text…", then puts the text in the box with the cursor at the end. Nothing sends without the user's press of Send. Empty text says "Meru heard nothing. Try again closer to the microphone."</li>
+  <li>The page records with <code>getUserMedia</code> and an <code>AudioWorklet</code>, and builds the WAV itself. The first task of that step checks that Wails v3's WebView allows <code>getUserMedia</code>; if it doesn't, a small native recorder goes in <code>cmd/meru-desktop</code>, which already builds with cgo.</li>
+  <li><code>Info.plist</code> gains <code>NSMicrophoneUsageDescription</code>, so macOS asks once: "Meru turns what you say into text on this Mac. The sound never leaves it."</li>
+  <li>Some Macs have no microphone: a Mac Studio or a Mac mini has none until you plug one in. With no input device the button says "This Mac has no microphone. Connect one, such as AirPods or a webcam."</li>
+</ul>
+
+<h3 id="speech-keeps">What Meru keeps</h3>
+
+<p>Nothing of the sound. The WAV lives in the app's memory and in <code>merud</code>'s for the one request, and nothing writes it to disk: no file, no transcript line, no <code>tool_calls</code> row, since speech to text isn't a tool call. The text joins a chat only when you send it, as typed text does. <code>merud</code> logs one info line per request with the length of the audio, the time taken and the outcome, never the words.</p>
+
+<!-- ============================================================ -->
 <!-- ============================================================ -->
 <h2 id="a2a">Other agents over A2A</h2>
 
@@ -3063,6 +3144,7 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>meru.tool.duration</code></td><td>histogram</td><td><code>meru.tool.kind</code>, <code>meru.tool.server</code>, <code>gen_ai.tool.name</code></td><td>tool latency, for calls that ran</td></tr>
     <tr><td><code>meru.model.malformed_calls</code></td><td>counter</td><td>model</td><td>tool calls the main model wrote that Meru couldn't run as written</td></tr>
     <tr><td><code>meru.retrieval.duration</code></td><td>histogram</td><td>stage (vector/fts/fusion/memories/sessions/images)</td><td>retrieval cost (v0.2; memories and sessions stages v0.4; images v0.4.13)</td></tr>
+    <tr><td><code>meru.speech.duration</code></td><td>histogram</td><td>model, outcome (ok/error/empty/too_long)</td><td>(planned) how long speech to text takes, the server's start included</td></tr>
     <tr><td><code>meru.web.render.duration</code></td><td>histogram</td><td>outcome (ok/error/timeout/cancelled)</td><td>how long a page that needs JavaScript takes in the page reader, Chrome's start included</td></tr>
     <tr><td><code>meru.rpc.active_streams</code></td><td>up-down counter</td><td>—</td><td>open client sessions</td></tr>
     <tr><td><code>meru.scheduler.job_runs</code></td><td>counter</td><td>job, outcome</td><td>(v0.5) scheduled work</td></tr>
@@ -3136,6 +3218,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <li><code>meru log</code> and the <code>tool_calls</code> table let you review every external action.</li>
   <li>The Mac installer downloads only what a step names, after you press Continue: Ollama and uv through Homebrew, the models through Ollama, the SearXNG image through Docker, and Ollama.app from Ollama's site on a Mac with no Homebrew. It runs only the programs on its allowlist, with no shell, and keeps the Google client secret in the start script, readable only by you (see <a href="#installer">The Mac installer</a>).</li>
   <li>A connector's install downloads only what its pins name: Node from nodejs.org and uv from its GitHub release, each checked against a SHA-256 compiled into <code>merud</code>; the package and its dependencies from the npm registry or PyPI; a Python build through uv; and a container image by digest through Docker (see <a href="#connector-runtime">The runtime folder</a>). Nothing downloads until a connector needs it: <code>merud</code> installs a connector the first time it starts it, and the page reader installs chrome-headless-shell the first time a page needs JavaScript.</li>
+  <li>Speech to text, <b>planned</b>, keeps the sound on the machine: Meru.app sends it to <code>merud</code> over the socket, <code>merud</code> to whisper.cpp's server on loopback, and nothing writes it to disk. Only the text you send joins a chat. The connector downloads its program from Meru's own release and its model from Hugging Face, each pinned by SHA-256, when you turn it on.</li>
   <li>The desktop app loads nothing from the network. Its page, fonts and libraries ship inside the binary, its Content-Security-Policy blocks remote scripts, images and connections, and its Wails updater stays unconfigured, so it never checks for updates.</li>
 </ul>
 

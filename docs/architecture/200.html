@@ -260,6 +260,7 @@
     <li><a href="#memory">Memory</a></li>
     <li><a href="#skills">Skills</a></li>
     <li><a href="#tools">Tools over MCP, other agents over A2A</a></li>
+    <li><a href="#speech">Speech to text</a></li>
     <li><a href="#jobs">Scheduled jobs</a></li>
     <li><a href="#setup">First run and setup</a></li>
     <li><a href="#what-you-can-see">What you can see</a></li>
@@ -1021,6 +1022,15 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <p>A program you declare gets <code>PATH</code>, <code>HOME</code> and <code>LANG</code> and nothing else from <code>merud</code>'s environment, unless the entry names more. It runs for at most 30 seconds unless the entry sets a timeout, and the timeout kills every process it started. The model reads the exit code and what it printed; a failed exit is a result it can react to. <code>confirm = true</code> makes a command ask first. <code>meru tools</code> shows what each command runs, and <code>meru log</code> shows the exact arguments of every run.</p>
 
 <p>Meru uses no MCP shell server. A shell server confines nothing Meru doesn't, adds a runtime to install, and keeps the real rules, which program with which arguments, where <code>dispatch</code> can't log them. A plain list of allowed programs isn't safe either: <code>find -exec</code>, <code>git -c core.pager=…</code> and <code>ssh host …</code> each run anything.</p>
+
+<!-- ============================================================ -->
+<h2 id="speech">Speech to text</h2>
+
+<p>Speech to text is planned. In the desktop app you will press a microphone button, speak, and press it again. Meru turns your words into text in the box where you type, and you read it, fix it, and press Send. Nothing goes without that press, and the answer model never hears the sound: it gets the text, as if you had typed it.</p>
+
+<p>The words come from Whisper, a model built only to write down speech, run by whisper.cpp in its own process on your machine. A test tried Gemma 4 in Ollama first. It heard well, but at 7.4 GB it pushed Meru's own models out of memory, so each spoken question waited about 5 seconds, and as a chat model it sometimes answered the spoken question instead of writing it down. Whisper takes 445 MB on <code>lite</code> and 890 MB on <code>full</code>, and turned 26 seconds of speech into text in under half a second.</p>
+
+<p><code>merud</code> runs Whisper as a connector, off until you turn it on, and downloads two pinned files: the program, which Meru's own build makes for Macs since whisper.cpp publishes none, and the model. The app sends at most 60 seconds of sound to <code>merud</code>, which passes it to Whisper on this machine. Nothing writes the sound to disk; only the text you send joins the chat. <code>meru chat</code> stays typed. The level 300 page has the details: <a href="300.html#speech-to-text">Speech to text</a>.</p>
 
 <!-- ============================================================ -->
 <h2 id="jobs">Scheduled jobs</h2>
