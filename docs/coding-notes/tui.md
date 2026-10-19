@@ -478,8 +478,13 @@ adds `no profile`. `noProfile` makes that call for the header and for the empty
 conversation, which adds the nudge under its usual hint.
 
 On the right sit the last hour's usage, dim, from `lastHour`
-(`1h: 4 tasks · 18k in · 2.1k out`), and the connection status. When the
-terminal is narrow, the header gives things up in this order: the usage first,
+(`1h: 4 tasks · 18k in · 2.1k out`), the connection status, and last Meru's
+website. `siteLink` writes `aarora79.github.io/meru` dim, wrapped in an OSC 8
+link to `about.SiteURL` when the terminal draws links. A terminal that draws
+links opens it on a click; with `[chat] mouse_copy` on, the chat takes the
+click, and `linkUnder` reads row 0, the header, with the same `linkAt` it uses
+for the conversation. When the terminal is narrow, the header gives things up in
+this order: the website first, since `/about` lists it too; then the usage,
 because `/usage` shows it in full; then the bracket with the vectors and size, whole,
 because cutting it mid-way would leave an open `(`, and the memory count with it;
 then the rest of the details shrink with an ellipsis from the right, and last they

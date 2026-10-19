@@ -18,6 +18,11 @@ const Tagline = "A personal AI assistant that runs entirely on your own computer
 // the top of the repository gives it.
 const License = "Apache License 2.0"
 
+// SiteURL is Meru's website, the landing page GitHub Pages serves from
+// docs/, with the architecture pages and the slides. Both clients link to
+// it from their headers.
+const SiteURL = "https://aarora79.github.io/meru/"
+
 // The project's pages on GitHub.
 const (
 	SourceURL  = "https://github.com/aarora79/meru"
@@ -42,6 +47,7 @@ type Link struct {
 // list for another.
 func Links() []Link {
 	return []Link{
+		{ID: "site", Label: "Meru's website", URL: SiteURL},
 		{ID: "source", Label: "Source code on GitHub", URL: SourceURL},
 		{ID: "design", Label: "Read the design", URL: DesignURL},
 		{ID: "feature", Label: "Request a feature", URL: FeatureURL},

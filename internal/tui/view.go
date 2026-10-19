@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/aarora79/meru/internal/about"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -169,6 +170,11 @@ func (m Model) header() string {
 			right = withUsage
 		}
 	}
+	// The website goes last on the right, and only when the full details
+	// still fit beside it: it is the first thing to go on a narrow terminal.
+	if withSite := right + "  " + m.siteLink(); fits(details, withSite) {
+		right = withSite
+	}
 	if !fits(details, right) {
 		details = m.details(false)
 	}
@@ -193,6 +199,22 @@ func (m Model) header() string {
 	}
 	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 1)
 	return ansi.Truncate(left+strings.Repeat(" ", gap)+right, m.width, "")
+}
+
+// siteDisplay is how the header writes Meru's website: short, with no
+// scheme, as people say it.
+const siteDisplay = "aarora79.github.io/meru"
+
+// siteLink returns the website for the header, dim. When the terminal
+// draws links, it is an OSC 8 link to about.SiteURL, which a click opens:
+// the terminal opens it itself, or, with [chat] mouse_copy on, the chat
+// does (linkUnder).
+func (m Model) siteLink() string {
+	text := m.style.dim.Render(siteDisplay)
+	if m.look.links {
+		return rpc.Hyperlink(about.SiteURL, text)
+	}
+	return text
 }
 
 // details joins the header's setup details with " · ": profile, model, the

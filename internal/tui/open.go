@@ -57,9 +57,12 @@ func (m Model) openLink(u string) (tea.Model, tea.Cmd) {
 }
 
 // linkUnder returns the URL of the link at column x and row y of the
-// screen, or "" when no link sits there. It finds the row as labelUnder
-// does.
+// screen, or "" when no link sits there: the website in the header on row
+// 0, or a link in the conversation, whose row it finds as labelUnder does.
 func (m Model) linkUnder(x, y int) string {
+	if y == 0 {
+		return linkAt(m.header(), x)
+	}
 	row := y - headerLines
 	lines := strings.Split(m.conversation.View(), "\n")
 	if row < 0 || row >= len(lines) {

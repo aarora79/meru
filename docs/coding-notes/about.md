@@ -29,8 +29,10 @@ flowchart LR
 
 ### about.go
 
-`Tagline`, `License` and the four URLs are constants. `Links` returns the pages as
-`Link` values, a label and a URL each, in a new slice every call, so no caller can
+`Tagline`, `License`, `SiteURL` and the four GitHub URLs are constants.
+`SiteURL` is the website, `aarora79.github.io/meru`, which both clients link to
+from their headers. `Links` returns the pages as `Link` values, an ID, a label and
+a URL each, the website first, in a new slice every call, so no caller can
 change the list another sees. The `json:"..."` struct tags name the fields in the
 JSON the desktop app's page gets; `internal/desktop` calls its own type `Link` with
 `type Link = about.Link`, which gives the same type a second name.
@@ -70,7 +72,7 @@ go test ./internal/about
 `TestBuildVersion` feeds `buildVersion` release, local and bare build information.
 `TestVersion` sets `releaseVersion` as the linker would and puts it back.
 `TestShort` checks each shape of version, and `TestLinks` that every link goes to
-the project and that one caller can't change another's list.
+the project, the website first, and that one caller can't change another's list.
 
 ## Why it's built this way
 

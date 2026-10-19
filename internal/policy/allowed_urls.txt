@@ -40,6 +40,7 @@ https://docs.astral.sh/uv/getting-started/installation/      # how to install uv
 # project on GitHub (internal/about). The user clicks them and the system
 # browser opens them; neither client fetches them.
 https://github.com/aarora79/meru  # the source, the design and new issues
+https://aarora79.github.io/meru/  # the website: the landing page, the architecture pages and the slides
 
 # The Mac installer (internal/installer). Every link opens in the user's
 # browser when they click it, except Ollama-darwin.zip.

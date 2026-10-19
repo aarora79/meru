@@ -38,13 +38,15 @@ func TestAbout(t *testing.T) {
 	}
 
 	// Each link opens through OpenURL, so each must pass its check, and
-	// each goes to the project on GitHub.
+	// each goes to the project: its website, which the header's globe
+	// opens, or its pages on GitHub.
 	a := New(Options{Socket: "merud.sock"}).About()
-	if len(a.Links) != 4 || a.License != License {
+	if len(a.Links) != 5 || a.License != License || a.Links[0].ID != "site" {
 		t.Fatalf("links = %+v", a.Links)
 	}
 	for _, l := range a.Links {
-		if err := opener.Check(l.URL); err != nil || !strings.HasPrefix(l.URL, "https://github.com/aarora79/meru") || l.Label == "" || l.ID == "" {
+		onSite := l.URL == "https://aarora79.github.io/meru/"
+		if err := opener.Check(l.URL); err != nil || !(onSite || strings.HasPrefix(l.URL, "https://github.com/aarora79/meru")) || l.Label == "" || l.ID == "" {
 			t.Errorf("link %+v: %v", l, err)
 		}
 	}
