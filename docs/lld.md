@@ -546,8 +546,9 @@ and the key; a command's program missing from `PATH` only logs a warning. The pr
 size, so a new embedding model can't leave a stale number behind. `openStore`
 also passes a fingerprint of the configured query and document prefixes. When
 the model, either prefix or the size changes, `store.Open` drops the old vectors
-and the startup scan re-embeds. An older database has no prefix fingerprint, so
-its first open rebuilds the vectors.
+and the startup scan re-embeds. An older database without a prefix fingerprint
+keeps its vectors when the model and size match; `store.Open` records the current
+fingerprint for later prefix checks.
 
 The three last steps run side by side in an `errgroup` (from `golang.org/x/sync`),
 so `merud` answers questions while the first scan is still running. The group

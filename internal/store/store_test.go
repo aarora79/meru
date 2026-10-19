@@ -715,6 +715,38 @@ func TestEmbedPrefixChange(t *testing.T) {
 	}
 }
 
+func TestLegacyMissingPrefixHashKeepsVectors(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "meru.db")
+	legacy, err := Open(ctx, Options{Path: path, EmbedModel: "m1", Dims: testDims})
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, legacy, "/n/a.md", []string{"apple", "banana"}, []engine.Vector{unit(0), unit(1)})
+	if _, err := legacy.db.ExecContext(ctx, `DELETE FROM meta WHERE key = 'embed_prefix_hash'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	const prefixHash = "current-prefix-hash"
+	s := openAtWithPrefixHash(t, path, "m1", prefixHash, testDims)
+	if got, want := stats(t, s), (Stats{Documents: 1, Chunks: 2, Vectors: 2}); got != want {
+		t.Errorf("stats after opening legacy database = %+v, want %+v", got, want)
+	}
+	if need, err := s.NeedsReembed(ctx); err != nil || need {
+		t.Errorf("NeedsReembed = %v, %v; want false", need, err)
+	}
+	var gotPrefixHash string
+	if err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'embed_prefix_hash'`).Scan(&gotPrefixHash); err != nil {
+		t.Fatal(err)
+	}
+	if gotPrefixHash != prefixHash {
+		t.Errorf("stored prefix hash = %q, want %q", gotPrefixHash, prefixHash)
+	}
+}
+
 // TestConcurrentReadsDuringWrites runs readers while a writer replaces a
 // document over and over. Each reader must always see a whole write: as
 // many vectors as chunks, and either the old or the new text. Run with

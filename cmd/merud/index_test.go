@@ -215,9 +215,9 @@ func TestReembedAfterEmbedModelChange(t *testing.T) {
 	}
 }
 
-// TestOpenStoreReembedsAfterLegacyPrefixMetadata checks that openStore gives
-// an older database the current prefix hash and schedules its vectors again.
-func TestOpenStoreReembedsAfterLegacyPrefixMetadata(t *testing.T) {
+// TestOpenStorePreservesVectorsAfterLegacyPrefixMetadata checks that openStore
+// records the current prefix hash without rebuilding matching vectors.
+func TestOpenStorePreservesVectorsAfterLegacyPrefixMetadata(t *testing.T) {
 	ctx := context.Background()
 	dir := shortDir(t)
 	cfg := config.Config{Dir: dir, Models: config.Models{Embed: "embeddinggemma-2:440m"}}
@@ -247,8 +247,15 @@ func TestOpenStoreReembedsAfterLegacyPrefixMetadata(t *testing.T) {
 			t.Errorf("close store: %v", err)
 		}
 	})
-	if need, err := st.NeedsReembed(ctx); err != nil || !need {
-		t.Errorf("NeedsReembed = %v, %v; want true for vectors without a prefix hash", need, err)
+	stats, err := st.Stats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stats, (store.Stats{Documents: 1, Chunks: 1, Vectors: 1}); got != want {
+		t.Errorf("stats after openStore = %+v, want %+v", got, want)
+	}
+	if need, err := st.NeedsReembed(ctx); err != nil || need {
+		t.Errorf("NeedsReembed = %v, %v; want false for matching legacy vectors", need, err)
 	}
 	if hits, err := st.SearchKeyword(ctx, "legacy", 5); err != nil || len(hits) != 1 {
 		t.Errorf("SearchKeyword = %v, %v; want old text retained", hits, err)

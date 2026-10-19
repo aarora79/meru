@@ -1124,8 +1124,8 @@ query or document prefix, even when the model and vector size stay the same. The
 store records the model name, vector size and a fingerprint of both prefixes.
 When one changes, the store drops every vector and keeps the text, so keyword
 search keeps working while the indexer re-embeds your files. Older databases
-have no prefix fingerprint, so their first open rebuilds the vectors (see
-[Storage](#storage)).
+have no prefix fingerprint. When their model and vector size match, the store
+records the current fingerprint and keeps their vectors (see [Storage](#storage)).
 
 A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
 no room and makes it swap. Meru won't support models that size.
@@ -2127,10 +2127,12 @@ can jump from a slow trace in your OTLP backend to the rows it produced, and bac
 When the embedding model's name in config, its task-prefix fingerprint, or the
 vector size Ollama reports no longer matches `meta`, the store deletes every row
 of `chunk_vec`, `memory_vec` and `session_vec` and keeps `documents`, `chunks`,
-`memories` and `sessions`. A database from an older release has no prefix
-fingerprint, so its first open rebuilds these vectors. Keyword search keeps working while
-the indexer re-embeds. The store reports the gap by counting chunks that lack a
-vector (`NeedsReembed`), so the count stays right if `merud` stops halfway through.
+`memories` and `sessions`. A database from an older release may have no prefix
+fingerprint. When its model and vector size match, the store records the current
+fingerprint and keeps these vectors. Keyword search keeps working while the
+indexer re-embeds after a later model or prefix change. The store reports the
+gap by counting chunks that lack a vector (`NeedsReembed`), so the count stays
+right if `merud` stops halfway through.
 The memory syncer re-embeds each memory that lacks a vector, and the summarizer
 does the same for each summary.
 

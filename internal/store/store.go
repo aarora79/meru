@@ -56,9 +56,10 @@ type Options struct {
 	// Path is the database file, usually ~/.meru/meru.db.
 	Path string
 	// EmbedModel and Dims name the embedding model and its vector size.
-	// EmbedPrefixHash fingerprints its query and document prefixes. If any
-	// differ from what the database was built with, Open drops every vector
-	// so the indexer re-embeds all chunks. NeedsReembed reports the gap.
+	// EmbedPrefixHash fingerprints its query and document prefixes. A change
+	// drops every vector so the indexer can rebuild them. If a legacy database
+	// lacks the hash but its model and size match, Open records the hash and
+	// keeps its vectors. NeedsReembed reports the gap after a rebuild.
 	EmbedModel      string
 	EmbedPrefixHash string
 	Dims            int
@@ -69,9 +70,10 @@ type Options struct {
 // and its -wal and -shm companions get mode 0600, so only you can read them.
 //
 // When the embedding model, its task prefixes or vector size changed since
-// the last run, Open drops the vector index and keeps documents and chunks,
-// so keyword search still works. NeedsReembed then reports true until the
-// indexer has stored a vector for every chunk again.
+// the last run, Open drops the vectors and keeps documents and chunks, so
+// keyword search still works. A legacy database with no prefix hash keeps
+// its vectors when its model and size match; Open records the current hash.
+// NeedsReembed reports true until the indexer has stored every missing vector.
 //
 // It fails when opts is incomplete, the folder doesn't exist, or the file
 // isn't a Meru database this version understands.

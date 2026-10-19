@@ -128,11 +128,12 @@ the `heading` and `text` columns of `chunks` without keeping its own copy of
 the text, and its `rowid` is the chunk ID.
 
 `checkVectors` compares the embedding model name, prefix fingerprint and vector
-size in `meta` with the ones `Open` got. When one differs, it deletes every row
-of `chunk_vec`, `memory_vec` and `session_vec` in one transaction and records
-the new values. A model or task-prefix change makes vectors incomparable, so
-all of them go. An older database has no prefix fingerprint; the empty value
-does not match the current fingerprint, so its first open rebuilds the vectors.
+size in `meta` with the ones `Open` got. When the model or size changes, or a
+stored prefix fingerprint differs, it deletes every row of `chunk_vec`,
+`memory_vec` and `session_vec` in one transaction and records the new values.
+An older database without a prefix fingerprint keeps its vectors when the model
+and size match; `Open` records the current fingerprint. A later prefix change
+makes the vectors incomparable, so the store deletes them.
 Documents, chunks, memories and summaries stay, so keyword search keeps working
 while the indexer and memory syncer re-embed and the summarizer embeds the
 summaries again.

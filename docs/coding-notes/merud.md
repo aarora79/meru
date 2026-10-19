@@ -88,7 +88,9 @@ embedding model's vector size, and `embedDims` learns it by embedding one
 short probe text, so config never holds a number that could go stale. The
 configured query and document prefixes add a fingerprint to the store options.
 When the model, a prefix or the size changed since the last run, the store
-drops the old vectors (`store.NeedsReembed` then reports true).
+drops the old vectors (`store.NeedsReembed` then reports true). A legacy database
+without a prefix fingerprint keeps its vectors when the model and size match;
+the store records the current fingerprint.
 
 Then seven jobs run side by side in an **errgroup** from
 `golang.org/x/sync`, the server first and the rest once `merud` is ready:

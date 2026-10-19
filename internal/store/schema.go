@@ -260,7 +260,9 @@ func (s *Store) migrate(ctx context.Context) error {
 // checkVectors makes sure the stored vectors match the model, its task
 // prefixes and its vector size. Vectors from different embedding inputs
 // don't compare, so a change deletes every vector: of chunks, memories and
-// session summaries. Documents, chunks, memories and summaries stay, so
+// session summaries. A legacy database with no prefix hash keeps its vectors
+// when its model and size match; those vectors use the current prefixes.
+// Documents, chunks, memories and summaries stay when vectors are deleted, so
 // keyword search still works. NeedsReembed reports the chunk gap, MemoryIDs
 // reports memories without vectors, and SummariesWithoutVector reports
 // summaries for their existing rebuild paths.
@@ -278,8 +280,9 @@ func (s *Store) checkVectors(ctx context.Context, model, prefixHash string, dims
 		if err != nil {
 			return err
 		}
-		if oldModel == model && oldPrefixHash == prefixHash && oldDims == strconv.Itoa(dims) {
-			return nil
+		sameModelAndDims := oldModel == model && oldDims == strconv.Itoa(dims)
+		if sameModelAndDims && (oldPrefixHash == prefixHash || oldPrefixHash == "") {
+			return setMeta(ctx, tx, "embed_prefix_hash", prefixHash)
 		}
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM chunk_vec; DELETE FROM memory_vec; DELETE FROM session_vec`); err != nil {
