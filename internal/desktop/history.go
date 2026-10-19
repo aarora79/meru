@@ -223,8 +223,9 @@ const changeTimeout = 90 * time.Second
 const switchTimeout = 3 * time.Minute
 
 // one sends req and returns the reply event of type want, waiting at most
-// requestTimeout, changeTimeout for an op that changes a setting, or
-// switchTimeout for a model switch. It
+// requestTimeout, changeTimeout for an op that changes a setting,
+// switchTimeout for a model switch, or transcribeTimeout for speech to
+// text. It
 // fails when merud can't be reached, answers with an error event, or sends
 // no event of that type.
 func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (rpc.Event, error) {
@@ -232,6 +233,8 @@ func (b *Bridge) one(ctx context.Context, req rpc.Request, want rpc.EventType) (
 	switch {
 	case req.Op == rpc.OpModelUse || req.Op == rpc.OpModelSet:
 		timeout = switchTimeout
+	case req.Op == rpc.OpTranscribe:
+		timeout = transcribeTimeout
 	case changes(req.Op):
 		timeout = changeTimeout
 	}

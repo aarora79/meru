@@ -23,6 +23,9 @@
   <string>11.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- What macOS shows when the microphone button first asks to listen. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Meru turns what you say into text on this Mac. The sound never leaves it.</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
 </dict>

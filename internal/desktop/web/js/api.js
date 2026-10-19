@@ -41,6 +41,9 @@ export const bridge = {
   attachFile: () => call("AttachFile"),
   detach: (index) => call("Detach", index),
   detachAll: () => call("DetachAll"),
+  // The microphone (speech.go).
+  speechStatus: () => call("SpeechStatus"),
+  transcribe: (wavBase64) => call("Transcribe", wavBase64),
   // Settings and Setup (settings.go).
   connections: () => call("Connections"),
   setPolicy: (kind, server, tool, policy) => call("SetPolicy", kind, server, tool, policy),

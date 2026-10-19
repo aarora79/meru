@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `connectors.go`, `about.go`, `files.go`, `thumbs.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `connectors.go`, `about.go`, `files.go`, `thumbs.go`, `speech.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -390,6 +390,56 @@ copies into; `inside` resolves symbolic links first, so a link can't pass.
 copies' full paths, and each becomes an `Attachment` with its preview. A copy
 the user deleted keeps its name and loses its preview.
 
+### speech.go and web/js/voice.js: the microphone
+
+The microphone button turns speech into text in the question box. The page
+records and builds the file; the Bridge carries it to `merud`'s `transcribe`
+op (see [speech](speech.md)).
+
+`SpeechStatus` asks the `connectors` op for the whisper connector and
+returns a `SpeechState`: `Ready` when its state is ok, and its sentence. The
+page calls it on each press, before it records, so a connector that is off
+or still installing says so at once, in the connector's own words, instead
+of after a recording. A `merud` without the connector gives a sentence that
+says to update.
+
+`Transcribe(ctx, wavBase64)` takes the recording as base64, since a Wails call
+passes strings well, decodes it with `encoding/base64`, refuses an empty one
+or one over 3 MiB, and sends it with `one`. `one` gives the op
+`transcribeTimeout`, two minutes, since the speech server may have to start
+first. It returns the words, "" when there were none, and keeps no copy.
+
+`voice.js` holds the rest, in the page:
+
+1. A press checks `speechStatus`, then asks `navigator.mediaDevices
+   .getUserMedia` for the microphone, with the browser's echo and noise
+   cancelling on. `getUserMedia` fails with a named error; `MIC_ERRORS` turns
+   `NotFoundError` into "This Mac has no microphone. Connect one, such as
+   AirPods or a webcam.", and `NotAllowedError` into the System Settings
+   pane to visit.
+2. `MediaRecorder` records, AAC in the macOS WebView. A timer updates
+   "Listening… N s" every half second and stops the recording at 60.
+3. On stop, `release` stops the microphone's tracks, which puts out macOS's
+   recording indicator. `toWAV` decodes the recording with `decodeAudioData`
+   and renders it through an `OfflineAudioContext` of one channel at 16,000
+   samples a second, which mixes and resamples in one pass, faster than
+   real time. `pcmWAV` writes the 44-byte header with a `DataView` and each
+   sample as a 16-bit integer, lowest byte first.
+4. `toBase64` encodes the bytes in slices of 32 KiB, since spreading two
+   million bytes into one `String.fromCharCode` call would overflow the
+   stack. `bridge.transcribe` sends them.
+5. `insert` puts the words after any text in the box, moves the cursor to
+   the end, and fires an `input` event, so the box grows as if the user had
+   typed. Nothing sends: the user reads, fixes and presses Send.
+
+The button carries `aria-pressed` and a label that changes with what it
+does, and turns red with a pulse while it records, unless the user asked
+for reduced motion.
+
+`speech_test.go` checks `SpeechStatus` for a connector that is ready, off or
+installing, and a `merud` without it, and that `Transcribe` sends the bytes
+it got and refuses bad base64, an empty recording and one too large.
+
 ### commands.go
 
 `commandList` holds the slash commands `meru chat` has, from `/new` to `/exit`,
@@ -605,6 +655,13 @@ pass `-tags desktop`. `run` builds the Bridge with `DefaultOptions`, creates the
 Wails app with the Bridge as a service and `Assets` as its file server, and opens a
 1440 by 900 window that shrinks to 1000 by 640. The title bar reads
 `WindowTitle` and never changes; the chat's title shows in the page's header.
+
+The window's `Permissions` answer the page's `getUserMedia`: the microphone
+is allowed, so WebKit shows no prompt of its own on each launch, and the
+camera is denied. macOS still asks once before Meru.app may hear the
+microphone, with the sentence in `Info.plist`'s
+`NSMicrophoneUsageDescription`. Without that key, macOS refuses the
+microphone outright.
 
 The window sets `EnableFileDrop`. On macOS a view that Wails lays over the
 WebView takes the drop, reads the files' full paths, and asks the page's runtime

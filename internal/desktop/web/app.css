@@ -267,6 +267,27 @@ pre {
   color: var(--ink);
 }
 
+/* The microphone while it records: red, with a slow pulse, so the user
+   sees at a glance that Meru is listening. */
+.icon-button.mic.recording {
+  color: #fff;
+  background: var(--danger);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+.icon-button.mic:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+@keyframes mic-pulse {
+  50% { box-shadow: 0 0 0 5px rgba(138, 47, 47, 0.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-button.mic.recording { animation: none; }
+}
+
 /* ---- The rail ---- */
 
 .rail {

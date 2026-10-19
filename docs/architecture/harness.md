@@ -170,6 +170,13 @@ A client connects to `~/.meru/merud.sock`, a Unix socket only the user can open
 | `images` | up to 5 paths of pictures the user attached (`rpc.MaxImages`) |
 | `incognito` | true starts a chat that writes no transcript |
 
+A spoken question arrives the same way, as text. Meru.app's microphone sends the
+recording first, in a separate `transcribe` request that whisper.cpp's server on
+loopback turns into words, and the user reads and fixes those words in the box
+before pressing Send. Only then does an `ask` start a turn. The harness never
+sees the audio, and the answer model never hears it (see
+[ARCHITECTURE.md, Speech to text](../../ARCHITECTURE.md#speech-to-text)).
+
 The rpc server (`internal/rpc/server.go`) reads the line, opens a span named
 `rpc.request`, and calls the handler with three things: the request, an `emit`
 function that writes one event back, and an `approve` function that asks the user
@@ -1020,6 +1027,9 @@ could run without it; Meru answers worse without it.
 - **No planner and no reflection step.** The loop runs rounds until the model
   answers; it doesn't plan ahead or critique its own answer with a model call. The
   checks after the answer are code.
+- **No audio in a turn.** Speech to text runs before the turn, in its own op,
+  and hands the client text that the user checks. A turn's input is always
+  text and, optionally, pictures.
 - **No shell.** A local command runs a program the user declared in config, with
   parameters the model fills in, and never a command line the model wrote.
 - **No sandbox.** `merud` runs as an ordinary user process; the allowlists and

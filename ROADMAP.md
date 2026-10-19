@@ -222,7 +222,7 @@ so it needs nothing from a later milestone. The design is in ARCHITECTURE.md,
   setting's default
 - [x] `internal/speech` and the `transcribe` op, with the socket's limit at 4 MiB,
   and `meru transcribe`
-- [ ] Meru.app: the microphone button, the microphone prompt and the
+- [x] Meru.app: the microphone button, the microphone prompt and the
   no-microphone message
 - [ ] The installer step and a FAQ page
 
