@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.4.17**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.4.18**. ROADMAP.md ticks every item from v0.1
 to v0.4:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -68,7 +68,10 @@ the images in its folders and finds them by words or like an attached picture,
 with `embeddinggemma-2:440m` as the search model on both profiles (#118, #119).
 Since v0.4.14 an answer model with vision reads those pictures through
 `view_image` (#124). Since v0.4.17 Meru reads Apple Notes, live and
-read-only, through three built-in tools (#140). Outside the milestones,
+read-only, through three built-in tools (#140). Since v0.4.18 Meru.app has a
+microphone: the whisper connector runs whisper.cpp's server on loopback, and
+the transcribe op turns a recording into text the user checks (#143 to #148).
+Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
 through `make release`, a one-line installer, and a Mac installer on a disk image
