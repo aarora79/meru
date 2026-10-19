@@ -183,7 +183,9 @@ scrolling answer pane, and two more Charm libraries for its look:
   five slowest tasks of the week, the tools whose calls failed, and where Prometheus can read the
   metrics (see [Reading the metrics](#reading-the-metrics)). Typing `/model` opens a table of the model sets,
   `/model <name>` switches to one and `/model save` makes it the default; the
-  header names the set in use beside the usage. Typing `/new` starts a new
+  header names the set in use beside the usage, and ends with Meru's website,
+  `aarora79.github.io/meru`, as a link a click opens; it is the first thing
+  to go when the terminal is narrow. Typing `/new` starts a new
   session, so a conversation that went wrong stops shaping the answers after it. In both clients, each source
   line is a link (OSC 8) to its `file://` path, which terminals that support
   links open on a click.
@@ -369,8 +371,9 @@ the line as its tooltip.
   the rail to a column of icons: the logo, a button that unfolds the rail, New
   chat, chats, Usage, Settings and a status dot.
 - **The conversation** shows each question as a bubble and each answer as a card.
-  The header holds the chat's title, **Share as file** and a button that shows
-  or hides the side panel. An incognito chat gets an **Incognito** badge beside
+  The header holds the chat's title, **Share as file**, a globe that opens
+  Meru's website in the browser, and a button that shows or hides the side
+  panel. An incognito chat gets an **Incognito** badge beside
   its title, a line under the header that says what it keeps, and no Share as
   file. A one-line work strip says what the turn did and lists
   each tool call by its label. Its first chip reads the turn's events, never

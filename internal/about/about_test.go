@@ -73,16 +73,16 @@ func TestShort(t *testing.T) {
 // project on GitHub, and that a caller can't change the list for another.
 func TestLinks(t *testing.T) {
 	links := Links()
-	if len(links) != 4 {
-		t.Fatalf("links = %+v, want four", links)
+	if len(links) != 5 || links[0].URL != SiteURL {
+		t.Fatalf("links = %+v, want five, the website first", links)
 	}
 	for _, l := range links {
-		if l.ID == "" || l.Label == "" || !strings.HasPrefix(l.URL, SourceURL) {
+		if l.ID == "" || l.Label == "" || !(strings.HasPrefix(l.URL, SourceURL) || l.URL == SiteURL) {
 			t.Errorf("link %+v", l)
 		}
 	}
 	links[0].URL = "changed"
-	if Links()[0].URL != SourceURL {
+	if Links()[0].URL != SiteURL {
 		t.Error("changing one caller's list changed the next")
 	}
 }

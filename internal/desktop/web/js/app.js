@@ -1280,6 +1280,7 @@ function wire() {
   $("share").prepend(icon("share", 15), document.createTextNode(" "));
   $("attach").append(icon("clip", 17));
   $("mic").append(icon("mic", 17));
+  $("site").append(icon("globe", 17));
 
   $("new-chat").addEventListener("click", newChat);
   $("new-incognito").prepend(icon("lock", 14), document.createTextNode(" "));
@@ -1312,6 +1313,13 @@ function wire() {
     const v = $("brand-version");
     v.textContent = a.short_version || "";
     if (a.version) v.title = "Version " + a.version;
+    // The globe at the top right opens Meru's website, the link the
+    // about package names "site". It stays hidden if the Bridge has none.
+    const site = (a.links || []).find((l) => l.id === "site");
+    if (site) {
+      $("site").hidden = false;
+      $("site").addEventListener("click", () => bridge.openURL(site.url).catch((err) => notice(errorText(err))));
+    }
   }).catch(() => {});
   $("share").addEventListener("click", () => save(() => bridge.saveChat(state.session), "chat"));
   $("attach").addEventListener("click", attach);

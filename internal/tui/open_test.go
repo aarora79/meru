@@ -13,7 +13,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
+	"github.com/aarora79/meru/internal/about"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -181,6 +183,42 @@ func TestClickOpensSource(t *testing.T) {
 	}
 	if !strings.HasPrefix(m.notice, "opened ") {
 		t.Errorf("notice = %q, want it to say what opened", m.notice)
+	}
+}
+
+// TestClickOpensSite clicks the website at the right end of the header,
+// and checks that a click left of it, on the status, opens nothing.
+func TestClickOpensSite(t *testing.T) {
+	opener := &fakeOpener{}
+	m := screen(t, 100, 30, "", nil, false, nil)
+	m.look.links = true
+	m.info.MouseCopy = true
+	m.open = opener.open
+	header := ansi.Strip(m.header())
+	at := strings.Index(header, siteDisplay)
+	if at < 0 {
+		t.Fatalf("header = %q, want the website in it", header)
+	}
+	x := ansi.StringWidth(header[:at]) + 2
+	m, cmd := update(t, m, click(x, 0))
+	m = runCopy(t, m, cmd)
+	if len(opener.got) != 1 || opener.got[0] != about.SiteURL {
+		t.Fatalf("opened %q, want %s", opener.got, about.SiteURL)
+	}
+	opener.got = nil
+	m, cmd = update(t, m, click(2, 0))
+	runCopy(t, m, cmd)
+	if len(opener.got) != 0 {
+		t.Errorf("a click on Meru's name opened %q", opener.got)
+	}
+}
+
+// TestHeaderDropsSiteWhenNarrow checks that the website is the first thing
+// to leave the header on a narrow terminal.
+func TestHeaderDropsSiteWhenNarrow(t *testing.T) {
+	m := screen(t, 60, 30, "", nil, false, nil)
+	if h := ansi.Strip(m.header()); strings.Contains(h, siteDisplay) {
+		t.Errorf("header at 60 columns = %q, want no website", h)
 	}
 }
 

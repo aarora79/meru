@@ -1,4 +1,4 @@
-Meru मेरु v0.4.3 lite · minicpm5:2b                                    ● connected
+Meru मेरु v0.4.3 lite · minicpm5:2b           ● connected  aarora79.github.io/meru
 ────────────────────────────────────────────────────────────────────────────────
 
   ╭───────────────────────────────────────────────────────────────────────────╮
@@ -11,9 +11,9 @@ Meru मेरु v0.4.3 lite · minicpm5:2b                                    
   │ config   ~/.meru/config.toml                                              │
   │ folder   ~/.meru                                                          │
   │                                                                           │
+  │ Meru's website         https://aarora79.github.io/meru/                   │
   │ Source code on GitHub  https://github.com/aarora79/meru                   │
   │ Read the design                                                           │
-  │     https://github.com/aarora79/meru/blob/main/ARCHITECTURE.md            │
   │ ↓ more                                                                    │
   │                                                                           │
   │ The models run on this computer, and Meru has no account to sign in to.   │

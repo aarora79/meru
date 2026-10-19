@@ -484,7 +484,10 @@ bundler.
 - `js/app.js` keeps the page's state and wires the rail, the composer, the queue and
   the side panel to the updates. It shows one of three screens in the middle
   column: the chat, Settings or Setup. The rail folds to a column of icons; its
-  logo and name are one button that opens About in Settings. A new chat shows
+  logo and name are one button that opens About in Settings. A globe at the
+  top right of the chat header opens Meru's website: the page takes its URL
+  from the `site` link `bridge.about()` returns, and opens it with `OpenURL`,
+  which checks the URL first; the globe stays hidden when there is none. A new chat shows
   the logo beside "Ask Meru", as an `<img>` with empty alt text, since the heading
   already says Meru. The side panel starts closed, and the header's button opens
   it; the page stores nothing, so the choice lasts until the window closes. It
