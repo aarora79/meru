@@ -262,12 +262,19 @@ Once the user confirms:
    `docs/release-notes/README.md`.
 2. Bring the version lines up to date in the same pull request: the
    "Status: pre-alpha, vX.Y.Z" note near the top of `README.md`, which should
-   also say in a sentence or two what Meru does as of this release, and "with
-   releases up to" in AGENTS.md's Status section.
+   also say in a sentence or two what Meru does as of this release, "with
+   releases up to" in AGENTS.md's Status section, and the release pill on
+   the landing page, `docs/index.html`: the version in `<b>`, the link to
+   `releases/tag/vX.Y.Z`, and the `<time id="released">` element, whose
+   `datetime` is now in UTC (`date -u +%Y-%m-%dT%H:%M:%SZ`) and whose text
+   is the date, such as "on 19 October 2026", for a browser without
+   JavaScript. The page works out "released 3 days ago" from it, with
+   nothing fetched. `make release` follows the merge within the hour; if it
+   comes a day or more later, fix the time in a small pull request after.
 3. Commit on a branch and open a pull request:
    ```bash
    git checkout -b release-notes-vX.Y.Z
-   git add docs/release-notes/ README.md AGENTS.md
+   git add docs/release-notes/ README.md AGENTS.md docs/index.html
    git commit -m "Add the vX.Y.Z release notes"
    git push -u origin release-notes-vX.Y.Z
    gh pr create --title "Add the vX.Y.Z release notes" --body "..."
