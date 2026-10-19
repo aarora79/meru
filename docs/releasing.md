@@ -37,7 +37,9 @@ the commit first, and the script runs `make check` again before it builds.
   needs, the pull requests and the closed issues. Merge its pull request
   before you run `make release`, which uses that file as the GitHub release's
   text. Without the file, the release gets GitHub's list of merged pull
-  requests alone.
+  requests alone. The same pull request moves the version lines: the README's
+  status, AGENTS.md's Status, and the landing page's release pill, whose
+  version, link and time `docs/index.html` holds.
 
 ## What `make release` does
 

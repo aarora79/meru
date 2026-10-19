@@ -88,6 +88,19 @@
   h1 .deva { font-weight: 600; }
   .tagline { font-size: clamp(20px, 3vw, 25px); line-height: 1.45; color: var(--ink-2);
              margin: 0 auto 32px; max-width: 30ch; }
+  /* The name's origin, under the name, in a quieter voice than the tagline. */
+  .origin { font-size: 16px; line-height: 1.5; color: var(--ink-3); font-style: italic;
+            margin: -4px auto 18px; max-width: 46ch; }
+  .origin i { font-style: normal; }
+  /* The release pill above the name: the version and how long ago it came
+     out, a link to its notes. */
+  .release { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px;
+             padding: 6px 14px; border-radius: 999px; border: 1px solid var(--rule);
+             background: var(--panel); color: var(--ink-2); font-size: 15px;
+             text-decoration: none; }
+  .release:hover { border-color: var(--meru); color: var(--ink); }
+  .release b { color: var(--meru); font-weight: 700; }
+  .release .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--meru); flex: none; }
   .actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; }
   .cta { display: inline-flex; align-items: center; gap: 10px; min-height: 56px;
          padding: 14px 32px; border-radius: 999px; background: var(--cta-bg); color: var(--cta-ink);
@@ -242,7 +255,15 @@
     <circle cx="3.5" cy="16" r="2.6" fill="#E9A82C" stroke="#14181C" stroke-width="1.2"/>
     <circle cx="41" cy="20.5" r="2" fill="#FFFDF7" stroke="#14181C" stroke-width="1.2"/>
   </svg>
+  <!-- The latest release. The release-notes skill sets the version, the link
+       and the datetime with each release; the script below turns the date
+       into "3 days ago". -->
+  <a class="release" id="release" href="https://github.com/aarora79/meru/releases/tag/v0.4.18">
+    <span class="dot" aria-hidden="true"></span>
+    <span><b>v0.4.18</b> · released <time id="released" datetime="2026-10-19T00:33:20Z">on 19 October 2026</time></span>
+  </a>
   <h1><span class="meru-name">Meru</span> <span class="deva" lang="hi">मेरु</span></h1>
+  <p class="origin">In some Eastern traditions, <i>Meru</i> (<span lang="hi">मेरु</span>) is the cosmic mountain that the sun, moon and stars turn around.</p>
   <p class="tagline">A personal AI assistant that runs entirely on your own computer.</p>
   <div class="actions">
     <a class="cta" href="#install">Try it on your Mac
@@ -441,15 +462,24 @@
 </main>
 
 <footer>
-  <p>In some Eastern traditions, <i>Meru</i> (<span lang="hi">मेरु</span>) is the cosmic mountain that the sun, moon and stars turn around.</p>
   <p>Amit Arora · Meru</p>
 </footer>
 
 </div>
 <script>
-  // The page's only script: the Copy button and the theme toggle. Without
-  // JavaScript both buttons stay hidden, and the command stays selectable.
+  // The page's only script: how long ago the release came out, the Copy
+  // button and the theme toggle. Without JavaScript the release shows its
+  // date, both buttons stay hidden, and the command stays selectable.
   (function () {
+    // The release's age, from the date in the page; nothing is fetched.
+    var released = document.getElementById("released");
+    if (released) {
+      var days = Math.floor((Date.now() - Date.parse(released.getAttribute("datetime"))) / 86400000);
+      var ago = days < 1 ? "today" : days < 2 ? "yesterday" : days < 14 ? days + " days ago"
+        : days < 60 ? Math.floor(days / 7) + " weeks ago" : Math.floor(days / 30) + " months ago";
+      if (days >= 0) released.textContent = ago;
+    }
+
     var btn = document.querySelector(".copy");
     var cmd = document.getElementById("install-cmd");
     if (btn && cmd) {
