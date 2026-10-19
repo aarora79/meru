@@ -326,6 +326,8 @@ docs/
                      agent that drives `meru run --json`
   img/               the logo and the social preview image
   posters/           the one-page poster: HTML, PNGs and PDF
+  slides/            two decks, each HTML and PDF: an overview for anyone, with a part for
+                     organizations, and one for developers
   index.html         the landing page GitHub Pages serves at aarora79.github.io/meru
 .claude/skills/      writing, explainer, poster-making, new-feature-design, pr-review,
                      meru-install, release-notes
