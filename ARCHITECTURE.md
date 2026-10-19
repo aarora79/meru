@@ -1094,8 +1094,9 @@ Two profiles ship in `config.toml`. **`lite` is the default.**
 Both profiles embed with `embeddinggemma-2:440m`, EmbeddingGemma 2 with its
 vision encoder. It puts text and images in one 768-number space, so a question
 can find a picture as well as a page, and it replaced `nomic-embed-text` and
-`qwen3-embedding:0.6b`. Changing the embedding model makes `merud` drop every
-vector and re-embed every file on its next start (see [Storage](#storage)).
+`qwen3-embedding:0.6b`. Changing the embedding model or its task prefixes makes
+`merud` drop every vector and re-embed every file on its next start (see
+[Storage](#storage)).
 
 - **`lite`** uses two small models. It downloads in a couple of
   minutes and runs on almost any computer. One model fills both `fast` and `main`, so
@@ -1155,11 +1156,13 @@ starts and every 30 seconds after. On anything older it stays up, answers no
 question, and says which version it found and where to update (see
 [SearXNG and Ollama](#searxng-and-ollama)). Routing costs no extra model: the `fast` model is already loaded.
 
-A new embedding model makes vectors of a different size, and every stored vector
-goes stale. The store records the embedding model's name and vector size. When
-either stops matching config, the store drops every vector and keeps the text, so
-keyword search keeps working while the indexer re-embeds your files (see
-[Storage](#storage)).
+A new embedding model makes every stored vector stale. So does a change to its
+query or document prefix, even when the model and vector size stay the same. The
+store records the model name, vector size and a fingerprint of both prefixes.
+When one changes, the store drops every vector and keeps the text, so keyword
+search keeps working while the indexer re-embeds your files. Older databases
+have no prefix fingerprint. When their model and vector size match, the store
+records the current fingerprint and keeps their vectors (see [Storage](#storage)).
 
 A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
 no room and makes it swap. Meru won't support models that size.
@@ -1360,9 +1363,9 @@ Only the main model changes while `merud` runs. The router, the skill pick, the
 summarizer and the index read the `fast` and `embed` models at startup, so a
 set's `fast` and `embed` models take effect once the set is saved and `merud`
 restarts, and the reply says so. A set that changes `embed` needs `--rebuild`:
-a new embedding model makes vectors of another size, every stored vector goes
-stale, and `merud` re-embeds every file in the `[index]` folders at that
-restart. A set that changes `fast` carries a warning, because the router needs
+a new embedding model or changed task prefixes make every stored vector stale,
+and `merud` re-embeds every file in the `[index]` folders at that restart. A
+set that changes `fast` carries a warning, because the router needs
 log probabilities and one token per route letter (see [Routing](#routing)).
 
 **Which model wrote each answer.** Before an answer whose model differs from
@@ -2152,7 +2155,7 @@ files with mode `0600`, so only you can read them.
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
 | `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
-| `meta` | schema version, embedding model name and vector size | config |
+| `meta` | schema version, embedding model name, vector size and task-prefix fingerprint | config |
 
 v0.2 built `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`, and v0.3
 added `tool_calls`. Each other table arrives with the milestone marked beside it.
@@ -2168,11 +2171,15 @@ no `tool_result` line, because `merud` stopped mid-call, gets the outcome
 `cancelled`. `messages` and `tool_calls` store the trace ID of their turn, so you
 can jump from a slow trace in your OTLP backend to the rows it produced, and back.
 
-When the embedding model's name in config, or the vector size Ollama reports for
-it, no longer matches `meta`, the store deletes every row of `chunk_vec`, `memory_vec` and `session_vec` and keeps
-`documents`, `chunks`, `memories` and `sessions`. Keyword search keeps working while
-the indexer re-embeds. The store reports the gap by counting chunks that lack a
-vector (`NeedsReembed`), so the count stays right if `merud` stops halfway through.
+When the embedding model's name in config, its task-prefix fingerprint, or the
+vector size Ollama reports no longer matches `meta`, the store deletes every row
+of `chunk_vec`, `memory_vec` and `session_vec` and keeps `documents`, `chunks`,
+`memories` and `sessions`. A database from an older release may have no prefix
+fingerprint. When its model and vector size match, the store records the current
+fingerprint and keeps these vectors. Keyword search keeps working while the
+indexer re-embeds after a later model or prefix change. The store reports the
+gap by counting chunks that lack a vector (`NeedsReembed`), so the count stays
+right if `merud` stops halfway through.
 The memory syncer re-embeds each memory that lacks a vector, and the summarizer
 does the same for each summary.
 

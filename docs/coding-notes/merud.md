@@ -28,7 +28,7 @@ flowchart TB
         V --> S["rpc.Listen: claim the socket"]
         S --> W["warm fast and embed"]
         W --> D["embed a probe text: vector size"]
-        D --> ST["store.Open(meru.db, embed model, size)"]
+        D --> ST["store.Open(meru.db, model, size, prefix fingerprint)"]
         ST --> RT["ReplayTurns: rebuild turns if empty"]
         RT --> IX["index.New"]
         IX --> MO["memory.Open(~/.meru/memory)"]
@@ -85,9 +85,12 @@ rpc server answers itself, succeeds as soon as the socket opens.
 
 After warming, `serve` opens the store with `openStore`. The store needs the
 embedding model's vector size, and `embedDims` learns it by embedding one
-short probe text, so config never holds a number that could go stale. When
-the model or the size changed since the last run, the store drops the old
-vectors (`store.NeedsReembed` then reports true).
+short probe text, so config never holds a number that could go stale. The
+configured query and document prefixes add a fingerprint to the store options.
+When the model, a prefix or the size changed since the last run, the store
+drops the old vectors (`store.NeedsReembed` then reports true). A legacy database
+without a prefix fingerprint keeps its vectors when the model and size match;
+the store records the current fingerprint.
 
 Then seven jobs run side by side in an **errgroup** from
 `golang.org/x/sync`, the server first and the rest once `merud` is ready:
@@ -1730,8 +1733,9 @@ go run ./cmd/meru index -status
 
 `index_test.go` runs `merud` over a fake engine with a notes folder: a
 question gets its answer while the startup scan waits inside `Embed`, a new
-vector size makes the next start embed every file again, and the index ops
-answer, refuse a folder outside `[index]`, and explain an empty config.
+vector size or changed prefix makes the next start embed every file again, and
+the index ops answer, refuse a folder outside `[index]`, and explain an empty
+config.
 
 `memory_test.go` drives the memory ops over the socket: add, list, the counts
 in the index status, the profile and the recalled project in the next

@@ -1095,7 +1095,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   </tbody>
 </table></div>
 
-<p>Both profiles embed with <code>embeddinggemma-2:440m</code>, EmbeddingGemma 2 with its vision encoder. It puts text and images in one 768-number space, so a question can find a picture as well as a page, and it replaced <code>nomic-embed-text</code> and <code>qwen3-embedding:0.6b</code>. Changing the embedding model makes <code>merud</code> drop every vector and re-embed every file on its next start (see <a href="#storage">Storage</a>).</p>
+<p>Both profiles embed with <code>embeddinggemma-2:440m</code>, EmbeddingGemma 2 with its vision encoder. It puts text and images in one 768-number space, so a question can find a picture as well as a page, and it replaced <code>nomic-embed-text</code> and <code>qwen3-embedding:0.6b</code>. Changing the embedding model or its task prefixes makes <code>merud</code> drop every vector and re-embed every file on its next start (see <a href="#storage">Storage</a>).</p>
 
 <ul>
   <li><b><code>lite</code></b> uses two small models. It downloads in a couple of minutes and runs on almost any computer. One model fills both <code>fast</code> and <code>main</code>, so only two models sit in memory.</li>
@@ -1111,7 +1111,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
 
 <p>The <code>fast</code> tier needs a runtime that reports log probabilities, because <a href="#routing">routing</a> reads them. Ollama added them in v0.12.11. Meru needs v0.40.5 or later all the same, the first release tested to serve its embedding model, <code>embeddinggemma-2</code>, and to embed images; an older Ollama refuses to pull that model with HTTP 412. <code>merud</code> reads <code>/api/version</code> when it starts and every 30 seconds after. On anything older it stays up, answers no question, and says which version it found and where to update (see <a href="#connector-searxng-ollama">SearXNG and Ollama</a>). Routing costs no extra model: the <code>fast</code> model is already loaded.</p>
 
-<p>A new embedding model makes vectors of a different size, and every stored vector goes stale. The store records the embedding model's name and vector size. When either stops matching config, the store drops every vector and keeps the text, so keyword search keeps working while the indexer re-embeds your files (see <a href="#storage">Storage</a>).</p>
+<p>A new embedding model makes every stored vector stale. So does a change to its query or document prefix, even when the model and vector size stay the same. The store records the model name, vector size and a fingerprint of both prefixes. When one changes, the store drops every vector and keeps the text, so keyword search keeps working while the indexer re-embeds your files (see <a href="#storage">Storage</a>).</p>
 
 <p>A 120B model at 4-bit needs about 60 GB, which leaves even the 64 GB development machine no room and makes it swap. Meru won't support models that size.</p>
 
@@ -1222,7 +1222,7 @@ think = false</code></pre>
 
 <p>Steps 1 and 2 are skipped when the old answer model is the new one, or is also the <code>fast</code> or <code>embed</code> model, as in <code>lite</code>, since the router still needs it. A step that fails comes back as an error that names it, such as "step 2 of 3: ollama still holds qwen3.6:35b in memory after 10s", and the answer model and the set in use stay as they were. One switch runs at a time.</p>
 
-<p>Only the main model changes while <code>merud</code> runs. The router, the skill pick, the summarizer and the index read the <code>fast</code> and <code>embed</code> models at startup, so a set's <code>fast</code> and <code>embed</code> models take effect once the set is saved and <code>merud</code> restarts, and the reply says so. A set that changes <code>embed</code> needs <code>--rebuild</code>: a new embedding model makes vectors of another size, every stored vector goes stale, and <code>merud</code> re-embeds every file in the <code>[index]</code> folders at that restart. A set that changes <code>fast</code> carries a warning, because the router needs log probabilities and one token per route letter (see <a href="#routing">Routing</a>).</p>
+<p>Only the main model changes while <code>merud</code> runs. The router, the skill pick, the summarizer and the index read the <code>fast</code> and <code>embed</code> models at startup, so a set's <code>fast</code> and <code>embed</code> models take effect once the set is saved and <code>merud</code> restarts, and the reply says so. A set that changes <code>embed</code> needs <code>--rebuild</code>: a new embedding model or changed task prefixes make every stored vector stale, and <code>merud</code> re-embeds every file in the <code>[index]</code> folders at that restart. A set that changes <code>fast</code> carries a warning, because the router needs log probabilities and one token per route letter (see <a href="#routing">Routing</a>).</p>
 
 <p><b>Which model wrote each answer.</b> Before an answer whose model differs from the session's last one, the agent appends a <code>model_switch</code> line to the session (see <a href="#session-transcripts">Session transcripts</a>); a session's first answer gets one with an empty <code>from</code>. The answer line records the model's time to first token on the round that first wrote text, the time Ollama spent writing tokens, its bad calls and whether the turn hit the cap. The <code>turns</code> table takes these from the transcripts, so <code>/usage by model</code> rebuilds with the rest of <code>meru.db</code>:</p>
 
@@ -1352,7 +1352,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 
   <rect x="560" y="328" width="376" height="42" rx="8" class="b"/>
   <text x="576" y="354" class="t1 mono" font-size="13">meta</text>
-  <text x="630" y="354" class="t3" font-size="12">schema version, embed model, vector size</text>
+  <text x="630" y="354" class="t3" font-size="12">schema, model, vector size, prefix hash</text>
   <rect x="560" y="380" width="376" height="42" rx="8" class="bg"/>
   <text x="576" y="406" class="t2 mono" font-size="13">jobs · job_runs</text>
   <text x="700" y="406" class="t3" font-size="12">planned for v0.5</text>
@@ -1393,7 +1393,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
     <tr><td><code>memories</code> (v0.4)</td><td>one row per memory file: its ID (<code>&lt;kind&gt;/&lt;name&gt;.md</code>), kind, text, created, source, mtime and content hash</td><td><code>memory/*/*.md</code></td></tr>
     <tr><td><code>memory_vec</code> / <code>memory_fts</code> (v0.4)</td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
     <tr><td><code>jobs</code> / <code>job_runs</code> (v0.5)</td><td>scheduled jobs and each run's outcome</td><td>jobs: <code>[[jobs]]</code> in <code>config.toml</code>; runs: the job's session transcript</td></tr>
-    <tr><td><code>meta</code></td><td>schema version, embedding model name and vector size</td><td>config</td></tr>
+    <tr><td><code>meta</code></td><td>schema version, embedding model name, vector size and task-prefix fingerprint</td><td>config</td></tr>
   </tbody>
 </table></div>
 
@@ -1401,7 +1401,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 
 <p><code>tool_calls</code> is mandatory. An assistant with tools that change things needs a record you can read afterwards. <code>dispatch</code> writes a row as each call ends, and <code>meru log</code> reads the newest rows. When <code>merud</code> starts and finds the table empty, it rebuilds the table from the transcripts, pairing each call's lines by <code>call_id</code>; a call with no <code>tool_result</code> line, because <code>merud</code> stopped mid-call, gets the outcome <code>cancelled</code>. <code>messages</code> and <code>tool_calls</code> store the trace ID of their turn, so you can jump from a slow trace in your OTLP backend to the rows it produced, and back.</p>
 
-<p>When the embedding model's name in config, or the vector size Ollama reports for it, no longer matches <code>meta</code>, the store deletes every row of <code>chunk_vec</code>, <code>memory_vec</code> and <code>session_vec</code> and keeps <code>documents</code>, <code>chunks</code>, <code>memories</code> and <code>sessions</code>. Keyword search keeps working while the indexer re-embeds. The store reports the gap by counting chunks that lack a vector (<code>NeedsReembed</code>), so the count stays right if <code>merud</code> stops halfway through. The memory syncer re-embeds each memory that lacks a vector, and the summarizer does the same for each summary.</p>
+<p>When the embedding model's name, its task-prefix fingerprint or the vector size Ollama reports no longer matches <code>meta</code>, the store deletes every row of <code>chunk_vec</code>, <code>memory_vec</code> and <code>session_vec</code> and keeps <code>documents</code>, <code>chunks</code>, <code>memories</code> and <code>sessions</code>. A database from an older release may have no prefix fingerprint. When its model and vector size match, the store records the current fingerprint and keeps these vectors. Keyword search keeps working while the indexer re-embeds after a later model or prefix change. The store reports the gap by counting chunks that lack a vector (<code>NeedsReembed</code>), so the count stays right if <code>merud</code> stops halfway through. The memory syncer re-embeds each memory that lacks a vector, and the summarizer does the same for each summary.</p>
 
 <h3 id="why-this-driver-and-this-vector-store">Why this driver and this vector store</h3>
 

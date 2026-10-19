@@ -431,7 +431,9 @@ returns the entry, or the zero `EmbedModel` for a model not listed, which then
 gets plain text and Ollama's own context. `merud`'s `newEngine` copies the
 entry into the engine's `EmbedPrompts` and `EmbedContext`. The prefixes live
 here, beside the model's name, because a wrong or missing prefix makes search
-worse with no error, and a model that wants none must get none.
+worse with no error, and a model that wants none must get none. `PrefixFingerprint`
+computes a SHA-256 digest over both prefix strings and their lengths. A change to
+either prefix changes the digest that `merud` passes to the store.
 
 ### ollama.go
 

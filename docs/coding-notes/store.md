@@ -54,7 +54,8 @@ key, so a hit from either search names a chunk the same way.
 
 `Open` does four things in order:
 
-1. Checks the options: a path, an embedding model name, and a vector size.
+1. Takes a path, an embedding model name, a prefix fingerprint and a vector
+   size as options. It checks the path, model and size.
 2. Calls `createPrivate`, which creates `meru.db`, `meru.db-wal` and
    `meru.db-shm` with mode `0600` (owner read and write only) if they don't
    exist, and sets that mode if they do. SQLite would otherwise create them
@@ -126,12 +127,16 @@ apart from `chunks` so a search reads IDs and vectors and never touches text.
 the `heading` and `text` columns of `chunks` without keeping its own copy of
 the text, and its `rowid` is the chunk ID.
 
-`checkVectors` compares the embedding model name and vector size in `meta`
-with the ones `Open` got. When either differs, it deletes every row of
-`chunk_vec`, `memory_vec` and `session_vec` and records the new pair. Vectors
-from two models can't be compared, so all of them go. Documents, chunks,
-memories and summaries stay, so keyword search keeps working while the indexer
-and the memory syncer re-embed and the summarizer embeds the summaries again.
+`checkVectors` compares the embedding model name, prefix fingerprint and vector
+size in `meta` with the ones `Open` got. When the model or size changes, or a
+stored prefix fingerprint differs, it deletes every row of `chunk_vec`,
+`memory_vec` and `session_vec` in one transaction and records the new values.
+An older database without a prefix fingerprint keeps its vectors when the model
+and size match; `Open` records the current fingerprint. A later prefix change
+makes the vectors incomparable, so the store deletes them.
+Documents, chunks, memories and summaries stay, so keyword search keeps working
+while the indexer and memory syncer re-embed and the summarizer embeds the
+summaries again.
 
 `NeedsReembed` reports that gap. It counts rows instead of keeping a flag:
 some chunks lack a vector exactly when the model changed and the indexer
@@ -502,8 +507,9 @@ go test -run '^$' -bench . -benchtime 20x ./internal/store/
 ```
 
 `memories_test.go` covers `ReplaceMemory` and `DeleteMemory` with the FTS5
-integrity check, the order of each memory search with and without `exclude`, and
-an embedding model change that drops the memory vectors.
+integrity check and the order of each memory search with and without `exclude`.
+`store_test.go` checks that a model or prefix change drops chunk, memory and
+session vectors and keeps their source text.
 
 `TestSearchKeyword` feeds FTS5 syntax, quotes and SQL fragments as queries.
 `TestSearchVector` checks the distances are true cosine distances for vectors
