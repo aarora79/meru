@@ -244,6 +244,15 @@ const (
 	// failed, with the connector's sentence, and when the file isn't WAV
 	// or runs too long. merud keeps neither the audio nor the text.
 	OpTranscribe Op = "transcribe"
+	// OpTrustedSites lists [web] trusted_sites, the websites web_fetch
+	// reads without asking in every session. The reply is one
+	// "trusted_sites" event, whose Sites lists them, and "done".
+	OpTrustedSites Op = "trusted_sites"
+	// OpTrustedSiteRemove takes the host in Request.ID out of [web]
+	// trusted_sites, so web_fetch asks again before it reads that site in
+	// a new session. The reply is one "trusted_sites" event with the list
+	// left, and "done". It fails for a host the list doesn't hold.
+	OpTrustedSiteRemove Op = "trusted_site_remove"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -458,6 +467,8 @@ const (
 	EventReport EventType = "report"
 	// EventStatus answers OpIndexStatus, in Status.
 	EventStatus EventType = "status"
+	// EventTrustedSites carries [web] trusted_sites, in Sites.
+	EventTrustedSites EventType = "trusted_sites"
 	// EventTranscript carries the words OpTranscribe heard, in Text.
 	EventTranscript EventType = "transcript"
 	// EventDone ends a successful reply. After an ask it carries the turn's
@@ -526,6 +537,11 @@ type Event struct {
 	Folders     []FolderInfo   `json:"folders,omitempty"`
 	Suggested   []FolderInfo   `json:"suggested,omitempty"`
 	Models      *ModelsInfo    `json:"models,omitempty"`
+
+	// Sites is set on a "trusted_sites" event: the websites web_fetch
+	// reads without asking in every session. An empty list is left out of
+	// the JSON, so a client reads a missing Sites as none.
+	Sites []string `json:"sites,omitempty"`
 
 	// Connectors is set on a "connectors" event.
 	Connectors []ConnectorStatus `json:"connectors,omitempty"`
@@ -639,6 +655,13 @@ const (
 	ChoiceSession Choice = "session"
 	// ChoiceDeny doesn't run the call.
 	ChoiceDeny Choice = "deny"
+	// ChoiceSite runs this call and every later call that reaches the
+	// approval's Site in the same session without asking. Only web_fetch
+	// offers it, on a URL no search result or question gave.
+	ChoiceSite Choice = "site"
+	// ChoiceSiteAlways is ChoiceSite in every session: merud adds the Site
+	// to [web] trusted_sites.
+	ChoiceSiteAlways Choice = "site_always"
 )
 
 // ToolEvent describes one tool call on a "tool_call" or "tool_result" event.
@@ -678,6 +701,10 @@ type Approval struct {
 	// Choices lists the answers the client may offer, in order. The
 	// configure tool offers only "once" and "deny".
 	Choices []Choice `json:"choices"`
+	// Site is the host the call reaches, such as
+	// "raw.githubusercontent.com", when Choices hold ChoiceSite and
+	// ChoiceSiteAlways; the client names it on those buttons.
+	Site string `json:"site,omitempty"`
 }
 
 // Reply is the line a client writes to answer an "approval" event.

@@ -215,7 +215,9 @@ export function drawApproval(t, h) {
 // arguments laid out to read, and the answers. A mail card offers Send,
 // Edit first and Don't send; any other card Allow once and Don't allow,
 // with Edit first between. Allow for this chat comes when merud offers
-// it. onChoice gets "once", "session", "deny" or "edit". A save's card,
+// it, and so do the two website choices, whose labels from the Bridge
+// name the host. onChoice gets "once", "session", "site", "site_always",
+// "deny" or "edit". A save's card,
 // which sits above the composer, uses it too.
 export function approvalCard(v, titleId, onChoice) {
   const card = el("div", "approval");
@@ -246,6 +248,11 @@ export function approvalCard(v, titleId, onChoice) {
   };
   if (offered.has("once")) add(mail ? "Send" : "Allow once", "once", "button ask");
   if (offered.has("session")) add("Allow for this chat", "session", "button secondary");
+  // The website choices: for web_fetch on an address nobody gave. The
+  // labels come from the Bridge with the host in them.
+  for (const c of v.choices) {
+    if (c.choice === "site" || c.choice === "site_always") add(c.label, c.choice, "button secondary");
+  }
   if (v.draft) add("Edit first", "edit", "button secondary");
   add(mail ? "Don't send" : "Don't allow", "deny", "button secondary");
   card.append(choices);
@@ -259,6 +266,10 @@ function answeredText(choice, label) {
       return "You allowed this once: " + label + ".";
     case "session":
       return "You allowed this for the rest of this chat: " + label + ".";
+    case "site":
+      return "You allowed this website for the rest of this chat: " + label + ".";
+    case "site_always":
+      return "You allowed this website from now on: " + label + ". Settings, Connections lists it.";
     case "ended":
       return "The question ended before you answered: " + label + ".";
     case "edit":

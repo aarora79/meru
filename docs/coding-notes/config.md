@@ -99,6 +99,7 @@ type Web struct {
     SearXNGURL string `toml:"searxng_url"` // default "http://127.0.0.1:8888"; "" turns web_search off
     MaxResults int    `toml:"max_results"` // default 8, at most MaxWebResults (20)
     Render     string `toml:"render"`      // RenderAuto ("auto", the default) or RenderOff ("off")
+    TrustedSites []string `toml:"trusted_sites"` // hosts web_fetch reads without asking; default none
 }
 ```
 
@@ -121,6 +122,16 @@ JavaScript. With `"auto"`, it loads such a page in a headless Chrome that
 HTML alone (see [builtin](builtin.md)). `web_fetch` and `validate` both use
 the constants `RenderAuto` and `RenderOff` for the two values. `validate`
 refuses any other value and names both.
+
+`trusted_sites` lists the websites `web_fetch` reads without asking, in every
+session. "Always allow" at the prompt adds a host, through `merud`. Each entry
+must pass `CheckTrustedSite`: a bare host name in lower case, with at least one
+dot, no scheme, path, port or wildcard, and no IP address, `localhost`, or name
+under `.localhost` or `.local`. Those last ones are this machine or the local
+network, which `web_fetch` refuses anyway, and `net/netip.ParseAddr` spots an
+address. A wildcard would trust hosts the user never saw, so the check refuses
+`*`. Adding the slice made `Web` a type Go can't compare with `==`, so the tests
+compare it with `reflect.DeepEqual`.
 
 `Chat` is the `[chat]` section, which only `meru chat` reads; `merud` loads it
 with the rest and ignores it:

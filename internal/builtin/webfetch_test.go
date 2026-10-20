@@ -594,3 +594,69 @@ func TestReadDownloads(t *testing.T) {
 		t.Errorf("read_file on a link in downloads: %+v", res)
 	}
 }
+
+// TestWebFetchTrustSite checks the website choices: CallSite names the
+// host of an ordinary fetch and no other, a host trusted for one session
+// runs unasked there and nowhere else, "always" hands the host to the
+// saver, and the hosts from [web] trusted_sites run unasked in every
+// session, with no wildcard, while a save on them still asks.
+func TestWebFetchTrustSite(t *testing.T) {
+	_, tools, _ := guardSetup(t, t.TempDir())
+	ctx := context.Background()
+	a := &asker{}
+	fetch := func(session, url string, save bool) dispatch.Call {
+		return guardCall(WebFetch, fmt.Sprintf(`{"url":%q,"save":%v}`, url, save), session, "", rpc.SourceTUI, a)
+	}
+	asks := func(c dispatch.Call) bool {
+		got, ok := tools.ConfirmCall(c)
+		return ok && got != dispatch.ConfirmNever
+	}
+
+	page := "https://docs.example.org/guide?part=2"
+	for _, tt := range []struct {
+		call dispatch.Call
+		want string
+	}{
+		{fetch("a", page, false), "docs.example.org"},
+		{fetch("a", page, true), ""},
+		{fetch("a", "https://93.184.216.34/page", false), ""},
+		{guardCall(WebSearch, `{"query":"go"}`, "a", "", rpc.SourceTUI, a), ""},
+	} {
+		if got := tools.CallSite(tt.call); got != tt.want {
+			t.Errorf("CallSite(%s) = %q, want %q", tt.call.Args, got, tt.want)
+		}
+	}
+
+	if !asks(fetch("a", page, false)) {
+		t.Fatal("an unknown site ran unasked")
+	}
+	if err := tools.TrustSite(ctx, fetch("a", page, false), "docs.example.org", false); err != nil {
+		t.Fatal(err)
+	}
+	if asks(fetch("a", page, false)) || !asks(fetch("b", page, false)) {
+		t.Error("trust for session a should hold in a only")
+	}
+
+	if err := tools.TrustSite(ctx, fetch("a", page, false), "docs.example.org", true); err == nil {
+		t.Error("always with no saver should fail")
+	}
+	var saved []string
+	tools.UseSiteSaver(func(ctx context.Context, host string) error {
+		saved = append(saved, host)
+		return nil
+	})
+	if err := tools.TrustSite(ctx, fetch("a", page, false), "docs.example.org", true); err != nil || !slices.Equal(saved, []string{"docs.example.org"}) {
+		t.Errorf("always: err %v, saved %v", err, saved)
+	}
+
+	tools.UseTrustedSites([]string{"docs.example.org"})
+	if asks(fetch("c", page, false)) {
+		t.Error("a trusted site asked in a new session")
+	}
+	if !asks(fetch("c", "https://blog.docs.example.org/", false)) {
+		t.Error("a subdomain of a trusted site ran unasked")
+	}
+	if !asks(fetch("c", page, true)) {
+		t.Error("a download from a trusted site ran unasked")
+	}
+}

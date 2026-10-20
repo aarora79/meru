@@ -196,7 +196,9 @@ function drawConnections(body, cv) {
       // sentence; the built-in card stays "Connected".
       const web = { ...c, tools: c.tools.filter((t) => WEB_TOOLS.includes(t.name)), connector: c.web, sentence: c.web_sentence };
       const own = { ...c, tools: c.tools.filter((t) => !WEB_TOOLS.includes(t.name)), note: "" };
-      grid.append(connectionCard(body, web, "Web search", "web"), connectionCard(body, own, "Built into Meru", "meru"));
+      const webCard = connectionCard(body, web, "Web search", "web");
+      webCard.append(trustedSites());
+      grid.append(webCard, connectionCard(body, own, "Built into Meru", "meru"));
       continue;
     }
     grid.append(connectionCard(body, c, c.kind === "command" ? "Local commands" : c.name, c.name));
@@ -353,6 +355,39 @@ function toolRow(body, c, t) {
 }
 
 // removeButton asks before it takes an MCP server out of config.toml.
+// trustedSites returns the Web search card's list of the websites
+// web_fetch reads without asking in every session, [web] trusted_sites,
+// each with a Remove button. It fills in when merud answers; a merud from
+// before the list shows nothing.
+function trustedSites() {
+  const box = el("div", "trusted-sites");
+  const draw = (sites) => {
+    box.replaceChildren(el("p", "card-sub", "Websites Meru reads without asking"));
+    if (!sites.length) {
+      box.append(el("p", "card-note", "None. When Meru asks before reading a website, Always allow adds it here."));
+      return;
+    }
+    const list = el("ul", "site-list");
+    for (const host of sites) {
+      const item = el("li");
+      item.append(el("code", "", host), button("Remove", {
+        className: "text-button",
+        onClick: () => bridge.removeTrustedSite(host).then(
+          (left) => {
+            draw(left || []);
+            current.pages.notice("Meru asks again before it reads " + host + " in a new chat.");
+          },
+          (err) => current.pages.notice(errorText(err)),
+        ),
+      }));
+      list.append(item);
+    }
+    box.append(list);
+  };
+  bridge.trustedSites().then((sites) => draw(sites || []), () => box.replaceChildren());
+  return box;
+}
+
 function removeButton(body, name) {
   const box = el("div", "card-actions");
   const ask = button("Remove", {

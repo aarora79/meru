@@ -2535,3 +2535,8 @@ textarea.text-input {
 .dot.warn {
   background: var(--ask-ink);
 }
+
+/* The Web search card's list of trusted websites. */
+.trusted-sites { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.trusted-sites .site-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.trusted-sites .site-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }

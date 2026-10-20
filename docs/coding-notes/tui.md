@@ -712,6 +712,11 @@ mark the selected choice, so the selection shows with colour off too. `View` swa
 the help line for a `keyList`, a slice of key bindings with the two methods the
 help component needs, so the bottom line lists the keys that answer the box.
 
+Each choice's key is its first letter, except the two website choices, which
+`web_fetch` offers for a URL it doesn't know: `w` trusts the host for the session
+and `a` always, since `s` already means the session. `choiceLabel` names the host
+the approval carries: "en.wikipedia.org this session".
+
 `e` is Edit first, as in the app. `editFirst` answers deny, then puts the call in
 the input as a draft (`draftOf`): "Run mail.send with these arguments instead:" and
 the arguments as the box shows them, for the user to change and send as a new
@@ -1301,6 +1306,13 @@ skill, since `merud` lists the disabled ones last. `/log` sends `OpLog` for the
 latest 100 calls, the data `meru log` prints, and shows the marked call's arguments
 and the start of its result under its row. The file is logbox.go, not log.go,
 which would read as logging.
+
+### sites.go
+
+`/sites` sends `OpTrustedSites` and lists the websites Meru reads without
+asking. `d` twice on one sends `OpTrustedSiteRemove`, as does `/sites remove
+<host>`. The box works like `/folders`: `busy` while `merud` writes, and
+`confirm` for the first `d`.
 
 ### about.go and help.go
 

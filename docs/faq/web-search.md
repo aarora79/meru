@@ -51,6 +51,18 @@ minute asks SearXNG for an empty search, which reaches no engine.
 address that no search result or question of yours gave, and before every
 download.
 
+**Stop the asking for one website.** When `web_fetch` asks about a page, two
+buttons name its website, such as `raw.githubusercontent.com`. "Allow … for
+this chat" lets Meru read other pages there until the chat ends. "Always
+allow …" adds the website to `trusted_sites` under `[web]` in
+`~/.meru/config.toml`, so no chat asks again. In `meru chat` the keys are `w`
+and `a`. Each covers that exact website: trusting `github.com` leaves
+`gist.github.com` asking. Downloads still ask. To see the list or take a
+website off, open Settings, Connections, the Web search card, or type `/sites`
+in `meru chat` (`/sites remove <website>`). Trust only websites you'd let
+see what Meru asks for: the model can put words from your chat in an address
+there.
+
 **Pages that need JavaScript.** Some pages, such as job postings on Workday,
 arrive empty and build their text with JavaScript. When `web_fetch` gets one,
 it opens the page in a hidden Chrome and reads what the page shows. The first

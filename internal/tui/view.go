@@ -37,7 +37,7 @@ func (m Model) View() string {
 	helpLine := m.helpView(m.shortHelp())
 	switch {
 	case m.approval != nil:
-		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices, !m.approval.save))
+		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices, m.approval.ask.Site, !m.approval.save))
 	case m.boxOpen() && m.notice == "":
 		helpLine = m.helpView(m.boxKeys())
 	case m.notice != "":
@@ -66,6 +66,8 @@ func (m Model) View() string {
 		pane = m.foldersBoxView(m.width, h)
 	case m.skillsBox != nil:
 		pane = m.skillsBoxView(m.width, h)
+	case m.sitesBox != nil:
+		pane = m.sitesBoxView(m.width, h)
 	case m.logBox != nil:
 		pane = m.logBoxView(m.width, h)
 	case m.aboutBox != nil:

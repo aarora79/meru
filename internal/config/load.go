@@ -12,6 +12,7 @@ import (
 	"maps"
 	"math"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -157,7 +158,7 @@ func defaults() Config {
 		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
-		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto},
+		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto, TrustedSites: []string{}},
 		Chat: Chat{MouseCopy: true},
 	}
 }
@@ -323,6 +324,11 @@ func validate(cfg Config) error {
 	// 20 results already fill a few thousand tokens of the prompt.
 	if n := cfg.Web.MaxResults; n < 1 || n > MaxWebResults {
 		add("web.max_results is %d; it must be between 1 and %d", n, MaxWebResults)
+	}
+	for _, h := range cfg.Web.TrustedSites {
+		if err := CheckTrustedSite(h); err != nil {
+			add("web.trusted_sites: %w", err)
+		}
 	}
 	if r := cfg.Web.Render; r != RenderAuto && r != RenderOff {
 		add("web.render is %q; it must be %q (render pages that need JavaScript) or %q", r, RenderAuto, RenderOff)
@@ -566,6 +572,30 @@ func checkPrometheus(addr string) error {
 	}
 	if err := loopback.CheckURL("http://" + addr); err != nil {
 		return fmt.Errorf("%w; merud serves metrics on this machine only", err)
+	}
+	return nil
+}
+
+// trustedSite is what a [web] trusted_sites entry may hold: a host name of
+// lower-case letters, digits, hyphens and dots, with at least one dot, such
+// as "raw.githubusercontent.com". No scheme, path, port or wildcard fits it.
+var trustedSite = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+
+// CheckTrustedSite fails when host can't be a [web] trusted_sites entry:
+// anything but a bare host name, or a name for this machine, which
+// web_fetch never reads anyway. merud calls it before it saves a host the
+// user trusted.
+func CheckTrustedSite(host string) error {
+	if !trustedSite.MatchString(host) {
+		return fmt.Errorf("%q isn't a bare host name such as \"raw.githubusercontent.com\": no scheme, path, port or wildcard", host)
+	}
+	// netip.ParseAddr succeeds only for an IP address, which names a
+	// machine rather than a site.
+	if _, err := netip.ParseAddr(host); err == nil {
+		return fmt.Errorf("%q is an address; trust a site by its host name", host)
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
+		return fmt.Errorf("%q is on this machine or this network, which web_fetch never reads", host)
 	}
 	return nil
 }

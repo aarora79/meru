@@ -34,7 +34,7 @@ const (
 func (m *Model) boxOpen() bool {
 	return m.usageBox != nil || m.meBox != nil || m.mcpBox != nil || m.modelBox != nil ||
 		m.chatsBox != nil || m.usedBox != nil || m.foldersBox != nil || m.skillsBox != nil ||
-		m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
+		m.sitesBox != nil || m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
 }
 
 // dropBoxes closes every box without giving the input its cursor back,
@@ -42,6 +42,7 @@ func (m *Model) boxOpen() bool {
 func (m *Model) dropBoxes() {
 	m.usageBox, m.meBox, m.mcpBox, m.modelBox = nil, nil, nil, nil
 	m.chatsBox, m.usedBox, m.foldersBox, m.skillsBox, m.logBox = nil, nil, nil, nil, nil
+	m.sitesBox = nil
 	m.aboutBox, m.helpBox = nil, nil
 }
 
@@ -90,6 +91,8 @@ func (m *Model) boxKey(msg tea.KeyMsg) tea.Cmd {
 		return m.foldersKey(msg)
 	case m.skillsBox != nil:
 		return m.skillsKey(msg)
+	case m.sitesBox != nil:
+		return m.sitesKey(msg)
 	case m.logBox != nil:
 		m.logBox.at = moveMark(msg, m.logBox.at, len(m.logBox.rows))
 	case m.helpBox != nil:
@@ -127,6 +130,8 @@ func (m *Model) boxKeys() keyList {
 		k = keyList{move, bind("enter", "add"), bind("d", "remove")}
 	case m.skillsBox != nil:
 		k = keyList{move, bind("enter", "on/off")}
+	case m.sitesBox != nil:
+		k = keyList{move, bind("d", "remove")}
 	case m.logBox != nil:
 		k = keyList{move}
 	case m.helpBox != nil, m.aboutBox != nil:
@@ -273,6 +278,7 @@ const (
 	tagMCPRemove = "mcp_remove" // d d in the /mcp box
 	tagFolders   = "folders"
 	tagSkills    = "skills"
+	tagSites     = "sites"
 	tagLog       = "log"
 	// The /mcp box's connector rows (connectors.go).
 	tagConnectors   = "connectors"
@@ -333,6 +339,8 @@ func (m *Model) applyReply(msg replyMsg) tea.Cmd {
 		m.applyFolders(msg)
 	case tagSkills:
 		m.applySkills(msg)
+	case tagSites:
+		m.applySites(msg)
 	case tagLog:
 		m.applyLog(msg)
 	}

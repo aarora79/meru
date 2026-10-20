@@ -277,7 +277,7 @@ func changes(op rpc.Op) bool {
 		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave, rpc.OpConnectorAdopt,
 		// Renaming or removing a chat folder rewrites every chat in it.
 		rpc.OpSessionDelete, rpc.OpSessionMove, rpc.OpSessionTag,
-		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove:
+		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove, rpc.OpTrustedSiteRemove:
 		return true
 	}
 	return false

@@ -40,6 +40,7 @@ var commandList = []Command{
 	{Name: "/mcp", Description: "Your connections and their tools"},
 	{Name: "/folders", Description: "The folders Meru searches"},
 	{Name: "/skills", Description: "Turn skills on or off"},
+	{Name: "/sites", Args: "[remove <website>]", Description: "The websites Meru reads without asking; take one off"},
 	{Name: "/model", Args: "[name | save]", Description: "Switch to a model set, save it as the default, or show the sets"},
 	{Name: "/log", Description: "The latest tool calls"},
 	{Name: "/about", Description: "Version, license and links"},

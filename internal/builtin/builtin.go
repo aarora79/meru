@@ -43,6 +43,10 @@ const actionAddServer = "add_mcp_server"
 type Tools struct {
 	configPath string
 
+	// saveSite adds a host to [web] trusted_sites, for "Always this
+	// website"; UseSiteSaver sets it. nil saves nothing.
+	saveSite func(ctx context.Context, host string) error
+
 	// lists guards on and confirm, which SetLists replaces while merud
 	// runs, when the desktop app changes a built-in tool's policy.
 	lists   sync.RWMutex

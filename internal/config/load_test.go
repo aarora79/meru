@@ -175,7 +175,7 @@ remote  = false
 			Retrieval:     RetrievalAgentic,
 		},
 		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},
-		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5, Render: RenderOff},
+		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5, Render: RenderOff, TrustedSites: []string{}},
 		Chat:    Chat{MouseCopy: false}, // false in the file beats the default, true
 		MCP: MCP{Servers: []MCPServer{
 			{
@@ -345,16 +345,16 @@ func TestWebDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto}
-	if cfg.Web != want {
+	want := Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto, TrustedSites: []string{}}
+	if !reflect.DeepEqual(cfg.Web, want) {
 		t.Errorf("default web = %+v, want %+v", cfg.Web, want)
 	}
 	cfg, err = Load(writeConfig(t, "[web]\nsearxng_url = \"\"\nmax_results = 20"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want = Web{SearXNGURL: "", MaxResults: 20, Render: RenderAuto}
-	if cfg.Web != want {
+	want = Web{SearXNGURL: "", MaxResults: 20, Render: RenderAuto, TrustedSites: []string{}}
+	if !reflect.DeepEqual(cfg.Web, want) {
 		t.Errorf("web = %+v, want %+v", cfg.Web, want)
 	}
 }
@@ -667,5 +667,22 @@ func TestTemplatePrometheusLine(t *testing.T) {
 	}
 	if cfg.Observability.Prometheus != "127.0.0.1:9464" {
 		t.Errorf("prometheus = %q, want 127.0.0.1:9464", cfg.Observability.Prometheus)
+	}
+}
+
+// TestCheckTrustedSite checks the [web] trusted_sites rule: bare host
+// names pass; anything with a scheme, path, port, wildcard or capital
+// letter fails, and so do addresses and names for this machine.
+func TestCheckTrustedSite(t *testing.T) {
+	for _, ok := range []string{"raw.githubusercontent.com", "arxiv.org", "docs.python-guide.org", "a.b.c.example"} {
+		if err := CheckTrustedSite(ok); err != nil {
+			t.Errorf("CheckTrustedSite(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "github", "https://github.com", "github.com/x", "github.com:443", "*.github.com",
+		"GitHub.com", "1.2.3.4", "printer.local", "app.localhost", "-x.com", "x..com"} {
+		if err := CheckTrustedSite(bad); err == nil {
+			t.Errorf("CheckTrustedSite(%q) = nil, want an error", bad)
+		}
 	}
 }

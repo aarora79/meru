@@ -715,6 +715,48 @@ func TestCallConfirmer(t *testing.T) {
 	}
 }
 
+// siteBackend is a callConfirmBackend that also trusts websites: CallSite
+// names "go.dev" for every call, and TrustSite records what it got.
+type siteBackend struct {
+	callConfirmBackend
+	trusted []string // "host" or "host always", per TrustSite call
+}
+
+// CallSite names the host every call reaches.
+func (b *siteBackend) CallSite(c Call) string { return "go.dev" }
+
+// TrustSite records host, with " always" when always is set.
+func (b *siteBackend) TrustSite(ctx context.Context, c Call, host string, always bool) error {
+	if always {
+		host += " always"
+	}
+	b.trusted = append(b.trusted, host)
+	return nil
+}
+
+// TestSiteChoices checks that a call which asks every time, on a backend
+// that names its website, offers the two website choices with the host,
+// and that each answer reaches TrustSite and runs the call.
+func TestSiteChoices(t *testing.T) {
+	b := &siteBackend{callConfirmBackend: callConfirmBackend{fakeBackend: fakeBackend{kind: KindBuiltin, tools: []string{"fetch"}}}}
+	d := New([]Backend{b}, nil, Options{})
+	for _, choice := range []rpc.Choice{rpc.ChoiceSite, rpc.ChoiceSiteAlways} {
+		a := &approver{choice: choice}
+		c := newCall("fetch", &sink{}, a)
+		c.Args = json.RawMessage(`{"url":"ask"}`)
+		if _, out := d.Dispatch(context.Background(), c); out.Outcome != OutcomeOK {
+			t.Fatalf("%s: outcome %q", choice, out.Outcome)
+		}
+		want := []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSite, rpc.ChoiceSiteAlways, rpc.ChoiceDeny}
+		if got := a.asked[0]; !slices.Equal(got.Choices, want) || got.Site != "go.dev" {
+			t.Errorf("%s: choices %v site %q", choice, got.Choices, got.Site)
+		}
+	}
+	if !slices.Equal(b.trusted, []string{"go.dev", "go.dev always"}) {
+		t.Errorf("trusted = %v", b.trusted)
+	}
+}
+
 func TestAsks(t *testing.T) {
 	b := &fakeBackend{kind: KindCommand, tools: []string{"cmd.a", "cmd.b"}, confirm: map[string]Confirm{"cmd.b": ConfirmAsk}}
 	d := New([]Backend{b}, nil, Options{})

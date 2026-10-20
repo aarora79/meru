@@ -517,6 +517,10 @@ func handler(svc services) rpc.Handler {
 			return svc.models.handleModelSave(ctx, emit)
 		case rpc.OpTranscribe:
 			return tools.handleTranscribe(ctx, req, emit)
+		case rpc.OpTrustedSites:
+			return tools.handleTrustedSites(emit)
+		case rpc.OpTrustedSiteRemove:
+			return tools.handleTrustedSiteRemove(ctx, req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

@@ -330,6 +330,12 @@ type Web struct {
 	// installs on first need; RenderOff reads the HTML alone. Default
 	// RenderAuto. See ARCHITECTURE.md, "Pages that need JavaScript".
 	Render string `toml:"render"`
+	// TrustedSites lists the hosts web_fetch reads without asking, in
+	// every session, such as "raw.githubusercontent.com": the ones the
+	// user picked "Always this website" for. Each is a bare host name, in
+	// lower case, with no scheme, path, port or wildcard. Downloads still
+	// ask. See ARCHITECTURE.md, "Web search".
+	TrustedSites []string `toml:"trusted_sites"`
 }
 
 // The values [web] render takes.

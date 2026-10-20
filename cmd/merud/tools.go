@@ -137,6 +137,9 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	s.bt = bt
 	// web_fetch's prompt runs on the fast model, the router's.
 	bt.UseModel(eng, cfg.Models.Fast)
+	// The sites the user trusted for good, and how a new one is saved.
+	bt.UseTrustedSites(cfg.Web.TrustedSites)
+	bt.UseSiteSaver(s.saveTrustedSite)
 	// web_search goes to the model only while the SearXNG connector is
 	// ok, so a model never calls a search engine that isn't there.
 	bt.UseWebCheck(conns.webOK)

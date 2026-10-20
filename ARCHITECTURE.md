@@ -821,12 +821,14 @@ URL.
 ### Approving a tool call
 
 When `dispatch` reaches a tool in the `confirm` list, the client shows the tool's name
-and arguments and offers the choices `merud` sends, at most these three:
+and arguments and offers the choices `merud` sends, from these:
 
 | Choice | What happens |
 | --- | --- |
 | Approve once | This call runs. The next call to the same tool asks again. |
 | Approve for this session | This call runs, and `dispatch` skips the prompt for that tool until the session ends. The approval covers the tool, whatever its arguments. Three kinds of call never offer it and ask every time: `configure`, `web_fetch` on a URL no search result or question gave, and an MCP tool in its server's `always_confirm` list. |
+| This website for this chat | `web_fetch` on a URL no search result or question gave, and only for a read, not a download: this call runs, and later reads on the same host run unasked until the session ends. The approval carries the host, which the button names. |
+| Always this website | The same, in every session: `merud` adds the host to `[web] trusted_sites` (see [Web search](#web-search)). |
 | Deny | The call doesn't run. Its outcome is `declined`, and the model hears that you said no, so it can answer without the tool or ask you what to do. |
 
 - **The question travels on the same socket.** `merud` sends the client an
@@ -4424,16 +4426,38 @@ would go. A URL with no query string also runs unasked when its host is one a kn
 URL came from: the model often knows a site's canonical page, such as
 `go.dev/doc/devel/release`, when the results showed only `go.dev/dl/`, and an
 attacker's site still has to turn up in real search results first. Any other URL
-asks, offering once and deny with no session choice, as
-`configure` does; a session choice would let every later made-up URL through.
-`save` asks even for a known URL, because a download stays on disk; there it
-offers once, session and deny, as `write_file` does, and a session approval
-covers later saves of known URLs. A scheduled job has
+asks, with no choice that covers the tool for the session, as `configure` does: such
+a choice would let every later made-up URL through. It offers four choices: once;
+**this website for this chat**; **always this website**; and deny. The two website
+choices name the URL's host, such as `raw.githubusercontent.com`, exactly as it is
+written, with no wildcard: trusting `github.com` trusts no other host.
+
+- **This website for this chat** runs the call and lets later reads on that host,
+  query strings included, run unasked until the session ends. It lives in memory,
+  beside the session's known URLs.
+- **Always this website** does the same in every session from now on. `merud`
+  appends the host to `[web] trusted_sites` in `config.toml`, through the same
+  checked edit as every other list, and Settings lists the hosts with a Remove
+  button; `meru chat` lists them with `/sites` and removes one with `/sites remove
+  <host>`. An entry is a bare host name: no scheme, path, port or wildcard.
+
+Trusting a host lets the model put anything in a URL on that host, and the host's
+owner can read those URLs in their logs. On a large public site, such as GitHub's
+raw files or arxiv.org, the owner is not the one a page would leak data to. On a
+small site anyone runs, it would be, so the prompt names the exact host and never
+offers a pattern.
+`save` asks even for a known URL or a trusted host, because a download stays on
+disk; there it offers once, session and deny, as `write_file` does, and a session
+approval covers later saves of known URLs. A download to an unknown URL never
+offers the website choices: it asks every time. A scheduled job has
 nobody to ask, so `dispatch` declines a call that asks there.
 
 `dispatch` decides whether a tool asks per tool, from `Confirm`. For the guard, a
 backend may also have `ConfirmCall(call)`, which decides per call and which
-`dispatch` asks first. The built-ins keep each session's known URLs in memory:
+`dispatch` asks first, and `CallSite(call)` and `TrustSite(call, host, always)`,
+which name the host a call reaches and record the user's trust in it. `dispatch`
+offers the website choices only when the backend names a host, so the code that
+knows URLs stays in the built-ins. The built-ins keep each session's known URLs in memory:
 `web_search` adds each result it shows, and `ConfirmCall` adds the URLs in the
 call's `Question`, which the agent fills with the user's words (this turn's
 question and the earlier questions in the session's history), never with excerpts

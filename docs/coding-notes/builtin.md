@@ -824,12 +824,23 @@ one (see [dispatch](dispatch.md)). For `web_fetch`, it answers:
 
 | The call | Answer | Choices the user sees |
 | --- | --- | --- |
-| a URL the session doesn't know | `ConfirmAlways` | once, deny |
+| a URL the session doesn't know, on a host it doesn't trust | `ConfirmAlways` | once, this website for this chat, always this website, deny |
+| `save` on a URL the session doesn't know | `ConfirmAlways` | once, deny |
 | `save` on a known URL | `ConfirmAsk` | once, session, deny |
-| a known URL, no `save` | `ok = false`: `Confirm` decides | none, unless `[builtin] confirm` lists `web_fetch` |
+| a known URL, or any URL on a trusted host, no `save` | `ok = false`: `Confirm` decides | none, unless `[builtin] confirm` lists `web_fetch` |
 
 An unknown URL never gets a session choice: after one yes, every later made-up
-URL would pass. A scheduled job has nobody to ask, so `dispatch` declines the
+URL would pass. The website choices are narrower: they cover one host, written
+out in full.
+
+**Trusted websites.** `CallSite` returns the host of a `web_fetch` read, or ""
+for a save, another tool, or a host `config.CheckTrustedSite` refuses, such as an
+IP address, so the prompt never offers what `merud` couldn't save. `TrustSite`
+marks the host in the session's set under the key `trust:<host>`, which no URL can
+match, since every URL there starts with a scheme. With `always`, it also calls
+the saver `merud` set with `UseSiteSaver`, which writes `[web] trusted_sites` and
+calls `UseTrustedSites` with the new list. `knownURLs.always` holds that list,
+and `trusted` checks it before the session's own marks. A scheduled job has nobody to ask, so `dispatch` declines the
 first two rows there.
 
 `normalizeURL` makes the comparison fair: scheme and host in lower case, the

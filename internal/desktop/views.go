@@ -350,7 +350,7 @@ func approvalView(a rpc.Approval) (v ApprovalView) {
 	server, tool := splitName(a.Kind, a.Name)
 	v = ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Server: server, Tool: tool, Label: stepLabel(a.Kind, server, tool, a.Args)}
 	for _, c := range a.Choices {
-		v.Choices = append(v.Choices, ChoiceView{Choice: c, Label: choiceLabel(c)})
+		v.Choices = append(v.Choices, ChoiceView{Choice: c, Label: choiceLabel(c, a.Site)})
 	}
 	// The draft is written last, from the fields and JSON the card shows.
 	// v is a named result, so this deferred function sets the Draft of
@@ -461,13 +461,18 @@ func indentJSON(v any) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// choiceLabel returns the words a card's button shows for c.
-func choiceLabel(c rpc.Choice) string {
+// choiceLabel returns the words a card's button shows for c. site is the
+// host the call reaches, which the two website choices name.
+func choiceLabel(c rpc.Choice, site string) string {
 	switch c {
 	case rpc.ChoiceOnce:
 		return "Allow once"
 	case rpc.ChoiceSession:
 		return "Allow for this chat"
+	case rpc.ChoiceSite:
+		return "Allow " + site + " for this chat"
+	case rpc.ChoiceSiteAlways:
+		return "Always allow " + site
 	case rpc.ChoiceDeny:
 		return "Don't allow"
 	}
