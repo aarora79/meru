@@ -272,13 +272,14 @@ type Model struct {
 	mcpBox *mcpBox
 	// modelBox is the open /model box, or nil, and works the same way.
 	modelBox *modelBox
-	// So do the /chats, /used, /folders, /skills and /log boxes. The
+	// So do the /chats, /used, /folders, /skills, /sites and /log boxes. The
 	// /about and /help boxes only scroll.
 
 	chatsBox   *chatsBox
 	usedBox    *usedBox
 	foldersBox *foldersBox
 	skillsBox  *skillsBox
+	sitesBox   *sitesBox
 	logBox     *logBox
 	aboutBox   *scrollBox
 	helpBox    *scrollBox

@@ -82,6 +82,7 @@ func waitDone(t *testing.T, m Model, snd *fakeSender, result chan tea.Msg) Model
 
 func TestApprovalKeys(t *testing.T) {
 	onceDeny := []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny}
+	siteChoices := []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSite, rpc.ChoiceSiteAlways, rpc.ChoiceDeny}
 	tests := []struct {
 		name    string
 		choices []rpc.Choice
@@ -96,6 +97,8 @@ func TestApprovalKeys(t *testing.T) {
 		{"left then enter", allChoices, []tea.Msg{press(tea.KeyLeft), press(tea.KeyEnter)}, rpc.ChoiceSession},
 		{"left stops at the first", allChoices, []tea.Msg{press(tea.KeyLeft), press(tea.KeyLeft), press(tea.KeyLeft), press(tea.KeyEnter)}, rpc.ChoiceOnce},
 		{"right stops at the last", allChoices, []tea.Msg{press(tea.KeyRight), press(tea.KeyEnter)}, rpc.ChoiceDeny},
+		{"w trusts the website for the session", siteChoices, []tea.Msg{typeText("w")}, rpc.ChoiceSite},
+		{"a trusts the website always", siteChoices, []tea.Msg{typeText("a")}, rpc.ChoiceSiteAlways},
 		{"a choice not offered does nothing", onceDeny, []tea.Msg{typeText("s"), typeText("x"), typeText("o")}, rpc.ChoiceOnce},
 	}
 	for _, tt := range tests {
@@ -256,5 +259,25 @@ func TestToolLines(t *testing.T) {
 	}
 	if strings.Contains(view, "→") {
 		t.Errorf("view still shows a running call:\n%s", view)
+	}
+}
+
+// TestSiteChoiceText checks that each website choice has a key of its own,
+// apart from "s" for this session, and a label that names the host.
+func TestSiteChoiceText(t *testing.T) {
+	tests := []struct {
+		c         rpc.Choice
+		key, want string
+	}{
+		{rpc.ChoiceOnce, "o", "once"},
+		{rpc.ChoiceSession, "s", "this session"},
+		{rpc.ChoiceSite, "w", "en.wikipedia.org this session"},
+		{rpc.ChoiceSiteAlways, "a", "en.wikipedia.org always"},
+		{rpc.ChoiceDeny, "d", "deny"},
+	}
+	for _, tt := range tests {
+		if k, l := choiceKey(tt.c), choiceLabel(tt.c, "en.wikipedia.org"); k != tt.key || l != tt.want {
+			t.Errorf("%s: key %q label %q, want %q %q", tt.c, k, l, tt.key, tt.want)
+		}
 	}
 }

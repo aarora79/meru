@@ -79,7 +79,7 @@ func (p *prompter) approve(ctx context.Context, a rpc.Approval) (rpc.Choice, err
 		fmt.Fprintln(p.out, " with no arguments.")
 	}
 
-	question := fmt.Sprintf("Run %s? %s: ", a.Name, choiceMenu(a.Choices))
+	question := fmt.Sprintf("Run %s? %s: ", a.Name, choiceMenu(a.Choices, a.Site))
 	for {
 		fmt.Fprint(p.out, question)
 		line, err := p.readLine(ctx)
@@ -125,22 +125,37 @@ func (p *prompter) readLine(ctx context.Context) (string, error) {
 	}
 }
 
-// choiceKey returns the key that picks c: its first letter, "o", "s" or
-// "d".
+// choiceKey returns the key that picks c: "o" once, "s" this session, "w"
+// this website for the session, "a" always this website, "d" deny. The two
+// website choices can't take their first letter, which "session" has.
 func choiceKey(c rpc.Choice) string {
-	if c == "" {
+	switch c {
+	case "":
 		return ""
+	case rpc.ChoiceSite:
+		return "w"
+	case rpc.ChoiceSiteAlways:
+		return "a"
 	}
 	return string(c)[:1]
 }
 
 // choiceMenu writes the offered choices for the prompt with each key in
-// brackets, such as "[o]nce  [s]ession  [d]eny".
-func choiceMenu(choices []rpc.Choice) string {
+// brackets, such as "[o]nce  [s]ession  [d]eny". The website choices name
+// site, the host the call reaches: "[w] go.dev this session  [a] go.dev
+// always".
+func choiceMenu(choices []rpc.Choice, site string) string {
 	labels := make([]string, 0, len(choices))
 	for _, c := range choices {
 		k := choiceKey(c)
-		labels = append(labels, "["+k+"]"+strings.TrimPrefix(string(c), k))
+		switch c {
+		case rpc.ChoiceSite:
+			labels = append(labels, "["+k+"] "+site+" this session")
+		case rpc.ChoiceSiteAlways:
+			labels = append(labels, "["+k+"] "+site+" always")
+		default:
+			labels = append(labels, "["+k+"]"+strings.TrimPrefix(string(c), k))
+		}
 	}
 	return strings.Join(labels, "  ")
 }

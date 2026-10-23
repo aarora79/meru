@@ -8,13 +8,16 @@
 package builtin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 )
 
@@ -31,13 +34,18 @@ const (
 
 // knownURLs holds, per session, the URLs web_fetch may fetch without
 // asking: each URL a web_search result showed and each URL the user wrote
-// in a question. It lives only in memory, as session approvals do, so a
+// in a question. It also holds the hosts the user trusted: for one session
+// ("This website for this chat"), or for all of them ("Always this
+// website"), the [web] trusted_sites list. It lives only in memory, as session approvals do, so a
 // restart of merud forgets it; the user's own questions come back with the
 // next call (see ConfirmCall), and a search-result URL then asks once.
 type knownURLs struct {
-	// mu guards sessions. Tool calls in one round run side by side.
+	// mu guards sessions and always. Tool calls in one round run side by
+	// side.
 	mu       sync.Mutex
 	sessions map[string]*sessionURLs
+	// always holds the hosts trusted in every session, by host name.
+	always map[string]bool
 }
 
 // sessionURLs is one session's set, and when it was last used.
@@ -48,7 +56,73 @@ type sessionURLs struct {
 
 // newKnownURLs returns an empty set.
 func newKnownURLs() *knownURLs {
-	return &knownURLs{sessions: map[string]*sessionURLs{}}
+	return &knownURLs{sessions: map[string]*sessionURLs{}, always: map[string]bool{}}
+}
+
+// trustKey is the key a host trusted for one session is kept under in the
+// session's set, such as "trust:arxiv.org". The prefix keeps it apart from
+// the URLs and the "host:" keys of known URLs.
+func trustKey(host string) string { return "trust:" + host }
+
+// urlHost returns the host name of an http or https URL, in lower case and
+// without a port, or "" when raw isn't one.
+func urlHost(raw string) string {
+	n, ok := normalizeURL(raw)
+	if !ok {
+		return ""
+	}
+	u, err := url.Parse(n)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// trust trusts host in session: later reads on that host, query strings
+// included, run without asking until the session's set goes.
+func (k *knownURLs) trust(session, host string) {
+	if session == "" || host == "" {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := k.sessions[session]
+	if s == nil {
+		if len(k.sessions) >= maxURLSessions {
+			k.dropOldest()
+		}
+		s = &sessionURLs{urls: map[string]bool{}}
+		k.sessions[session] = s
+	}
+	s.used = time.Now()
+	s.urls[trustKey(host)] = true
+}
+
+// setAlways replaces the hosts trusted in every session with hosts, the
+// [web] trusted_sites list.
+func (k *knownURLs) setAlways(hosts []string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.always = map[string]bool{}
+	for _, h := range hosts {
+		k.always[h] = true
+	}
+}
+
+// trusted reports whether raw's host is trusted in session, or in every
+// session.
+func (k *knownURLs) trusted(session, raw string) bool {
+	host := urlHost(raw)
+	if host == "" {
+		return false
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.always[host] {
+		return true
+	}
+	s := k.sessions[session]
+	return session != "" && s != nil && s.urls[trustKey(host)]
 }
 
 // add records urls as known in session, normalized. A call with no
@@ -214,10 +288,66 @@ func (t *Tools) ConfirmCall(c dispatch.Call) (dispatch.Confirm, bool) {
 		return dispatch.ConfirmNever, false
 	}
 	switch {
-	case !t.web.known.has(c.Session, a.URL):
+	case a.Save && !t.web.known.has(c.Session, a.URL):
+		// A download from a URL nobody gave asks every time, whatever
+		// the user trusts: CallSite offers no website choice for it.
 		return dispatch.ConfirmAlways, true
 	case a.Save:
 		return dispatch.ConfirmAsk, true
+	case !t.web.known.has(c.Session, a.URL) && !t.web.known.trusted(c.Session, a.URL):
+		return dispatch.ConfirmAlways, true
 	}
 	return dispatch.ConfirmNever, false
+}
+
+// CallSite returns the host a web_fetch call reads, for the "This website
+// for this chat" and "Always this website" choices, or "" when they don't
+// apply: another tool, a download, or arguments that hold no URL. dispatch
+// asks it only for a call that asks, so the URL is one nobody gave.
+func (t *Tools) CallSite(c dispatch.Call) string {
+	if c.Name != WebFetch {
+		return ""
+	}
+	var a webFetchArgs
+	if err := json.Unmarshal(c.Args, &a); err != nil || a.Save {
+		return ""
+	}
+	host := urlHost(a.URL)
+	// A host that can't be saved, such as an address, gets no website
+	// choice, so the prompt never offers what it can't keep.
+	if config.CheckTrustedSite(host) != nil {
+		return ""
+	}
+	return host
+}
+
+// TrustSite trusts host for c's session and, with always, in every
+// session: it hands host to the saver merud set with UseSiteSaver, which
+// adds it to [web] trusted_sites, and trusts it here once that worked. It
+// fails when always can't be saved, or no saver is set; the session's
+// trust holds either way.
+func (t *Tools) TrustSite(ctx context.Context, c dispatch.Call, host string, always bool) error {
+	t.web.known.trust(c.Session, host)
+	if !always {
+		return nil
+	}
+	if t.saveSite == nil {
+		return errors.New("this merud can't save a trusted site")
+	}
+	return t.saveSite(ctx, host)
+}
+
+// UseTrustedSites sets the hosts web_fetch reads without asking in every
+// session, from [web] trusted_sites. merud calls it at startup and each
+// time it reloads config.
+func (t *Tools) UseTrustedSites(hosts []string) {
+	t.web.known.setAlways(hosts)
+}
+
+// UseSiteSaver gives TrustSite the function that adds a host to [web]
+// trusted_sites. merud's saves the host through config's checked edit,
+// then calls UseTrustedSites with the new list. Without one, "Always this
+// website" trusts the host for the session only, and says why.
+func (t *Tools) UseSiteSaver(save func(ctx context.Context, host string) error) {
+	t.saveSite = save
 }

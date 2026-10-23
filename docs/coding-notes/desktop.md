@@ -160,6 +160,10 @@ fields, or "Run write_file with these arguments instead:" with the JSON.
 `approvalView` has a named result, `(v ApprovalView)`, so a deferred function can
 set `v.Draft` after the fields are in, whichever `return` runs.
 
+`choiceLabel` writes each button. The website choices name the host from
+`Approval.Site`: "Allow en.wikipedia.org for this chat" and "Always allow
+en.wikipedia.org". `Approve` accepts the five choices and nothing else.
+
 Edit first answers `deny` and puts the draft in the composer. `merud` runs a call
 with the arguments it asked about or not at all, so the edited text goes back as a
 new question, and the model's new call brings a new card.
@@ -399,6 +403,14 @@ copies into; `inside` resolves symbolic links first, so a link can't pass.
 `SessionTurns` does the same for a reopened chat: `TurnInfo.Images` holds the
 copies' full paths, and each becomes an `Attachment` with its preview. A copy
 the user deleted keeps its name and loses its preview.
+
+### sites.go
+
+`TrustedSites` and `RemoveTrustedSite` ask `merud` for `[web] trusted_sites` and
+take one off. The Web search card in Settings lists the hosts with a Remove
+button, and `/sites remove <host>` in the composer calls the same Bridge method;
+`/sites` alone opens Settings at Connections. A host joins the list from an
+approval card's "Always allow" button, through `Approve`.
 
 ### speech.go and web/js/voice.js: the microphone
 

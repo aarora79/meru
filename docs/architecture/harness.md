@@ -790,7 +790,9 @@ search result or question of the user's gave, and an MCP tool in its server's
 `always_confirm` list. When a call asks, `dispatch` calls the turn's `approve`
 function, and the rpc server sends an `approval` event with an ID, the tool's name,
 its kind, the arguments and the choices it may offer: once, session and deny, or
-only once and deny for a call that asks every time.
+only once and deny for a call that asks every time. A `web_fetch` read of an
+unknown URL also offers "this website for this chat" and "always this website",
+and the event names the host.
 
 ```mermaid
 sequenceDiagram

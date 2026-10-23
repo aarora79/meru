@@ -42,6 +42,9 @@ export const bridge = {
   attachFile: () => call("AttachFile"),
   detach: (index) => call("Detach", index),
   detachAll: () => call("DetachAll"),
+  // The websites web_fetch reads without asking (sites.go).
+  trustedSites: () => call("TrustedSites"),
+  removeTrustedSite: (host) => call("RemoveTrustedSite", host),
   // The microphone (speech.go).
   speechStatus: () => call("SpeechStatus"),
   transcribe: (wavBase64) => call("Transcribe", wavBase64),

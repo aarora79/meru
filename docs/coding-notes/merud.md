@@ -791,6 +791,22 @@ writers never read the same file and each replace it with their own change.
 `reloadMCP` does for the pool; `started` now holds config as `merud` last loaded
 each part, and the router's list of what is connected follows every reload.
 
+### merud: sites.go
+
+The websites `web_fetch` reads without asking, `[web] trusted_sites`. At startup,
+tools.go hands the list to the built-ins with `UseTrustedSites`, and hands them
+`saveTrustedSite` with `UseSiteSaver`. When the user picks "Always this website",
+`dispatch` calls the built-ins' `TrustSite`, which calls `saveTrustedSite`. It
+checks the host, takes the config lock (`bt.EditConfig`), loads the file, skips a
+host already listed, and calls `writeTrustedSites`. That writes the list through
+`catalog.SetTableLists`, the checked edit every list change uses, which keeps the
+file's comments and replaces it only when the result loads with the new list.
+Then it gives the built-ins the new list.
+
+`handleTrustedSites` answers `trusted_sites` from `config.toml`, and
+`handleTrustedSiteRemove` takes one host out under the same lock. A session that
+trusted the host for itself keeps that trust until it ends.
+
 ### merud: folders.go
 
 `handleFolders` lists the `[index]` folders with `store.CountPaths` for each, and
@@ -1092,6 +1108,10 @@ Meru wants to run mail.send (mcp) with:
   }
 Run mail.send? [o]nce  [s]ession  [d]eny:
 ```
+
+For a `web_fetch` of an unknown URL, the menu names the host:
+`[o]nce  [w] go.dev this session  [a] go.dev always  [d]eny`. The website
+choices take `w` and `a`, since `s` already means the session.
 
 - It shows only the choices `merud` offers; the `configure` tool offers once and
   deny. A key (`o`) or the whole word (`once`), in any case, picks a choice. An

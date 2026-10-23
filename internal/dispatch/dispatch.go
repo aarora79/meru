@@ -106,6 +106,26 @@ type CallConfirmer interface {
 	ConfirmCall(c Call) (confirm Confirm, ok bool)
 }
 
+// SiteTruster is an extra method set a Backend may have, for a call that
+// reaches a website. When a call asks and CallSite names a host, dispatch
+// offers two more choices besides once and deny: trust that host for the
+// rest of the session, or always. TrustSite records the user's choice, so
+// the backend's ConfirmCall lets later calls to the host run unasked.
+//
+// The built-in tools are the one SiteTruster: web_fetch names the host of
+// a URL no search result or question gave, for a read and never for a
+// download (ARCHITECTURE.md, "Web search"). dispatch knows nothing of URLs.
+type SiteTruster interface {
+	// CallSite returns the host call c reaches, such as
+	// "raw.githubusercontent.com", or "" when the website choices don't
+	// apply to it.
+	CallSite(c Call) string
+	// TrustSite trusts host for c's session, and with always for every
+	// session after. It fails when always can't be saved; the session's
+	// trust holds all the same.
+	TrustSite(ctx context.Context, c Call, host string, always bool) error
+}
+
 // Refresher is an extra method a Backend may have. Refresh brings the
 // backend's tool list up to date: it asks each connected server for its
 // tools again, tries once to reach each server that isn't connected, and

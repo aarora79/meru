@@ -147,6 +147,25 @@ function pick(c) {
   }
 }
 
+// sitesCommand runs /sites. Alone, it opens Settings at Connections,
+// whose Web search card lists the websites Meru reads without asking.
+// "remove <website>" asks merud to take that one off the list.
+function sitesCommand(rest) {
+  if (rest.length === 0) {
+    act.openSettings("connections");
+    return true;
+  }
+  if (rest[0] !== "remove" || rest.length !== 2) {
+    act.notice("/sites takes nothing, or remove <website>, such as /sites remove en.wikipedia.org");
+    return false;
+  }
+  bridge.removeTrustedSite(rest[1]).then(
+    () => act.notice("Took " + rest[1] + " off the list. Meru asks again before it reads that website."),
+    (err) => act.notice("No change: " + errorText(err)),
+  );
+  return true;
+}
+
 // runCommand runs text as a slash command and returns true when the box
 // should empty. It returns false for an unknown command, which stays in
 // the box so the user can fix a typo, as in `meru chat`.
@@ -208,6 +227,8 @@ export function runCommand(text) {
     case "/skills":
       act.openSettings("skills");
       return true;
+    case "/sites":
+      return sitesCommand(rest);
     case "/log":
       act.openSettings("activity");
       return true;

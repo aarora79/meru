@@ -369,7 +369,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 // the outcome, the user's choice ("" when nobody was asked) and how long
 // the tool ran.
 func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, tool string, args json.RawMessage) (res Result, outcome, approval string, ran time.Duration) {
-	approval, outcome = d.approve(ctx, c, confirmFor(b, c), kind, server, tool, args)
+	approval, outcome = d.approve(ctx, c, b, confirmFor(b, c), kind, server, tool, args)
 	switch outcome {
 	case "":
 		// Approved, or no approval needed: run it.
@@ -424,14 +424,17 @@ func confirmFor(b Backend, c Call) Confirm {
 //   - ConfirmAsk runs without asking when the user approved the tool for
 //     this session; otherwise it asks, offering once, session and deny.
 //   - ConfirmAlways asks every time and offers only once and deny, whatever
-//     the user chose before.
+//     the user chose before. When b is a SiteTruster that names the call's
+//     host, it also offers that host for the session, or always; the
+//     answer goes back to b's TrustSite.
 //
 // A job, or a client that can't ask (c.Approve is nil), can't say yes, so
 // the call is declined without asking. approve writes an approval line for
 // each answer. It returns the user's choice ("" when nobody answered) and
 // an outcome: "" to run the call, "declined" or "cancelled" to skip it.
-func (d *Dispatcher) approve(ctx context.Context, c Call, confirm Confirm, kind, server, tool string, args json.RawMessage) (choice, outcome string) {
+func (d *Dispatcher) approve(ctx context.Context, c Call, b Backend, confirm Confirm, kind, server, tool string, args json.RawMessage) (choice, outcome string) {
 	var choices []rpc.Choice
+	var site string
 	switch confirm {
 	case ConfirmNever:
 		return "", ""
@@ -442,12 +445,19 @@ func (d *Dispatcher) approve(ctx context.Context, c Call, confirm Confirm, kind,
 		choices = []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny}
 	default: // ConfirmAlways, and any value a backend might add later
 		choices = []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny}
+		// st, ok := b.(SiteTruster) is a type assertion: ok says whether
+		// b has the SiteTruster methods too.
+		if st, ok := b.(SiteTruster); ok {
+			if site = st.CallSite(c); site != "" {
+				choices = []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSite, rpc.ChoiceSiteAlways, rpc.ChoiceDeny}
+			}
+		}
 	}
 
 	if c.Approve == nil || c.Source == rpc.SourceJob {
 		return "", OutcomeDeclined
 	}
-	answer, err := c.Approve(ctx, rpc.Approval{ID: c.ID, Name: c.Name, Kind: kind, Args: args, Choices: choices})
+	answer, err := c.Approve(ctx, rpc.Approval{ID: c.ID, Name: c.Name, Kind: kind, Args: args, Choices: choices, Site: site})
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", OutcomeCancelled
@@ -473,6 +483,14 @@ func (d *Dispatcher) approve(ctx context.Context, c Call, confirm Confirm, kind,
 		return string(answer), ""
 	case rpc.ChoiceSession:
 		d.approveForSession(c.Session, c.Name)
+		return string(answer), ""
+	case rpc.ChoiceSite, rpc.ChoiceSiteAlways:
+		// The call runs whatever happens to the save: the user said yes
+		// to it. A failed save of "always" leaves the session's trust,
+		// and the log says why.
+		if err := b.(SiteTruster).TrustSite(ctx, c, site, answer == rpc.ChoiceSiteAlways); err != nil {
+			d.log.Warn("couldn't save the trusted site", "site", site, "err", err)
+		}
 		return string(answer), ""
 	default:
 		return string(rpc.ChoiceDeny), OutcomeDeclined

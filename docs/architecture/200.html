@@ -592,6 +592,8 @@
   <tbody>
     <tr><td>Approve once</td><td>This call runs. The next call to the same tool asks again.</td></tr>
     <tr><td>Approve for this session</td><td>This call runs, and Meru stops asking about that tool, whatever its arguments, until the session ends. Three kinds of call never offer this and ask every time: <code>configure</code>, <code>web_fetch</code> on an address no search or question of yours gave, and a tool on its server's <code>always_confirm</code> list.</td></tr>
+    <tr><td>This website for this chat</td><td>Only for <code>web_fetch</code> on an address no search or question of yours gave. This call runs, and Meru reads other pages on that exact host without asking until the session ends.</td></tr>
+    <tr><td>Always this website</td><td>The same, in every chat: Meru adds the host to <code>[web] trusted_sites</code>. Settings and <code>/sites</code> in <code>meru chat</code> list the hosts and take one off. A download still asks.</td></tr>
     <tr><td>Deny</td><td>The call doesn't run. The model hears that you said no, so it can answer without the tool or ask you what to do.</td></tr>
   </tbody>
 </table></div>

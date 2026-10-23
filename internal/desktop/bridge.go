@@ -286,13 +286,13 @@ func (b *Bridge) Unqueue(i int) error {
 }
 
 // Approve answers the approval card id, from a turn or a save, with
-// choice: "once", "session" or "deny". It fails when the card isn't open
-// any more, because its turn or save ended or it was answered, or when
-// choice isn't one of the three. merud checks the choice again against the
+// choice: "once", "session", "site", "site_always" or "deny". It fails
+// when the card isn't open any more, because its turn or save ended or it
+// was answered, or when choice isn't one of those. merud checks the choice again against the
 // ones it offered, and treats any other as a deny.
 func (b *Bridge) Approve(id, choice string) error {
 	c := rpc.Choice(choice)
-	if c != rpc.ChoiceOnce && c != rpc.ChoiceSession && c != rpc.ChoiceDeny {
+	if !slices.Contains([]rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceSite, rpc.ChoiceSiteAlways, rpc.ChoiceDeny}, c) {
 		return fmt.Errorf("%q isn't an answer to an approval", choice)
 	}
 	b.mu.Lock()

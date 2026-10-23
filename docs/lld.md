@@ -269,7 +269,8 @@ type Approval struct {
     Name    string          // the tool's full name, such as "obsidian.obsidian_simple_search"
     Kind    string          // "mcp", "a2a" or "builtin"
     Args    json.RawMessage // the call's arguments
-    Choices []Choice        // what the client may offer: "once", "session", "deny"
+    Choices []Choice        // what the client may offer: "once", "session", "site", "site_always", "deny"
+    Site    string          // the host the two website choices name; empty without them
 }
 
 type Reply struct {
@@ -280,13 +281,15 @@ type Reply struct {
 type ApproveFunc func(ctx context.Context, a Approval) (Choice, error)
 ```
 
-`configure` offers only `once` and `deny`. A choice the approval didn't offer
+`configure` offers only `once` and `deny`. A `web_fetch` read of an unknown URL
+offers `once`, `site`, `site_always` and `deny`: `site` trusts the host for the
+session, and `site_always` adds it to `[web] trusted_sites` too. A choice the approval didn't offer
 counts as deny; the server checks that, and `dispatch` checks it again.
 
 `ApproveFunc` is the same function type on both ends. On the client,
 `rpc.Do(ctx, socket, req, approve)` calls it for each `approval` event and writes
 the `Reply`; a nil `approve` answers deny. One-shot `meru` passes a prompter that
-reads `o`, `s` or `d` from the terminal, or denies when standard input isn't a
+reads `o`, `s`, `w`, `a` or `d` from the terminal, or denies when standard input isn't a
 terminal; `meru chat` passes a function that opens the approval box and waits for
 your key; the desktop app passes one that shows a card in the answer and waits
 for a button. On the server, the rpc server builds one per connection and passes it to
@@ -400,6 +403,15 @@ type Refresher interface {
 // choice to Confirm. builtin.Tools uses it for web_fetch's URL guard.
 type CallConfirmer interface {
     ConfirmCall(c Call) (confirm Confirm, ok bool)
+}
+
+// A Backend may also be a SiteTruster: for a call that asks every time,
+// CallSite names the host it reaches, and dispatch then offers the two
+// website choices; TrustSite records the answer. builtin.Tools uses it
+// for web_fetch.
+type SiteTruster interface {
+    CallSite(c Call) string
+    TrustSite(ctx context.Context, c Call, host string, always bool) error
 }
 ```
 

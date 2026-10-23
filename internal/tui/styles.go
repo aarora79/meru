@@ -187,10 +187,10 @@ type keyList []key.Binding
 // choices: one key per choice, then e for Edit first when edit is true,
 // then ←/→ with Enter, then Ctrl-C. A turn's box offers Edit first and a
 // save's doesn't; Ctrl-C stops a turn, and with no turn running it quits.
-func newApprovalKeys(choices []rpc.Choice, edit bool) keyList {
+func newApprovalKeys(choices []rpc.Choice, site string, edit bool) keyList {
 	var k keyList
 	for _, c := range choices {
-		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c))))
+		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c, site))))
 	}
 	stop := "quit"
 	if edit {

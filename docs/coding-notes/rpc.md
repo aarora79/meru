@@ -267,6 +267,18 @@ sound in memory and nothing on disk to name, and Meru keeps no audio file, so
 the bytes ride in the request as base64. The reply is one `transcript` event
 whose `Text` is the words (see [speech](speech.md)).
 
+Two choices joined `once`, `session` and `deny` for `web_fetch`'s prompt:
+`ChoiceSite` (`"site"`), this website for this chat, and `ChoiceSiteAlways`
+(`"site_always"`), always this website. `Approval.Site` names the host both
+choices cover, so each client can put it on the button. An older client offers
+only the choices it knows from the list; `merud` treats any other answer as deny.
+The websites "always" saves have two ops of their own:
+
+| Op | Reply | What it carries |
+| --- | --- | --- |
+| `trusted_sites` (`OpTrustedSites`) | one `trusted_sites` event | `Sites`, the hosts in `[web] trusted_sites`. A missing list reads as none. |
+| `trusted_site_remove` (`OpTrustedSiteRemove`) | one `trusted_sites` event | Takes the host in `Request.ID` off the list and returns the hosts left. It fails for a host the list doesn't hold. |
+
 `ToolName(kind, server, tool)` joins a transcript line's three fields back into
 the name the model saw, such as `google.search_gmail_messages` or `cmd.backup`.
 

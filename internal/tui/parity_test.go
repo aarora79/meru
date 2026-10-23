@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,6 +333,41 @@ func TestFoldersKeys(t *testing.T) {
 	_, cmd = update(t, m, press(tea.KeyEsc), typeText("/folders add ~/Garden"), press(tea.KeyEnter))
 	cmd()
 	if r := lastReq(t, merud); r.Op != rpc.OpFolderAdd || r.Path != filepath.Join("/Users/dana", "Garden") {
+		t.Errorf("request = %+v", r)
+	}
+}
+
+func TestSitesKeys(t *testing.T) {
+	list := rpc.Event{Type: rpc.EventTrustedSites, Sites: []string{"en.wikipedia.org", "go.dev"}}
+	merud := &fakeMerud{events: []rpc.Event{list, {Type: rpc.EventDone}}}
+	m := testModel(merud.ask, newFakeSender())
+	m, cmd := update(t, m, typeText("/sites"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpTrustedSites {
+		t.Fatalf("request = %+v, want trusted_sites", r)
+	}
+	if view := m.View(); !strings.Contains(view, "go.dev") {
+		t.Errorf("view lacks the sites:\n%s", view)
+	}
+	// d twice on the second row removes it.
+	m, _ = update(t, m, press(tea.KeyDown))
+	m, cmd = update(t, m, typeText("d"))
+	if cmd != nil || m.sitesBox.confirm != "go.dev" {
+		t.Fatalf("first d: cmd %v, confirm %q", cmd != nil, m.sitesBox.confirm)
+	}
+	merud.events = []rpc.Event{{Type: rpc.EventTrustedSites, Sites: []string{"en.wikipedia.org"}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, typeText("d"))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpTrustedSiteRemove || r.ID != "go.dev" {
+		t.Errorf("request = %+v, want trusted_site_remove go.dev", r)
+	}
+	if !slices.Equal(m.sitesBox.sites, []string{"en.wikipedia.org"}) {
+		t.Errorf("sites = %v after the removal", m.sitesBox.sites)
+	}
+	// /sites remove takes a host by name.
+	_, cmd = update(t, m, press(tea.KeyEsc), typeText("/sites remove en.wikipedia.org"), press(tea.KeyEnter))
+	cmd()
+	if r := lastReq(t, merud); r.Op != rpc.OpTrustedSiteRemove || r.ID != "en.wikipedia.org" {
 		t.Errorf("request = %+v", r)
 	}
 }

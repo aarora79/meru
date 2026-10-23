@@ -217,6 +217,12 @@ max_results = 8
 #           through merud, which refuses this machine and your network.
 #   "off"   read the HTML alone; such a page comes back nearly empty.
 render = "auto"
+# Websites web_fetch reads without asking, in every chat: bare host names,
+# such as "en.wikipedia.org", with no wildcard, so "go.dev" leaves
+# "blog.go.dev" asking. Picking "Always allow" at web_fetch's prompt adds a
+# host here; Settings and /sites in meru chat list them and take one out.
+# web_fetch still asks before any download.
+trusted_sites = []
 
 [skills]
 # The one folder write_file may write in. web_fetch saves downloads in its

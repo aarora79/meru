@@ -141,7 +141,26 @@ func confirmFor(b Backend, c Call) Confirm {
 }
 ```
 
-The built-ins are the one `CallConfirmer` (see [builtin](builtin.md)). Nothing
+**SiteTruster.** A call that asks every time offers no session choice, since
+that would cover every later call. `web_fetch` can offer something narrower:
+trust for one host. A backend that knows hosts has two more methods:
+
+```go
+type SiteTruster interface {
+    CallSite(c Call) string
+    TrustSite(ctx context.Context, c Call, host string, always bool) error
+}
+```
+
+When `approve` reaches a `ConfirmAlways` call, it asks `CallSite` for the host.
+A host adds the choices `site` and `site_always` between `once` and `deny`, and
+goes in `Approval.Site` so the client can name it. On either answer, `approve`
+calls `TrustSite`, then runs the call. A failed save of `site_always` only logs
+a warning: the user said yes to this call, and the session's trust still holds.
+The interface sits in `dispatch` because `dispatch` calls it, and the URL rules
+stay in the built-ins.
+
+The built-ins are the one `CallConfirmer` and the one `SiteTruster` (see [builtin](builtin.md)). Nothing
 else in `Dispatch` changed: the answer feeds the same `approve`, with the same
 job rule and the same lines.
 
@@ -298,7 +317,7 @@ matter:
 | --- | --- | --- |
 | `ConfirmNever` | never | none |
 | `ConfirmAsk` | unless approved for this session | once, session, deny |
-| `ConfirmAlways` | every time | once, deny |
+| `ConfirmAlways` | every time | once, deny; with a website, once, this website for this chat, always this website, deny |
 
 A job (`Source == "job"`) and a client with no `Approve` function can't say yes, so
 those calls end `declined` without a prompt. An answer the prompt didn't offer

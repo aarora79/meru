@@ -165,3 +165,18 @@ func TestApproveCancelled(t *testing.T) {
 		t.Error("approve returned no error after Ctrl-C")
 	}
 }
+
+// TestSiteChoices checks the website choices in the prompt: each names the
+// host and has a key of its own, apart from "s" for this session.
+func TestSiteChoices(t *testing.T) {
+	choices := []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSite, rpc.ChoiceSiteAlways, rpc.ChoiceDeny}
+	want := "[o]nce  [w] go.dev this session  [a] go.dev always  [d]eny"
+	if got := choiceMenu(choices, "go.dev"); got != want {
+		t.Errorf("menu = %q, want %q", got, want)
+	}
+	for input, want := range map[string]rpc.Choice{"w": rpc.ChoiceSite, "A": rpc.ChoiceSiteAlways, "site_always": rpc.ChoiceSiteAlways} {
+		if c, ok := pickChoice(input, choices); !ok || c != want {
+			t.Errorf("pickChoice(%q) = %q %v, want %q", input, c, ok, want)
+		}
+	}
+}
