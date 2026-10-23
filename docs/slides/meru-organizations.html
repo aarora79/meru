@@ -143,7 +143,7 @@
   <p class="kicker">The question</p>
   <h2>The data AI helps with most is the data a company least wants to send out</h2>
   <ul class="points">
-    <li><b>A hosted assistant reads each question on its provider's servers</b>, with the files, mail and notes attached to it.</li>
+    <li><b>A hosted assistant reads each question on its provider's servers</b>, with the documents, mail and records attached to it.</li>
     <li><b>Each one is a data processor</b> to assess, contract with and monitor, and its terms can change.</li>
     <li><b>Meru takes the other path.</b> Open-weight models run on the employee's own machine, beside the data, and no model provider is in the path.</li>
   </ul>
@@ -157,7 +157,7 @@
   <div style="display:grid; grid-template-columns: 600px 1fr; gap: 36px; align-items:start">
     <img src="../img/desktop-app.png" style="width:600px; border:1px solid var(--tile); border-radius:12px; background:#fff" alt="Meru.app: a rail with new chat, incognito chat, chat folders and recent chats, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk. The chat titles are blurred.">
     <ul class="points" style="gap:10px">
-      <li style="font-size:19px"><b>Ask across their own data:</b> folders, mail and calendar, notes, and the web, or pick one place to look.</li>
+      <li style="font-size:19px"><b>Ask across work data:</b> documents, mail and calendar, the web, and company systems such as SharePoint, Confluence or Salesforce through MCP servers the company allows.</li>
       <li style="font-size:19px"><b>Attach files and pictures,</b> or speak the question.</li>
       <li style="font-size:19px"><b>Approve on a card</b> any tool call that sends, deletes or changes, before it runs.</li>
       <li style="font-size:19px"><b>Settings</b> for connections, folders, skills and models, and a Usage screen.</li>
@@ -187,11 +187,12 @@
   <table>
     <tr><th>Data</th><th>Where it goes</th></tr>
     <tr><td>Questions and answers</td><td>Nowhere. The models run in a model server on the same machine.</td></tr>
-    <tr><td>Files and notes</td><td>Indexed into a SQLite file on the machine; read live, never copied out.</td></tr>
+    <tr><td>Files and documents</td><td>Indexed into a SQLite file on the machine; read live, never copied out.</td></tr>
     <tr><td>Telemetry, crash reports, update checks</td><td>None. Metrics go to a Prometheus the company runs on the same machine.</td></tr>
     <tr><td>Web searches</td><td>The search words go to the engines the company's own SearXNG asks.</td></tr>
     <tr><td>Web pages</td><td>Public addresses only. Meru asks first for an address no search or question gave, unless the user trusted that website.</td></tr>
-    <tr><td>Mail and calendar</td><td>Read through the user's own Google account, when they connect it.</td></tr>
+    <tr><td>Mail and calendar</td><td>Read through the user's own account, when they connect it; Google today.</td></tr>
+    <tr><td>Company systems</td><td>SharePoint, Confluence, Salesforce and the like, through an MCP server the company allows, tool by tool. Meru reaches that server and nothing else.</td></tr>
   </table>
   <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">5</span></div>
 </section></div>
@@ -281,6 +282,7 @@
     <div class="box"><h3>For a fleet</h3><ul>
       <li>No central console to push config or policy</li>
       <li>No single sign-on or directory link</li>
+      <li>Ready-made connectors only for Google and web search; SharePoint, Confluence or Salesforce need an MCP server</li>
       <li>No central log collection: metrics and traces stay on the machine by design</li>
       <li>One person per machine; no shared server</li>
     </ul></div>
@@ -315,7 +317,7 @@
   <table>
     <tr><th style="width:16%">Week</th><th>What happens</th><th style="width:32%">What to look at</th></tr>
     <tr><td>1</td><td>Pick ten people with Apple silicon Macs of 32 GB or more. Install, add their work folders, connect one system.</td><td>Install time; the controls table checked against the config</td></tr>
-    <tr><td>2 and 3</td><td>They use it for real work: questions on their files, mail, notes and the web.</td><td>The Usage screen: questions, routes, answer times, tool calls by outcome</td></tr>
+    <tr><td>2 and 3</td><td>They use it for real work: questions on their documents, mail, company systems and the web.</td><td>The Usage screen: questions, routes, answer times, tool calls by outcome</td></tr>
     <tr><td>4</td><td>Security reviews the <code>tool_calls</code> rows and the network rules; the ten say what worked.</td><td>Pass or fail against the company's own criteria</td></tr>
   </table>
   <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">13</span></div>
