@@ -5,17 +5,19 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/transcript"
 )
 
 // windowRun runs one turn that fetches two long pages, then answers, with
 // [ollama] context_length set to window. It returns the fake engine, to
-// read what each round sent.
-func windowRun(t *testing.T, window int) *fakeEngine {
+// read what each round sent, and the turn's transcript lines.
+func windowRun(t *testing.T, window int) (*fakeEngine, []transcript.Line) {
 	t.Helper()
 	cfg := testConfig(t)
 	cfg.Ollama.ContextLength = window
@@ -29,10 +31,11 @@ func windowRun(t *testing.T, window int) *fakeEngine {
 	a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}, nil, tools, nil, nil, quietLog())
 	// The fake writes the same 6,000-character page for each call; the
 	// second has new arguments, so it isn't a repeat.
-	if _, err := run(context.Background(), a, rpc.Request{Text: "read both pages"}); err != nil {
+	evs, err := run(context.Background(), a, rpc.Request{Text: "read both pages"})
+	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	return eng
+	return eng, readLines(t, cfg, evs[0].Session)
 }
 
 // windowFor returns the context_length whose 80% holds extra characters
@@ -46,9 +49,10 @@ func windowFor(eng *fakeEngine, extra int) int {
 
 func TestFitWindowShortensOldResults(t *testing.T) {
 	// A first run with no window measures the prompt the turn starts with.
-	window := windowFor(windowRun(t, 0), 9000)
+	measure, _ := windowRun(t, 0)
+	window := windowFor(measure, 9000)
 
-	eng := windowRun(t, window)
+	eng, _ := windowRun(t, window)
 	if n := len(eng.calls); n != 3 {
 		t.Fatalf("model called %d times, want 3", n)
 	}
@@ -81,21 +85,36 @@ func TestFitWindowShortensOldResults(t *testing.T) {
 
 func TestFitWindowStopsTools(t *testing.T) {
 	// The limit falls inside the first page, and nothing older can go, so
-	// the second round must answer with no tools.
-	window := windowFor(windowRun(t, 0), 3000)
-	eng := windowRun(t, window)
-	if n := len(eng.calls); n != 2 {
-		t.Fatalf("model called %d times, want 2", n)
+	// the second round offers no tools. Its call can't run, so the model
+	// gets one more round, told to answer now, and the answer ends with
+	// the note that says why it read so little.
+	measure, _ := windowRun(t, 0)
+	window := windowFor(measure, 3000)
+	eng, lines := windowRun(t, window)
+	if n := len(eng.calls); n != 3 {
+		t.Fatalf("model called %d times, want 3: the dropped call's round, then the retry", n)
 	}
-	if len(eng.calls[1].tools) != 0 {
-		t.Error("the second round offered tools with the prompt past the limit")
+	if len(eng.calls[1].tools) != 0 || len(eng.calls[2].tools) != 0 {
+		t.Error("a round offered tools with the prompt past the limit")
+	}
+	retry := eng.calls[2].msgs
+	if last := retry[len(retry)-1]; last.Content != droppedNudge {
+		t.Errorf("retry's last message = %q, want droppedNudge", last.Content)
+	}
+	answer := lines[len(lines)-1]
+	if answer.Outcome != endWindowFull || !strings.Contains(answer.Text, "Done.") ||
+		!strings.Contains(answer.Text, "Meru stopped reading partway") || !strings.Contains(answer.Text, fmt.Sprint(window)) {
+		t.Errorf("answer line = %+v, want window_full with the note", answer)
 	}
 }
 
 func TestFitWindowOff(t *testing.T) {
 	// context_length = 0 leaves Ollama's own size, which Meru doesn't know,
 	// so nothing is shortened.
-	eng := windowRun(t, 0)
+	eng, lines := windowRun(t, 0)
+	if answer := lines[len(lines)-1]; answer.Outcome != "" {
+		t.Errorf("outcome = %q with no window set, want a whole answer", answer.Outcome)
+	}
 	for _, m := range eng.calls[2].msgs {
 		if strings.Contains(m.Content, "[Meru shortened") {
 			t.Fatal("a result was shortened with no window set")

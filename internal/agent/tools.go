@@ -459,7 +459,18 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 				"ms", time.Since(start).Milliseconds())
 			if a.retriesEmpty(t, rep) {
-				return a.retryEmpty(ctx, t, msgs, total)
+				return a.retryEmpty(ctx, t, msgs, total, emptyNudge)
+			}
+			// A model whose tools went off still asked for some: its text
+			// is likely a plan, such as "I'll read the top four articles",
+			// with no answer after it. See retriesDropped.
+			if a.retriesDropped(t, rep, offer) {
+				if strings.TrimSpace(rep.text) != "" {
+					if err := t.emit(rpc.Event{Type: rpc.EventToken, Text: "\n\n"}); err != nil {
+						return total, err
+					}
+				}
+				return a.retryEmpty(ctx, t, msgs, total, droppedNudge)
 			}
 			total.text, total.doneReason = rep.text, rep.doneReason
 			return total, nil
@@ -500,6 +511,24 @@ func (a *Agent) retriesEmpty(t *turn, rep reply) bool {
 		!t.emptyRetry && t.rounds < a.maxRounds
 }
 
+// retriesDropped says whether converse should ask the model once more
+// after rep, a round that offered no tools and still called some. The
+// turn turned its tools off, because the prompt filled the context window
+// (fitWindow) or the model repeated itself, and the model didn't know.
+// In a real turn it wrote "I'll pull the full text of the top 4 articles"
+// with five calls that couldn't run, and the user read that plan as the
+// answer. It shares the one retry a turn gets with retriesEmpty, and
+// needs a round left.
+func (a *Agent) retriesDropped(t *turn, rep reply, offer []engine.ToolSpec) bool {
+	return len(rep.calls) > 0 && len(offer) == 0 && rep.doneReason != "length" &&
+		!t.emptyRetry && t.rounds < a.maxRounds
+}
+
+// droppedNudge is the message the retry after dropped calls adds, for
+// that one call, as emptyNudge does.
+const droppedNudge = "Tools are off for the rest of this answer, so the calls you just made didn't run. " +
+	"Write the answer now from the tool results above and what you know. Don't call a tool."
+
 // emptyNudge is the message the empty-reply retry adds after the turn's
 // messages. It goes in as a user message, because some models' chat
 // templates accept a system message only in first place (see
@@ -516,13 +545,14 @@ const emptyNudge = "Answer the question now in plain text, from the tool results
 // It returns total, the turn's stats so far, with this call's usage added
 // and its text and stop reason as the turn's. When this call is empty too,
 // Handle ends the turn with the usual apology. It fails as answer does.
-func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, total reply) (reply, error) {
+func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, total reply, nudge string) (reply, error) {
 	t.rounds++
 	t.emptyRetry = true
-	a.log.DebugContext(ctx, "empty reply: asking the model once more, with no tools", "round", t.rounds)
+	a.log.DebugContext(ctx, "asking the model once more, with no tools, to answer now", "round", t.rounds,
+		"after_dropped_calls", nudge == droppedNudge)
 	start := time.Now()
 	// slices.Concat builds a new slice, so msgs itself doesn't change.
-	nudged := slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: emptyNudge}})
+	nudged := slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: nudge}})
 	rep, err := a.answer(ctx, nudged, nil, t.emit)
 	total.add(rep)
 	total.text, total.doneReason = rep.text, rep.doneReason

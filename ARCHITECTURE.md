@@ -1697,7 +1697,18 @@ order.
    The newest round's results stay whole, since the model hasn't read them,
    and so do the system prompt, the history and the question, which the
    context budget sizes (`agent/budget.go`). When shortening isn't enough, later
-   rounds offer no tools, so the model answers from what it has. The transcript
+   rounds offer no tools, so the model answers from what it has. A model that
+   calls a tool anyway gets one more round, with a user message that says tools
+   are off and asks for the answer now; this shares the one retry a turn has
+   with the empty-reply retry below. In a real turn the model wrote "I'll pull
+   the full text of the top 4 articles" with five calls that couldn't run, and
+   the user read that plan as the answer. The turn then ends `window_full`, and
+   the answer closes with a note that the prompt filled the context window, so
+   the answer uses only what it read, and that Continue picks it up. The prompt
+   Meru builds before any tool runs is large: with the full model set, the
+   system prompt, skills, excerpts and about 15,000 tokens of tool schemas came
+   to 24,485 tokens, which leaves a 32,768-token window little room for
+   results. A bigger `context_length` gives a turn more reading. The transcript
    keeps every result whole. The turn span records `meru.turn.shortened_results`
    and `meru.turn.window_full`. With `context_length = 0` Meru doesn't know the
    window and shortens nothing. In a real turn that read about twenty pages,
@@ -1743,6 +1754,7 @@ ends without a full answer still answers, with an outcome of its own:
 | --- | --- | --- |
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
+| `window_full` | the tool results filled the context window, so later rounds offered no tools (step 5) | the answer from what it read, then a note naming `context_length` and pointing at Continue |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry when a round was left for it | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
 | `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question." Both end with the suggestion described in [Questions with images](#questions-with-images). |

@@ -1805,6 +1805,17 @@ changes the message in the slice. `m := msgs[i]` would copy it, and the change
 would be lost. The slice belongs to `converse`, and the earlier rounds' calls
 already went out, so changing it in place is safe.
 
+When `fitWindow` returns true, `converse` sets `t.windowFull`, and later rounds
+offer no tools. The model doesn't know that, and may call a tool anyway, with a
+plan in its text such as "I'll read the top four articles". `retriesDropped`
+catches a round that offered no tools and still called some, and `retryEmpty`
+asks once more with `droppedNudge` in place of `emptyNudge`: tools are off, so
+answer now. The two retries share `t.emptyRetry`, so a turn makes at most one.
+`retryEmpty` takes the nudge as a parameter, so one function serves both.
+`Handle` then ends the turn `endWindowFull`, and `endTurn` adds `windowNote`
+with the window's size, so the user reads why the answer used so little and
+that Continue picks it up.
+
 `a.window` is 0 when config sets `context_length = 0`. Meru then doesn't know
 the window Ollama uses, and `fitWindow` does nothing. The turn span records
 `meru.turn.shortened_results` and `meru.turn.window_full`.

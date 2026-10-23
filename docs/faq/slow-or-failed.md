@@ -13,6 +13,7 @@ level=INFO msg=turn session=2026-09-24T020539-1f53 route=tools source=tui outcom
 | `ok` | it answered | nothing |
 | `timeout` | the question ran past `[agent] turn_timeout` | raise it, such as `"10m"` |
 | `cut_off` | the model hit `[agent] max_output_tokens` | raise it |
+| `window_full` | the tool results filled `[ollama] context_length`, so Meru stopped offering tools and answered from what it had | raise `context_length`, such as `65536`, if your Mac has the memory |
 | `gave_up` | the model only called tools, or wrote nothing twice | ask in other words, or `/new` in `meru chat` |
 | `bad_output` | Ollama couldn't read the model's tool call, twice | ask again; if it keeps happening, update Ollama or switch models |
 

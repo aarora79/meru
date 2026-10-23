@@ -660,7 +660,9 @@ The rules, in the order the code applies them:
   reports no count gets every character over three. Past 80% of `[ollama] context_length`, it cuts this turn's oldest tool
   results to 400 characters and a note telling the model to call the tool again if it
   needs the whole result, and drops each from the repeat check. The newest round's
-  results stay whole. If the prompt still doesn't fit, later rounds offer no tools. A
+  results stay whole. If the prompt still doesn't fit, later rounds offer no tools; a
+  model that calls one anyway gets one more round told to answer now
+  (`retriesDropped`), and the turn ends `window_full` with a note under the answer. A
   turn that read about twenty pages once sent prompts that added up to about 169,000
   tokens against a 32,768-token window, and Ollama stopped its answer after 650.
 - **Empty replies get one retry.** A thinking model can spend a whole round reasoning
