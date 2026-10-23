@@ -1685,8 +1685,11 @@ order.
    many pages can outgrow the context window, `[ollama] context_length`. Ollama
    then stops the answer with `length` after a few hundred words. Before each
    new round, `merud` estimates the prompt: the tokens Ollama counted for the
-   round that just ran plus the new messages, or all the prompt's characters
-   divided by three, whichever is larger. When the estimate passes 80% of the
+   round that just ran, plus the new messages' characters divided by three.
+   Only an engine that reports no count gets every character divided by three,
+   which runs far high on tool schemas: in one turn it passed the limit while
+   Ollama counted 18,000 tokens, and the turn lost its tools after one search.
+   When the estimate passes 80% of the
    window, it shortens this turn's oldest tool results, oldest first, to their
    first 400 characters and a note that tells the model to call the tool again
    if it needs the whole result. The 20% left over is room for the answer. A

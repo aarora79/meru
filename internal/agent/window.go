@@ -22,9 +22,9 @@ import (
 const windowShare = 80
 
 // charsPerToken turns characters into tokens for the estimate. English
-// prose runs about four characters a token, but tool results hold URLs,
-// JSON and code, which run closer to three, and an estimate that runs
-// high only shortens a result early.
+// prose runs about four characters a token, and tool results with URLs,
+// JSON and code closer to three. The estimate counts only the messages
+// Ollama hasn't counted yet; see fitWindow.
 const charsPerToken = 3
 
 // keepChars is how much of a shortened result stays: enough for the model
@@ -57,11 +57,18 @@ func (a *Agent) fitWindow(ctx context.Context, t *turn, msgs []engine.Message, b
 		return false
 	}
 	limit := a.window * windowShare / 100
-	// The latest round's messages are new to Ollama, so the estimate from
-	// the last count adds them. The count from characters alone covers a
-	// fake engine, or an Ollama that counts only the tokens it had to read.
-	need := max(measured+charsOf(msgs[newest:])/charsPerToken,
-		(charsOf(msgs)+schemaChars(specs))/charsPerToken)
+	// Ollama counted the prompt the round that just ran sent, so only the
+	// latest round's messages, new since then, need an estimate. Counting
+	// the whole prompt from characters runs far high: the tool schemas
+	// and skills are JSON and Markdown that pack more characters into a
+	// token. In a real turn that estimate passed 80% of the window after
+	// one web_search whose prompt Ollama counted at 18,000 tokens, and the
+	// turn lost its tools. The count from characters is only the fallback
+	// for an engine that reports none, as the tests' fake does.
+	need := measured + charsOf(msgs[newest:])/charsPerToken
+	if measured <= 0 {
+		need = (charsOf(msgs) + schemaChars(specs)) / charsPerToken
+	}
 	if need <= limit {
 		return false
 	}

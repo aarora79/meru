@@ -1771,16 +1771,19 @@ if a.fitWindow(ctx, t, msgs, base, newest, rep.usage.PromptTokens, specs) {
 }
 ```
 
-`fitWindow` estimates the next prompt two ways and keeps the larger:
+`fitWindow` starts from Ollama's own count of the prompt the round that just
+ran sent, `rep.usage.PromptTokens`, and adds the new messages' characters
+divided by `charsPerToken` (3). Only those messages need a guess. When the
+engine reports no count, as the tests' fake doesn't, it falls back to every
+character in the prompt and the tool schemas, divided by 3.
 
-- Ollama's own count for the round that just ran, plus the new messages'
-  characters divided by `charsPerToken` (3);
-- every character in the prompt and the tool schemas, divided by 3.
-
-The first is close to exact. The second covers an engine that reports no count,
-as the tests' fake does. Three characters a token runs high for English, which
-is four, but tool results hold URLs, JSON and code, and an estimate that runs
-high only shortens a result early.
+An earlier version took the larger of the two, and that broke a real turn. Tool
+schemas and skills are JSON and Markdown, which pack more characters into a
+token than prose, so the character count came out far above Ollama's 18,000
+tokens and past 80% of the window. With only one round, nothing could be
+shortened, so the turn lost its tools after one `web_search`. The model's next
+`web_fetch` call had no tool to go to, and its "I need to fetch the pages" became
+the answer. `TestFitWindowTrustsOllamasCount` holds that case.
 
 Past `windowShare` (80%) of the window, it walks `msgs[base:newest]`, this
 turn's earlier rounds, oldest first. Each tool result longer than `keepChars`

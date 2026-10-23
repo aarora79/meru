@@ -122,3 +122,25 @@ func TestFitWindowForgetsShortenedCalls(t *testing.T) {
 		t.Errorf("shortened %d, seen %v; want 1 and the call forgotten", tr.shortened, tr.seen)
 	}
 }
+
+// TestFitWindowTrustsOllamasCount checks that a prompt Ollama counted
+// under the limit keeps its tools, however many characters it holds. A
+// real turn lost its tools after one web_search, when the estimate from
+// characters ran past 80% of the window while Ollama counted 18,000
+// tokens.
+func TestFitWindowTrustsOllamasCount(t *testing.T) {
+	a := &Agent{window: 32768, log: quietLog()}
+	schemas := strings.Repeat(`{"type":"object"}`, 5000) // 85,000 characters
+	msgs := []engine.Message{
+		{Role: engine.RoleSystem, Content: schemas},
+		{Role: engine.RoleUser, Content: "latest news on cnn"},
+		{Role: engine.RoleAssistant, ToolCalls: []engine.ToolCall{call("web_search", `{"query":"cnn"}`)}},
+		{Role: engine.RoleTool, Content: strings.Repeat("result ", 300)},
+	}
+	if a.fitWindow(context.Background(), &turn{}, msgs, 2, 2, 18000, nil) {
+		t.Error("tools went off with Ollama's count at 18,000 of a 32,768-token window")
+	}
+	if !a.fitWindow(context.Background(), &turn{}, msgs, 2, 2, 27000, nil) {
+		t.Error("tools stayed on with Ollama's count past 80% of the window")
+	}
+}

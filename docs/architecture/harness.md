@@ -656,8 +656,8 @@ The rules, in the order the code applies them:
   rounds.
 - **The prompt stays inside the window.** After each round's calls, `fitWindow`
   (`internal/agent/window.go`) estimates the next prompt: Ollama's count for the round
-  that just ran plus the new messages, or every character over three, whichever is
-  larger. Past 80% of `[ollama] context_length`, it cuts this turn's oldest tool
+  that just ran, plus the new messages' characters over three; only an engine that
+  reports no count gets every character over three. Past 80% of `[ollama] context_length`, it cuts this turn's oldest tool
   results to 400 characters and a note telling the model to call the tool again if it
   needs the whole result, and drops each from the repeat check. The newest round's
   results stay whole. If the prompt still doesn't fit, later rounds offer no tools. A
