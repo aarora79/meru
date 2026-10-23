@@ -311,6 +311,8 @@ function outcomeText(outcome) {
       return "This answer ran out of time.";
     case "cut_off":
       return "This answer hit the length limit and stops short.";
+    case "window_full":
+      return "Meru stopped reading partway: the prompt filled the model's context window.";
     case "gave_up":
       return "Meru stopped after too many tool rounds.";
   }

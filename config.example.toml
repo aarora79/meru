@@ -63,7 +63,9 @@ base_url   = "http://127.0.0.1:11434"
 keep_alive = "-1"
 # Tokens of prompt and answer Ollama makes room for, sent with every chat
 # call. Meru's prompts run to about 20,000 tokens, and Ollama's own
-# default can be smaller, which cuts them short. 0 leaves Ollama's own.
+# default can be smaller, which cuts them short. A turn whose tool results
+# pass 80% of it gets its oldest results shortened. 0 leaves Ollama's own,
+# and then Meru shortens nothing.
 context_length = 32768
 
 [agent]

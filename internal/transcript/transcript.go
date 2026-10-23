@@ -83,7 +83,7 @@ type Line struct {
 	// "denied", "declined", "cancelled" or "timeout". OK repeats
 	// Outcome == "ok" so the line reads plainly with grep. On an
 	// assistant line, Outcome says how a turn ended without a full
-	// answer: "timeout", "cut_off", "gave_up" or "bad_output"; it is empty
+	// answer: "timeout", "cut_off", "window_full", "gave_up" or "bad_output"; it is empty
 	// otherwise.
 	Outcome string `json:"outcome,omitempty"`
 	OK      bool   `json:"ok,omitempty"`

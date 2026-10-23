@@ -1751,6 +1751,75 @@ dispatch may call `approve` from them too.
 The rpc server's `emit` takes a lock around each write, so that is safe; the
 tests' collector takes a lock too.
 
+### The context window (window.go)
+
+Every round sends the whole turn so far: the system prompt, the history, the
+question, and each earlier call and result. A turn that reads twenty web pages
+sends the first page twenty times, and the prompt grows past `[ollama]
+context_length`. Ollama then has no room left to write in, and stops the answer
+with `done_reason = "length"` after a few hundred tokens. That is what Meru's
+"it reached the length limit" note meant in a real turn that wrote 650 tokens.
+
+`converse` calls `fitWindow` after it appends a round's results:
+
+```go
+newest := len(msgs) // where this round's assistant message goes
+msgs = append(msgs, engine.Message{Role: engine.RoleAssistant, ...})
+// ... run the calls, append their results ...
+if a.fitWindow(ctx, t, msgs, base, newest, rep.usage.PromptTokens, specs) {
+    t.windowFull = true // later rounds offer no tools
+}
+```
+
+`fitWindow` starts from Ollama's own count of the prompt the round that just
+ran sent, `rep.usage.PromptTokens`, and adds the new messages' characters
+divided by `charsPerToken` (3). Only those messages need a guess. When the
+engine reports no count, as the tests' fake doesn't, it falls back to every
+character in the prompt and the tool schemas, divided by 3.
+
+An earlier version took the larger of the two, and that broke a real turn. Tool
+schemas and skills are JSON and Markdown, which pack more characters into a
+token than prose, so the character count came out far above Ollama's 18,000
+tokens and past 80% of the window. With only one round, nothing could be
+shortened, so the turn lost its tools after one `web_search`. The model's next
+`web_fetch` call had no tool to go to, and its "I need to fetch the pages" became
+the answer. `TestFitWindowTrustsOllamasCount` holds that case.
+
+Past `windowShare` (80%) of the window, it walks `msgs[base:newest]`, this
+turn's earlier rounds, oldest first. Each tool result longer than `keepChars`
+(400) becomes its first 400 characters plus `shortenedNote`, which tells the
+model to call the tool again if it needs the whole thing. It stops once the
+estimate fits. Three things stay whole:
+
+- the newest round's results, which the model hasn't read yet;
+- everything before `base`, which `budget.go` sizes;
+- the transcript, since `dispatch` wrote each result there as it ran.
+
+A shortened call also leaves `t.seen`, the map the repeat check reads, so a call
+to fetch the page again runs instead of handing back the stub as a "repeat".
+`for key, result := range t.seen` walks a map's keys and values, and `delete`
+inside that loop is safe in Go.
+
+`m := &msgs[i]` takes a pointer to the slice's element, so `m.Content = short`
+changes the message in the slice. `m := msgs[i]` would copy it, and the change
+would be lost. The slice belongs to `converse`, and the earlier rounds' calls
+already went out, so changing it in place is safe.
+
+When `fitWindow` returns true, `converse` sets `t.windowFull`, and later rounds
+offer no tools. The model doesn't know that, and may call a tool anyway, with a
+plan in its text such as "I'll read the top four articles". `retriesDropped`
+catches a round that offered no tools and still called some, and `retryEmpty`
+asks once more with `droppedNudge` in place of `emptyNudge`: tools are off, so
+answer now. The two retries share `t.emptyRetry`, so a turn makes at most one.
+`retryEmpty` takes the nudge as a parameter, so one function serves both.
+`Handle` then ends the turn `endWindowFull`, and `endTurn` adds `windowNote`
+with the window's size, so the user reads why the answer used so little and
+that Continue picks it up.
+
+`a.window` is 0 when config sets `context_length = 0`. Meru then doesn't know
+the window Ollama uses, and `fitWindow` does nothing. The turn span records
+`meru.turn.shortened_results` and `meru.turn.window_full`.
+
 ### Cancellation
 
 The turn's own deadline ends `tctx` and gets an answer (see Handle). When the

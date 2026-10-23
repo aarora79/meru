@@ -1407,7 +1407,8 @@ default can be far smaller, which would cut the prompt short on a fresh
 install. Every call sends the same value, because Ollama reloads a model whose
 `num_ctx` changes. The `CONTEXT` column of `ollama ps` shows what each loaded
 model got. `context_length = 0` leaves the choice to Ollama and
-`OLLAMA_CONTEXT_LENGTH`.
+`OLLAMA_CONTEXT_LENGTH`. The agent loop also reads the value, to keep a turn's
+tool rounds inside it (see [Agent loop](#agent-loop), step 5).
 
 ---
 
@@ -1680,6 +1681,40 @@ order.
    the second repeat, later rounds offer no tools. A 2B model offered only
    `datetime` once called it with no arguments in all eight rounds.
 
+   Each round sends every earlier call and result again, so a turn that reads
+   many pages can outgrow the context window, `[ollama] context_length`. Ollama
+   then stops the answer with `length` after a few hundred words. Before each
+   new round, `merud` estimates the prompt: the tokens Ollama counted for the
+   round that just ran, plus the new messages' characters divided by three.
+   Only an engine that reports no count gets every character divided by three,
+   which runs far high on tool schemas: in one turn it passed the limit while
+   Ollama counted 18,000 tokens, and the turn lost its tools after one search.
+   When the estimate passes 80% of the
+   window, it shortens this turn's oldest tool results, oldest first, to their
+   first 400 characters and a note that tells the model to call the tool again
+   if it needs the whole result. The 20% left over is room for the answer. A
+   shortened call no longer counts toward repeats, so calling it again runs it.
+   The newest round's results stay whole, since the model hasn't read them,
+   and so do the system prompt, the history and the question, which the
+   context budget sizes (`agent/budget.go`). When shortening isn't enough, later
+   rounds offer no tools, so the model answers from what it has. A model that
+   calls a tool anyway gets one more round, with a user message that says tools
+   are off and asks for the answer now; this shares the one retry a turn has
+   with the empty-reply retry below. In a real turn the model wrote "I'll pull
+   the full text of the top 4 articles" with five calls that couldn't run, and
+   the user read that plan as the answer. The turn then ends `window_full`, and
+   the answer closes with a note that the prompt filled the context window, so
+   the answer uses only what it read, and that Continue picks it up. The prompt
+   Meru builds before any tool runs is large: with the full model set, the
+   system prompt, skills, excerpts and about 15,000 tokens of tool schemas came
+   to 24,485 tokens, which leaves a 32,768-token window little room for
+   results. A bigger `context_length` gives a turn more reading. The transcript
+   keeps every result whole. The turn span records `meru.turn.shortened_results`
+   and `meru.turn.window_full`. With `context_length = 0` Meru doesn't know the
+   window and shortens nothing. In a real turn that read about twenty pages,
+   the prompts of its rounds added up to about 169,000 tokens against a
+   32,768-token window, and the answer stopped after 650 tokens.
+
    A round can end with no text and no tool call, when a thinking model spends
    it all on hidden reasoning. When the turn has a round left and the round
    didn't stop at `max_output_tokens`, `merud` asks once more: the same
@@ -1719,6 +1754,7 @@ ends without a full answer still answers, with an outcome of its own:
 | --- | --- | --- |
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
+| `window_full` | the tool results filled the context window, so later rounds offered no tools (step 5) | the answer from what it read, then a note naming `context_length` and pointing at Continue |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry when a round was left for it | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
 | `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question." Both end with the suggestion described in [Questions with images](#questions-with-images). |
@@ -4963,7 +4999,7 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/window_full/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
 | `meru.sessions` | counter | source | sessions started |
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |

@@ -142,6 +142,7 @@ type Agent struct {
 	machine     string        // describes the user's computer; set by UseMachine
 	maxRounds   int           // model calls per turn, at most; see converse
 	maxTokens   int           // tokens one main-model call may write, thinking included
+	window      int           // [ollama] context_length, the tokens a prompt and answer share; 0 is Ollama's own
 	turnTimeout time.Duration // how long one turn may run; see Handle
 	agentic     bool          // [index] retrieval = "agentic": no search before the answer
 	models      config.Models // the models as config named them at startup; Main says which model answers now
@@ -234,6 +235,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
 		maxTokens:   cfg.Agent.MaxOutputTokens,
+		window:      cfg.Ollama.ContextLength,
 		turnTimeout: timeout,
 		agentic:     agentic,
 		models:      cfg.Models,
@@ -353,6 +355,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.String("meru.session.id", sessionID),
 			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.Int("meru.turn.repeated_calls", t.repeats),
+			attribute.Int("meru.turn.shortened_results", t.shortened),
+			attribute.Bool("meru.turn.window_full", t.windowFull),
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
 			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),
@@ -427,6 +431,12 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	ended = endOf(err, rep)
+	// A whole answer from a turn that lost its tools to a full window
+	// still says so, so the user knows why it read so little and can
+	// Continue.
+	if ended == "" && t.windowFull {
+		ended = endWindowFull
+	}
 	// A turn that used every round max_rounds allows and still wrote no
 	// text hit the cap; `/usage by model` counts these per model.
 	capped := ended == endGaveUp && t.rounds >= a.maxRounds
@@ -784,7 +794,11 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 const (
 	endTimeout = "timeout" // [agent] turn_timeout ran out
 	endCutOff  = "cut_off" // the last model call hit [agent] max_output_tokens
-	endGaveUp  = "gave_up" // the rounds ended with no text, such as only tool calls
+	// endWindowFull: the turn's tool results filled the context window, so
+	// later rounds offered no tools and the answer uses what it read so
+	// far (see window.go).
+	endWindowFull = "window_full"
+	endGaveUp     = "gave_up" // the rounds ended with no text, such as only tool calls
 	// endBadOutput: Ollama couldn't read what the model wrote, even after
 	// the one retry (see retriesOutput).
 	endBadOutput = "bad_output"
@@ -808,6 +822,11 @@ const (
 const (
 	timeoutNote = "[Meru stopped the answer here: the question took longer than its time limit.]"
 	cutOffNote  = "[Meru stopped the answer here: it reached the length limit.]"
+	// windowNote follows an answer whose turn ended endWindowFull; %d is
+	// [ollama] context_length.
+	windowNote = "[Meru stopped reading partway: the prompt filled most of the model's context window " +
+		"([ollama] context_length, %d tokens), so this answer uses only what it read so far. " +
+		"Continue picks it up with room to read more.]"
 )
 
 // endOf says how a turn ended: endNoVision when err is errNoVision,
@@ -864,6 +883,10 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 		if streamed {
 			add = "\n\n" + add
 		}
+	case ended == endWindowFull && streamed:
+		add = "\n\n" + fmt.Sprintf(windowNote, a.window)
+	case ended == endWindowFull:
+		add = sorry + "\n\n" + fmt.Sprintf(windowNote, a.window)
 	case !streamed:
 		add = sorry
 	case ended == endTimeout:
