@@ -4999,7 +4999,7 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/window_full/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
 | `meru.sessions` | counter | source | sessions started |
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |

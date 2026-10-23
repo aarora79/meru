@@ -120,7 +120,7 @@ command, whose server is `meru` and whose tool is `cmd.<name>`: a name from
 config, never its arguments.
 
 A turn's outcome is one of `ok`, `error`, `cancelled`, `timeout`, `cut_off`,
-`gave_up` and `bad_output`. The last four name a turn that ended without a
+`window_full`, `gave_up` and `bad_output`. The last five name a turn that ended without a
 full answer and still said something to the user (see [agent](agent.md)).
 
 v0.4 adds `sessions` to two bounded sets: the prompt sections of
