@@ -209,6 +209,12 @@ type turn struct {
 	// repeats counts the calls the model repeated this turn. At maxRepeats
 	// the turn stops offering tools.
 	repeats int
+	// shortened counts the earlier tool results fitWindow cut short to
+	// keep the prompt inside the context window this turn.
+	shortened int
+	// windowFull is true once fitWindow couldn't make the next prompt
+	// fit; the turn then offers no more tools.
+	windowFull bool
 	// emptyRetry is true once the turn has asked the model a second time
 	// after a round with no text (see retriesEmpty). A turn does it once.
 	emptyRetry bool
@@ -396,6 +402,9 @@ const (
 // endBadOutput.
 func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, specs []engine.ToolSpec) (reply, error) {
 	var total reply
+	// base is where the turn's tool rounds start in msgs; fitWindow
+	// shortens results from there on and leaves the rest alone.
+	base := len(msgs)
 	// nudge is true for the round that retries one whose output Ollama
 	// couldn't read. That round's call alone carries outputNudge.
 	nudge := false
@@ -403,7 +412,7 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 		t.rounds++
 		start := time.Now()
 		offer := specs
-		if t.rounds >= a.maxRounds || t.repeats >= maxRepeats {
+		if t.rounds >= a.maxRounds || t.repeats >= maxRepeats || t.windowFull {
 			offer = nil
 		}
 		call := msgs
@@ -458,12 +467,16 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 
 		// The model reads its own calls back before their results, as
 		// Ollama's chat format expects.
+		newest := len(msgs)
 		msgs = append(msgs, engine.Message{Role: engine.RoleAssistant, Content: rep.text, ToolCalls: rep.calls})
 		results, err := a.runRound(ctx, t, rep.calls)
 		if err != nil {
 			return total, err
 		}
 		msgs = append(msgs, results...)
+		if a.fitWindow(ctx, t, msgs, base, newest, rep.usage.PromptTokens, specs) {
+			t.windowFull = true
+		}
 		a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", len(rep.calls),
 			"ms", time.Since(start).Milliseconds())
 	}

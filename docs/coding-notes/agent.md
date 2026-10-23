@@ -1751,6 +1751,61 @@ dispatch may call `approve` from them too.
 The rpc server's `emit` takes a lock around each write, so that is safe; the
 tests' collector takes a lock too.
 
+### The context window (window.go)
+
+Every round sends the whole turn so far: the system prompt, the history, the
+question, and each earlier call and result. A turn that reads twenty web pages
+sends the first page twenty times, and the prompt grows past `[ollama]
+context_length`. Ollama then has no room left to write in, and stops the answer
+with `done_reason = "length"` after a few hundred tokens. That is what Meru's
+"it reached the length limit" note meant in a real turn that wrote 650 tokens.
+
+`converse` calls `fitWindow` after it appends a round's results:
+
+```go
+newest := len(msgs) // where this round's assistant message goes
+msgs = append(msgs, engine.Message{Role: engine.RoleAssistant, ...})
+// ... run the calls, append their results ...
+if a.fitWindow(ctx, t, msgs, base, newest, rep.usage.PromptTokens, specs) {
+    t.windowFull = true // later rounds offer no tools
+}
+```
+
+`fitWindow` estimates the next prompt two ways and keeps the larger:
+
+- Ollama's own count for the round that just ran, plus the new messages'
+  characters divided by `charsPerToken` (3);
+- every character in the prompt and the tool schemas, divided by 3.
+
+The first is close to exact. The second covers an engine that reports no count,
+as the tests' fake does. Three characters a token runs high for English, which
+is four, but tool results hold URLs, JSON and code, and an estimate that runs
+high only shortens a result early.
+
+Past `windowShare` (80%) of the window, it walks `msgs[base:newest]`, this
+turn's earlier rounds, oldest first. Each tool result longer than `keepChars`
+(400) becomes its first 400 characters plus `shortenedNote`, which tells the
+model to call the tool again if it needs the whole thing. It stops once the
+estimate fits. Three things stay whole:
+
+- the newest round's results, which the model hasn't read yet;
+- everything before `base`, which `budget.go` sizes;
+- the transcript, since `dispatch` wrote each result there as it ran.
+
+A shortened call also leaves `t.seen`, the map the repeat check reads, so a call
+to fetch the page again runs instead of handing back the stub as a "repeat".
+`for key, result := range t.seen` walks a map's keys and values, and `delete`
+inside that loop is safe in Go.
+
+`m := &msgs[i]` takes a pointer to the slice's element, so `m.Content = short`
+changes the message in the slice. `m := msgs[i]` would copy it, and the change
+would be lost. The slice belongs to `converse`, and the earlier rounds' calls
+already went out, so changing it in place is safe.
+
+`a.window` is 0 when config sets `context_length = 0`. Meru then doesn't know
+the window Ollama uses, and `fitWindow` does nothing. The turn span records
+`meru.turn.shortened_results` and `meru.turn.window_full`.
+
 ### Cancellation
 
 The turn's own deadline ends `tctx` and gets an answer (see Handle). When the

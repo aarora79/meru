@@ -610,7 +610,7 @@ to the client as a `token` event the moment it arrives.
 stateDiagram-v2
     [*] --> Round
     Round --> Offer: below the round cap, fewer than 2 repeats
-    Round --> NoTools: last round, or 2 repeats
+    Round --> NoTools: last round, 2 repeats, or the window is full
     Offer --> Stream
     NoTools --> Stream
     Stream --> OutputRetry: Ollama couldn't parse the output, first time, a round left
@@ -620,13 +620,15 @@ stateDiagram-v2
     Stream --> EmptyRetry: no text and no calls, a round left, not cut off, first time
     EmptyRetry --> Answer: one more call with no tools and a nudge
     Stream --> RunCalls: tool calls, and tools were offered
-    RunCalls --> Round: results appended as tool messages
+    RunCalls --> Fit: results appended as tool messages
+    Fit --> Round: past 80% of the window, oldest results shortened
     Answer --> [*]
     BadOutput --> [*]
 ```
 
 *Figure 5. The loop inside a turn. Each round offers tools unless it is the last
-round allowed or the model has repeated a call twice. The model's reply streams to
+round allowed, the model has repeated a call twice, or the prompt no longer fits the
+context window. The model's reply streams to
 the client. A reply with tool calls runs them and starts the next round with their
 results. A reply with text and no calls ends the turn. Two kinds of failure get one
 retry each: a reply Ollama couldn't parse, and a reply with no text at all.*
@@ -652,6 +654,15 @@ The rules, in the order the code applies them:
   what ran. After the second repeat (`maxRepeats = 2`), later rounds offer no tools.
   A 2B model offered only `datetime` once called it with no arguments in all eight
   rounds.
+- **The prompt stays inside the window.** After each round's calls, `fitWindow`
+  (`internal/agent/window.go`) estimates the next prompt: Ollama's count for the round
+  that just ran plus the new messages, or every character over three, whichever is
+  larger. Past 80% of `[ollama] context_length`, it cuts this turn's oldest tool
+  results to 400 characters and a note telling the model to call the tool again if it
+  needs the whole result, and drops each from the repeat check. The newest round's
+  results stay whole. If the prompt still doesn't fit, later rounds offer no tools. A
+  turn that read about twenty pages once sent prompts that added up to about 169,000
+  tokens against a 32,768-token window, and Ollama stopped its answer after 650.
 - **Empty replies get one retry.** A thinking model can spend a whole round reasoning
   and stop with nothing to show. When the turn has a round left and the round didn't
   stop at the token cap, `retryEmpty` asks once more, with no tools and a user

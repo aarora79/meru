@@ -1407,7 +1407,8 @@ default can be far smaller, which would cut the prompt short on a fresh
 install. Every call sends the same value, because Ollama reloads a model whose
 `num_ctx` changes. The `CONTEXT` column of `ollama ps` shows what each loaded
 model got. `context_length = 0` leaves the choice to Ollama and
-`OLLAMA_CONTEXT_LENGTH`.
+`OLLAMA_CONTEXT_LENGTH`. The agent loop also reads the value, to keep a turn's
+tool rounds inside it (see [Agent loop](#agent-loop), step 5).
 
 ---
 
@@ -1679,6 +1680,26 @@ order.
    only a debug log line and the turn span's `meru.turn.repeated_calls`. After
    the second repeat, later rounds offer no tools. A 2B model offered only
    `datetime` once called it with no arguments in all eight rounds.
+
+   Each round sends every earlier call and result again, so a turn that reads
+   many pages can outgrow the context window, `[ollama] context_length`. Ollama
+   then stops the answer with `length` after a few hundred words. Before each
+   new round, `merud` estimates the prompt: the tokens Ollama counted for the
+   round that just ran plus the new messages, or all the prompt's characters
+   divided by three, whichever is larger. When the estimate passes 80% of the
+   window, it shortens this turn's oldest tool results, oldest first, to their
+   first 400 characters and a note that tells the model to call the tool again
+   if it needs the whole result. The 20% left over is room for the answer. A
+   shortened call no longer counts toward repeats, so calling it again runs it.
+   The newest round's results stay whole, since the model hasn't read them,
+   and so do the system prompt, the history and the question, which the
+   context budget sizes (`agent/budget.go`). When shortening isn't enough, later
+   rounds offer no tools, so the model answers from what it has. The transcript
+   keeps every result whole. The turn span records `meru.turn.shortened_results`
+   and `meru.turn.window_full`. With `context_length = 0` Meru doesn't know the
+   window and shortens nothing. In a real turn that read about twenty pages,
+   the prompts of its rounds added up to about 169,000 tokens against a
+   32,768-token window, and the answer stopped after 650 tokens.
 
    A round can end with no text and no tool call, when a thinking model spends
    it all on hidden reasoning. When the turn has a round left and the round

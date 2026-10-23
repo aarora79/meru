@@ -142,6 +142,7 @@ type Agent struct {
 	machine     string        // describes the user's computer; set by UseMachine
 	maxRounds   int           // model calls per turn, at most; see converse
 	maxTokens   int           // tokens one main-model call may write, thinking included
+	window      int           // [ollama] context_length, the tokens a prompt and answer share; 0 is Ollama's own
 	turnTimeout time.Duration // how long one turn may run; see Handle
 	agentic     bool          // [index] retrieval = "agentic": no search before the answer
 	models      config.Models // the models as config named them at startup; Main says which model answers now
@@ -234,6 +235,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		profile:     profile,
 		maxRounds:   cfg.Agent.MaxRounds,
 		maxTokens:   cfg.Agent.MaxOutputTokens,
+		window:      cfg.Ollama.ContextLength,
 		turnTimeout: timeout,
 		agentic:     agentic,
 		models:      cfg.Models,
@@ -353,6 +355,8 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			attribute.String("meru.session.id", sessionID),
 			attribute.Int("meru.turn.iterations", t.rounds),
 			attribute.Int("meru.turn.repeated_calls", t.repeats),
+			attribute.Int("meru.turn.shortened_results", t.shortened),
+			attribute.Bool("meru.turn.window_full", t.windowFull),
 			attribute.Bool("meru.turn.empty_retry", t.emptyRetry),
 			attribute.Bool("meru.turn.output_retry", t.outputRetry),
 			attribute.Bool("meru.turn.unbacked_claim", unbacked),

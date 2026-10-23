@@ -48,7 +48,8 @@ type Ollama struct {
 
 `ContextLength` defaults to 32768, the context the benchmark ran with; `Load`
 refuses a value from 1 to 2047, too small for even the system prompt, and 0
-leaves Ollama's own setting.
+leaves Ollama's own setting. The agent reads it too: past 80% of it, a turn
+shortens its oldest tool results (see [agent](agent.md), "The context window").
 
 A **struct** is a named group of fields, like a Python dataclass. The text in
 backticks is the tag. More in [go-basics/struct-tags.md](go-basics/struct-tags.md).
