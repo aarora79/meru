@@ -169,6 +169,9 @@ type outgoing struct {
 	text   string
 	scope  string
 	images []string
+	// cont marks /continue, which merud answers by picking up the chat's
+	// last answer; text is then the word the chat shows.
+	cont bool
 }
 
 // link says whether merud answered last time we heard from it.
@@ -575,6 +578,7 @@ func (m *Model) startTurn(q outgoing) tea.Cmd {
 		// Only the first question starts an incognito chat; the next ones
 		// continue it by the ID merud sent.
 		Incognito: m.session == "" && m.incognito,
+		Continue:  q.cont,
 	}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{Paths: q.images}

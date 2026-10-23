@@ -53,7 +53,12 @@ main model's token counts (`tokens_in`, `tokens_out`), the time the model spent
 writing (`eval_ms`), and the time per output token (`tpot_ms`, `eval_ms` over
 `tokens_out`). `tpot_ms` is a `float64`, so it keeps the fraction. Every field has `omitempty`, so a `ping`'s `done` stays
 `{"type":"done"}`, and a client built before these fields existed skips
-them.
+them. `outcome` joined them later: it says how a turn ended without a whole
+answer, `cut_off`, `window_full`, `timeout`, `gave_up`, `bad_output` or `no_vision`, and both
+clients offer Continue after the first two. A request asks for that with
+`continue: true` on an `ask`, with the chat's `session` and no `text` needed;
+`merud` then picks up the session's last answer (see [agent](agent.md),
+"Continue").
 
 v0.2 added, without changing anything older clients read:
 

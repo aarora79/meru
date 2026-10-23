@@ -13,7 +13,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
   el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
-  appendToken, approvalCard, thumb, isImageSource,
+  appendToken, approvalCard, thumb, isImageSource, drawFooter,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
@@ -123,8 +123,34 @@ const handlers = {
   onRetry(t) {
     send(t.question, t.scope || state.scope, (t.images || []).map((i) => i.path));
   },
+  // canContinue says whether t's footer offers Continue: t stopped short,
+  // and no turn came after it, since merud picks up the chat's last answer.
+  canContinue: (t) => continues(t) && t === newestTurn(),
+  onContinue(t) {
+    continueAnswer(t);
+  },
   whyText: (v) => whyText(v),
 };
+
+// continues reports whether turn t stopped short in a way Continue can
+// pick up: at the length limit or the turn's time limit.
+function continues(t) {
+  return !!t && ["cut_off", "window_full", "timeout"].includes(t.outcome);
+}
+
+// continueAnswer asks merud to pick up the chat's last answer, t, where it
+// stopped. It says why when there's nothing to continue.
+function continueAnswer(t) {
+  if (!continues(t) || t !== newestTurn()) {
+    notice("Only an answer that stopped short, and is the newest in the chat, can continue.");
+    return;
+  }
+  const scope = t.scope || state.scope;
+  bridge.continueAnswer(state.session, scope === "auto" ? "" : scope, state.incognito).then(
+    () => notice(""),
+    (err) => notice(errorText(err)),
+  );
+}
 
 // copy puts text on the clipboard and says so on the button for a moment.
 function copy(text, b) {
@@ -395,8 +421,12 @@ function onStart(u) {
     $("messages").replaceChildren();
     $("chat-title").textContent = state.title;
   }
+  const before = newestTurn();
   const t = newTurn({ n: u.turn, question: u.question, images: u.images || [], scope: state.scope });
   state.turns.push(t);
+  // Only the newest answer can continue, so the one before loses its
+  // Continue button.
+  if (continues(before)) drawFooter(before, handlers);
   state.running = u.turn;
   $("messages").append(createTurn(t, handlers));
   select(t);
@@ -466,6 +496,7 @@ function onEvent(u) {
       break;
     case "done":
       t.stats = ev;
+      t.outcome = ev.outcome || "";
       break;
     case "error":
       t.error = ev.error || "merud reported an error.";
@@ -1359,6 +1390,7 @@ function wire() {
       drawSessions();
       $("search").focus();
     },
+    continueAnswer: () => continueAnswer(newestTurn()),
     retry: () => {
       const t = newestTurn();
       if (!t) {

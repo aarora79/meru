@@ -317,8 +317,14 @@ func (a *Agent) SetMain(model string, noThink bool) {
 func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) (err error) {
 	start := time.Now()
 	question := strings.TrimSpace(req.Text)
+	if question == "" && req.Continue {
+		question = continueWords
+	}
 	if question == "" {
 		return errors.New("empty question")
+	}
+	if req.Continue && req.Session == "" {
+		return errors.New("continue needs the chat's session")
 	}
 	source, err := sourceOf(req.Source)
 	if err != nil {
@@ -407,7 +413,21 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
-	t.question = userWords(question, history)
+	// asked is the question the turn routes, searches and recalls on. For
+	// Continue it is the last turn's question, and t.handoff holds what
+	// the model reads in its place. See continue.go. The last turn has to
+	// be read before the user line below starts a new one.
+	asked := question
+	if req.Continue {
+		last, err := sess.LastTurn()
+		if err != nil {
+			return err
+		}
+		if asked, t.handoff, err = continuation(last); err != nil {
+			return err
+		}
+	}
+	t.question = userWords(asked, history)
 	// The user line carries start as its time, so a turns row rebuilt from
 	// the transcript gets the same time as the row written live. It names
 	// the question's images by path and never holds their bytes.
@@ -415,7 +435,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 
-	res, err := a.respond(tctx, t, question, history)
+	res, err := a.respond(tctx, t, asked, history)
 	route, rep = res.route, res.rep
 	// badOutput is true when the rounds ended on output Ollama couldn't
 	// read, even after the retry. The turn answers with badOutputAnswer
@@ -530,7 +550,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		return err
 	}
 	a.recordUsage(ctx, sessionID, source, start, model, answer, t.calls, sess.Incognito())
-	return emit(doneEvent(start, rep))
+	done := doneEvent(start, rep)
+	done.Outcome = ended
+	return emit(done)
 }
 
 // noteModel writes a model_switch line to the session before an answer
@@ -668,8 +690,10 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// A question that asks for the web, or gives a URL, goes to the web
 	// before the model's first round. toolTarget has already given its
 	// route the tools. See webfirst.go.
+	// A Continue turn has its earlier turn's web results in the hand-off,
+	// so it doesn't go to the web first again.
 	var webCalls []webCall
-	if a.askedWebFirst(ctx, question) {
+	if t.handoff == "" && a.askedWebFirst(ctx, question) {
 		webCalls = askedCalls(question, history, a.tools.Tools())
 		t.webFirst = webFirstAsked
 	}
@@ -699,7 +723,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// first too, and its route gains the tools, so the model can search
 	// again. The search runs before the route event for this reason: the
 	// rule needs its excerpts.
-	if t.webFirst == "" {
+	if t.webFirst == "" && t.handoff == "" {
 		if name, ok := a.namedWebFirst(question, target, searched, found.results); ok {
 			webCalls = namedCalls(name, question, a.tools.Tools())
 			t.webFirst = webFirstNamed
@@ -775,6 +799,11 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 		}
 	}
 	skillList, skillBodies := a.skillsSection(ctx, picked, specs)
+	// A Continue turn's model reads the hand-off, not the question it
+	// routed and searched on.
+	if t.handoff != "" {
+		question = t.handoff
+	}
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),

@@ -186,7 +186,7 @@ func (m *Model) reopen(id string, turns []rpc.TurnInfo) {
 		for _, s := range t.Tools {
 			e.tools = append(e.tools, toolCall{name: s.Name, kind: s.Kind, host: urlHost(s.Args), outcome: s.Outcome, millis: s.DurationMillis})
 		}
-		e.stats = rpc.Event{Type: rpc.EventDone, DurationMillis: t.DurationMillis, TokensOut: t.TokensOut}
+		e.stats = rpc.Event{Type: rpc.EventDone, DurationMillis: t.DurationMillis, TokensOut: t.TokensOut, Outcome: t.Outcome}
 		if t.Answer == "" {
 			e.state, e.err = stateFailed, "no answer"
 			if t.Outcome != "" {

@@ -66,6 +66,38 @@ func (m Model) scopeCommand(arg string) (tea.Model, tea.Cmd) {
 // session, with the scope and the images it had the first time, as the
 // app's Try again does. While a turn runs, the question waits in the
 // queue like any other.
+// continueWords is what the chat shows for /continue, as merud's
+// transcript and the desktop app record it.
+const continueWords = "Continue"
+
+// stoppedShort reports whether t's answer stopped at the length limit or
+// the turn's time limit, which /continue can pick up.
+func stoppedShort(t *exchange) bool {
+	switch t.stats.Outcome {
+	case "cut_off", "window_full", "timeout":
+		return t.state == stateDone
+	}
+	return false
+}
+
+// continueCommand runs /continue: merud picks up the chat's newest answer
+// where it stopped short, with the question and the tool calls it already
+// made, so nothing is fetched twice. Only the newest answer can continue,
+// and only once it has ended.
+func (m Model) continueCommand() (tea.Model, tea.Cmd) {
+	m.input.Reset()
+	if m.streaming {
+		m.notice = "wait for this answer to end, then /continue"
+		return m, nil
+	}
+	if len(m.turns) == 0 || m.session == "" || !stoppedShort(&m.turns[len(m.turns)-1]) {
+		m.notice = "nothing to continue: /continue picks up the newest answer when it stopped short"
+		return m, nil
+	}
+	t := m.turns[len(m.turns)-1]
+	return m, m.sendOrQueue(outgoing{text: continueWords, scope: t.scope, cont: true})
+}
+
 func (m Model) retryCommand() (tea.Model, tea.Cmd) {
 	if len(m.turns) == 0 {
 		m.input.Reset()

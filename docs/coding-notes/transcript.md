@@ -30,7 +30,7 @@ app: the full paths of the copies in `~/meru-output/uploads/`. The line names
 them and never holds their bytes.
 
 An assistant line also carries `outcome` when the turn ended without a full
-answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision`. The text then holds
+answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision`. The text then holds
 the apology, or the text so far and a note that Meru stopped it. A full answer leaves the
 field out (`omitempty`).
 
@@ -191,6 +191,15 @@ tool", to check that a call backs the claim, in this turn or an earlier one the
 model reads in its history. The names are as `dispatch` wrote them, so an MCP
 tool shows by its own name, such as `search` for `notes.search`.
 `TestCalledTools` checks the turn counting.
+
+### LastTurn
+
+`Session.LastTurn()` returns the lines from the session's last `user` line to
+the end: the question, its tool lines and its answer. Continue reads it to hand
+the model the work the last answer did (see [agent](agent.md), "Continue"). It
+walks back from the end to the last `user` line and returns that part of the
+slice, with no copy. It reads an incognito session from memory, as every other
+reader does, so Continue works there too.
 
 ### Model switch lines
 

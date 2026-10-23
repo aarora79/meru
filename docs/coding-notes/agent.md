@@ -1820,6 +1820,41 @@ that Continue picks it up.
 the window Ollama uses, and `fitWindow` does nothing. The turn span records
 `meru.turn.shortened_results` and `meru.turn.window_full`.
 
+### Continue (continue.go)
+
+A turn that ends `cut_off`, `window_full` or `timeout` did work worth keeping: the pages it
+read and the calls it made. Continue picks the answer up without doing that
+work again. The client sends an `ask` with `Continue: true` and the chat's
+session.
+
+`Handle` reads the session's last turn with `sess.LastTurn()` before it writes
+the new user line, which would start a new last turn. `continuation` turns
+those lines into two strings:
+
+- `question`, the last turn's question. The new turn routes, searches and
+  recalls memories on it, and `userWords` gives its URLs to the URL guard.
+- `message`, what the model reads in its place: the question quoted, each tool
+  call as `name {args}` with the first `resultChars` (600) characters of its
+  result, or ` → error` for a failed one, and a request to pick up where the
+  answer stopped without repeating it.
+
+`continuation` pairs each `tool_result` line with its `tool_call` by
+`CallID`, through a map from ID to the call's place in the list. Past
+`handoffChars` (8,000) it keeps the newest calls and says how many earlier ones
+it left out, since a long summary would fill the window that may have cut the
+answer off. The partial answer stays out of the message: `History` already
+gives it to the model as the last assistant message.
+
+`continuation` fails with `errNothingToContinue` when the last answer ended
+whole, or when the session has no answer yet. It returns three values,
+`(question, message string, err error)`, and the named results say what each
+is. `t.handoff` holds the message. `respond` skips the web-first step when it is
+set, and `finishPrompt` swaps it in for the question just before it builds the
+prompt. The user line holds what the client sent, "Continue" when it sent no
+text, so the transcript and a later turn's history show what the user did.
+
+The `done` event carries `Outcome`, so a client knows when to offer Continue.
+
 ### Cancellation
 
 The turn's own deadline ends `tctx` and gets an answer (see Handle). When the

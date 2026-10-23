@@ -359,6 +359,9 @@ func (m *Model) renderTurn(t *exchange) string {
 		if s := statsLine(t); s != "" {
 			lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Wrap(s, width, ""))))
 		}
+		if stoppedShort(t) && t == &m.turns[len(m.turns)-1] {
+			lines = append(lines, m.style.raw.Render(m.style.notice.Render(ansi.Wrap(continueHint, width, ""))))
+		}
 	case stateStopped:
 		lines = append(lines, m.style.raw.Render(m.style.dim.Render("stopped")))
 	case stateFailed:
@@ -368,6 +371,9 @@ func (m *Model) renderTurn(t *exchange) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// continueHint follows the newest answer when it stopped short.
+const continueHint = "This answer stopped short. /continue picks up where it stopped."
 
 // toolText writes one tool call as the turn shows it:
 //

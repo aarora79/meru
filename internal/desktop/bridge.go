@@ -126,6 +126,9 @@ type Bridge struct {
 type outgoing struct {
 	text   string
 	images []Attachment
+	// cont marks a Continue, which merud answers by picking up the chat's
+	// last answer; text is then the word the chat shows.
+	cont bool
 }
 
 // turn is one question on its way through merud.
@@ -175,7 +178,21 @@ func New(o Options) *Bridge {
 //
 // It fails when question is blank, scope is unknown, or the queue is full.
 func (b *Bridge) Send(session, question, scope string, incognito bool) error {
-	return b.send(session, question, scope, incognito, nil)
+	return b.send(session, question, scope, incognito, nil, false)
+}
+
+// Continue asks merud to pick up session's last answer where it stopped
+// short, at the length limit or the turn's time limit. merud hands the
+// model the last question and the tool calls it already made, so nothing
+// is fetched twice. It queues like a question while a turn runs, and
+// leaves the attached files for the next question. It fails for an empty
+// session or an unknown scope; merud refuses a chat whose last answer is
+// whole, and the turn then ends with that error.
+func (b *Bridge) Continue(session, scope string, incognito bool) error {
+	if session == "" {
+		return errors.New("there is no chat to continue")
+	}
+	return b.send(session, continueText, scope, incognito, nil, true)
 }
 
 // Retry is Send for Try again: it asks question once more, with the
@@ -196,12 +213,17 @@ func (b *Bridge) Retry(session, question, scope string, images []string, incogni
 			Thumb: b.thumbnail(full), full: full,
 		})
 	}
-	return b.send(session, question, scope, incognito, extra)
+	return b.send(session, question, scope, incognito, extra, false)
 }
 
-// send does the work of Send and Retry. extra holds images to send beside
-// the ones attached in the composer.
-func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment) error {
+// continueText is what the chat shows for a Continue, as `meru chat` and
+// merud's transcript record it.
+const continueText = "Continue"
+
+// send does the work of Send, Retry and Continue. extra holds images to
+// send beside the ones attached in the composer. cont marks a Continue,
+// which takes no attachments.
+func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment, cont bool) error {
 	q := strings.TrimSpace(question)
 	if q == "" {
 		return errors.New("type a question first")
@@ -215,8 +237,11 @@ func (b *Bridge) send(session, question, scope string, incognito bool, extra []A
 	if b.turn != nil && len(b.queue) >= maxQueue {
 		return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
 	}
-	next := outgoing{text: b.withAttachments(q), images: append(extra, imagesOf(b.attached)...)}
-	if len(b.attached) > 0 {
+	next := outgoing{text: q, cont: true}
+	if !cont {
+		next = outgoing{text: b.withAttachments(q), images: append(extra, imagesOf(b.attached)...)}
+	}
+	if len(b.attached) > 0 && !cont {
 		b.attached = nil
 		b.emitAttachments("")
 	}
@@ -322,7 +347,7 @@ func (b *Bridge) start(q outgoing) {
 	t := &turn{n: b.last, cancel: cancel}
 	b.turn = t
 	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q.text, Source: rpc.SourceDesktop, Scope: b.scope,
-		Incognito: b.session == "" && b.newIncognito}
+		Incognito: b.session == "" && b.newIncognito, Continue: q.cont}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{}
 		for _, a := range q.images {

@@ -765,7 +765,9 @@ first, as any client with no one to ask does, and `dispatch` logs it as
 `declined`. The command also writes the approval event to stdout, so the script
 sees which call it refused. A tool doing slow work sends `progress` events
 between its `tool_call` and `tool_result`, with the call's ID, such as the line
-`web_fetch` sends while it installs its page reader. Every tool call still goes through `dispatch`; the
+`web_fetch` sends while it installs its page reader. The `done` event's `outcome`
+says when an answer stopped short, such as `cut_off`, so a script can tell a
+whole answer from part of one. Every tool call still goes through `dispatch`; the
 mode adds no second path.
 
 ---
@@ -1761,8 +1763,37 @@ ends without a full answer still answers, with an outcome of its own:
 
 The words go out as ordinary `token` events, so both clients show them as the
 answer. The outcome goes on the `meru.turn` span, the `turn` log line and
-`meru.turn.duration`, and in the assistant line's `outcome` field in the
-transcript.
+`meru.turn.duration`, in the assistant line's `outcome` field in the
+transcript, and in the `done` event's `outcome` field, empty for a full answer.
+
+### Continuing an answer
+
+An answer that ends `cut_off`, `window_full` or `timeout` stopped with work worth keeping: the
+pages it read and the calls it made. Asking again would do that work over, so
+both clients offer **Continue** under the chat's newest answer when it stopped
+short: a button in Meru.app and `/continue` in `meru chat`. Either sends an
+`ask` with `continue: true` and the chat's session, and no text of its own.
+
+`merud` reads the session's last turn from its transcript, which already holds
+the question, every tool call with its arguments and result, and the answer so
+far. It hands the model, in place of a question, a summary of that turn:
+
+- the last question, quoted;
+- each tool call, with its arguments and the first 600 characters of its
+  result, or how it failed; past 8,000 characters the oldest calls drop out,
+  since a long summary would fill the window that cut the answer off;
+- a request to pick up where the answer stopped, use these results, call a tool
+  only for what is still missing, and not repeat what it wrote.
+
+The answer so far reaches the model through the history, as every earlier
+answer does. The turn routes, searches and recalls memories on the last
+question, and skips the web-first step, since the summary holds what the web
+gave. The URL guard knows the URLs of the last question as before. The
+transcript's user line reads "Continue", what the user pressed, and a later
+turn's history shows the same. `merud` refuses Continue on a chat whose last
+answer is whole: "the last answer in this chat is complete, so there is nothing
+to continue." `meru run --json` starts a session per question, so it has nothing
+to continue and doesn't offer it.
 
 `dispatch` sees the tools through one interface, `Backend`, with four
 implementations in a fixed order: the built-in tools, the local commands, the MCP
@@ -2154,7 +2185,7 @@ them to the model after the answer, one line each:
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
-full answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision` (see
+full answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when the answer
 claimed an action and no tool call in the turn succeeded (see
 [Claims no tool backs](#claims-no-tool-backs)).

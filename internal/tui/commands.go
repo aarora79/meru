@@ -18,7 +18,7 @@ import (
 // app's composer has the same commands in the same order;
 // TestCommandsMatchChat in internal/desktop reads this line and fails when
 // the two differ.
-const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /model, /log, /about, /help, /exit"
+const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /model, /log, /about, /help, /exit"
 
 // commandHelp is the /help box's line for each command, in commandList's
 // order: what to type, and what it does. TestCommandHelp fails when a
@@ -35,6 +35,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/tag <tags>", "tag this chat"},
 	{"/untag <tags>", "take tags off this chat"},
 	{"/retry", "ask the newest question again"},
+	{"/continue", "pick up an answer that stopped short"},
 	{"/scope [name]", "look in auto, files, mail, web or talk"},
 	{"/attach [path]", "attach a file or image; alone, clear"},
 	{"/save [chat]", "save the newest answer, or the chat"},
@@ -95,6 +96,8 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		return m.tagCommand(arg, true)
 	case "/retry":
 		return m.retryCommand()
+	case "/continue":
+		return m.continueCommand()
 	case "/scope":
 		return m.scopeCommand(arg)
 	case "/attach":

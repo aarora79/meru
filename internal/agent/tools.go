@@ -235,6 +235,10 @@ type turn struct {
 	// offer is the tools the current round offers, which skillHint reads.
 	// converse sets it before each round.
 	offer []engine.ToolSpec
+	// handoff is what a Continue turn's model reads in place of a
+	// question: the last turn's question and its tool calls; "" on any
+	// other turn. See continue.go.
+	handoff string
 	// webFirst says why the turn went to the web before the model's first
 	// round: webFirstAsked, webFirstNamed, or "" for no reason.
 	webFirst string
