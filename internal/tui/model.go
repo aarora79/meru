@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -90,6 +91,9 @@ const (
 type exchange struct {
 	question string
 	state    turnState
+	// lastNews is when merud last sent anything for the turn, so the turn
+	// can say how long the model has gone quiet; see quietLine.
+	lastNews time.Time
 
 	route      string   // empty until merud's "route" event
 	confidence float64  // the router's confidence in route
@@ -568,7 +572,7 @@ func (m *Model) startTurn(q outgoing) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	m.turns = append(m.turns, exchange{question: q.text, state: stateActive, scope: q.scope, images: q.images})
+	m.turns = append(m.turns, exchange{question: q.text, state: stateActive, scope: q.scope, images: q.images, lastNews: time.Now()})
 	m.refresh()
 	req := rpc.Request{
 		Op:      rpc.OpAsk,
@@ -595,6 +599,7 @@ func (m *Model) handleEvent(msg eventMsg) {
 	}
 	m.link = linkUp // an event means merud is there
 	cur := m.current()
+	cur.lastNews = time.Now()
 	ev := msg.ev
 	switch ev.Type {
 	case rpc.EventSession:

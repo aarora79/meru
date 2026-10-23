@@ -502,7 +502,13 @@ approval box follows them while it is open. What comes next depends on the state
 
 - waiting for the first token: the spinner and "thinking…", unless the approval box
   already says what Meru waits for;
-- streaming: the raw text, wrapped, with a teal `▍` at the end;
+- streaming: the raw text, wrapped, with a teal `▍` at the end, and, once `merud`
+  has sent nothing for `quietSeconds` (5), the spinner and `quietLine`'s "still
+  working · 52 s". Each event sets the turn's `lastNews`, and closing the
+  approval box does too, since a wait for the user isn't `merud` being quiet.
+  The model can go quiet for minutes after its first words while it writes a
+  long tool call, such as a whole page for `write_file`: Ollama sends a call
+  only when it's done, and without the line the screen looked stuck;
 - finished or stopped: the answer rendered as Markdown;
 
 and then, on lines of their own: for a finished answer, `merud`'s notice if it

@@ -126,6 +126,33 @@ export function drawAll(t, h) {
   drawFooter(t, h);
 }
 
+// QUIET_SECONDS is how long merud may send nothing before the Working chip
+// says how long it has been quiet. Tokens arrive many times a second, and
+// a tool call or a page read rarely takes this long.
+const QUIET_SECONDS = 5;
+
+// workingText returns the Working chip's words for turn t, and its title:
+// "Working…" while news keeps coming, and "Still working · 52 s" once merud
+// has been quiet for QUIET_SECONDS or more.
+export function workingText(t, now = Date.now()) {
+  const quiet = Math.floor((now - (t.lastNews || now)) / 1000);
+  if (quiet < QUIET_SECONDS) return { text: "Working…", title: "" };
+  return {
+    text: "Still working · " + quiet + " s",
+    title: "Nothing new for " + quiet + " s. The model may be writing something long, such as a file, which shows when it's done.",
+  };
+}
+
+// tickWorking brings the running turn's Working chip up to date, without
+// redrawing the strip. The page calls it once a second.
+export function tickWorking(t) {
+  const chip = t.el && t.el.working;
+  if (!chip || !chip.isConnected) return;
+  const { text, title } = workingText(t);
+  chip.textContent = text;
+  chip.title = title;
+}
+
 // drawStrip draws the one-line work strip: what the route did, each tool
 // call's friendly label, and the Show steps toggle over the raw detail.
 export function drawStrip(t, h) {
@@ -146,8 +173,13 @@ export function drawStrip(t, h) {
     const chip = el("span", "waiting");
     chip.append(icon("ask", 13), document.createTextNode(" Waiting for you"));
     strip.append(chip);
-  } else if (t.state === "active" && !t.answer) {
-    strip.append(el("span", "working", "Working…"));
+  } else if (t.state === "active") {
+    // The chip stays while the turn runs, text or no text: after the first
+    // words, a model can go quiet for minutes writing a tool call, such as
+    // a whole page for write_file, which Ollama sends only when it's done.
+    t.el.working = el("span", "working", "");
+    strip.append(t.el.working);
+    tickWorking(t);
   }
   if (t.route || t.steps.length > 0) {
     const toggle = button(t.showSteps ? "Hide steps" : "Show steps", { className: "text-button toggle" });

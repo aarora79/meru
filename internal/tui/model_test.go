@@ -112,6 +112,7 @@ func testModel(ask askFunc, send sender) Model {
 func bare(e exchange) exchange {
 	e.rendered, e.renderedWidth = "", 0
 	e.code, e.firstBlock = nil, 0
+	e.lastNews = time.Time{} // a clock reading, never equal between runs
 	return e
 }
 
