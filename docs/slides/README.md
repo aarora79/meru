@@ -13,7 +13,7 @@ All four use the logo's colours and fonts from the landing page, and open with a
 code for the repository and close with it. The developer, organization and individual decks reuse figures from
 `docs/architecture/img/`.
 
-Open a deck in a browser and scroll; each slide fills the window. GitHub Pages
+Open a deck in a browser and scroll, or use the back and forward buttons at the bottom right of each slide; each slide fills the window. The buttons are plain links, and printing leaves them out. GitHub Pages
 serves them at `aarora79.github.io/meru/slides/`.
 
 **To print the PDF again** after an edit, with Chrome:
