@@ -352,6 +352,16 @@ outside the uploads folder, and hands them to `send` with the composer's own
 attachments. Without it, Try again on a question about a photo would ask the
 model blind.
 
+Continue calls `Continue(session, scope, incognito)`, which sends "Continue"
+through the same `send` with `cont` set: the request carries `Continue: true`,
+and the composer's attachments stay for the next question. The page sets
+`t.outcome` from the `done` event, or from the past turn's `outcome` when a chat
+reopens. `drawFooter` shows the Continue button first, in the accent colour,
+when `canContinue(t)` holds: the turn ended `cut_off` or `timeout`, and it is
+the chat's newest turn. When a new turn starts, `onStart` redraws the footer of
+the turn before it, so an older answer loses its button. `/continue` in the
+composer does the same as the button.
+
 `Drop` is a plain function, `desktop.Drop(b, paths)`, not a method. Wails binds
 every exported method of the Bridge, so the page could call `Drop` with any path
 it liked; the page can't reach a plain function. Only a real drop, which Wails

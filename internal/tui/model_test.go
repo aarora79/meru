@@ -624,7 +624,7 @@ func TestEnterWhileStreamingQueues(t *testing.T) {
 	m = queue(t, m, "second", "  third  ")
 
 	if want := []outgoing{{text: "second"}, {text: "third"}}; !reflect.DeepEqual(m.queue, want) {
-		t.Errorf("queue = %q, want %q", m.queue, want)
+		t.Errorf("queue = %+v, want %+v", m.queue, want)
 	}
 	if m.input.Value() != "" {
 		t.Errorf("input = %q after queueing, want empty", m.input.Value())
@@ -687,7 +687,7 @@ func TestQueueSendsInOrder(t *testing.T) {
 				}
 			}
 			if len(m.queue) != 0 || m.streaming {
-				t.Errorf("queue = %q, streaming = %v; want empty and idle", m.queue, m.streaming)
+				t.Errorf("queue = %+v, streaming = %v; want empty and idle", m.queue, m.streaming)
 			}
 		})
 	}
@@ -719,7 +719,7 @@ func TestCommandsWhileQueued(t *testing.T) {
 
 			m, cmd := update(t, m, typeText(tt.command), press(tea.KeyEnter))
 			if len(m.queue) != tt.wantQueue {
-				t.Errorf("queue = %q, want %d questions", m.queue, tt.wantQueue)
+				t.Errorf("queue = %+v, want %d questions", m.queue, tt.wantQueue)
 			}
 			if m.streaming != tt.wantBusy {
 				t.Errorf("streaming = %v, want %v", m.streaming, tt.wantBusy)
@@ -756,7 +756,7 @@ func TestStopDropsQueue(t *testing.T) {
 
 			m, _ = update(t, m, press(tea.KeyCtrlC))
 			if m.streaming || len(m.queue) != 0 {
-				t.Errorf("streaming = %v, queue = %q; want idle and empty", m.streaming, m.queue)
+				t.Errorf("streaming = %v, queue = %+v; want idle and empty", m.streaming, m.queue)
 			}
 			if m.notice != tt.notice {
 				t.Errorf("notice = %q, want %q", m.notice, tt.notice)

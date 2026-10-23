@@ -444,6 +444,25 @@ func TestSendScope(t *testing.T) {
 	}
 }
 
+func TestContinue(t *testing.T) {
+	var got rpc.Request
+	b, r := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		got = req
+		return nil
+	}))
+	defer b.ServiceShutdown()
+	if err := b.Continue("", "", false); err == nil {
+		t.Error("Continue with no chat went to merud")
+	}
+	if err := b.Continue("2026-10-19T234933-aea8", rpc.ScopeWeb, false); err != nil {
+		t.Fatal(err)
+	}
+	r.waitFor(t, "end", isEnd(1))
+	if !got.Continue || got.Session != "2026-10-19T234933-aea8" || got.Text != continueText || got.Scope != rpc.ScopeWeb {
+		t.Errorf("request = %+v, want a continue of the chat", got)
+	}
+}
+
 func TestQuit(t *testing.T) {
 	if err := (&Bridge{}).Quit(); err == nil {
 		t.Error("Quit with no quit function = nil")

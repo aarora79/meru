@@ -41,6 +41,7 @@ app already sends; `merud` got no new op for it. The short version of the audit
 | Attachments, files and images | has: `/attach <path>`; no drag and drop or file dialog, which need a window |
 | Share as file, Save to a note | has: `/save chat`, `/save` |
 | Try again | has: `/retry` |
+| Continue | has: `/continue`, with a line under an answer that stopped short |
 | What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
 | Past chats and reopening one | has: `/chats [words]` |
 | Settings: Connections, Folders, About you, Skills, Models, Activity, About, and the Usage screen | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
@@ -726,8 +727,8 @@ and it sits in the conversation those boxes cover.
 A line that starts with `/` never reaches the model; `submit` hands it to
 `command`, which splits the name from its argument with
 `strings.Cut(text, " ")` and sends each name to its function. Most live in the
-file of the box they open: `/chats` in chats.go, `/scope` and `/retry` in
-scope.go, `/attach` in attach.go, `/save` in save.go, `/used` in used.go, `/me` in
+file of the box they open: `/chats` in chats.go, `/scope`, `/retry` and
+`/continue` in scope.go, `/attach` in attach.go, `/save` in save.go, `/used` in used.go, `/me` in
 me.go, `/folders` in folders.go, `/model` in models.go and `/usage` in usage.go.
 `/mcp`, `/skills`, `/log`, `/about` and `/help` open their box right in `command`
 and send the first request with `requestCmd` (box.go).
@@ -749,7 +750,12 @@ many questions went.
 
 Commands that only open a box, copy text or talk to `merud` run at once while a
 turn runs and never wait in the queue. `/retry` is a question, so it queues like
-one. A model switch, a reopened chat and a save wait for the turn to end: `merud`
+one. `/continue` waits for the answer to end instead: it picks up the newest
+answer, which is the one still streaming. It sends `outgoing{cont: true}`,
+which `startTurn` turns into `Continue: true` on the request, and runs only when
+`stoppedShort` holds for the newest turn: it ended `cut_off` or `timeout`, as the
+`done` event's `Outcome` says, or the past turn's when a chat reopens.
+`renderTurn` draws `continueHint` in amber under that turn alone. A model switch, a reopened chat and a save wait for the turn to end: `merud`
 would unload the model writing the answer, the answer would land in the wrong
 conversation, and two approval boxes could open at once. `/exit` does what Ctrl-D
 does. Any other `/word` stays in the input, so a typo can be fixed, and the bottom

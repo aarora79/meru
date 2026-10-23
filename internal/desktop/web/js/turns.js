@@ -308,11 +308,11 @@ export function appendToken(t, text) {
 function outcomeText(outcome) {
   switch (outcome) {
     case "timeout":
-      return "This answer ran out of time.";
+      return "This answer ran out of time. Continue picks up where it stopped.";
     case "cut_off":
-      return "This answer hit the length limit and stops short.";
+      return "This answer hit the length limit and stops short. Continue picks up where it stopped.";
     case "window_full":
-      return "Meru stopped reading partway: the prompt filled the model's context window.";
+      return "Meru stopped reading partway: the prompt filled the model's context window. Continue picks up where it stopped.";
     case "gave_up":
       return "Meru stopped after too many tool rounds.";
   }
@@ -378,12 +378,16 @@ export function drawSources(t, h) {
   }
 }
 
-// drawFooter draws Copy, Try again and Details, and the dim stats line.
+// drawFooter draws Continue on an answer that stopped short, then Copy,
+// Try again and Details, and the dim stats line.
 export function drawFooter(t, h) {
   const f = t.el.footer;
   f.replaceChildren();
   if (t.state === "active") return;
   const actions = el("div", "actions");
+  if (h.canContinue(t)) {
+    actions.append(button("Continue", { iconName: "retry", className: "text-button continue", onClick: () => h.onContinue(t) }));
+  }
   if (t.answer) {
     actions.append(button("Copy", { iconName: "copy", onClick: (e) => h.onCopyAnswer(t, e.currentTarget) }));
     actions.append(button("Save to a note", { iconName: "note", onClick: () => h.onSaveNote(t) }));

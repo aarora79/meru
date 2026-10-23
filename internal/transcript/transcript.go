@@ -350,6 +350,24 @@ func (s *Session) CalledTools(maxTurns int) ([]string, error) {
 	return tools, nil
 }
 
+// LastTurn returns the lines of the session's last turn, from its last
+// user line to the end of the file, oldest first: the question, the tool
+// lines and the answer. It returns nothing for a session with no question.
+// The agent reads it to continue an answer that stopped short. It fails
+// only when the file can't be read.
+func (s *Session) LastTurn() ([]Line, error) {
+	lines, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].Type == TypeUser {
+			return lines[i:], nil
+		}
+	}
+	return nil, nil
+}
+
 // Model returns the main model the session's answers come from now: the
 // To of its last model_switch line for the main tier, or "" when it has
 // none, as a new session or one written before the line existed has. It

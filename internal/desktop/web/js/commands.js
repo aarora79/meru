@@ -184,6 +184,9 @@ export function runCommand(text) {
     case "/retry":
       act.retry();
       return true;
+    case "/continue":
+      act.continueAnswer();
+      return true;
     case "/scope":
       return scopeCommand(arg);
     case "/attach":

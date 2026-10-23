@@ -85,6 +85,35 @@ func TestRetry(t *testing.T) {
 	}
 }
 
+func TestContinue(t *testing.T) {
+	merud := &fakeMerud{events: []rpc.Event{{Type: rpc.EventDone}}}
+	m := testModel(merud.ask, newFakeSender())
+	m.width, m.height = 80, 30
+	m.session = "2026-10-19T234933-aea8"
+	// A whole answer has nothing to continue.
+	m.turns = []exchange{{question: "compare the release notes", state: stateDone, answer: "Both add…", stats: rpc.Event{Type: rpc.EventDone}}}
+	m, _ = update(t, m, typeText("/continue"), press(tea.KeyEnter))
+	if !strings.Contains(m.notice, "nothing to continue") || len(merud.reqs) != 0 {
+		t.Fatalf("notice %q, %d requests", m.notice, len(merud.reqs))
+	}
+	// One that stopped short shows the hint and continues.
+	m.turns[0].stats.Outcome = "cut_off"
+	m.turns[0].scope = rpc.ScopeWeb
+	if view := m.renderTurn(&m.turns[0]); !strings.Contains(view, "/continue picks up") {
+		t.Errorf("turn lacks the hint:\n%s", view)
+	}
+	m, cmd := update(t, m, typeText("/continue"), press(tea.KeyEnter))
+	finishTurn(cmd)
+	r := lastReq(t, merud)
+	if !r.Continue || r.Session != m.session || r.Text != continueWords || r.Scope != rpc.ScopeWeb {
+		t.Errorf("request = %+v, want a continue of the session", r)
+	}
+	// The hint goes once a newer turn follows.
+	if view := m.renderTurn(&m.turns[0]); strings.Contains(view, "/continue picks up") {
+		t.Error("an older turn still shows the hint")
+	}
+}
+
 func TestAttach(t *testing.T) {
 	dir := t.TempDir()
 	copyPath := filepath.Join(dir, "garden-plan.pdf")

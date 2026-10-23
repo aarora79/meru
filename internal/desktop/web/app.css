@@ -249,6 +249,13 @@ pre {
   background: rgba(29, 35, 32, 0.06);
 }
 
+/* Continue, on an answer that stopped short: the action the reader most
+   likely wants, so it takes the accent colour. */
+.text-button.continue {
+  color: var(--pine);
+  font-weight: 600;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;

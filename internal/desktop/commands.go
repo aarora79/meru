@@ -29,6 +29,7 @@ var commandList = []Command{
 	{Name: "/tag", Args: "<tags>", Description: "Tag this chat"},
 	{Name: "/untag", Args: "<tags>", Description: "Take tags off this chat"},
 	{Name: "/retry", Description: "Ask the newest question again"},
+	{Name: "/continue", Description: "Pick up the newest answer where it stopped short"},
 	{Name: "/scope", Args: "<auto | files | mail | web | talk>", Description: "Set where Meru looks"},
 	{Name: "/attach", Description: "Attach files or images"},
 	{Name: "/save", Args: "[chat]", Description: "Save the newest answer as a note, or share the chat as a file"},

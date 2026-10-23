@@ -192,6 +192,15 @@ model reads in its history. The names are as `dispatch` wrote them, so an MCP
 tool shows by its own name, such as `search` for `notes.search`.
 `TestCalledTools` checks the turn counting.
 
+### LastTurn
+
+`Session.LastTurn()` returns the lines from the session's last `user` line to
+the end: the question, its tool lines and its answer. Continue reads it to hand
+the model the work the last answer did (see [agent](agent.md), "Continue"). It
+walks back from the end to the last `user` line and returns that part of the
+slice, with no copy. It reads an incognito session from memory, as every other
+reader does, so Continue works there too.
+
 ### Model switch lines
 
 `TypeModelSwitch` lines say which main model writes the answers from there on:
