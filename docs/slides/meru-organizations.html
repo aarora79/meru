@@ -152,14 +152,18 @@
 
 <!-- 3 -->
 <div class="frame"><section class="slide" aria-label="Slide 3">
-  <p class="kicker">What Meru is</p>
-  <h2>An assistant that runs as a program on each person's machine</h2>
-  <div class="cards">
-    <div class="card"><h3>One daemon, three clients</h3><p><code>merud</code> keeps the models warm and owns the data. Meru.app, <code>meru chat</code> in a terminal, and <code>meru run --json</code> for scripts talk to it over a local socket.</p></div>
-    <div class="card"><h3>Local models</h3><p>Open-weight models through Ollama on 127.0.0.1. The code has no path to a cloud model, and a test in CI fails the build if one appears.</p></div>
-    <div class="card gold"><h3>The person's own data</h3><p>Their folders, mail and calendar, notes in Obsidian or Apple Notes, the web through a search engine they run, and their voice through Whisper.</p></div>
+  <p class="kicker">What people use</p>
+  <h2 style="max-width:none">Meru.app, a desktop app on each person's Mac</h2>
+  <div style="display:grid; grid-template-columns: 600px 1fr; gap: 36px; align-items:start">
+    <img src="../img/desktop-app.png" style="width:600px; border:1px solid var(--tile); border-radius:12px; background:#fff" alt="Meru.app: a rail with new chat, incognito chat, chat folders and recent chats, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk. The chat titles are blurred.">
+    <ul class="points" style="gap:10px">
+      <li style="font-size:19px"><b>Ask across their own data:</b> folders, mail and calendar, notes, and the web, or pick one place to look.</li>
+      <li style="font-size:19px"><b>Attach files and pictures,</b> or speak the question.</li>
+      <li style="font-size:19px"><b>Approve on a card</b> any tool call that sends, deletes or changes, before it runs.</li>
+      <li style="font-size:19px"><b>Settings</b> for connections, folders, skills and models, and a Usage screen.</li>
+    </ul>
   </div>
-  <p class="small" style="margin-top:22px">Apache License 2.0. Written in Go. 19 releases since the first commit on 23 September 2026. macOS on Apple silicon first; Linux supported; Windows untested.</p>
+  <p class="small" style="margin-top:20px">The app talks to <code>merud</code>, the program that runs the models through a local model server on 127.0.0.1, Ollama today, and owns the data; <code>meru chat</code> in a terminal and <code>meru run --json</code> for scripts talk to the same <code>merud</code>. The code has no path to a cloud model, and a test in CI fails the build if one appears. Apache License 2.0, written in Go, 19 releases since the first commit on 23 September 2026. macOS on Apple silicon first; Linux supported; Windows untested.</p>
   <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">3</span></div>
 </section></div>
 
@@ -167,7 +171,7 @@
 <div class="frame"><section class="slide" aria-label="Slide 4">
   <p class="kicker">The boundary</p>
   <div class="figure">
-    <img src="../architecture/img/100-parts.png" alt="Meru's parts. Inside the machine: the clients pass a question to merud, which holds the agent loop and dispatch. The agent loop uses the local models in Ollama, the person's data and skills; dispatch reaches tools. Only the tools the configuration allows reach services outside the machine.">
+    <img src="../architecture/img/100-parts.png" alt="Meru's parts. Inside the machine: the clients pass a question to merud, which holds the agent loop and dispatch. The agent loop uses the local models, the person's data and skills; dispatch reaches tools. Only the tools the configuration allows reach services outside the machine.">
     <div>
       <h2 style="font-size:36px">Everything inside the dashed line runs on the employee's machine</h2>
       <p>The models, the search index, the chat history and the memories stay there. Only tools the configuration allows reach outside.</p>
@@ -182,7 +186,7 @@
   <h2>What leaves the machine, and what doesn't</h2>
   <table>
     <tr><th>Data</th><th>Where it goes</th></tr>
-    <tr><td>Questions and answers</td><td>Nowhere. The models run in Ollama on the same machine.</td></tr>
+    <tr><td>Questions and answers</td><td>Nowhere. The models run in a model server on the same machine.</td></tr>
     <tr><td>Files and notes</td><td>Indexed into a SQLite file on the machine; read live, never copied out.</td></tr>
     <tr><td>Telemetry, crash reports, update checks</td><td>None. Metrics go to a Prometheus the company runs on the same machine.</td></tr>
     <tr><td>Web searches</td><td>The search words go to the engines the company's own SearXNG asks.</td></tr>
@@ -240,7 +244,7 @@
   <p class="kicker">Sizing</p>
   <h2>What the hardware has to hold</h2>
   <div class="two-col">
-    <div class="box teal"><h3>Memory, as Ollama loaded it</h3><ul>
+    <div class="box teal"><h3>Memory, as the model server loaded it</h3><ul>
       <li><code>qwen3.6:35b</code> with a 262,144-token window: 28.8 GB</li>
       <li>The same model at 32,768 tokens: 23.4 GB</li>
       <li><code>MiniCPM5-2B</code>, the fast model: 2.8 GB</li>
@@ -261,7 +265,7 @@
   <p class="kicker">Rollout today</p>
   <h2>What it takes to put Meru on a machine</h2>
   <ul class="points">
-    <li><b>A Mac installer</b> on a disk image sets up Ollama, web search, folders and <code>merud</code> in eleven steps in a window. A one-line installer does the same in a terminal.</li>
+    <li><b>A Mac installer</b> on a disk image sets up the model server, web search, folders and <code>merud</code> in eleven steps in a window. A one-line installer does the same in a terminal.</li>
     <li><b>One config file per person</b>, <code>~/.meru/config.toml</code>: the models, the folders, the tools and what each may do.</li>
     <li><b>Updates are manual.</b> Meru never checks for them, so the company decides when a new version reaches each machine.</li>
     <li><b>Files are the source of truth.</b> The database can be deleted and rebuilt from the transcripts, memories and config.</li>
