@@ -1789,6 +1789,20 @@ and `expandHome`.
   you already listed; it can't add one. One place decides what `merud` may
   read.
 
+### merud: window.go
+
+`windowFitter` returns the function that sizes the answer model's context
+window. It asks the engine's `Details` for the model, passes the answer to
+`engine.FitWindow` with an eighth of the memory `memoryGB` reads
+(`windowMemoryShare`) and `[ollama] context_length` as the fallback, sets the
+result with `SetWindow`, and logs it at info as `answer model window`. `run`
+calls it for the answer model before `StartWarm`, so the model loads once with
+its window, and hands it to the model service, whose `switchMain` calls it
+before it loads a new answer model. It returns nil for an engine that isn't an
+`OllamaEngine`, and for `context_length = 0`, which leaves the windows to
+Ollama. `run` also gives the agent the engine's `Window`, so the agent's check
+on a turn's prompt uses the same number.
+
 ### merud: machine.go
 
 `machineLine` reads, once at startup, the facts a model needs to give commands and

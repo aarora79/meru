@@ -82,8 +82,26 @@ nil means no lines.
 build an engine didn't change. `merud` sets it once, from
 `[ollama] context_length`, before the first call. When it is above 0, every
 chat call sends it as `num_ctx` in `options`, so each model loads with room for
-Meru's prompts of about 20,000 tokens whatever Ollama's own default is. Every
-call sends the same value, since Ollama reloads a model when `num_ctx` changes.
+Meru's prompts of about 25,000 tokens whatever Ollama's own default is. Every
+call to one model sends the same value, since Ollama reloads a model when
+`num_ctx` changes.
+
+**Windows per model (window.go).** `SetWindow(model, n)` gives one model a
+window of its own, and `Window(model)` returns what a chat call sends: that
+window, or `ContextLength`. The map sits beside `shown`, under the same `mu`.
+`merud` sets the answer model's window from `FitWindow(details, budget,
+fallback)`, which takes the model's most tokens, cuts them to what fits in
+`budget` bytes of cache, rounds down to a multiple of 1,024, and never returns
+less than `fallback`. A model with no known cache size gets `fallback`.
+
+`details` works the cache size out in `kvBytesPerToken`. Each layer caches a
+key and a value per head, `key_length` and `value_length` numbers wide, at 2
+bytes each. `head_count_kv` comes as one number for every layer, which the code
+multiplies by `block_count`, or as a list with one per layer. A hybrid model
+such as qwen3.6 lists 0 for the three layers in four that keep no cache. The
+code tries `json.Unmarshal` into an `int64` first and a `[]int64` second; the
+one that succeeds says which shape came. A model without `key_length` uses
+`embedding_length / head_count`, the usual width of a head.
 
 ```go
 if n, err := strconv.Atoi(s); err == nil {
@@ -162,7 +180,8 @@ status outside 200–299 it reads Ollama's `{"error": "..."}` body and returns a
 `Details(ctx, model)` sends `POST /api/show` with `{"model": ...}` and
 returns a `ModelDetails`: the `capabilities` list, such as
 `["completion", "vision", "tools", "thinking"]`, the parameter size (`36.0B`),
-the quantization (`Q4_K_M`) and the context length. Ollama files the context
+the quantization (`Q4_K_M`), the context length, and `KVBytesPerToken`, the
+cache a token takes (see "Windows per model"). Ollama files the context
 length under the model's architecture, as `qwen35moe.context_length`, so
 `showResponse.details` finds the key by its ending. The reply also holds the
 license and the list of tensors, over 100 KB for a large model; the decoder

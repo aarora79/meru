@@ -195,7 +195,60 @@ func (r showResponse) details() ModelDetails {
 			d.ContextLength = n
 		}
 	}
+	d.KVBytesPerToken = kvBytesPerToken(r.ModelInfo)
 	return d
+}
+
+// kvBytesPerToken works out how much memory one token of context takes in
+// Ollama's cache, from the attention shape /api/show reports under the
+// model's architecture, such as "qwen35moe.block_count". Each layer keeps
+// a key and a value per cached head, of key_length and value_length
+// numbers, 2 bytes each at Ollama's default 16-bit cache:
+//
+//	bytes = (cached heads over all layers) × (key_length + value_length) × 2
+//
+// head_count_kv is one number for every layer, or a list with one per
+// layer: a hybrid model such as qwen3.6 caches heads in one layer of four
+// and lists 0 for the rest, which makes its cache a quarter the size. A
+// model without key_length uses embedding_length / head_count, the usual
+// head size. It returns 0 when the shape is missing, as it is for
+// gemma4, so the caller falls back to config.
+func kvBytesPerToken(info map[string]json.RawMessage) int64 {
+	num := func(suffix string) int64 {
+		for k, v := range info {
+			var n int64
+			if strings.HasSuffix(k, suffix) && json.Unmarshal(v, &n) == nil {
+				return n
+			}
+		}
+		return 0
+	}
+	var heads int64
+	for k, v := range info {
+		if !strings.HasSuffix(k, ".attention.head_count_kv") {
+			continue
+		}
+		var one int64
+		var each []int64
+		switch {
+		case json.Unmarshal(v, &one) == nil:
+			heads = one * num(".block_count")
+		case json.Unmarshal(v, &each) == nil:
+			for _, h := range each {
+				heads += h
+			}
+		}
+	}
+	keyLen, valLen := num(".attention.key_length"), num(".attention.value_length")
+	if keyLen == 0 {
+		if h := num(".attention.head_count"); h > 0 {
+			keyLen = num(".embedding_length") / h
+		}
+	}
+	if valLen == 0 {
+		valLen = keyLen
+	}
+	return heads * (keyLen + valLen) * 2
 }
 
 // versionResponse is the reply from GET /api/version.

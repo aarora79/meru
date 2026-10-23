@@ -1816,7 +1816,11 @@ answer now. The two retries share `t.emptyRetry`, so a turn makes at most one.
 with the window's size, so the user reads why the answer used so little and
 that Continue picks it up.
 
-`a.window` is 0 when config sets `context_length = 0`. Meru then doesn't know
+`answerWindow` gives the window: the engine's window for the answer model, from
+the function `UseWindow` set, which `merud` sizes per model (see
+[engine](engine.md), "Windows per model"), or `a.window`, `[ollama]
+context_length`, when none is set. `a.window` is 0 when config sets
+`context_length = 0`. Meru then doesn't know
 the window Ollama uses, and `fitWindow` does nothing. The turn span records
 `meru.turn.shortened_results` and `meru.turn.window_full`.
 

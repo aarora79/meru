@@ -224,6 +224,10 @@ type ModelDetails struct {
 	ParameterSize string   // for example "36.0B"
 	Quantization  string   // for example "Q4_K_M"
 	ContextLength int      // the most tokens the model can read at once
+	// KVBytesPerToken is the memory one token of context takes in Ollama's
+	// cache, worked out from the model's attention shape; 0 when Ollama
+	// doesn't report the shape. See FitWindow.
+	KVBytesPerToken int64
 }
 
 // PulledModel is one model the runtime has on disk: its name, such as

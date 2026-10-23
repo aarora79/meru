@@ -99,6 +99,9 @@ type modelService struct {
 	log  *slog.Logger
 	// wait and poll are evictWait and evictPoll; tests shorten them.
 	wait, poll time.Duration
+	// fitWindow sizes a model's context window before it loads as the
+	// answer model; nil keeps [ollama] context_length. See window.go.
+	fitWindow func(ctx context.Context, model string)
 
 	// switchMu lets one switch or save run at a time. A switch holds it
 	// while Ollama loads a model, which can take a minute; a second switch
@@ -392,6 +395,10 @@ func (m *modelService) switchMain(ctx context.Context, to string, noThink bool) 
 		}
 	}
 
+	// The window goes on before the load, so Ollama loads the model once.
+	if m.fitWindow != nil {
+		m.fitWindow(ctx, to)
+	}
 	hello := []engine.Message{{Role: engine.RoleUser, Content: "hi"}}
 	if _, err := m.eng.Generate(ctx, hello, nil, engine.Options{Model: to, MaxTokens: 1, NoThink: noThink}); err != nil {
 		return fmt.Errorf("switch to %s: step 3 of 3, load %s: %w; %s stays the answer model, and Ollama loads "+
