@@ -1402,15 +1402,40 @@ questions about images, and search questions from the excerpts search puts in
 the prompt, and can't read mail, notes, the web or files on its own. The
 Settings says so on its card, and `model_set` replies with a warning.
 
-**Context length.** `merud` sends `num_ctx` with every chat call, from
-`[ollama] context_length`, 32768 by default. Meru's prompts with tool schemas
-run to about 20,000 tokens, the benchmark ran at 32768, and Ollama's own
-default can be far smaller, which would cut the prompt short on a fresh
-install. Every call sends the same value, because Ollama reloads a model whose
+**Context length.** `merud` sends `num_ctx` with every chat call. Meru's
+prompts with tool schemas run to about 25,000 tokens, and Ollama's own default
+can be far smaller, which would cut the prompt short on a fresh install. Each
+call to one model sends the same value, because Ollama reloads a model whose
 `num_ctx` changes. The `CONTEXT` column of `ollama ps` shows what each loaded
-model got. `context_length = 0` leaves the choice to Ollama and
-`OLLAMA_CONTEXT_LENGTH`. The agent loop also reads the value, to keep a turn's
-tool rounds inside it (see [Agent loop](#agent-loop), step 5).
+model got.
+
+The answer model gets a window sized for it. Before it loads, at startup and
+on each switch, `merud` asks Ollama's `/api/show` for the most tokens the model
+can read and its attention shape: the layers, the cached heads in each, and
+their width. From the shape it works out the memory a token of context takes
+in Ollama's cache, at 2 bytes a number:
+
+```text
+bytes a token = (cached heads over all layers) × (key width + value width) × 2
+```
+
+The window is the model's most, cut to what fits in an eighth of the
+computer's memory, and never less than `[ollama] context_length`, 32768 by
+default. Ollama sets the cache's memory aside for the whole window when the
+model loads, so the cap matters: `qwen3.6:35b` caches heads in one layer of
+four and takes about 20 KB a token, so its full 262,144 tokens cost 5.4 GB and
+fit an eighth of a 64 GB Mac; a dense model of its size can take ten times as
+much a token and gets a smaller window. The fast and embedding models keep
+`context_length`, since they read short prompts. When the fast model is the
+answer model, as on `lite`, it loaded at `context_length` before `merud` sized
+its window, and loads once more on the next question.
+
+`context_length` is the fallback for a model whose shape Ollama doesn't
+report, such as `gemma4`, and `context_length = 0` leaves every window to
+Ollama and `OLLAMA_CONTEXT_LENGTH`. The agent loop reads the answer model's
+window, to keep a turn's tool rounds inside it (see [Agent loop](#agent-loop),
+step 5). `merud.log` says what it chose at info: `answer model window
+model=qwen3.6:35b window=262144 model_max=262144 cache_mb=5120`.
 
 ---
 
@@ -1684,7 +1709,8 @@ order.
    `datetime` once called it with no arguments in all eight rounds.
 
    Each round sends every earlier call and result again, so a turn that reads
-   many pages can outgrow the context window, `[ollama] context_length`. Ollama
+   many pages can outgrow the answer model's context window (see Context
+   length under [Model sets](#model-sets)). Ollama
    then stops the answer with `length` after a few hundred words. Before each
    new round, `merud` estimates the prompt: the tokens Ollama counted for the
    round that just ran, plus the new messages' characters divided by three.
@@ -1710,7 +1736,7 @@ order.
    Meru builds before any tool runs is large: with the full model set, the
    system prompt, skills, excerpts and about 15,000 tokens of tool schemas came
    to 24,485 tokens, which leaves a 32,768-token window little room for
-   results. A bigger `context_length` gives a turn more reading. The transcript
+   results; the window `merud` sizes for the answer model leaves it more. The transcript
    keeps every result whole. The turn span records `meru.turn.shortened_results`
    and `meru.turn.window_full`. With `context_length = 0` Meru doesn't know the
    window and shortens nothing. In a real turn that read about twenty pages,
@@ -1756,7 +1782,7 @@ ends without a full answer still answers, with an outcome of its own:
 | --- | --- | --- |
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
-| `window_full` | the tool results filled the context window, so later rounds offered no tools (step 5) | the answer from what it read, then a note naming `context_length` and pointing at Continue |
+| `window_full` | the tool results filled the context window, so later rounds offered no tools (step 5) | the answer from what it read, then a note naming the window's size and pointing at Continue |
 | `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry when a round was left for it | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
 | `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question." Both end with the suggestion described in [Questions with images](#questions-with-images). |

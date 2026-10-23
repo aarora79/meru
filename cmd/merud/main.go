@@ -310,6 +310,14 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// which model answers and whether it thinks.
 	// A model that can't look at pictures suggests a set whose model can.
 	a.UseVisionSets(svc.models.visionSets)
+	// The answer model gets a context window sized for it before it
+	// warms, so it loads once with it; see window.go. The agent reads the
+	// same window for its check on the prompt's size.
+	if fit := windowFitter(eng, cfg.Ollama.ContextLength, memoryGB(gctx), log); fit != nil {
+		fit(gctx, a.Main())
+		svc.models.fitWindow = fit
+		a.UseWindow(eng.(*engine.OllamaEngine).Window)
+	}
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })
 	requests.open(handler(svc))

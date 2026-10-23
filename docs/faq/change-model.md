@@ -53,8 +53,12 @@ In `meru chat`, `/model gemma-moe` and `/model save` do the same, and
   the web or your files, and says so under each answer.
 - `vision`, if you want to attach images.
 
-**Context.** `merud` asks Ollama for 32,768 tokens of context on every call,
-from `[ollama] context_length`, so a larger model needs no Ollama setting.
+**Context.** `merud` sizes the answer model's context window for you: as many
+tokens as the model can read, cut to what its cache fits in an eighth of your
+Mac's memory, and never less than `[ollama] context_length`, 32,768 by default.
+`qwen3.6:35b` gets its full 262,144 tokens on a 64 GB Mac. `merud.log` names
+the window at startup and on each switch: `answer model window`. No Ollama
+setting is needed.
 
 **Changing the embedding model** (`[models] embed`) makes `merud` embed every
 file again: set it, `ollama pull` it, and restart `merud`.

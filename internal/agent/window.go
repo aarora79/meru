@@ -51,12 +51,13 @@ const shortenedNote = "\n\n[Meru shortened this earlier result to keep the promp
 //
 // It changes msgs in place and returns true when the prompt still doesn't
 // fit, so the caller stops offering tools and the model answers from what
-// it has. With a.window 0, Ollama's own setting, it does nothing.
+// it has. With a window of 0, Ollama's own setting, it does nothing.
 func (a *Agent) fitWindow(ctx context.Context, t *turn, msgs []engine.Message, base, newest, measured int, specs []engine.ToolSpec) bool {
-	if a.window <= 0 {
+	window := a.answerWindow()
+	if window <= 0 {
 		return false
 	}
-	limit := a.window * windowShare / 100
+	limit := window * windowShare / 100
 	// Ollama counted the prompt the round that just ran sent, so only the
 	// latest round's messages, new since then, need an estimate. Counting
 	// the whole prompt from characters runs far high: the tool schemas
@@ -89,7 +90,7 @@ func (a *Agent) fitWindow(ctx context.Context, t *turn, msgs []engine.Message, b
 		t.shortened++
 	}
 	full := need > limit
-	a.log.DebugContext(ctx, "prompt near the context window", "window", a.window, "limit", limit,
+	a.log.DebugContext(ctx, "prompt near the context window", "window", window, "limit", limit,
 		"estimate", before, "after", need, "shortened", t.shortened, "tools_off", full)
 	return full
 }

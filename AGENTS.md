@@ -211,7 +211,8 @@ cmd/
                      replays transcripts and runs the summarizer;
                      backends.go joins the MCP pool to dispatch; ollama.go watches Ollama and
                      gates requests until merud is ready; runtime.go warms the models;
-                     machine.go describes the computer for the system prompt; metrics.go serves
+                     machine.go describes the computer for the system prompt; window.go sizes the
+                     answer model's context window; metrics.go serves
                      /metrics; speech.go answers the transcribe op
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,

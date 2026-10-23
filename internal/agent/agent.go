@@ -157,6 +157,9 @@ type Agent struct {
 	sessionsDir string       // where transcripts live, usually ~/.meru/sessions
 	home        string       // the home folder, for showing paths as ~/...; "" if unknown
 	log         *slog.Logger // merud's logger; lines carry the turn's trace ID
+	// windowOf, set by UseWindow, returns the window the engine gives a
+	// model, which can be larger than window; nil means window for all.
+	windowOf func(model string) int
 	// readImage and vision, set by UseImages, read a question's images
 	// and say whether a model can look at them; see images.go.
 	readImage func(path string) ([]byte, error)
@@ -555,6 +558,23 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	return emit(done)
 }
 
+// UseWindow gives the agent the engine's window for each model, which
+// fitWindow and windowNote read for the answer model in place of [ollama]
+// context_length. merud passes the engine's Window, which knows the
+// window it sized for the answer model.
+func (a *Agent) UseWindow(windowOf func(model string) int) {
+	a.windowOf = windowOf
+}
+
+// answerWindow returns the context window of the answer model now: the
+// one UseWindow's function gives it, or [ollama] context_length.
+func (a *Agent) answerWindow() int {
+	if a.windowOf == nil {
+		return a.window
+	}
+	return a.windowOf(a.Main())
+}
+
 // noteModel writes a model_switch line to the session before an answer
 // that model wrote, when the session's answers so far came from another
 // model or when it has none yet. The turns table reads these lines to
@@ -913,9 +933,9 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 			add = "\n\n" + add
 		}
 	case ended == endWindowFull && streamed:
-		add = "\n\n" + fmt.Sprintf(windowNote, a.window)
+		add = "\n\n" + fmt.Sprintf(windowNote, a.answerWindow())
 	case ended == endWindowFull:
-		add = sorry + "\n\n" + fmt.Sprintf(windowNote, a.window)
+		add = sorry + "\n\n" + fmt.Sprintf(windowNote, a.answerWindow())
 	case !streamed:
 		add = sorry
 	case ended == endTimeout:

@@ -62,10 +62,14 @@ base_url   = "http://127.0.0.1:11434"
 # Ollama runs, so answers start fast. Also takes seconds ("300") or "30m".
 keep_alive = "-1"
 # Tokens of prompt and answer Ollama makes room for, sent with every chat
-# call. Meru's prompts run to about 20,000 tokens, and Ollama's own
-# default can be smaller, which cuts them short. A turn whose tool results
-# pass 80% of it gets its oldest results shortened. 0 leaves Ollama's own,
-# and then Meru shortens nothing.
+# call. Meru's prompts run to about 25,000 tokens, and Ollama's own
+# default can be smaller, which cuts them short. The answer model gets
+# more when Ollama says it can read more and its cache fits in an eighth
+# of this computer's memory: qwen3.6:35b gets 262144 on a 64 GB Mac. This
+# is the least it gets, and what the other models and any model Ollama
+# can't describe get. A turn whose tool results pass 80% of the answer
+# model's window gets its oldest results shortened. 0 leaves every window
+# to Ollama, and then Meru shortens nothing.
 context_length = 32768
 
 [agent]
