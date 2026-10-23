@@ -58,9 +58,12 @@ const (
 	snippetChars = 300
 	// pageTimeout covers one page fetch, redirects included.
 	pageTimeout = 20 * time.Second
-	// pageBodyCap refuses a page larger than 5 MiB, which is past any
-	// article and most PDFs worth reading page by page.
-	pageBodyCap = 5 << 20
+	// pageBodyCap refuses a page larger than 16 MiB. News sites send far
+	// more than their text: CNN's world page came to 5.5 MB, almost all of
+	// it scripts and inline data, and an earlier 5 MiB cap refused it
+	// whole, though its headlines came to 17,000 characters. Reading it
+	// took 23 ms.
+	pageBodyCap = 16 << 20
 	// maxRedirects is how many redirects web_fetch follows.
 	maxRedirects = 5
 	// userAgent names Meru to the sites web_fetch reads.
