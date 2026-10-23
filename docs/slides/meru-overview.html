@@ -105,12 +105,25 @@
   .divider { background: var(--teal-soft); }
   .divider h2 { font-size: 58px; max-width: 20ch; }
 
+
+  /* Back and forward on every slide, bottom right: plain links to the
+     slide before and after, so they need no script. Print leaves them out. */
+  .foot { right: 170px; }
+  .nav { position: absolute; right: 40px; bottom: 16px; display: flex; gap: 10px; }
+  .nav a, .nav span { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+                      background: #fff; border: 1px solid var(--tile); color: var(--teal-dark);
+                      font-size: 20px; line-height: 1; text-decoration: none; }
+  .nav a:hover { background: var(--teal-soft); border-color: var(--teal); }
+  .nav span { opacity: 0.35; }
+  .cover .nav a, .cover .nav span { background: var(--cream); }
+
   @page { size: 1280px 720px; margin: 0; }
   @media print {
     html { background: none; scroll-snap-type: none; }
     .deck { display: block; padding: 0; }
     .frame { width: 1280px; height: 720px; aspect-ratio: auto; break-after: page; }
     .slide { transform: none; box-shadow: none; }
+    .nav { display: none; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
@@ -129,17 +142,18 @@
 <main class="deck">
 
 <!-- 1 -->
-<div class="frame"><section class="slide cover" aria-label="Title">
+<div class="frame" id="s1"><section class="slide cover" aria-label="Title">
   <svg class="logo" role="img" aria-label="Meru logo: a mountain with a dashed orbit around its peak"><use href="#logo"/></svg>
   <h1>Meru <span class="deva" lang="hi">मेरु</span></h1>
   <p class="tag">A personal AI assistant that runs entirely on your own computer.</p>
   <p class="origin">In some Eastern traditions, Meru is the cosmic mountain that the sun, moon and stars turn around.</p>
   <p class="meta"><b>v0.4.18</b> · October 2026 · aarora79.github.io/meru</p>
   <div class="qr-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" class="qr"><title>QR code: github.com/aarora79/meru</title><path fill="#fffdf7" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#14181c" d="M2 2.5h7m3 0h3m2 0h2m1 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m2 0h2m2 0h1m1 0h2m2 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h1m1 0h3m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m4 0h1m2 0h2m3 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h5m3 0h2m1 0h1m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-20 1h2m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h2m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m-26 1h2m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m2 0h2m-25 1h3m2 0h1m1 0h1m4 0h2m2 0h2m1 0h3m2 0h1m-27 1h2m3 0h1m1 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h2m-29 1h2m3 0h2m2 0h1m1 0h1m1 0h1m2 0h2m1 0h2m2 0h1m1 0h1m2 0h1m-29 1h1m3 0h2m3 0h2m1 0h2m1 0h3m4 0h1m1 0h1m1 0h1m1 0h1m-27 1h1m3 0h1m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m3 0h1m3 0h1m-29 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h1m-26 1h1m1 0h2m2 0h2m1 0h2m1 0h3m2 0h1m1 0h1m1 0h1m1 0h1m3 0h2m-29 1h1m2 0h2m2 0h1m2 0h3m1 0h1m3 0h1m1 0h5m3 0h1m-27 1h1m3 0h1m3 0h1m2 0h3m1 0h2m1 0h1m4 0h2m1 0h1m-26 1h1m1 0h1m4 0h1m2 0h3m1 0h2m4 0h1m1 0h1m1 0h2m-29 1h4m1 0h2m2 0h1m3 0h2m2 0h1m1 0h7m-18 1h2m1 0h2m2 0h2m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m4 0h10m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h5m3 0h4m3 0h2m-26 1h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h3m1 0h6m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h3m6 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h3m1 0h2m2 0h3m3 0h1m1 0h2m-29 1h1m5 0h1m1 0h2m1 0h4m1 0h2m2 0h4m1 0h1m1 0h2m-29 1h7m2 0h3m1 0h1m3 0h2m1 0h1m1 0h1m1 0h2m1 0h1"/></svg><p><b>github.com/aarora79/meru</b><br>Scan for the code</p></div>
+  <nav class="nav" aria-label="Slides"><span aria-hidden="true">&#8592;</span><a href="#s2" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 2 -->
-<div class="frame"><section class="slide" aria-label="The problem">
+<div class="frame" id="s2"><section class="slide" aria-label="The problem">
   <p class="kicker">Why</p>
   <h2>Your most useful data is the data you'd least like to send away</h2>
   <ul class="points">
@@ -148,10 +162,11 @@
     <li>Every question costs money, needs an account, and depends on a service that can change its price, its terms or its model.</li>
   </ul>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">2</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s1" aria-label="Previous slide">&#8592;</a><a href="#s3" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 3 -->
-<div class="frame"><section class="slide" aria-label="Meru's answer">
+<div class="frame" id="s3"><section class="slide" aria-label="Meru's answer">
   <p class="kicker">The idea</p>
   <h2>Bring the AI to your data, on a machine you control</h2>
   <div class="cards">
@@ -163,10 +178,11 @@
     <div class="card gold"><h3>Free and open</h3><p>Apache License 2.0. Read the code, run it, change it.</p></div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">3</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s2" aria-label="Previous slide">&#8592;</a><a href="#s4" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 4 -->
-<div class="frame"><section class="slide" aria-label="What you can ask">
+<div class="frame" id="s4"><section class="slide" aria-label="What you can ask">
   <p class="kicker">What it does</p>
   <h2>Ask about everything you keep</h2>
   <div class="cards">
@@ -178,10 +194,11 @@
     <div class="card gold"><h3>Your voice <span class="small">new in v0.4.18</span></h3><p>Press the microphone, speak, check the words, press Send. Whisper hears you on your Mac.</p></div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">4</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s3" aria-label="Previous slide">&#8592;</a><a href="#s5" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 5 -->
-<div class="frame"><section class="slide" aria-label="Day to day">
+<div class="frame" id="s5"><section class="slide" aria-label="Day to day">
   <p class="kicker">What it does</p>
   <h2>An assistant that learns who you are</h2>
   <div class="two-col">
@@ -202,10 +219,11 @@
     </div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">5</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s4" aria-label="Previous slide">&#8592;</a><a href="#s6" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 6 -->
-<div class="frame"><section class="slide" aria-label="How it works">
+<div class="frame" id="s6"><section class="slide" aria-label="How it works">
   <p class="kicker">How it works</p>
   <div class="figure">
     <img src="../architecture/img/100-parts.png" alt="Meru's parts. Inside your machine: you type into meru or meru-desktop, which passes the question to merud. merud holds the agent loop and dispatch. The agent loop uses the local models in Ollama, your data and skills; dispatch reaches other agents and tools. Only the tools you allow reach internet services outside the machine.">
@@ -220,10 +238,11 @@
     </div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">6</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s5" aria-label="Previous slide">&#8592;</a><a href="#s7" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 7 -->
-<div class="frame"><section class="slide" aria-label="How good are the models">
+<div class="frame" id="s7"><section class="slide" aria-label="How good are the models">
   <p class="kicker">How well</p>
   <h2>Good answers, sized to your Mac's memory</h2>
   <table>
@@ -237,10 +256,11 @@
   </table>
   <p class="small" style="margin-top:16px">50 tasks, each run three times: direct questions, searches of your files, tasks with one tool or several, conversations, and honesty checks. Medians on a Mac Studio (M4 Max, 64 GB), routing, search and tool calls included. The installer picks the model for your Mac.</p>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">7</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s6" aria-label="Previous slide">&#8592;</a><a href="#s8" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 8 -->
-<div class="frame"><section class="slide" aria-label="Privacy you can check">
+<div class="frame" id="s8"><section class="slide" aria-label="Privacy you can check">
   <p class="kicker">Privacy</p>
   <h2>Privacy you can check, not just trust</h2>
   <div class="two-col">
@@ -265,10 +285,11 @@
     </div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">8</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s7" aria-label="Previous slide">&#8592;</a><a href="#s9" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 9 -->
-<div class="frame"><section class="slide divider" aria-label="For organizations">
+<div class="frame" id="s9"><section class="slide divider" aria-label="For organizations">
   <p class="kicker">For organizations</p>
   <h2>A private AI workspace on every desk</h2>
   <p class="lede">The same design that keeps one person's data home keeps a team's documents inside the organization: on the managed machine, with no AI provider in the path.</p>
@@ -278,10 +299,11 @@
     <div class="card"><h3>An audit trail</h3><p>Every tool call, its approval and outcome, in a log on the machine.</p></div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">9</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s8" aria-label="Previous slide">&#8592;</a><a href="#s10" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 10 -->
-<div class="frame"><section class="slide" aria-label="Controls">
+<div class="frame" id="s10"><section class="slide" aria-label="Controls">
   <p class="kicker">For organizations</p>
   <h2>Controls a security team can check</h2>
   <table>
@@ -296,10 +318,11 @@
     </tbody>
   </table>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">10</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s9" aria-label="Previous slide">&#8592;</a><a href="#s11" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 11 -->
-<div class="frame"><section class="slide" aria-label="Where it stands">
+<div class="frame" id="s11"><section class="slide" aria-label="Where it stands">
   <p class="kicker">For organizations</p>
   <h2>Where it stands today</h2>
   <div class="two-col">
@@ -323,10 +346,11 @@
     </div>
   </div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">11</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s10" aria-label="Previous slide">&#8592;</a><a href="#s12" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 12 -->
-<div class="frame"><section class="slide" aria-label="Get it">
+<div class="frame" id="s12"><section class="slide" aria-label="Get it">
   <p class="kicker">Try it</p>
   <h2>On a Mac in a few minutes</h2>
   <div class="two-col">
@@ -342,10 +366,11 @@
   </div>
   <p class="small" style="margin-top:22px">Needs a Mac with Apple silicon and 16 GB of memory, and about 2 GB of models to start. Linux and Windows: the running guide on GitHub.</p>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">12</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s11" aria-label="Previous slide">&#8592;</a><a href="#s13" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 13 -->
-<div class="frame"><section class="slide" aria-label="What next">
+<div class="frame" id="s13"><section class="slide" aria-label="What next">
   <p class="kicker">What next</p>
   <h2>Where Meru goes from here</h2>
   <ul class="points">
@@ -357,16 +382,18 @@
   </ul>
   <div class="box gold" style="margin-top:26px; max-width:980px"><p style="margin:0; font-size:21px"><b>We build in the open.</b> Contributions are welcome: the issue list on GitHub says what's planned, and the first outside contribution is already in review.</p></div>
   <div class="foot"><svg><use href="#logo"/></svg>Meru · an overview<span class="num">13</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s12" aria-label="Previous slide">&#8592;</a><a href="#s14" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
 <!-- 14 -->
-<div class="frame"><section class="slide cover" aria-label="Thank you">
+<div class="frame" id="s14"><section class="slide cover" aria-label="Thank you">
   <svg class="logo" role="img" aria-label="Meru logo"><use href="#logo"/></svg>
   <h1>Thank you</h1>
   <p class="tag">Your assistant, your machine, your data.</p>
   <p class="open">We build in the open, and we're happy to accept contributions: <b>see the issue list</b> on GitHub.</p>
   <p class="meta"><b>aarora79.github.io/meru</b> · github.com/aarora79/meru · Apache License 2.0</p>
   <div class="qr-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" class="qr"><title>QR code: github.com/aarora79/meru</title><path fill="#fffdf7" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#14181c" d="M2 2.5h7m3 0h3m2 0h2m1 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m2 0h2m2 0h1m1 0h2m2 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h1m1 0h3m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m4 0h1m2 0h2m3 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h5m3 0h2m1 0h1m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-20 1h2m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h2m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m-26 1h2m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m2 0h2m-25 1h3m2 0h1m1 0h1m4 0h2m2 0h2m1 0h3m2 0h1m-27 1h2m3 0h1m1 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h2m-29 1h2m3 0h2m2 0h1m1 0h1m1 0h1m2 0h2m1 0h2m2 0h1m1 0h1m2 0h1m-29 1h1m3 0h2m3 0h2m1 0h2m1 0h3m4 0h1m1 0h1m1 0h1m1 0h1m-27 1h1m3 0h1m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m3 0h1m3 0h1m-29 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h1m-26 1h1m1 0h2m2 0h2m1 0h2m1 0h3m2 0h1m1 0h1m1 0h1m1 0h1m3 0h2m-29 1h1m2 0h2m2 0h1m2 0h3m1 0h1m3 0h1m1 0h5m3 0h1m-27 1h1m3 0h1m3 0h1m2 0h3m1 0h2m1 0h1m4 0h2m1 0h1m-26 1h1m1 0h1m4 0h1m2 0h3m1 0h2m4 0h1m1 0h1m1 0h2m-29 1h4m1 0h2m2 0h1m3 0h2m2 0h1m1 0h7m-18 1h2m1 0h2m2 0h2m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m4 0h10m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h5m3 0h4m3 0h2m-26 1h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h3m1 0h6m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h3m6 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h3m1 0h2m2 0h3m3 0h1m1 0h2m-29 1h1m5 0h1m1 0h2m1 0h4m1 0h2m2 0h4m1 0h1m1 0h2m-29 1h7m2 0h3m1 0h1m3 0h2m1 0h1m1 0h1m1 0h2m1 0h1"/></svg><p><b>github.com/aarora79/meru</b><br>Scan for the code</p></div>
+  <nav class="nav" aria-label="Slides"><a href="#s13" aria-label="Previous slide">&#8592;</a><span aria-hidden="true">&#8594;</span></nav>
 </section></div>
 
 </main>
