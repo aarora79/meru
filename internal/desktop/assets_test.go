@@ -249,3 +249,16 @@ func TestWorkLabelReadsWhatHappened(t *testing.T) {
 		t.Error("drawStrip doesn't take its label from workLabel")
 	}
 }
+
+// TestWorkingChipStays fails when the strip's Working chip goes back to
+// showing only before the first words. A model can go quiet for minutes
+// after them, writing a long tool call, and the user saw nothing move.
+func TestWorkingChipStays(t *testing.T) {
+	turns := ownFiles(t)["web/js/turns.js"]
+	if !strings.Contains(turns, `} else if (t.state === "active") {`) {
+		t.Error(`turns.js should show the Working chip for as long as the turn runs`)
+	}
+	if !strings.Contains(turns, "export function tickWorking(t)") || !strings.Contains(ownFiles(t)["web/js/app.js"], "tickWorking(t)") {
+		t.Error("app.js should tick the Working chip while a turn runs")
+	}
+}

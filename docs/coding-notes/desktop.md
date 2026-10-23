@@ -596,7 +596,15 @@ bundler.
   ends. The route and the
   router's confidence stay behind Show steps. `TestWorkLabelReadsWhatHappened`
   in `assets_test.go` reads `workLabel`'s source, since the page has no test
-  runner, and fails if it reads `t.route`. The sources line shows only the cited sources, closed, as "3 sources"
+  runner, and fails if it reads `t.route`. The strip's "Working…" chip stays for
+  as long as the turn runs, not only before the first word: after them, a model
+  writing a long tool call, such as a whole page for `write_file`, sends nothing
+  until it's done. `onEvent` sets `t.lastNews` on every event, and an approval
+  card's arrival and answer set it too. A one-second timer in `app.js` calls
+  `tickWorking`, which turns the chip into "Still working · 52 s", with a title
+  that says why, once `workingText` finds `QUIET_SECONDS` (5) without news.
+  `TestWorkingChipStays` reads the source so the chip can't go back to showing
+  only before the first word. The sources line shows only the cited sources, closed, as "3 sources"
   with a chevron; the button, with `aria-expanded`, opens a chip per source. An
   answer that cites nothing shows no line. `drawNotice` draws `merud`'s `notice`
   event, sent when the answer claims an action no tool performed, as an amber

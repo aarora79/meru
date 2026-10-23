@@ -13,7 +13,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
   el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
-  appendToken, approvalCard, thumb, isImageSource, drawFooter,
+  appendToken, approvalCard, thumb, isImageSource, drawFooter, tickWorking,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
@@ -87,6 +87,8 @@ const handlers = {
     bridge.approve(a.view.id, answer).then(
       () => {
         a.answered = choice;
+        // The wait for the user isn't merud being quiet.
+        t.lastNews = Date.now();
         drawApproval(t, handlers);
         drawStrip(t, handlers);
         if (state.asking === t) {
@@ -261,6 +263,9 @@ function newTurn(fields) {
     approval: null,
     contacted: [],
     showSteps: false,
+    // lastNews is when merud last sent anything for the turn, so the
+    // strip can say how long the model has gone quiet; see workingText.
+    lastNews: Date.now(),
     ...fields,
   };
 }
@@ -446,6 +451,7 @@ function onEvent(u) {
     drawSessions();
   }
   if (!t) return;
+  t.lastNews = Date.now();
   switch (ev.type) {
     case "route":
       t.route = ev.route || "";
@@ -512,6 +518,7 @@ function onApproval(u) {
   const t = findTurn(u.turn);
   if (!t) return;
   t.approval = { view: u.approval, answered: null };
+  t.lastNews = Date.now();
   drawApproval(t, handlers);
   drawStrip(t, handlers);
   state.asking = t;
@@ -1493,6 +1500,12 @@ function wire() {
   loadStatus();
   loadSessions();
   setInterval(loadStatus, STATUS_EVERY);
+  // Once a second, the running turn's Working chip says how long merud has
+  // been quiet; a model writing a long tool call sends nothing until it ends.
+  setInterval(() => {
+    const t = state.running ? findTurn(state.running) : null;
+    if (t) tickWorking(t);
+  }, 1000);
   box.focus();
 }
 

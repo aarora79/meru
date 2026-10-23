@@ -8,6 +8,7 @@ package tui
 import (
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -58,6 +59,10 @@ func (m *Model) closeApproval(choice rpc.Choice) {
 	// send never waits.
 	m.approval.reply <- choice
 	m.approval = nil
+	// The wait for the user isn't merud being quiet.
+	if len(m.turns) > 0 {
+		m.turns[len(m.turns)-1].lastNews = time.Now()
+	}
 	m.input.Focus()
 	m.refresh()
 }

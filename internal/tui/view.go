@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/glamour"
@@ -346,6 +347,9 @@ func (m *Model) renderTurn(t *exchange) string {
 		// would cost more than the model takes to write one.
 		text := ansi.Wrap(t.answer, width-1, "")
 		lines = append(lines, m.style.raw.Render(text+m.style.cursor.Render(streamCursor)))
+		if q := quietLine(t, time.Now()); q != "" && !asking {
+			lines = append(lines, m.style.raw.Render(m.spin.View()+m.style.dim.Render(ansi.Wrap(q, width-2, ""))))
+		}
 	case t.answer != "":
 		lines = append(lines, m.renderedAnswer(t))
 	}
@@ -372,6 +376,24 @@ func (m *Model) renderTurn(t *exchange) string {
 		lines = append(lines, m.style.errorBox.Render(msg))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// quietSeconds is how long merud may send nothing, once an answer has
+// started, before the turn says how long it has been quiet. Tokens arrive
+// many times a second, and a tool call rarely takes this long.
+const quietSeconds = 5
+
+// quietLine returns the line under a streaming answer once merud has sent
+// nothing for quietSeconds, such as "still working · 52 s; …", and ""
+// before. After the first words a model can go quiet for minutes writing a
+// long tool call, such as a whole page for write_file, which Ollama sends
+// only when it's done; without the line the screen looks stuck.
+func quietLine(t *exchange, now time.Time) string {
+	quiet := int(now.Sub(t.lastNews).Seconds())
+	if t.lastNews.IsZero() || quiet < quietSeconds {
+		return ""
+	}
+	return fmt.Sprintf("still working · %d s; a long tool call, such as a file, shows when it's done", quiet)
 }
 
 // continueHint follows the newest answer when it stopped short.
