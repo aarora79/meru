@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.4.20](v0.4.20.md): Meru says when it's still working, and slides for individuals and for organizations
 - [v0.4.19](v0.4.19.md): room to read: a context window sized for the answer model, Continue, and websites you trust
 - [v0.4.18](v0.4.18.md): voice in Meru.app, with Whisper run on your Mac, and `meru transcribe`
 - [v0.4.17](v0.4.17.md): Meru reads your Apple Notes, live and read-only, and the installer helps with the grant
