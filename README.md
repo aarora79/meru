@@ -22,14 +22,15 @@ model that fits your Mac's memory.
 [Meru for developers](https://aarora79.github.io/meru/slides/meru-developers.html)
 ([PDF](docs/slides/meru-developers.pdf))
 
-> **Status: pre-alpha, v0.4.18.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.4.19.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
 > On a Mac it searches and reads your Apple Notes, and turns what you say into
 > text with Whisper, on your Mac. It installs, runs and restarts
 > Google, Obsidian and SearXNG for you, set up from Settings, reads pages that
-> need JavaScript, and charts your use on its Usage screen. Scheduled jobs come
+> need JavaScript, and charts your use on its Usage screen. A question can read
+> dozens of web pages, and an answer that stops short can Continue. Scheduled jobs come
 > in v0.5.
 > [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 

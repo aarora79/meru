@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.4.18**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.4.19**. ROADMAP.md ticks every item from v0.1
 to v0.4:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -71,6 +71,9 @@ Since v0.4.14 an answer model with vision reads those pictures through
 read-only, through three built-in tools (#140). Since v0.4.18 Meru.app has a
 microphone: the whisper connector runs whisper.cpp's server on loopback, and
 the transcribe op turns a recording into text the user checks (#143 to #148).
+Since v0.4.19 `merud` sizes the answer model's context window from what
+Ollama reports, a turn keeps its tool rounds inside it, an answer that stopped
+short can Continue, and `web_fetch` can trust a website (#155 to #160).
 Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
