@@ -4375,7 +4375,7 @@ tools route:
 | Tool | Offered when | What it does |
 | --- | --- | --- |
 | `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default, and the SearXNG connector is ok | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
-| `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see [Pages that need JavaScript](#pages-that-need-javascript)). |
+| `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 16 MiB, 20 seconds; news pages run past 5 MB, almost all scripts). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see [Pages that need JavaScript](#pages-that-need-javascript)). |
 
 ```toml
 [web]

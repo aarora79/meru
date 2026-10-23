@@ -2736,7 +2736,7 @@ meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HT
   <thead><tr><th>Tool</th><th>Offered when</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>web_search</code></td><td><code>[web] searxng_url</code> is set and <code>[builtin] tools</code> lists it, as both are by default, and the SearXNG connector is ok</td><td>One GET to <code>&lt;searxng_url&gt;/search?format=json</code>, with a 15-second limit. It returns up to <code>max_results</code> results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL.</td></tr>
-    <tr><td><code>web_fetch</code></td><td><code>[builtin] tools</code> lists it, as it does by default</td><td>Fetches one public page (HTML, PDF or plain text, at most 5 MiB, 20 seconds). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see <a href="#pages-that-need-javascript">Pages that need JavaScript</a>).</td></tr>
+    <tr><td><code>web_fetch</code></td><td><code>[builtin] tools</code> lists it, as it does by default</td><td>Fetches one public page (HTML, PDF or plain text, at most 16 MiB, 20 seconds; news pages run past 5 MB, almost all scripts). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see <a href="#pages-that-need-javascript">Pages that need JavaScript</a>).</td></tr>
   </tbody>
 </table></div>
 

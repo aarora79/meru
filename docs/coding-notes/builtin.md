@@ -749,7 +749,7 @@ refused type costs no download, then `pageText` picks the reader:
 | `text/plain` | as it is |
 | anything else | refused, naming the type and pointing at `save` |
 
-The body stops at 5 MiB. Each call fetches the page again, because a cache would
+The body stops at 16 MiB, `pageBodyCap`. It was 5 MiB until CNN's world page, 5.5 MB of mostly scripts, came back refused. Each call fetches the page again, because a cache would
 be one more thing to keep fresh and to size.
 
 **Pages that need JavaScript.** Some pages, such as a Workday job posting,
@@ -757,7 +757,7 @@ send an empty shell and fill in the text with a script. `fetchPage` returns
 the body along with the text, so `needsRender` can spot such a shell without
 a second GET: an HTML page with under 500 characters of text and a
 `<script>` in it. It searches the body for `<script` and `<SCRIPT` as they
-are, since lowercasing a copy of up to 5 MiB to search once costs more. When
+are, since lowercasing a copy of up to 16 MiB to search once costs more. When
 `[web] render` is `"auto"` (see [config](config.md)) and `merud` has called
 `UseRenderer`, `renderPage` hands the URL to the page reader:
 
@@ -852,7 +852,7 @@ history, and a search-result URL asks once.
 
 `download` uses the same `get` as a fetch, so the dial check, the redirect cap
 and the no-cookie rule hold, with a 50 MiB cap and a 2-minute deadline instead
-of 5 MiB and 20 seconds:
+of 16 MiB and 20 seconds:
 
 1. `downloadName` picks the name: the `filename` in `Content-Disposition`, parsed
    with `mime.ParseMediaType`, or the URL's last path part. `safeName` then keeps
@@ -869,7 +869,7 @@ of 5 MiB and 20 seconds:
    over a file. It copies at most the limit it gets, 50 MiB here, plus one byte;
    one byte over means the file is too large, and a deferred function removes
    it.
-4. `previewText` reads back an HTML, PDF or text file of 5 MiB or less and returns
+4. `previewText` reads back an HTML, PDF or text file of 16 MiB or less and returns
    its first 2,000 characters for the result.
 
 `New` calls `index.ReadAlso` on the output folder, which holds the downloads
@@ -1031,7 +1031,7 @@ and `TestWebSearchRefused` points the tool at a closed port.
 `allowAddr` so that this one address and port count as public; every other
 address still goes through the real `checkPublic`. It covers HTML with its title,
 a PDF, plain text, paging, a redirect, a cookie that mustn't come back, a refused
-content type, the 5 MiB cap, a 404, a redirect loop, and refusals of a second
+content type, the 16 MiB cap, a 404, a redirect loop, and refusals of a second
 server on `127.0.0.1`, of a redirect to it, of `::1`, `192.168.1.1` and
 `169.254.169.254`. `TestWebFetchNameToLoopback` keeps the real check and asks
 for `http://localhost:<port>/`, a DNS name that resolves to `127.0.0.1`, and

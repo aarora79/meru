@@ -303,7 +303,7 @@ func TestWebFetch(t *testing.T) {
 		{name: "redirect followed", args: `{"url":"` + srv.URL + `/moved"}`, want: []string{srv.URL + "/notes.txt\n", "plain notes"}},
 		{name: "no cookies kept", args: `{"url":"` + srv.URL + `/set-cookie"}`, want: []string{"no cookie"}},
 		{name: "content type refused", args: `{"url":"` + srv.URL + `/image.png"}`, want: []string{`"image/png"`, "HTML, PDF and plain text"}, isErr: true},
-		{name: "too large", args: `{"url":"` + srv.URL + `/huge.txt"}`, want: []string{"larger than 5.0 MB"}, isErr: true},
+		{name: "too large", args: `{"url":"` + srv.URL + `/huge.txt"}`, want: []string{"larger than 16.0 MB"}, isErr: true},
 		{name: "not found", args: `{"url":"` + srv.URL + `/missing"}`, want: []string{"404"}, isErr: true},
 		{name: "redirect loop", args: `{"url":"` + srv.URL + `/loop"}`, want: []string{"stopped after 5 redirects"}, isErr: true},
 		{
