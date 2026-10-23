@@ -1768,7 +1768,7 @@ transcript, and in the `done` event's `outcome` field, empty for a full answer.
 
 ### Continuing an answer
 
-An answer that ends `cut_off` or `timeout` stopped with work worth keeping: the
+An answer that ends `cut_off`, `window_full` or `timeout` stopped with work worth keeping: the
 pages it read and the calls it made. Asking again would do that work over, so
 both clients offer **Continue** under the chat's newest answer when it stopped
 short: a button in Meru.app and `/continue` in `meru chat`. Either sends an
@@ -2185,7 +2185,7 @@ them to the model after the answer, one line each:
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
-full answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision` (see
+full answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when the answer
 claimed an action and no tool call in the turn succeeded (see
 [Claims no tool backs](#claims-no-tool-backs)).

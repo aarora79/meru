@@ -17,7 +17,7 @@ level=INFO msg=turn session=2026-09-24T020539-1f53 route=tools source=tui outcom
 | `gave_up` | the model only called tools, or wrote nothing twice | ask in other words, or `/new` in `meru chat` |
 | `bad_output` | Ollama couldn't read the model's tool call, twice | ask again; if it keeps happening, update Ollama or switch models |
 
-**An answer stopped short.** Under an answer that ends `cut_off` or `timeout`,
+**An answer stopped short.** Under an answer that ends `cut_off`, `window_full` or `timeout`,
 Meru.app shows a Continue button and `meru chat` a line pointing at
 `/continue`. Continue picks the answer up where it stopped. Meru hands the
 model your question and the tool calls it already made, with the start of

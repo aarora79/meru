@@ -30,7 +30,7 @@ app: the full paths of the copies in `~/meru-output/uploads/`. The line names
 them and never holds their bytes.
 
 An assistant line also carries `outcome` when the turn ended without a full
-answer: `timeout`, `cut_off`, `gave_up`, `bad_output` or `no_vision`. The text then holds
+answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision`. The text then holds
 the apology, or the text so far and a note that Meru stopped it. A full answer leaves the
 field out (`omitempty`).
 

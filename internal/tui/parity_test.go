@@ -97,7 +97,7 @@ func TestContinue(t *testing.T) {
 		t.Fatalf("notice %q, %d requests", m.notice, len(merud.reqs))
 	}
 	// One that stopped short shows the hint and continues.
-	m.turns[0].stats.Outcome = "cut_off"
+	m.turns[0].stats.Outcome = "window_full"
 	m.turns[0].scope = rpc.ScopeWeb
 	if view := m.renderTurn(&m.turns[0]); !strings.Contains(view, "/continue picks up") {
 		t.Errorf("turn lacks the hint:\n%s", view)

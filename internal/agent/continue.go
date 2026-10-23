@@ -41,7 +41,7 @@ const (
 // prompt already holds, so the message leaves it out.
 //
 // It fails with errNothingToContinue when the turn has no answer, or its
-// answer ended whole: only "cut_off" and "timeout" stop short with work
+// answer ended whole: only "cut_off", "window_full" and "timeout" stop short with work
 // worth keeping.
 func continuation(lines []transcript.Line) (question, message string, err error) {
 	if len(lines) == 0 {
@@ -71,7 +71,7 @@ func continuation(lines []transcript.Line) (question, message string, err error)
 			calls[i] += "\n  " + strings.ReplaceAll(clip(l.Result, resultChars), "\n", "\n  ")
 		}
 	}
-	if ended != endCutOff && ended != endTimeout {
+	if ended != endCutOff && ended != endWindowFull && ended != endTimeout {
 		return "", "", errNothingToContinue
 	}
 

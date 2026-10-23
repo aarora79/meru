@@ -313,7 +313,8 @@ type Request struct {
 	// Policy is.
 	Audio *Audio `json:"audio,omitempty"`
 	// Continue, on an OpAsk with a Session, picks up the session's last
-	// answer where it stopped short: at the length limit ("cut_off") or
+	// answer where it stopped short: at the length limit ("cut_off"), with
+	// the context window full ("window_full"), or
 	// the turn's deadline ("timeout"). Text may be empty; merud then
 	// records "Continue" as what the user typed.
 	Continue bool `json:"continue,omitempty"`
@@ -559,9 +560,9 @@ type Event struct {
 	// with no network or routing time in it.
 	TPOTMillis float64 `json:"tpot_ms,omitempty"`
 	// Outcome, on the "done" event, says how a turn ended without a full
-	// answer: "cut_off", "timeout", "gave_up", "bad_output" or "no_vision",
+	// answer: "cut_off", "window_full", "timeout", "gave_up", "bad_output" or "no_vision",
 	// as the transcript's assistant line holds it; empty for a full
-	// answer. A client offers Continue after "cut_off" and "timeout".
+	// answer. A client offers Continue after "cut_off", "window_full" and "timeout".
 	Outcome string `json:"outcome,omitempty"`
 }
 

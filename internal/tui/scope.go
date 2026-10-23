@@ -73,7 +73,11 @@ const continueWords = "Continue"
 // stoppedShort reports whether t's answer stopped at the length limit or
 // the turn's time limit, which /continue can pick up.
 func stoppedShort(t *exchange) bool {
-	return t.state == stateDone && (t.stats.Outcome == "cut_off" || t.stats.Outcome == "timeout")
+	switch t.stats.Outcome {
+	case "cut_off", "window_full", "timeout":
+		return t.state == stateDone
+	}
+	return false
 }
 
 // continueCommand runs /continue: merud picks up the chat's newest answer

@@ -1822,7 +1822,7 @@ the window Ollama uses, and `fitWindow` does nothing. The turn span records
 
 ### Continue (continue.go)
 
-A turn that ends `cut_off` or `timeout` did work worth keeping: the pages it
+A turn that ends `cut_off`, `window_full` or `timeout` did work worth keeping: the pages it
 read and the calls it made. Continue picks the answer up without doing that
 work again. The client sends an `ask` with `Continue: true` and the chat's
 session.

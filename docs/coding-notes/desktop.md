@@ -357,7 +357,7 @@ through the same `send` with `cont` set: the request carries `Continue: true`,
 and the composer's attachments stay for the next question. The page sets
 `t.outcome` from the `done` event, or from the past turn's `outcome` when a chat
 reopens. `drawFooter` shows the Continue button first, in the accent colour,
-when `canContinue(t)` holds: the turn ended `cut_off` or `timeout`, and it is
+when `canContinue(t)` holds: the turn ended `cut_off`, `window_full` or `timeout`, and it is
 the chat's newest turn. When a new turn starts, `onStart` redraws the footer of
 the turn before it, so an older answer loses its button. `/continue` in the
 composer does the same as the button.

@@ -43,6 +43,7 @@ func TestContinuation(t *testing.T) {
 				`web_fetch {"url":"https://go.dev/doc/go1.25"} → error`, "Pick up where the answer stopped"},
 			hasNot: []string{long, "timed out"}},
 		{name: "timeout counts", lines: []transcript.Line{question, answer(endTimeout)}, has: []string{"It made no tool calls."}},
+		{name: "window_full counts", lines: []transcript.Line{question, answer(endWindowFull)}, has: []string{"It made no tool calls."}},
 		{name: "a whole answer", lines: []transcript.Line{question, answer("")}, wantErr: true},
 		{name: "gave up", lines: []transcript.Line{question, answer(endGaveUp)}, wantErr: true},
 		{name: "no answer yet", lines: []transcript.Line{question}, wantErr: true},

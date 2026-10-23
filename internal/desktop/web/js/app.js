@@ -135,7 +135,7 @@ const handlers = {
 // continues reports whether turn t stopped short in a way Continue can
 // pick up: at the length limit or the turn's time limit.
 function continues(t) {
-  return !!t && (t.outcome === "cut_off" || t.outcome === "timeout");
+  return !!t && ["cut_off", "window_full", "timeout"].includes(t.outcome);
 }
 
 // continueAnswer asks merud to pick up the chat's last answer, t, where it

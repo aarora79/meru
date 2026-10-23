@@ -753,7 +753,7 @@ turn runs and never wait in the queue. `/retry` is a question, so it queues like
 one. `/continue` waits for the answer to end instead: it picks up the newest
 answer, which is the one still streaming. It sends `outgoing{cont: true}`,
 which `startTurn` turns into `Continue: true` on the request, and runs only when
-`stoppedShort` holds for the newest turn: it ended `cut_off` or `timeout`, as the
+`stoppedShort` holds for the newest turn: it ended `cut_off`, `window_full` or `timeout`, as the
 `done` event's `Outcome` says, or the past turn's when a chat reopens.
 `renderTurn` draws `continueHint` in amber under that turn alone. A model switch, a reopened chat and a save wait for the turn to end: `merud`
 would unload the model writing the answer, the answer would land in the wrong
