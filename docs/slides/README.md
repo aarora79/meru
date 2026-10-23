@@ -1,14 +1,15 @@
 # Slides
 
-Two decks about Meru, each a self-contained HTML page and a PDF printed from it.
+Three decks about Meru, each a self-contained HTML page and a PDF printed from it.
 
 | Deck | For | Slides |
 | --- | --- | --- |
 | [meru-overview](meru-overview.html) ([PDF](meru-overview.pdf)) | anyone: why Meru exists, what it does, how it keeps data home, what it offers an organization as a private AI workspace, and what comes next | 14 |
 | [meru-developers](meru-developers.html) ([PDF](meru-developers.pdf)) | developers: the design rules and non-negotiables, the daemon and its clients, the harness, tools, connectors, storage and observability, how the project works, and where to contribute | 16 |
+| [meru-organizations](meru-organizations.html) ([PDF](meru-organizations.pdf)) | a CTO or CIO weighing a pilot, and a platform team weighing a managed offering: what leaves the machine, the controls and audit, measured quality, speed and memory, what rollout takes, what Meru lacks for a fleet, and a four-week pilot | 14 |
 
-Both use the logo's colours and fonts from the landing page, and open with a QR
-code for the repository and close with it. The developer deck reuses figures from
+All three use the logo's colours and fonts from the landing page, and open with a QR
+code for the repository and close with it. The developer and organization decks reuse figures from
 `docs/architecture/img/`.
 
 Open a deck in a browser and scroll; each slide fills the window. GitHub Pages
@@ -23,5 +24,5 @@ serves them at `aarora79.github.io/meru/slides/`.
 ```
 
 Each slide is 1280 by 720 pixels, and the page's print styles give each one a page
-of that size. Version numbers and figures date from v0.4.18, October 2026; update
+of that size. The overview and developer decks date from v0.4.18 and the organization deck from v0.4.19, October 2026; update
 them with a release that changes what a slide says.

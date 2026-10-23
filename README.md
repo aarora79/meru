@@ -20,7 +20,9 @@ model that fits your Mac's memory.
 **Slides:** [Meru, an overview](https://aarora79.github.io/meru/slides/meru-overview.html)
 ([PDF](docs/slides/meru-overview.pdf)) ·
 [Meru for developers](https://aarora79.github.io/meru/slides/meru-developers.html)
-([PDF](docs/slides/meru-developers.pdf))
+([PDF](docs/slides/meru-developers.pdf)) ·
+[Meru for organizations](https://aarora79.github.io/meru/slides/meru-organizations.html)
+([PDF](docs/slides/meru-organizations.pdf))
 
 > **Status: pre-alpha, v0.4.19.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the

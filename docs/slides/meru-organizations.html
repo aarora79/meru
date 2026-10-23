@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Amit Arora">
+<meta name="description" content="Meru for organizations: a private AI workspace on machines a company manages. What stays on the machine, the controls a security team can check, measured quality and speed, what rollout takes today, what it lacks, and a four-week pilot.">
+<title>Meru for organizations</title>
+<style>
+  /* One file, no external fonts or scripts, so it opens from disk and prints
+     to PDF the same way. The colours are the Meru logo's: teal, dark teal,
+     the gold sun, the cream tile and the near-black outline. Each slide is
+     1280 by 720 pixels, 16:9, and the page scales it to the window. */
+  :root {
+    --teal: #0E7C7B; --teal-dark: #0A5453; --teal-soft: #E3F1F0;
+    --gold: #E9A82C; --gold-soft: #FBF1DC; --cream: #FFFDF7; --tile: #E6E1D6;
+    --ink: #14181C; --ink-2: #3c4043; --ink-3: #5f6368; --rule: #dadce0; --panel: #f8f9fa;
+    --sans: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-snap-type: y mandatory; background: #e9ecea; }
+  body { margin: 0; font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .deck { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 28px 0; }
+  .frame { width: min(96vw, calc((100vh - 56px) * 16 / 9)); aspect-ratio: 16 / 9; scroll-snap-align: center;
+           container-type: inline-size; }
+  .slide { position: relative; width: 1280px; height: 720px; transform-origin: top left;
+           transform: scale(calc(100cqw / 1280px)); background: var(--cream); overflow: hidden;
+           padding: 64px 80px 72px; box-shadow: 0 6px 24px rgba(20, 24, 28, 0.12); }
+  @supports not (width: 1cqw) { .slide { transform: none; } .frame { aspect-ratio: auto; width: 1280px; } }
+
+  /* The band on every slide but the title: a teal rule and the page foot. */
+  .slide::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--teal); }
+  .foot { position: absolute; left: 80px; right: 64px; bottom: 26px; display: flex; align-items: center;
+          gap: 10px; font-size: 14px; color: var(--ink-3); }
+  .foot svg { width: 22px; height: 22px; }
+  .foot .num { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .kicker { font-size: 15px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+            color: var(--teal); margin: 0 0 14px; }
+  h1 { font-size: 92px; line-height: 1; margin: 0; letter-spacing: -0.03em; }
+  h2 { font-size: 44px; line-height: 1.15; margin: 0 0 22px; letter-spacing: -0.02em; max-width: 26ch; }
+  h3 { font-size: 22px; margin: 0 0 6px; }
+  p, li { font-size: 22px; line-height: 1.45; color: var(--ink-2); }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 26px; color: var(--ink-2); max-width: 44ch; }
+  .small { font-size: 16px; color: var(--ink-3); }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--teal-soft); color: var(--teal-dark);
+         padding: 1px 6px; border-radius: 5px; }
+  ul.points { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; max-width: 980px; }
+  ul.points li { position: relative; padding-left: 34px; margin: 0; }
+  ul.points li::before { content: ""; position: absolute; left: 4px; top: 11px; width: 14px; height: 14px;
+                         border-radius: 50%; background: var(--gold); border: 2px solid var(--ink); }
+  ul.points b { color: var(--ink); }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 8px; }
+  .cards.two { grid-template-columns: repeat(2, 1fr); }
+  .card { background: #fff; border: 1px solid var(--tile); border-top: 5px solid var(--teal);
+          border-radius: 14px; padding: 18px 20px; }
+  .card p { font-size: 18px; margin: 0; }
+  .card.gold { border-top-color: var(--gold); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 19px; background: #fff; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--tile); vertical-align: top; }
+  th { background: var(--teal); color: #fff; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.best td { background: var(--gold-soft); }
+
+  .figure { display: flex; gap: 40px; align-items: center; }
+  .figure img { max-height: 560px; max-width: 800px; background: #fff; border: 1px solid var(--tile);
+                border-radius: 14px; padding: 12px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .box { background: #fff; border: 1px solid var(--tile); border-radius: 14px; padding: 22px 26px; }
+  .box.teal { background: var(--teal-soft); border-color: #bfdcda; }
+  .box.gold { background: var(--gold-soft); border-color: #f0d9a8; }
+  .box h3 { margin-bottom: 10px; }
+  .box ul { margin: 0; padding-left: 22px; }
+  .box li { font-size: 19px; margin-bottom: 6px; }
+
+  /* The title and closing slides: dark teal, the logo on its cream tile. */
+  .slide.cover { background: var(--teal-dark); color: #fff; display: flex; flex-direction: column;
+                 justify-content: center; padding-left: 110px; }
+  .slide.cover::before { background: var(--gold); width: 14px; }
+  .cover .logo { width: 150px; height: 150px; padding: 14px; background: var(--cream); border: 1px solid var(--tile);
+                 border-radius: 34px; margin-bottom: 30px; }
+  .cover h1 { color: #fff; }
+  .cover h1 .deva { color: var(--gold); font-weight: 600; }
+  .cover .tag { font-size: 32px; color: #e6f2f1; margin: 18px 0 14px; max-width: 30ch; }
+  .cover .origin { font-size: 19px; font-style: italic; color: #a9d4d1; max-width: 60ch; }
+  .cover .meta { margin-top: 34px; font-size: 18px; color: #cfe6e4; }
+  .cover .meta b { color: var(--gold); }
+  .cover .foot { color: #a9d4d1; }
+
+  /* The QR code for the repository, on a cream card, at the right of the
+     title and closing slides. */
+  .qr-card { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); width: 290px;
+             background: var(--cream); border-radius: 24px; padding: 22px 22px 16px; text-align: center;
+             border: 1px solid var(--tile); }
+  .qr-card svg.qr { width: 246px; height: 246px; display: block; }
+  .qr-card p { color: var(--ink-2); font-size: 17px; margin: 10px 0 0; }
+  .qr-card p b { color: var(--ink); }
+  .cover .open { margin-top: 26px; font-size: 22px; color: #fff; max-width: 34ch; }
+  .cover .open b { color: var(--gold); }
+
+  .divider { background: var(--teal-soft); }
+  .divider h2 { font-size: 58px; max-width: 20ch; }
+
+  @page { size: 1280px 720px; margin: 0; }
+  @media print {
+    html { background: none; scroll-snap-type: none; }
+    .deck { display: block; padding: 0; }
+    .frame { width: 1280px; height: 720px; aspect-ratio: auto; break-after: page; }
+    .slide { transform: none; box-shadow: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<!-- The logo, drawn once and reused on every slide's foot. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="-2 -5 50 50">
+    <ellipse cx="23" cy="17" rx="21" ry="6" fill="none" stroke="#0A5453" stroke-width="1.4" stroke-dasharray="3 2.4"/>
+    <path d="M6 38 L20 12 L25 20 L29 14 L40 38 Z" fill="#0E7C7B" stroke="#14181C" stroke-width="2" stroke-linejoin="round"/>
+    <line x1="20" y1="1" x2="20" y2="12" stroke="#14181C" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="3.5" cy="16" r="2.6" fill="#E9A82C" stroke="#14181C" stroke-width="1.2"/>
+    <circle cx="41" cy="20.5" r="2" fill="#FFFDF7" stroke="#14181C" stroke-width="1.2"/>
+  </symbol>
+</svg>
+<main class="deck">
+
+<!-- 1 -->
+<div class="frame"><section class="slide cover" aria-label="Title">
+  <svg class="logo" role="img" aria-label="Meru logo: a mountain with a dashed orbit around its peak"><use href="#logo"/></svg>
+  <h1>Meru <span class="deva" lang="hi">मेरु</span></h1>
+  <p class="tag">A private AI workspace on machines your company manages.</p>
+  <p class="origin">For a CTO or CIO weighing a pilot, and for a platform team weighing a managed offering. Facts, measurements and gaps, as of this release.</p>
+  <p class="meta"><b>v0.4.19</b> · October 2026 · aarora79.github.io/meru</p>
+  <div class="qr-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" class="qr"><title>QR code: github.com/aarora79/meru</title><path fill="#fffdf7" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#14181c" d="M2 2.5h7m3 0h3m2 0h2m1 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m2 0h2m2 0h1m1 0h2m2 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h1m1 0h3m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m4 0h1m2 0h2m3 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h5m3 0h2m1 0h1m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-20 1h2m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h2m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m-26 1h2m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m2 0h2m-25 1h3m2 0h1m1 0h1m4 0h2m2 0h2m1 0h3m2 0h1m-27 1h2m3 0h1m1 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h2m-29 1h2m3 0h2m2 0h1m1 0h1m1 0h1m2 0h2m1 0h2m2 0h1m1 0h1m2 0h1m-29 1h1m3 0h2m3 0h2m1 0h2m1 0h3m4 0h1m1 0h1m1 0h1m1 0h1m-27 1h1m3 0h1m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m3 0h1m3 0h1m-29 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h1m-26 1h1m1 0h2m2 0h2m1 0h2m1 0h3m2 0h1m1 0h1m1 0h1m1 0h1m3 0h2m-29 1h1m2 0h2m2 0h1m2 0h3m1 0h1m3 0h1m1 0h5m3 0h1m-27 1h1m3 0h1m3 0h1m2 0h3m1 0h2m1 0h1m4 0h2m1 0h1m-26 1h1m1 0h1m4 0h1m2 0h3m1 0h2m4 0h1m1 0h1m1 0h2m-29 1h4m1 0h2m2 0h1m3 0h2m2 0h1m1 0h7m-18 1h2m1 0h2m2 0h2m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m4 0h10m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h5m3 0h4m3 0h2m-26 1h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h3m1 0h6m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h3m6 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h3m1 0h2m2 0h3m3 0h1m1 0h2m-29 1h1m5 0h1m1 0h2m1 0h4m1 0h2m2 0h4m1 0h1m1 0h2m-29 1h7m2 0h3m1 0h1m3 0h2m1 0h1m1 0h1m1 0h2m1 0h1"/></svg><p><b>github.com/aarora79/meru</b><br>Scan for the code</p></div>
+</section></div>
+
+<!-- 2 -->
+<div class="frame"><section class="slide" aria-label="Slide 2">
+  <p class="kicker">The question</p>
+  <h2>The data AI helps with most is the data a company least wants to send out</h2>
+  <ul class="points">
+    <li><b>A hosted assistant reads each question on its provider's servers</b>, with the files, mail and notes attached to it.</li>
+    <li><b>Each one is a data processor</b> to assess, contract with and monitor, and its terms can change.</li>
+    <li><b>Meru takes the other path.</b> Open-weight models run on the employee's own machine, beside the data, and no model provider is in the path.</li>
+  </ul>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">2</span></div>
+</section></div>
+
+<!-- 3 -->
+<div class="frame"><section class="slide" aria-label="Slide 3">
+  <p class="kicker">What Meru is</p>
+  <h2>An assistant that runs as a program on each person's machine</h2>
+  <div class="cards">
+    <div class="card"><h3>One daemon, three clients</h3><p><code>merud</code> keeps the models warm and owns the data. Meru.app, <code>meru chat</code> in a terminal, and <code>meru run --json</code> for scripts talk to it over a local socket.</p></div>
+    <div class="card"><h3>Local models</h3><p>Open-weight models through Ollama on 127.0.0.1. The code has no path to a cloud model, and a test in CI fails the build if one appears.</p></div>
+    <div class="card gold"><h3>The person's own data</h3><p>Their folders, mail and calendar, notes in Obsidian or Apple Notes, the web through a search engine they run, and their voice through Whisper.</p></div>
+  </div>
+  <p class="small" style="margin-top:22px">Apache License 2.0. Written in Go. 19 releases since the first commit on 23 September 2026. macOS on Apple silicon first; Linux supported; Windows untested.</p>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">3</span></div>
+</section></div>
+
+<!-- 4 -->
+<div class="frame"><section class="slide" aria-label="Slide 4">
+  <p class="kicker">The boundary</p>
+  <div class="figure">
+    <img src="../architecture/img/100-parts.png" alt="Meru's parts. Inside the machine: the clients pass a question to merud, which holds the agent loop and dispatch. The agent loop uses the local models in Ollama, the person's data and skills; dispatch reaches tools. Only the tools the configuration allows reach services outside the machine.">
+    <div>
+      <h2 style="font-size:36px">Everything inside the dashed line runs on the employee's machine</h2>
+      <p>The models, the search index, the chat history and the memories stay there. Only tools the configuration allows reach outside.</p>
+    </div>
+  </div>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">4</span></div>
+</section></div>
+
+<!-- 5 -->
+<div class="frame"><section class="slide" aria-label="Slide 5">
+  <p class="kicker">Data flow</p>
+  <h2>What leaves the machine, and what doesn't</h2>
+  <table>
+    <tr><th>Data</th><th>Where it goes</th></tr>
+    <tr><td>Questions and answers</td><td>Nowhere. The models run in Ollama on the same machine.</td></tr>
+    <tr><td>Files and notes</td><td>Indexed into a SQLite file on the machine; read live, never copied out.</td></tr>
+    <tr><td>Telemetry, crash reports, update checks</td><td>None. Metrics go to a Prometheus the company runs on the same machine.</td></tr>
+    <tr><td>Web searches</td><td>The search words go to the engines the company's own SearXNG asks.</td></tr>
+    <tr><td>Web pages</td><td>Public addresses only. Meru asks first for an address no search or question gave, unless the user trusted that website.</td></tr>
+    <tr><td>Mail and calendar</td><td>Read through the user's own Google account, when they connect it.</td></tr>
+  </table>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">5</span></div>
+</section></div>
+
+<!-- 6 -->
+<div class="frame"><section class="slide" aria-label="Slide 6">
+  <p class="kicker">Controls</p>
+  <h2>Controls a security team can check</h2>
+  <table>
+    <tr><th style="width:22%">Control</th><th>How Meru does it</th></tr>
+    <tr><td>Tools</td><td>Deny by default. A new tool server contributes nothing until config names its tools. Each tool is Off, Ask or Allow; sending, deleting or changing asks every time.</td></tr>
+    <tr><td>Network</td><td>Connects only to its own machine, except to servers marked remote and to public pages it reads; refuses private addresses at connect time.</td></tr>
+    <tr><td>Secrets</td><td>API keys in one file only the user can read; kept out of the model, the logs and the history.</td></tr>
+    <tr><td>Supply chain</td><td>Every program Meru installs is pinned by version and SHA-256 or image digest; CI signs a record of how its speech server was built.</td></tr>
+    <tr><td>Enforcement</td><td>Policy tests in CI fail the build on a cloud model, a second path to a tool, or a forbidden import.</td></tr>
+  </table>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">6</span></div>
+</section></div>
+
+<!-- 7 -->
+<div class="frame"><section class="slide" aria-label="Slide 7">
+  <p class="kicker">Audit</p>
+  <h2>Every tool call leaves a record on the machine</h2>
+  <ul class="points">
+    <li><b>One path for every tool call.</b> MCP servers, other agents, local commands and built-in tools all go through <code>dispatch</code>, which checks the allowlist, asks for approval, and logs the call.</li>
+    <li><b>Two records.</b> A <code>tool_calls</code> row with the tool, time, duration, outcome and approval, and the session's transcript, a plain JSON Lines file.</li>
+    <li><b>Incognito keeps the audit row.</b> An incognito chat keeps no transcript, and its rows keep no arguments or results, but each call is still counted.</li>
+    <li><b>Metrics and traces</b> in OpenTelemetry, to a collector on the same machine only. Prompt and answer text stay out of traces unless config turns capture on.</li>
+  </ul>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">7</span></div>
+</section></div>
+
+<!-- 8 -->
+<div class="frame"><section class="slide" aria-label="Slide 8">
+  <p class="kicker">Measured</p>
+  <h2>Answer quality and speed by Mac memory</h2>
+  <table>
+    <tr><th>Mac memory</th><th>Answer model</th><th class="num">Passed</th><th class="num">First word, median</th><th class="num">Whole answer, median</th></tr>
+    <tr><td>under 32 GB</td><td><code>MiniCPM5-2B</code></td><td class="num">68%</td><td class="num">11.6 s</td><td class="num">13.1 s</td></tr>
+    <tr><td>32 to 47 GB</td><td><code>gemma4:26b-a4b-it-qat</code></td><td class="num">80%</td><td class="num">17.6 s</td><td class="num">18.3 s</td></tr>
+    <tr><td>48 to 63 GB</td><td><code>qwen3.6:35b</code></td><td class="num">89%</td><td class="num">5.6 s</td><td class="num">10.4 s</td></tr>
+    <tr class="best"><td>64 GB or more</td><td><code>qwen3.6:35b-a3b-mxfp8</code></td><td class="num">89%</td><td class="num">4.1 s</td><td class="num">6.5 s</td></tr>
+  </table>
+  <p class="small" style="margin-top:16px">150 results per model set, 3 runs of 50 questions about the author's own files, notes, mail and calendar, which aren't published. Times include routing, search and tool rounds. Your numbers on your data will differ. Source: docs/benchmarks/results.md, 28 September 2026.</p>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">8</span></div>
+</section></div>
+
+<!-- 9 -->
+<div class="frame"><section class="slide" aria-label="Slide 9">
+  <p class="kicker">Sizing</p>
+  <h2>What the hardware has to hold</h2>
+  <div class="two-col">
+    <div class="box teal"><h3>Memory, as Ollama loaded it</h3><ul>
+      <li><code>qwen3.6:35b</code> with a 262,144-token window: 28.8 GB</li>
+      <li>The same model at 32,768 tokens: 23.4 GB</li>
+      <li><code>MiniCPM5-2B</code>, the fast model: 2.8 GB</li>
+      <li>The search model: 0.7 GB</li>
+    </ul></div>
+    <div class="box gold"><h3>What follows</h3><ul>
+      <li>A 64 GB Apple silicon Mac runs the full set with room to spare.</li>
+      <li>Under 32 GB, Meru runs the 2B model and passes fewer questions.</li>
+      <li>Meru sizes each answer model's window to fit an eighth of memory.</li>
+      <li>The answer model wrote 84 to 93 tokens a second on an M4 Max.</li>
+    </ul></div>
+  </div>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">9</span></div>
+</section></div>
+
+<!-- 10 -->
+<div class="frame"><section class="slide" aria-label="Slide 10">
+  <p class="kicker">Rollout today</p>
+  <h2>What it takes to put Meru on a machine</h2>
+  <ul class="points">
+    <li><b>A Mac installer</b> on a disk image sets up Ollama, web search, folders and <code>merud</code> in eleven steps in a window. A one-line installer does the same in a terminal.</li>
+    <li><b>One config file per person</b>, <code>~/.meru/config.toml</code>: the models, the folders, the tools and what each may do.</li>
+    <li><b>Updates are manual.</b> Meru never checks for them, so the company decides when a new version reaches each machine.</li>
+    <li><b>Files are the source of truth.</b> The database can be deleted and rebuilt from the transcripts, memories and config.</li>
+  </ul>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">10</span></div>
+</section></div>
+
+<!-- 11 -->
+<div class="frame"><section class="slide" aria-label="Slide 11">
+  <p class="kicker">Gaps</p>
+  <h2>What Meru does not do today</h2>
+  <div class="two-col">
+    <div class="box"><h3>For a fleet</h3><ul>
+      <li>No central console to push config or policy</li>
+      <li>No single sign-on or directory link</li>
+      <li>No central log collection: metrics and traces stay on the machine by design</li>
+      <li>One person per machine; no shared server</li>
+    </ul></div>
+    <div class="box"><h3>For the project</h3><ul>
+      <li>Pre-alpha, v0.4.19</li>
+      <li>One maintainer; the first outside contribution merged in October 2026</li>
+      <li>Scheduled jobs come in v0.5</li>
+      <li>Windows builds, untested</li>
+    </ul></div>
+  </div>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">11</span></div>
+</section></div>
+
+<!-- 12 -->
+<div class="frame"><section class="slide" aria-label="Slide 12">
+  <p class="kicker">For a platform provider</p>
+  <h2>What a managed offering around Meru would have to add</h2>
+  <div class="cards two">
+    <div class="card"><h3>Fleet setup and config</h3><p>Install, update and push <code>config.toml</code> with each team's allowlists, as the company's device management already does for other programs.</p></div>
+    <div class="card"><h3>A model catalog</h3><p>Open-weight models chosen per hardware tier, pinned by digest and served from a mirror the company controls.</p></div>
+    <div class="card gold"><h3>Hardware</h3><p>Apple silicon Macs or GPU machines with enough memory per person, on desks or in the company's own account; the boundary holds wherever the machine is.</p></div>
+    <div class="card gold"><h3>Connectors and audit</h3><p>MCP servers for the company's own systems, and a collector the company runs on each machine to gather the audit rows Meru keeps there.</p></div>
+  </div>
+  <p class="small" style="margin-top:16px">The Apache License 2.0 allows this. Meru's core stays local by design: no cloud model, no telemetry, deny by default.</p>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">12</span></div>
+</section></div>
+
+<!-- 13 -->
+<div class="frame"><section class="slide" aria-label="Slide 13">
+  <p class="kicker">For a CTO or CIO</p>
+  <h2>A four-week pilot with ten people</h2>
+  <table>
+    <tr><th style="width:16%">Week</th><th>What happens</th><th style="width:32%">What to look at</th></tr>
+    <tr><td>1</td><td>Pick ten people with Apple silicon Macs of 32 GB or more. Install, add their work folders, connect one system.</td><td>Install time; the controls table checked against the config</td></tr>
+    <tr><td>2 and 3</td><td>They use it for real work: questions on their files, mail, notes and the web.</td><td>The Usage screen: questions, routes, answer times, tool calls by outcome</td></tr>
+    <tr><td>4</td><td>Security reviews the <code>tool_calls</code> rows and the network rules; the ten say what worked.</td><td>Pass or fail against the company's own criteria</td></tr>
+  </table>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">13</span></div>
+</section></div>
+
+<!-- 14 -->
+<div class="frame"><section class="slide cover" aria-label="Closing">
+  <svg class="logo" role="img" aria-label="Meru logo"><use href="#logo"/></svg>
+  <h1 style="font-size:72px">Built in the open</h1>
+  <p class="tag">The code, the design documents and every decision are in the repository.</p>
+  <p class="open">We're happy to take contributions: see the <b>issue list</b>. Questions and pilots start there too.</p>
+  <p class="meta"><b>github.com/aarora79/meru</b> · aarora79.github.io/meru</p>
+  <div class="qr-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" class="qr"><title>QR code: github.com/aarora79/meru</title><path fill="#fffdf7" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#14181c" d="M2 2.5h7m3 0h3m2 0h2m1 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m2 0h2m2 0h1m1 0h2m2 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h1m1 0h3m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m4 0h1m2 0h2m3 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h5m3 0h2m1 0h1m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-20 1h2m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h2m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m-26 1h2m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m2 0h2m-25 1h3m2 0h1m1 0h1m4 0h2m2 0h2m1 0h3m2 0h1m-27 1h2m3 0h1m1 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h2m-29 1h2m3 0h2m2 0h1m1 0h1m1 0h1m2 0h2m1 0h2m2 0h1m1 0h1m2 0h1m-29 1h1m3 0h2m3 0h2m1 0h2m1 0h3m4 0h1m1 0h1m1 0h1m1 0h1m-27 1h1m3 0h1m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m3 0h1m3 0h1m-29 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h1m-26 1h1m1 0h2m2 0h2m1 0h2m1 0h3m2 0h1m1 0h1m1 0h1m1 0h1m3 0h2m-29 1h1m2 0h2m2 0h1m2 0h3m1 0h1m3 0h1m1 0h5m3 0h1m-27 1h1m3 0h1m3 0h1m2 0h3m1 0h2m1 0h1m4 0h2m1 0h1m-26 1h1m1 0h1m4 0h1m2 0h3m1 0h2m4 0h1m1 0h1m1 0h2m-29 1h4m1 0h2m2 0h1m3 0h2m2 0h1m1 0h7m-18 1h2m1 0h2m2 0h2m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m4 0h10m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h5m3 0h4m3 0h2m-26 1h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h3m1 0h6m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h3m6 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h3m1 0h2m2 0h3m3 0h1m1 0h2m-29 1h1m5 0h1m1 0h2m1 0h4m1 0h2m2 0h4m1 0h1m1 0h2m-29 1h7m2 0h3m1 0h1m3 0h2m1 0h1m1 0h1m1 0h2m1 0h1"/></svg><p><b>github.com/aarora79/meru</b><br>Scan for the code</p></div>
+</section></div>
+
+</main>
+</body>
+</html>
