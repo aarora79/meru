@@ -325,7 +325,7 @@
 
   <rect x="216" y="168" width="150" height="56" rx="8" class="bg"/>
   <text x="230" y="192" class="t2" font-size="13" font-weight="600">scheduler · v0.5</text>
-  <text x="230" y="211" class="t3" font-size="11.5">prompts on a timer</text>
+  <text x="230" y="211" class="t3" font-size="11.5">prompts, skills, scripts</text>
   <path d="M290 168 L290 124" class="lnd" marker-end="url(#f1a)"/>
 
   <rect x="410" y="168" width="150" height="56" rx="8" class="ba2"/>
@@ -598,7 +598,7 @@
   </tbody>
 </table></div>
 
-<p>The question and your answer travel over the same socket as the answer text. <code>meru chat</code> shows the call in a box that opens with deny selected, so a stray Enter runs nothing. One-shot <code>meru</code> asks on the terminal, <code>[o]nce [s]ession [d]eny</code>. <code>merud</code> writes your choice to the transcript. A session approval never reaches the config file; to stop Meru asking about a tool for good, you take it off the confirm list yourself. When nobody can answer, as in a script, a pipe or a scheduled job, the call doesn't run, and the log records it as declined.</p>
+<p>The question and your answer travel over the same socket as the answer text. <code>meru chat</code> shows the call in a box that opens with deny selected, so a stray Enter runs nothing. One-shot <code>meru</code> asks on the terminal, <code>[o]nce [s]ession [d]eny</code>. <code>merud</code> writes your choice to the transcript. A session approval never reaches the config file; to stop Meru asking about a tool for good, you take it off the confirm list yourself. When nobody can answer, as in a script or a pipe, the call doesn't run, and the log records it as declined. A scheduled job runs only the tools it lists in its <code>allow</code>, and declines the rest (see <a href="#jobs">Scheduled jobs</a>).</p>
 
 <!-- ============================================================ -->
 <h2 id="models">Models: three jobs, two profiles</h2>
@@ -671,7 +671,7 @@
 <pre><code>{"ts":"2026-09-23T10:15:03Z","type":"tool_call","call_id":"call-1","kind":"mcp","server":"google","tool":"search_gmail_messages","args":{"query":"launch date"},"trace_id":"4bf9…"}
 {"ts":"2026-09-23T10:15:09Z","type":"assistant","text":"Sam and Priya agreed on 14 October…","tokens_in":2310,"tokens_out":188,"trace_id":"4bf9…"}</code></pre>
 
-<p>The index is one SQLite file, <code>~/.meru/meru.db</code>, readable only by you. It holds your files cut into pieces, with a keyword index and an embedding for each piece, and since v0.3 a row for every tool call. Later milestones add the rest: every message and your memories (v0.4), and your scheduled jobs with the outcome of each run (v0.5). If you delete <code>meru.db</code>, <code>merud</code> rebuilds the tool calls from the transcripts when it next starts. Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
+<p>The index is one SQLite file, <code>~/.meru/meru.db</code>, readable only by you. It holds your files cut into pieces, with a keyword index and an embedding for each piece, and since v0.3 a row for every tool call. Later milestones add the rest: every message and your memories (v0.4), and, for each scheduled job's run, which job it was (v0.5). If you delete <code>meru.db</code>, <code>merud</code> rebuilds the tool calls from the transcripts when it next starts. Each message and tool call keeps its turn's <b>trace ID</b>, a label that links it to the timing data in <a href="#what-you-can-see">What you can see</a>.</p>
 
 <figure id="fig-storage">
 <div class="figbox">
@@ -963,7 +963,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
   <path d="M770 96 L770 244" class="ln" marker-end="url(#f5a)"/>
 
   <text x="12" y="24" class="t3" font-size="11.5">Inside dispatch · the only path from the model to anything outside merud</text>
-  <text x="12" y="312" class="t3" font-size="11.5">Scripts, and scheduled jobs from v0.5, have no one to ask, so a tool on the confirm list is declined there.</text>
+  <text x="12" y="312" class="t3" font-size="11.5">Scripts have no one to ask, so a confirm-list tool is declined; a job runs only what its allow lists.</text>
 </svg>
 </div>
 <figcaption><b>Figure 5.</b> Two lists in your config decide every call, and all three outcomes end in the same log, so a denied or declined call leaves the same trail as one that ran.</figcaption>
@@ -995,7 +995,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 <p>While web search is on, every route offers both tools, and the prompt carries one line: "When you aren't sure of a fact, such as a song, a film, a book, a person, a product, a place or anything that may have changed, call web_search before you answer, and cite the pages you use. Never tell the user you can't search the web." In a real session, asked what an old film song meant, the router sent the question straight to the model, which had no web tool and said it couldn't search. The Files, Mail and Just talk scopes still offer no web tools.</p>
 <p><code>web_fetch</code> is on by default, because a small model that trusts old snippets gets "what's the latest release?" wrong. Taking it out of <code>[builtin] tools</code> turns it off. It makes <code>merud</code> itself connect to sites off this machine, and those sites see your IP address. It refuses any address on this machine or your local network, checked as it connects, so neither a page nor a redirect can point it at your router or another local service.</p>
 
-<p>A URL can also carry data out: <code>https://attacker.example/?notes=...</code>. So <code>web_fetch</code> runs without asking only for a URL that a search result or your own question showed earlier in the same session. Any other URL asks you first, and so does a download, unless you approved downloads for this session. A scheduled job, from v0.5, will have nobody to ask, so it will skip them.</p>
+<p>A URL can also carry data out: <code>https://attacker.example/?notes=...</code>. So <code>web_fetch</code> runs without asking only for a URL that a search result or your own question showed earlier in the same session. Any other URL asks you first, and so does a download, unless you approved downloads for this session. A scheduled job has nobody to ask, so it skips them, even if its <code>allow</code> lists <code>web_fetch</code>.</p>
 
 <p>Your search words leave the machine, through SearXNG to the engines it asks. Your question, your files and the answer don't. When SearXNG isn't running, <code>merud</code> still starts, the model doesn't get <code>web_search</code>, and Settings says why, such as "Web search can't start: Docker isn't running." The setup steps are in <code>docs/running.md</code>.</p>
 
@@ -1039,9 +1039,13 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <!-- ============================================================ -->
 <h2 id="jobs">Scheduled jobs</h2>
 
-<p>Scheduled jobs come in v0.5. <code>merud</code> doesn't run them yet, and <code>config.toml</code> has no place for them today; this section gives the plan.</p>
+<p>Scheduled jobs are the first part of v0.5, built in steps under #167. A job is a name, a schedule and one thing to do: a question, a question with a skill you name, or a script you declared under <code>[[commands]]</code>. The schedule is a <i>cron expression</i>, the standard format for "run at these times", such as <code>0 7 <i> </i> 1-5</code> for 7:00 on weekdays, in your computer's time zone. Cron can't say "every other Tuesday", so a job may add <code>every_weeks = 2</code> and <code>from</code>, the first day it may run.</p>
 
-<p>A job is a prompt plus a <b>cron expression</b>, the standard format for "run at these times", such as every weekday at 7:00. You list jobs in <code>config.toml</code>. <code>merud</code> runs the prompt through the same agent loop as a typed question and sends the output to a digest, a file or a notification; <code>meru brief</code> shows the day's digest. Nobody watches a job, so no tool on a confirm list runs, and no local command with <code>confirm = true</code>; the output names the calls it skipped. Each run is a session with its own transcript, so a job's work shows up in the same log and traces as your questions, and it uses the same loaded models.</p>
+<p><code>merud</code> checks the jobs every 30 seconds against the clock. If your Mac slept through 7:00 and wakes at 8:30, the morning brief runs then, once, and says it ran late; a run more than 12 hours late is skipped, so yesterday's brief doesn't arrive at night. Each run is a chat in a <b>Jobs</b> folder in the chat list, named after the job and the time, and it can also write its answer to a file under <code>~/meru-output/</code>. A run uses the same loaded models, and lands in the same log and traces as your questions.</p>
+
+<p>Nobody watches a job, so nobody can approve a tool call. A job lists the tools it may use without asking, such as <code>write_file</code>; anything else that would ask is skipped, and the answer says so. A few calls are never allowed in a job, whatever it lists: changing settings, and reading a web address nobody gave Meru, so an unattended job can't send your data to a site a page told it about.</p>
+
+<p>You manage jobs in Settings, Jobs in the app, with <code>/jobs</code> in <code>meru chat</code>, by asking Meru ("every weekday at 7, brief me on my calendar", which you approve on a card), or in <code>config.toml</code>. Each job can run now, be paused and resumed, or deleted, and a run in progress can be stopped.</p>
 
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
