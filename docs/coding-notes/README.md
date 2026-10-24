@@ -51,6 +51,7 @@ Read them in this order; each builds on the ones before it.
 30. [render](render.md): `web_fetch`'s page reader, a headless Chrome per page that needs JavaScript, behind a proxy
 31. [applenotes](applenotes.md): reading the Notes app's database, live and read-only, for the Apple Notes tools
 32. [speech](speech.md): speech to text, a WAV recording to whisper-server and back, for the `transcribe` op
+33. [jobs](jobs.md): the time rules for scheduled jobs: cron schedules as bitmasks, the next run, and catch-up after sleep
 
 ### Go basics
 
@@ -58,6 +59,7 @@ Read them in this order; each builds on the ones before it.
 - [Struct tags](go-basics/struct-tags.md)
 - [Errors](go-basics/errors.md)
 - [defer](go-basics/defer.md)
+- [Bitmasks](go-basics/bitmasks.md)
 - [Interfaces](go-basics/interfaces.md)
 - [HTTP clients](go-basics/http-clients.md)
 - [HTTP servers](go-basics/http-servers.md)

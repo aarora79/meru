@@ -258,6 +258,8 @@ internal/
                      its gzipped protobuf
   speech/            speech to text for the transcribe op: checks a WAV recording, posts it to
                      the whisper connector's whisper-server, and cleans Whisper's markers
+  jobs/              the time rules for [[jobs]] (v0.5): five-field cron schedules with
+                     every_weeks, the next run, the words for it, and catch-up after sleep
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)

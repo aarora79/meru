@@ -633,6 +633,7 @@ add` and `configure` use, and applies it at once:
 | `model_use` | switches to a model set until `merud` stops, unloading the old answer model first (see [Model sets](#model-sets)) |
 | `model_save` | writes the models in use to `[models]` |
 | `model_set` | switches to a model on that list that Ollama has, the same way, then writes `[models] main` |
+| `jobs`, `job_set`, `job_remove`, `job_run`, `job_cancel` | (v0.5) list, add or change, remove, run now and stop scheduled jobs (see [Scheduler](#scheduler)) |
 
 A change to a list edits only that list's lines in `config.toml`: every comment
 and every other key stays. `merud` writes a temporary file, loads it, checks that
@@ -959,9 +960,12 @@ and arguments and offers the choices `merud` sends, from these:
   arguments laid out to read, focus on the answer that runs nothing, and Edit
   first, which says no and puts the call in the composer as a draft (see
   [Desktop app](#desktop-app)).
-- **Nobody to ask means no.** A scheduled job, or a client that passed no way to
-  ask, can't say yes, so `dispatch` ends every call that needs a yes as `declined`
-  without a prompt. A job's output says which calls it skipped.
+- **Nobody to ask means no.** A client that passed no way to ask can't say yes,
+  so `dispatch` ends every call that needs a yes as `declined` without a prompt.
+  A scheduled job is the one exception, and a narrow one: a tool that would ask
+  once runs when the job's `allow` names it, and a call that asks every time is
+  declined whatever the job says (see [Scheduler](#scheduler)). A job's answer
+  says which calls it skipped.
 
 ### How a conversation continues
 
@@ -2159,7 +2163,7 @@ The full design, with the prompt contract, tests and calibration results, is in
 Meru keeps two kinds of data, with one rule between them: **files hold the truth,
 and the database indexes them.** Delete `meru.db` and `merud` rebuilds it.
 
-![Diagram with the files that hold the truth on the left and meru.db on the right. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec. Replaying the session transcripts fills tool_calls and turns and, from v0.4, sessions, messages, message_fts, summary_fts and session_vec. A syncer embeds the memory files into memories, memory_fts and memory_vec. Reading config.toml fills meta. The jobs and job_runs tables, drawn dashed, are planned for v0.5. Delete meru.db and merud rebuilds every table from the files.](docs/architecture/img/300-storage.png)
+![Diagram with the files that hold the truth on the left and meru.db on the right. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec. Replaying the session transcripts fills tool_calls and turns and, from v0.4, sessions, messages, message_fts, summary_fts and session_vec. A syncer embeds the memory files into memories, memory_fts and memory_vec. Reading config.toml fills meta. From v0.5 a turn row also names the scheduled job it ran for. Delete meru.db and merud rebuilds every table from the files.](docs/architecture/img/300-storage.png)
 
 *Figure 4. Every arrow runs left to right, and every table on the right has a file behind it, memories included. v0.2 built `documents`, `chunks`, `chunk_fts`, `chunk_vec` and `meta`, and v0.3 added `tool_calls` and `turns`; the rest arrive with later milestones, as the table below marks. Edit a memory file by hand and the indexer picks up the change the same way it does for your notes.*
 
@@ -2249,7 +2253,7 @@ files with mode `0600`, so only you can read them.
 | `memories` (v0.4) | one row per memory file: its ID (`<kind>/<name>.md`), kind, text, created, source, mtime and content hash | `memory/*/*.md` |
 | `memory_vec` / `memory_fts` (v0.4) | vector and keyword indexes over memories | memories |
 | `turns` | one row per answered question: session, start time, source, route, tokens in and out, duration, tool calls, the files its prompt read, trace ID, and the answer model with its time to first token, writing time, bad calls and whether the turn hit the cap. `meru usage` and the chat's usage numbers count it | `sessions/*.jsonl` (the assistant line holds route, duration, files and the model's numbers; the `model_switch` lines name the model) |
-| `jobs` / `job_runs` (v0.5) | scheduled jobs and each run's outcome | jobs: `[[jobs]]` in `config.toml`; runs: the job's session transcript |
+| `turns.job` (v0.5) | which job a run belongs to, for each job's last run | the run's transcript: its user line names the job; the jobs themselves are `[[jobs]]` in `config.toml` and stay out of the database |
 | `meta` | schema version, embedding model name, vector size and task-prefix fingerprint | config |
 
 v0.2 built `documents`, `chunks`, `chunk_vec`, `chunk_fts` and `meta`, and v0.3
@@ -4450,7 +4454,8 @@ offers a pattern.
 disk; there it offers once, session and deny, as `write_file` does, and a session
 approval covers later saves of known URLs. A download to an unknown URL never
 offers the website choices: it asks every time. A scheduled job has
-nobody to ask, so `dispatch` declines a call that asks there.
+nobody to ask, so `dispatch` declines a call that asks every time there, even
+when the job's `allow` lists `web_fetch` (see [Scheduler](#scheduler)).
 
 `dispatch` decides whether a tool asks per tool, from `Confirm`. For the guard, a
 backend may also have `ConfirmCall(call)`, which decides per call and which
@@ -4929,34 +4934,153 @@ with "network was renamed remote".
 
 ## Scheduler
 
-The scheduler is planned for v0.5 and isn't built yet. `config.toml` has no
-`[[jobs]]` key today, and `merud` refuses one as an unknown key. Two pieces are
-in place already: the `job` source on a request, and `dispatch` declining every
-call that needs a yes when the source is a job. This section describes the
-design.
+`merud` runs jobs on a schedule: a prompt, a prompt with a named skill, or one
+declared `[[commands]]` entry. It is the first half of v0.5, built in steps
+under [#167](https://github.com/aarora79/meru/issues/167): the schedule rules in
+`internal/jobs` come first, then the loop in `merud`, the ops, and the clients.
+Until the loop lands, `merud` refuses `[[jobs]]` as an unknown key.
 
-A job is a prompt plus a cron expression, declared in `config.toml`:
+### A job
+
+A job is a name, a schedule and one action, declared in `config.toml`:
 
 ```toml
 [[jobs]]
 name     = "morning-brief"
-schedule = "0 7 * * 1-5"          # 7:00 on weekdays
-prompt   = "Brief me on today's calendar, unread email and anything due this week."
-output   = "notification"          # or "digest", or a file path
+schedule = "0 7 * * 1-5"               # 7:00 on weekdays, this computer's time zone
+prompt   = "Brief me on today's calendar, unread mail and anything due this week."
+allow    = ["write_file"]              # tools it may use without asking once
+output   = "briefs/{date}.md"          # optional; under [skills] output_dir
+
+[[jobs]]
+name        = "go-news"
+schedule    = "0 9 * * 2"              # Tuesdays at 9:00 ...
+every_weeks = 2                        # ... every other week
+from        = "2026-10-27"             # the first day it may run
+skill       = "web-research"
+prompt      = "Summarize what changed in the Go release notes."
+
+[[jobs]]
+name     = "backup"
+schedule = "30 23 * * *"
+command  = "backup-notes"              # a [[commands]] entry; no model runs
 ```
 
-Each run is a session with its own transcript, so a job's work lands in the same log
-and traces as your questions. `merud` runs it through the same agent loop
-as a question you type, and sends the output to a digest, a file or a notification.
-Jobs don't stream, since no one is watching, and nobody can approve a tool call, so
-`dispatch` declines every call that needs a yes during a job. That includes a local
-command with `confirm = true`: its outcome is `declined`, its row still goes in, and
-the job's output says it skipped the call, so a brief with a missing section has a
-reason on record.
-The operating system's service manager (`launchd`, `systemd` or a Windows service)
-restarts `merud` after a reboot. The scheduler lives inside `merud`, not in the
-service manager, so jobs use the loaded models and land in the same audit log and
-traces.
+| Key | What it says |
+| --- | --- |
+| `name` | letters, digits, `-` and `_`, unique; at most 50 jobs, so the metric's `job` attribute stays a small set |
+| `schedule` | five-field cron: minute, hour, day of month, month, day of week; `*`, numbers, names (`mon`, `jan`), ranges, steps (`*/15`) and lists |
+| `every_weeks`, `from` | run only every N weeks; the weeks count from the Monday of `from`'s week, and nothing runs before `from` |
+| `prompt` | the question the run asks, through the agent loop |
+| `skill` | a skill the run loads without the pick step; needs `prompt` |
+| `command`, `args` | a `[[commands]]` entry and its parameters; no model runs |
+| `allow` | tools the run may use without asking, when they would ask once |
+| `output` | a file under `[skills] output_dir` the answer also goes to; `{date}`, `{time}` and `{job}` fill in |
+| `enabled` | `false` pauses the job |
+
+Each cron field becomes a set of allowed values, kept as a bitmask, and `Next`
+finds the first matching minute after a time, skipping whole months, days and
+hours that can't match. It builds each candidate from the wall clock with
+`time.Date`, so daylight saving time does what people expect: 2:30 on the night
+clocks jump from 2:00 to 3:00 doesn't happen, so a 2:30 job skips that day, and
+1:30 on the night it happens twice runs once. A schedule that matches no date
+within five years, such as 31 February, is refused when config loads. When the
+two day fields are both restricted, a day matches if either does, as in cron.
+`Describe` writes the schedule in words for the clients: "7:00 on weekdays",
+"9:00 on Tuesdays, every other week from 27 October 2026".
+
+### When a job runs
+
+A loop in `merud` asks `jobs.Due` about every enabled job every 30 seconds,
+comparing wall-clock times. A ticker that compares the clock finds a run that
+fell due while the Mac slept within 30 seconds of waking, whatever Go's timers
+do across sleep. `Due` takes the job's schedule, its last run and the time now:
+
+- **On time:** the latest scheduled time has passed since the last run; the job
+  runs.
+- **Late:** the Mac slept through 7:00 and woke at 8:30. The job runs once, for
+  the latest slot, and its prompt starts with a line that says how late it is. A
+  job that missed several slots, such as an hourly one overnight, runs once.
+- **Too late:** every missed slot is more than 12 hours old (`jobs.CatchUp`).
+  The job doesn't run; `merud` logs the slot it skipped and moves on, so
+  yesterday's brief doesn't arrive at 9 p.m.
+
+The last run of each job comes from the turns table at startup, which a rebuild
+fills from the transcripts. A run moves the job's last run when it starts, so a
+run that fails waits for its next time. Runs share the warm model and go one at
+a time; a job whose last run still runs skips that slot. A question you type
+isn't blocked: Ollama serves both.
+
+### Where a run goes
+
+Each run is a chat. Its session sits in a chat folder named **Jobs**, which the
+first run creates; both clients show it first in the chat list, and refuse to
+rename or delete it while `[[jobs]]` holds a job. A run's title is the job's
+name and the time, such as "morning-brief · Fri 24 Oct 07:00", so a job's runs
+read as a log, newest first. The user line records the job's name, so the
+turns row carries it and a rebuild knows each job's last run.
+
+- **A prompt** runs through `agent.Handle` with source `job`, as a typed
+  question would, within `[agent] turn_timeout`. Nothing streams, since nobody
+  watches.
+- **A skill** loads without the pick call; its tools join the route as a picked
+  skill's do.
+- **A command** runs the `[[commands]]` entry through `dispatch`, with no model:
+  a user line names it, and its output, cut to 4,000 characters, is the answer.
+- **`output`**, when set and the run ended `ok`, writes the answer with one
+  `write_file` call through `dispatch`, caller `meru`, so the file lands in the
+  audit log and stays under `output_dir`.
+
+### Approvals in a job
+
+Nobody can answer an approval during a job, so `dispatch` treats a job's calls
+by how they would ask:
+
+| The call | In a job |
+| --- | --- |
+| needs no approval | runs |
+| asks once (`confirm` lists it, or a command has `confirm = true`), and the job's `allow` names it | runs; the approval line reads `once` |
+| asks once, and `allow` doesn't name it | `declined`; the answer says it skipped the call |
+| asks every time: `configure`, `web_fetch` on a URL nobody gave, a download, an MCP tool in `always_confirm` | `declined`, whatever `allow` says |
+
+The last row keeps the URL guard whole: an unattended job can't send data out
+through an address the model made up, and a page it reads can't change config.
+A website in `[web] trusted_sites` reads without asking, in a job as anywhere.
+A job that reads mail or web pages can be told by them to do something, and
+what its `allow` lists runs without asking, so allow only what the job needs,
+and a tool that sends only when sending is the job's purpose.
+
+### Pausing, cancelling and managing jobs
+
+| Op | What `merud` does |
+| --- | --- |
+| `jobs` | lists each job with its schedule in words, next and last run, the last run's outcome and chat, and whether it runs now |
+| `job_set` | adds or replaces one job in `config.toml` through a checked edit; with `dry_run` it only checks the job and returns its schedule in words, which the add form shows as you type. `enabled = false` pauses; resuming doesn't catch up the slots missed while paused |
+| `job_remove` | takes the job out of `config.toml`; its runs stay in the Jobs folder |
+| `job_run` | runs the job now, outside its schedule; this doesn't count as its last run |
+| `job_cancel` | stops the job's run in progress, as Ctrl-C stops a question: the run ends `cancelled`, its chat keeps what it wrote, and the schedule stays |
+
+Meru.app has a Jobs section in Settings, and `meru chat` has `/jobs`: Enter runs
+the marked job now, `c` stops its run, `p` pauses or resumes, `d d` deletes, and
+`/jobs add` walks through the keys. A request's job fields come only from
+`merud`'s own scheduler; the socket refuses them from a client, so no client can
+make an ask that borrows a job's approvals.
+
+You can also ask: "every other Tuesday at 9, summarize the Go release notes".
+The built-in tool `schedule_job` proposes the job, and asks every time, as
+`configure` does: the card shows the job, and nothing is saved until you say
+yes. A job's own turns never see `schedule_job` or `configure`, so no job makes
+or changes jobs.
+
+### What the scheduler doesn't do
+
+It sends no notifications and keeps no digest yet; those and `meru brief` are
+the rest of v0.5. A job never waits for an approval. It runs no shell line, only
+declared commands, and a script runs by its own path. It has no seconds, no
+`@reboot`, and no time zone but the computer's own. The operating system's
+service manager (`launchd`, `systemd`) restarts `merud` after a reboot; the
+scheduler lives inside `merud`, so jobs use the loaded models and land in the
+same audit log and traces.
 
 ---
 
@@ -5002,7 +5126,7 @@ capture_content  = false                     # prompt/response text in spans
 ### Traces
 
 Each turn produces one trace. A question over the socket starts at `rpc.request`;
-a scheduled job (v0.5) starts at `meru.turn`. In v0.3 a turn on the `search+tools`
+a scheduled job's run (v0.5) starts at `meru.job`, with the run's `meru.turn` under it. In v0.3 a turn on the `search+tools`
 route with one round of tool calls looks like this:
 
 ![Trace tree for one turn on the search+tools route with one tool round. rpc.request, with op, source and question length, holds meru.turn, with route, source, session, iterations and outcome. Under meru.turn, in order: meru.session; meru.transcript.append for the user line; meru.route, with a gen_ai.chat fast span and its POST /api/chat; meru.skills.pick, which runs beside meru.route, with its own gen_ai.chat fast span; meru.search, on turns about your files, with meru.retrieve and its POST /api/embed; meru.retrieve.sessions for past sessions, on turns that search first; meru.recall for memories, on every turn; meru.prompt; gen_ai.chat main for round 1, with its POST /api/chat; meru.dispatch, one per call, holding a tools/call span for MCP or an invoke_agent span for A2A; meru.transcript.append for the call's lines; gen_ai.chat main for round 2, the answer, with its POST /api/chat; and meru.transcript.append for the assistant line. The same trace ID goes on the transcript lines, the messages and tool_calls rows, and every log line of the turn.](docs/architecture/img/300-trace.png)
@@ -5093,7 +5217,8 @@ for the rest.
 | `meru.speech.duration` | histogram | model (the whisper connector's two files), outcome (ok/error/empty/too_long/cancelled) | how long one recording takes to become text, the server's start included |
 | `meru.web.render.duration` | histogram | outcome (ok/error/timeout/cancelled) | how long a page that needs JavaScript takes in the page reader, Chrome's start included |
 | `meru.rpc.active_streams` | up-down counter | — | open client sessions |
-| `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work |
+| `meru.scheduler.job_runs` | counter | job, outcome | (v0.5) scheduled work: did each job run, and how did it end |
+| `meru.scheduler.lateness` | histogram | job | (v0.5) how late runs start after sleep or a restart |
 
 The OTel Go runtime package adds heap, garbage-collection and goroutine metrics.
 
@@ -5403,8 +5528,9 @@ We'll settle these with working code and measurements.
   wait in a queue of up to five in the client.
 - **Tool approvals:** approve once, approve for this session, or deny, asked over
   the same socket as the answer. Session approvals never touch config; lasting
-  trust comes only from editing the `confirm` list. With no one to ask (scripts,
-  scheduled jobs), `dispatch` declines the call.
+  trust comes only from editing the `confirm` list. With no one to ask, as in a
+  script, `dispatch` declines the call; a scheduled job runs a call that asks
+  once when its `allow` names the tool, and declines the rest.
 - **Tool results:** the model reads up to 16,000 characters of each result; the
   transcript and `tool_calls` keep 4,000, with secrets removed. Base64 runs of
   2,000 characters or more in an MCP or A2A result become a short note first.
