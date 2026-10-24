@@ -117,6 +117,20 @@
   .nav span { opacity: 0.35; }
   .cover .nav a, .cover .nav span { background: var(--cream); }
 
+
+  .source { position: absolute; left: 80px; right: 170px; bottom: 52px; font-size: 12.5px; color: var(--ink-3); margin: 0; }
+
+  /* Variant B: capabilities and benefits. */
+  .vs { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; }
+  .vs.three { grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; }
+  .vs .box { padding: 16px 20px; }
+  .vs .box h3 { font-size: 20px; margin-bottom: 8px; }
+  .vs .box li { font-size: 15.5px; line-height: 1.38; margin-bottom: 5px; }
+  .vs .box p.label { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 10px 0 4px; }
+  .vs .box.meru { background: var(--teal-soft); border: 2px solid var(--teal); }
+  .vs .box.meru li::marker { color: var(--teal); }
+  .vs .box.meru b { color: var(--teal-dark); }
+
   @page { size: 1280px 720px; margin: 0; }
   @media print {
     html { background: none; scroll-snap-type: none; }
@@ -140,7 +154,6 @@
   </symbol>
 </svg>
 <main class="deck">
-
 <!-- 1 -->
 <div class="frame" id="s1"><section class="slide cover" aria-label="Title">
   <svg class="logo" role="img" aria-label="Meru logo: a mountain with a dashed orbit around its peak"><use href="#logo"/></svg>
@@ -299,6 +312,43 @@
 
 <!-- 11 -->
 <div class="frame" id="s11"><section class="slide" aria-label="Slide 11">
+  <p class="kicker">How it compares</p>
+  <h2 style="max-width:none; font-size:40px; margin-bottom:16px">What you get with Meru, Muse or OpenClaw</h2>
+  <div class="vs three">
+    <div class="box meru"><h3>Meru</h3><ul>
+      <li><b>Private by construction.</b> Models run on your Mac, and the code has no path to a cloud model; a test fails the build if one appears.</li>
+      <li><b>No account, no subscription,</b> no bill per question. It works offline once the models are down.</li>
+      <li><b>Answers from your own things,</b> with the files cited: folders, mail, calendar, Obsidian, Apple Notes, pictures and the web.</li>
+      <li><b>Memories you can read:</b> one Markdown file per fact, to fix or delete.</li>
+      <li><b>Asks before it sends, deletes or changes,</b> logs every tool call, and flags an answer that claims an action no tool took.</li>
+      <li><b>Your voice and pictures stay on your Mac.</b></li>
+    </ul></div>
+    <div class="box"><h3>Muse, from Meta</h3>
+      <p class="label">Good at</p><ul>
+      <li>Errands on the web: browsing, forms, bookings, payments through partners</li>
+      <li>Meta's newest models, on phone, web and glasses</li></ul>
+      <p class="label">You give up</p><ul>
+      <li>Your agent and data live in Meta's cloud</li>
+      <li>Chats train Meta's models unless you opt out</li>
+      <li>$20 or $100 a month past the free tier; US only</li></ul>
+    </div>
+    <div class="box"><h3>OpenClaw</h3>
+      <p class="label">Good at</p><ul>
+      <li>Reaching you in WhatsApp, Telegram, Slack and 20 more chat apps</li>
+      <li>Any model, and broad control of your computer</li></ul>
+      <p class="label">You take on</p><ul>
+      <li>A hosted model sees your questions unless you run a local one</li>
+      <li>Commands run on your computer; the sandbox is off by default</li>
+      <li>Vetting each skill: Cisco found ones that sent data out</li></ul>
+    </div>
+  </div>
+  <p class="source">As of October 2026. Sources: about.fb.com/news/2026/09/introducing-muse-personal-ai-agent; en.wikipedia.org/wiki/Muse_(AI_agent); github.com/openclaw/openclaw; blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare.</p>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">11</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s10" aria-label="Previous slide">&#8592;</a><a href="#s12" aria-label="Next slide">&#8594;</a></nav>
+</section></div>
+
+<!-- 12 -->
+<div class="frame" id="s12"><section class="slide" aria-label="Slide 12">
   <p class="kicker">Honest limits</p>
   <h2>What Meru does not do yet</h2>
   <div class="two-col">
@@ -314,12 +364,12 @@
       <li>macOS first; Linux supported; Windows untested</li>
     </ul></div>
   </div>
-  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">11</span></div>
-  <nav class="nav" aria-label="Slides"><a href="#s10" aria-label="Previous slide">&#8592;</a><a href="#s12" aria-label="Next slide">&#8594;</a></nav>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">12</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s11" aria-label="Previous slide">&#8592;</a><a href="#s13" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
-<!-- 12 -->
-<div class="frame" id="s12"><section class="slide" aria-label="Slide 12">
+<!-- 13 -->
+<div class="frame" id="s13"><section class="slide" aria-label="Slide 13">
   <p class="kicker">Under the hood</p>
   <div class="figure">
     <img src="../architecture/img/100-parts.png" alt="Meru's parts. Inside your machine: you type into meru or meru-desktop, which passes the question to merud. merud holds the agent loop and dispatch. The agent loop uses the local models, your data and skills; dispatch reaches other agents and tools. Only the tools you allow reach internet services outside the machine.">
@@ -328,19 +378,38 @@
       <p>The models, your data, the search index, your chats and memories. Only the tools you allow reach outside.</p>
     </div>
   </div>
-  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">12</span></div>
-  <nav class="nav" aria-label="Slides"><a href="#s11" aria-label="Previous slide">&#8592;</a><a href="#s13" aria-label="Next slide">&#8594;</a></nav>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">13</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s12" aria-label="Previous slide">&#8592;</a><a href="#s14" aria-label="Next slide">&#8594;</a></nav>
 </section></div>
 
-<!-- 13 -->
-<div class="frame" id="s13"><section class="slide cover" aria-label="Closing">
+<!-- 14 -->
+<div class="frame" id="s14"><section class="slide" aria-label="Slide 14">
+  <p class="kicker">Under the hood</p>
+  <div class="figure">
+    <img src="../architecture/img/100-ask.png" style="max-height:540px" alt="Sequence of one question across you, Meru, your files and memory, the local model and a tool. Meru looks up related notes and memories and sends them with your question to the model. When the model needs a tool, Meru asks you first if the tool changes something, then calls the tool and hands the result to the model. Meru streams the answer to you word by word, with sources.">
+    <div>
+      <h2 style="font-size:36px">What happens when you ask</h2>
+      <ul class="points" style="gap:10px">
+        <li style="font-size:19px"><b>Meru looks first</b> in your files and memories for what bears on the question.</li>
+        <li style="font-size:19px"><b>The model on your Mac</b> reads the question with what Meru found, and writes the answer.</li>
+        <li style="font-size:19px"><b>The model never calls a tool itself.</b> It asks Meru, and Meru asks you first when the tool would send or change something.</li>
+        <li style="font-size:19px"><b>The answer arrives word by word,</b> with the files it used.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for individuals<span class="num">14</span></div>
+  <nav class="nav" aria-label="Slides"><a href="#s13" aria-label="Previous slide">&#8592;</a><a href="#s15" aria-label="Next slide">&#8594;</a></nav>
+</section></div>
+
+<!-- 15 -->
+<div class="frame" id="s15"><section class="slide cover" aria-label="Closing">
   <svg class="logo" role="img" aria-label="Meru logo"><use href="#logo"/></svg>
   <h1 style="font-size:72px">Built in the open</h1>
   <p class="tag">Free and open source, under the Apache License 2.0.</p>
   <p class="open">We're happy to take contributions: see the <b>issue list</b>. Ideas and bug reports start there too.</p>
   <p class="meta"><b>github.com/aarora79/meru</b> · aarora79.github.io/meru</p>
   <div class="qr-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" class="qr"><title>QR code: github.com/aarora79/meru</title><path fill="#fffdf7" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#14181c" d="M2 2.5h7m3 0h3m2 0h2m1 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m2 0h2m2 0h1m1 0h2m2 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h1m2 0h1m1 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h1m1 0h3m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m4 0h1m2 0h2m3 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h5m3 0h2m1 0h1m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-20 1h2m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h2m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m-26 1h2m2 0h1m1 0h2m1 0h1m1 0h1m1 0h1m2 0h2m1 0h1m1 0h3m2 0h2m-25 1h3m2 0h1m1 0h1m4 0h2m2 0h2m1 0h3m2 0h1m-27 1h2m3 0h1m1 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m3 0h2m-29 1h2m3 0h2m2 0h1m1 0h1m1 0h1m2 0h2m1 0h2m2 0h1m1 0h1m2 0h1m-29 1h1m3 0h2m3 0h2m1 0h2m1 0h3m4 0h1m1 0h1m1 0h1m1 0h1m-27 1h1m3 0h1m1 0h1m1 0h1m1 0h4m1 0h2m1 0h1m3 0h1m3 0h1m-29 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h1m-26 1h1m1 0h2m2 0h2m1 0h2m1 0h3m2 0h1m1 0h1m1 0h1m1 0h1m3 0h2m-29 1h1m2 0h2m2 0h1m2 0h3m1 0h1m3 0h1m1 0h5m3 0h1m-27 1h1m3 0h1m3 0h1m2 0h3m1 0h2m1 0h1m4 0h2m1 0h1m-26 1h1m1 0h1m4 0h1m2 0h3m1 0h2m4 0h1m1 0h1m1 0h2m-29 1h4m1 0h2m2 0h1m3 0h2m2 0h1m1 0h7m-18 1h2m1 0h2m2 0h2m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m4 0h10m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h5m3 0h4m3 0h2m-26 1h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h3m1 0h6m-25 1h1m1 0h3m1 0h1m3 0h2m2 0h3m6 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m4 0h3m1 0h2m2 0h3m3 0h1m1 0h2m-29 1h1m5 0h1m1 0h2m1 0h4m1 0h2m2 0h4m1 0h1m1 0h2m-29 1h7m2 0h3m1 0h1m3 0h2m1 0h1m1 0h1m1 0h2m1 0h1"/></svg><p><b>github.com/aarora79/meru</b><br>Scan for the code</p></div>
-  <nav class="nav" aria-label="Slides"><a href="#s12" aria-label="Previous slide">&#8592;</a><span aria-hidden="true">&#8594;</span></nav>
+  <nav class="nav" aria-label="Slides"><a href="#s14" aria-label="Previous slide">&#8592;</a><span aria-hidden="true">&#8594;</span></nav>
 </section></div>
 
 </main>
