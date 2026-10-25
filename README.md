@@ -26,7 +26,7 @@ model that fits your Mac's memory.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.4.20.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.5.0.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
@@ -34,8 +34,10 @@ model that fits your Mac's memory.
 > text with Whisper, on your Mac. It installs, runs and restarts
 > Google, Obsidian and SearXNG for you, set up from Settings, reads pages that
 > need JavaScript, and charts your use on its Usage screen. A question can read
-> dozens of web pages, and an answer that stops short can Continue. Scheduled jobs come
-> in v0.5.
+> dozens of web pages, and an answer that stops short can Continue. It runs jobs on a
+> schedule, such as a morning brief at 7 on weekdays, each run a chat in a Jobs
+> folder, and you set them up in Settings, in `meru chat` or by asking. A web answer
+> lists the pages it came from.
 > [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 
 <p align="center"><img src="docs/img/desktop-app.png" width="760" alt="Meru.app: a rail with New chat, Incognito chat, New folder, chat search, folders and the chats of today and yesterday, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with three example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk."></p>
@@ -104,7 +106,7 @@ with nothing behind it.
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
 | **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer`, `web-research` and `file-research`; `[skills] disabled` turns one off. |
-| **Scheduled jobs** (v0.5) | Meru will run briefs and other jobs on a schedule, so it can tell you things before you ask. |
+| **Scheduled jobs** | Meru asks a question, runs a skill or runs a command you declared on a schedule, such as every weekday at 7 or every other Tuesday, so it can tell you things before you ask. Each run is a chat in the Jobs folder. Add jobs in Settings, with `/jobs` in `meru chat`, or by asking ("every weekday at 7, brief me on my calendar"), which shows the schedule in words before you approve it. |
 | **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces. The Usage page charts them with nothing to install, and a Prometheus you run can read them from `merud` on your machine. |
 
 ## Why your own machine

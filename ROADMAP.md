@@ -239,13 +239,18 @@ with no audio file left on disk.
 - [x] Jobs that run a declared command, pre-approve tools, or write a file
 - [x] Adding, changing, pausing and removing jobs from both clients
 - [x] Adding jobs by asking Meru (`schedule_job`)
+
+**Done when:** a morning brief lands without you asking. Shipped in v0.5.0: a
+job such as "every weekday at 7, brief me on my calendar" runs in its own chat.
+
+## v0.6 — It tells you, on any machine
 - [ ] Digests, notifications, `meru brief`
 - [ ] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
   user service, answer models picked by GPU memory, and the desktop app
   ([#84](https://github.com/aarora79/meru/issues/84))
 
-**Done when:** a morning brief lands without you asking, and one documented
-command sets up the same Meru on a fresh Ubuntu machine.
+**Done when:** a digest of the day's job runs reaches you without opening Meru,
+and one documented command sets up the same Meru on a fresh Ubuntu machine.
 
 ## Later, maybe
 - Voice beyond speech to text: answers read aloud and a wake word
