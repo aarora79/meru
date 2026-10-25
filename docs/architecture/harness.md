@@ -234,7 +234,9 @@ care:
   square brackets, so the next turn doesn't build on a false claim.
 - **Web notes travel too.** When a turn read the web, its answer line kept up to 5
   short notes of what the pages said (`maxWebNotes`, at most 1,500 characters,
-  `maxWebNoteChars`). They follow the answer as `[from the web: title url — gist]`.
+  `maxWebNoteChars`). They follow the answer as `- title url — gist` lines, under a line that says
+  they are Meru's notes and never part of an answer, since a model copied the
+  older bare `[from the web: …]` lines into its answers.
   A real session showed why: a turn read a product's page and answered well, and
   the next three turns, with only the questions and answers in their history, made
   up the product's features.

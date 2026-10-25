@@ -2210,11 +2210,17 @@ before the model's first round (see [Web first](#web-first)); a call the model
 asked for has no `caller`. An assistant line whose turn read the web gets a
 `web` field: up to five notes, each a URL, a title and a gist of at most 300
 characters, pages before search results, 1,500 characters in all. History hands
-them to the model after the answer, one line each:
+them to the model after the answer, under a line that marks them as Meru's,
+one line each:
 
 ```text
-[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]
+(Meru's notes on the pages this turn read, for later questions. They aren't part of the answer above; never copy them into an answer, and cite pages by number as usual.)
+- Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.
 ```
+
+The line above the notes says who wrote them and that they aren't for the user.
+When the notes were bare `[from the web: …]` lines, a model answering a
+follow-up copied them, run together, onto the end of its answer.
 
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An

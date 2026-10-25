@@ -263,9 +263,9 @@ func (s *Session) Append(l Line) error {
 // oldest first. A turn is a user line and the assistant line that answered
 // it. An answer that carries a notice gets it after its text, in square
 // brackets, so the model reads that its claim didn't happen. An answer
-// whose turn read the web gets one line per web note after that, such as
-// "[from the web: Acme Flow https://example.com/flow — Acme Flow is a
-// ...]", so a follow-up still knows what the pages said: see webNotes. A
+// whose turn read the web gets its web notes after that, under a line
+// that says they aren't part of the answer, so a follow-up still knows
+// what the pages said: see webNotes. A
 // question
 // that carried images gets one note per image after its text, such as
 // "[image: receipt.jpg]", and never the image itself: see imageNotes. A
@@ -396,24 +396,30 @@ func LastModel(lines []Line) string {
 	return model
 }
 
-// webNotes returns one line per note, "[from the web: <title> <url> —
-// <gist>]", after a blank line, or "" for none. A real session showed why
-// history needs them: a turn read a product's page and answered well, and
-// the next three answers, whose history held only the question and answer
-// text, made up the product's features instead of searching again.
+// webNotesHead opens the web notes after an answer in history. It says
+// who wrote them and that they aren't for the user: with the notes as
+// bare "[from the web: ...]" lines, a model answering a follow-up copied
+// them, run together, onto the end of its answer.
+const webNotesHead = "(Meru's notes on the pages this turn read, for later questions. " +
+	"They aren't part of the answer above; never copy them into an answer, and cite pages by number as usual.)"
+
+// webNotes returns the notes after a blank line, webNotesHead, then one
+// line per note, "- <title> <url> — <gist>", or "" for none. A real
+// session showed why history needs them: a turn read a product's page and
+// answered well, and the next three answers, whose history held only the
+// question and answer text, made up the product's features instead of
+// searching again.
 func webNotes(notes []WebNote) string {
 	if len(notes) == 0 {
 		return ""
 	}
 	var s strings.Builder
-	s.WriteString("\n")
+	s.WriteString("\n\n" + webNotesHead)
 	for _, n := range notes {
-		head := strings.TrimSpace(n.Title + " " + n.URL)
-		s.WriteString("\n[from the web: " + head)
+		s.WriteString("\n- " + strings.TrimSpace(n.Title+" "+n.URL))
 		if n.Gist != "" {
 			s.WriteString(" — " + n.Gist)
 		}
-		s.WriteString("]")
 	}
 	return s.String()
 }
