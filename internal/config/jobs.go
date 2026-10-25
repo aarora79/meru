@@ -5,8 +5,10 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aarora79/meru/internal/jobs"
@@ -28,9 +30,10 @@ var jobName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 // practice by the box it's typed in.
 const maxPromptChars = 4000
 
-// Job is one [[jobs]] entry: when it runs and what it does. Prompt, with an
-// optional Skill, is the action; Command, Args, Allow and Output come in a
-// later step of #167, and config refuses them until then.
+// Job is one [[jobs]] entry: when it runs and what it does. The action is
+// Prompt, with an optional Skill, or Command, a [[commands]] entry, with
+// its Args. Allow lists the tools a run may use without asking once, and
+// Output a file the answer also goes to.
 type Job struct {
 	// Name names the job in the clients, the chat titles and the metric.
 	Name string `toml:"name"`
@@ -46,12 +49,17 @@ type Job struct {
 	Prompt string `toml:"prompt"`
 	// Skill names a skill the run loads without the pick step.
 	Skill string `toml:"skill"`
-	// Command, Args, Allow and Output: see ARCHITECTURE.md, "Scheduler".
-	// Config refuses them until merud runs them.
+	// Command names a [[commands]] entry the run runs, with no model, and
+	// Args its parameters, by name.
 	Command string            `toml:"command"`
 	Args    map[string]string `toml:"args"`
-	Allow   []string          `toml:"allow"`
-	Output  string            `toml:"output"`
+	// Allow lists tools, by their full names such as "write_file" or
+	// "cmd.backup-notes", that a run may use without asking when they
+	// would ask once. A call that asks every time stays declined.
+	Allow []string `toml:"allow"`
+	// Output is a file under [skills] output_dir that an ok run's answer
+	// also goes to; {date}, {time} and {job} fill in.
+	Output string `toml:"output"`
 	// Enabled, when false, pauses the job. A pointer, so a missing key
 	// reads as nil, which means on.
 	Enabled *bool `toml:"enabled"`
@@ -101,28 +109,62 @@ func checkJobs(cfg Config) []error {
 
 		switch {
 		case j.Prompt == "" && j.Command == "":
-			add("%s: give a prompt for the run to ask", where)
+			add("%s: give a prompt for the run to ask, or a command to run", where)
+		case j.Prompt != "" && j.Command != "":
+			add("%s: give a prompt or a command, not both", where)
 		case len([]rune(j.Prompt)) > maxPromptChars:
 			add("%s: prompt runs to %d characters; at most %d", where, len([]rune(j.Prompt)), maxPromptChars)
 		}
-		// These come in a later step of #167. Refusing them now beats
-		// accepting a key that does nothing.
-		for _, k := range []struct {
-			key string
-			set bool
-		}{
-			{"command", j.Command != ""},
-			{"args", len(j.Args) > 0},
-			{"allow", len(j.Allow) > 0},
-			{"output", j.Output != ""},
-		} {
-			if k.set {
-				add("%s: %s isn't supported yet; this Meru runs prompt and skill jobs", where, k.key)
-			}
+		if j.Skill != "" && j.Command != "" {
+			add("%s: skill goes with a prompt; a command runs no model", where)
 		}
 		if j.Skill != "" && slices.Contains(cfg.Skills.Disabled, j.Skill) {
 			add("%s: skill %q is off in [skills] disabled", where, j.Skill)
 		}
+		if j.Command != "" && !slices.ContainsFunc(cfg.Commands, func(c Command) bool { return c.Name == j.Command }) {
+			add("%s: command %q isn't a [[commands]] entry", where, j.Command)
+		}
+		if len(j.Args) > 0 && j.Command == "" {
+			add("%s: args go with a command", where)
+		}
+		for _, tool := range j.Allow {
+			switch tool {
+			case "":
+				add("%s: allow has an empty name", where)
+			case "configure", "schedule_job":
+				// These change Meru itself; a job never may, whatever it says.
+				add("%s: allow can't hold %s", where, tool)
+			}
+		}
+		if j.Output != "" {
+			if err := checkOutput(j.Output); err != nil {
+				add("%s: output: %w", where, err)
+			}
+			if !slices.Contains(cfg.Builtin.Tools, "write_file") {
+				add("%s: output needs write_file in [builtin] tools", where)
+			}
+		}
 	}
 	return errs
+}
+
+// placeholder finds a {name} in an output path.
+var placeholder = regexp.MustCompile(`\{[^}]*\}`)
+
+// checkOutput checks a job's output path: relative, inside [skills]
+// output_dir, and with no placeholder but {date}, {time} and {job}.
+func checkOutput(path string) error {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	switch {
+	case filepath.IsAbs(path) || strings.HasPrefix(path, "~"):
+		return fmt.Errorf("%q must be a path inside [skills] output_dir, such as \"briefs/{date}.md\"", path)
+	case clean == ".." || strings.HasPrefix(clean, "../"):
+		return fmt.Errorf("%q leaves [skills] output_dir", path)
+	}
+	for _, p := range placeholder.FindAllString(path, -1) {
+		if p != "{date}" && p != "{time}" && p != "{job}" {
+			return fmt.Errorf("%s isn't one of {date}, {time} and {job}", p)
+		}
+	}
+	return nil
 }

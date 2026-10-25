@@ -236,8 +236,8 @@ with no audio file left on disk.
   ([#167](https://github.com/aarora79/meru/issues/167))
 - [x] In-daemon scheduler sharing the warm model, with catch-up after sleep,
   Run now and Stop in both clients
-- [ ] Jobs that run a declared command, pre-approve tools, or write a file;
-  adding and changing jobs from the clients and by asking Meru
+- [x] Jobs that run a declared command, pre-approve tools, or write a file
+- [ ] Adding and changing jobs from the clients and by asking Meru
 - [ ] Digests, notifications, `meru brief`
 - [ ] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
   user service, answer models picked by GPU memory, and the desktop app

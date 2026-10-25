@@ -490,15 +490,22 @@ if !addr.Unmap().IsLoopback() { ... }
 
 ### jobs.go: [[jobs]]
 
-`Job` is one `[[jobs]]` entry: `name`, `schedule`, `every_weeks`, `from`,
-`prompt`, `skill`, `enabled`, and `command`, `args`, `allow` and `output`, which
-come in a later step of #167. `checkJobs` runs from `validate` and reports each
-problem with the job's name and key: a name that isn't lower-case letters,
-digits, `-` and `_`; a name used twice; a schedule `jobs.Parse` refuses; no
-prompt; a prompt over 4,000 characters; a skill that `[skills] disabled` turns
-off; more than `MaxJobs` (50) jobs, which keeps the metric's `job` attribute a
-small set. It refuses `command`, `args`, `allow` and `output` for now, so a key
-that does nothing can't slip in.
+`Job` is one `[[jobs]]` entry: `name`, `schedule`, `every_weeks`, `from`, the
+action (`prompt` with an optional `skill`, or `command` with its `args`),
+`allow`, `output` and `enabled`. `checkJobs` runs from `validate` and reports
+each problem with the job's name and key:
+
+- a name that isn't lower-case letters, digits, `-` and `_`, or one used twice;
+- a schedule `jobs.Parse` refuses;
+- neither a prompt nor a command, or both; a prompt over 4,000 characters;
+- a skill with a command, or one `[skills] disabled` turns off;
+- a command that isn't a `[[commands]]` entry, or `args` without a command;
+- `configure` or `schedule_job` in `allow`, which change Meru itself;
+- an `output` that is absolute, starts with `~`, leaves the folder with `..`, or
+  holds a placeholder other than `{date}`, `{time}` and `{job}`
+  (`checkOutput`), or `output` with `write_file` off in `[builtin] tools`;
+- more than `MaxJobs` (50) jobs, which keeps the metric's `job` attribute a
+  small set.
 
 `Enabled` is a `*bool`, a pointer, so a missing key reads as `nil` and `On()` can
 tell "not set" (on) from `false` (paused). `JobsFolder` names the chat folder the

@@ -47,9 +47,48 @@ make up the runs it missed.
 more than 12 hours late, and says it ran late. A run more than 12 hours late is
 skipped, so yesterday's brief doesn't arrive at night.
 
-**Tool calls in a job.** Nobody watches a run, so every tool call that would ask
-you is declined, and the answer says what it skipped. Tools that don't ask, such
-as `web_search`, run as usual. Letting a job use tools that ask, running a
-script, and saving the answer to a file come in a later release (#167).
+**Save the answer to a file** with `output`, a path inside `~/meru-output`:
+
+```toml
+output = "briefs/{date}.md"   # {date}, {time} and {job} fill in
+```
+
+A run replaces a file of the same name. The write goes through Meru's tool log,
+so the run's chat shows it.
+
+**Run a script** you declared under `[[commands]]`, with no model:
+
+```toml
+[[commands]]
+name        = "backup-notes"
+description = "Copies my notes to the backup disk"
+argv        = ["~/bin/backup-notes.sh"]   # the script's own path; it needs #! on its first line
+
+[[jobs]]
+name     = "backup"
+schedule = "30 23 * * *"
+command  = "backup-notes"
+```
+
+The script's output is the run's answer. Meru never runs a shell line; it runs
+the program you declared.
+
+**Tool calls in a job.** Nobody watches a run, so a tool call that would ask you
+is declined, and the answer says what it skipped, unless the job's `allow` names
+the tool:
+
+```toml
+allow = ["write_file", "cmd.backup-notes"]   # full tool names, as /log shows them
+```
+
+Then a call that would ask once runs. A few stay declined in a job whatever
+`allow` says: changing settings (`configure`), reading a web address nobody gave
+Meru, and downloads, so an unattended job can't send your data to a site a page
+told it about. A website you trusted (`/sites`) reads without asking, in a job
+too.
+
+**Allow only what a job needs.** A job that reads mail or web pages can be told
+by them to do something, and what `allow` lists runs without asking. Allow a tool
+that sends mail only if sending is the job's purpose.
 
 More detail: [ARCHITECTURE.md, Scheduler](../../ARCHITECTURE.md#scheduler).

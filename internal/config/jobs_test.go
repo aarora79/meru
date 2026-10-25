@@ -64,17 +64,76 @@ prompt = "hi"`},
 [[jobs]]
 name = "brief"
 schedule = "0 7 * * *"`},
-		{name: "command not yet", wantErr: "command isn't supported yet", body: `
+		{name: "a command job", body: `
+[[commands]]
+name = "backup-notes"
+description = "Back up the notes"
+argv = ["rsync", "-a", "~/notes/", "~/backup/notes/"]
 [[jobs]]
 name = "backup"
-schedule = "0 7 * * *"
-command = "backup-notes"`},
-		{name: "allow not yet", wantErr: "allow isn't supported yet", body: `
+schedule = "30 23 * * *"
+command = "backup-notes"
+allow = ["cmd.backup-notes"]`},
+		{name: "allow and output", body: `
 [[jobs]]
 name = "brief"
 schedule = "0 7 * * *"
 prompt = "hi"
-allow = ["write_file"]`},
+allow = ["write_file", "google.send_gmail_message"]
+output = "briefs/{date}-{job}.md"`},
+		{name: "a command that isn't declared", wantErr: `command "backup-notes" isn't a [[commands]] entry`, body: `
+[[jobs]]
+name = "backup"
+schedule = "0 7 * * *"
+command = "backup-notes"`},
+		{name: "prompt and command", wantErr: "not both", body: `
+[[commands]]
+name = "disk"
+description = "Free space"
+argv = ["df", "-h"]
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+command = "disk"`},
+		{name: "args with no command", wantErr: "args go with a command", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+args = { repo = "~/repos/meru" }`},
+		{name: "allow configure", wantErr: "allow can't hold configure", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+allow = ["configure"]`},
+		{name: "output outside", wantErr: "leaves [skills] output_dir", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = "../elsewhere.md"`},
+		{name: "output absolute", wantErr: "must be a path inside", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = "/tmp/brief.md"`},
+		{name: "output placeholder", wantErr: "{month} isn't one of", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = "briefs/{month}.md"`},
+		{name: "output without write_file", wantErr: "output needs write_file", body: `
+[builtin]
+tools = ["datetime"]
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = "briefs/{date}.md"`},
 		{name: "a disabled skill", wantErr: `skill "explainer" is off`, body: `
 [skills]
 disabled = ["explainer"]

@@ -320,7 +320,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	}
 	// The scheduler runs [[jobs]] through the same agent, in a loop beside
 	// the server; see jobs.go.
-	jobSvc, err := newJobService(gctx, cfg, a, st, hist, log)
+	jobSvc, err := newJobService(gctx, cfg, a, tools.dispatcher, st, hist, log)
 	if err != nil {
 		return fail(err)
 	}

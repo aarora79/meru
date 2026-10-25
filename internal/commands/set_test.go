@@ -141,10 +141,11 @@ func (r *recorder) InsertToolCall(ctx context.Context, row store.ToolCall) error
 	return nil
 }
 
-// TestConfirmingCommandInAJob checks that a scheduled job can't run a
-// command with confirm = true: nobody can say yes, so dispatch declines it
-// without asking, and still writes the transcript lines and the row, with
-// the argv the call would have run.
+// TestConfirmingCommandInAJob checks that a scheduled job runs a command
+// with confirm = true only when the job allows it: dispatch asks the job's
+// approver, which says no here, so the call is declined and runs nothing,
+// and still writes the transcript lines and the row, with the argv the
+// call would have run.
 func TestConfirmingCommandInAJob(t *testing.T) {
 	s, home := testSet(t)
 	rec := &recorder{}
@@ -155,13 +156,14 @@ func TestConfirmingCommandInAJob(t *testing.T) {
 		ID: "call-1", Name: "cmd.git-push", Args: json.RawMessage(`{"repo":"~/repos"}`),
 		Session: "s1", Source: rpc.SourceJob,
 		Append: func(l transcript.Line) error { lines = append(lines, l); return nil },
+		// The job's approver: its allow list doesn't name cmd.git-push.
 		Approve: func(context.Context, rpc.Approval) (rpc.Choice, error) {
 			asked = true
-			return rpc.ChoiceOnce, nil
+			return rpc.ChoiceDeny, nil
 		},
 	})
-	if out.Outcome != dispatch.OutcomeDeclined || !res.IsError || asked {
-		t.Errorf("outcome = %q, asked = %v, result = %+v; want declined without asking", out.Outcome, asked, res)
+	if out.Outcome != dispatch.OutcomeDeclined || !res.IsError || !asked {
+		t.Errorf("outcome = %q, asked = %v, result = %+v; want declined after asking the job", out.Outcome, asked, res)
 	}
 	if len(rec.rows) != 1 {
 		t.Fatalf("rows = %d, want 1", len(rec.rows))
@@ -174,7 +176,8 @@ func TestConfirmingCommandInAJob(t *testing.T) {
 	if !strings.Contains(string(row.Args), `"argv":`+string(argv)) {
 		t.Errorf("row args = %s, want the argv", row.Args)
 	}
-	if len(lines) != 2 || lines[0].Type != transcript.TypeToolCall || string(lines[0].Args) != string(row.Args) {
+	if len(lines) != 3 || lines[0].Type != transcript.TypeToolCall || lines[1].Type != transcript.TypeApproval ||
+		string(lines[0].Args) != string(row.Args) {
 		t.Errorf("transcript lines = %+v", lines)
 	}
 }

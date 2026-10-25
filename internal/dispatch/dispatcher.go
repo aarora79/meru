@@ -454,7 +454,11 @@ func (d *Dispatcher) approve(ctx context.Context, c Call, b Backend, confirm Con
 		}
 	}
 
-	if c.Approve == nil || c.Source == rpc.SourceJob {
+	// Nobody watches a scheduled job, so a job's approver answers from the
+	// job's allow list, and only for a call that asks once. A call that asks
+	// every time, such as configure or web_fetch on a URL nobody gave, stays
+	// declined in a job whatever it allows (ARCHITECTURE.md, "Scheduler").
+	if c.Approve == nil || (c.Source == rpc.SourceJob && confirm != ConfirmAsk) {
 		return "", OutcomeDeclined
 	}
 	answer, err := c.Approve(ctx, rpc.Approval{ID: c.ID, Name: c.Name, Kind: kind, Args: args, Choices: choices, Site: site})

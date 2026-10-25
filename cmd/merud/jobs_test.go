@@ -80,3 +80,93 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// runJob runs the job named name now through d and waits for it to end,
+// returning its info.
+func runJob(t *testing.T, sock, name string) rpc.JobInfo {
+	t.Helper()
+	mustCall(t, sock, rpc.Request{Op: rpc.OpJobRun, ID: name})
+	var j rpc.JobInfo
+	waitUntil(t, name+" ends", func() bool {
+		for _, x := range eventOf(t, mustCall(t, sock, rpc.Request{Op: rpc.OpJobs}), rpc.EventJobs).Jobs {
+			if x.Name == name {
+				j = x
+			}
+		}
+		return !j.Running && j.LastOutcome != ""
+	})
+	return j
+}
+
+// TestJobCommandAndOutput runs a command job, which runs no model, and a
+// prompt job whose answer also goes to a file, both through dispatch.
+func TestJobCommandAndOutput(t *testing.T) {
+	dir, home := meruHome(t)
+	body := settingsHeader + `
+[[commands]]
+name = "say-done"
+description = "Says it is done"
+argv = ["echo", "backup done"]
+
+[[jobs]]
+name = "backup"
+schedule = "30 23 * * *"
+command = "say-done"
+
+[[jobs]]
+name = "morning-brief"
+schedule = "0 7 * * 1-5"
+prompt = "Brief me."
+output = "briefs/{job}.md"
+`
+	d := startDaemon(t, dir, body, &fakeEngine{version: "0.40.5"})
+
+	backup := runJob(t, d.sock, "backup")
+	if backup.LastOutcome != "ok" {
+		t.Fatalf("backup = %+v", backup)
+	}
+	turns := eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpSessionTurns, Session: backup.LastSession}), rpc.EventTurns).Turns
+	if len(turns) != 1 || !strings.Contains(turns[0].Answer, "backup done") || turns[0].Question != "Run cmd.say-done" {
+		t.Errorf("backup's chat = %+v", turns)
+	}
+
+	brief := runJob(t, d.sock, "morning-brief")
+	if brief.LastOutcome != "ok" {
+		t.Fatalf("brief = %+v", brief)
+	}
+	b, err := os.ReadFile(filepath.Join(home, "meru-output", "briefs", "morning-brief.md"))
+	if err != nil || len(b) == 0 {
+		t.Errorf("output file: %q, %v", b, err)
+	}
+	// The write went through dispatch, so the run's chat shows it.
+	turns = eventOf(t, mustCall(t, d.sock, rpc.Request{Op: rpc.OpSessionTurns, Session: brief.LastSession}), rpc.EventTurns).Turns
+	found := false
+	for _, step := range turns[len(turns)-1].Tools {
+		found = found || step.Name == "write_file"
+	}
+	if !found {
+		t.Errorf("the brief's chat shows no write_file call: %+v", turns)
+	}
+}
+
+// TestAllowFor checks a job's approver: once for a tool its allow list
+// names, deny for any other, and deny when "once" isn't on offer.
+func TestAllowFor(t *testing.T) {
+	approve := allowFor(config.Job{Allow: []string{"write_file"}})
+	ask := func(name string, choices ...rpc.Choice) rpc.Choice {
+		c, err := approve(t.Context(), rpc.Approval{Name: name, Choices: choices})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if got := ask("write_file", rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny); got != rpc.ChoiceOnce {
+		t.Errorf("allowed tool: %s", got)
+	}
+	if got := ask("google.send_gmail_message", rpc.ChoiceOnce, rpc.ChoiceDeny); got != rpc.ChoiceDeny {
+		t.Errorf("tool not allowed: %s", got)
+	}
+	if got := ask("write_file", rpc.ChoiceDeny); got != rpc.ChoiceDeny {
+		t.Errorf("no once on offer: %s", got)
+	}
+}
