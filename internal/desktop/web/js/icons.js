@@ -28,6 +28,7 @@ const PATHS = {
   sliders: ["M4 7 H14", "M18 7 H20", "M16 5 V9", "M4 17 H8", "M12 17 H20", "M10 15 V19"],
   chats: ["M4 6 H20", "M4 12 H20", "M4 18 H14"],
   sidebar: ["M4 5 H20 V19 H4 Z", "M9 5 V19"],
+  clock: ["M12 21 A9 9 0 1 0 12 3 A9 9 0 1 0 12 21 Z", "M12 7 V12 L15.5 14"],
   folder: ["M3 7 V18 H21 V8 H11 L9 6 H3 Z"],
   share: ["M12 15 V4", "M8 8 L12 4 L16 8", "M5 13 V20 H19 V13"],
   note: ["M6 3 H18 V21 H6 Z", "M9 8 H15", "M9 12 H15", "M9 16 H13"],

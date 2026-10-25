@@ -539,6 +539,17 @@ shutdown it keeps the server's own context as `serverCtx`: if that one is
 cancelled too, `merud` is stopping; if not, the client hung up. A cancel also
 adds a `cancelled` event to the span.
 
+### Scheduled jobs
+
+`jobs` (`OpJobs`) replies with one `jobs` event whose `Jobs` holds a `JobInfo`
+per job: the schedule and `When` in words, the prompt and skill, `Paused`,
+`Next`, `Last`, `LastOutcome` and `LastSession`, and `Running` with `Started`.
+`job_run` and `job_cancel` take the job's name in `ID`, run it now or stop its
+run, and reply with the same event. `Request.Job` and `Request.Skill` belong to
+the asks `merud`'s scheduler makes for itself; the server refuses either from a
+client, before the handler sees the request, so no client can make an ask that
+passes as a job.
+
 ## Go ideas used here
 
 - **Goroutines and `sync.WaitGroup`** — one goroutine per connection, all

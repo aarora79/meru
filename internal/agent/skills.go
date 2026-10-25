@@ -116,7 +116,7 @@ type pickedSkills struct {
 // Only the route can fail the turn. A failed pick logs a warning and the
 // turn goes on with no skills. The picked names go on the turn's span as
 // meru.skills; they come from the registry, so the set stays bounded.
-func (a *Agent) routeAndPick(ctx context.Context, question string, history []engine.Message) (Decision, pickedSkills, error) {
+func (a *Agent) routeAndPick(ctx context.Context, question string, history []engine.Message, skill string) (Decision, pickedSkills, error) {
 	var picked pickedSkills
 	if a.skills != nil {
 		picked.reg = a.skills.Registry(ctx)
@@ -129,6 +129,13 @@ func (a *Agent) routeAndPick(ctx context.Context, question string, history []eng
 		return err
 	})
 	g.Go(func() error {
+		// A scheduled job that names its skill loads it without asking
+		// the fast model; the skill's tools join the route as a picked
+		// skill's do.
+		if skill != "" {
+			picked.names = []string{skill}
+			return nil
+		}
 		picked.names = a.pickSkills(gctx, picked.reg, question)
 		return nil
 	})

@@ -18,7 +18,7 @@ import (
 // app's composer has the same commands in the same order;
 // TestCommandsMatchChat in internal/desktop reads this line and fails when
 // the two differ.
-const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /sites, /model, /log, /about, /help, /exit"
+const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /sites, /jobs, /model, /log, /about, /help, /exit"
 
 // commandHelp is the /help box's line for each command, in commandList's
 // order: what to type, and what it does. TestCommandHelp fails when a
@@ -47,6 +47,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/folders [add <path>]", "the folders Meru searches"},
 	{"/skills", "turn skills on or off"},
 	{"/sites [remove <site>]", "websites Meru reads without asking"},
+	{"/jobs", "scheduled jobs: run now, stop, open the last run"},
 	{"/model [name|save]", "model sets: show, switch, save"},
 	{"/log", "the latest tool calls"},
 	{"/about", "version, license, links, Meru's folder"},
@@ -125,6 +126,8 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		return m, requestCmd(m.ask, tagSkills, rpc.Request{Op: rpc.OpSkills}, rpc.EventSkills, readTimeout)
 	case "/sites":
 		return m.sitesCommand(arg)
+	case "/jobs":
+		return m.jobsCommand()
 	case "/model":
 		return m.modelCommand(arg)
 	case "/log":

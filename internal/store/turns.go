@@ -54,6 +54,9 @@ type Turn struct {
 	EvalMillis int64
 	BadCalls   int
 	Capped     bool
+	// Job names the scheduled job the turn ran for, "" for a question
+	// someone asked.
+	Job string
 }
 
 // InsertTurn writes one row to turns through the store's one write path.
@@ -79,11 +82,11 @@ func insertTurn(ctx context.Context, tx *sql.Tx, t Turn) error {
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO turns
 		 (session, ts, source, route, tokens_in, tokens_out, duration_ms, tool_calls, docs, trace_id,
-		  model, ttft_ms, eval_ms, bad_calls, capped)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  model, ttft_ms, eval_ms, bad_calls, capped, job)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.Session, t.Time.UTC().Format(time.RFC3339), t.Source, t.Route, t.TokensIn, t.TokensOut,
 		t.DurationMillis, t.ToolCalls, string(b), t.TraceID,
-		t.Model, t.TTFTMillis, t.EvalMillis, t.BadCalls, t.Capped)
+		t.Model, t.TTFTMillis, t.EvalMillis, t.BadCalls, t.Capped, t.Job)
 	if err != nil {
 		return fmt.Errorf("write turn: %w", err)
 	}
@@ -158,13 +161,14 @@ func (s *Store) ReplayTurns(ctx context.Context, sessionsDir string) (int, error
 func turnsOf(session string, lines []transcript.Line) []Turn {
 	var turns []Turn
 	var asked time.Time // the open question's time; zero when none is open
+	job := ""           // the open question's job, "" for a question someone asked
 	calls := 0
 	model := ""
 	for _, l := range lines {
 		switch l.Type {
 		case transcript.TypeUser:
 			// A later question replaces one that got no answer.
-			asked, calls = l.TS, 0
+			asked, calls, job = l.TS, 0, l.Job
 		case transcript.TypeToolCall:
 			calls++
 		case transcript.TypeModelSwitch:
@@ -181,6 +185,7 @@ func turnsOf(session string, lines []transcript.Line) []Turn {
 				TokensIn: int64(l.TokensIn), TokensOut: int64(l.TokensOut),
 				DurationMillis: l.Ms, ToolCalls: calls, Docs: l.Sources, TraceID: l.TraceID,
 				Model: model, TTFTMillis: l.TTFTMs, EvalMillis: l.EvalMs, BadCalls: l.BadCalls, Capped: l.Capped,
+				Job: job,
 			})
 			asked, calls = time.Time{}, 0
 		}
@@ -353,4 +358,29 @@ func (s *Store) ttftMedians(ctx context.Context) (map[string]int64, error) {
 		medians[model] = v[(len(v)-1)/2]
 	}
 	return medians, nil
+}
+
+// LastJobRuns returns the time of each scheduled job's newest answered
+// run, by job name, in one query over the turns_job index. The scheduler
+// reads it once at startup. A run that failed wrote no answer, so it has
+// no row and doesn't count. It fails when the query does.
+func (s *Store) LastJobRuns(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT job, MAX(ts) FROM turns WHERE job != '' GROUP BY job`)
+	if err != nil {
+		return nil, fmt.Errorf("last job runs: %w", err)
+	}
+	defer rows.Close()
+	last := map[string]time.Time{}
+	for rows.Next() {
+		var job, ts string
+		if err := rows.Scan(&job, &ts); err != nil {
+			return nil, fmt.Errorf("last job runs: %w", err)
+		}
+		t, err := time.Parse(time.RFC3339, ts)
+		if err != nil {
+			return nil, fmt.Errorf("last job runs: %s: %w", job, err)
+		}
+		last[job] = t
+	}
+	return last, rows.Err()
 }

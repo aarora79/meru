@@ -69,6 +69,8 @@ func (m Model) View() string {
 		pane = m.skillsBoxView(m.width, h)
 	case m.sitesBox != nil:
 		pane = m.sitesBoxView(m.width, h)
+	case m.jobsBox != nil:
+		pane = m.jobsBoxView(m.width, h)
 	case m.logBox != nil:
 		pane = m.logBoxView(m.width, h)
 	case m.aboutBox != nil:

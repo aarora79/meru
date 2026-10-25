@@ -242,6 +242,14 @@ func TestRoundTrip(t *testing.T) {
 			{Type: EventSources, Sources: []Citation{{N: 1, Path: "~/a.md", Heading: "A", StartLine: 1, EndLine: 4, Score: 0.03}}},
 			{Type: EventDone},
 		}},
+		// A job's fields come only from merud's scheduler; a client that
+		// sends them would pass an ask off as a job.
+		{"job fields refused", echo, Request{Op: OpAsk, Text: "x", Job: "brief"}, []Event{
+			{Type: EventError, Error: "job and skill are set only by merud's scheduler"},
+		}},
+		{"skill field refused", echo, Request{Op: OpAsk, Text: "x", Skill: "writing"}, []Event{
+			{Type: EventError, Error: "job and skill are set only by merud's scheduler"},
+		}},
 		{"unknown op", echo, Request{Op: "dance"}, []Event{
 			{Type: EventError, Error: `unknown op "dance"`},
 		}},

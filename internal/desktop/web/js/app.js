@@ -797,6 +797,10 @@ function loadSessions() {
 // grouped Today, Yesterday and Earlier. The search matches a chat's
 // title, its folder and its tags; while it holds words, a folder with no
 // match hides and every other one opens.
+// JOBS_FOLDER is the chat folder merud files scheduled jobs' runs in; the
+// rail shows it first, with a clock.
+const JOBS_FOLDER = "Jobs";
+
 function drawSessions() {
   const box = $("sessions");
   box.replaceChildren();
@@ -812,6 +816,9 @@ function drawSessions() {
   for (const s of state.sessions) {
     if (s.folder && !folders.includes(s.folder)) folders.push(s.folder);
   }
+  // The Jobs folder, where scheduled jobs' runs go, comes first.
+  const jobsAt = folders.indexOf(JOBS_FOLDER);
+  if (jobsAt > 0) folders.unshift(...folders.splice(jobsAt, 1));
   let drawn = 0;
   folders.forEach((name, i) => {
     const rows = shown.filter((s) => s.folder === name);
@@ -852,7 +859,7 @@ function folderGroup(name, i, rows, searching) {
   head.setAttribute("aria-expanded", String(open));
   const chevron = icon("chevron", 13);
   chevron.classList.add("folder-chevron");
-  head.append(chevron, icon("folder", 14), el("span", "folder-name", name), el("span", "folder-count", String(rows.length)));
+  head.append(chevron, icon(name === JOBS_FOLDER ? "clock" : "folder", 14), el("span", "folder-name", name), el("span", "folder-count", String(rows.length)));
   head.title = name;
   head.addEventListener("click", () => {
     state.folderOpen.set(name, !open);

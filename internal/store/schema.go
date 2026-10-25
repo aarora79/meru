@@ -17,8 +17,8 @@ import (
 // step; never edit one that has shipped, because existing databases have
 // already run it. Later milestones add messages and memories this way, as
 // v0.3 added tool_calls and turns, step 6 added the answer model's
-// numbers to turns, step 7 added the caller to tool_calls, and step 8
-// added the tags to sessions.
+// numbers to turns, step 7 added the caller to tool_calls, step 8
+// added the tags to sessions, and step 9 the job to turns.
 //
 // It is a function rather than a package-level variable so nothing can
 // change the list at run time.
@@ -213,6 +213,12 @@ func migrations() []string {
 		// summary_fts beside the new summary. Rows written before this
 		// step get '': no transcript had a meta line then.
 		`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '';`,
+
+		// 9: the scheduled job a turn ran for, from its transcript's user
+		// line, and an index for each job's last run. Rows before this
+		// step get '': no job had run.
+		`ALTER TABLE turns ADD COLUMN job TEXT NOT NULL DEFAULT '';
+		CREATE INDEX turns_job ON turns (job, ts) WHERE job != '';`,
 	}
 }
 

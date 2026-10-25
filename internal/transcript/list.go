@@ -132,6 +132,12 @@ func infoOf(id string, mod time.Time, lines []Line) Info {
 		}
 		if info.Turns == 0 {
 			info.Title = title(l.Text)
+			// A job's run is titled by the job and its time, so the
+			// runs in the Jobs folder read as a log: "morning-brief ·
+			// Fri 24 Oct 07:00".
+			if l.Job != "" {
+				info.Title = l.Job + " · " + l.TS.Local().Format("Mon 2 Jan 15:04")
+			}
 		}
 		info.Turns++
 	}

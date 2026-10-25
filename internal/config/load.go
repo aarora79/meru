@@ -343,6 +343,7 @@ func validate(cfg Config) error {
 	for _, err := range checkBuiltin(cfg.Builtin) {
 		add("%w", err)
 	}
+	errs = append(errs, checkJobs(cfg)...)
 	for _, err := range checkConnectors(cfg.Connectors) {
 		add("%w", err)
 	}

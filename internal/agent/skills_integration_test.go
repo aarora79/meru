@@ -125,7 +125,7 @@ func TestIntegrationRouteAndPick(t *testing.T) {
 	}
 	// Warm both prompts first.
 	for _, q := range questions {
-		if _, _, err := a.routeAndPick(ctx, q, nil); err != nil {
+		if _, _, err := a.routeAndPick(ctx, q, nil, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -141,7 +141,7 @@ func TestIntegrationRouteAndPick(t *testing.T) {
 			serial += time.Since(start)
 
 			start = time.Now()
-			if _, _, err := a.routeAndPick(ctx, q, nil); err != nil {
+			if _, _, err := a.routeAndPick(ctx, q, nil, ""); err != nil {
 				t.Fatal(err)
 			}
 			together += time.Since(start)

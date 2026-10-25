@@ -63,6 +63,10 @@ type Line struct {
 	// user line: copies in the uploads folder under [skills] output_dir.
 	// The line keeps the paths, never the bytes.
 	Images []string `json:"images,omitempty"`
+	// Job names the scheduled job a run belongs to, on its user line; ""
+	// for a question someone asked. The turns table keeps it, so each
+	// job's last run survives a rebuild (ARCHITECTURE.md, "Scheduler").
+	Job string `json:"job,omitempty"`
 
 	// The fields below belong to the tool lines (v0.3): "tool_call",
 	// "approval" and "tool_result". CallID ties the three lines of one call

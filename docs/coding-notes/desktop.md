@@ -716,6 +716,16 @@ renders SVG will do), scale it with `sips` to the ten sizes an `.iconset` folder
 holds (16 to 512 pixels, each also at double size), and run
 `iconutil -c icns Meru.iconset -o cmd/meru-desktop/Meru.icns`.
 
+### jobs.go and Settings, Jobs
+
+`Jobs`, `RunJob` and `CancelJob` ask `merud` for the scheduled jobs, run one
+now, or stop a run. Settings has a Jobs section: each job with its schedule in
+words, its next or running state and last run, Run now or Stop, and "Open last
+run", which opens the chat. The section reloads every five seconds while it
+shows, so a run's start and end appear without a click. The chat list shows the
+Jobs folder first, with a clock icon, and `/jobs` in the composer opens the
+section.
+
 ## Go ideas used here
 
 - **Goroutines** — each turn reads its events in its own. More in

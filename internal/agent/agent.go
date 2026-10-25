@@ -413,6 +413,15 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err := emit(rpc.Event{Type: rpc.EventSession, Session: sessionID, Incognito: sess.Incognito()}); err != nil {
 		return err
 	}
+	// A scheduled job's run goes in the Jobs folder, as a chat of its own
+	// (ARCHITECTURE.md, "Scheduler"). The scheduler starts each run in a
+	// new session, so this meta line comes first.
+	if req.Job != "" {
+		if err := sess.SetMeta(transcript.Meta{Folder: config.JobsFolder}); err != nil {
+			return fmt.Errorf("file the job's run in %s: %w", config.JobsFolder, err)
+		}
+	}
+	t.job, t.skill = req.Job, req.Skill
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
@@ -434,7 +443,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// The user line carries start as its time, so a turns row rebuilt from
 	// the transcript gets the same time as the row written live. It names
 	// the question's images by path and never holds their bytes.
-	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, Images: imagePaths, TraceID: traceID}); err != nil {
+	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, Images: imagePaths, Job: req.Job, TraceID: traceID}); err != nil {
 		return err
 	}
 
@@ -552,7 +561,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err := a.appendLine(ctx, sess, answer); err != nil {
 		return err
 	}
-	a.recordUsage(ctx, sessionID, source, start, model, answer, t.calls, sess.Incognito())
+	a.recordUsage(ctx, sessionID, source, t.job, start, model, answer, t.calls, sess.Incognito())
 	done := doneEvent(start, rep)
 	done.Outcome = ended
 	return emit(done)
@@ -644,7 +653,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if t.scope != rpc.ScopeAuto || len(t.images) > 0 {
 		return a.respondScoped(ctx, t, question, history)
 	}
-	dec, picked, err := a.routeAndPick(ctx, question, history)
+	dec, picked, err := a.routeAndPick(ctx, question, history, t.skill)
 	if err != nil {
 		return res, err
 	}
@@ -960,7 +969,7 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 // turn, and the next rebuild of meru.db brings the row back. The insert
 // runs even when the client hung up after the answer: WithoutCancel keeps
 // ctx's values (the trace) and drops its cancel.
-func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start time.Time, model string, answer transcript.Line, calls int, incognito bool) {
+func (a *Agent) recordUsage(ctx context.Context, sessionID, source, job string, start time.Time, model string, answer transcript.Line, calls int, incognito bool) {
 	obs.RecordTurnUsage(ctx, obs.TurnUsage{
 		Route: answer.Route, Source: source,
 		TokensIn: answer.TokensIn, TokensOut: answer.TokensOut, Docs: len(answer.Sources),
@@ -973,6 +982,7 @@ func (a *Agent) recordUsage(ctx context.Context, sessionID, source string, start
 		TokensIn: int64(answer.TokensIn), TokensOut: int64(answer.TokensOut),
 		DurationMillis: answer.Ms, ToolCalls: calls, Docs: answer.Sources, TraceID: answer.TraceID,
 		Model: model, TTFTMillis: answer.TTFTMs, EvalMillis: answer.EvalMs, BadCalls: answer.BadCalls, Capped: answer.Capped,
+		Job: job,
 	})
 	if err != nil {
 		a.log.WarnContext(ctx, "turn row not written; the transcript still has the turn", "err", err)

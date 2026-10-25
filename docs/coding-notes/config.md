@@ -488,6 +488,23 @@ if !addr.Unmap().IsLoopback() { ... }
 - `0.0.0.0` and `::` are refused. They mean "every interface" when listening,
   never "this machine" when connecting.
 
+### jobs.go: [[jobs]]
+
+`Job` is one `[[jobs]]` entry: `name`, `schedule`, `every_weeks`, `from`,
+`prompt`, `skill`, `enabled`, and `command`, `args`, `allow` and `output`, which
+come in a later step of #167. `checkJobs` runs from `validate` and reports each
+problem with the job's name and key: a name that isn't lower-case letters,
+digits, `-` and `_`; a name used twice; a schedule `jobs.Parse` refuses; no
+prompt; a prompt over 4,000 characters; a skill that `[skills] disabled` turns
+off; more than `MaxJobs` (50) jobs, which keeps the metric's `job` attribute a
+small set. It refuses `command`, `args`, `allow` and `output` for now, so a key
+that does nothing can't slip in.
+
+`Enabled` is a `*bool`, a pointer, so a missing key reads as `nil` and `On()` can
+tell "not set" (on) from `false` (paused). `JobsFolder` names the chat folder the
+runs go in. config imports `internal/jobs` for `Parse`, which imports only the
+standard library.
+
 ## Go ideas used here
 
 - **Multiple return values and `if err != nil`** — functions return a result

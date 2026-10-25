@@ -337,6 +337,61 @@ func TestFoldersKeys(t *testing.T) {
 	}
 }
 
+func TestJobsKeys(t *testing.T) {
+	brief := rpc.JobInfo{Name: "morning-brief", Schedule: "0 7 * * 1-5", When: "7:00 on weekdays",
+		Next: "2026-10-27T07:00:00-04:00", Last: "2026-10-24T07:00:00-04:00", LastOutcome: "ok", LastSession: "2026-10-24T110000-ab12"}
+	running := brief
+	running.Running, running.Started = true, "2026-10-26T12:00:00-04:00"
+	merud := &fakeMerud{events: []rpc.Event{{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{brief}}, {Type: rpc.EventDone}}}
+	m := testModel(merud.ask, newFakeSender())
+	m.width, m.height = 100, 30
+	m, cmd := update(t, m, typeText("/jobs"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobs {
+		t.Fatalf("request = %+v, want jobs", r)
+	}
+	if view := m.View(); !strings.Contains(view, "morning-brief  7:00 on weekdays") || !strings.Contains(view, ", ok") {
+		t.Errorf("view lacks the job:\n%s", view)
+	}
+
+	// c on a job that isn't running says so and sends nothing.
+	before := len(merud.reqs)
+	m, cmd = update(t, m, typeText("c"))
+	if cmd != nil || len(merud.reqs) != before || !strings.Contains(m.notice, "isn't running") {
+		t.Errorf("c with no run: cmd %v, notice %q", cmd != nil, m.notice)
+	}
+
+	// Enter runs it now; the reply shows it running.
+	merud.events = []rpc.Event{{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{running}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobRun || r.ID != "morning-brief" {
+		t.Errorf("request = %+v, want job_run", r)
+	}
+	if view := m.View(); !strings.Contains(view, "running since") {
+		t.Errorf("view doesn't show the run:\n%s", view)
+	}
+
+	// c stops it.
+	merud.events = []rpc.Event{{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{brief}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, typeText("c"))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobCancel || r.ID != "morning-brief" {
+		t.Errorf("request = %+v, want job_cancel", r)
+	}
+
+	// o opens the last run's chat.
+	merud.events = []rpc.Event{{Type: rpc.EventTurns, Turns: []rpc.TurnInfo{{Question: "Brief me.", Answer: "Here is your brief."}}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, typeText("o"))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpSessionTurns || r.Session != brief.LastSession {
+		t.Errorf("request = %+v, want the last run's turns", r)
+	}
+	if m.jobsBox != nil || m.session != brief.LastSession || len(m.turns) != 1 {
+		t.Errorf("after o: box open %v, session %q, turns %d", m.jobsBox != nil, m.session, len(m.turns))
+	}
+}
+
 func TestSitesKeys(t *testing.T) {
 	list := rpc.Event{Type: rpc.EventTrustedSites, Sites: []string{"en.wikipedia.org", "go.dev"}}
 	merud := &fakeMerud{events: []rpc.Event{list, {Type: rpc.EventDone}}}

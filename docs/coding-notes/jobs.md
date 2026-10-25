@@ -1,17 +1,18 @@
 # jobs
 
-**Code:** `internal/jobs/` (`doc.go`, `schedule.go`, `due.go`, `schedule_test.go`, `due_test.go`)
+**Code:** `internal/jobs/` (`doc.go`, `schedule.go`, `due.go`, `scheduler.go`, and a test file for each)
 **Milestone:** v0.5, the first step of scheduled jobs ([#167](https://github.com/aarora79/meru/issues/167))
 **Architecture:** [Scheduler](../../ARCHITECTURE.md#scheduler)
 
 ## What it does
 
-`jobs` holds the time rules for scheduled jobs. It reads a schedule such as
-`0 7 * * 1-5` (7:00 on weekdays), finds the next time it matches, says it in
-words for the clients, and decides whether a job should run now given its last
-run. It runs nothing and stores nothing: `merud` owns the loop that asks it, the
-run and the record. With no model, store or file in sight, the tests drive it
-with whatever clock they like.
+`jobs` schedules the jobs. It reads a schedule such as `0 7 * * 1-5` (7:00 on
+weekdays), finds the next time it matches, says it in words for the clients,
+decides whether a job should run now given its last run, and runs the loop that
+starts each run on time, one at a time, and stops one on request. It knows no
+model, store or config file: `merud` gives it the jobs, their last runs and a
+function that runs one through the agent. With nothing else in sight, the tests
+drive it with whatever clock they like.
 
 ## The picture
 
@@ -21,7 +22,8 @@ flowchart LR
     parse --> next["Next(t)<br/>first matching minute after t"]
     parse --> words["Describe<br/>'7:00 on weekdays'"]
     next --> due["Due(s, last, now)<br/>run, late, or skipped"]
-    due --> loop["merud's loop (PR 2)<br/>every 30 s"]
+    due --> loop["Scheduler.Loop<br/>every 30 s"]
+    loop --> run["merud's run function<br/>agent.Handle, source job"]
 ```
 
 ## Walk through the code
@@ -100,6 +102,41 @@ run does the same work. `Late` says how long ago that slot was, for the prompt's
 old, the job doesn't run and `Skipped` names the first slot missed, so `merud`
 can log it and move on.
 
+### scheduler.go: the loop
+
+`Scheduler` runs the jobs. `merud` builds one with `New(run, last, log)`: `run`
+is the function that runs a job, and `last` holds each job's last run from the
+store. `Set` hands it the jobs; a job with no last run counts from that moment,
+so a job added at 7:05 doesn't run its 7:00 slot, and a job switched back on
+after a pause counts from then too, so it doesn't catch up what it missed.
+
+`Loop(ctx)` owns the work. Every `Tick` (30 seconds) it calls `startDue`, which
+asks `Due` about each job that is on and not running. A run moves the job's
+`last` to its slot when it starts, so a run that fails waits for its next time.
+A skip moves `last` to now and logs the slot. `select` waits for whichever comes
+first: the end of `ctx`, the next tick, or a Run now request.
+
+Every run starts inside `Loop`, so every run's context comes from `Loop`'s, and
+stopping `merud` stops them all; the repo's rule against keeping a context in a
+struct holds. `RunNow` sends the job's name to `Loop` on a channel with room for
+one; a `select` with a `default` sends only when there's room, so a request never
+waits. Each run gets `context.WithCancel(ctx)`, and its cancel function goes in
+`running`, so `Cancel(name)` stops that run and nothing else.
+
+`one`, a channel with room for one value, lets one run go at a time: a run sends
+on it before it starts and takes the value back when it ends, so a second run
+waits its turn. Runs share the warm answer model, and two at once would only
+slow both. A run stopped while it waits ends `cancelled` without running.
+`Loop` keeps a `sync.WaitGroup` of its runs and waits for them before it returns.
+
+`Status` gives the clients each job's next run, last run, the last run's outcome
+and chat, and whether it runs now. `Start` tells the run function how a run
+began: its lateness, and `Manual` for Run now.
+
+The tests run the loop with a fake clock and a 5-millisecond tick: on time, a
+sleep through 7:00, the 12-hour skip, a pause that doesn't catch up, Run now and
+Cancel, and one run at a time.
+
 ## Go ideas used here
 
 - Bit operations on a `uint64` as a small set: [bitmasks](go-basics/bitmasks.md).
@@ -119,8 +156,7 @@ go test ./internal/jobs -run TestNext -v
 
 - **No cron library.** One, `robfig/cron`, runs its own goroutines on Go timers;
   Meru needs only the parser and the next-time search, about 150 lines.
-- **A loop that checks the clock, not a timer per job** (in `merud`, PR 2): a
-  check every 30 seconds finds a run that fell due while the Mac slept within 30
+- **A loop that checks the clock, not a timer per job**: a check every 30 seconds finds a run that fell due while the Mac slept within 30
   seconds of waking, whatever Go's timers do across sleep.
 - **One run for many missed slots, and a 12-hour limit,** so a Mac that slept
   overnight gets its morning brief at breakfast, and one that was off all day

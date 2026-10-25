@@ -20,6 +20,7 @@ const SECTIONS = [
   { id: "folders", label: "Folders" },
   { id: "you", label: "About you" },
   { id: "skills", label: "Skills" },
+  { id: "jobs", label: "Jobs" },
   { id: "models", label: "Models" },
   { id: "activity", label: "Activity" },
   { id: "about", label: "About" },
@@ -121,7 +122,7 @@ function draw() {
   body.setAttribute("aria-labelledby", "tab-" + current.section);
   root.append(body);
   body.append(el("p", "panel-note", "Loading…"));
-  const drawers = { connections, folders, you, skills, models, activity, about };
+  const drawers = { connections, folders, you, skills, jobs, models, activity, about };
   drawers[current.section](body);
 }
 
@@ -898,6 +899,70 @@ function drawSkills(body, sv) {
   if (sv.warnings.length) {
     body.append(el("h2", "section-head", "Skipped"));
     for (const w of sv.warnings) body.append(el("p", "card-error", w));
+  }
+}
+
+// ---- Jobs ----
+
+// jobs draws the scheduled jobs. The list refreshes every few seconds while
+// it shows, so a run's start and end appear without a click.
+function jobs(body) {
+  const load = () => bridge.jobs().then(
+    (list) => body.isConnected && drawJobs(body, list || []),
+    (err) => fail(body, err),
+  );
+  load();
+  const timer = setInterval(() => (body.isConnected ? load() : clearInterval(timer)), 5000);
+}
+
+// when writes an RFC 3339 time as a person reads it: "today 07:00", or
+// "Mon 27 Oct 07:00".
+function when(stamp) {
+  if (!stamp) return "";
+  const t = new Date(stamp);
+  const now = new Date();
+  const hm = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (t.toDateString() === now.toDateString()) return "today " + hm;
+  return t.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " " + hm;
+}
+
+// drawJobs draws the Jobs section from list: each job with its schedule in
+// words and its state, Run now or Stop, and a link to its last run's chat.
+function drawJobs(body, list) {
+  body.replaceChildren();
+  intro(body, "Jobs Meru runs on a schedule. Each run is a chat in the Jobs folder. " +
+    "Add jobs as [[jobs]] in ~/.meru/config.toml.");
+  if (list.length === 0) {
+    body.append(el("p", "dim", "No jobs yet. Add one in config.toml, such as a morning brief at \"0 7 * * 1-5\"."));
+    return;
+  }
+  const ul = el("ul", "row-list");
+  for (const j of list) {
+    const li = el("li", "row");
+    const text = el("div", "row-main");
+    text.append(el("span", "tool-name", j.name));
+    text.append(el("span", "tool-desc", j.when + (j.skill ? " · skill " + j.skill : "")));
+    let state = j.running ? "Running since " + when(j.started) : j.paused ? "Paused" : "Next " + when(j.next);
+    if (j.last) state += " · last " + when(j.last) + (j.last_outcome ? ", " + j.last_outcome : "");
+    const line = el("span", "dim", state);
+    if (j.last_session) {
+      line.append(document.createTextNode(" · "));
+      line.append(button("Open last run", { className: "link-button",
+        onClick: () => current.pages.openChat(j.last_session, j.name) }));
+    }
+    text.append(line);
+    li.append(text);
+    const act = j.running
+      ? button("Stop", { className: "button secondary", onClick: () => change(bridge.cancelJob(j.name)) })
+      : button("Run now", { className: "button secondary", onClick: () => change(bridge.runJob(j.name)) });
+    act.setAttribute("aria-label", (j.running ? "Stop " : "Run ") + j.name);
+    li.append(act);
+    ul.append(li);
+  }
+  body.append(ul);
+
+  function change(p) {
+    p.then((next) => drawJobs(body, next || []), (err) => current.pages.notice(errorText(err)));
   }
 }
 

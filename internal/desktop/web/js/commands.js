@@ -229,6 +229,9 @@ export function runCommand(text) {
       return true;
     case "/sites":
       return sitesCommand(rest);
+    case "/jobs":
+      act.openSettings("jobs");
+      return true;
     case "/log":
       act.openSettings("activity");
       return true;

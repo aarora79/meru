@@ -34,7 +34,7 @@ const (
 func (m *Model) boxOpen() bool {
 	return m.usageBox != nil || m.meBox != nil || m.mcpBox != nil || m.modelBox != nil ||
 		m.chatsBox != nil || m.usedBox != nil || m.foldersBox != nil || m.skillsBox != nil ||
-		m.sitesBox != nil || m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
+		m.sitesBox != nil || m.jobsBox != nil || m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
 }
 
 // dropBoxes closes every box without giving the input its cursor back,
@@ -42,7 +42,7 @@ func (m *Model) boxOpen() bool {
 func (m *Model) dropBoxes() {
 	m.usageBox, m.meBox, m.mcpBox, m.modelBox = nil, nil, nil, nil
 	m.chatsBox, m.usedBox, m.foldersBox, m.skillsBox, m.logBox = nil, nil, nil, nil, nil
-	m.sitesBox = nil
+	m.sitesBox, m.jobsBox = nil, nil
 	m.aboutBox, m.helpBox = nil, nil
 }
 
@@ -93,6 +93,8 @@ func (m *Model) boxKey(msg tea.KeyMsg) tea.Cmd {
 		return m.skillsKey(msg)
 	case m.sitesBox != nil:
 		return m.sitesKey(msg)
+	case m.jobsBox != nil:
+		return m.jobsKey(msg)
 	case m.logBox != nil:
 		m.logBox.at = moveMark(msg, m.logBox.at, len(m.logBox.rows))
 	case m.helpBox != nil:
@@ -132,6 +134,8 @@ func (m *Model) boxKeys() keyList {
 		k = keyList{move, bind("enter", "on/off")}
 	case m.sitesBox != nil:
 		k = keyList{move, bind("d", "remove")}
+	case m.jobsBox != nil:
+		k = keyList{move, bind("enter", "run now"), bind("c", "stop"), bind("o", "open last run")}
 	case m.logBox != nil:
 		k = keyList{move}
 	case m.helpBox != nil, m.aboutBox != nil:
@@ -267,19 +271,21 @@ type replyMsg struct {
 // The requests a replyMsg can answer. Each file that sends one handles
 // its reply in applyReply.
 const (
-	tagSessions  = "sessions"   // /chats: the list
-	tagTurns     = "turns"      // /chats: one session's turns
-	tagAttach    = "attach"     // /attach <path>
-	tagForget    = "forget"     // d in the /me or /used box
-	tagMemoryAdd = "memory_add" // /me add and /me prefer
-	tagConns     = "connections"
-	tagPolicy    = "policy"     // ←/→ in the /mcp box
-	tagMCPAdd    = "mcp_add"    // enter in the /mcp box
-	tagMCPRemove = "mcp_remove" // d d in the /mcp box
-	tagFolders   = "folders"
-	tagSkills    = "skills"
-	tagSites     = "sites"
-	tagLog       = "log"
+	tagSessions   = "sessions"   // /chats: the list
+	tagTurns      = "turns"      // /chats: one session's turns
+	tagAttach     = "attach"     // /attach <path>
+	tagForget     = "forget"     // d in the /me or /used box
+	tagMemoryAdd  = "memory_add" // /me add and /me prefer
+	tagConns      = "connections"
+	tagPolicy     = "policy"     // ←/→ in the /mcp box
+	tagMCPAdd     = "mcp_add"    // enter in the /mcp box
+	tagMCPRemove  = "mcp_remove" // d d in the /mcp box
+	tagFolders    = "folders"
+	tagSkills     = "skills"
+	tagSites      = "sites"
+	tagJobs       = "jobs"
+	tagJobRunChat = "job_run_chat" // o in the /jobs box
+	tagLog        = "log"
 	// The /mcp box's connector rows (connectors.go).
 	tagConnectors   = "connectors"
 	tagConnectorSet = "connector_set" // o, and the end of the f form
@@ -341,6 +347,10 @@ func (m *Model) applyReply(msg replyMsg) tea.Cmd {
 		m.applySkills(msg)
 	case tagSites:
 		m.applySites(msg)
+	case tagJobs:
+		m.applyJobs(msg)
+	case tagJobRunChat:
+		return m.applyJobRunChat(msg)
 	case tagLog:
 		m.applyLog(msg)
 	}

@@ -282,6 +282,12 @@ newline. At the end of the file it returns the rest with `io.EOF`. A line with
 no newline yet is still being written, or a crash tore it, so `ReadFrom`
 leaves it for next time and doesn't move the offset past it.
 
+### A job's run
+
+A user line may carry `Job`, the scheduled job a run belongs to. `infoOf` titles
+such a session by the job and its time, "morning-brief · Fri 24 Oct 07:00",
+instead of the prompt, so a job's runs read as a log in the Jobs folder.
+
 ## Go ideas used here
 
 - **Pointer receivers** — `func (s *Session) Append(...)` makes `Append` a

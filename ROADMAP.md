@@ -231,10 +231,15 @@ a question, see the words in the box, fix one, press Send, and get an answer,
 with no audio file left on disk.
 
 ## v0.5 — It acts unprompted
-- Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`
-- In-daemon scheduler sharing the warm model
-- Digests, notifications, `meru brief`
-- Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
+- [x] Job definitions (prompt + cron) as `[[jobs]]` in `config.toml`, with a
+  named skill, every N weeks, and each run a chat in the Jobs folder
+  ([#167](https://github.com/aarora79/meru/issues/167))
+- [x] In-daemon scheduler sharing the warm model, with catch-up after sleep,
+  Run now and Stop in both clients
+- [ ] Jobs that run a declared command, pre-approve tools, or write a file;
+  adding and changing jobs from the clients and by asking Meru
+- [ ] Digests, notifications, `meru brief`
+- [ ] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
   user service, answer models picked by GPU memory, and the desktop app
   ([#84](https://github.com/aarora79/meru/issues/84))
 

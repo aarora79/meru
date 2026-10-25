@@ -197,8 +197,15 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		OpFolderRemove, OpSaveFile, OpAttachFile, OpSkillEnable, OpSkillDisable, OpModels,
 		OpModelSet, OpModelUse, OpModelSave, OpSessionDelete, OpSessionMove, OpSessionTag, OpChatFolders,
 		OpChatFolderAdd, OpChatFolderRename, OpChatFolderRemove, OpConnectorAdopt, OpConnectorUnadopt,
-		OpConnectorSet, OpConnectorFix, OpTranscribe, OpTrustedSites, OpTrustedSiteRemove:
+		OpConnectorSet, OpConnectorFix, OpTranscribe, OpTrustedSites, OpTrustedSiteRemove,
+		OpJobs, OpJobRun, OpJobCancel:
 		// Handled below.
+		// A job's fields come only from merud's own scheduler, in
+		// process; from a client they would let an ask pass as a job.
+		if req.Job != "" || req.Skill != "" {
+			_ = write(Event{Type: EventError, Error: "job and skill are set only by merud's scheduler"})
+			return
+		}
 	default:
 		_ = write(Event{Type: EventError, Error: fmt.Sprintf("unknown op %q", req.Op)})
 		return

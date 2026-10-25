@@ -1722,6 +1722,20 @@ web     0/1
   it. `bench/` is in `.gitignore`: the tasks quote the owner's own mail and
   files.
 
+### merud: jobs.go
+
+`newJobService` builds the scheduler from `[[jobs]]` and `store.LastJobRuns`, and
+`run` starts it in the errgroup beside the server. `jobService.run` runs one job:
+it makes sure the Jobs folder is in the chat folder list, under the history
+service's lock, opens a `meru.job` span, adds a line that says how late the run
+is when it is more than two minutes late, and calls `agent.Handle` with source
+`job`, the job's name and skill, and a nil approve function, so `dispatch`
+declines any call that would ask. It reads the outcome from the `done` event,
+or "cancelled" or "error", records `meru.scheduler.job_runs` and, for a
+scheduled run, `meru.scheduler.lateness`, and logs one `job ran` line with no
+prompt or answer text. `handleJobs`, `handleJobRun` and `handleJobCancel` answer
+the three ops; Run now waits up to a second for the run to show as running.
+
 ## Go ideas used here
 
 - **`signal.NotifyContext`** — a context that ends on a signal. More in
