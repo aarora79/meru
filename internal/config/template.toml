@@ -570,13 +570,29 @@ mouse_copy = true
 # runs only every that many weeks, such as every other Tuesday; from is the
 # first day it may run. skill loads that skill without the pick step.
 # enabled = false pauses a job. A run missed while the computer slept runs
-# once on waking, if no more than 12 hours late. Nobody watches a run, so
-# every tool call that would ask is declined. At most 50 jobs.
+# once on waking, if no more than 12 hours late. At most 50 jobs.
+#
+# Nobody watches a run, so a tool call that would ask is declined, unless
+# allow names the tool by its full name, such as "write_file" or
+# "cmd.disk-free"; then a call that would ask once runs. configure,
+# web_fetch on an address nobody gave, and downloads stay declined in a
+# job. Allow only what the job needs: mail or a page a job reads can tell
+# it to do things, and what allow lists runs without asking.
+# output writes an ok run's answer to a file under [skills] output_dir;
+# {date}, {time} and {job} fill in, and a run replaces a file of the same
+# name. command runs a [[commands]] entry, with args, and no model.
 #
 # [[jobs]]
 # name     = "morning-brief"
 # schedule = "0 7 * * 1-5"
 # prompt   = "Brief me on today's calendar, unread mail and anything due this week."
+# output   = "briefs/{date}.md"
+#
+# [[jobs]]
+# name     = "disk-check"
+# schedule = "30 23 * * *"
+# command  = "disk-free"           # a [[commands]] entry, above
+# allow    = ["cmd.disk-free"]     # needed only if the command has confirm = true
 #
 # [[jobs]]
 # name        = "go-news"

@@ -204,7 +204,22 @@ func TestDispatchOutcomes(t *testing.T) {
 			wantLines: []string{"tool_call", "approval", "tool_result"}},
 		{name: "nobody to ask", tool: "web.search", confirm: ConfirmAsk, wantOutcome: OutcomeDeclined,
 			wantLines: []string{"tool_call", "tool_result"}, wantText: "nobody can give it"},
-		{name: "a job never asks", tool: "web.search", confirm: ConfirmAsk, ap: &approver{choice: rpc.ChoiceOnce},
+		// A job's approver answers from its allow list, for a call that
+		// asks once.
+		{name: "a job's approver allows a call that asks once", tool: "web.search", confirm: ConfirmAsk,
+			ap: &approver{choice: rpc.ChoiceOnce}, edit: func(c *Call) { c.Source = rpc.SourceJob },
+			wantOutcome: OutcomeOK, wantRan: true, wantAsks: 1, wantApprove: "once",
+			wantLines: []string{"tool_call", "approval", "tool_result"}},
+		{name: "a job's approver can decline", tool: "web.search", confirm: ConfirmAsk,
+			ap: &approver{choice: rpc.ChoiceDeny}, edit: func(c *Call) { c.Source = rpc.SourceJob },
+			wantOutcome: OutcomeDeclined, wantAsks: 1, wantApprove: "deny",
+			wantLines: []string{"tool_call", "approval", "tool_result"}, wantText: "said no"},
+		// A call that asks every time stays declined in a job, whatever the
+		// job's approver would say: it isn't even asked.
+		{name: "a job never runs a call that asks every time", tool: "web.search", confirm: ConfirmAlways,
+			ap: &approver{choice: rpc.ChoiceOnce}, edit: func(c *Call) { c.Source = rpc.SourceJob },
+			wantOutcome: OutcomeDeclined, wantLines: []string{"tool_call", "tool_result"}},
+		{name: "a job with no approver declines", tool: "web.search", confirm: ConfirmAsk,
 			edit: func(c *Call) { c.Source = rpc.SourceJob }, wantOutcome: OutcomeDeclined,
 			wantLines: []string{"tool_call", "tool_result"}},
 		{name: "client gone while asking", tool: "web.search", confirm: ConfirmAsk,

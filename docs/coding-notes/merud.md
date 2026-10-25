@@ -1727,12 +1727,28 @@ web     0/1
 `newJobService` builds the scheduler from `[[jobs]]` and `store.LastJobRuns`, and
 `run` starts it in the errgroup beside the server. `jobService.run` runs one job:
 it makes sure the Jobs folder is in the chat folder list, under the history
-service's lock, opens a `meru.job` span, adds a line that says how late the run
-is when it is more than two minutes late, and calls `agent.Handle` with source
-`job`, the job's name and skill, and a nil approve function, so `dispatch`
-declines any call that would ask. It reads the outcome from the `done` event,
-or "cancelled" or "error", records `meru.scheduler.job_runs` and, for a
-scheduled run, `meru.scheduler.lateness`, and logs one `job ran` line with no
+service's lock, opens a `meru.job` span, and runs the action.
+
+- `runPrompt` adds a line that says how late the run is when it is more than two
+  minutes late, and calls `agent.Handle` with source `job`, the job's name and
+  skill. It collects the answer's tokens for `output`, and reads the outcome
+  from the `done` event, or "cancelled" or "error".
+- `runCommand` runs no model. It opens a session in the Jobs folder with
+  `transcript.New`, writes a user line "Run cmd.<name>", dispatches the command
+  with caller `meru` and the job's `args` (`commandArgs` sends an `int`
+  parameter as a number), writes the output, cut to 4,000 characters, as the
+  answer, and writes the turns row the agent would.
+
+Both pass `allowFor(j)` as the approver: it says "once" to a call whose tool the
+job's `allow` names and "deny" to any other. `dispatch` asks it only about calls
+that ask once; one that asks every time stays declined in a job.
+
+`writeOutput` runs after an ok run with `output` set. It fills in `{date}`,
+`{time}` and `{job}` with `strings.NewReplacer`, and dispatches one `write_file`
+call in the run's session, with `overwrite` and an approver that says yes, since
+the user asked for the file when they set `output`. A write that fails turns the
+run's outcome to "error". The run then records `meru.scheduler.job_runs` and, for
+a scheduled run, `meru.scheduler.lateness`, and logs one `job ran` line with no
 prompt or answer text. `handleJobs`, `handleJobRun` and `handleJobCancel` answer
 the three ops; Run now waits up to a second for the run to show as running.
 

@@ -4937,12 +4937,11 @@ with "network was renamed remote".
 `merud` runs jobs on a schedule: a prompt, a prompt with a named skill, or one
 declared `[[commands]]` entry. It is the first half of v0.5, built in steps
 under [#167](https://github.com/aarora79/meru/issues/167): the schedule rules in
-`internal/jobs` came first; now `merud` runs prompt and skill jobs from
-`[[jobs]]`, files each run in the Jobs folder, and answers `jobs`, `job_run` and
-`job_cancel`, with a Jobs section in Settings and `/jobs` in `meru chat`.
-`command`, `allow` and `output`, adding and changing jobs from the clients, and
-`schedule_job` come next; until then config refuses those three keys, so a key
-that does nothing can't slip in.
+`internal/jobs` came first; now `merud` runs every kind of job in `[[jobs]]`, a
+prompt, a skill or a command, with `allow` and `output`, files each run in the
+Jobs folder, and answers `jobs`, `job_run` and `job_cancel`, with a Jobs section
+in Settings and `/jobs` in `meru chat`. Adding and changing jobs from the
+clients, and `schedule_job`, come next.
 
 ### A job
 

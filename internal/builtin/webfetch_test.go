@@ -375,9 +375,11 @@ func TestWebFetchSaveAsks(t *testing.T) {
 		t.Errorf("made-up URL save: ConfirmCall = %v, %v; want ConfirmAlways", c, ok)
 	}
 
+	// A job's download of a URL nobody gave asks every time, so it is
+	// declined without asking the job's approver, whatever the job allows.
 	job := &asker{}
-	if _, o := d.Dispatch(ctx, guardCall(WebFetch, save, "s", "", rpc.SourceJob, job)); o.Outcome != dispatch.OutcomeDeclined || job.count() != 0 {
-		t.Errorf("job save: outcome %q after %d prompts; want declined with none", o.Outcome, job.count())
+	if _, o := d.Dispatch(ctx, guardCall(WebFetch, madeUp, "s", "", rpc.SourceJob, job)); o.Outcome != dispatch.OutcomeDeclined || job.count() != 0 {
+		t.Errorf("job save of a made-up URL: outcome %q after %d prompts; want declined with none", o.Outcome, job.count())
 	}
 	entries, _ := os.ReadDir(filepath.Join(out, downloadsFolder))
 	if len(entries) != 1 {

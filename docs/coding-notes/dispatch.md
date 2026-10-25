@@ -141,6 +141,13 @@ func confirmFor(b Backend, c Call) Confirm {
 }
 ```
 
+**A scheduled job's calls.** Nobody watches a job, so `approve` treats its calls
+by how they ask. A call that asks once goes to the job's approver, which `merud`
+builds from the job's `allow` list (see [merud](merud.md), jobs.go). A call that
+asks every time is declined without asking anyone: `configure`, `web_fetch` on a
+URL nobody gave, a download, an MCP tool in `always_confirm`. The test is one
+condition: `c.Approve == nil || (c.Source == rpc.SourceJob && confirm != ConfirmAsk)`.
+
 **SiteTruster.** A call that asks every time offers no session choice, since
 that would cover every later call. `web_fetch` can offer something narrower:
 trust for one host. A backend that knows hosts has two more methods:
