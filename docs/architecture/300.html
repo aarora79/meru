@@ -358,7 +358,7 @@
   <text x="264" y="95" class="t3 mono" font-size="11">~/.meru/merud.sock</text>
   <rect x="520" y="56" width="190" height="50" rx="7" class="bg"/>
   <text x="534" y="77" class="t2" font-size="13" font-weight="600">scheduler · v0.5</text>
-  <text x="534" y="95" class="t3" font-size="11.5">planned: cron jobs, briefs</text>
+  <text x="534" y="95" class="t3" font-size="11.5">cron jobs: prompts, skills, scripts</text>
   <path d="M345 106 L345 134" class="ln" marker-end="url(#f1a)"/>
   <path d="M615 106 L615 134" class="lnd" marker-end="url(#f1a)"/>
 
@@ -677,6 +677,7 @@
     <tr><td><code>model_use</code></td><td>switches to a model set until <code>merud</code> stops, unloading the old answer model first (see <a href="#model-sets">Model sets</a>)</td></tr>
     <tr><td><code>model_save</code></td><td>writes the models in use to <code>[models]</code></td></tr>
     <tr><td><code>model_set</code></td><td>switches to a model on that list that Ollama has, the same way, then writes <code>[models] main</code></td></tr>
+    <tr><td><code>jobs</code>, <code>job_set</code>, <code>job_remove</code>, <code>job_run</code>, <code>job_cancel</code></td><td>(v0.5) list, add or change, remove, run now and stop scheduled jobs (see <a href="#scheduler">Scheduled jobs</a>)</td></tr>
 
   </tbody>
 
@@ -1027,7 +1028,7 @@ confirm = ["write_file"]   # the shipped default; add "remember" to approve each
   <li><b>Session approvals stay inside the running <code>merud</code>.</b> <code>dispatch</code> keeps them in memory, per session and tool. They end with the session or with <code>merud</code>, and never reach <code>config.toml</code>. To stop Meru asking about a tool for good, remove it from the <code>confirm</code> list yourself. Lasting trust then comes from one place, a file you edit and can read back.</li>
   <li><b>One-shot <code>meru "..."</code></b> asks on standard error with the same choices, as <code>[o]nce [s]ession [d]eny</code>, so the answer on standard output stays clean. Its session ends with the answer, so "for this session" covers only this question. When standard input isn't a terminal (a script or a pipe), nobody can answer, so the client denies without asking and says so.</li>
   <li><b>The desktop app</b> shows the choices as a card inside the answer, with the arguments laid out to read, focus on the answer that runs nothing, and Edit first, which says no and puts the call in the composer as a draft (see <a href="#desktop-app">The desktop app</a>).</li>
-  <li><b>Nobody to ask means no.</b> A scheduled job, or a client that passed no way to ask, can't say yes, so <code>dispatch</code> ends every call that needs a yes as <code>declined</code> without a prompt. A job's output says which calls it skipped.</li>
+  <li><b>Nobody to ask means no.</b> A client that passed no way to ask can't say yes, so <code>dispatch</code> ends every call that needs a yes as <code>declined</code> without a prompt. A scheduled job is the one exception, and a narrow one: a tool that would ask once runs when the job's <code>allow</code> names it, and a call that asks every time is declined whatever the job says (see <a href="#scheduler">Scheduled jobs</a>). A job's answer says which calls it skipped.</li>
 </ul>
 
 <h3>How a conversation continues</h3>
@@ -1316,7 +1317,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 <div class="figbox">
 <svg viewBox="0 0 960 488" role="img" aria-labelledby="f2t f2d">
   <title id="f2t">Storage: files as truth, SQLite as projection</title>
-  <desc id="f2d">On the left, the source-of-truth files: your folders, session transcripts, memory files, and config.toml with skills. On the right, the tables in meru.db. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec, a plain table of vectors compared with vec1's distance function. Replaying transcripts fills tool_calls and turns, and from v0.4 sessions, messages, message_fts, summary_fts and session_vec. A syncer embeds the memory files into memories, memory_fts and memory_vec. Config fills meta. The jobs and job_runs tables, drawn dashed, are planned for v0.5.</desc>
+  <desc id="f2d">On the left, the source-of-truth files: your folders, session transcripts, memory files, and config.toml with skills. On the right, the tables in meru.db. The indexer chunks and embeds your folders into documents, chunks, chunk_fts and chunk_vec, a plain table of vectors compared with vec1's distance function. Replaying transcripts fills tool_calls and turns, and from v0.4 sessions, messages, message_fts, summary_fts and session_vec. A syncer embeds the memory files into memories, memory_fts and memory_vec. Config fills meta. From v0.5 a turn row also names the scheduled job it ran for, read from the transcript, so each job's last run survives a rebuild; the jobs themselves stay in config.toml.</desc>
   <defs>
     <marker id="f2a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" class="mka"/></marker>
   </defs>
@@ -1339,7 +1340,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
   <text x="32" y="370" class="t1 mono" font-size="13">config.toml · skills/</text>
   <text x="32" y="391" class="t3" font-size="12">models, allowlists, folders, skill files</text>
 
-  <rect x="546" y="40" width="404" height="396" rx="12" class="bg"/>
+  <rect x="546" y="40" width="404" height="346" rx="12" class="bg"/>
 
   <rect x="560" y="52" width="376" height="60" rx="8" class="b"/>
   <text x="576" y="76" class="t1 mono" font-size="13">documents · chunks</text>
@@ -1350,7 +1351,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
   <text x="576" y="171" class="t3 mono" font-size="11.5">summary_fts · session_vec, one per summary</text>
   <rect x="560" y="194" width="376" height="42" rx="8" class="b"/>
   <text x="576" y="220" class="t1 mono" font-size="13">tool_calls · turns</text>
-  <text x="730" y="220" class="t3" font-size="12">every tool call · every answer</text>
+  <text x="730" y="220" class="t3" font-size="12">each tool call · answer · job</text>
 
   <rect x="560" y="252" width="376" height="56" rx="8" class="b"/>
   <text x="576" y="274" class="t1 mono" font-size="13">memories</text>
@@ -1359,9 +1360,6 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
   <rect x="560" y="328" width="376" height="42" rx="8" class="b"/>
   <text x="576" y="354" class="t1 mono" font-size="13">meta</text>
   <text x="630" y="354" class="t3" font-size="12">schema, model, vector size, prefix hash</text>
-  <rect x="560" y="380" width="376" height="42" rx="8" class="bg"/>
-  <text x="576" y="406" class="t2 mono" font-size="13">jobs · job_runs</text>
-  <text x="700" y="406" class="t3" font-size="12">planned for v0.5</text>
 
   <path d="M346 82 L558 82" class="lna" marker-end="url(#f2a)"/>
   <text x="452" y="74" class="t2" font-size="12" text-anchor="middle">indexer: chunk + embed</text>
@@ -1371,7 +1369,6 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
   <path d="M346 280 L558 280" class="lna" marker-end="url(#f2a)"/>
   <text x="452" y="272" class="t2" font-size="12" text-anchor="middle">indexer: embed</text>
   <path d="M346 376 L452 376 L452 349 L558 349" class="lna" marker-end="url(#f2a)"/>
-  <path d="M452 376 L452 401 L558 401" class="lnd" marker-end="url(#f2a)"/>
   <text x="400" y="368" class="t2" font-size="12" text-anchor="middle">read config</text>
 
   <text x="16" y="474" class="t3" font-size="12">Delete meru.db and merud rebuilds every box on the right from the files on the left.</text>
@@ -1398,7 +1395,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
     <tr><td><code>tool_calls</code></td><td>audit log: every MCP, A2A, built-in and local command call, with its call ID, session, <code>kind</code> (<code>mcp</code>, <code>a2a</code>, <code>builtin</code> or <code>command</code>), server, tool, args, result (first 4,000 characters), outcome, approval choice, duration, trace ID and <code>caller</code> (<code>meru</code> for a call <code>merud</code> made itself); the rows of an incognito or deleted chat keep no args or result</td><td><code>sessions/*.jsonl</code>; the rows of an incognito or deleted chat have no file and don't come back</td></tr>
     <tr><td><code>memories</code> (v0.4)</td><td>one row per memory file: its ID (<code>&lt;kind&gt;/&lt;name&gt;.md</code>), kind, text, created, source, mtime and content hash</td><td><code>memory/*/*.md</code></td></tr>
     <tr><td><code>memory_vec</code> / <code>memory_fts</code> (v0.4)</td><td>vector and keyword indexes over memories</td><td>memories</td></tr>
-    <tr><td><code>jobs</code> / <code>job_runs</code> (v0.5)</td><td>scheduled jobs and each run's outcome</td><td>jobs: <code>[[jobs]]</code> in <code>config.toml</code>; runs: the job's session transcript</td></tr>
+    <tr><td><code>turns.job</code> (v0.5)</td><td>which job a run belongs to, for each job's last run</td><td>the run's transcript: its user line names the job; the jobs themselves are <code>[[jobs]]</code> in <code>config.toml</code> and stay out of the database</td></tr>
     <tr><td><code>meta</code></td><td>schema version, embedding model name, vector size and task-prefix fingerprint</td><td>config</td></tr>
   </tbody>
 </table></div>
@@ -2762,7 +2759,7 @@ render      = "auto"                    # "off" reads every page as plain HTML</
   <li><b>This website for this chat</b> runs the call and lets later reads on that host, query strings included, run unasked until the session ends. It lives in memory, beside the session's known URLs.</li>
   <li><b>Always this website</b> does the same in every session from now on. <code>merud</code> appends the host to <code>[web] trusted_sites</code> in <code>config.toml</code>, through the same checked edit as every other list, and Settings lists the hosts with a Remove button; <code>meru chat</code> lists them with <code>/sites</code> and removes one with <code>/sites remove &lt;host&gt;</code>. An entry is a bare host name: no scheme, path, port or wildcard.</li>
 </ul>
-<p>Trusting a host lets the model put anything in a URL on that host, and the host's owner can read those URLs in their logs. On a large public site, such as GitHub's raw files or arxiv.org, the owner is not the one a page would leak data to. On a small site anyone runs, it would be, so the prompt names the exact host and never offers a pattern. <code>save</code> asks even for a known URL or a trusted host, because a download stays on disk; there it offers once, session and deny, as <code>write_file</code> does, and a session approval covers later saves of known URLs. A download to an unknown URL never offers the website choices: it asks every time. A scheduled job has nobody to ask, so <code>dispatch</code> declines a call that asks there.</p>
+<p>Trusting a host lets the model put anything in a URL on that host, and the host's owner can read those URLs in their logs. On a large public site, such as GitHub's raw files or arxiv.org, the owner is not the one a page would leak data to. On a small site anyone runs, it would be, so the prompt names the exact host and never offers a pattern. <code>save</code> asks even for a known URL or a trusted host, because a download stays on disk; there it offers once, session and deny, as <code>write_file</code> does, and a session approval covers later saves of known URLs. A download to an unknown URL never offers the website choices: it asks every time. A scheduled job has nobody to ask, so <code>dispatch</code> declines a call that asks every time there, even when the job's <code>allow</code> lists <code>web_fetch</code> (see <a href="#scheduler">Scheduled jobs</a>).</p>
 
 <p><code>dispatch</code> decides whether a tool asks per tool, from <code>Confirm</code>. For the guard, a backend may also have <code>ConfirmCall(call)</code>, which decides per call and which <code>dispatch</code> asks first, and <code>CallSite(call)</code> and <code>TrustSite(call, host, always)</code>, which name the host a call reaches and record the user's trust in it. <code>dispatch</code> offers the website choices only when the backend names a host, so the code that knows URLs stays in the built-ins. The built-ins keep each session's known URLs in memory: <code>web_search</code> adds each result it shows, and <code>ConfirmCall</code> adds the URLs in the call's <code>Question</code>, which the agent fills with the user's words (this turn's question and the earlier questions in the session's history), never with excerpts or tool results. The sets end with <code>merud</code>; at most 256 sessions keep one, the session used longest ago goes first, and one session holds at most 2,000 URLs.</p>
 
@@ -3000,17 +2997,108 @@ timeout = "60s"                      # the default</code></pre>
 <!-- ============================================================ -->
 <h2 id="scheduler">Scheduled jobs</h2>
 
-<p>The scheduler is planned for v0.5 and isn't built yet. <code>config.toml</code> has no <code>[[jobs]]</code> key today, and <code>merud</code> refuses one as an unknown key. Two pieces are in place already: the <code>job</code> source on a request, and <code>dispatch</code> declining every call that needs a yes when the source is a job. This section describes the design.</p>
+<p><code>merud</code> runs jobs on a schedule: a prompt, a prompt with a named skill, or one declared <code>[[commands]]</code> entry. It is the first half of v0.5, built in steps under <a href="https://github.com/aarora79/meru/issues/167">#167</a>: the schedule rules in <code>internal/jobs</code> come first, then the loop in <code>merud</code>, the ops, and the clients. Until the loop lands, <code>merud</code> refuses <code>[[jobs]]</code> as an unknown key.</p>
 
-<p>A job is a prompt plus a <b>cron expression</b>, the standard five-field format for "run at these times". You declare jobs in <code>config.toml</code>:</p>
+<h3 id="scheduler-a-job">A job</h3>
+
+<p>A job is a name, a schedule and one action, declared in <code>config.toml</code>:</p>
 
 <pre><code>[[jobs]]
 name     = "morning-brief"
-schedule = "0 7 * * 1-5"          # 7:00 on weekdays
-prompt   = "Brief me on today's calendar, unread email and anything due this week."
-output   = "notification"          # or "digest", or a file path</code></pre>
+schedule = "0 7 * * 1-5"               # 7:00 on weekdays, this computer's time zone
+prompt   = "Brief me on today's calendar, unread mail and anything due this week."
+allow    = ["write_file"]              # tools it may use without asking once
+output   = "briefs/{date}.md"          # optional; under [skills] output_dir
 
-<p>Each run is a session with its own transcript, so a job's work lands in the same log and traces as your questions. <code>merud</code> runs it through the same agent loop as a question you type, and sends the output to a digest, a file or a notification. Jobs don't stream, since no one is watching, and nobody can approve a tool call, so <code>dispatch</code> declines every call that needs a yes during a job. That includes a local command with <code>confirm = true</code>: its outcome is <code>declined</code>, its row still goes in, and the job's output says it skipped the call, so a brief with a missing section has a reason on record. The operating system's service manager (<code>launchd</code> on macOS, <code>systemd</code> on Linux, a Windows service) restarts <code>merud</code> after a reboot. The scheduler lives inside <code>merud</code>, so jobs use the loaded models and land in the same audit log and traces.</p>
+[[jobs]]
+name        = "go-news"
+schedule    = "0 9 * * 2"              # Tuesdays at 9:00 ...
+every_weeks = 2                        # ... every other week
+from        = "2026-10-27"             # the first day it may run
+skill       = "web-research"
+prompt      = "Summarize what changed in the Go release notes."
+
+[[jobs]]
+name     = "backup"
+schedule = "30 23 * * *"
+command  = "backup-notes"              # a [[commands]] entry; no model runs</code></pre>
+
+<div class="tbl"><table>
+  <thead><tr><th>Key</th><th>What it says</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td>letters, digits, <code>-</code> and <code>_</code>, unique; at most 50 jobs, so the metric's <code>job</code> attribute stays a small set</td></tr>
+    <tr><td><code>schedule</code></td><td>five-field cron: minute, hour, day of month, month, day of week; <code>*</code>, numbers, names (<code>mon</code>, <code>jan</code>), ranges, steps (<code>*/15</code>) and lists</td></tr>
+    <tr><td><code>every_weeks</code>, <code>from</code></td><td>run only every N weeks; the weeks count from the Monday of <code>from</code>'s week, and nothing runs before <code>from</code></td></tr>
+    <tr><td><code>prompt</code></td><td>the question the run asks, through the agent loop</td></tr>
+    <tr><td><code>skill</code></td><td>a skill the run loads without the pick step; needs <code>prompt</code></td></tr>
+    <tr><td><code>command</code>, <code>args</code></td><td>a <code>[[commands]]</code> entry and its parameters; no model runs</td></tr>
+    <tr><td><code>allow</code></td><td>tools the run may use without asking, when they would ask once</td></tr>
+    <tr><td><code>output</code></td><td>a file under <code>[skills] output_dir</code> the answer also goes to; <code>{date}</code>, <code>{time}</code> and <code>{job}</code> fill in</td></tr>
+    <tr><td><code>enabled</code></td><td><code>false</code> pauses the job</td></tr>
+  </tbody>
+</table></div>
+
+<p>Each cron field becomes a set of allowed values, kept as a bitmask, and <code>Next</code> finds the first matching minute after a time, skipping whole months, days and hours that can't match. It builds each candidate from the wall clock with <code>time.Date</code>, so daylight saving time does what people expect: 2:30 on the night clocks jump from 2:00 to 3:00 doesn't happen, so a 2:30 job skips that day, and 1:30 on the night it happens twice runs once. A schedule that matches no date within five years, such as 31 February, is refused when config loads. When the two day fields are both restricted, a day matches if either does, as in cron. <code>Describe</code> writes the schedule in words for the clients: "7:00 on weekdays", "9:00 on Tuesdays, every other week from 27 October 2026".</p>
+
+<h3 id="scheduler-when-a-job-runs">When a job runs</h3>
+
+<p>A loop in <code>merud</code> asks <code>jobs.Due</code> about every enabled job every 30 seconds, comparing wall-clock times. A ticker that compares the clock finds a run that fell due while the Mac slept within 30 seconds of waking, whatever Go's timers do across sleep. <code>Due</code> takes the job's schedule, its last run and the time now:</p>
+
+<ul>
+  <li><b>On time:</b> the latest scheduled time has passed since the last run; the job runs.</li>
+  <li><b>Late:</b> the Mac slept through 7:00 and woke at 8:30. The job runs once, for the latest slot, and its prompt starts with a line that says how late it is. A job that missed several slots, such as an hourly one overnight, runs once.</li>
+  <li><b>Too late:</b> every missed slot is more than 12 hours old (<code>jobs.CatchUp</code>). The job doesn't run; <code>merud</code> logs the slot it skipped and moves on, so yesterday's brief doesn't arrive at 9 p.m.</li>
+</ul>
+
+<p>The last run of each job comes from the turns table at startup, which a rebuild fills from the transcripts. A run moves the job's last run when it starts, so a run that fails waits for its next time. Runs share the warm model and go one at a time; a job whose last run still runs skips that slot. A question you type isn't blocked: Ollama serves both.</p>
+
+<h3 id="scheduler-where-a-run-goes">Where a run goes</h3>
+
+<p>Each run is a chat. Its session sits in a chat folder named <b>Jobs</b>, which the first run creates; both clients show it first in the chat list, and refuse to rename or delete it while <code>[[jobs]]</code> holds a job. A run's title is the job's name and the time, such as "morning-brief · Fri 24 Oct 07:00", so a job's runs read as a log, newest first. The user line records the job's name, so the turns row carries it and a rebuild knows each job's last run.</p>
+
+<ul>
+  <li><b>A prompt</b> runs through <code>agent.Handle</code> with source <code>job</code>, as a typed question would, within <code>[agent] turn_timeout</code>. Nothing streams, since nobody watches.</li>
+  <li><b>A skill</b> loads without the pick call; its tools join the route as a picked skill's do.</li>
+  <li><b>A command</b> runs the <code>[[commands]]</code> entry through <code>dispatch</code>, with no model: a user line names it, and its output, cut to 4,000 characters, is the answer.</li>
+  <li><b><code>output</code></b>, when set and the run ended <code>ok</code>, writes the answer with one <code>write_file</code> call through <code>dispatch</code>, caller <code>meru</code>, so the file lands in the audit log and stays under <code>output_dir</code>.</li>
+</ul>
+
+<h3 id="scheduler-approvals-in-a-job">Approvals in a job</h3>
+
+<p>Nobody can answer an approval during a job, so <code>dispatch</code> treats a job's calls by how they would ask:</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>The call</th><th>In a job</th></tr></thead>
+  <tbody>
+    <tr><td>needs no approval</td><td>runs</td></tr>
+    <tr><td>asks once (<code>confirm</code> lists it, or a command has <code>confirm = true</code>), and the job's <code>allow</code> names it</td><td>runs; the approval line reads <code>once</code></td></tr>
+    <tr><td>asks once, and <code>allow</code> doesn't name it</td><td><code>declined</code>; the answer says it skipped the call</td></tr>
+    <tr><td>asks every time: <code>configure</code>, <code>web_fetch</code> on a URL nobody gave, a download, an MCP tool in <code>always_confirm</code></td><td><code>declined</code>, whatever <code>allow</code> says</td></tr>
+  </tbody>
+</table></div>
+
+<p>The last row keeps the URL guard whole: an unattended job can't send data out through an address the model made up, and a page it reads can't change config. A website in <code>[web] trusted_sites</code> reads without asking, in a job as anywhere. A job that reads mail or web pages can be told by them to do something, and what its <code>allow</code> lists runs without asking, so allow only what the job needs, and a tool that sends only when sending is the job's purpose.</p>
+
+<h3 id="scheduler-pausing-cancelling-and-managing-jobs">Pausing, cancelling and managing jobs</h3>
+
+<div class="tbl"><table>
+  <thead><tr><th>Op</th><th>What <code>merud</code> does</th></tr></thead>
+  <tbody>
+    <tr><td><code>jobs</code></td><td>lists each job with its schedule in words, next and last run, the last run's outcome and chat, and whether it runs now</td></tr>
+    <tr><td><code>job_set</code></td><td>adds or replaces one job in <code>config.toml</code> through a checked edit; with <code>dry_run</code> it only checks the job and returns its schedule in words, which the add form shows as you type. <code>enabled = false</code> pauses; resuming doesn't catch up the slots missed while paused</td></tr>
+    <tr><td><code>job_remove</code></td><td>takes the job out of <code>config.toml</code>; its runs stay in the Jobs folder</td></tr>
+    <tr><td><code>job_run</code></td><td>runs the job now, outside its schedule; this doesn't count as its last run</td></tr>
+    <tr><td><code>job_cancel</code></td><td>stops the job's run in progress, as Ctrl-C stops a question: the run ends <code>cancelled</code>, its chat keeps what it wrote, and the schedule stays</td></tr>
+  </tbody>
+</table></div>
+
+<p>Meru.app has a Jobs section in Settings, and <code>meru chat</code> has <code>/jobs</code>: Enter runs the marked job now, <code>c</code> stops its run, <code>p</code> pauses or resumes, <code>d d</code> deletes, and <code>/jobs add</code> walks through the keys. A request's job fields come only from <code>merud</code>'s own scheduler; the socket refuses them from a client, so no client can make an ask that borrows a job's approvals.</p>
+
+<p>You can also ask: "every other Tuesday at 9, summarize the Go release notes". The built-in tool <code>schedule_job</code> proposes the job, and asks every time, as <code>configure</code> does: the card shows the job, and nothing is saved until you say yes. A job's own turns never see <code>schedule_job</code> or <code>configure</code>, so no job makes or changes jobs.</p>
+
+<h3 id="scheduler-what-the-scheduler-doesn-t-do">What the scheduler doesn't do</h3>
+
+<p>It sends no notifications and keeps no digest yet; those and <code>meru brief</code> are the rest of v0.5. A job never waits for an approval. It runs no shell line, only declared commands, and a script runs by its own path. It has no seconds, no <code>@reboot</code>, and no time zone but the computer's own. The operating system's service manager (<code>launchd</code>, <code>systemd</code>) restarts <code>merud</code> after a reboot; the scheduler lives inside <code>merud</code>, so jobs use the loaded models and land in the same audit log and traces.</p>
 
 <!-- ============================================================ -->
 <h2 id="observability">Seeing where the time went</h2>
@@ -3037,7 +3125,7 @@ capture_content  = false                     # prompt/response text in spans</co
 
 <h3>Traces</h3>
 
-<p>Each turn produces one trace. A question over the socket starts at <code>rpc.request</code>; a scheduled job (v0.5) starts at <code>meru.turn</code>. In v0.3 a turn on the <code>search+tools</code> route with one round of tool calls looks like this:</p>
+<p>Each turn produces one trace. A question over the socket starts at <code>rpc.request</code>; a scheduled job's run (v0.5) starts at <code>meru.job</code>, with the run's <code>meru.turn</code> under it. In v0.3 a turn on the <code>search+tools</code> route with one round of tool calls looks like this:</p>
 
 <figure id="fig-trace">
 <div class="figbox">
@@ -3199,7 +3287,8 @@ capture_content  = false                     # prompt/response text in spans</co
     <tr><td><code>meru.speech.duration</code></td><td>histogram</td><td>model (the whisper connector's two files), outcome (ok/error/empty/too_long/cancelled)</td><td>how long one recording takes to become text, the server's start included</td></tr>
     <tr><td><code>meru.web.render.duration</code></td><td>histogram</td><td>outcome (ok/error/timeout/cancelled)</td><td>how long a page that needs JavaScript takes in the page reader, Chrome's start included</td></tr>
     <tr><td><code>meru.rpc.active_streams</code></td><td>up-down counter</td><td>—</td><td>open client sessions</td></tr>
-    <tr><td><code>meru.scheduler.job_runs</code></td><td>counter</td><td>job, outcome</td><td>(v0.5) scheduled work</td></tr>
+    <tr><td><code>meru.scheduler.job_runs</code></td><td>counter</td><td>job, outcome</td><td>(v0.5) scheduled work: did each job run, and how did it end</td></tr>
+    <tr><td><code>meru.scheduler.lateness</code></td><td>histogram</td><td>job</td><td>(v0.5) how late runs start after sleep or a restart</td></tr>
   </tbody>
 </table></div>
 
@@ -3328,7 +3417,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
     <tr><td>Built-in skills</td><td><code>writing</code>, <code>explainer</code>, <code>web-research</code> and <code>file-research</code> ship in the binary and are copied to <code>~/.meru/skills/</code> on first run; your edits always win.</td></tr>
     <tr><td>Setup</td><td><code>meru setup</code> checks Ollama, pulls the models, writes a first <code>config.toml</code>, and offers a catalog of MCP servers, each added "for you" (with approval of the exact config block) or by copy-paste. For a server outside the catalog, <code>merud</code> probes it first, and <code>meru</code> proposes <code>allow</code> and <code>confirm</code> from the tools' read-only and destructive hints. A reload makes the server work without a restart.</td></tr>
     <tr><td>Terminal UI</td><td>Bubble Tea, with Bubbles for input and scrolling, Lip Gloss for styling and Glamour for Markdown answers, in <code>meru chat</code> only. Answers always stream. Each code block gets a <code>⧉ copy N</code> label; <code>/copy N</code> or Ctrl-Y copies it, and so does a click, unless <code>[chat] mouse_copy</code> is off. Links in an answer show short and open on a click. Questions typed while a turn runs wait in a queue of up to five in the client.</td></tr>
-    <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny, asked over the same socket as the answer. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask (scripts, scheduled jobs), <code>dispatch</code> declines the call.</td></tr>
+    <tr><td>Tool approvals</td><td>Approve once, approve for this session, or deny, asked over the same socket as the answer. Session approvals never touch config; lasting trust comes only from editing the <code>confirm</code> list. With no one to ask, as in a script, <code>dispatch</code> declines the call; a scheduled job runs a call that asks once when its <code>allow</code> names the tool, and declines the rest.</td></tr>
     <tr><td>Tool results</td><td>The model reads up to 16,000 characters of each result; the transcript and <code>tool_calls</code> keep 4,000, with secrets removed. Base64 runs of 2,000 characters or more in an MCP or A2A result become a short note first.</td></tr>
     <tr><td>Secrets</td><td>One file, <code>~/.meru/secrets.toml</code>, mode <code>0600</code>, referred to from config as <code>secret:&lt;name&gt;</code>. No system keychain: each platform has its own, and a file only you can read works the same everywhere.</td></tr>
     <tr><td>Memory</td><td>One Markdown file per memory under <code>~/.meru/memory/&lt;kind&gt;/</code>, no index file. Session summaries in the transcripts serve as episodic memory. Memories save without asking, through the <code>remember</code> tool and <code>dispatch</code>.</td></tr>
