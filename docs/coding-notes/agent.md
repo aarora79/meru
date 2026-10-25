@@ -427,7 +427,7 @@ tool that saves, and the model then says it will remember and saves nothing. So 
 question holds `remember` as a whole word, the route lacks the full set of tools, and the
 tools on offer include `remember`, `withTools` adds them, as for a tool server.
 `asksToRemember` makes the check with `namesFolder`, so "remembered" doesn't
-count. It is one of the six signs `toolTarget` checks, so a `tools` turn that
+count. It is one of the seven signs `toolTarget` checks, so a `tools` turn that
 asks Meru to remember also skips the search of your files. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
@@ -1041,7 +1041,7 @@ question that `aboutPastChats` accepts becomes `search` too, while search or
 the file tools are on (see [Earlier conversations](#earlier-conversations-earliergo)).
 
 A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
-six signs that a question points at a connected tool, and returns the first
+seven signs that a question points at a connected tool, and returns the first
 it finds as words for the log line, or `""` for none:
 
 | Sign | Example | Found by |
@@ -1049,6 +1049,7 @@ it finds as words for the log line, or `""` for none:
 | names a tool server | "search my obsidian vault" | `namesFolder` over `toolServers` |
 | asks Meru to remember | "remember that my name is Dana" | `asksToRemember` |
 | names Apple Notes | "search my Apple Notes for the garden plan" | `asksForAppleNotes`, the word pairs "apple notes", "apple note" and "notes app", while the Apple Notes tools are on |
+| asks for a schedule | "every weekday at 7, brief me on my calendar" | `asksToSchedule`: "schedule" or "scheduled", or "every" or "each" before a word in `recurring` ("weekday", "morning", "other", "tuesday"...), while `schedule_job` is on. "every file" doesn't count |
 | asks for the web | "search the web: what is SearXNG?" | `asksForWeb`, with the phrases in `webPhrases` |
 | gives a web address | "what does https://acme.example/flow say?" | `givesURL` |
 | names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
@@ -1932,6 +1933,12 @@ line and on the turns row, and keeps `t.job` and `t.skill`. `routeAndPick` takes
 the skill: with one named, it skips the pick call and loads that skill, and the
 skill's tools join the route as a picked skill's do. The socket server refuses
 `Job` and `Skill` from a client, so only the scheduler sets them.
+
+Just before `finishPrompt`, a job's turn drops the tools `builtin.AlwaysAsks`
+names, `configure` and `schedule_job`, from `specs`. Both change Meru itself,
+and a page or a mail a job reads could tell the model to call them. dispatch
+would decline them in a job anyway, since nobody can answer the card; leaving
+them out means the model never tries.
 
 ## Go ideas used here
 

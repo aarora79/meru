@@ -238,7 +238,7 @@ with no audio file left on disk.
   Run now and Stop in both clients
 - [x] Jobs that run a declared command, pre-approve tools, or write a file
 - [x] Adding, changing, pausing and removing jobs from both clients
-- [ ] Adding jobs by asking Meru (`schedule_job`)
+- [x] Adding jobs by asking Meru (`schedule_job`)
 - [ ] Digests, notifications, `meru brief`
 - [ ] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
   user service, answer models picked by GPU memory, and the desktop app

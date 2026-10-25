@@ -120,6 +120,8 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 		return "asks Meru to remember"
 	case asksForAppleNotes(question, specs):
 		return "names Apple Notes"
+	case asksToSchedule(question, specs):
+		return "asks for a schedule"
 	case asksForWeb(question, specs):
 		return "asks for the web"
 	case givesURL(question, specs):
@@ -144,6 +146,37 @@ func asksForAppleNotes(question string, specs []engine.ToolSpec) bool {
 	for i := 0; i+1 < len(ws); i++ {
 		pair := ws[i] + " " + ws[i+1]
 		if pair == "apple notes" || pair == "apple note" || pair == "notes app" {
+			return true
+		}
+	}
+	return false
+}
+
+// recurring are the words that, after "every" or "each", make a question
+// ask for something on a schedule: "every weekday", "each morning",
+// "every other Tuesday". "every file" or "each chapter" don't count.
+var recurring = map[string]bool{
+	"day": true, "days": true, "weekday": true, "weekdays": true, "weekend": true, "morning": true,
+	"evening": true, "night": true, "week": true, "weeks": true, "month": true, "hour": true,
+	"hours": true, "minute": true, "minutes": true, "other": true, "monday": true, "tuesday": true,
+	"wednesday": true, "thursday": true, "friday": true, "saturday": true, "sunday": true,
+}
+
+// asksToSchedule reports whether question asks for something on a
+// schedule, while specs hold schedule_job: it says "schedule" or
+// "scheduled", or "every" or "each" before a word in recurring. "every
+// weekday at 7, brief me" can route direct, which offers no tool to
+// schedule it with; this rule widens the route.
+func asksToSchedule(question string, specs []engine.ToolSpec) bool {
+	if !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == builtin.ScheduleJob }) {
+		return false
+	}
+	ws := words(question)
+	for i, w := range ws {
+		switch {
+		case w == "schedule" || w == "scheduled":
+			return true
+		case (w == "every" || w == "each") && i+1 < len(ws) && recurring[ws[i+1]]:
 			return true
 		}
 	}

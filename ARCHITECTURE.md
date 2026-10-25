@@ -853,7 +853,7 @@ and arguments and offers the choices `merud` sends, from these:
              "read_file", "list_folder", "grep", "search_files",
              "search_images", "view_image", "web_search",
              "web_fetch", "search_notes", "list_notes",
-             "read_note"]   # all sixteen, the default
+             "read_note", "schedule_job"]   # all seventeen, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -867,8 +867,9 @@ and arguments and offers the choices `merud` sends, from these:
   `[web] searxng_url`, and the Apple Notes tools need a Mac. Without it the tool stays off, and `merud` logs one info
   line at startup that names the tool and the missing setting.
 
-  The built-in tools are `configure`, which always asks, whatever `confirm` says
-  (see [First run and setup](#first-run-and-setup)); `remember`, which saves a
+  The built-in tools are `configure` and `schedule_job`, which always ask,
+  whatever `confirm` says (see [First run and setup](#first-run-and-setup) and
+  [Scheduler](#scheduler)); `remember`, which saves a
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
@@ -892,6 +893,7 @@ and arguments and offers the choices `merud` sends, from these:
   | `search_notes` | The user's Apple Notes that hold every word of `query`, in the title or the text, ignoring case: notes whose title matches first, newest first, 10 by default and at most 30, each with its id, title, folder, modified date and a snippet. `folder` limits it to one Notes folder. Offered on the tools routes, on a Mac. |
   | `list_notes` | With no `folder`, every Notes folder with its note count, then the newest notes; with a `folder`, that folder's notes, newest first. Each note comes with its id. |
   | `read_note` | One note's text by its id, 12,000 characters per call with the offset for the next, like `read_file`. A locked note gives its title and says it's locked. |
+  | `schedule_job` | Saves a scheduled job the user asked for in chat, such as "every weekday at 7, brief me": a name, a cron schedule with `every_weeks` and `from`, and a prompt with an optional skill, or a declared command with its `args`, and an optional `output`. It never sets `allow`. It always asks, and the approval card shows the schedule in words and the next run beside the cron fields. A job's own turns never see it. See [Scheduler](#scheduler). |
 
   The file tools reach only the `[index] folders`, `[skills] output_dir`
   (`~/meru-output`) and, for `read_file`, `list_folder` and `grep`, the session
@@ -4940,8 +4942,8 @@ under [#167](https://github.com/aarora79/meru/issues/167): the schedule rules in
 `internal/jobs` came first; now `merud` runs every kind of job in `[[jobs]]`, a
 prompt, a skill or a command, with `allow` and `output`, files each run in the
 Jobs folder, and answers every op below, with a Jobs section in Settings and
-`/jobs` in `meru chat` to add, edit, pause, remove, run and stop jobs.
-`schedule_job` comes next.
+`/jobs` in `meru chat` to add, edit, pause, remove, run and stop jobs, and
+`schedule_job` adds one when you ask in chat.
 
 ### A job
 
@@ -5074,9 +5076,13 @@ make an ask that borrows a job's approvals.
 
 You can also ask: "every other Tuesday at 9, summarize the Go release notes".
 The built-in tool `schedule_job` proposes the job, and asks every time, as
-`configure` does: the card shows the job, and nothing is saved until you say
-yes. A job's own turns never see `schedule_job` or `configure`, so no job makes
-or changes jobs.
+`configure` does: the card shows the job with its schedule in words, such as
+"9:00 on Tuesdays, every other week from 27 October 2026", and nothing is saved
+until you say yes. It sets no `allow` list; what a job may do unwatched is set
+in Settings or `config.toml`. A question with "schedule", or "every" or "each"
+before a time word such as "weekday" or "morning", gets the tools route, so a
+`direct` guess still offers the tool. A job's own turns never see
+`schedule_job` or `configure`, so no job makes or changes jobs.
 
 ### What the scheduler doesn't do
 

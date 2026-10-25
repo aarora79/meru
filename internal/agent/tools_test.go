@@ -638,3 +638,28 @@ func TestTurnConnectsMissingServersOnce(t *testing.T) {
 		})
 	}
 }
+
+// TestJobHidesMeruChanges checks that a job's run isn't offered configure
+// or schedule_job, which change Meru itself, while a typed question on the
+// same route is.
+func TestJobHidesMeruChanges(t *testing.T) {
+	offered := func(req rpc.Request) []string {
+		tools := &fakeTools{specs: []engine.ToolSpec{spec("configure"), spec("schedule_job"), spec("remember")}}
+		eng := &fakeEngine{pieces: []string{"ok"}}
+		if _, err := run(context.Background(), toolsAgent(t, "tools", eng, tools), req); err != nil {
+			t.Fatalf("Handle: %v", err)
+		}
+		var names []string
+		for _, s := range eng.calls[0].tools {
+			names = append(names, s.Name)
+		}
+		slices.Sort(names)
+		return names
+	}
+	if got := offered(rpc.Request{Text: "note it"}); !slices.Equal(got, []string{"configure", "remember", "schedule_job"}) {
+		t.Errorf("a typed question was offered %v", got)
+	}
+	if got := offered(rpc.Request{Text: "note it", Source: rpc.SourceJob, Job: "brief"}); !slices.Equal(got, []string{"remember"}) {
+		t.Errorf("a job's run was offered %v, want only remember", got)
+	}
+}

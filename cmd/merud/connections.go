@@ -138,7 +138,7 @@ func builtinConnection(cfg config.Config, web connectors.Status, notes string) r
 		Web: web.State, WebSentence: web.Sentence}
 	for _, name := range config.BuiltinTools() {
 		p := policyOf(name, cfg.Builtin.Tools, cfg.Builtin.Confirm, nil)
-		if name == builtin.Configure && p != rpc.PolicyOff {
+		if builtin.AlwaysAsks(name) && p != rpc.PolicyOff {
 			p = rpc.PolicyAlways
 		}
 		c.Tools = append(c.Tools, rpc.ToolPolicy{Name: name, Description: builtin.Summary(name), Policy: p})
@@ -350,8 +350,8 @@ func (s *toolService) setBuiltinPolicy(p rpc.PolicyChange) error {
 	if !slices.Contains(config.BuiltinTools(), p.Tool) {
 		return fmt.Errorf("%q isn't a built-in tool; they are %s", p.Tool, strings.Join(config.BuiltinTools(), ", "))
 	}
-	if p.Tool == builtin.Configure && p.Policy == rpc.PolicyAllow {
-		return errors.New("configure always asks: it changes config.toml, so the model can never grant itself a tool; it can be on and ask, or off")
+	if builtin.AlwaysAsks(p.Tool) && p.Policy == rpc.PolicyAllow {
+		return fmt.Errorf("%s always asks: it changes config.toml, so the model can never change Meru on its own; it can be on and ask, or off", p.Tool)
 	}
 	return s.bt.EditConfig(func() error {
 		cfg, err := config.Load(s.configPath)
@@ -359,8 +359,8 @@ func (s *toolService) setBuiltinPolicy(p rpc.PolicyChange) error {
 			return err
 		}
 		tools, confirm := newLists(p.Tool, p.Policy, cfg.Builtin.Tools, cfg.Builtin.Confirm)
-		if p.Tool == builtin.Configure {
-			confirm = slices.DeleteFunc(confirm, func(t string) bool { return t == builtin.Configure })
+		if builtin.AlwaysAsks(p.Tool) {
+			confirm = slices.DeleteFunc(confirm, func(t string) bool { return t == p.Tool })
 		}
 		check := func(next config.Config) error {
 			if !slices.Equal(next.Builtin.Tools, tools) || !slices.Equal(next.Builtin.Confirm, confirm) {

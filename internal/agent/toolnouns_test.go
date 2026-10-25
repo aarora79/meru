@@ -139,6 +139,7 @@ func TestConnectedTools(t *testing.T) {
 func TestToolTarget(t *testing.T) {
 	specs := append(googleAndNotes(), spec("remember"))
 	appleNotes := []engine.ToolSpec{spec("search_notes"), spec("list_notes"), spec("read_note"), spec("read_file")}
+	scheduler := []engine.ToolSpec{spec("schedule_job"), spec("read_file")}
 	tests := []struct {
 		question string
 		specs    []engine.ToolSpec
@@ -158,6 +159,13 @@ func TestToolTarget(t *testing.T) {
 		{"what's in the Notes app about Lisbon?", appleNotes, "names Apple Notes"},
 		{"what do my notes say about Lisbon?", appleNotes, ""},
 		{"search my Apple Notes for the garden plan", []engine.ToolSpec{spec("read_file")}, ""},
+		// A schedule: "every" or "each" before a time word, or "schedule".
+		{"every weekday at 7, brief me on my calendar", scheduler, "asks for a schedule"},
+		{"each morning summarize the Go news", scheduler, "asks for a schedule"},
+		{"every other Tuesday at 9, check the release notes", scheduler, "asks for a schedule"},
+		{"schedule a backup of my notes at night", scheduler, "asks for a schedule"},
+		{"summarize every file in my work folder", scheduler, ""},
+		{"every weekday at 7, brief me on my calendar", []engine.ToolSpec{spec("read_file")}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.question, func(t *testing.T) {

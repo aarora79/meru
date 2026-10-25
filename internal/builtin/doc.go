@@ -1,5 +1,5 @@
 // Package builtin holds the tools built into merud, as one dispatch.Backend.
-// There are sixteen: configure, which adds an MCP server to config.toml when
+// There are seventeen: configure, which adds an MCP server to config.toml when
 // you ask in chat ("connect my Gmail"); datetime, which reads the clock;
 // about_meru, which reports merud's own facts, such as the exact name of
 // each model, so the model doesn't answer from its training; remember,
@@ -11,16 +11,18 @@
 // can see; web_search and web_fetch, which search the web through the
 // user's SearXNG and read, answer from or download one public page; and
 // search_notes, list_notes and read_note, which read the user's Apple Notes
-// live from the Notes app's database, on a Mac (notes.go).
+// live from the Notes app's database, on a Mac (notes.go); and
+// schedule_job, which saves a scheduled job the user asks for in chat
+// (schedulejob.go).
 //
 // [builtin] tools in config.toml lists the ones the model may use; all
-// sixteen by default. A tool it leaves out isn't offered, listed or run. A listed
+// seventeen by default. A tool it leaves out isn't offered, listed or run. A listed
 // tool whose setting is missing, such as the file tools with no [index]
 // folders, stays off too, and Off says why so merud can log it. See
 // ARCHITECTURE.md, "First run and setup", "Approving a tool call", "Memory",
 // "Built-in skills" and "Web search".
 //
-// configure always asks. dispatch shows the user the exact arguments and
+// configure and schedule_job always ask. dispatch shows the user the exact arguments and
 // offers only "approve once" and "deny", whatever [builtin] confirm says,
 // because config grants lasting trust and the model mustn't grant any to
 // itself. It writes through catalog.AppendServer, the same code `meru mcp

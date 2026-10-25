@@ -25,8 +25,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are sixteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all sixteen by default. When you say "connect my Gmail" in chat, the model calls
+There are seventeen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all seventeen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -953,6 +953,37 @@ on `EveryRoute`: they join the tools routes, and the agent's
 `asksForAppleNotes` rule gives a question that says "Apple Notes" or "Notes
 app" those routes (see [agent](agent.md)).
 
+### schedulejob.go
+
+`schedule_job` saves a scheduled job when the user asks for one in chat, such
+as "every other Tuesday at 9, summarize the Go release notes". `merud` hands it
+its job service's `add` through `UseJobs`; without it, the tool stays off and
+`Off` says "merud runs no scheduler". `add` writes the job through
+`catalog.SetJob` under the config lock and gives the scheduler the new list, the
+same path the Jobs screens take.
+
+The model sends a name, a cron schedule, `every_weeks` and `from` when the job
+runs every few weeks, and either a prompt with an optional skill or a declared
+command with its `args`, plus an optional `output`. `parseScheduleArgs` refuses
+an unknown key, as `configure` does, so the model can't slip in an `allow`
+list: what a job may do unwatched is the user's call, made in Settings.
+`scheduleJob` checks the schedule first with `when`, which parses it and says it
+in words with the next run; `add` then makes every other check `config.toml`
+makes. A refusal comes back as an error result that ends "Nothing was saved".
+
+`AlwaysAsks` names `configure` and `schedule_job`: both change Meru itself, so
+`Confirm` gives them `ConfirmAlways`, Settings never lets them run without
+asking, and the agent leaves them out of a job's run.
+
+The approval card has to show what the model understood, since "0 9 * * 2" is
+easy to misread. `Tools` has an `AuditArgs` method, which makes it a
+`dispatch.Auditor`, as the commands backend is. For `schedule_job` it adds a
+`when` key to the arguments, such as "9:00 on Tuesdays, every other week from
+27 October 2026; next run Tue 27 Oct 2026 09:00"; for any other tool it returns
+`nil`, and dispatch keeps the arguments as they are. Dispatch writes the result
+on the `tool_call` line and shows it on the card, so the user reads the words
+before saying yes.
+
 ### images.go
 
 Beside the image half of `Upload`, this file holds `Image`, which the agent
@@ -1106,7 +1137,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the sixteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the seventeen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1199,7 +1230,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all sixteen. `web_fetch` had its own key under `[web]` before; two
+  same way for all seventeen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

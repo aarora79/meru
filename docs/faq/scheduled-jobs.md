@@ -3,8 +3,10 @@
 In Meru.app, open Settings, Jobs, and click **Add a job**: give it a name, when
 it runs and what Meru should do. As you type the schedule, the form says it in
 words, such as "7:00 on weekdays", and when the next run is. In `meru chat`,
-type `/jobs` and press `a`. Meru saves the job in `~/.meru/config.toml`, and it
-takes effect at once. A job asks Meru a question at the times you set, in your
+type `/jobs` and press `a`. Or ask in chat: "every weekday at 7, brief me on
+my calendar". Meru shows the job on a card, with the schedule in words, and
+saves it only when you approve. Meru saves the job in `~/.meru/config.toml`,
+and it takes effect at once. A job asks Meru a question at the times you set, in your
 computer's time zone. In `config.toml` it reads:
 
 ```toml
