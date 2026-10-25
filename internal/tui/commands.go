@@ -47,7 +47,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/folders [add <path>]", "the folders Meru searches"},
 	{"/skills", "turn skills on or off"},
 	{"/sites [remove <site>]", "websites Meru reads without asking"},
-	{"/jobs", "scheduled jobs: run now, stop, open the last run"},
+	{"/jobs", "scheduled jobs: add, edit, pause, remove, run now, stop"},
 	{"/model [name|save]", "model sets: show, switch, save"},
 	{"/log", "the latest tool calls"},
 	{"/about", "version, license, links, Meru's folder"},

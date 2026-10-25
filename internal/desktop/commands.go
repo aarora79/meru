@@ -41,7 +41,7 @@ var commandList = []Command{
 	{Name: "/folders", Description: "The folders Meru searches"},
 	{Name: "/skills", Description: "Turn skills on or off"},
 	{Name: "/sites", Args: "[remove <website>]", Description: "The websites Meru reads without asking; take one off"},
-	{Name: "/jobs", Description: "Scheduled jobs: run now, stop, open the last run"},
+	{Name: "/jobs", Description: "Scheduled jobs: add, edit, pause, remove, run now, stop"},
 	{Name: "/model", Args: "[name | save]", Description: "Switch to a model set, save it as the default, or show the sets"},
 	{Name: "/log", Description: "The latest tool calls"},
 	{Name: "/about", Description: "Version, license and links"},

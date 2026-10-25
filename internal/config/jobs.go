@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -72,6 +73,13 @@ func (j Job) On() bool { return j.Enabled == nil || *j.Enabled }
 // Parse reads the job's schedule in loc, the computer's time zone.
 func (j Job) Parse(loc *time.Location) (jobs.Schedule, error) {
 	return jobs.Parse(j.Schedule, j.EveryWeeks, j.From, loc)
+}
+
+// CheckJobs checks cfg's [[jobs]] as Load does and returns every problem
+// joined into one error, or nil. merud runs it on a job a form hasn't
+// saved yet, to say what's wrong with it as the user types.
+func CheckJobs(cfg Config) error {
+	return errors.Join(checkJobs(cfg)...)
 }
 
 // checkJobs checks every [[jobs]] entry and returns each problem, naming

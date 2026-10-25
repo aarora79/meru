@@ -719,10 +719,20 @@ holds (16 to 512 pixels, each also at double size), and run
 ### jobs.go and Settings, Jobs
 
 `Jobs`, `RunJob` and `CancelJob` ask `merud` for the scheduled jobs, run one
-now, or stop a run. Settings has a Jobs section: each job with its schedule in
-words, its next or running state and last run, Run now or Stop, and "Open last
-run", which opens the chat. The section reloads every five seconds while it
-shows, so a run's start and end appear without a click. The chat list shows the
+now, or stop a run. `SaveJob` adds or edits a job, `CheckJob` asks for a dry
+run, and `RemoveJob` takes one out. Settings has a Jobs section: each job with
+its schedule in words, its next or running state and last run, Run now or Stop,
+Pause or Resume, Edit, Remove, which asks first, and "Open last run", which
+opens the chat. The list reloads every five seconds while it shows, so a run's
+start and end appear without a click. Add a job and Edit open a form above the
+list, outside the part that reloads, so a reload leaves what the user types
+alone. The form asks for the name, the schedule with a repeat choice (every
+week up to every 4 weeks, with a first day), the prompt and a skill, the tools
+it may use without asking, with a warning while that list names any, and an
+output file. A moment after each key, it calls `CheckJob` and shows the
+schedule in words and the next run, or what's wrong; an answer to an older
+check is dropped. A job that runs a command keeps its command and arguments,
+which the form shows and doesn't edit. The chat list shows the
 Jobs folder first, with a clock icon, and `/jobs` in the composer opens the
 section.
 

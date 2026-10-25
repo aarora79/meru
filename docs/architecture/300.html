@@ -2997,7 +2997,7 @@ timeout = "60s"                      # the default</code></pre>
 <!-- ============================================================ -->
 <h2 id="scheduler">Scheduled jobs</h2>
 
-<p><code>merud</code> runs jobs on a schedule: a prompt, a prompt with a named skill, or one declared <code>[[commands]]</code> entry. It is the first half of v0.5, built in steps under <a href="https://github.com/aarora79/meru/issues/167">#167</a>: the schedule rules in <code>internal/jobs</code> came first; now <code>merud</code> runs every kind of job in <code>[[jobs]]</code>, a prompt, a skill or a command, with <code>allow</code> and <code>output</code>, files each run in the Jobs folder, and answers <code>jobs</code>, <code>job_run</code> and <code>job_cancel</code>, with a Jobs section in Settings and <code>/jobs</code> in <code>meru chat</code>. Adding and changing jobs from the clients, and <code>schedule_job</code>, come next.</p>
+<p><code>merud</code> runs jobs on a schedule: a prompt, a prompt with a named skill, or one declared <code>[[commands]]</code> entry. It is the first half of v0.5, built in steps under <a href="https://github.com/aarora79/meru/issues/167">#167</a>: the schedule rules in <code>internal/jobs</code> came first; now <code>merud</code> runs every kind of job in <code>[[jobs]]</code>, a prompt, a skill or a command, with <code>allow</code> and <code>output</code>, files each run in the Jobs folder, and answers every op below, with a Jobs section in Settings and <code>/jobs</code> in <code>meru chat</code> to add, edit, pause, remove, run and stop jobs. <code>schedule_job</code> comes next.</p>
 
 <h3 id="scheduler-a-job">A job</h3>
 
@@ -3054,7 +3054,7 @@ command  = "backup-notes"              # a [[commands]] entry; no model runs</co
 
 <h3 id="scheduler-where-a-run-goes">Where a run goes</h3>
 
-<p>Each run is a chat. Its session sits in a chat folder named <b>Jobs</b>, which the first run creates; both clients show it first in the chat list, and refuse to rename or delete it while <code>[[jobs]]</code> holds a job. A run's title is the job's name and the time, such as "morning-brief · Fri 24 Oct 07:00", so a job's runs read as a log, newest first. The user line records the job's name, so the turns row carries it and a rebuild knows each job's last run.</p>
+<p>Each run is a chat. Its session sits in a chat folder named <b>Jobs</b>, which the first run creates; both clients show it first in the chat list, and <code>merud</code> refuses to rename or remove it while <code>[[jobs]]</code> holds a job. A run's title is the job's name and the time, such as "morning-brief · Fri 24 Oct 07:00", so a job's runs read as a log, newest first. The user line records the job's name, so the turns row carries it and a rebuild knows each job's last run.</p>
 
 <ul>
   <li><b>A prompt</b> runs through <code>agent.Handle</code> with source <code>job</code>, as a typed question would, within <code>[agent] turn_timeout</code>. Nothing streams, since nobody watches.</li>
@@ -3085,14 +3085,14 @@ command  = "backup-notes"              # a [[commands]] entry; no model runs</co
   <thead><tr><th>Op</th><th>What <code>merud</code> does</th></tr></thead>
   <tbody>
     <tr><td><code>jobs</code></td><td>lists each job with its schedule in words, next and last run, the last run's outcome and chat, and whether it runs now</td></tr>
-    <tr><td><code>job_set</code></td><td>adds or replaces one job in <code>config.toml</code> through a checked edit; with <code>dry_run</code> it only checks the job and returns its schedule in words, which the add form shows as you type. <code>enabled = false</code> pauses; resuming doesn't catch up the slots missed while paused</td></tr>
+    <tr><td><code>job_set</code></td><td>adds or replaces one job in <code>config.toml</code> through a checked edit, which keeps the comment above it; with <code>dry_run</code> it only checks the job and returns its schedule in words, which the add form shows as you type. <code>enabled = false</code> pauses; resuming doesn't catch up the slots missed while paused, and a changed schedule counts from the edit</td></tr>
     <tr><td><code>job_remove</code></td><td>takes the job out of <code>config.toml</code>; its runs stay in the Jobs folder</td></tr>
     <tr><td><code>job_run</code></td><td>runs the job now, outside its schedule; this doesn't count as its last run</td></tr>
     <tr><td><code>job_cancel</code></td><td>stops the job's run in progress, as Ctrl-C stops a question: the run ends <code>cancelled</code>, its chat keeps what it wrote, and the schedule stays</td></tr>
   </tbody>
 </table></div>
 
-<p>Meru.app has a Jobs section in Settings, and <code>meru chat</code> has <code>/jobs</code>: Enter runs the marked job now, <code>c</code> stops its run, <code>p</code> pauses or resumes, <code>d d</code> deletes, and <code>/jobs add</code> walks through the keys. A request's job fields come only from <code>merud</code>'s own scheduler; the socket refuses them from a client, so no client can make an ask that borrows a job's approvals.</p>
+<p>Meru.app has a Jobs section in Settings, with an Add a job form, and Pause, Edit and Remove on each job. <code>meru chat</code> has <code>/jobs</code>: Enter runs the marked job now, <code>c</code> stops its run, <code>p</code> pauses or resumes, <code>d d</code> removes, and <code>a</code> and <code>e</code> walk through a new job's or the marked job's name, schedule, prompt and skill. A job's command, arguments, <code>allow</code> and <code>output</code> are set in Settings or <code>config.toml</code>. A request's job fields come only from <code>merud</code>'s own scheduler; the socket refuses them from a client, so no client can make an ask that borrows a job's approvals.</p>
 
 <p>You can also ask: "every other Tuesday at 9, summarize the Go release notes". The built-in tool <code>schedule_job</code> proposes the job, and asks every time, as <code>configure</code> does: the card shows the job, and nothing is saved until you say yes. A job's own turns never see <code>schedule_job</code> or <code>configure</code>, so no job makes or changes jobs.</p>
 

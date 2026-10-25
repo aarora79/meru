@@ -4939,9 +4939,9 @@ declared `[[commands]]` entry. It is the first half of v0.5, built in steps
 under [#167](https://github.com/aarora79/meru/issues/167): the schedule rules in
 `internal/jobs` came first; now `merud` runs every kind of job in `[[jobs]]`, a
 prompt, a skill or a command, with `allow` and `output`, files each run in the
-Jobs folder, and answers `jobs`, `job_run` and `job_cancel`, with a Jobs section
-in Settings and `/jobs` in `meru chat`. Adding and changing jobs from the
-clients, and `schedule_job`, come next.
+Jobs folder, and answers every op below, with a Jobs section in Settings and
+`/jobs` in `meru chat` to add, edit, pause, remove, run and stop jobs.
+`schedule_job` comes next.
 
 ### A job
 
@@ -5017,8 +5017,8 @@ isn't blocked: Ollama serves both.
 ### Where a run goes
 
 Each run is a chat. Its session sits in a chat folder named **Jobs**, which the
-first run creates; both clients show it first in the chat list, and refuse to
-rename or delete it while `[[jobs]]` holds a job. A run's title is the job's
+first run creates; both clients show it first in the chat list, and `merud`
+refuses to rename or remove it while `[[jobs]]` holds a job. A run's title is the job's
 name and the time, such as "morning-brief · Fri 24 Oct 07:00", so a job's runs
 read as a log, newest first. The user line records the job's name, so the
 turns row carries it and a rebuild knows each job's last run.
@@ -5058,14 +5058,17 @@ and a tool that sends only when sending is the job's purpose.
 | Op | What `merud` does |
 | --- | --- |
 | `jobs` | lists each job with its schedule in words, next and last run, the last run's outcome and chat, and whether it runs now |
-| `job_set` | adds or replaces one job in `config.toml` through a checked edit; with `dry_run` it only checks the job and returns its schedule in words, which the add form shows as you type. `enabled = false` pauses; resuming doesn't catch up the slots missed while paused |
+| `job_set` | adds or replaces one job in `config.toml` through a checked edit, which keeps the comment above it; with `dry_run` it only checks the job and returns its schedule in words, which the add form shows as you type. `enabled = false` pauses; resuming doesn't catch up the slots missed while paused, and a changed schedule counts from the edit |
 | `job_remove` | takes the job out of `config.toml`; its runs stay in the Jobs folder |
 | `job_run` | runs the job now, outside its schedule; this doesn't count as its last run |
 | `job_cancel` | stops the job's run in progress, as Ctrl-C stops a question: the run ends `cancelled`, its chat keeps what it wrote, and the schedule stays |
 
-Meru.app has a Jobs section in Settings, and `meru chat` has `/jobs`: Enter runs
-the marked job now, `c` stops its run, `p` pauses or resumes, `d d` deletes, and
-`/jobs add` walks through the keys. A request's job fields come only from
+Meru.app has a Jobs section in Settings, with an Add a job form, and Pause,
+Edit and Remove on each job. `meru chat` has `/jobs`: Enter runs the marked job
+now, `c` stops its run, `p` pauses or resumes, `d d` removes, and `a` and `e`
+walk through a new job's or the marked job's name, schedule, prompt and skill.
+A job's command, arguments, `allow` and `output` are set in Settings or
+`config.toml`. A request's job fields come only from
 `merud`'s own scheduler; the socket refuses them from a client, so no client can
 make an ask that borrows a job's approvals.
 

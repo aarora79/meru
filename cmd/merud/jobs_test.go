@@ -170,3 +170,76 @@ func TestAllowFor(t *testing.T) {
 		t.Errorf("no once on offer: %s", got)
 	}
 }
+
+// TestJobSetAndRemove adds, checks, pauses, renames and removes a job over
+// the socket, and checks that config.toml and the list follow, and that
+// the Jobs folder stays while a job exists.
+func TestJobSetAndRemove(t *testing.T) {
+	dir, _ := meruHome(t)
+	d := startDaemon(t, dir, settingsHeader, &fakeEngine{version: "0.40.5"})
+	cfgPath := filepath.Join(dir, "config.toml")
+	set := func(was string, sp rpc.JobSpec, dry bool) ([]rpc.Event, string) {
+		return callErr(t, d.sock, rpc.Request{Op: rpc.OpJobSet, ID: was, JobSpec: &sp, DryRun: dry}, rpc.ChoiceOnce)
+	}
+	brief := rpc.JobSpec{Name: "morning-brief", Schedule: "0 7 * * 1-5", Prompt: "Brief me."}
+
+	// A dry run says the schedule in words and saves nothing.
+	evs, msg := set("", brief, true)
+	if msg != "" {
+		t.Fatal(msg)
+	}
+	if got := eventOf(t, evs, rpc.EventJobs).Jobs; len(got) != 1 || got[0].When != "7:00 on weekdays" || got[0].Next == "" {
+		t.Errorf("dry run = %+v", got)
+	}
+	if _, msg := set("", rpc.JobSpec{Name: "x", Schedule: "0 25 * * *", Prompt: "p"}, true); !strings.Contains(msg, "schedule") {
+		t.Errorf("dry run of a bad schedule: %q", msg)
+	}
+	if cfg, err := config.Load(cfgPath); err != nil || len(cfg.Jobs) != 0 {
+		t.Fatalf("after dry runs: %+v, %v", cfg.Jobs, err)
+	}
+
+	// Add, then refuse a second job of the same name.
+	evs, msg = set("", brief, false)
+	if msg != "" {
+		t.Fatal(msg)
+	}
+	if got := eventOf(t, evs, rpc.EventJobs).Jobs; len(got) != 1 || got[0].Name != "morning-brief" {
+		t.Errorf("after add = %+v", got)
+	}
+	if _, msg := set("", brief, false); !strings.Contains(msg, "exists already") {
+		t.Errorf("a second add: %q", msg)
+	}
+
+	// While a job exists, the Jobs folder can't be removed or renamed.
+	mustCall(t, d.sock, rpc.Request{Op: rpc.OpChatFolderAdd, ID: config.JobsFolder})
+	if _, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpChatFolderRemove, ID: config.JobsFolder}, rpc.ChoiceOnce); !strings.Contains(msg, "remove the jobs first") {
+		t.Errorf("remove the Jobs folder: %q", msg)
+	}
+	if _, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpChatFolderRename, ID: config.JobsFolder, Text: "Old"}, rpc.ChoiceOnce); !strings.Contains(msg, "remove the jobs first") {
+		t.Errorf("rename the Jobs folder: %q", msg)
+	}
+
+	// Pause and rename in one edit.
+	paused := brief
+	paused.Name, paused.Paused = "brief", true
+	evs, msg = set("morning-brief", paused, false)
+	if msg != "" {
+		t.Fatal(msg)
+	}
+	if got := eventOf(t, evs, rpc.EventJobs).Jobs; len(got) != 1 || got[0].Name != "brief" || !got[0].Paused || got[0].Prompt != "Brief me." {
+		t.Errorf("after edit = %+v", got)
+	}
+	if cfg, err := config.Load(cfgPath); err != nil || len(cfg.Jobs) != 1 || cfg.Jobs[0].On() {
+		t.Errorf("config after edit: %+v, %v", cfg.Jobs, err)
+	}
+
+	// Remove; then the folder may go.
+	evs = mustCall(t, d.sock, rpc.Request{Op: rpc.OpJobRemove, ID: "brief"})
+	if got := eventOf(t, evs, rpc.EventJobs).Jobs; len(got) != 0 {
+		t.Errorf("after remove = %+v", got)
+	}
+	if _, msg := callErr(t, d.sock, rpc.Request{Op: rpc.OpJobRemove, ID: "brief"}, rpc.ChoiceOnce); !strings.Contains(msg, "no job named") {
+		t.Errorf("a second remove: %q", msg)
+	}
+	mustCall(t, d.sock, rpc.Request{Op: rpc.OpChatFolderRemove, ID: config.JobsFolder})
+}

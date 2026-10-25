@@ -508,7 +508,9 @@ each problem with the job's name and key:
   small set.
 
 `Enabled` is a `*bool`, a pointer, so a missing key reads as `nil` and `On()` can
-tell "not set" (on) from `false` (paused). `JobsFolder` names the chat folder the
+tell "not set" (on) from `false` (paused). `CheckJobs` runs the same checks on a
+`Config` and joins the problems into one error with `errors.Join`; `merud` calls
+it on a job a form hasn't saved yet. `JobsFolder` names the chat folder the
 runs go in. config imports `internal/jobs` for `Parse`, which imports only the
 standard library.
 

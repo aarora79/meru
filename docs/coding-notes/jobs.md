@@ -108,7 +108,12 @@ can log it and move on.
 is the function that runs a job, and `last` holds each job's last run from the
 store. `Set` hands it the jobs; a job with no last run counts from that moment,
 so a job added at 7:05 doesn't run its 7:00 slot, and a job switched back on
-after a pause counts from then too, so it doesn't catch up what it missed.
+after a pause counts from then too, so it doesn't catch up what it missed. So
+does a job whose schedule changed: `Schedule.Same` compares the expression, the
+weeks and the first day, and a job that becomes hourly at 9:30 waits for 10:00
+rather than running its 9:00 slot. `Same` compares the first day with
+`time.Time.Equal`; `==` on two `time.Time` values also compares their location
+pointers, so two equal times can differ under `==`.
 
 `Loop(ctx)` owns the work. Every `Tick` (30 seconds) it calls `startDue`, which
 asks `Due` about each job that is on and not running. A run moves the job's

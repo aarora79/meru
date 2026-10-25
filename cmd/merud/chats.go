@@ -14,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/transcript"
 )
@@ -169,6 +170,11 @@ func (h historyService) handleChatFolderRename(ctx context.Context, req rpc.Requ
 	if err != nil {
 		return err
 	}
+	if from != to {
+		if err := h.jobsHold(from); err != nil {
+			return err
+		}
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	names, err := transcript.LoadFolders(h.dir)
@@ -207,6 +213,9 @@ func (h historyService) handleChatFolderRemove(ctx context.Context, req rpc.Requ
 	if err != nil {
 		return err
 	}
+	if err := h.jobsHold(name); err != nil {
+		return err
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	moved, err := h.refile(name, "")
@@ -222,6 +231,21 @@ func (h historyService) handleChatFolderRemove(ctx context.Context, req rpc.Requ
 	}
 	h.logger().InfoContext(ctx, "chat folder removed", "chats", moved)
 	return h.emitFolders(emit)
+}
+
+// jobsHold returns an error when folder is the Jobs folder and config.toml
+// has a job, whose next run would put the folder back: the user removes
+// the jobs first. It reads config.toml each time, since the jobs change
+// at run time, and passes when the file doesn't load.
+func (h historyService) jobsHold(folder string) error {
+	if folder != config.JobsFolder || h.configPath == "" {
+		return nil
+	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil || len(cfg.Jobs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("the %s folder holds the runs of your %d scheduled jobs; remove the jobs first", config.JobsFolder, len(cfg.Jobs))
 }
 
 // refile moves every chat in the folder from to the folder to ("" for

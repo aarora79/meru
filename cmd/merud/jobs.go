@@ -1,6 +1,6 @@
 // This file holds the scheduled jobs: building the scheduler from [[jobs]],
-// running one job through the agent, and the jobs, job_run and job_cancel
-// ops the clients' Jobs lists use. internal/jobs decides when; this file
+// running one job through the agent, and the jobs, job_run, job_cancel,
+// job_set and job_remove ops the clients' Jobs screens use. internal/jobs decides when; this file
 // does the run. See ARCHITECTURE.md, "Scheduler".
 
 package main
@@ -22,6 +22,7 @@ import (
 
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/jobs"
@@ -47,6 +48,11 @@ type jobService struct {
 	sessionsDir string
 	commands    []config.Command
 	log         *slog.Logger
+	// configPath is the config.toml job_set and job_remove change, and
+	// editConfig runs a change under the lock every config.toml write in
+	// merud takes.
+	configPath string
+	editConfig func(func() error) error
 
 	// mu guards jobs, the [[jobs]] entries by name.
 	mu   sync.Mutex
@@ -56,15 +62,17 @@ type jobService struct {
 // newJobService builds the scheduler from cfg's [[jobs]], with each job's
 // last run read from the store, so a restart doesn't run a job twice. A
 // prompt runs through a, a command and an output file through d, and every
-// run lands in the chat folder hist keeps. It fails when
-// the store can't be read; config has already checked every schedule.
-func newJobService(ctx context.Context, cfg config.Config, a *agent.Agent, d *dispatch.Dispatcher, st *store.Store,
-	hist historyService, log *slog.Logger) (*jobService, error) {
+// run lands in the chat folder hist keeps. Job changes go into the file at
+// configPath through editConfig. It fails when the store can't be read;
+// config has already checked every schedule.
+func newJobService(ctx context.Context, cfg config.Config, configPath string, editConfig func(func() error) error,
+	a *agent.Agent, d *dispatch.Dispatcher, st *store.Store, hist historyService, log *slog.Logger) (*jobService, error) {
 	last, err := st.LastJobRuns(ctx)
 	if err != nil {
 		return nil, err
 	}
-	s := &jobService{agent: a, dispatcher: d, st: st, hist: hist, sessionsDir: hist.dir, commands: cfg.Commands, log: log}
+	s := &jobService{agent: a, dispatcher: d, st: st, hist: hist, sessionsDir: hist.dir, commands: cfg.Commands, log: log,
+		configPath: configPath, editConfig: editConfig}
 	s.sched = jobs.New(s.run, last, log)
 	if err := s.set(cfg.Jobs); err != nil {
 		return nil, err
@@ -378,6 +386,121 @@ func (s *jobService) handleJobCancel(req rpc.Request, emit func(rpc.Event) error
 	return s.handleJobs(emit)
 }
 
+// handleJobSet answers OpJobSet: it saves req.JobSpec in place of the job
+// named req.ID, or as a new job when ID is empty, hands the scheduler the
+// new list and replies with it. With req.DryRun it saves nothing and
+// replies with the job alone, its schedule in words and its next run. It
+// fails, saying why, for a job config.toml would refuse.
+func (s *jobService) handleJobSet(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	if req.JobSpec == nil {
+		return errors.New("job_set needs a job")
+	}
+	j := jobOf(*req.JobSpec)
+	if req.DryRun {
+		return s.checkJob(req.ID, j, emit)
+	}
+	err := s.editConfig(func() error {
+		if err := catalog.SetJob(s.configPath, req.ID, j); err != nil {
+			return err
+		}
+		return s.reload()
+	})
+	if err != nil {
+		return err
+	}
+	verb := "job saved"
+	if req.ID == "" {
+		verb = "job added"
+	}
+	s.log.InfoContext(ctx, verb, "job", j.Name, "paused", !j.On())
+	return s.handleJobs(emit)
+}
+
+// checkJob answers a dry run of OpJobSet: it puts j in place of the job
+// named was, or after the rest, checks the jobs as config.toml's load
+// would, and replies with j alone, with its schedule in words and its next
+// run. It fails with each problem, or when config.toml doesn't load.
+func (s *jobService) checkJob(was string, j config.Job, emit func(rpc.Event) error) error {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		return fmt.Errorf("fix config.toml before changing a job: %w", err)
+	}
+	i := slices.IndexFunc(cfg.Jobs, func(x config.Job) bool { return was != "" && x.Name == was })
+	if was != "" && i < 0 {
+		return fmt.Errorf("there is no job named %q", was)
+	}
+	list := slices.Clone(cfg.Jobs)
+	if i >= 0 {
+		list[i] = j
+	} else {
+		list = append(list, j)
+	}
+	cfg.Jobs = list
+	if err := config.CheckJobs(cfg); err != nil {
+		return err
+	}
+	info := rpc.JobInfo{JobSpec: specOf(j)}
+	if sch, err := j.Parse(time.Local); err == nil {
+		info.When = sch.Describe()
+		if next, ok := sch.Next(time.Now()); ok {
+			info.Next = next.Format(time.RFC3339)
+		}
+	}
+	return emit(rpc.Event{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{info}})
+}
+
+// handleJobRemove answers OpJobRemove: it takes the job named req.ID out
+// of config.toml, hands the scheduler the jobs left and replies with
+// them. A run in progress goes on to its end. It fails for a job
+// config.toml doesn't hold.
+func (s *jobService) handleJobRemove(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	err := s.editConfig(func() error {
+		if err := catalog.RemoveJob(s.configPath, req.ID); err != nil {
+			return err
+		}
+		return s.reload()
+	})
+	if err != nil {
+		return err
+	}
+	s.log.InfoContext(ctx, "job removed", "job", req.ID)
+	return s.handleJobs(emit)
+}
+
+// reload reads config.toml's jobs again and hands them to the scheduler.
+// The caller holds the config lock.
+func (s *jobService) reload() error {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		return err
+	}
+	return s.set(cfg.Jobs)
+}
+
+// jobOf turns a client's JobSpec into a config.Job; specOf goes the other
+// way. Paused is enabled = false; a running job leaves Enabled unset, as
+// a hand-written entry does.
+func jobOf(sp rpc.JobSpec) config.Job {
+	j := config.Job{
+		Name: strings.TrimSpace(sp.Name), Schedule: strings.TrimSpace(sp.Schedule), EveryWeeks: sp.EveryWeeks,
+		From: sp.From, Prompt: strings.TrimSpace(sp.Prompt), Skill: sp.Skill, Command: sp.Command,
+		Args: sp.Args, Allow: sp.Allow, Output: sp.Output,
+	}
+	if sp.Paused {
+		off := false
+		j.Enabled = &off
+	}
+	return j
+}
+
+// specOf turns a config.Job into the JobSpec a client shows.
+func specOf(j config.Job) rpc.JobSpec {
+	return rpc.JobSpec{
+		Name: j.Name, Schedule: j.Schedule, EveryWeeks: j.EveryWeeks, From: j.From, Prompt: j.Prompt,
+		Skill: j.Skill, Command: j.Command, Args: j.Args, Allow: j.Allow, Output: j.Output, Paused: !j.On(),
+	}
+}
+
 // running reports whether the job named name has a run going.
 func (s *jobService) running(name string) bool {
 	for _, st := range s.sched.Status() {
@@ -407,8 +530,7 @@ func (s *jobService) infos() []rpc.JobInfo {
 			when = sch.Describe()
 		}
 		out = append(out, rpc.JobInfo{
-			Name: j.Name, Schedule: j.Schedule, When: when, Prompt: j.Prompt, Skill: j.Skill,
-			Paused: !j.On(), Next: stamp(st.Next), Last: stamp(st.Last),
+			JobSpec: specOf(j), When: when, Next: stamp(st.Next), Last: stamp(st.Last),
 			LastOutcome: st.LastOutcome, LastSession: st.LastSession,
 			Running: st.Running, Started: stamp(st.Started),
 		})

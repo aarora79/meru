@@ -265,6 +265,21 @@ const (
 	// the run ends "cancelled" and the job's schedule stays. It replies
 	// with the "jobs" event, and fails when the job has no run going.
 	OpJobCancel Op = "job_cancel"
+	// OpJobSet saves Request.JobSpec as a [[jobs]] entry in config.toml:
+	// in place of the job named in Request.ID, so an edit can rename it,
+	// or as a new job when ID is empty. Pausing and resuming are a set
+	// with Paused changed. merud checks the job as config.toml would, and
+	// the scheduler takes the new list at once. The reply is the "jobs"
+	// event and "done". With Request.DryRun, merud saves nothing and the
+	// "jobs" event holds only the job as it would be, with its schedule in
+	// words and its next run, for a form to show as the user types; an
+	// error event says what's wrong with it.
+	OpJobSet Op = "job_set"
+	// OpJobRemove takes the job named in Request.ID out of config.toml,
+	// with the comment above it, and replies with the "jobs" event. A run
+	// in progress goes on to its end; the job's past runs stay in the Jobs
+	// folder.
+	OpJobRemove Op = "job_remove"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -346,6 +361,10 @@ type Request struct {
 	// make an ask that counts as a job.
 	Job   string `json:"job,omitempty"`
 	Skill string `json:"skill,omitempty"`
+	// JobSpec is the job OpJobSet saves. A pointer, as Policy is. DryRun
+	// makes OpJobSet check it and save nothing.
+	JobSpec *JobSpec `json:"job_spec,omitempty"`
+	DryRun  bool     `json:"dry_run,omitempty"`
 }
 
 // Audio is one recording for OpTranscribe. WAV holds the whole file;
@@ -1054,19 +1073,37 @@ type ProbeTool struct {
 	Destructive *bool `json:"destructive,omitempty"`
 }
 
-// JobInfo is one scheduled job for the clients' Jobs lists. Times are RFC
-// 3339; an empty one means none.
-type JobInfo struct {
+// JobSpec is one [[jobs]] entry as config.toml holds it, for the Jobs
+// forms to show and OpJobSet to save. See config.Job for each key.
+type JobSpec struct {
 	Name string `json:"name"`
-	// Schedule is the cron expression, When says it in words, such as
-	// "7:00 on weekdays", and Action what a run does: the prompt, with
-	// the skill when one is named.
-	Schedule string `json:"schedule"`
-	When     string `json:"when"`
-	Prompt   string `json:"prompt,omitempty"`
-	Skill    string `json:"skill,omitempty"`
+	// Schedule is the cron expression; EveryWeeks, above 1, runs it only
+	// every that many weeks from the week of From, as "2026-10-27".
+	Schedule   string `json:"schedule"`
+	EveryWeeks int    `json:"every_weeks,omitempty"`
+	From       string `json:"from,omitempty"`
+	// A run asks Prompt, loading Skill when one is named, or runs the
+	// [[commands]] entry Command with Args.
+	Prompt  string            `json:"prompt,omitempty"`
+	Skill   string            `json:"skill,omitempty"`
+	Command string            `json:"command,omitempty"`
+	Args    map[string]string `json:"args,omitempty"`
+	// Allow lists the tools a run may use without asking once, and Output
+	// a file under [skills] output_dir the answer also goes to.
+	Allow  []string `json:"allow,omitempty"`
+	Output string   `json:"output,omitempty"`
 	// Paused is true for enabled = false.
 	Paused bool `json:"paused,omitempty"`
+}
+
+// JobInfo is one scheduled job for the clients' Jobs lists: its JobSpec
+// and how it runs. Times are RFC 3339; an empty one means none.
+type JobInfo struct {
+	// JobSpec is embedded: its fields read as JobInfo's own, j.Name for
+	// one, and its JSON keys sit at the top level of a JobInfo.
+	JobSpec
+	// When says the schedule in words, such as "7:00 on weekdays".
+	When string `json:"when"`
 	// Next is the next scheduled run.
 	Next string `json:"next,omitempty"`
 	// Last is the latest run's scheduled time, LastOutcome how it ended

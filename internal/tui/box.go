@@ -68,10 +68,15 @@ func (m *Model) openBox() {
 // a change sent to merud. Update handles Ctrl-C and Ctrl-D before this, as
 // it does for the approval box.
 func (m *Model) boxKey(msg tea.KeyMsg) tea.Cmd {
-	typing := m.mcpBox != nil && (m.mcpBox.keyFor != nil || m.mcpBox.walk != nil)
+	jobForm := m.jobsBox != nil && m.jobsBox.walk != nil
+	typing := jobForm || (m.mcpBox != nil && (m.mcpBox.keyFor != nil || m.mcpBox.walk != nil))
 	if msg.Type == tea.KeyEsc && typing {
-		// Esc leaves the key field or the connector form, not the box.
-		m.mcpBox.keyFor, m.mcpBox.walk = nil, nil
+		// Esc leaves the key field or the form, not the box.
+		if jobForm {
+			m.jobsBox.walk = nil
+		} else {
+			m.mcpBox.keyFor, m.mcpBox.walk = nil, nil
+		}
 		return nil
 	}
 	if msg.Type == tea.KeyEsc || (!typing && msg.Type == tea.KeyRunes && string(msg.Runes) == "q") {
@@ -134,8 +139,11 @@ func (m *Model) boxKeys() keyList {
 		k = keyList{move, bind("enter", "on/off")}
 	case m.sitesBox != nil:
 		k = keyList{move, bind("d", "remove")}
+	case m.jobsBox != nil && m.jobsBox.walk != nil:
+		return keyList{bind("enter", "next"), bind("esc", "cancel")}
 	case m.jobsBox != nil:
-		k = keyList{move, bind("enter", "run now"), bind("c", "stop"), bind("o", "open last run")}
+		k = keyList{move, bind("enter", "run now"), bind("c", "stop"), bind("o", "last run"), bind("p", "pause"),
+			bind("e", "edit"), bind("a", "add"), bind("d", "remove")}
 	case m.logBox != nil:
 		k = keyList{move}
 	case m.helpBox != nil, m.aboutBox != nil:

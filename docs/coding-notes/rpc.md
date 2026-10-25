@@ -545,7 +545,18 @@ adds a `cancelled` event to the span.
 per job: the schedule and `When` in words, the prompt and skill, `Paused`,
 `Next`, `Last`, `LastOutcome` and `LastSession`, and `Running` with `Started`.
 `job_run` and `job_cancel` take the job's name in `ID`, run it now or stop its
-run, and reply with the same event. `Request.Job` and `Request.Skill` belong to
+run, and reply with the same event.
+
+`JobInfo` embeds a `JobSpec`, the job as `config.toml` holds it: name,
+schedule, `EveryWeeks` and `From`, prompt, skill, command and `Args`, `Allow`,
+`Output` and `Paused`. Embedding means a struct named inside another without a
+field name: its fields read as the outer struct's own (`j.Name`), and
+`encoding/json` writes its keys at the top level, so the JSON a client reads
+stays as it was. `job_set` (`OpJobSet`) carries a `JobSpec` in
+`Request.JobSpec`, with the old name in `ID` for an edit, and replies with the
+list. With `DryRun` it saves nothing and the `jobs` event holds only that job,
+with `When` and `Next`, for the desktop form's live line. `job_remove`
+(`OpJobRemove`) takes the name in `ID`. `Request.Job` and `Request.Skill` belong to
 the asks `merud`'s scheduler makes for itself; the server refuses either from a
 client, before the handler sees the request, so no client can make an ask that
 passes as a job.

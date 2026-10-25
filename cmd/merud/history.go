@@ -38,6 +38,9 @@ type historyService struct {
 	forget func(id string) bool
 	log    *slog.Logger
 	mu     *sync.Mutex
+	// configPath, when set, is the config.toml whose [[jobs]] keep the
+	// Jobs folder from being renamed or removed.
+	configPath string
 }
 
 // newHistoryService returns a historyService over the transcripts in dir.

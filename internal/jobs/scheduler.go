@@ -109,18 +109,22 @@ func New(run RunFunc, last map[string]time.Time, log *slog.Logger) *Scheduler {
 // Set replaces the jobs, as when config changes. A job new to the
 // scheduler, with no last run, counts from now. A job switched back on
 // after a pause counts from now too, so it doesn't catch up the slots it
-// missed while paused.
+// missed while paused, and so does a job whose schedule changed, so an
+// edit doesn't run a slot of the new schedule that fell before the edit.
 func (s *Scheduler) Set(entries []Entry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	wasOn := map[string]bool{}
+	was := map[string]Entry{}
 	for _, e := range s.entries {
-		wasOn[e.Name] = e.On
+		was[e.Name] = e
 	}
 	for _, e := range entries {
-		on, known := wasOn[e.Name]
-		if _, ok := s.last[e.Name]; !ok || (known && !on && e.On) {
+		old, known := was[e.Name]
+		_, ran := s.last[e.Name]
+		resumed := known && !old.On && e.On
+		changed := known && !old.Schedule.Same(e.Schedule)
+		if !ran || resumed || changed {
 			s.last[e.Name] = now
 		}
 	}
