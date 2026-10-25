@@ -123,13 +123,19 @@ keeps the last `n` pairs. An answer with a `notice` gets it after its text, in
 square brackets, so on the next turn the model reads that its claim didn't
 happen instead of building on it.
 
-An answer with web notes gets one line per note after that, from `webNotes`:
+An answer with web notes gets them after that, from `webNotes`: the line
+`webNotesHead`, then one line per note:
 
 ```text
 It moves notes between apps.
 
-[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]
+(Meru's notes on the pages this turn read, for later questions. They aren't part of the answer above; never copy them into an answer, and cite pages by number as usual.)
+- Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.
 ```
+
+The head line says who wrote the notes and that they never go in an answer.
+The notes used to be bare `[from the web: …]` lines, and a model answering a
+follow-up copied them, run together, onto the end of its answer.
 
 A real session showed why. A turn read a product's page and answered well, and
 the next three answers, whose history held only the question and answer text,

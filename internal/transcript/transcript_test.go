@@ -285,9 +285,9 @@ func TestHistory(t *testing.T) {
 				{URL: "https://acme.example/flow", Title: "Acme Flow", Gist: "Acme Flow moves notes between apps."},
 				{URL: "https://acme.example/blog"},
 			}},
-		}, 10, msgs("what is Acme Flow?", "It moves notes.\n\n"+
-			"[from the web: Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.]\n"+
-			"[from the web: https://acme.example/blog]")},
+		}, 10, msgs("what is Acme Flow?", "It moves notes.\n\n"+webNotesHead+"\n"+
+			"- Acme Flow https://acme.example/flow — Acme Flow moves notes between apps.\n"+
+			"- https://acme.example/blog")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
