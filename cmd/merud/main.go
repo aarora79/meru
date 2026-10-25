@@ -326,6 +326,9 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		return fail(err)
 	}
 	svc.jobs = jobSvc
+	// schedule_job saves the jobs the user approves in chat through the
+	// same checked edit as the clients' Jobs screens.
+	tools.bt.UseJobs(jobSvc.add)
 	g.Go(func() error { jobSvc.sched.Loop(gctx); return nil })
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })

@@ -449,6 +449,23 @@ func (s *jobService) checkJob(was string, j config.Job, emit func(rpc.Event) err
 	return emit(rpc.Event{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{info}})
 }
 
+// add saves j as a new job, for schedule_job, under the config lock, and
+// hands the scheduler the new list. It fails for a name another job has
+// or a job config.toml would refuse.
+func (s *jobService) add(ctx context.Context, j config.Job) error {
+	err := s.editConfig(func() error {
+		if err := catalog.SetJob(s.configPath, "", j); err != nil {
+			return err
+		}
+		return s.reload()
+	})
+	if err != nil {
+		return err
+	}
+	s.log.InfoContext(ctx, "job added", "job", j.Name, "by", "schedule_job")
+	return nil
+}
+
 // handleJobRemove answers OpJobRemove: it takes the job named req.ID out
 // of config.toml, hands the scheduler the jobs left and replies with
 // them. A run in progress goes on to its end. It fails for a job

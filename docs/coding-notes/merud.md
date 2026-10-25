@@ -1761,7 +1761,9 @@ and back. A dry run goes to `checkJob`, which puts the job into a copy of the
 loaded config, runs `config.CheckJobs` on it, and replies with the job's
 schedule in words and its next run. `chats.go` calls `jobsHold` before it
 renames or removes a chat folder: the Jobs folder stays while `config.toml`
-holds a job, since the job's next run would bring it back.
+holds a job, since the job's next run would bring it back. `add` saves a new job
+the same way, for the built-in `schedule_job`; `main.go` hands it over with
+`tools.bt.UseJobs(jobSvc.add)` once the job service exists.
 
 ## Go ideas used here
 

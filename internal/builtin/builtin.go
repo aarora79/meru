@@ -2,8 +2,9 @@
 // and the configure tool. The remember tool lives in remember.go,
 // write_file in writefile.go, read_file, list_folder and grep in files.go,
 // the past chats those three read in chats.go, AttachmentText in attachments.go, search_files in search.go, and
-// web_search and web_fetch in web.go, webguard.go and webdownload.go, and
-// search_notes, list_notes and read_note in notes.go.
+// web_search and web_fetch in web.go, webguard.go and webdownload.go,
+// search_notes, list_notes and read_note in notes.go, and schedule_job in
+// schedulejob.go.
 
 package builtin
 
@@ -76,6 +77,10 @@ type Tools struct {
 	// sessionsDir is the folder of past chats the file tools also read,
 	// set by ReadSessions; "" when they don't read it. See chats.go.
 	sessionsDir string
+
+	// addJob saves a job schedule_job proposed, set by UseJobs; nil
+	// leaves schedule_job out. See schedulejob.go.
+	addJob func(ctx context.Context, j config.Job) error
 
 	// mu makes one configure call finish its write before the next starts
 	// reading config.toml, so two calls can't both pass the duplicate check.
@@ -220,6 +225,10 @@ func (t *Tools) missing(name string) string {
 		}
 	case SearchNotes, ListNotes, ReadNote:
 		return t.notesOff()
+	case ScheduleJob:
+		if t.addJob == nil {
+			return "merud runs no scheduler"
+		}
 	}
 	return ""
 }
@@ -265,6 +274,9 @@ func (t *Tools) Tools() []engine.ToolSpec {
 	if t.notesOff() == "" {
 		specs = append(specs, notesSpecs()...)
 	}
+	if t.addJob != nil {
+		specs = append(specs, scheduleJobSpec())
+	}
 	search, _ := t.webSearchOn()
 	// DeleteFunc drops, in place, each spec the function returns true for.
 	return slices.DeleteFunc(specs, func(s engine.ToolSpec) bool {
@@ -295,7 +307,8 @@ func (t *Tools) webSearchOn() (bool, string) {
 	return true, ""
 }
 
-// Confirm says configure always asks, with no session approval. Any other
+// Confirm says configure and schedule_job always ask, with no session
+// approval. Any other
 // built-in asks when [builtin] confirm lists it, and runs without asking
 // otherwise. The shipped list holds write_file alone, so remember saves
 // without asking, as ARCHITECTURE.md "Memory" says, write_file asks, and
@@ -304,7 +317,7 @@ func (t *Tools) webSearchOn() (bool, string) {
 // without save; ConfirmCall, in webguard.go, decides the rest per call.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
-	case name == Configure:
+	case AlwaysAsks(name):
 		return dispatch.ConfirmAlways
 	case t.asks(name):
 		return dispatch.ConfirmAsk
@@ -416,6 +429,14 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			})
 		}
 	}
+	if t.addJob != nil {
+		tools = append(tools, rpc.ToolInfo{
+			Name:        ScheduleJob,
+			Description: Summary(ScheduleJob),
+			Confirm:     true,
+			AlwaysAsks:  true,
+		})
+	}
 	tools = slices.DeleteFunc(tools, func(ti rpc.ToolInfo) bool { return !t.enabled(ti.Name) })
 	return []rpc.ServerInfo{{
 		Name:      server,
@@ -480,6 +501,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.webFetch(ctx, args)
 	case IsNotesTool(name) && t.notesOff() == "":
 		text, err = t.callNotes(ctx, name, args)
+	case name == ScheduleJob && t.addJob != nil:
+		text, err = t.scheduleJob(ctx, args)
 	default:
 		return dispatch.Result{}, fmt.Errorf("%q is not a built-in tool", name)
 	}
@@ -748,6 +771,8 @@ func Summary(name string) string {
 		return "Lists your Apple Notes folders and newest notes."
 	case ReadNote:
 		return "Reads one of your Apple Notes in full."
+	case ScheduleJob:
+		return "Schedules a job when you ask for one in chat. It asks every time."
 	}
 	return ""
 }

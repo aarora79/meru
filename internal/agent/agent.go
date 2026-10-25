@@ -804,6 +804,14 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if err != nil {
 		return res, err
 	}
+	// A job's own run never sees the tools that change Meru, configure and
+	// schedule_job, so no job makes or changes jobs, whatever a page it
+	// reads tells it (ARCHITECTURE.md, "Scheduler"). dispatch would
+	// decline them in a job anyway; leaving them out spares the model a
+	// tool it can't use.
+	if t.job != "" {
+		specs = slices.DeleteFunc(specs, func(s engine.ToolSpec) bool { return builtin.AlwaysAsks(s.Name) })
+	}
 	res.rep, err = a.finishPrompt(ctx, t, question, history, picked, files, web, specs, fileTurn)
 	return res, err
 }

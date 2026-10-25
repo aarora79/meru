@@ -153,7 +153,7 @@ keeps the client thin.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all sixteen, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all seventeen, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
 }
 ```
@@ -280,7 +280,7 @@ meaning altogether and keep only `grep` (see
 [Retrieval](../../ARCHITECTURE.md#retrieval)).
 
 `checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
-the sixteen in `builtinTools`, and the message lists them. A name in `confirm` must
+the seventeen in `builtinTools`, and the message lists them. A name in `confirm` must
 also be in `tools`; otherwise the confirm line would do nothing, which is
 almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
 because `builtin` imports `config` and Go refuses an import cycle. A test in
