@@ -583,9 +583,12 @@ bundler.
   sources line, footer) has its own draw function, so a token redraws only the
   body. A source chip shows an image icon for an image, which `isImageSource`
   tells by the citation's `kind`, or, in a past chat whose transcript keeps
-  paths only, by the file's ending. The strip's first chip comes from `workLabel`, which reads what the turn
+  paths only, by the file's ending. A web source (`isWebSource`: `kind` "web"
+  with a `url`) shows a globe and the site's host, such as "go.dev", with the
+  page's title on hover, and `openSource` opens it through the Bridge's
+  `OpenURL` rather than `OpenSource`. The strip's first chip comes from `workLabel`, which reads what the turn
   did: "Used tools" once a `tool_call` event came, "Searched your files" once a
-  `sources` event came, both together, "Answered from the model" for a finished
+  `sources` event brought a file, not only web pages, both together, "Answered from the model" for a finished
   turn with neither, and "Answering" while text streams. It never reads the
   route: the router's pick says what the turn could do, and a `tools` turn
   whose model called no tool once said "Used tools". `app.js` redraws the strip

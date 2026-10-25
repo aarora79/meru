@@ -22,9 +22,19 @@ import (
 //
 // The heading appears when the excerpt has one. A text file gives a line
 // range (or "line 7" for one line) and a PDF gives a page; an image says
-// "(image)" after its path. Having a String
-// method makes Citation print this way with fmt's %s and %v too.
+// "(image)" after its path; a web page gives its title, then its URL:
+//
+//	[5] Release History — https://go.dev/doc/devel/release
+//
+// Having a String method makes Citation print this way with fmt's %s and
+// %v too.
 func (c Citation) String() string {
+	if c.Kind == SourceWeb && c.URL != "" {
+		if c.Heading == "" || c.Heading == c.URL {
+			return fmt.Sprintf("[%d] %s", c.N, c.URL)
+		}
+		return fmt.Sprintf("[%d] %s — %s", c.N, c.Heading, c.URL)
+	}
 	// strings.Builder collects pieces of a string without copying the whole
 	// thing on each addition.
 	var b strings.Builder
@@ -78,6 +88,16 @@ func Cited(answer string, sources []Citation) []Citation {
 		}
 	}
 	return out
+}
+
+// Link returns the address a source line links to: a web page's URL, or
+// the file:// URL of a file, from FileURL with home. It returns "" when
+// there is none.
+func (c Citation) Link(home string) string {
+	if c.Kind == SourceWeb {
+		return c.URL
+	}
+	return FileURL(c.Path, home)
 }
 
 // FileURL turns a citation's path into a file:// URL a terminal can open.

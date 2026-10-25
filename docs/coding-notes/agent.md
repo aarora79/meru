@@ -600,6 +600,15 @@ tools shouldn't do that, so `fileTurn` changes only when the added tools
 include a file tool. `slices.ContainsFunc` reports whether any item passes the
 function.
 
+The same goes for a turn the router already sent to `tools`. When the picked
+skills bring `web_search` and no file tool (`webSkill`), the turn is about the
+web, and `fileTurn` turns false, so it doesn't search your files first. The
+case that led here: "can you search for things from the last 2 days", a
+follow-up in a chat about a rocket launch, named no web phrase, routed to
+`tools`, picked `web-research`, and still put nine unrelated excerpts and
+43,000 tokens in the prompt (#174). `TestWebSkillSkipsFileSearch` runs the turn
+with the skill picked and with none.
+
 ### Scopes (scope.go)
 
 The desktop app's "Where Meru looks" switch sends `Request.Scope`. `Handle` checks
@@ -1093,9 +1102,10 @@ fileTurn := aboutFiles(dec.Route, target)
 
 Before this rule, "search the web for the latest Go release" searched your
 folders too. The excerpts crowded the prompt and cost time, and `web_search`
-numbers its results from `[1]` as the excerpts are, so a `[1]` meant for a web
+numbered its results from `[1]` as the excerpts are, so a `[1]` meant for a web
 page also named the first excerpt, and the Sources list under a web answer
-showed one of your files. The file tools stay
+showed one of your files. Web results now take the numbers after the excerpts,
+from the turn's counter (see [builtin](builtin.md)). The file tools stay
 on offer on such a turn, so the model can still look at your files when it
 has to. `search` and `search+tools` keep their search whatever the question
 says: the router, or the folder rule, saw files in it. So "search my obsidian
@@ -1254,14 +1264,17 @@ and hands the list to `runCalls` with `dispatch.CallerMeru`. That is the same
 function the model's calls go through, so each call gets its events,
 transcript lines and `tool_calls` row, with `caller` set. A call that failed or
 returned nothing stays out of the section. The rest go under `webCiteRule` and
-"From the web", each cut to an equal share of `maxWebChars`:
+"From the web", each cut to an equal share of `maxWebChars`. Each result carries
+its own numbers from the turn's counter, and its sources join the turn's
+`sources` event through `addSources`, as a model call's would; `webCiteRule`
+asks the model to cite them by number:
 
 ```text
 Below, under "From the web", is what Meru found on the web for this question before you started. ...
 
 From the web
 
-Web results for "Acme Flow pricing", 2 of 2. Cite each result you use by its URL.
+Web results for "Acme Flow pricing", 2 of 2. Cite each result you use by its number, such as [1].
 
 [1] Acme Flow — https://acme.example/flow
 Acme Flow moves notes between apps.

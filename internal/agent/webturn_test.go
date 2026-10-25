@@ -316,7 +316,8 @@ func TestURLWebFirst(t *testing.T) {
 				t.Errorf("fetched %v, want %v", got, tt.want)
 			}
 			system := eng.lastCall().msgs[0].Content
-			if has := strings.Contains(system, "[1] https://acme.example/flow") || strings.Contains(system, "[2] https://acme.example/flow"); has != (len(tt.want) > 0) {
+			// The page's text, with its own number, reaches the prompt.
+			if has := strings.Contains(system, "Cite this page as [1]."); has != (len(tt.want) > 0) {
 				t.Errorf("prompt holds the page = %v, want %v", has, len(tt.want) > 0)
 			}
 		})

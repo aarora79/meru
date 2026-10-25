@@ -421,9 +421,10 @@ const (
 	// in the prompt, numbered as the answer cites them ([1], [2], ...). It
 	// comes after "route" and before the first "token", and only on a turn
 	// whose search found something. A round whose tool calls returned
-	// excerpts, such as search_files, sends it again after its
-	// "tool_result" events, with every source so far: each "sources" event
-	// replaces the one before it.
+	// sources, such as search_files' excerpts or web_search's results,
+	// sends it again after its "tool_result" events, with every source so
+	// far: each "sources" event replaces the one before it. A web page has
+	// Kind SourceWeb and its URL.
 	EventSources EventType = "sources"
 	// EventToken carries the next piece of the answer text.
 	EventToken EventType = "token"
@@ -640,10 +641,19 @@ type Citation struct {
 	// Score is the excerpt's search score (reciprocal-rank fusion); higher
 	// is better.
 	Score float64 `json:"score,omitempty"`
-	// Kind is "image" when the source is an image file, and empty for
-	// text, so a client that predates images shows it as any other source.
+	// Kind is "image" when the source is an image file, SourceWeb for a
+	// web page, and empty for text, so a client that predates images shows
+	// it as any other source.
 	Kind string `json:"kind,omitempty"`
+	// URL is a web page's address, for a SourceWeb source. Path holds it
+	// too, so a client from before web sources still shows where the
+	// answer came from.
+	URL string `json:"url,omitempty"`
 }
+
+// SourceWeb is Citation.Kind for a web page: a web_search result or a
+// page web_fetch read. Heading holds its title.
+const SourceWeb = "web"
 
 // IndexReport says what one OpIndex run, or merud's startup scan, did.
 type IndexReport struct {

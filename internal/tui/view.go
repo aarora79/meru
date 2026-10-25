@@ -429,12 +429,12 @@ func millis(ms int64) string {
 	return seconds(ms)
 }
 
-// sourcesBlock draws the files a finished answer cites, dim, under the
-// answer: a "Sources" line, then one numbered line per file, as the answer
-// numbers them. It returns "" when there are none to show (see rpc.Cited).
+// sourcesBlock draws the files and web pages a finished answer cites, dim,
+// under the answer: a "Sources" line, then one numbered line per source, as
+// the answer numbers them. It returns "" when there are none to show (see rpc.Cited).
 // Each line wraps to width, so a long path can't push the screen out of
 // shape. When links are on, every screen line of a source links to its
-// file: wrapping first and linking each piece keeps a link from spanning a
+// file or page: wrapping first and linking each piece keeps a link from spanning a
 // line break, which some terminals draw badly.
 func (m *Model) sourcesBlock(t *exchange, width int) string {
 	cited := rpc.Cited(t.answer, t.sources)
@@ -444,7 +444,7 @@ func (m *Model) sourcesBlock(t *exchange, width int) string {
 	lines := []string{"Sources"}
 	for _, c := range cited {
 		wrapped := ansi.Wrap(c.String(), width, "")
-		if url := rpc.FileURL(c.Path, m.home); m.look.links && url != "" {
+		if url := c.Link(m.home); m.look.links && url != "" {
 			parts := strings.Split(wrapped, "\n")
 			for i, p := range parts {
 				parts[i] = rpc.Hyperlink(url, p)

@@ -11,7 +11,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -68,7 +67,7 @@ const weakScore = 1.0 / 61
 // a product newer than its training, the model searched for an older
 // product with a similar name and answered about that one.
 const webCiteRule = "Below, under \"From the web\", is what Meru found on the web for this question before you started. " +
-	"When it helps, answer from it and cite each source you use by its URL. " +
+	"When it helps, answer from it and cite each source you use by its number in square brackets, like [3]. " +
 	"Never swap in a product, company or person you know for the one the user named. " +
 	"If the results are about something else, say so, and call web_search again with other words."
 
@@ -630,11 +629,8 @@ func (a *Agent) runWebFirst(ctx context.Context, t *turn, calls []webCall) (stri
 				"tool", calls[i].tool, "outcome", r.outcome)
 			continue
 		}
-		text := r.msg.Content
-		if calls[i].tool == builtin.WebFetch {
-			text = fmt.Sprintf("[%d] %s", len(parts)+1, text)
-		}
-		parts = append(parts, text)
+		// Each result carries its own numbers, from the turn's counter.
+		parts = append(parts, r.msg.Content)
 	}
 	if len(parts) == 0 {
 		return "", nil

@@ -45,7 +45,7 @@ const DefaultSystemPrompt = "You are Meru, a personal assistant that runs entire
 // says it plainly.
 const citeRule = "Below, under \"From your files\", are numbered excerpts from the user's own files. " +
 	"When they help answer the question, answer from them and cite each excerpt you use by its number " +
-	"in square brackets, like [1]. Cite only the numbers listed there. " +
+	"in square brackets, like [1]. Cite only numbers Meru gave you, there or in a tool's results. " +
 	"Never invent a file, a quote or a citation. If the excerpts don't answer the question, say so."
 
 // whoIsWho joins the system prompt on every turn, whatever prompt config
@@ -712,8 +712,19 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			dec.Route = r
 		}
 	}
+	// A "tools" turn whose picked skill brings web_search, and no file
+	// tool, is about the web: the router and the pick both said so. It
+	// skips the search of the files. Before, "can you search for things
+	// from the last 2 days", a follow-up in a chat about a rocket launch,
+	// put nine unrelated excerpts and 43,000 tokens in the prompt, and
+	// the answer's web citations matched the excerpts' numbers (#174).
+	if dec.Route == "tools" && fileTurn && webSkill(skillTools) {
+		a.log.DebugContext(ctx, "no search first: a picked skill searches the web",
+			"skills", strings.Join(picked.names, ","))
+		fileTurn = false
+	}
 	t.skills = picked.reg
-	if dec.Route == "tools" && !fileTurn {
+	if dec.Route == "tools" && !fileTurn && target != "" {
 		a.log.DebugContext(ctx, "no search first: the question points at a connected tool", "target", target)
 	}
 	// A question that asks for the web, or gives a URL, goes to the web
@@ -1196,6 +1207,12 @@ func aboutFiles(route, target string) bool {
 		return target == ""
 	}
 	return false
+}
+
+// webSkill reports whether tools, the tools the turn's picked skills
+// name, hold web_search and no file tool.
+func webSkill(tools []string) bool {
+	return slices.Contains(tools, builtin.WebSearch) && !slices.ContainsFunc(tools, builtin.IsFileTool)
 }
 
 // searchesFirst reports whether a turn searches the user's files before

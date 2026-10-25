@@ -466,7 +466,7 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		return res, nil
 	}
 	var text string
-	var sources []rpc.Citation // only search_files sets these
+	var sources []rpc.Citation // the search tools and the web tools set these
 	var err error
 	switch {
 	case name == Configure:
@@ -496,9 +496,9 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		if !on {
 			return dispatch.Result{Text: "web_search is off now: " + why, IsError: true}, nil
 		}
-		text, err = t.webSearch(ctx, args)
+		text, sources, err = t.webSearch(ctx, args)
 	case name == WebFetch:
-		text, err = t.webFetch(ctx, args)
+		text, sources, err = t.webFetch(ctx, args)
 	case IsNotesTool(name) && t.notesOff() == "":
 		text, err = t.callNotes(ctx, name, args)
 	case name == ScheduleJob && t.addJob != nil:

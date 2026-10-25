@@ -686,7 +686,17 @@ and passes it on:
 | SearXNG found nothing | `results` is empty | `SearXNG found no results for "…"` |
 | the search ran long | `isTimeout` | try again, or search with fewer words |
 
-`formatResults` writes a header line that tells the model to cite by URL, then
+`webSearch` reserves one citation number per result shown with
+`dispatch.CiteNumbers`, so the results number on from the turn's file excerpts:
+with four excerpts in the prompt, the first result is `[5]`. It returns one
+`rpc.Citation` per result as `Result.Sources`, with `Kind` `rpc.SourceWeb`, the URL
+in `URL` and in `Path` (which a client from before web sources shows) and the
+title as `Heading`; `webSource` builds each. The agent adds them to the turn's
+`sources` event, so the list under the answer names the pages the answer cites.
+Before, the results numbered from `[1]` with no sources, and the answer's web
+citations matched the numbers of unrelated file excerpts (#174).
+
+`formatResults` writes a header line that tells the model to cite by number, then
 for each result `[n] title — url`, the snippet with its white space collapsed and
 cut to 300 characters, and `Published 2026-02-10.` when SearXNG sends a date.
 `PublishedDate` is a `*string`, a pointer, because SearXNG sends `null` for a
@@ -738,6 +748,11 @@ serves both modes with the same dialer and redirect rule.
 | `url` alone, or with `offset` | `fetchPage`, then 12,000 characters of text from `offset`, as `read_file` pages a file |
 | `url` and `prompt` | `fetchPage`, then `answerFromPage` asks the fast model |
 | `url` and `save: true` | `download` saves the body in the downloads folder |
+
+A read or a prompt answer takes one citation number, says "Cite this page as
+[n]." in its text, and returns the page as a web source, as `web_search` does
+for its results. A download returns no source: the model reads the file with
+`read_file` next.
 
 `fetchPage` checks the `Content-Type` header before it reads the body, so a
 refused type costs no download, then `pageText` picks the reader:
