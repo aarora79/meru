@@ -162,25 +162,63 @@ var recurring = map[string]bool{
 	"wednesday": true, "thursday": true, "friday": true, "saturday": true, "sunday": true,
 }
 
+// repeating are words that say on their own that something repeats.
+var repeating = map[string]bool{
+	"daily": true, "weekly": true, "hourly": true, "monthly": true, "nightly": true,
+}
+
+// timeOfDay are words that name a time of day, for a question that asks
+// for a job: "a job at 8am", "a job in the morning".
+var timeOfDay = map[string]bool{
+	"morning": true, "evening": true, "night": true, "noon": true, "midnight": true,
+	"am": true, "pm": true,
+}
+
 // asksToSchedule reports whether question asks for something on a
 // schedule, while specs hold schedule_job: it says "schedule" or
-// "scheduled", or "every" or "each" before a word in recurring. "every
-// weekday at 7, brief me" can route direct, which offers no tool to
-// schedule it with; this rule widens the route.
+// "scheduled"; "daily", "weekly" or another word in repeating; "every" or
+// "each" before a word in recurring; or "job" or "jobs" with a time of
+// day, such as "create a job to check my calendar at 8am". "every weekday
+// at 7, brief me" and that job question both routed direct, which offers
+// no tool to schedule with, and the model said it couldn't; this rule
+// widens the route.
 func asksToSchedule(question string, specs []engine.ToolSpec) bool {
 	if !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == builtin.ScheduleJob }) {
 		return false
 	}
 	ws := words(question)
+	job, when := false, false
 	for i, w := range ws {
 		switch {
-		case w == "schedule" || w == "scheduled":
+		case w == "schedule" || w == "scheduled" || repeating[w]:
 			return true
 		case (w == "every" || w == "each") && i+1 < len(ws) && recurring[ws[i+1]]:
 			return true
+		case w == "job" || w == "jobs":
+			job = true
+		case timeOfDay[w] || clockTime(w):
+			when = true
 		}
 	}
-	return false
+	return job && when
+}
+
+// clockTime reports whether w is a time such as "8am", "7pm" or "10am":
+// one or two digits, then "am" or "pm".
+func clockTime(w string) bool {
+	digits, ok := strings.CutSuffix(w, "am")
+	if !ok {
+		digits, ok = strings.CutSuffix(w, "pm")
+	}
+	if !ok || len(digits) == 0 || len(digits) > 2 {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // toolNouns returns the nouns in the names of the MCP and A2A tools in
