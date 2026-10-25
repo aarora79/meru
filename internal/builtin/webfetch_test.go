@@ -85,7 +85,7 @@ func TestWebFetchPrompt(t *testing.T) {
 		t.Fatalf("prompt call failed: %s", text)
 	}
 	want := "From " + srv.URL + "/release (fetched " + time.Now().Format("2006-01-02") +
-		"): The latest release is go1.27.1, released 2026-09-02."
+		"): The latest release is go1.27.1, released 2026-09-02.\n\nCite this page as [1]."
 	if text != want {
 		t.Errorf("result = %q, want %q", text, want)
 	}

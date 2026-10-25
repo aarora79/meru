@@ -19,7 +19,8 @@ import { renderMarkdown } from "./markdown.js";
 // text streams, and "" before that, when the "Working…" chip says enough.
 // A turn that failed or was stopped before it did either gets "".
 export function workLabel(t) {
-  const files = t.sources.length > 0;
+  // A web source came from a tool call, which steps already counts.
+  const files = t.sources.some((s) => !isWebSource(s));
   const tools = t.steps.length > 0;
   if (files && tools) return "Searched your files and used tools";
   if (files) return "Searched your files";
@@ -381,7 +382,39 @@ export function drawNotice(t) {
 // its kind, and a past chat, whose transcript keeps paths only, is told
 // by the file's ending.
 export function isImageSource(s) {
+  if (s.kind === "web") return false; // a page's path is its URL
   return s.kind === "image" || /\.(png|jpe?g|gif|webp)$/i.test(s.path || "");
+}
+
+// isWebSource reports whether s is a web page, from web_search or
+// web_fetch, rather than a file.
+export function isWebSource(s) {
+  return s.kind === "web" && !!s.url;
+}
+
+// sourceIcon names the icon for source s: a globe, a picture or a file.
+export function sourceIcon(s) {
+  if (isWebSource(s)) return "globe";
+  return isImageSource(s) ? "image" : "file";
+}
+
+// sourceName is the short name a chip shows for s: a web page's host, such
+// as "go.dev", or a file's name.
+export function sourceName(s) {
+  if (isWebSource(s)) {
+    try {
+      return new URL(s.url).host.replace(/^www\./, "");
+    } catch {
+      return s.url;
+    }
+  }
+  return baseName(s.path);
+}
+
+// openSource opens s: a web page in the browser, a file in its app.
+export function openSource(s, h) {
+  if (isWebSource(s)) h.onOpenURL(s.url);
+  else h.onOpenSource(s.path);
 }
 
 export function drawSources(t, h) {
@@ -404,9 +437,9 @@ export function drawSources(t, h) {
   line.append(toggle, list);
   for (const s of t.cited) {
     const li = el("li");
-    const chip = button("", { className: "chip", onClick: () => h.onOpenSource(s.path) });
-    const mark = icon(isImageSource(s) ? "image" : "file", 14);
-    chip.append(mark, el("span", "chip-n", "[" + s.n + "]"), el("span", "", baseName(s.path)));
+    const chip = button("", { className: "chip", onClick: () => openSource(s, h) });
+    const mark = icon(sourceIcon(s), 14);
+    chip.append(mark, el("span", "chip-n", "[" + s.n + "]"), el("span", "", sourceName(s)));
     // An image source swaps its icon for a preview once the Bridge makes
     // one; thumb accepts only a data: URL of an image type.
     if (isImageSource(s) && h.sourceThumb) {
@@ -414,8 +447,10 @@ export function drawSources(t, h) {
         if (url) mark.replaceWith(thumb({ thumb: url, name: baseName(s.path) }, "source-thumb"));
       }, () => {});
     }
-    chip.title = "Open " + s.path;
-    chip.setAttribute("aria-label", "Open source " + s.n + ", " + s.path);
+    // A web page's title, when it has one, says more than its host.
+    const what = isWebSource(s) ? (s.heading ? s.heading + " — " + s.url : s.url) : s.path;
+    chip.title = "Open " + what;
+    chip.setAttribute("aria-label", "Open source " + s.n + ", " + what);
     li.append(chip);
     list.append(li);
   }

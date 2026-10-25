@@ -888,8 +888,8 @@ and arguments and offers the choices `merud` sends, from these:
   | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A picture over 1,536 pixels on its longest side goes as a JPEG scaled down to that, since the model's cost grows with the pixels: a 4,000 by 3,000 phone photo of a bill cost `qwen3.6:35b` 1,756 tokens at 1,536 pixels, and it still read every line. A WebP picture goes as it is, since Go's standard library can't decode it. A turn opens at most 8 pictures; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
-  | `web_search` | Numbered web results from SearXNG: title, URL, a snippet and the date when known. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
-  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. Offered while `[builtin] tools` lists it: on every route while `web_search` is on too, and on the tools routes alone otherwise. |
+  | `web_search` | Web results from SearXNG, numbered after the turn's other sources: title, URL, a snippet and the date when known. Each result joins the turn's `sources` event as a web source. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
+  | `web_fetch` | One public web page's text, 12,000 characters per call, like `read_file`; with a `prompt`, the `fast` model's answer from the page; with `save`, a file saved in `~/meru-output/downloads/`. A page read takes the turn's next number and joins the `sources` event as a web source. Offered while `[builtin] tools` lists it: on every route while `web_search` is on too, and on the tools routes alone otherwise. |
   | `search_notes` | The user's Apple Notes that hold every word of `query`, in the title or the text, ignoring case: notes whose title matches first, newest first, 10 by default and at most 30, each with its id, title, folder, modified date and a snippet. `folder` limits it to one Notes folder. Offered on the tools routes, on a Mac. |
   | `list_notes` | With no `folder`, every Notes folder with its note count, then the newest notes; with a `folder`, that folder's notes, newest first. Each note comes with its id. |
   | `read_note` | One note's text by its id, 12,000 characters per call with the offset for the next, like `read_file`. A locked note gives its title and says it's locked. |
@@ -2670,13 +2670,18 @@ tools.
   question points at a connected tool. The signs that add tools to a route
   decide it (see [Routing](#routing)): the question names a tool server, says
   "remember", asks for the web, gives a URL, or names what a server's tools
-  act on. `search` and
+  act on. It skips it too when a picked skill brings `web_search` and no file
+  tool, as `web-research` does: "can you search for things from the last 2
+  days", a follow-up in a chat about a rocket launch, named no web phrase, and
+  the turn put nine unrelated excerpts and 43,000 tokens in the prompt
+  ([#174](https://github.com/aarora79/meru/issues/174)). `search` and
   `search+tools` always search: the router, or the folder rule, saw files in the
   question. The turn still offers the file tools, so the model can look when it
   has to. Before this, "search the web for the latest Go release" put ten
-  excerpts from your folders in the prompt, and since `web_search` numbers its
+  excerpts from your folders in the prompt, and since `web_search` numbered its
   results from `[1]` too, the Sources list under the answer could name one of
-  your files.
+  your files. Web results now take the numbers after the turn's excerpts (see
+  [Citations](#citations)).
 - **The file-tools note only on file turns.** The note that the model may read,
   list, grep and search the folders joins only a turn about your files that
   offers the file tools. It sits after the parts every turn shares and before the
@@ -2738,7 +2743,15 @@ Before the first token, `merud` sends the client a `sources` event that lists ea
 excerpt with its number, path (as `~/…`), heading, and line range or PDF page.
 When `search_files` returns excerpts later in the turn, they take the next
 numbers, ride on the call's `tool_result` event, and `merud` sends a new
-`sources` event that holds every source so far. Clients keep the last one. Once
+`sources` event that holds every source so far. Clients keep the last one.
+`web_search` and `web_fetch` do the same: each result, and each page read,
+takes the next number and joins the list as a web source, with `kind = "web"`,
+its URL in `url` and in `path`, and its title as the heading. A number names one
+thing across the turn, a file excerpt or a page, never both. Meru.app shows a
+web source as a chip with a globe and the site's name that opens the page;
+`meru` and `meru chat` print its title and URL as a link. A reopened chat lists
+only the files its turns read, since the transcript keeps the web results as
+notes, not as numbered sources. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the
 same list under the answer. Both list only the sources the answer cites, and an
 answer that cites none gets no list: the model decides when a source matters. An
@@ -4382,7 +4395,7 @@ tools route:
 
 | Tool | Offered when | What it does |
 | --- | --- | --- |
-| `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default, and the SearXNG connector is ok | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one. Its description tells the model to cite results by URL. |
+| `web_search` | `[web] searxng_url` is set and `[builtin] tools` lists it, as both are by default, and the SearXNG connector is ok | One GET to `<searxng_url>/search?format=json`, with a 15-second limit. It returns up to `max_results` results, numbered after the turn's other sources, each with its title, URL, a snippet cut to 300 characters and the date when SearXNG has one, and one web source per result (see [Citations](#citations)). Its text tells the model to cite results by number. |
 | `web_fetch` | `[builtin] tools` lists it, as it does by default | Fetches one public page (HTML, PDF or plain text, at most 16 MiB, 20 seconds; news pages run past 5 MB, almost all scripts). It works in three modes, described below. HTML and PDF go through the indexer's own readers. A page whose text comes from JavaScript goes through a headless Chrome (see [Pages that need JavaScript](#pages-that-need-javascript)). |
 
 ```toml
@@ -4587,7 +4600,7 @@ The calls go through `dispatch` like any other. Their `tool_call` lines and
 approval column, and each sends its `tool_call` and `tool_result` events, so the
 chat shows the search. What comes back sits in the prompt under "From the web",
 among the parts each question changes, with a rule that mirrors the one for your
-files: cite each source by its URL, never swap in a product, company or person
+files: cite each source by its number, never swap in a product, company or person
 you know for the one the user named, and search again with other words when the
 results are about something else. The section holds at most 8,000 characters,
 in equal shares among the calls. The route becomes at least `tools` (`direct`

@@ -300,3 +300,29 @@ func TestFormatBodies(t *testing.T) {
 		})
 	}
 }
+
+// TestWebSkillSkipsFileSearch checks that a "tools" turn whose picked
+// skill brings web_search doesn't search the user's files first, while
+// the same turn with no skill does (#174).
+func TestWebSkillSkipsFileSearch(t *testing.T) {
+	searched := func(pick string) int {
+		eng := &pickEngine{fakeEngine: &fakeEngine{pieces: []string{"ok"}}, answer: func(string) string { return pick }}
+		search := &fakeSearcher{}
+		tools := &fakeTools{specs: []engine.ToolSpec{spec("web_search"), spec("web_fetch"), spec("read_file")}}
+		a := New(testConfig(t), eng, &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}},
+			search, tools, nil, nil, quietLog())
+		a.UseSkills(fixedSkills{reg: builtinRegistry(t)})
+		if _, err := run(context.Background(), a, rpc.Request{Text: "can you search for things from the last 2 days"}); err != nil {
+			t.Fatalf("Handle: %v", err)
+		}
+		search.mu.Lock()
+		defer search.mu.Unlock()
+		return len(search.queries)
+	}
+	if n := searched("web-research"); n != 0 {
+		t.Errorf("with web-research picked, the files were searched %d times", n)
+	}
+	if n := searched("none"); n == 0 {
+		t.Error("with no skill picked, the files weren't searched")
+	}
+}

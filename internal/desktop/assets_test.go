@@ -237,7 +237,8 @@ func TestWorkLabelReadsWhatHappened(t *testing.T) {
 		t.Fatal("turns.js has no workLabel")
 	}
 	body, _, _ = strings.Cut(body, "\n}\n")
-	for _, want := range []string{"t.steps.length > 0", "t.sources.length > 0", `"Used tools"`} {
+	// A web source counts as a tool call, not a file search (#174).
+	for _, want := range []string{"t.steps.length > 0", "t.sources.some((s) => !isWebSource(s))", `"Used tools"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("workLabel lacks %q:\n%s", want, body)
 		}

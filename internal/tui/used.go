@@ -75,7 +75,7 @@ func (m *Model) usedBoxView(width, height int) string {
 
 	body := []string{dim("Sources")}
 	if len(t.sources) == 0 {
-		body = append(body, "No files from your folders.")
+		body = append(body, "No files from your folders and no web pages.")
 	}
 	for _, c := range t.sources {
 		body = append(body, splitWrap(c.String(), room)...)

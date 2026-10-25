@@ -347,7 +347,10 @@ way:
   lines 3–5`, or `[2] ~/Documents/img/shot.png (image)` for a citation whose
   `Kind` is `"image"`. A method named `String` also makes `fmt.Println(c)` print
   it this way. `Kind` is empty for text, so an older client shows an image as
-  any other source.
+  any other source. A web page, `Kind` `SourceWeb`, prints as `[5] Release
+  History — https://go.dev/doc/devel/release`, from its `Heading` and `URL`.
+- **`Citation.Link(home)`** is the address a source line links to: a web page's
+  `URL`, or the file's `FileURL`.
 - **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the
   answer with a regular expression and returns the sources they name. No
   marks means no sources: the model decides when a source matters.

@@ -12,8 +12,8 @@
 import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import {
-  el, button, baseName, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
-  appendToken, approvalCard, thumb, isImageSource, drawFooter, tickWorking,
+  el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
+  appendToken, approvalCard, thumb, isWebSource, sourceIcon, sourceName, openSource, drawFooter, tickWorking,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
@@ -112,6 +112,10 @@ const handlers = {
   },
   onOpenSource(path) {
     bridge.openSource(path).catch((err) => notice(errorText(err)));
+  },
+  // onOpenURL opens a web source's page in the browser.
+  onOpenURL(url) {
+    bridge.openURL(url).catch((err) => notice(errorText(err)));
   },
   onCopyCode(text, b) {
     copy(text, b);
@@ -1149,13 +1153,14 @@ function drawPanel() {
   }
   body.append(el("h3", "", "Sources"));
   if (t.sources.length === 0) {
-    body.append(el("p", "panel-note", "No files from your folders."));
+    body.append(el("p", "panel-note", "No files from your folders and no web pages."));
   } else {
     const ul = el("ul", "panel-list");
     for (const s of t.sources) {
       const li = el("li");
-      const b = button("", { className: "panel-source", onClick: () => handlers.onOpenSource(s.path) });
-      b.append(icon(isImageSource(s) ? "image" : "file", 14), el("span", "", " " + baseName(s.path)));
+      const b = button("", { className: "panel-source", onClick: () => openSource(s, handlers) });
+      const name = isWebSource(s) && s.heading ? s.heading : sourceName(s);
+      b.append(icon(sourceIcon(s), 14), el("span", "", " " + name));
       b.title = "Open " + s.path;
       li.append(b, el("span", "dim path", s.path));
       ul.append(li);

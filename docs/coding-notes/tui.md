@@ -514,7 +514,9 @@ approval box follows them while it is open. What comes next depends on the state
 and then, on lines of their own: for a finished answer, `merud`'s notice if it
 sent one, the files it cites and the stats; "stopped"; or the error box.
 
-`sourcesBlock` draws the files, dim, like the stats line under them:
+`sourcesBlock` draws the files and web pages the answer cites, dim, like the
+stats line under them. A web page prints as its title and URL, and its link,
+from `Citation.Link`, opens the page:
 
 ```text
   The garden project sows tomatoes on 12 April [1].

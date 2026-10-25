@@ -253,7 +253,7 @@ func TestFilesCover(t *testing.T) {
 }
 
 // searchText is a web_search result as builtin.formatResults writes it.
-const searchText = `Web results for "\"Acme Flow\"", 3 of 9. Cite each result you use by its URL.
+const searchText = `Web results for "\"Acme Flow\"", 3 of 9. Cite each result you use by its number, such as [1].
 
 [1] Acme Flow — https://acme.example/flow
 Acme Flow moves notes between apps.
@@ -266,7 +266,7 @@ Plans for small and large teams.
 `
 
 // pageText is a web_fetch result as builtin.webFetch writes it.
-const pageText = "https://acme.example/flow\nTitle: Acme Flow\n4.1 KB, HTML. Characters 0 to 57 of 57.\n\n" +
+const pageText = "https://acme.example/flow\nTitle: Acme Flow\n4.1 KB, HTML. Characters 0 to 57 of 57. Cite this page as [1].\n\n" +
 	"Acme Flow is a service that moves notes between apps."
 
 func TestWebHitsOf(t *testing.T) {

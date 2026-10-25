@@ -347,7 +347,7 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 		for _, c := range cited {
 			line := c.String()
 			if links {
-				line = rpc.Hyperlink(rpc.FileURL(c.Path, home), line)
+				line = rpc.Hyperlink(c.Link(home), line)
 			}
 			fmt.Fprintln(stdout, line)
 		}

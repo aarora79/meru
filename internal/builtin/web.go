@@ -36,6 +36,7 @@ import (
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/render"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // The web tools' names, as the model sees them.
@@ -109,14 +110,17 @@ type webFetchArgs struct {
 
 // searxngAnswer is the part of SearXNG's JSON answer web_search reads.
 type searxngAnswer struct {
-	Results []struct {
-		Title   string `json:"title"`
-		URL     string `json:"url"`
-		Content string `json:"content"`
-		// PublishedDate is a pointer, so it can hold nil: SearXNG sends
-		// null for a result it has no date for.
-		PublishedDate *string `json:"publishedDate"`
-	} `json:"results"`
+	Results []searxngResult `json:"results"`
+}
+
+// searxngResult is one result in SearXNG's answer.
+type searxngResult struct {
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+	// PublishedDate is a pointer, so it can hold nil: SearXNG sends null
+	// for a result it has no date for.
+	PublishedDate *string `json:"publishedDate"`
 }
 
 // Generator is the one engine method web_fetch needs to answer a prompt.
@@ -313,23 +317,26 @@ func checkPublic(a netip.Addr) error {
 }
 
 // webSearch runs one SearXNG search and returns the results as numbered
-// lines for the model. It adds each result's URL to the session's known
+// lines for the model, with one web source per result. The numbers come
+// from dispatch.CiteNumbers, after the turn's other sources, so "[3]" in
+// the answer names one thing across the turn: a file excerpt or a web
+// page, never both. It adds each result's URL to the session's known
 // URLs, so web_fetch can read those pages without asking. It fails, with
 // text the model reads, on bad arguments, when SearXNG doesn't answer or
 // answers HTML, and when the answer isn't SearXNG's JSON.
-func (t *Tools) webSearch(ctx context.Context, raw json.RawMessage) (string, error) {
+func (t *Tools) webSearch(ctx context.Context, raw json.RawMessage) (string, []rpc.Citation, error) {
 	var a webSearchArgs
 	if err := decode(WebSearch, raw, &a); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	a.Query = strings.TrimSpace(a.Query)
 	switch {
 	case a.Query == "":
-		return "", errors.New("web_search: pass query, the words to search for")
+		return "", nil, errors.New("web_search: pass query, the words to search for")
 	case a.MaxResults < 0 || a.MaxResults > config.MaxWebResults:
-		return "", fmt.Errorf("web_search: max_results %d is out of range; pass 1 to %d", a.MaxResults, config.MaxWebResults)
+		return "", nil, fmt.Errorf("web_search: max_results %d is out of range; pass 1 to %d", a.MaxResults, config.MaxWebResults)
 	case a.TimeRange != "" && !slices.Contains(timeRanges, a.TimeRange):
-		return "", fmt.Errorf("web_search: time_range %q is unknown; pass one of %s, or leave it out",
+		return "", nil, fmt.Errorf("web_search: time_range %q is unknown; pass one of %s, or leave it out",
 			a.TimeRange, strings.Join(timeRanges, ", "))
 	}
 	if a.MaxResults == 0 {
@@ -338,11 +345,11 @@ func (t *Tools) webSearch(ctx context.Context, raw json.RawMessage) (string, err
 
 	body, err := t.web.searxng(ctx, a)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	var ans searxngAnswer
 	if err := json.Unmarshal(body, &ans); err != nil {
-		return "", fmt.Errorf("web_search: SearXNG's answer isn't the JSON Meru expects: %v", err)
+		return "", nil, fmt.Errorf("web_search: SearXNG's answer isn't the JSON Meru expects: %v", err)
 	}
 	// Only the results the model sees count as known.
 	shown := ans.Results[:min(a.MaxResults, len(ans.Results))]
@@ -351,7 +358,27 @@ func (t *Tools) webSearch(ctx context.Context, raw json.RawMessage) (string, err
 		urls[i] = r.URL
 	}
 	t.web.known.add(dispatch.SessionFrom(ctx), urls...)
-	return formatResults(a, ans), nil
+	first := dispatch.CiteNumbers(ctx, len(shown))
+	var sources []rpc.Citation
+	for i, r := range shown {
+		sources = append(sources, webSource(first+i, r.URL, resultTitle(r)))
+	}
+	return formatResults(a, ans, first), sources, nil
+}
+
+// webSource returns the citation for a web page numbered n: Kind "web",
+// the URL in URL and in Path, which a client from before web sources
+// shows, and the title as the heading.
+func webSource(n int, url, title string) rpc.Citation {
+	return rpc.Citation{N: n, Path: url, URL: url, Heading: title, Kind: rpc.SourceWeb}
+}
+
+// resultTitle returns a search result's title, or "(no title)".
+func resultTitle(r searxngResult) string {
+	if title := strings.TrimSpace(r.Title); title != "" {
+		return title
+	}
+	return "(no title)"
 }
 
 // searxng sends the search to SearXNG and returns the JSON body. It turns
@@ -399,21 +426,19 @@ func (w *webClients) searxng(ctx context.Context, a webSearchArgs) ([]byte, erro
 	return body, nil
 }
 
-// formatResults writes up to a.MaxResults results as numbered lines:
-// "[n] title — url", the snippet, and the date when SearXNG has one.
-func formatResults(a webSearchArgs, ans searxngAnswer) string {
+// formatResults writes up to a.MaxResults results as numbered lines,
+// starting at first: "[n] title — url", the snippet, and the date when
+// SearXNG has one.
+func formatResults(a webSearchArgs, ans searxngAnswer, first int) string {
 	if len(ans.Results) == 0 {
 		return fmt.Sprintf("SearXNG found no results for %q. Try other words, or a wider time_range.", a.Query)
 	}
 	n := min(a.MaxResults, len(ans.Results))
 	var b strings.Builder
-	fmt.Fprintf(&b, "Web results for %q, %d of %d. Cite each result you use by its URL.\n", a.Query, n, len(ans.Results))
+	fmt.Fprintf(&b, "Web results for %q, %d of %d. Cite each result you use by its number, such as [%d].\n",
+		a.Query, n, len(ans.Results), first)
 	for i, r := range ans.Results[:n] {
-		title := strings.TrimSpace(r.Title)
-		if title == "" {
-			title = "(no title)"
-		}
-		fmt.Fprintf(&b, "\n[%d] %s — %s\n", i+1, title, r.URL)
+		fmt.Fprintf(&b, "\n[%d] %s — %s\n", first+i, resultTitle(r), r.URL)
 		if s := strings.Join(strings.Fields(r.Content), " "); s != "" {
 			b.WriteString(cut(s, snippetChars) + "\n")
 		}
@@ -449,52 +474,66 @@ func parseWebURL(raw string) (*url.URL, error) {
 // final URL, the title and the size. It fails, with text the model reads,
 // on bad arguments, a private or loopback address, a failed fetch, a page
 // over 5 MiB and a content type it doesn't read.
-func (t *Tools) webFetch(ctx context.Context, raw json.RawMessage) (string, error) {
+func (t *Tools) webFetch(ctx context.Context, raw json.RawMessage) (string, []rpc.Citation, error) {
 	var a webFetchArgs
 	if err := decode(WebFetch, raw, &a); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	u, err := parseWebURL(a.URL)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	a.Prompt = strings.TrimSpace(a.Prompt)
 	switch {
 	case a.Offset < 0:
-		return "", fmt.Errorf("web_fetch: offset %d is negative", a.Offset)
+		return "", nil, fmt.Errorf("web_fetch: offset %d is negative", a.Offset)
 	case a.Save && (a.Prompt != "" || a.Offset != 0):
-		return "", errors.New("web_fetch: save takes url alone; download first, then read the file with read_file")
+		return "", nil, errors.New("web_fetch: save takes url alone; download first, then read the file with read_file")
 	case a.Save:
-		return t.download(ctx, u.String())
+		text, err := t.download(ctx, u.String())
+		return text, nil, err
 	}
 
 	page, body, err := t.web.fetchPage(ctx, u.String())
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if t.web.render == config.RenderAuto && t.web.renderer != nil && needsRender(page, body) {
 		page = t.web.renderPage(ctx, u.String(), page)
 	}
 	runes := []rune(page.text)
 	if a.Offset > len(runes) {
-		return "", fmt.Errorf("web_fetch: offset %d is past the end; the page has %d characters", a.Offset, len(runes))
+		return "", nil, fmt.Errorf("web_fetch: offset %d is past the end; the page has %d characters", a.Offset, len(runes))
+	}
+	// The page is a source of its own, numbered after the turn's others,
+	// so the answer can cite what it read there.
+	title := page.title
+	if title == "" {
+		title = page.url
 	}
 	if a.Prompt != "" {
-		return t.web.answerFromPage(ctx, page, runes, a.Prompt, a.Offset)
+		text, err := t.web.answerFromPage(ctx, page, runes, a.Prompt, a.Offset)
+		if err != nil {
+			return "", nil, err
+		}
+		n := dispatch.CiteNumbers(ctx, 1)
+		return text + fmt.Sprintf("\n\nCite this page as [%d].", n), []rpc.Citation{webSource(n, page.url, title)}, nil
 	}
 
+	n := dispatch.CiteNumbers(ctx, 1)
 	end := min(a.Offset+maxReadChars, len(runes))
 	var b strings.Builder
 	b.WriteString(page.url + "\n")
 	if page.title != "" {
 		b.WriteString("Title: " + page.title + "\n")
 	}
-	fmt.Fprintf(&b, "%s, %s. Characters %d to %d of %d.\n\n", size(int64(page.size)), page.kind, a.Offset, end, len(runes))
+	fmt.Fprintf(&b, "%s, %s. Characters %d to %d of %d. Cite this page as [%d].\n\n",
+		size(int64(page.size)), page.kind, a.Offset, end, len(runes), n)
 	b.WriteString(string(runes[a.Offset:end]))
 	if end < len(runes) {
 		fmt.Fprintf(&b, "\n\n[%d more characters. To read on, call web_fetch with offset %d.]", len(runes)-end, end)
 	}
-	return b.String(), nil
+	return b.String(), []rpc.Citation{webSource(n, page.url, title)}, nil
 }
 
 // fetchInstructions is the system message for a prompt. It is short on

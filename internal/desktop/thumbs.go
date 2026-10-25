@@ -79,7 +79,8 @@ func (b *Bridge) allowThumbs(sources []rpc.Citation) {
 	b.citedMu.Lock()
 	defer b.citedMu.Unlock()
 	for _, s := range sources {
-		if s.Kind != "image" && !imageExt(s.Path) {
+		// A web page's Path is its URL, which no file preview reads.
+		if s.Kind == rpc.SourceWeb || (s.Kind != "image" && !imageExt(s.Path)) {
 			continue
 		}
 		if b.cited == nil {
