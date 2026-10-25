@@ -480,6 +480,14 @@ digits of fraction. RFC 3339 trims trailing zeros from the fraction, so
 value the same width, `ORDER BY` on the text sorts by time. A memory with no
 created date stores `''`, which sorts after every dated one in `DESC` order.
 
+### Each job's last run (turns.job)
+
+Step 9 of `migrations` adds `job` to `turns`, with an index on `(job, ts)` for
+the rows that have one. A row written live gets it from the turn; a rebuilt row
+gets it from the transcript's user line, so `turnsOf` carries the open
+question's job to its answer's row. `LastJobRuns` answers each job's newest run
+with one `GROUP BY` query; the scheduler reads it once at startup.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,

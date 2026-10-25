@@ -42,6 +42,9 @@ type Config struct {
 	// Commands lists the local programs the model may run, one tool each
 	// (v0.3). The commands package checks them when merud starts.
 	Commands []Command `toml:"commands"`
+	// Jobs lists the scheduled jobs merud runs (v0.5); see jobs.go and
+	// ARCHITECTURE.md, "Scheduler".
+	Jobs []Job `toml:"jobs"`
 	// Connectors holds one [connectors.<id>] table per connector: whether
 	// it is on, and the values the user gave for its fields. Nothing
 	// reads it yet; the connector supervisor will (ARCHITECTURE.md,

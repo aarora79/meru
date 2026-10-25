@@ -356,3 +356,19 @@ func CaptureContent() bool {
 	s := current.Load()
 	return s != nil && s.captureContent
 }
+
+// RecordJobRun records one scheduled job's run: meru.scheduler.job_runs
+// with the job and the outcome, one of the turn outcomes, and, for a run
+// the schedule started, meru.scheduler.lateness. A run started by hand
+// passes manual, and its lateness isn't recorded.
+func RecordJobRun(ctx context.Context, job, outcome string, late time.Duration, manual bool) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.jobRuns.Add(ctx, 1, metric.WithAttributes(
+		attr(keyJob, job), attr(keyOutcome, bounded(outcome, turnOutcomes...))))
+	if !manual {
+		in.jobLateness.Record(ctx, late.Seconds(), metric.WithAttributes(attr(keyJob, job)))
+	}
+}

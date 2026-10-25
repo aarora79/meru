@@ -44,6 +44,10 @@ export const bridge = {
   detachAll: () => call("DetachAll"),
   // The websites web_fetch reads without asking (sites.go).
   trustedSites: () => call("TrustedSites"),
+  // Scheduled jobs (jobs.go).
+  jobs: () => call("Jobs"),
+  runJob: (name) => call("RunJob", name),
+  cancelJob: (name) => call("CancelJob", name),
   removeTrustedSite: (host) => call("RemoveTrustedSite", host),
   // The microphone (speech.go).
   speechStatus: () => call("SpeechStatus"),

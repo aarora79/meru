@@ -313,6 +313,13 @@ packages whose logger is optional.
 The shutdown function it returns sets `current` back to nil, then flushes both
 providers so the last batch reaches the collector.
 
+### Scheduled jobs
+
+`RecordJobRun` counts `meru.scheduler.job_runs` with the job and the outcome,
+and, for a run the schedule started, records `meru.scheduler.lateness` in
+seconds. The job's name is a metric attribute because config caps `[[jobs]]` at
+50; Run now has no scheduled time, so it records no lateness.
+
 ## Go ideas used here
 
 - **Packages and imports** — how `obs` names the OTel packages it uses, including

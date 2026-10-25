@@ -38,6 +38,8 @@ const (
 	metricMalformedCalls    = "meru.model.malformed_calls"
 	metricRenderDuration    = "meru.web.render.duration"
 	metricSpeechDuration    = "meru.speech.duration"
+	metricJobRuns           = "meru.scheduler.job_runs"
+	metricJobLateness       = "meru.scheduler.lateness"
 )
 
 // Attribute keys. The gen_ai.* keys are the GenAI convention's own; the
@@ -52,6 +54,9 @@ const (
 	keyOutcome   = "meru.outcome"
 	keySection   = "meru.section"
 	keyStage     = "meru.stage"
+	// keyJob names a scheduled job. Config caps [[jobs]] at 50, so its
+	// values are a small set the user chose.
+	keyJob = "meru.job"
 	// The tool keys match the attributes on the meru.dispatch span, so a
 	// dashboard can join a metric to its traces.
 	keyToolKind   = "meru.tool.kind"
@@ -151,6 +156,8 @@ type instruments struct {
 	malformedCalls    metric.Int64Counter
 	renderDuration    metric.Float64Histogram
 	speechDuration    metric.Float64Histogram
+	jobRuns           metric.Int64Counter
+	jobLateness       metric.Float64Histogram
 }
 
 // newInstruments creates every instrument on meter. Units follow the
@@ -234,6 +241,17 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of one recording turned into text, the speech server's start included."),
 		metric.WithExplicitBucketBoundaries(durationBuckets...))
+	keep(err)
+	in.jobRuns, err = meter.Int64Counter(metricJobRuns,
+		metric.WithUnit("{run}"),
+		metric.WithDescription("Scheduled job runs, by job and outcome."))
+	keep(err)
+	// A run starts on time, within a tick, or late after the computer
+	// slept: seconds up to the 12-hour catch-up limit.
+	in.jobLateness, err = meter.Float64Histogram(metricJobLateness,
+		metric.WithUnit("s"),
+		metric.WithDescription("How long after its scheduled time a job's run started."),
+		metric.WithExplicitBucketBoundaries(1, 30, 60, 300, 900, 3600, 3*3600, 12*3600))
 	keep(err)
 	in.retrievalDuration, err = meter.Float64Histogram(metricRetrievalDuration,
 		metric.WithUnit("s"),

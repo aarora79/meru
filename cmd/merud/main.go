@@ -318,6 +318,14 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 		svc.models.fitWindow = fit
 		a.UseWindow(eng.(*engine.OllamaEngine).Window)
 	}
+	// The scheduler runs [[jobs]] through the same agent, in a loop beside
+	// the server; see jobs.go.
+	jobSvc, err := newJobService(gctx, cfg, a, st, hist, log)
+	if err != nil {
+		return fail(err)
+	}
+	svc.jobs = jobSvc
+	g.Go(func() error { jobSvc.sched.Loop(gctx); return nil })
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })
 	requests.open(handler(svc))
@@ -409,6 +417,7 @@ type services struct {
 	st         *store.Store
 	save       saveService
 	models     *modelService
+	jobs       *jobService
 	ollama     *ollamaWatch
 	configPath string
 	// metrics is the /metrics address the Usage page shows, or "" when
@@ -521,6 +530,12 @@ func handler(svc services) rpc.Handler {
 			return tools.handleTrustedSites(emit)
 		case rpc.OpTrustedSiteRemove:
 			return tools.handleTrustedSiteRemove(ctx, req, emit)
+		case rpc.OpJobs:
+			return svc.jobs.handleJobs(emit)
+		case rpc.OpJobRun:
+			return svc.jobs.handleJobRun(req, emit)
+		case rpc.OpJobCancel:
+			return svc.jobs.handleJobCancel(req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

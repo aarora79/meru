@@ -563,6 +563,29 @@ mouse_copy = true
 # confirm = []
 # timeout = "60s"
 
+# Scheduled jobs: questions merud asks on a schedule, in this computer's
+# time zone (ARCHITECTURE.md, "Scheduler"). Each run is a chat in the Jobs
+# folder. schedule is five-field cron: minute, hour, day of month, month,
+# day of week; "0 7 * * 1-5" is 7:00 on weekdays. every_weeks with from
+# runs only every that many weeks, such as every other Tuesday; from is the
+# first day it may run. skill loads that skill without the pick step.
+# enabled = false pauses a job. A run missed while the computer slept runs
+# once on waking, if no more than 12 hours late. Nobody watches a run, so
+# every tool call that would ask is declined. At most 50 jobs.
+#
+# [[jobs]]
+# name     = "morning-brief"
+# schedule = "0 7 * * 1-5"
+# prompt   = "Brief me on today's calendar, unread mail and anything due this week."
+#
+# [[jobs]]
+# name        = "go-news"
+# schedule    = "0 9 * * 2"
+# every_weeks = 2
+# from        = "2026-10-27"
+# skill       = "web-research"
+# prompt      = "Summarize what changed in the Go release notes."
+
 # Connectors: programs Meru installs, starts and checks for you, such as
 # the Obsidian and Google servers, SearXNG and speech to text. Each has a manifest built into
 # merud that pins its version and names its fields. One [connectors.<id>]

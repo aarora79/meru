@@ -1363,6 +1363,14 @@ screen, so your shell history comes back untouched when you quit.
 to send clicks and wheel turns to the program. That is why the chat opens links
 itself (open.go).
 
+### jobs.go
+
+`/jobs` sends `OpJobs` and lists each job: its name and schedule in words, then
+"next today 07:00", "running since …" or "paused", and the last run with its
+outcome. Enter sends `OpJobRun`, `c` sends `OpJobCancel` for a running job, and
+`o` opens the last run's chat through `OpSessionTurns` and `reopen`, as `/chats`
+does. Each reply replaces the list.
+
 ## Go ideas used here
 
 - **Type switch**: branch on the concrete type inside an interface value. More in

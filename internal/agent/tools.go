@@ -235,6 +235,9 @@ type turn struct {
 	// offer is the tools the current round offers, which skillHint reads.
 	// converse sets it before each round.
 	offer []engine.ToolSpec
+	// job is the scheduled job this turn runs for, and skill the skill it
+	// names; both "" for a question someone asked. See Handle.
+	job, skill string
 	// handoff is what a Continue turn's model reads in place of a
 	// question: the last turn's question and its tool calls; "" on any
 	// other turn. See continue.go.

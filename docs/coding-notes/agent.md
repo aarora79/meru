@@ -1923,6 +1923,16 @@ log handler from `obs` adds the turn's `trace_id`. The lines carry lengths
 `capture_content = true`, `turn started` and `answer finished` add the first
 200 characters, and the `meru.turn` span gets the whole question and answer.
 
+### A scheduled job's run
+
+`merud`'s scheduler asks with `Source: job`, `Job` set to the job's name and,
+when the job names one, `Skill`. `Handle` then writes a meta line that files the
+new session in the Jobs folder before anything else, puts the job on the user
+line and on the turns row, and keeps `t.job` and `t.skill`. `routeAndPick` takes
+the skill: with one named, it skips the pick call and loads that skill, and the
+skill's tools join the route as a picked skill's do. The socket server refuses
+`Job` and `Skill` from a client, so only the scheduler sets them.
+
 ## Go ideas used here
 
 - **Interfaces** — `Router`, `Searcher`, `ToolRunner`, `TurnRecorder`, and

@@ -214,7 +214,8 @@ cmd/
                      replays transcripts and runs the summarizer;
                      backends.go joins the MCP pool to dispatch; ollama.go watches Ollama and
                      gates requests until merud is ready; runtime.go warms the models;
-                     machine.go describes the computer for the system prompt; window.go sizes the
+                     machine.go describes the computer for the system prompt; jobs.go runs [[jobs]]
+                     through the agent and answers the job ops; window.go sizes the
                      answer model's context window; metrics.go serves
                      /metrics; speech.go answers the transcribe op
   meru/              the thin client, one file per subcommand: one question and `chat`
@@ -258,8 +259,9 @@ internal/
                      its gzipped protobuf
   speech/            speech to text for the transcribe op: checks a WAV recording, posts it to
                      the whisper connector's whisper-server, and cleans Whisper's markers
-  jobs/              the time rules for [[jobs]] (v0.5): five-field cron schedules with
-                     every_weeks, the next run, the words for it, and catch-up after sleep
+  jobs/              scheduled jobs (v0.5): five-field cron schedules with every_weeks, the
+                     next run and the words for it, catch-up after sleep, and the loop that
+                     runs each job one at a time and stops one on request
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)

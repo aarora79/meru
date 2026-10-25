@@ -253,6 +253,18 @@ const (
 	// a new session. The reply is one "trusted_sites" event with the list
 	// left, and "done". It fails for a host the list doesn't hold.
 	OpTrustedSiteRemove Op = "trusted_site_remove"
+	// OpJobs lists the scheduled jobs: one "jobs" event, whose Jobs holds
+	// each with its schedule in words, next and last run, and whether it
+	// runs now, and "done" (ARCHITECTURE.md, "Scheduler").
+	OpJobs Op = "jobs"
+	// OpJobRun runs the job named in Request.ID now, outside its schedule,
+	// and replies with the "jobs" event. It fails for an unknown job or one
+	// already running.
+	OpJobRun Op = "job_run"
+	// OpJobCancel stops the run in progress of the job named in Request.ID;
+	// the run ends "cancelled" and the job's schedule stays. It replies
+	// with the "jobs" event, and fails when the job has no run going.
+	OpJobCancel Op = "job_cancel"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -327,6 +339,13 @@ type Request struct {
 	// the turn's deadline ("timeout"). Text may be empty; merud then
 	// records "Continue" as what the user typed.
 	Continue bool `json:"continue,omitempty"`
+	// Job and Skill belong to an ask merud's own scheduler makes for a
+	// job's run: the job's name, which goes on the user line and files the
+	// chat in the Jobs folder, and a skill to load without the pick step.
+	// The socket server refuses either from a client, so no client can
+	// make an ask that counts as a job.
+	Job   string `json:"job,omitempty"`
+	Skill string `json:"skill,omitempty"`
 }
 
 // Audio is one recording for OpTranscribe. WAV holds the whole file;
@@ -469,6 +488,8 @@ const (
 	EventStatus EventType = "status"
 	// EventTrustedSites carries [web] trusted_sites, in Sites.
 	EventTrustedSites EventType = "trusted_sites"
+	// EventJobs carries the scheduled jobs, in Jobs.
+	EventJobs EventType = "jobs"
 	// EventTranscript carries the words OpTranscribe heard, in Text.
 	EventTranscript EventType = "transcript"
 	// EventDone ends a successful reply. After an ask it carries the turn's
@@ -542,6 +563,8 @@ type Event struct {
 	// reads without asking in every session. An empty list is left out of
 	// the JSON, so a client reads a missing Sites as none.
 	Sites []string `json:"sites,omitempty"`
+	// Jobs is the "jobs" event's list, by name.
+	Jobs []JobInfo `json:"jobs,omitempty"`
 
 	// Connectors is set on a "connectors" event.
 	Connectors []ConnectorStatus `json:"connectors,omitempty"`
@@ -1029,4 +1052,31 @@ type ProbeTool struct {
 	// overwrite. MCP says both are hints from the server, not promises.
 	ReadOnly    *bool `json:"read_only,omitempty"`
 	Destructive *bool `json:"destructive,omitempty"`
+}
+
+// JobInfo is one scheduled job for the clients' Jobs lists. Times are RFC
+// 3339; an empty one means none.
+type JobInfo struct {
+	Name string `json:"name"`
+	// Schedule is the cron expression, When says it in words, such as
+	// "7:00 on weekdays", and Action what a run does: the prompt, with
+	// the skill when one is named.
+	Schedule string `json:"schedule"`
+	When     string `json:"when"`
+	Prompt   string `json:"prompt,omitempty"`
+	Skill    string `json:"skill,omitempty"`
+	// Paused is true for enabled = false.
+	Paused bool `json:"paused,omitempty"`
+	// Next is the next scheduled run.
+	Next string `json:"next,omitempty"`
+	// Last is the latest run's scheduled time, LastOutcome how it ended
+	// ("ok", "cancelled", ...), and LastSession its chat; the outcome and
+	// chat are known for runs since merud started.
+	Last        string `json:"last,omitempty"`
+	LastOutcome string `json:"last_outcome,omitempty"`
+	LastSession string `json:"last_session,omitempty"`
+	// Running is true while a run goes or waits its turn; Started is when
+	// it started.
+	Running bool   `json:"running,omitempty"`
+	Started string `json:"started,omitempty"`
 }

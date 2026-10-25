@@ -107,3 +107,16 @@ func TestTitle(t *testing.T) {
 		}
 	}
 }
+
+// TestJobRunTitle checks that a job's run is titled by the job and its
+// time, so the runs in the Jobs folder read as a log.
+func TestJobRunTitle(t *testing.T) {
+	ts := time.Date(2026, 10, 23, 7, 0, 0, 0, time.Local)
+	info := infoOf("2026-10-23T110000-ab12", ts, []Line{
+		{Type: TypeUser, TS: ts, Text: "Brief me on today's calendar.", Job: "morning-brief"},
+		{Type: TypeAssistant, TS: ts, Text: "Here is your brief."},
+	})
+	if want := "morning-brief · Fri 23 Oct 07:00"; info.Title != want {
+		t.Errorf("Title = %q, want %q", info.Title, want)
+	}
+}

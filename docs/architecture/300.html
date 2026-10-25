@@ -2997,7 +2997,7 @@ timeout = "60s"                      # the default</code></pre>
 <!-- ============================================================ -->
 <h2 id="scheduler">Scheduled jobs</h2>
 
-<p><code>merud</code> runs jobs on a schedule: a prompt, a prompt with a named skill, or one declared <code>[[commands]]</code> entry. It is the first half of v0.5, built in steps under <a href="https://github.com/aarora79/meru/issues/167">#167</a>: the schedule rules in <code>internal/jobs</code> come first, then the loop in <code>merud</code>, the ops, and the clients. Until the loop lands, <code>merud</code> refuses <code>[[jobs]]</code> as an unknown key.</p>
+<p><code>merud</code> runs jobs on a schedule: a prompt, a prompt with a named skill, or one declared <code>[[commands]]</code> entry. It is the first half of v0.5, built in steps under <a href="https://github.com/aarora79/meru/issues/167">#167</a>: the schedule rules in <code>internal/jobs</code> came first; now <code>merud</code> runs prompt and skill jobs from <code>[[jobs]]</code>, files each run in the Jobs folder, and answers <code>jobs</code>, <code>job_run</code> and <code>job_cancel</code>, with a Jobs section in Settings and <code>/jobs</code> in <code>meru chat</code>. <code>command</code>, <code>allow</code> and <code>output</code>, adding and changing jobs from the clients, and <code>schedule_job</code> come next; until then config refuses those three keys, so a key that does nothing can't slip in.</p>
 
 <h3 id="scheduler-a-job">A job</h3>
 
