@@ -1,5 +1,6 @@
 // This file holds the Bridge's side of scheduled jobs: listing them for
-// Settings, Jobs, running one now and stopping a run. merud schedules and
+// Settings, Jobs, running one now, stopping a run, and adding, editing,
+// pausing and removing a job. merud schedules and
 // runs the jobs (cmd/merud/jobs.go); the Bridge only asks. See
 // ARCHITECTURE.md, "Scheduler".
 
@@ -34,6 +35,39 @@ func (b *Bridge) RunJob(ctx context.Context, name string) ([]rpc.JobInfo, error)
 // and returns the jobs. It fails when the job has no run going.
 func (b *Bridge) CancelJob(ctx context.Context, name string) ([]rpc.JobInfo, error) {
 	return b.jobChange(ctx, rpc.OpJobCancel, name)
+}
+
+// SaveJob saves spec as a job, in place of the job named was, so an edit
+// can rename it, or as a new job when was is empty, and returns the jobs.
+// Pause and Resume save the job with Paused changed. merud checks the job
+// as config.toml would, and fails with what's wrong.
+func (b *Bridge) SaveJob(ctx context.Context, was string, spec rpc.JobSpec) ([]rpc.JobInfo, error) {
+	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpJobSet, ID: was, JobSpec: &spec}, rpc.EventJobs)
+	if err != nil {
+		return nil, err
+	}
+	return ev.Jobs, nil
+}
+
+// CheckJob asks merud whether spec would save, in place of the job named
+// was, and returns it with its schedule in words and its next run, for the
+// form to show as the user types. merud saves nothing. It fails with
+// what's wrong with the job.
+func (b *Bridge) CheckJob(ctx context.Context, was string, spec rpc.JobSpec) (rpc.JobInfo, error) {
+	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpJobSet, ID: was, JobSpec: &spec, DryRun: true}, rpc.EventJobs)
+	if err != nil {
+		return rpc.JobInfo{}, err
+	}
+	if len(ev.Jobs) != 1 {
+		return rpc.JobInfo{}, errors.New("merud sent no job back")
+	}
+	return ev.Jobs[0], nil
+}
+
+// RemoveJob takes the job named name out of config.toml and returns the
+// jobs left. Its past runs stay in the Jobs folder.
+func (b *Bridge) RemoveJob(ctx context.Context, name string) ([]rpc.JobInfo, error) {
+	return b.jobChange(ctx, rpc.OpJobRemove, name)
 }
 
 // jobChange sends op for the job named name and returns the jobs merud

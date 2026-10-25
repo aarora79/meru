@@ -1,7 +1,11 @@
 # How do I make Meru do something on a schedule?
 
-Add a job to `~/.meru/config.toml` and restart `merud`. A job asks Meru a
-question at the times you set, in your computer's time zone:
+In Meru.app, open Settings, Jobs, and click **Add a job**: give it a name, when
+it runs and what Meru should do. As you type the schedule, the form says it in
+words, such as "7:00 on weekdays", and when the next run is. In `meru chat`,
+type `/jobs` and press `a`. Meru saves the job in `~/.meru/config.toml`, and it
+takes effect at once. A job asks Meru a question at the times you set, in your
+computer's time zone. In `config.toml` it reads:
 
 ```toml
 [[jobs]]
@@ -36,12 +40,18 @@ skill       = "web-research" # load this skill without the pick step
 prompt      = "Summarize what changed in the Go release notes."
 ```
 
+In the form, pick **Every other week** and the first day for this. A job you
+write in `config.toml` by hand takes effect when `merud` restarts.
+
 **See, run and stop jobs:** Settings, Jobs in Meru.app, or `/jobs` in `meru
 chat`. Run now starts a job at once; Stop (`c`) ends a run, which keeps what it
-wrote; Open last run (`o`) opens its chat.
+wrote; Open last run (`o`) opens its chat. Edit (`e`) changes a job, and Remove
+(`d` twice) takes it out; its past runs stay in the Jobs folder. While you have
+a job, Meru keeps the Jobs folder, so remove the jobs before the folder.
 
-**Pause a job** with `enabled = false`. When you turn it back on, it doesn't
-make up the runs it missed.
+**Pause a job** with Pause (`p`), which writes `enabled = false`. When you
+resume it, it doesn't make up the runs it missed. A job whose schedule you
+change counts from the change, too.
 
 **If your Mac was asleep** at the time, the job runs once when it wakes, if no
 more than 12 hours late, and says it ran late. A run more than 12 hours late is

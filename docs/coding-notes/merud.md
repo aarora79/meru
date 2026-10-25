@@ -1752,6 +1752,17 @@ a scheduled run, `meru.scheduler.lateness`, and logs one `job ran` line with no
 prompt or answer text. `handleJobs`, `handleJobRun` and `handleJobCancel` answer
 the three ops; Run now waits up to a second for the run to show as running.
 
+`handleJobSet` and `handleJobRemove` change `config.toml`. Each runs under
+`editConfig`, the lock every `config.toml` write in `merud` takes, calls
+`catalog.SetJob` or `catalog.RemoveJob`, then `reload`, which loads the file
+again and hands the jobs to the scheduler, so a change takes effect without a
+restart. `jobOf` and `specOf` turn the socket's `JobSpec` into a `config.Job`
+and back. A dry run goes to `checkJob`, which puts the job into a copy of the
+loaded config, runs `config.CheckJobs` on it, and replies with the job's
+schedule in words and its next run. `chats.go` calls `jobsHold` before it
+renames or removes a chat folder: the Jobs folder stays while `config.toml`
+holds a job, since the job's next run would bring it back.
+
 ## Go ideas used here
 
 - **`signal.NotifyContext`** — a context that ends on a signal. More in

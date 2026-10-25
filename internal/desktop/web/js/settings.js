@@ -904,13 +904,35 @@ function drawSkills(body, sv) {
 
 // ---- Jobs ----
 
-// jobs draws the scheduled jobs. The list refreshes every few seconds while
-// it shows, so a run's start and end appear without a click.
+// REPEATS are the choices for how often a job's weeks come round, as
+// every_weeks.
+const REPEATS = [[1, "Every week"], [2, "Every other week"], [3, "Every 3 weeks"], [4, "Every 4 weeks"]];
+
+// ALLOW_WARNING goes under a job's allow list while it names a tool.
+const ALLOW_WARNING = "A run uses these tools without asking you, since nobody watches it. " +
+  "Name only tools you'd let it use unwatched. A tool that asks every time still can't run in a job.";
+
+// jobs draws the scheduled jobs, the Add a job link, and the form it and
+// each Edit open. The list refreshes every few seconds while it shows, so
+// a run's start and end appear without a click; the form sits outside the
+// list, so a refresh leaves what the user types alone.
 function jobs(body) {
-  const load = () => bridge.jobs().then(
-    (list) => body.isConnected && drawJobs(body, list || []),
-    (err) => fail(body, err),
-  );
+  body.replaceChildren();
+  intro(body, "Jobs Meru runs on a schedule. Each run is a chat in the Jobs folder. " +
+    "Meru saves each job as [[jobs]] in ~/.meru/config.toml.");
+  const formBox = el("div");
+  const listBox = el("div");
+  const draw = (list) => listBox.isConnected && drawJobs(listBox, list || [], edit);
+  const done = (list) => {
+    formBox.replaceChildren();
+    draw(list);
+  };
+  const edit = (j) => jobForm(formBox, j, done);
+  const add = button("Add a job", { className: "text-button link", iconName: "plus", onClick: () => edit(null) });
+  const top = el("div", "custom-server");
+  top.append(add);
+  body.append(top, formBox, listBox);
+  const load = () => bridge.jobs().then(draw, (err) => listBox.isConnected && fail(listBox, err));
   load();
   const timer = setInterval(() => (body.isConnected ? load() : clearInterval(timer)), 5000);
 }
@@ -926,22 +948,39 @@ function when(stamp) {
   return t.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + " " + hm;
 }
 
-// drawJobs draws the Jobs section from list: each job with its schedule in
-// words and its state, Run now or Stop, and a link to its last run's chat.
-function drawJobs(body, list) {
-  body.replaceChildren();
-  intro(body, "Jobs Meru runs on a schedule. Each run is a chat in the Jobs folder. " +
-    "Add jobs as [[jobs]] in ~/.meru/config.toml.");
+// specOf picks out of a job from the list the keys config.toml holds, the
+// JobSpec the Bridge saves.
+function specOf(j) {
+  return {
+    name: j.name, schedule: j.schedule, every_weeks: j.every_weeks || 0, from: j.from || "",
+    prompt: j.prompt || "", skill: j.skill || "", command: j.command || "", args: j.args || null,
+    allow: j.allow || null, output: j.output || "", paused: !!j.paused,
+  };
+}
+
+// drawJobs draws the jobs in list into box: each with its schedule in
+// words and its state, Run now or Stop, Pause or Resume, Edit, which calls
+// edit with the job, Remove, and a link to its last run's chat.
+function drawJobs(box, list, edit) {
+  box.replaceChildren();
   if (list.length === 0) {
-    body.append(el("p", "dim", "No jobs yet. Add one in config.toml, such as a morning brief at \"0 7 * * 1-5\"."));
+    box.append(el("p", "dim", "No jobs yet. Add one, such as a morning brief at 7:00 on weekdays."));
     return;
   }
+  const change = (p, said) => p.then(
+    (next) => {
+      drawJobs(box, next || [], edit);
+      if (said) current.pages.notice(said);
+    },
+    (err) => current.pages.notice(errorText(err)),
+  );
   const ul = el("ul", "row-list");
   for (const j of list) {
     const li = el("li", "row");
     const text = el("div", "row-main");
     text.append(el("span", "tool-name", j.name));
-    text.append(el("span", "tool-desc", j.when + (j.skill ? " · skill " + j.skill : "")));
+    const does = j.command ? " · runs cmd." + j.command : j.skill ? " · skill " + j.skill : "";
+    text.append(el("span", "tool-desc", j.when + does));
     let state = j.running ? "Running since " + when(j.started) : j.paused ? "Paused" : "Next " + when(j.next);
     if (j.last) state += " · last " + when(j.last) + (j.last_outcome ? ", " + j.last_outcome : "");
     const line = el("span", "dim", state);
@@ -952,18 +991,203 @@ function drawJobs(body, list) {
     }
     text.append(line);
     li.append(text);
-    const act = j.running
+
+    const acts = el("div", "card-actions");
+    const run = j.running
       ? button("Stop", { className: "button secondary", onClick: () => change(bridge.cancelJob(j.name)) })
       : button("Run now", { className: "button secondary", onClick: () => change(bridge.runJob(j.name)) });
-    act.setAttribute("aria-label", (j.running ? "Stop " : "Run ") + j.name);
-    li.append(act);
+    run.setAttribute("aria-label", (j.running ? "Stop " : "Run ") + j.name);
+    const pause = button(j.paused ? "Resume" : "Pause", {
+      className: "text-button",
+      onClick: () => change(bridge.saveJob(j.name, { ...specOf(j), paused: !j.paused }),
+        j.paused ? j.name + " runs on its schedule again." : "Paused " + j.name + "."),
+    });
+    pause.setAttribute("aria-label", (j.paused ? "Resume " : "Pause ") + j.name);
+    const editButton = button("Edit", { className: "text-button", onClick: () => edit(j) });
+    editButton.setAttribute("aria-label", "Edit " + j.name);
+    const remove = button("Remove", {
+      className: "text-button",
+      onClick: () => acts.replaceChildren(el("span", "", "Remove " + j.name + "? Its past runs stay in the Jobs folder."),
+        button("Remove", { className: "button secondary",
+          onClick: () => change(bridge.removeJob(j.name), "Removed " + j.name + ".") }),
+        button("Keep it", { className: "text-button", onClick: () => drawJobs(box, list, edit) })),
+    });
+    remove.setAttribute("aria-label", "Remove " + j.name);
+    acts.append(run, pause, editButton, remove);
+    li.append(acts);
     ul.append(li);
   }
-  body.append(ul);
+  box.append(ul);
+}
 
-  function change(p) {
-    p.then((next) => drawJobs(body, next || []), (err) => current.pages.notice(errorText(err)));
+// jobForm opens the form that adds a job, or edits j, in box. As the user
+// types, merud checks the job and says its schedule in words and its next
+// run, or what's wrong. A job that runs a command keeps its command and
+// arguments; the form edits when it runs and where its answer goes. done
+// gets the jobs after a save.
+function jobForm(box, j, done) {
+  box.replaceChildren();
+  const was = j ? j.name : "";
+  const form = el("form", "card custom-form");
+  form.setAttribute("aria-label", j ? "Edit " + j.name : "New job");
+  form.append(el("h3", "", j ? "Edit " + j.name : "New job"));
+
+  const name = field(form, "job-name", "Name", "morning-brief");
+  name.autocomplete = "off";
+  name.spellcheck = false;
+  form.append(el("p", "card-note", "Lower-case letters, digits, - and _. It names the job's chats in the Jobs folder."));
+
+  const schedule = field(form, "job-schedule", "When", "0 7 * * 1-5");
+  schedule.spellcheck = false;
+  form.append(el("p", "card-note", "Five fields: minute, hour, day of the month, month, day of the week. " +
+    "\"0 7 * * 1-5\" is 7:00 on weekdays, and \"0 9 * * 2\" 9:00 on Tuesdays."));
+  const repeatRow = el("div", "field-row");
+  const repeat = el("select", "text-input");
+  repeat.setAttribute("aria-label", "How often");
+  for (const [n, label] of REPEATS) {
+    const o = el("option", "", label);
+    o.value = String(n);
+    repeat.append(o);
   }
+  const from = el("input", "text-input");
+  from.type = "date";
+  from.setAttribute("aria-label", "First day");
+  const fromLabel = el("span", "dim", "starting");
+  repeatRow.append(repeat, fromLabel, from);
+  form.append(repeatRow);
+  const words = el("p", "card-note");
+  words.setAttribute("aria-live", "polite");
+  form.append(words);
+
+  let prompt = null;
+  let skill = null;
+  if (j && j.command) {
+    form.append(el("p", "card-note", "Runs cmd." + j.command + ", a [[commands]] entry in config.toml, with no model. " +
+      "Edit its arguments in config.toml."));
+  } else {
+    const pl = el("label", "field-label", "What Meru does");
+    pl.htmlFor = "job-prompt";
+    prompt = el("textarea", "text-input");
+    prompt.id = "job-prompt";
+    prompt.placeholder = "Read my calendar for today and my unread mail, and brief me in five lines.";
+    form.append(pl, prompt);
+    const sl = el("label", "field-label", "Skill");
+    sl.htmlFor = "job-skill";
+    skill = el("select", "text-input");
+    skill.id = "job-skill";
+    const none = el("option", "", "Meru picks one, or none");
+    none.value = "";
+    skill.append(none);
+    form.append(sl, skill);
+    bridge.skills().then((sv) => {
+      for (const s of sv.skills) {
+        if (s.disabled && !(j && j.skill === s.name)) continue;
+        const o = el("option", "", s.name);
+        o.value = s.name;
+        skill.append(o);
+      }
+      skill.value = (j && j.skill) || "";
+    }, () => {});
+  }
+
+  const allow = field(form, "job-allow", "Tools it may use without asking", "write_file, google.list_events");
+  allow.spellcheck = false;
+  const warning = el("p", "card-error", ALLOW_WARNING);
+  form.append(warning);
+  const output = field(form, "job-output", "Also save the answer to", "briefs/{date}.md");
+  output.spellcheck = false;
+  form.append(el("p", "card-note", "A file under your output folder, ~/meru-output by default. " +
+    "{date}, {time} and {job} fill in. Leave it empty to keep the answer in the chat only."));
+
+  if (j) {
+    name.value = j.name;
+    schedule.value = j.schedule;
+    repeat.value = String(j.every_weeks > 1 ? j.every_weeks : 1);
+    from.value = j.from || "";
+    if (prompt) prompt.value = j.prompt || "";
+    allow.value = (j.allow || []).join(", ");
+    output.value = j.output || "";
+  }
+
+  // spec reads the form as a JobSpec. An edit keeps the job's command,
+  // arguments and pause.
+  const spec = () => {
+    const weeks = Number(repeat.value);
+    const tools = allow.value.split(",").map((t) => t.trim()).filter(Boolean);
+    return {
+      name: name.value.trim(), schedule: schedule.value.trim(),
+      every_weeks: weeks > 1 ? weeks : 0, from: weeks > 1 ? from.value : "",
+      prompt: prompt ? prompt.value.trim() : "", skill: skill ? skill.value : "",
+      command: j ? j.command || "" : "", args: j ? j.args || null : null,
+      allow: tools.length ? tools : null, output: output.value.trim(), paused: j ? !!j.paused : false,
+    };
+  };
+
+  // check asks merud about the job a moment after the user stops typing,
+  // and says what it found under the schedule. An answer to an older
+  // check is dropped.
+  let timer = 0;
+  let asked = 0;
+  const check = () => {
+    const weeks = Number(repeat.value) > 1;
+    from.hidden = fromLabel.hidden = !weeks;
+    if (weeks && !from.value) {
+      // Today's date on this computer; toISOString would give the date in UTC.
+      const d = new Date();
+      from.value = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+    }
+    warning.hidden = !allow.value.trim();
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const sp = spec();
+      if (!sp.schedule) {
+        words.className = "card-note";
+        words.textContent = "";
+        return;
+      }
+      const n = ++asked;
+      // A name or an action the user hasn't typed yet shouldn't stop the
+      // check from saying the schedule in words.
+      const probe = { ...sp, name: sp.name || "new-job", prompt: sp.prompt || (sp.command ? "" : "-") };
+      bridge.checkJob(was, probe).then((info) => {
+        if (n !== asked) return;
+        words.className = "card-note";
+        words.textContent = info.when + (info.next ? " · next " + when(info.next) : "");
+      }, (err) => {
+        if (n !== asked) return;
+        words.className = "card-error";
+        words.textContent = errorText(err);
+      });
+    }, 300);
+  };
+  for (const input of [name, schedule, repeat, from, allow, output, prompt, skill]) {
+    if (input) input.addEventListener("input", check);
+  }
+  check();
+
+  const save = button(j ? "Save" : "Add job", { className: "button primary" });
+  save.type = "submit";
+  const cancel = button("Cancel", { className: "text-button", onClick: () => box.replaceChildren() });
+  const actions = el("div", "card-actions");
+  actions.append(save, cancel);
+  form.append(actions);
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const sp = spec();
+    save.disabled = true;
+    bridge.saveJob(was, sp).then(
+      (list) => {
+        done(list);
+        current.pages.notice((j ? "Saved " : "Added ") + sp.name + ".");
+      },
+      (err) => {
+        save.disabled = false;
+        current.pages.notice(errorText(err));
+      },
+    );
+  });
+  box.append(form);
+  name.focus();
 }
 
 // ---- Models ----

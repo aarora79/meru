@@ -210,6 +210,28 @@ removed. If not, nothing changes and the error says to edit the file by hand.
 Steps 1 to 3 live in `serverSpan`, which returns where the block starts and
 ends; `cutServer` and `AdoptServer` both use it.
 
+### jobs.go
+
+The clients' Jobs screens add, edit, pause and remove `[[jobs]]` entries
+through `merud`, which calls three functions here:
+
+- `JobBlock(j)` writes a job as a `[[jobs]]` block: its keys in a fixed order,
+  only the ones set, `args` as one inline table, and `enabled = false` only for
+  a paused job. A job written here reads like one written by hand.
+- `SetJob(path, was, j)` adds `j` at the end of the file when `was` is empty,
+  and refuses a name another job has. With `was` set it replaces the block of
+  the job named `was`, so an edit can rename a job, and the job keeps its place
+  and the comment lines above it.
+- `RemoveJob(path, name)` takes the block out, with the comment lines above it,
+  and drops one blank line where two now meet.
+
+`jobSpan` finds a block as `serverSpan` finds a server: from its `[[jobs]]`
+header, parsed alone with the TOML library to read the name, to its last key
+before the next top-level header, so a `[jobs.args]` table goes with it. Every
+write goes through `writeChecked`. For `SetJob` the check is that the file
+loads, holds the jobs it should in order, and holds `j` as asked: `sameJob`
+compares the two field by field, reading a missing `enabled` as on.
+
 ### adopt.go
 
 Adopt (see [connectors](connectors.md)) moves a hand-added `obsidian` or

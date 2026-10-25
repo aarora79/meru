@@ -48,6 +48,9 @@ export const bridge = {
   jobs: () => call("Jobs"),
   runJob: (name) => call("RunJob", name),
   cancelJob: (name) => call("CancelJob", name),
+  saveJob: (was, spec) => call("SaveJob", was, spec),
+  checkJob: (was, spec) => call("CheckJob", was, spec),
+  removeJob: (name) => call("RemoveJob", name),
   removeTrustedSite: (host) => call("RemoveTrustedSite", host),
   // The microphone (speech.go).
   speechStatus: () => call("SpeechStatus"),

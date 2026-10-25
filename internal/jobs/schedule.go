@@ -273,6 +273,13 @@ func daysBetween(a, b time.Time) int {
 	return int(db.Sub(da).Hours() / 24)
 }
 
+// Same reports whether s and o run at the same times: the same expression,
+// and the same weeks from the same first day. It compares the first day
+// with Equal, since == on a time.Time also compares its location's pointer.
+func (s Schedule) Same(o Schedule) bool {
+	return s.expr == o.expr && s.everyWeeks == o.everyWeeks && s.fromDay.Equal(o.fromDay)
+}
+
 // Describe writes the schedule in words, such as "7:00 on weekdays" or
 // "9:00 on Tuesdays, every other week from 27 October 2026", for the
 // clients to show beside the cron expression. A schedule it has no words

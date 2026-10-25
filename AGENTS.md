@@ -267,7 +267,8 @@ internal/
                      web_fetch's address check (proxy.go)
   commands/          the [[commands]] entries: local programs run with no shell, typed parameters
   catalog/           the starter MCP servers and SearXNG, the safe append to config.toml, and
-                     one-list edits and removals in it; Adopt's edit and its undo (adopt.go)
+                     one-list edits and removals in it; Adopt's edit and its undo (adopt.go);
+                     adding, replacing and removing one [[jobs]] entry (jobs.go)
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
   skills/            loads SKILL.md folders; builtin/ ships writing, explainer, web-research and
                      file-research

@@ -198,7 +198,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		OpModelSet, OpModelUse, OpModelSave, OpSessionDelete, OpSessionMove, OpSessionTag, OpChatFolders,
 		OpChatFolderAdd, OpChatFolderRename, OpChatFolderRemove, OpConnectorAdopt, OpConnectorUnadopt,
 		OpConnectorSet, OpConnectorFix, OpTranscribe, OpTrustedSites, OpTrustedSiteRemove,
-		OpJobs, OpJobRun, OpJobCancel:
+		OpJobs, OpJobRun, OpJobCancel, OpJobSet, OpJobRemove:
 		// Handled below.
 		// A job's fields come only from merud's own scheduler, in
 		// process; from a client they would let an ask pass as a job.

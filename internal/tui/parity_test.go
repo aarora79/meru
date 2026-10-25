@@ -338,7 +338,7 @@ func TestFoldersKeys(t *testing.T) {
 }
 
 func TestJobsKeys(t *testing.T) {
-	brief := rpc.JobInfo{Name: "morning-brief", Schedule: "0 7 * * 1-5", When: "7:00 on weekdays",
+	brief := rpc.JobInfo{JobSpec: rpc.JobSpec{Name: "morning-brief", Schedule: "0 7 * * 1-5", Prompt: "Brief me."}, When: "7:00 on weekdays",
 		Next: "2026-10-27T07:00:00-04:00", Last: "2026-10-24T07:00:00-04:00", LastOutcome: "ok", LastSession: "2026-10-24T110000-ab12"}
 	running := brief
 	running.Running, running.Started = true, "2026-10-26T12:00:00-04:00"
@@ -389,6 +389,65 @@ func TestJobsKeys(t *testing.T) {
 	}
 	if m.jobsBox != nil || m.session != brief.LastSession || len(m.turns) != 1 {
 		t.Errorf("after o: box open %v, session %q, turns %d", m.jobsBox != nil, m.session, len(m.turns))
+	}
+}
+
+func TestJobsChangeKeys(t *testing.T) {
+	brief := rpc.JobInfo{JobSpec: rpc.JobSpec{Name: "morning-brief", Schedule: "0 7 * * 1-5", Prompt: "Brief me."}, When: "7:00 on weekdays"}
+	list := []rpc.Event{{Type: rpc.EventJobs, Jobs: []rpc.JobInfo{brief}}, {Type: rpc.EventDone}}
+	merud := &fakeMerud{events: list}
+	m := testModel(merud.ask, newFakeSender())
+	m.width, m.height = 100, 30
+	m, cmd := update(t, m, typeText("/jobs"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+
+	// p pauses: a job_set of the same job with Paused on.
+	m, cmd = update(t, m, typeText("p"))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobSet || r.ID != "morning-brief" || r.JobSpec == nil ||
+		!r.JobSpec.Paused || r.JobSpec.Prompt != "Brief me." {
+		t.Errorf("p sent %+v", r)
+	}
+
+	// d once only warns; d again removes.
+	before := len(merud.reqs)
+	m, cmd = update(t, m, typeText("d"))
+	if cmd != nil || len(merud.reqs) != before || !strings.Contains(m.notice, "d again") {
+		t.Errorf("a first d: cmd %v, notice %q", cmd != nil, m.notice)
+	}
+	m, cmd = update(t, m, typeText("d"))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobRemove || r.ID != "morning-brief" {
+		t.Errorf("d d sent %+v", r)
+	}
+
+	// a walks through a new job: name, schedule, prompt, then an empty
+	// skill saves it.
+	m, _ = update(t, m, typeText("a"))
+	if m.jobsBox.walk == nil || !strings.Contains(m.View(), "New job · Name") {
+		t.Fatalf("a opened no form:\n%s", m.View())
+	}
+	m, _ = update(t, m, typeText("go-news"), press(tea.KeyEnter), typeText("0 9 * * 2"), press(tea.KeyEnter),
+		typeText("What's new in Go?"), press(tea.KeyEnter))
+	m, cmd = update(t, m, press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobSet || r.ID != "" || r.JobSpec == nil ||
+		!reflect.DeepEqual(*r.JobSpec, rpc.JobSpec{Name: "go-news", Schedule: "0 9 * * 2", Prompt: "What's new in Go?"}) {
+		t.Errorf("a sent %+v", r)
+	}
+
+	// e keeps what an empty Enter passes over, and Esc leaves the form,
+	// not the box.
+	m, _ = update(t, m, typeText("e"), press(tea.KeyEnter), typeText("30 7 * * 1-5"), press(tea.KeyEnter), press(tea.KeyEnter))
+	m, cmd = update(t, m, press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpJobSet || r.ID != "morning-brief" || r.JobSpec.Name != "morning-brief" ||
+		r.JobSpec.Schedule != "30 7 * * 1-5" || r.JobSpec.Prompt != "Brief me." {
+		t.Errorf("e sent %+v", r)
+	}
+	m, _ = update(t, m, typeText("e"), press(tea.KeyEsc))
+	if m.jobsBox == nil || m.jobsBox.walk != nil {
+		t.Errorf("Esc: box %v, form %v", m.jobsBox != nil, m.jobsBox != nil && m.jobsBox.walk != nil)
 	}
 }
 

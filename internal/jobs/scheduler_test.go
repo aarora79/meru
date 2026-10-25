@@ -223,3 +223,20 @@ func TestSchedulerOneAtATime(t *testing.T) {
 		t.Errorf("runs = %d, want 2", r.count())
 	}
 }
+
+func TestSchedulerEditCountsFromNow(t *testing.T) {
+	at := func(h int) time.Time { return time.Date(2026, 10, 26, h, 0, 0, 0, time.UTC) }
+	daily := Entry{Name: "brief", Schedule: mustParse(t, "0 7 * * *"), On: true}
+	s, c, r, stop := started(t, at(9), map[string]time.Time{"brief": at(7)}, daily)
+	defer stop()
+
+	// At 9:30 the job becomes hourly. Its 8:00 and 9:00 slots fell before
+	// the edit, so neither runs; 10:00 does.
+	c.set(at(9).Add(30 * time.Minute))
+	hourly := daily
+	hourly.Schedule = mustParse(t, "0 * * * *")
+	s.Set([]Entry{hourly})
+	noRun(t, r)
+	c.set(at(10))
+	waitRun(t, r)
+}

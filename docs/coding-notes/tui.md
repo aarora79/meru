@@ -1369,7 +1369,14 @@ itself (open.go).
 "next today 07:00", "running since …" or "paused", and the last run with its
 outcome. Enter sends `OpJobRun`, `c` sends `OpJobCancel` for a running job, and
 `o` opens the last run's chat through `OpSessionTurns` and `reopen`, as `/chats`
-does. Each reply replaces the list.
+does. `p` sends `OpJobSet` with the marked job's `JobSpec` and `Paused` turned
+over. `d` arms the marked job and a second `d` sends `OpJobRemove`, as `/chats`
+deletes. `a` opens a `jobWalk` for a new job and `e` one for the marked job: one
+`textinput` at a time for the name, the schedule, the prompt and the skill,
+each with the old value as its placeholder, which an empty Enter keeps. A job
+that runs a command asks only the first two. Enter on the last field sends
+`OpJobSet`, with the old name in `ID` for an edit, and Esc leaves the form, not
+the box. Each reply replaces the list.
 
 ## Go ideas used here
 

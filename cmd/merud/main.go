@@ -287,6 +287,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// whole.
 	home, _ := os.UserHomeDir()
 	hist := newHistoryService(sessionsDir, home, st, a.ForgetIncognito, log)
+	hist.configPath = configPath
 	// about_meru reads every source above, so merud hands it them last. It
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
@@ -320,7 +321,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	}
 	// The scheduler runs [[jobs]] through the same agent, in a loop beside
 	// the server; see jobs.go.
-	jobSvc, err := newJobService(gctx, cfg, a, tools.dispatcher, st, hist, log)
+	jobSvc, err := newJobService(gctx, cfg, configPath, tools.bt.EditConfig, a, tools.dispatcher, st, hist, log)
 	if err != nil {
 		return fail(err)
 	}
@@ -536,6 +537,10 @@ func handler(svc services) rpc.Handler {
 			return svc.jobs.handleJobRun(req, emit)
 		case rpc.OpJobCancel:
 			return svc.jobs.handleJobCancel(req, emit)
+		case rpc.OpJobSet:
+			return svc.jobs.handleJobSet(ctx, req, emit)
+		case rpc.OpJobRemove:
+			return svc.jobs.handleJobRemove(ctx, req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}
