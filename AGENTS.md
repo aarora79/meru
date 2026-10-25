@@ -27,7 +27,7 @@ easier to review.
   `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
-- [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.5, shipped in order. Each has a
+- [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.6, shipped in order. Each has a
   "Done when" line that serves as its acceptance test.
 - [docs/lld.md](docs/lld.md) — the low-level design: packages, the interfaces between
   them, and one question traced function by function. Start here before reading code.
@@ -35,8 +35,8 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.4.20**. ROADMAP.md ticks every item from v0.1
-to v0.4:
+Pre-alpha, with releases up to **v0.5.0**. ROADMAP.md ticks every item from v0.1
+to v0.5:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
   JSONL session transcripts and route each question with the one-token router.
@@ -49,6 +49,10 @@ to v0.4:
 - **v0.4:** memories, with your profile in every prompt and recall on each turn,
   session summaries, skills with progressive disclosure, `write_file` into
   `~/meru-output/`, and a context budget for the prompt.
+- **v0.5:** scheduled jobs: a prompt, a skill or a declared command on a cron
+  schedule, with every N weeks and catch-up after sleep, each run a chat in the
+  Jobs folder; managed in both clients and by asking through `schedule_job`
+  (#167). Web answers list their pages as sources (#174).
 
 The desktop app, `meru-desktop` (Wails v3, macOS first), came ahead of v0.5 at the
 owner's request. It has the chat screen, Settings and the Setup screen, takes
@@ -80,8 +84,8 @@ question needs it, warms the answer model in the background, and ships
 through `make release`, a one-line installer, and a Mac installer on a disk image
 (`cmd/meru-installer`), which sets up Ollama, web search, folders and `merud` in
 a window. Work goes milestone by milestone
-([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features (the
-scheduler) ahead of the milestone that owns them.
+([ROADMAP.md](ROADMAP.md)). Don't build a later milestone's features (digests,
+notifications, `meru brief`) ahead of the milestone that owns them.
 [docs/running.md](docs/running.md) shows how to build and run Meru.
 
 Decided (details in ARCHITECTURE.md):

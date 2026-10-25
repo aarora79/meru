@@ -1051,9 +1051,9 @@ could run without it; Meru answers worse without it.
   parameters the model fills in, and never a command line the model wrote.
 - **No sandbox.** `merud` runs as an ordinary user process; the allowlists and
   approvals do the controlling.
-- **The scheduler is being built.** Jobs that run on a schedule come in v0.5
-  ([#167](https://github.com/aarora79/meru/issues/167)): `internal/jobs` holds the
-  time rules, and the loop in `merud` follows. A job's run is a turn with source
+- **The scheduler runs jobs.** Since v0.5
+  ([#167](https://github.com/aarora79/meru/issues/167)), `internal/jobs` holds the
+  time rules and the loop in `merud` runs each job. A job's run is a turn with source
   `job`, in a chat in the Jobs folder. `dispatch` runs a call that would ask once
   when the job's `allow` names the tool, and declines every other call that needs
   a yes (see ARCHITECTURE.md, Scheduler).

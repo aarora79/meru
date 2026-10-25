@@ -137,7 +137,7 @@ from disk. So Meru has two programs:
 
 - **`merud`** runs all the time. It keeps models loaded in Ollama, owns the store,
   holds the MCP and A2A connections, runs the connectors, the indexer and the agent
-  loop, and emits metrics and traces. The scheduler joins it in v0.5.
+  loop, and emits metrics and traces. From v0.5 the scheduler runs jobs through it.
 - **`meru`** is a thin client. It connects to `merud` over a Unix socket at
   `~/.meru/merud.sock`, starts in ~50 ms, streams the answer back and exits.
 
@@ -147,9 +147,9 @@ once, before `merud` exists, to set the Mac up (see [Installer](#installer)).
 A daemon that keeps models warm can also run scheduled jobs for almost no extra
 work. That is why we build `merud` first and add the scheduler to it later.
 
-![System diagram. Three short-lived clients, meru for one question, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the socket server feeds the agent loop, and a scheduler, drawn dashed, will join it in v0.5. The loop uses the skill registry, dispatch and the Engine. The Engine reaches Ollama and its fast, main and embed models over HTTP on 127.0.0.1:11434. Dispatch reaches MCP servers such as google and obsidian through the MCP client pool, other agents through the A2A client, and a SearXNG you run for web_search. The loop reads and writes the files under ~/.meru: session transcripts, memory files, skills, config.toml and meru.db, the index Meru can rebuild. The OTel SDK serves metrics at an optional /metrics page on 127.0.0.1:9464 for a Prometheus you run, and can push metrics and traces to an optional OTLP endpoint on 127.0.0.1:4318.](docs/architecture/img/300-overview.png)
+![System diagram. Three short-lived clients, meru for one question, meru chat and meru-desktop, talk to merud over a Unix socket. Inside merud, the socket server and the scheduler feed the agent loop. The loop uses the skill registry, dispatch and the Engine. The Engine reaches Ollama and its fast, main and embed models over HTTP on 127.0.0.1:11434. Dispatch reaches MCP servers such as google and obsidian through the MCP client pool, other agents through the A2A client, and a SearXNG you run for web_search. The loop reads and writes the files under ~/.meru: session transcripts, memory files, skills, config.toml and meru.db, the index Meru can rebuild. The OTel SDK serves metrics at an optional /metrics page on 127.0.0.1:9464 for a Prometheus you run, and can push metrics and traces to an optional OTLP endpoint on 127.0.0.1:4318.](docs/architecture/img/300-overview.png)
 
-*Figure 1. Arrows leave `merud` for programs it doesn't own from two places: the engine, to Ollama, and `dispatch`, to MCP servers, A2A agents and SearXNG. Each is one guarded entry point, which is where the privacy rules live. The scheduler, drawn dashed, is planned for v0.5 and not built yet.*
+*Figure 1. Arrows leave `merud` for programs it doesn't own from two places: the engine, to Ollama, and `dispatch`, to MCP servers, A2A agents and SearXNG. Each is one guarded entry point, which is where the privacy rules live. The scheduler, new in v0.5, runs jobs through the same loop.*
 
 ### Terminal UI
 
@@ -5107,7 +5107,7 @@ guess still offers the tool. A job's own turns never see
 ### What the scheduler doesn't do
 
 It sends no notifications and keeps no digest yet; those and `meru brief` are
-the rest of v0.5. A job never waits for an approval. It runs no shell line, only
+planned for v0.6. A job never waits for an approval. It runs no shell line, only
 declared commands, and a script runs by its own path. It has no seconds, no
 `@reboot`, and no time zone but the computer's own. The operating system's
 service manager (`launchd`, `systemd`) restarts `merud` after a reboot; the
