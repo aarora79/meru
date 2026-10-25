@@ -165,6 +165,11 @@ func TestToolTarget(t *testing.T) {
 		{"every other Tuesday at 9, check the release notes", scheduler, "asks for a schedule"},
 		{"schedule a backup of my notes at night", scheduler, "asks for a schedule"},
 		{"summarize every file in my work folder", scheduler, ""},
+		{"can you create a job to check my google calendar at 8am in the morning and show me my mmetings for today", scheduler, "asks for a schedule"},
+		{"set up a job for 7pm", scheduler, "asks for a schedule"},
+		{"send me a daily digest of my mail", scheduler, "asks for a schedule"},
+		{"summarize the Blue Origin job posting", scheduler, ""},
+		{"what did I do this morning?", scheduler, ""},
 		{"every weekday at 7, brief me on my calendar", []engine.ToolSpec{spec("read_file")}, ""},
 	}
 	for _, tt := range tests {

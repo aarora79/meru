@@ -5098,9 +5098,10 @@ The built-in tool `schedule_job` proposes the job, and asks every time, as
 `configure` does: the card shows the job with its schedule in words, such as
 "9:00 on Tuesdays, every other week from 27 October 2026", and nothing is saved
 until you say yes. It sets no `allow` list; what a job may do unwatched is set
-in Settings or `config.toml`. A question with "schedule", or "every" or "each"
-before a time word such as "weekday" or "morning", gets the tools route, so a
-`direct` guess still offers the tool. A job's own turns never see
+in Settings or `config.toml`. A question with "schedule", "daily" or
+"weekly", "every" or "each" before a time word such as "weekday" or "morning",
+or "job" with a time of day such as "8am", gets the tools route, so a `direct`
+guess still offers the tool. A job's own turns never see
 `schedule_job` or `configure`, so no job makes or changes jobs.
 
 ### What the scheduler doesn't do

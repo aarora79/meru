@@ -1058,7 +1058,7 @@ it finds as words for the log line, or `""` for none:
 | names a tool server | "search my obsidian vault" | `namesFolder` over `toolServers` |
 | asks Meru to remember | "remember that my name is Dana" | `asksToRemember` |
 | names Apple Notes | "search my Apple Notes for the garden plan" | `asksForAppleNotes`, the word pairs "apple notes", "apple note" and "notes app", while the Apple Notes tools are on |
-| asks for a schedule | "every weekday at 7, brief me on my calendar" | `asksToSchedule`: "schedule" or "scheduled", or "every" or "each" before a word in `recurring` ("weekday", "morning", "other", "tuesday"...), while `schedule_job` is on. "every file" doesn't count |
+| asks for a schedule | "every weekday at 7, brief me on my calendar" | `asksToSchedule`: "schedule" or "scheduled"; a word in `repeating` ("daily", "weekly"...); "every" or "each" before a word in `recurring` ("weekday", "morning", "other", "tuesday"...); or "job" with a time of day ("8am" by `clockTime`, or a word in `timeOfDay`), while `schedule_job` is on. "every file" and "the Blue Origin job posting" don't count |
 | asks for the web | "search the web: what is SearXNG?" | `asksForWeb`, with the phrases in `webPhrases` |
 | gives a web address | "what does https://acme.example/flow say?" | `givesURL` |
 | names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
