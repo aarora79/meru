@@ -106,7 +106,7 @@ top of each file says where its pin came from and on what date. `ollama.toml`
 installs nothing: `merud` only asks Ollama's `/api/version`.
 
 `whisper.toml`, speech to text, is the one service. It pins one download, the
-`whisper-server` Meru's CI builds, for `darwin_arm64` only, and two model
+`whisper-server` Meru's CI builds, for `darwin_arm64` and `linux_amd64`, and two model
 files from Hugging Face, each URL naming a commit:
 
 ```toml
@@ -995,7 +995,9 @@ default, a bad choice or key, and a download that doesn't match its pin.
 `TestServiceNoBuild` a platform with no download.
 `TestIntegrationWhisper` (`service_integration_test.go`, build tag
 `integration`) downloads the real connector, starts it, and checks that it
-writes down a clip `say` spoke and answers 404 without the token.
+writes down a clip `say` spoke, or `pico2wave` on Linux, and answers 404
+without the token. It runs on Apple silicon and Linux on x86-64; `speak`
+picks the program and skips the test when neither is there.
 
 ## Go ideas used here
 

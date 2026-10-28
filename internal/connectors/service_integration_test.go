@@ -3,9 +3,9 @@
 // This file holds the test that runs the real whisper connector: it
 // downloads whisper-server from Meru's release and ggml-base.en.bin from
 // Hugging Face into a temporary Meru home, starts the server through the
-// Service supervisor, and has it write down a clip that macOS's say
-// spoke. It runs only with the integration build tag, on a Mac with Apple
-// silicon:
+// Service supervisor, and has it write down a clip that macOS's say or,
+// on Linux, pico2wave spoke. It runs only with the integration build tag,
+// on a Mac with Apple silicon or Linux on x86-64:
 //
 //	go test -tags integration -run TestIntegrationWhisper ./internal/connectors/
 //
@@ -34,8 +34,10 @@ import (
 // TestIntegrationWhisper installs the real whisper connector, uses it,
 // and checks the transcript and the token path.
 func TestIntegrationWhisper(t *testing.T) {
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		t.Skip("whisper-server has a build for Apple silicon only")
+	switch runtime.GOOS + "_" + runtime.GOARCH {
+	case "darwin_arm64", "linux_amd64":
+	default:
+		t.Skip("whisper-server has builds for Apple silicon and Linux on x86-64 only")
 	}
 	ms, err := Load()
 	if err != nil {
@@ -57,10 +59,7 @@ func TestIntegrationWhisper(t *testing.T) {
 	}
 
 	clip := filepath.Join(t.TempDir(), "clip.wav")
-	say := exec.Command("/usr/bin/say", "-o", clip, "--data-format=LEI16@16000", "What did I write in my notes about the garden plan last spring?")
-	if out, err := say.CombinedOutput(); err != nil {
-		t.Fatalf("say: %v: %s", err, out)
-	}
+	speak(t, clip, "What did I write in my notes about the garden plan last spring?")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	base, done, err := s.Use(ctx)
@@ -116,4 +115,22 @@ func transcribeFile(t *testing.T, url, path string) (string, int) {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return strings.TrimSpace(out.Text), resp.StatusCode
+}
+
+// speak writes text, spoken, to clip as a 16 kHz WAV file: with macOS's
+// say on a Mac, and with pico2wave elsewhere, which writes 16 kHz on its
+// own. It skips the test when neither program is there.
+func speak(t *testing.T, clip, text string) {
+	t.Helper()
+	cmd := exec.Command("/usr/bin/say", "-o", clip, "--data-format=LEI16@16000", text)
+	if runtime.GOOS != "darwin" {
+		pico, err := exec.LookPath("pico2wave")
+		if err != nil {
+			t.Skip("pico2wave isn't installed; apt install libttspico-utils")
+		}
+		cmd = exec.Command(pico, "-w", clip, text)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%s: %v: %s", cmd.Path, err, out)
+	}
 }
