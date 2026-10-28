@@ -508,6 +508,17 @@ func TestInstallBinary(t *testing.T) {
 			if err != nil || path != filepath.Join(got.Dir, "tool-bin") {
 				t.Errorf("LaunchCommand = %s, %v", path, err)
 			}
+			// {binary} names the same file, the last part of this
+			// platform's URL, so one command serves every platform.
+			m.Launch.Command = "{pkg}/{binary}"
+			path, _, _, err = in.LaunchCommand(m, got, nil)
+			if err != nil || path != filepath.Join(got.Dir, "tool-bin") {
+				t.Errorf("LaunchCommand with {binary} = %s, %v", path, err)
+			}
+			in.Platform = "linux_amd64"
+			if _, _, _, err := in.LaunchCommand(m, got, nil); err == nil || !strings.Contains(err.Error(), "no download for linux_amd64") {
+				t.Errorf("LaunchCommand with {binary} and no linux download = %v", err)
+			}
 		})
 	}
 }
