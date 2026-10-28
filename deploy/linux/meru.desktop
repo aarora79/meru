@@ -1,0 +1,13 @@
+# The desktop entry that puts Meru in the Linux app menu. scripts/install-linux.sh
+# copies it to ~/.local/share/applications/ and fills in __HOME__, since a
+# desktop entry doesn't expand ~ or $HOME. The icon is docs/img/meru-logo.png,
+# installed as ~/.local/share/icons/hicolor/512x512/apps/meru.png.
+[Desktop Entry]
+Type=Application
+Name=Meru
+Comment=A personal AI assistant that runs on your own computer
+Exec=__HOME__/.local/bin/meru-desktop
+Icon=meru
+Terminal=false
+Categories=Utility;
+StartupWMClass=meru-desktop

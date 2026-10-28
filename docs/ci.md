@@ -1,7 +1,7 @@
 # Continuous integration
 
-GitHub Actions runs two workflows on every push and pull request, and a
-third, `whisper-server.yml`, when the owner starts it.
+GitHub Actions runs two workflows on every push and pull request, and two
+more when the owner starts them: `whisper-server.yml` and `desktop-linux.yml`.
 `.github/workflows/ci.yml` checks that the code builds, passes its tests and
 reads cleanly. `.github/workflows/security.yml` looks for vulnerabilities,
 risky code and leaked secrets, and also runs every Monday so a newly published
@@ -49,8 +49,10 @@ needs cgo and the system's WebView, so `cmd/meru-desktop` builds only with the
 job builds it on a macOS runner with `make desktop`, then runs `make
 desktop-check`: go vet, staticcheck and govulncheck with the same tags, since the
 usual jobs never see its code. The rest of the app, `internal/desktop`, has no
-tag and runs in the test job. Linux (WebKitGTK) and Windows (WebView2) jobs come
-later. The Mac installer, `cmd/meru-installer`, is built the same way in the
+tag and runs in the test job. The `desktop-linux` job does the same on
+Ubuntu 24.04, after it installs GTK 4 and WebKitGTK 6.0 with apt, and runs
+`make desktop-linux`, which packs the archive a release carries. A Windows
+(WebView2) job comes later. The Mac installer, `cmd/meru-installer`, is built the same way in the
 same job with `make installer`, and `internal/installer` runs in the test job.
 
 The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. They build
@@ -115,19 +117,26 @@ pieces at run time, so code review and the loopback checks in `config` and
 
 ## whisper-server
 
-whisper.cpp publishes no macOS build of `whisper-server`, the program behind
-speech to text (ARCHITECTURE.md, [Speech to text](../ARCHITECTURE.md#speech-to-text)).
-`.github/workflows/whisper-server.yml` builds it for Apple silicon and
-publishes it as a release of its own, `whisper-server-v<version>`, which the
-`whisper` connector downloads by its SHA-256. It runs only when the owner
-starts it, from `main`:
+Meru builds `whisper-server`, the program behind speech to text
+(ARCHITECTURE.md, [Speech to text](../ARCHITECTURE.md#speech-to-text)), itself.
+`.github/workflows/whisper-server.yml` builds it for Apple silicon and for
+Linux on x86-64, and publishes each as a release of its own:
+`whisper-server-v<version>` and `whisper-server-v<version>-linux-amd64`. The
+`whisper` connector downloads each by its SHA-256. It runs only when the owner
+starts it, from `main`; `-f platform=linux-amd64` builds one platform, for a
+version whose other release exists:
 
 ```sh
-gh workflow run whisper-server.yml --ref main
+gh workflow run whisper-server.yml --ref main -f platform=all
 gh run watch
 ```
 
-The job:
+The Linux job builds on `ubuntu-22.04` for the processor, without CUDA, with
+static libraries, no OpenMP and the C++ library linked in. It checks with
+`ldd` that the file needs only glibc, and transcribes a clip `pico2wave`
+speaks, word for word. Otherwise it follows the Mac job.
+
+The Mac job:
 
 1. Refuses to run when the release exists. A published file never changes,
    since the connector pins its SHA-256.
@@ -150,7 +159,22 @@ The job:
 
 A new whisper.cpp version is a pull request that changes `WHISPER_VERSION`
 and `WHISPER_SHA256`, a run of the workflow, then a pull request that pins
-the new file in the connector.
+the new files in the connector.
+
+## desktop-linux
+
+The desktop app links GTK 4 and WebKitGTK 6.0 through cgo, so it builds on
+Linux, and `make release` on the owner's Mac can't build it.
+`.github/workflows/desktop-linux.yml` builds it from a release's tag on
+Ubuntu 24.04, packs it with `make desktop-linux`, and adds
+`meru-desktop-<version>-linux-amd64.tar.gz` and `SHA256SUMS-desktop-linux`
+to that release, with a build attestation. It refuses a release that already
+has the archive, and changes no file the release holds.
+`scripts/install-linux.sh` checks the archive against its `SHA256SUMS` file.
+
+```sh
+gh workflow run desktop-linux.yml -f version=v0.5.1
+```
 
 ## Dependabot
 

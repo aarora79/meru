@@ -1,7 +1,7 @@
-# whisper-server: builds whisper.cpp's whisper-server for Apple silicon from
-# pinned source, checks it, and publishes it as a release of its own, which
-# Meru's whisper connector downloads. whisper.cpp publishes no macOS server
-# binary, so Meru builds one. ARCHITECTURE.md, "Speech to text", has the
+# whisper-server: builds whisper.cpp's whisper-server from pinned source for
+# Apple silicon and for Linux on x86-64, checks each, and publishes each as
+# a release of its own, which Meru's whisper connector downloads.
+# whisper.cpp publishes no server binary for either, so Meru builds them. ARCHITECTURE.md, "Speech to text", has the
 # design; docs/ci.md explains how to run this.
 #
 # The owner runs it by hand, from main, once per whisper.cpp version. It
@@ -12,6 +12,14 @@ name: whisper-server
 
 on:
   workflow_dispatch:
+    inputs:
+      # Each platform's release stands alone, so a platform added later
+      # builds without touching a release that exists.
+      platform:
+        description: "Which build to make and publish"
+        type: choice
+        options: [all, darwin-arm64, linux-amd64]
+        default: all
 
 # Read-only by default; the one job below adds what it needs to publish.
 permissions:
@@ -33,7 +41,7 @@ jobs:
     name: build, check and publish (macOS, Apple silicon)
     # Only from main: a release built from a branch would pin code that
     # never merged.
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (inputs.platform == 'all' || inputs.platform == 'darwin-arm64')
     runs-on: macos-14
     permissions:
       contents: write     # create the release and its tag
@@ -127,4 +135,105 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
             --title "whisper-server ${WHISPER_VERSION} for Meru" \
             --notes "whisper.cpp v${WHISPER_VERSION}'s whisper-server, built for Apple silicon (macOS 13.3 and later, Metal) by .github/workflows/whisper-server.yml from source with SHA-256 ${WHISPER_SHA256}. Meru's whisper connector downloads it and checks the SHA-256 in SHA256SUMS. whisper.cpp is under the MIT licence; LICENSE is its text." \
+            "out/$ASSET" out/LICENSE out/SHA256SUMS
+
+  linux-amd64:
+    name: build, check and publish (Linux, x86-64)
+    if: github.ref == 'refs/heads/main' && (inputs.platform == 'all' || inputs.platform == 'linux-amd64')
+    # Ubuntu 22.04's glibc 2.35 is the oldest the binary then needs, so it
+    # runs on 22.04, 24.04 and later.
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write     # create the release and its tag
+      id-token: write     # sign the build attestation
+      attestations: write # store the build attestation
+    env:
+      ASSET: whisper-server-linux-amd64
+    steps:
+      # Its own tag, since whisper-server-v<version> may hold the Mac build
+      # already and a published release never changes.
+      - name: Refuse a release that exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="whisper-server-v${WHISPER_VERSION}-linux-amd64"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG exists; a pinned file never changes. Bump the version instead."
+            exit 1
+          fi
+
+      - name: Download the source and check its SHA-256
+        run: |
+          curl -fsSL -o src.tar.gz "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_VERSION}.tar.gz"
+          echo "${WHISPER_SHA256}  src.tar.gz" | sha256sum -c -
+          tar xzf src.tar.gz
+
+      # A processor build, with no CUDA: CUDA would tie the file to the
+      # CUDA libraries, and the base model hears a minute of speech in
+      # about a second on a server processor. GGML_NATIVE=OFF keeps it off
+      # this runner's newest instructions. Static libraries, no OpenMP, and
+      # libstdc++ and libgcc linked in leave it needing only glibc.
+      - name: Build
+        working-directory: whisper.cpp-${{ env.WHISPER_VERSION }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DGGML_OPENMP=OFF \
+            -DBUILD_SHARED_LIBS=OFF -DGGML_BLAS=OFF \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          cmake --build build --config Release --target whisper-server -j "$(nproc)"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp build/bin/whisper-server "$GITHUB_WORKSPACE/out/$ASSET"
+          cp LICENSE "$GITHUB_WORKSPACE/out/LICENSE"
+
+      - name: Check it links only glibc
+        run: |
+          ldd "out/$ASSET"
+          if ldd "out/$ASSET" | grep -v -E '^\s+(linux-vdso\.so|libc\.so|libm\.so|/lib64/ld-linux-x86-64\.so)'; then
+            echo "::error::$ASSET links a library beyond glibc"
+            exit 1
+          fi
+
+      # pico2wave speaks clearly enough for the exact check; espeak-ng's
+      # voice makes "garden plan" come back as other words.
+      - name: Transcribe a test clip
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libttspico-utils sox
+          curl -fsSL -o model.bin "$MODEL_URL"
+          echo "${MODEL_SHA256}  model.bin" | sha256sum -c -
+          pico2wave -l en-US -w speech.wav "What did I write in my notes about the garden plan last spring?"
+          sox speech.wav -r 16000 -c 1 -b 16 clip.wav
+          "out/$ASSET" -m model.bin --host 127.0.0.1 --port 18080 > server.log 2>&1 &
+          server=$!
+          for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:18080/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/inference -F file=@clip.wav -F temperature=0.0 -F response_format=json -o reply.json
+          kill "$server" || true
+          cat reply.json
+          heard=$(python3 -c 'import json,re;print(" ".join(re.sub(r"[^a-z ]"," ",json.load(open("reply.json"))["text"].lower()).split()))')
+          if [ "$heard" != "what did i write in my notes about the garden plan last spring" ]; then
+            echo "::error::heard \"$heard\""
+            cat server.log
+            exit 1
+          fi
+
+      - name: Write SHA256SUMS
+        working-directory: out
+        run: |
+          sha256sum "$ASSET" LICENSE > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Record how it was built
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: out/${{ env.ASSET }}
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+            --title "whisper-server ${WHISPER_VERSION} for Meru on Linux" \
+            --notes "whisper.cpp v${WHISPER_VERSION}'s whisper-server, built for Linux on x86-64 (glibc 2.35 and later, processor only) by .github/workflows/whisper-server.yml from source with SHA-256 ${WHISPER_SHA256}. Meru's whisper connector downloads it and checks the SHA-256 in SHA256SUMS. whisper.cpp is under the MIT licence; LICENSE is its text." \
             "out/$ASSET" out/LICENSE out/SHA256SUMS

@@ -6,6 +6,7 @@ Files that run Meru as a service:
 | --- | --- |
 | `launchd/com.meru.merud.plist` | starts `merud` at login on macOS and restarts it if it exits |
 | `systemd/merud.service` | the same on Linux, as a systemd user unit |
+| `linux/meru.desktop` | puts the desktop app in the Linux app menu; `scripts/install-linux.sh` installs it |
 
 All the steps below assume you built and installed `merud` with:
 

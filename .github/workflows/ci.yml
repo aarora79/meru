@@ -1,6 +1,6 @@
 # CI: format, vet, lint, module hygiene, tests with coverage on Linux and
-# macOS, a cross-compile for every release platform, the desktop app on macOS,
-# and the end-to-end tests. docs/ci.md explains each check and how to run it
+# macOS, a cross-compile for every release platform, the desktop app on macOS
+# and Linux, and the end-to-end tests. docs/ci.md explains each check and how to run it
 # locally; most steps call a Makefile target so local runs and CI stay the same.
 
 name: ci
@@ -97,7 +97,7 @@ jobs:
 
   # The desktop app uses Wails v3, which needs cgo and the system WebView,
   # so it builds on the machine that runs it, and only on macOS for now.
-  # Linux (WebKitGTK) and Windows (WebView2) get jobs of their own later.
+  # Windows (WebView2) gets a job of its own later.
   desktop:
     name: desktop app (macOS)
     runs-on: macos-latest
@@ -112,6 +112,28 @@ jobs:
         run: make desktop
       - name: make installer
         run: make installer
+      - name: vet, staticcheck and govulncheck with the desktop tags
+        run: make desktop-check
+
+  # The same app on Linux, against GTK 4 and WebKitGTK 6.0, which the pinned
+  # Wails needs and Ubuntu 24.04 has. make desktop-linux also packs the
+  # archive the desktop-linux workflow adds to a release.
+  desktop-linux:
+    name: desktop app (Linux)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install GTK 4 and WebKitGTK 6.0
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: make desktop-linux
+        run: make desktop-linux
       - name: vet, staticcheck and govulncheck with the desktop tags
         run: make desktop-check
 

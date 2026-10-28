@@ -37,7 +37,7 @@ COVER_PROFILE := coverage.out
 # .claude/ that belong to other branches.
 GO_FILES = $(shell find . -path './.*' -prune -o -name '*.go' -print)
 
-.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app installer installer-app dmg router-eval pick-eval bench bench-report figures check release clean
+.PHONY: help fmt fmt-check vet lint test cover e2e vuln sec sec-sarif secrets secrets-history tidy-check actionlint build desktop desktop-check desktop-app desktop-linux installer installer-app dmg router-eval pick-eval bench bench-report figures check release clean
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -142,6 +142,22 @@ desktop-app: desktop ## Wrap the desktop app in bin/Meru.app (macOS)
 	cp bin/meru-desktop bin/Meru.app/Contents/MacOS/meru-desktop
 	@$(STAMP_VERSION) bin/Meru.app/Contents/Info.plist
 	$(SIGN_APP) bin/Meru.app
+
+# DESKTOP_LINUX is the Linux desktop app's archive: the program, its
+# desktop entry and its icon, in one folder named for the archive.
+# scripts/install-linux.sh unpacks it into ~/.local. The archive is for the
+# machine's own processor, since the app builds with cgo against GTK.
+DESKTOP_LINUX := meru-desktop-$(if $(VERSION),$(VERSION),dev)-linux-$(shell go env GOARCH)
+
+desktop-linux: desktop ## Pack the desktop app in dist/meru-desktop-VERSION-linux-ARCH.tar.gz (Linux)
+	@[ "$$(uname -s)" = "Linux" ] || { echo "make desktop-linux runs on Linux: the app builds for the machine that builds it"; exit 1; }
+	rm -rf "dist/stage/$(DESKTOP_LINUX)" "dist/$(DESKTOP_LINUX).tar.gz"
+	mkdir -p "dist/stage/$(DESKTOP_LINUX)"
+	cp bin/meru-desktop deploy/linux/meru.desktop LICENSE "dist/stage/$(DESKTOP_LINUX)/"
+	cp docs/img/meru-logo.png "dist/stage/$(DESKTOP_LINUX)/meru.png"
+	tar -C dist/stage --owner 0 --group 0 -czf "dist/$(DESKTOP_LINUX).tar.gz" "$(DESKTOP_LINUX)"
+	rm -rf dist/stage
+	@ls -lh "dist/$(DESKTOP_LINUX).tar.gz"
 
 # SIGN_APP signs a finished app bundle ad hoc: "-" means no certificate,
 # since Meru has no Apple developer account. Go's linker signs only the

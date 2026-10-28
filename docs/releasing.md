@@ -119,7 +119,8 @@ strings bin/darwin-arm64/merud | grep -x v0.4.1
   ```sh
   gh release create v0.4.1 --repo aarora79/meru --title "Meru v0.4.1" \
     --verify-tag --notes-file docs/release-notes/v0.4.1.md \
-    dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh
+    dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh \
+    scripts/install-linux.sh
   ```
 
   To start over instead, delete the tag in both places with
@@ -134,8 +135,18 @@ the latest release with one line:
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
 ```
 
-`make release` attaches `scripts/install.sh` to every release, so that URL always
-serves the latest copy. A plain `curl -LO` of any file's URL works too. People
+Linux has its own line:
+
+```sh
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
+```
+
+`make release` attaches `scripts/install.sh` and `scripts/install-linux.sh` to
+every release, so those URLs always serve the latest copy. The Linux desktop
+app isn't in `make release`: after the release, run the `desktop-linux`
+workflow for its tag ([ci.md](ci.md#desktop-linux)), which adds the archive.
+Until it runs, `install-linux.sh` installs `meru` and `merud` and says the
+release has no desktop app. A plain `curl -LO` of any file's URL works too. People
 who'd rather not use Terminal download `Meru-v0.4.1-macos-arm64.dmg`, open it and
 run "Install Meru.app", which walks through eleven steps in a window
 ([running.md](running.md#the-mac-installer)).

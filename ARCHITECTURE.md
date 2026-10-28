@@ -3290,6 +3290,22 @@ turned on. Each release carries it in a disk image, `Meru-vX.Y.Z-macos-arm64.dmg
 beside the zip files. `scripts/install.sh` and the `meru-install` skill stay for
 people who prefer a terminal.
 
+**On Linux**, `scripts/install-linux.sh` is the one command:
+`curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash`.
+It downloads the release, checks it against `SHA256SUMS`, and puts `meru` and
+`merud` in `~/.local/bin`. It then offers the desktop app, Ollama through
+Ollama's own script, `meru setup`, and `merud` as a systemd user unit with
+lingering, so it starts at boot. It holds no model table: `meru setup` reads
+the GPU through `internal/platform` and offers the model that fits (see [One
+table of differences](#one-table-of-differences)). The desktop app builds
+with cgo against GTK 4 and WebKitGTK 6.0, so the owner's Mac can't build it.
+The `desktop-linux` workflow, run by hand after a release, builds it on
+Ubuntu 24.04 and adds `meru-desktop-vX.Y.Z-linux-amd64.tar.gz`, with
+`SHA256SUMS-desktop-linux`, to the release; it changes no file the release
+holds. The script installs the program in `~/.local/bin`, a desktop entry in
+`~/.local/share/applications` and the icon, and offers GTK 4 and WebKitGTK
+through apt.
+
 **Why it is its own program.** The clients never run a program. The desktop app
 changes config only by asking `merud`, and `meru setup` writes it only through
 `catalog`. The installer has to install Ollama, pull models and load `merud`'s
@@ -3697,7 +3713,9 @@ A manifest names:
   `volumes`. For an npm or pip connector, `command` is the bare name of a
   program the package installs, such as `obsidian-mcp`, and Meru finds it in
   the install folder (see [The runtime folder](#the-runtime-folder)); for a
-  binary it is a path under `{pkg}`. `{pkg}` stands for the install folder,
+  binary it is a path under `{pkg}`, and `{binary}` names this platform's
+  download, the last part of its URL, so one `command` serves every
+  platform's file. `{pkg}` stands for the install folder,
   `{meru_dir}` for `~/.meru`, and `{field.<id>}` for a value the user gave.
   A service may also use `{file.<id>}`, the path of the `[[install.files]]`
   entry that the choice field `<id>` names, and `{token}`, a random value
@@ -3875,7 +3893,8 @@ environment, with every placeholder filled in:
   with any `PATH`.
 - **pip:** it returns `<dir>/.venv/bin/<name>`. uv writes that script's first
   line as the environment's own Python, by absolute path.
-- **binary:** it returns the file under `{pkg}`.
+- **binary:** it returns the file under `{pkg}`, with `{binary}` replaced by
+  the name of this platform's download.
 
 In each case the child's `PATH` starts with the runtime's `bin` folder, so a
 `node` or `python` the connector starts in turn is the pinned one.
@@ -4785,8 +4804,20 @@ built from commit `2a2736e`. On the M4 Max it used Metal, took 897 MB with
 the `full` model, and transcribed the real recording as before. It still
 needs a run on an M1 or M2 before the connector ships.
 
-Linux and Windows come later. Until then the connector has no download for
-them, and speech to text is off there.
+The same workflow builds `whisper-server-linux-amd64` on an `ubuntu-22.04`
+runner and publishes it as a release of its own,
+`whisper-server-v1.9.5-linux-amd64`, so the Mac's release never changes. It
+builds for the processor, without CUDA: CUDA would tie the file to the CUDA
+libraries, and the base model heard a 4-second clip in 1.4 seconds on a
+4-core server processor. Static libraries, no OpenMP, and the C++ library
+linked in leave a 5 MB file that needs only glibc 2.35 or later; the workflow
+checks that with `ldd`, then transcribes a clip `pico2wave` speaks. The same
+build on an Ubuntu 24.04 machine heard that clip word for word.
+
+The manifest's launch command is `{pkg}/{binary}`, so each platform runs the
+file it downloaded. Until a run publishes the Linux file and a pull request
+pins its SHA-256, the connector has no Linux download and says so. Windows
+comes later.
 
 ### The connector
 
