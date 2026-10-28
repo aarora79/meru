@@ -17,7 +17,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/muesli/termenv v0.16.0
 	github.com/ncruces/go-sqlite3 v0.35.6
-	github.com/wailsapp/wails/v3 v3.0.0-beta.28
+	github.com/wailsapp/wails/v3 v3.0.0-beta.34
 	github.com/yuin/goldmark v1.8.6
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.72.0
 	go.opentelemetry.io/otel v1.47.0
