@@ -26,7 +26,7 @@ model that fits your Mac's memory.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.5.1.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.6.0.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
