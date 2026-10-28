@@ -1535,7 +1535,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 
 // stablePart returns the opening of the system prompt, the parts that stay
 // the same from turn to turn: the configured prompt with whoIsWho and
-// honestyRule, today's date, the line on the user's computer, the user's
+// honestyRule, selfLine, today's date, the line on the user's computer, the user's
 // profile, filesNote, canDoNote, seeNote, chatsNote, then toolsNote and skillList,
 // the tools note and the list of skills for the tools the turn offers. It
 // returns the profile on its own as well, for the memory metric. prompt
@@ -1549,6 +1549,7 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 			system += "\n\n" + part
 		}
 	}
+	add(selfLine(a.Main()))
 	add(today(time.Now()))
 	add(a.machine)
 	profile = a.profileSection(ctx)
