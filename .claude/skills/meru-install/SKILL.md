@@ -13,7 +13,7 @@ own computer, from a release on GitHub. Each system has its own installer:
 | Mac with Apple silicon | the disk image, "Install Meru.app" in a window, or `install.sh` in Terminal | Meru.app |
 | Intel Mac | `install.sh` | none; `meru` and `meru chat` only |
 | Linux on x86-64 or arm64 | `install-linux.sh` | `meru-desktop`, on x86-64 once the release has it |
-| Windows | none; send them to `docs/running.md` and stop | none |
+| Windows | none; send them to [docs/running.md](https://github.com/aarora79/meru/blob/main/docs/running.md) and stop | none |
 
 Your job ends when four things answer: `merud`, a question through `meru`,
 `meru chat`, and the desktop app. Then you hand over (step 6). Don't set up
@@ -83,7 +83,7 @@ images. A Mac with more memory also gets a larger answer model:
 | 64 GB or more | `qwen3.6:35b-a3b-mxfp8` | about 38 GB |
 
 On Linux, `meru setup` reads the graphics card's memory and offers the largest
-model that fits it; with no NVIDIA card it keeps `lite`. `docs/running.md`, "On
+model that fits it; with no NVIDIA card it keeps `lite`. [docs/running.md](https://github.com/aarora79/meru/blob/main/docs/running.md), "On
 Linux with an NVIDIA card", has that table, and "Models we tried for answers"
 has the benchmark behind both.
 
@@ -239,7 +239,7 @@ Ask the person for the last lines it printed. Common causes:
   then `meru setup`.
 - **No release for this processor.** Meru ships for Apple silicon and Intel
   Macs, and for Linux on x86-64 and arm64. Anything else builds from source:
-  `docs/running.md`, "Build from source".
+  [docs/running.md](https://github.com/aarora79/meru/blob/main/docs/running.md), "Build from source".
 
 If an installer keeps failing, reference.md, "Install by hand", does the same
 work one command at a time.
@@ -257,7 +257,7 @@ from here, with no files to edit:
   to text, and other tools; each card says what it needs and has a Fix button.
 - **Skills** and **Privacy**, and **About** to run setup again.
 
-`docs/running.md` covers each in full, and `docs/google-setup.md` walks
+[docs/running.md](https://github.com/aarora79/meru/blob/main/docs/running.md) covers each in full, and [docs/google-setup.md](https://github.com/aarora79/meru/blob/main/docs/google-setup.md) walks
 through the Google project. Stop there unless they ask for more. If they want
 Meru to read GitHub through `gh`, reference.md, "GitHub commands", has the
 steps.
