@@ -12,11 +12,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/aarora79/meru/internal/platform"
 )
 
 // pythonVersion is the Python release line each pip connector's
@@ -62,13 +65,22 @@ func NewInstaller(meruDir, home string) *Installer {
 		Client: &http.Client{Timeout: 10 * time.Minute},
 		Run:    ExecRunner(),
 		// Docker Desktop, OrbStack, colima and Linux packages each put
-		// the docker command in one of these.
-		DockerPaths: []string{
-			"/usr/local/bin/docker", "/opt/homebrew/bin/docker", "/usr/bin/docker",
-			"~/.orbstack/bin/docker", "~/.docker/bin/docker",
-			"/Applications/Docker.app/Contents/Resources/bin/docker",
-		},
+		// the docker command in one of the system's program folders.
+		DockerPaths: dockerPaths(platform.Current().ProgramDirs),
 	}
+}
+
+// dockerPaths returns where docker may live: the docker file in each of
+// dirs, in order. dirs is internal/platform's ProgramDirs for this
+// system, whose "~/" folders findDocker puts under Home.
+func dockerPaths(dirs []string) []string {
+	paths := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		// path.Join, not filepath.Join: the folders are written with "/",
+		// and filepath would turn "~/" into "~\" on Windows.
+		paths = append(paths, path.Join(d, "docker"))
+	}
+	return paths
 }
 
 // runtimeDir is ~/.meru/runtime.
@@ -412,11 +424,16 @@ func (in *Installer) findDocker() (string, error) {
 // and a PATH with Docker's folders, so docker finds its credential
 // helper.
 func (in *Installer) dockerEnv(docker string) []string {
-	dirs := []string{
-		filepath.Dir(docker), "/usr/local/bin", "/opt/homebrew/bin",
-		filepath.Join(in.Home, ".orbstack", "bin"), filepath.Join(in.Home, ".docker", "bin"),
-		"/usr/bin", "/bin", "/usr/sbin", "/sbin",
+	// docker's own folder first, then the system's program folders, then
+	// the standard Unix ones, for the helpers docker runs.
+	dirs := []string{filepath.Dir(docker)}
+	for _, d := range platform.Current().ProgramDirs {
+		if rest, ok := strings.CutPrefix(d, "~/"); ok {
+			d = filepath.Join(in.Home, rest)
+		}
+		dirs = append(dirs, d)
 	}
+	dirs = append(dirs, "/usr/bin", "/bin", "/usr/sbin", "/sbin")
 	env := []string{
 		"PATH=" + strings.Join(dirs, string(os.PathListSeparator)),
 		"HOME=" + in.Home,

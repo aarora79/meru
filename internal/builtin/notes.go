@@ -10,12 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/aarora79/meru/internal/applenotes"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/platform"
 )
 
 // The Apple Notes tools' names, as the model sees them.
@@ -64,7 +64,7 @@ func (t *Tools) notesOff() string {
 	if t.notesPath != "" {
 		return ""
 	}
-	if runtime.GOOS != "darwin" {
+	if !platform.Current().AppleNotes {
 		return "Apple Notes is only on macOS"
 	}
 	return "merud found no Apple Notes database"

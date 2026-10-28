@@ -56,8 +56,9 @@ so nothing in the URL can run as a command. The context carries a ten-second
 timeout, so an opener stuck without a display doesn't wait for ever. Standard
 output stays unset, so `Run` doesn't wait on a browser the opener leaves running.
 
-`command` takes the system's name as a parameter, so one test checks all three
-systems on any machine.
+`command` takes the system's name as a parameter and reads the opener from that
+system's row in [platform](platform.md), so one test checks all three systems on
+any machine.
 
 ## Go ideas used here
 

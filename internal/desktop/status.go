@@ -10,6 +10,7 @@ import (
 	"runtime"
 
 	"github.com/aarora79/meru/internal/opener"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/rpc"
 )
 
@@ -155,14 +156,12 @@ func (b *Bridge) waitingFor(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-// machineName names the computer merud runs on, as the page says it:
-// "this Mac" on macOS and "this computer" on every other system. merud
+// machineName names the computer merud runs on, as the page says it, from
+// internal/platform's row: "this Mac" on macOS and "this computer" on
+// every other system. merud
 // listens on a Unix socket, so it runs on the same machine as the app.
 func machineName(goos string) string {
-	if goos == "darwin" {
-		return "this Mac"
-	}
-	return "this computer"
+	return platform.For(goos).Here
 }
 
 // OpenURL opens u, a link the user clicked in an answer, in the browser or

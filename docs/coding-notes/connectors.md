@@ -431,7 +431,10 @@ there, and `UV_NO_CONFIG=1` so your `uv.toml` plays no part.
 `download`, so the SHA-256 check applies, and marks it runnable by its owner.
 
 **container.** `findDocker` checks a fixed list of absolute paths, the same
-idea as the Mac installer's allowlist. None found is `ErrDockerMissing`. A
+idea as the Mac installer's allowlist. `dockerPaths` builds the list from the
+system's `ProgramDirs` in [platform](platform.md): Homebrew, OrbStack and
+Docker.app on a Mac, `/usr/bin`, `/usr/local/bin` and `/snap/bin` on Linux.
+`dockerEnv` gives docker a `PATH` of the same folders. None found is `ErrDockerMissing`. A
 failing `docker info` is `ErrDockerNotRunning`. Then `docker pull
 <image>@sha256:<digest>` runs. The `Container` supervisor checks for docker
 first and turns these errors into "Web search needs Docker, which isn't

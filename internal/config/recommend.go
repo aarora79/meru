@@ -8,10 +8,15 @@ package config
 import "slices"
 
 // Recommendation is the set of models suggested for Macs with at least
-// MinMemoryGB of memory.
+// MinMemoryGB of memory, or for a GPU with at least LoadGB of its own.
 type Recommendation struct {
-	// MinMemoryGB is the least memory, in GB, this set suits.
+	// MinMemoryGB is the least memory, in GB, this set suits on a Mac,
+	// where the models share memory with macOS and the other apps.
 	MinMemoryGB int
+	// LoadGB is about how much memory the set takes once Ollama loads it
+	// with a 32,768-token context, router included. A GPU with its own
+	// memory holds nothing else, so the set fits when LoadGB does.
+	LoadGB int
 	// Profile names the profile that fills the tiers, such as "lite".
 	Profile string
 	// Main, when not "", overrides the profile's answer model, as
@@ -31,11 +36,13 @@ type Recommendation struct {
 // tried": Qwen 3.6 35B in MXFP8 peaked at about 47 GB, more than a 48 GB
 // Mac lets the GPU use, so it starts at 64 GB. Its 23 GB Q4 build passed
 // as many tasks and loads in about 27 GB with the router, so it fills the
-// 48 GB row. The 15 GB Gemma 4 build fits from 32 GB.
+// 48 GB row. The 15 GB Gemma 4 build fits from 32 GB. The router, the
+// fast model, takes about 3 GB, which the LoadGB of each row includes.
 func Recommendations() []Recommendation {
 	return []Recommendation{
 		{
 			MinMemoryGB: 0,
+			LoadGB:      3,
 			Profile:     "lite",
 			Label:       "Lite",
 			Why:         "MiniCPM5-2B answers and routes, and EmbeddingGemma 2 reads your files. Both fit in 16 GB beside your other apps.",
@@ -43,6 +50,7 @@ func Recommendations() []Recommendation {
 		},
 		{
 			MinMemoryGB: 32,
+			LoadGB:      18,
 			Profile:     "lite",
 			Main:        "gemma4:26b-a4b-it-qat",
 			Label:       "Lite with Gemma 4 26B for answers",
@@ -51,6 +59,7 @@ func Recommendations() []Recommendation {
 		},
 		{
 			MinMemoryGB: 48,
+			LoadGB:      27,
 			Profile:     "lite",
 			Main:        "qwen3.6:35b",
 			Label:       "Lite with Qwen 3.6 35B (4-bit) for answers",
@@ -59,6 +68,7 @@ func Recommendations() []Recommendation {
 		},
 		{
 			MinMemoryGB: 64,
+			LoadGB:      47,
 			Profile:     "lite",
 			Main:        "qwen3.6:35b-a3b-mxfp8",
 			Label:       "Lite with Qwen 3.6 35B for answers",
@@ -75,6 +85,21 @@ func Recommend(memGB int) Recommendation {
 	best := table[0]
 	for _, r := range table {
 		if memGB >= r.MinMemoryGB {
+			best = r
+		}
+	}
+	return best
+}
+
+// RecommendGPU returns the recommendation for a GPU with gpuGB of its
+// own memory, as on Linux with an NVIDIA card: the last row whose LoadGB
+// fits. An NVIDIA L40S, with 45 GB, gets the 4-bit Qwen 3.6 35B: the 8-bit
+// build peaks at about 47 GB.
+func RecommendGPU(gpuGB int) Recommendation {
+	table := Recommendations()
+	best := table[0]
+	for _, r := range table {
+		if gpuGB >= r.LoadGB {
 			best = r
 		}
 	}

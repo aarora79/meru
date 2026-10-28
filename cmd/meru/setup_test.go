@@ -22,6 +22,7 @@ import (
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -510,6 +511,56 @@ func TestOllamaVersion(t *testing.T) {
 	}
 }
 
+// TestRecommendFor checks the model set and the words for a Linux machine
+// with an NVIDIA card, a Mac, and a machine with no GPU.
+func TestRecommendFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		m         platform.Machine
+		goos      string
+		wantMain  string
+		wantAbout string
+	}{
+		{"linux with an L40S", platform.Machine{MemoryGB: 31, GPU: "NVIDIA L40S", GPUMemoryGB: 45}, "linux",
+			"qwen3.6:35b", "NVIDIA L40S with 45 GB of GPU memory"},
+		{"64 GB Mac", platform.Machine{MemoryGB: 64}, "darwin",
+			"qwen3.6:35b-a3b-mxfp8", "64 GB of memory, shared with the GPU"},
+		{"linux without a GPU", platform.Machine{MemoryGB: 128}, "linux", "", "no GPU Meru can find"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, about := recommendFor(tt.m, platform.For(tt.goos))
+			if rec.Main != tt.wantMain || about != tt.wantAbout {
+				t.Errorf("recommendFor = %q, %q; want %q, %q", rec.Main, about, tt.wantMain, tt.wantAbout)
+			}
+		})
+	}
+}
+
+// TestSuggestMain checks that setup offers the model that fits the GPU,
+// returns it on yes, and returns "" on no.
+func TestSuggestMain(t *testing.T) {
+	l40s := func(context.Context) platform.Machine {
+		return platform.Machine{MemoryGB: 31, GPU: "NVIDIA L40S", GPUMemoryGB: 45}
+	}
+	for _, tt := range []struct {
+		input, want string
+	}{
+		{"\n", "qwen3.6:35b"},
+		{"n\n", ""},
+	} {
+		c, out, _ := scripted(tt.input)
+		c.machine = l40s
+		got, err := c.suggestMain(context.Background())
+		if err != nil || got != tt.want {
+			t.Errorf("input %q: suggestMain = %q, %v; want %q", tt.input, got, err, tt.want)
+		}
+		if !strings.Contains(out.String(), "NVIDIA L40S with 45 GB of GPU memory") {
+			t.Errorf("input %q: output lacks the GPU:\n%s", tt.input, out)
+		}
+	}
+}
+
 func TestOllamaInstallHint(t *testing.T) {
 	for _, goos := range []string{"darwin", "linux", "windows"} {
 		if !strings.Contains(ollamaInstallHint(goos), "ollama") {
@@ -531,8 +582,8 @@ func TestFirstConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		`main  = "qwen3.6:35b"   # picked for this Mac's memory; writes the answer`: true,
-		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`:                         true,
+		`main  = "qwen3.6:35b"   # picked for this machine's memory; writes the answer`: true,
+		`folders = ["~/notes", "C:\\Users\\me \"quoted\""]`:                             true,
 	}
 	// The Windows path above isn't valid on every system, so load a copy
 	// with a plain folder.
