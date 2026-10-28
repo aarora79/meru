@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/binary"
 	"log/slog"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -44,6 +45,12 @@ func TestTranscribeRefusals(t *testing.T) {
 	c := testConnectors(t)
 	c.configure(config.Config{Profile: "lite"}, &secrets.Secrets{})
 	s := &toolService{conns: c, log: slog.New(slog.DiscardHandler)}
+	// whisper ships for Apple silicon only; elsewhere the connector says
+	// it has no build before it says it is off.
+	off := "isn't available on this computer yet"
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		off = "Speech to text is off"
+	}
 	tests := []struct {
 		name  string
 		audio *rpc.Audio
@@ -52,7 +59,7 @@ func TestTranscribeRefusals(t *testing.T) {
 		{"no recording", nil, "needs a recording"},
 		{"not WAV", &rpc.Audio{WAV: []byte("ID3 an mp3")}, "isn't a WAV file"},
 		{"too long", &rpc.Audio{WAV: silentWAV(61)}, "runs 61 seconds; Meru takes 60 at most"},
-		{"connector off", &rpc.Audio{WAV: silentWAV(1)}, "Speech to text is off"},
+		{"connector off", &rpc.Audio{WAV: silentWAV(1)}, off},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

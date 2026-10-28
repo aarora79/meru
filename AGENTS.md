@@ -289,6 +289,8 @@ internal/
   obs/               OpenTelemetry metrics and traces, loopback only, the /metrics page
                      for Prometheus (prometheus.go), and the slog handler
   loopback/          the one rule for "this address is on this machine"
+  platform/          what differs between macOS, Linux and Windows, one row per system, and
+                     reading this machine, GPU included; its one exec site is run.go
   tui/               the Bubble Tea UI behind `meru chat`, with the desktop app's features as
                      slash commands and boxes
   about/             the tagline, the version and the project's links, for both clients
@@ -349,13 +351,13 @@ docs/
 ```
 
 **Dependency rule.** `cmd/meru` stays thin: it may import `rpc`, `config`, `tui`,
-`about` and `loopback`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
+`about`, `loopback` and `platform`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
 `dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes`, `speech` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
-may import `rpc`, `config`, `loopback`, `opener` and `about`, plus Wails in the command,
+may import `rpc`, `config`, `loopback`, `opener`, `about` and `platform`, plus Wails in the command,
 and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
@@ -364,8 +366,9 @@ The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through
-another package. `loopback` and `about` import only the standard library, so any package
-can use them.
+another package. `loopback`, `about` and `platform` import only the standard library, so
+any package can use them. Code asks `platform` what differs by system instead of
+testing `runtime.GOOS`.
 
 Everything lives under `internal/`, because Meru is an app and no other module should
 import it.
@@ -417,9 +420,10 @@ when installed. Keep `go.mod` tidy (`go mod tidy`) and commit `go.sum`.
 write, check the error from `Close`.
 
 **Portability.** Build paths with `filepath`, find the home directory with
-`os.UserHomeDir`, and never hard-code `/` separators or `~`. Put platform-specific
-code behind build tags (`_darwin.go`, `_linux.go`, `_windows.go`) in as few files as
-possible. `GOOS=linux go build ./...` and `GOOS=windows go build ./...` must succeed.
+`os.UserHomeDir`, and never hard-code `/` separators or `~`. Put what differs by system in `internal/platform`'s table, which
+tests check for every system on any machine. Keep build tags (`_darwin.go`,
+`_linux.go`, `_windows.go`) for code that calls one system's own API, in as few
+files as possible. `GOOS=linux go build ./...` and `GOOS=windows go build ./...` must succeed.
 
 **Config.** Parse `config.toml` once at startup into typed structs, validate
 everything (including "is this address loopback?"), and fail fast with a clear message.

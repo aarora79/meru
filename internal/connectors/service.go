@@ -204,13 +204,15 @@ func (s *Service) configure(table config.Connector, defaults map[string]string, 
 	waitExit := s.stopLocked()
 	// A platform the manifest has no download for, such as Linux before
 	// its build exists, stays off with a sentence that says why, rather
-	// than failing an install that can't work.
+	// than failing an install that can't work. It says so even while the
+	// connector is switched off, so the user isn't told to turn on what
+	// can't run.
 	_, built := s.m.Install.Binaries[s.in.Platform]
 	switch {
-	case !set.enabled:
-		s.setLocked(servicePhaseOff, "")
 	case !built:
 		s.setLocked(servicePhaseOff, fmt.Sprintf("%s isn't available on this computer yet: Meru has no %s build of it.", s.m.Name, s.in.Platform))
+	case !set.enabled:
+		s.setLocked(servicePhaseOff, "")
 	case set.problem != "":
 		s.setLocked(servicePhaseNeedsConfig, set.problem)
 	default:

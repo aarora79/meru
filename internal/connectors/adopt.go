@@ -30,6 +30,7 @@ import (
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/secrets"
 )
 
@@ -57,7 +58,8 @@ type Adopter struct {
 	// Run runs launchctl. merud passes ExecRunner(); tests pass a fake.
 	Run Runner
 	// UID is the user's ID, for launchctl's gui/<uid> domain, and OS is
-	// runtime.GOOS: only macOS has launchd.
+	// runtime.GOOS. Adopt looks for a launchd job only where
+	// internal/platform's row for OS says launchd restarts programs.
 	UID int
 	OS  string
 	// Now gives the date on the marker line.
@@ -457,10 +459,10 @@ func differentLists(m Manifest, e config.MCPServer) map[string][]string {
 }
 
 // findJob looks for the old Google server's launchd job: its plist file,
-// the file Adopt renames it to, and whether launchd runs it now. Off
-// macOS there is no launchd, and it finds nothing.
+// the file Adopt renames it to, and whether launchd runs it now. On a
+// system without launchd it finds nothing.
 func (a *Adopter) findJob(ctx context.Context) (launchdJob, error) {
-	if a.OS != "darwin" {
+	if platform.For(a.OS).Service != "launchd" {
 		return launchdJob{}, nil
 	}
 	j := launchdJob{plist: filepath.Join(a.Home, "Library", "LaunchAgents", googleJob+".plist")}

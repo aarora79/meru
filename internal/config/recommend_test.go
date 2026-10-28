@@ -31,6 +31,28 @@ func TestRecommend(t *testing.T) {
 	}
 }
 
+// TestRecommendGPU checks which set each size of GPU gets, by the memory
+// the set takes once loaded.
+func TestRecommendGPU(t *testing.T) {
+	tests := []struct {
+		gpuGB    int
+		wantMain string // "" means the profile's own answer model
+	}{
+		{0, ""},
+		{8, ""}, // too small for Gemma 4's 18 GB
+		{24, "gemma4:26b-a4b-it-qat"},
+		{45, "qwen3.6:35b"}, // an NVIDIA L40S: the 8-bit build needs 47
+		{47, "qwen3.6:35b-a3b-mxfp8"},
+		{80, "qwen3.6:35b-a3b-mxfp8"},
+	}
+	for _, tt := range tests {
+		r := RecommendGPU(tt.gpuGB)
+		if r.Main != tt.wantMain || r.Profile != "lite" {
+			t.Errorf("RecommendGPU(%d) = profile %q main %q, want lite and %q", tt.gpuGB, r.Profile, r.Main, tt.wantMain)
+		}
+	}
+}
+
 // TestRecommendationModels checks that each row names a known profile and
 // lists its models once each.
 func TestRecommendationModels(t *testing.T) {
