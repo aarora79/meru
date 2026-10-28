@@ -62,8 +62,8 @@ It checks the release against `SHA256SUMS`, puts `meru` and `merud` in
   card's memory, or `lite` without one;
 - `merud` as a systemd user service, started now and at every boot.
 
-Speech to text isn't on Linux yet: it waits for a published Linux build of
-whisper.cpp's server.
+Speech to text works on Linux on x86-64: turn it on in Settings, Connections,
+and Meru downloads its own Linux build of whisper.cpp's server.
 
 ## From source
 
