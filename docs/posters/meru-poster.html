@@ -72,10 +72,10 @@ pre{font-family:'JetBrains Mono',Menlo,monospace;font-size:7.9px;line-height:1.3
 pre .c{color:#9AA8A6}
 pre .s{color:#8FD6CE}
 pre .p{color:var(--amber)}
-.gates{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
-.gate{border:2.2px solid var(--ink);border-radius:9px;padding:6px 8px;background:var(--amber-w)}
+.gates{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.gate{border:2.2px solid var(--ink);border-radius:9px;padding:5px 6px;background:var(--amber-w)}
 .gate .g{font-family:'JetBrains Mono',Menlo,monospace;font-size:11px;font-weight:700}
-.gate .h{font-family:Archivo,'Arial Black',sans-serif;font-weight:900;font-size:9px;text-transform:uppercase;margin-top:1px}
+.gate .h{font-family:Archivo,'Arial Black',sans-serif;font-weight:900;font-size:8px;text-transform:uppercase;margin-top:1px}
 .gate .t{font-size:8.2px;line-height:1.24;margin-top:3px}
 .flow{display:flex;align-items:stretch;gap:0;margin:2px 0 6px}
 .flow .f{flex:1;border:2.2px solid var(--ink);border-radius:8px;padding:5px 7px;background:var(--amber-w);font-size:8.6px;line-height:1.22}
@@ -251,7 +251,7 @@ tr:last-child td{border-bottom:none}
   <rect x="424" y="246" width="268" height="50" rx="9" class="bx0"/>
   <text x="436" y="265" class="ttl">skills</text>
   <text x="680" y="265" class="sm" text-anchor="end">+ yours</text>
-  <text x="436" y="285" class="sm">writing &#183; explainer</text>
+  <text x="436" y="285" class="sm">writing &#183; explainer &#183; research</text>
 
   <!-- other agents -->
   <rect x="424" y="306" width="268" height="36" rx="9" class="bx0"/>
@@ -290,9 +290,9 @@ tr:last-child td{border-bottom:none}
     <table>
       <tr><th>Tier</th><th>Job</th><th><span style="color:var(--teal-d)">lite</span> (default)</th><th>full</th></tr>
       <tr><td class="n">fast</td><td>routing, trivial answers</td><td class="lite">MiniCPM5-2B, 1.6&#8239;GB</td><td>same</td></tr>
-      <tr><td class="n">main</td><td>reasoning, choosing tools</td><td class="lite">same model as <span class="mono">fast</span></td><td><span class="mono">qwen3.8:27b</span>, ~18&#8239;GB at 4-bit</td></tr>
+      <tr><td class="n">main</td><td>reasoning, choosing tools</td><td class="lite">same model as <span class="mono">fast</span></td><td><span class="mono">qwen3.6:35b-a3b-mxfp8</span>, ~47&#8239;GB loaded</td></tr>
       <tr><td class="n">embed</td><td>vectors for search</td><td class="lite"><span class="mono">embeddinggemma-2:440m</span>, text and images</td><td>same</td></tr>
-      <tr><td class="n">needs</td><td>hardware</td><td class="lite">16&#8239;GB of RAM; a CPU is enough</td><td>Apple silicon with 32&#8239;GB+, or a ~24&#8239;GB GPU</td></tr>
+      <tr><td class="n">needs</td><td>hardware</td><td class="lite">16&#8239;GB of RAM; a CPU is enough</td><td>a 64&#8239;GB Mac, or a GPU with ~47&#8239;GB</td></tr>
     </table>
     <p class="fine" style="margin-top:5px"><b>Platforms:</b> macOS on Apple silicon (tested), Linux, cloud virtual machines included (tested on Ubuntu 24.04 with an NVIDIA card), and Windows 10+ (untested at first).</p>
   </div>
@@ -310,7 +310,7 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <div class="warn">
-    <div class="fine"><b>Pre-alpha, v0.2.</b> The design came first, and the code follows it. Meru answers from the folders you index and cites the files.</div>
+    <div class="fine"><b>Pre-alpha, v0.6.0.</b> The design came first, and the code follows it. On a Mac or on Linux, Meru answers from the folders you index and cites the files and pages it used.</div>
   </div>
 
 </section>
@@ -332,7 +332,7 @@ tr:last-child td{border-bottom:none}
 
   <div class="card">
     <h2><span class="chip">05</span>Two searches, merged by rank<span class="tail">BM25 + vec1 distance + reciprocal-rank fusion</span></h2>
-    <p style="margin-bottom:6px">Search turns look in your files; memories and chat summaries join in v0.4. Keyword search (BM25) finds exact strings such as project code names, and meaning search finds paraphrase. Go merges the two ranked lists.</p>
+    <p style="margin-bottom:6px">Search covers your files, memories and past chats. Keyword search (BM25) finds exact strings such as code names; meaning search finds paraphrase. Go merges the two lists.</p>
     <div class="chart"><svg viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid search pipeline and reciprocal-rank fusion scores"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#14181C"/></marker></defs>
 
 <text x="0" y="12" class="cl">RRF SCORE = Σ 1/(60 + RANK) · RANKS INVENTED, SCORES COMPUTED</text>
@@ -387,7 +387,7 @@ tr:last-child td{border-bottom:none}
           <tr><td>this session</td><td>No more asking about that tool until the chat ends.</td></tr>
           <tr><td>deny</td><td>The call doesn&#8217;t run, and the model hears that you said no.</td></tr>
         </table>
-        <p class="fine" style="margin-top:4px"><span class="mono">configure</span>, the built-in tool that edits config, asks every time. Scripts and scheduled jobs have no one to ask, so <span class="mono">dispatch</span> denies.</p>
+        <p class="fine" style="margin-top:4px"><span class="mono">configure</span> and <span class="mono">schedule_job</span> ask every time. A script has no one to ask, so <span class="mono">dispatch</span> denies; a job runs what its <span class="mono">allow</span> list names.</p>
       </div>
       <pre>[[mcp.servers]]
 name    = <span class="s">"obsidian"</span>
@@ -421,14 +421,14 @@ other/        <span class="c">anything else</span></pre>
       <div class="lane">
         <h3>meru setup &#183; first run</h3>
         <div class="step"><b>1</b><span>Checks for Ollama and prints the install command if needed.</span></div>
-        <div class="step"><b>2</b><span>Downloads the <span class="mono">lite</span> or <span class="mono">full</span> models, your pick.</span></div>
+        <div class="step"><b>2</b><span>Downloads the answer model that fits your Mac&#8217;s memory or your GPU.</span></div>
         <div class="step"><b>3</b><span>Writes <span class="mono">config.toml</span> and asks which folders to index.</span></div>
         <div class="step"><b>4</b><span>Offers three starter MCP servers (Google, web search, Obsidian). It adds each for you, or shows you what to paste.</span></div>
         <div class="step"><b>5</b><span>Answers a test question.</span></div>
       </div>
       <div class="lane b">
         <h3>Skills and jobs</h3>
-        <div class="step"><b>&#9632;</b><span><span class="mono">writing</span> and <span class="mono">explainer</span> ship built in; each loads only when needed.</span></div>
+        <div class="step"><b>&#9632;</b><span><span class="mono">writing</span>, <span class="mono">explainer</span> and two research skills ship built in.</span></div>
         <div class="step"><b>&#9632;</b><span>Skills are Markdown in <span class="mono">~/.meru/skills/</span>. Your edits win.</span></div>
         <pre style="margin-top:4px">[[jobs]]
 name     = <span class="s">"morning-brief"</span>
@@ -440,18 +440,19 @@ prompt   = <span class="s">"Brief me on today..."</span></pre>
 
 
   <div class="card">
-    <h2><span class="chip">09</span>Shipping order<span class="tail">each milestone useful by itself</span></h2>
+    <h2><span class="chip">09</span>Shipping order<span class="tail">all shipped · each useful by itself</span></h2>
     <div class="gates">
-      <div class="gate"><div class="g">v0.1</div><div class="h">It talks</div><div class="t"><span class="mono">meru "hello"</span> shows a first token in under 1&#8239;s.</div></div>
-      <div class="gate"><div class="g">v0.2</div><div class="h">It knows your files</div><div class="t">It answers from a local note and cites the file.</div></div>
-      <div class="gate"><div class="g">v0.3</div><div class="h">It can do things</div><div class="t">It answers by calling an MCP server you already run.</div></div>
-      <div class="gate"><div class="g">v0.4</div><div class="h">It knows you</div><div class="t">It recalls something from last week without a reminder.</div></div>
-      <div class="gate"><div class="g">v0.5</div><div class="h">It acts unprompted</div><div class="t">A morning brief arrives without you asking.</div></div>
+      <div class="gate"><div class="g">v0.1</div><div class="h">It talks</div><div class="t">First token under 1&#8239;s.</div></div>
+      <div class="gate"><div class="g">v0.2</div><div class="h">It knows your files</div><div class="t">Cites your notes.</div></div>
+      <div class="gate"><div class="g">v0.3</div><div class="h">It can do things</div><div class="t">Calls MCP servers.</div></div>
+      <div class="gate"><div class="g">v0.4</div><div class="h">It knows you</div><div class="t">Recalls last week.</div></div>
+      <div class="gate"><div class="g">v0.5</div><div class="h">It acts unprompted</div><div class="t">A brief, unasked.</div></div>
+      <div class="gate"><div class="g">v0.6</div><div class="h">It runs on Linux</div><div class="t">One-command install.</div></div>
     </div>
   </div>
 
   <div class="warn">
-    <div class="fine"><b>Pre-alpha, v0.2.</b> On the lite profile the first token came at 565&#8239;ms with a search of your notes. Panel 05&#8217;s ranks are made up.</div>
+    <div class="fine"><b>Pre-alpha, v0.6.0.</b> On a 64&#8239;GB Mac the <span class="mono">full</span> set passed 89% of 50 test tasks, with a first word in 4.1&#8239;s. Panel 05&#8217;s ranks are made up.</div>
   </div>
 
   <div class="foot">
