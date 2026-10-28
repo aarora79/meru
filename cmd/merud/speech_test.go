@@ -45,10 +45,11 @@ func TestTranscribeRefusals(t *testing.T) {
 	c := testConnectors(t)
 	c.configure(config.Config{Profile: "lite"}, &secrets.Secrets{})
 	s := &toolService{conns: c, log: slog.New(slog.DiscardHandler)}
-	// whisper ships for Apple silicon only; elsewhere the connector says
-	// it has no build before it says it is off.
+	// whisper ships for Apple silicon and Linux on x86-64; elsewhere the
+	// connector says it has no build before it says it is off.
 	off := "isn't available on this computer yet"
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+	switch runtime.GOOS + "_" + runtime.GOARCH {
+	case "darwin_arm64", "linux_amd64":
 		off = "Speech to text is off"
 	}
 	tests := []struct {
