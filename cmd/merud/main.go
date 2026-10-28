@@ -34,6 +34,7 @@ import (
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/memory"
 	"github.com/aarora79/meru/internal/obs"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/router"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/store"
@@ -275,7 +276,10 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// An answer model that can't call tools, such as gemma3:12b, answers
 	// with none; see internal/agent/notools.go.
 	a.UseToolCheck(capabilityCheck(eng, engine.ToolUse))
-	machine := machineLine(gctx)
+	// The machine's facts feed the system prompt's machine line and the
+	// size of the answer model's context window below.
+	host := platform.Describe(gctx)
+	machine := machineLine(host)
 	a.UseMachine(machine)
 	log.Info("machine", "line", machine)
 	sum, err := newSummarizer(cfg, st, eng, sessionsDir, log)
@@ -314,7 +318,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// The answer model gets a context window sized for it before it
 	// warms, so it loads once with it; see window.go. The agent reads the
 	// same window for its check on the prompt's size.
-	if fit := windowFitter(eng, cfg.Ollama.ContextLength, memoryGB(gctx), log); fit != nil {
+	if fit := windowFitter(eng, cfg.Ollama.ContextLength, host.ModelMemoryGB(), log); fit != nil {
 		fit(gctx, a.Main())
 		svc.models.fitWindow = fit
 		a.UseWindow(eng.(*engine.OllamaEngine).Window)

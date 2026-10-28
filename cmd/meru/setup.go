@@ -32,6 +32,7 @@ import (
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
 )
@@ -63,6 +64,9 @@ type console struct {
 	// searxng checks that SearXNG answers JSON at a URL (see
 	// catalog.CheckSearXNG).
 	searxng func(ctx context.Context, baseURL string) error
+	// machine reads this computer's memory and GPU, so setup can suggest
+	// an answer model that fits. nil skips the suggestion.
+	machine func(ctx context.Context) platform.Machine
 }
 
 // terminal returns a console on standard input and out. When standard input
@@ -76,6 +80,7 @@ func terminal(out io.Writer) *console {
 		ollamaVersion: ollamaVersion,
 		answers:       urlAnswers,
 		searxng:       catalog.CheckSearXNG,
+		machine:       platform.Describe,
 	}
 	c.readSecret = c.line
 	fd := int(os.Stdin.Fd()) // #nosec G115 -- a file descriptor fits in an int
@@ -392,7 +397,17 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 		models.Main = main
 		fmt.Fprintf(c.out, "Answer model: %s, picked for this Mac's memory.\n", main)
 	default:
-		if profile, models, err = c.pickProfile(); err != nil {
+		// Suggest the answer model this machine's memory fits, and fall
+		// back to the profile question when there is none to suggest or
+		// the user says no.
+		if main, err = c.suggestMain(ctx); err != nil {
+			return err
+		}
+		if main != "" {
+			profile = "lite"
+			models, _ = config.ProfileModels(profile)
+			models.Main = main
+		} else if profile, models, err = c.pickProfile(); err != nil {
 			return err
 		}
 	}
@@ -590,16 +605,10 @@ func (c *console) waitForOllama(ctx context.Context, baseURL string) error {
 	}
 }
 
-// ollamaInstallHint returns the one install step for goos.
+// ollamaInstallHint returns the one install step for goos, from
+// internal/platform's row.
 func ollamaInstallHint(goos string) string {
-	switch goos {
-	case "darwin":
-		return "Install it with `brew install ollama`, or from https://ollama.com/download, then open the Ollama app."
-	case "linux":
-		return "Install it with: curl -fsSL https://ollama.com/install.sh | sh"
-	default:
-		return "Install it from https://ollama.com/download, then start it."
-	}
+	return platform.For(goos).OllamaHint
 }
 
 // ollamaVersion asks Ollama for its version with GET /api/version. The
@@ -628,6 +637,42 @@ func ollamaVersion(ctx context.Context, baseURL string) (string, error) {
 		return "", fmt.Errorf("read ollama version: %w", err)
 	}
 	return body.Version, nil
+}
+
+// suggestMain reads this machine through c.machine, offers the answer
+// model that fits it, and returns the model when the user says yes. It
+// returns "" with no question when c.machine is nil, as in tests, or when
+// the best fit is the lite profile's own answer model.
+func (c *console) suggestMain(ctx context.Context) (string, error) {
+	if c.machine == nil {
+		return "", nil
+	}
+	rec, about := recommendFor(c.machine(ctx), platform.Current())
+	if rec.Main == "" {
+		return "", nil
+	}
+	fmt.Fprintf(c.out, "This machine has %s. The answer model that fits is %s: %s\n", about, rec.Main, rec.Download)
+	ok, err := c.yes("Use it?", true)
+	if err != nil || !ok {
+		return "", err
+	}
+	return rec.Main, nil
+}
+
+// recommendFor picks the model set for machine m on system p, and says in
+// words what it was picked for. A GPU with its own memory, as on Linux
+// with an NVIDIA card, gets the largest set that loads into that memory.
+// A Mac, whose GPU shares main memory, gets the Mac installer's choice
+// for its memory. A machine with neither runs models on the processor,
+// where only the lite set answers at a usable speed.
+func recommendFor(m platform.Machine, p platform.Platform) (config.Recommendation, string) {
+	switch {
+	case m.GPUMemoryGB > 0:
+		return config.RecommendGPU(m.GPUMemoryGB), fmt.Sprintf("%s with %d GB of GPU memory", m.GPU, m.GPUMemoryGB)
+	case p.SharedGPUMemory && m.MemoryGB > 0:
+		return config.Recommend(m.MemoryGB), fmt.Sprintf("%d GB of memory, shared with the GPU", m.MemoryGB)
+	}
+	return config.Recommendations()[0], "no GPU Meru can find"
 }
 
 // pickProfile asks for lite or full and returns it with its models.
@@ -716,7 +761,7 @@ func firstConfig(profile, main string, folders []string) (string, error) {
 		{"folders = []", "folders = " + tomlList(folders)},
 	}
 	if main != "" {
-		edits = append(edits, struct{ old, new string }{mainLine, "main  = " + tomlString(main) + "   # picked for this Mac's memory; writes the answer"})
+		edits = append(edits, struct{ old, new string }{mainLine, "main  = " + tomlString(main) + "   # picked for this machine's memory; writes the answer"})
 	}
 	for _, r := range edits {
 		// The newlines on both sides match a whole line, never the same

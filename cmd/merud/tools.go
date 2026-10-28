@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -30,6 +29,7 @@ import (
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/memory"
+	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/render"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/secrets"
@@ -168,8 +168,9 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// search_notes, list_notes and read_note read the Notes app's own
 	// database, live and read-only, on a Mac. Reading it needs Full Disk
 	// Access for merud, which macOS grants in System Settings and never
-	// asks for; say at startup whether merud has it.
-	if runtime.GOOS == "darwin" {
+	// asks for; say at startup whether merud has it. Only macOS has the
+	// Notes app; internal/platform's row says so.
+	if platform.Current().AppleNotes {
 		bt.UseNotes(applenotes.DefaultPath())
 		if slices.ContainsFunc(cfg.Builtin.Tools, builtin.IsNotesTool) {
 			if err := bt.NotesAccess(ctx); err != nil {

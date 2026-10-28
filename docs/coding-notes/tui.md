@@ -923,9 +923,9 @@ is open. With the mouse captured the terminal no longer scrolls on the wheel, so
 ### clipboard.go
 
 `clipboard.copy` puts text on the system clipboard. `clipboardCommand` picks the
-program: `pbcopy` on macOS, `clip.exe` on Windows, and elsewhere the first of
-`wl-copy` (Wayland), `xclip -selection clipboard` and `xsel -b -i` (X11) that is on
-`PATH`. `runProgram` starts it with `exec.CommandContext`, which runs the program
+program from the system's row in [platform](platform.md): `pbcopy` on macOS,
+`clip.exe` on Windows, and elsewhere the first of `wl-copy` (Wayland),
+`xclip -selection clipboard` and `xsel -b -i` (X11) that is on `PATH`. `runProgram` starts it with `exec.CommandContext`, which runs the program
 directly with no shell, and passes the text on standard input, so nothing in an
 answer can run as a command. It leaves the program's output unset: `xclip` and
 `wl-copy` leave a child running to hold the clipboard, and with a pipe to write to,

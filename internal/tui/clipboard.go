@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/aarora79/meru/internal/platform"
 )
 
 // copyFunc puts text on the clipboard. It returns how the text got there,
@@ -64,25 +66,13 @@ func (c clipboard) copy(text string) (string, error) {
 }
 
 // clipboardCommand returns the program, with its arguments, that copies
-// its standard input to the clipboard on goos: pbcopy on macOS, clip.exe
-// on Windows, and on Linux and the rest the first of wl-copy (Wayland),
-// xclip and xsel (X11) that lookPath finds. The first element is the full
-// path lookPath returned. It returns nil when none is installed.
+// its standard input to the clipboard on goos: the first of
+// internal/platform's Clipboard list for goos that lookPath finds. That
+// is pbcopy on macOS, clip.exe on Windows, and on Linux and the rest the
+// first of wl-copy (Wayland), xclip and xsel (X11). The first element is
+// the full path lookPath returned. It returns nil when none is installed.
 func clipboardCommand(goos string, lookPath func(string) (string, error)) []string {
-	var candidates [][]string
-	switch goos {
-	case "darwin":
-		candidates = [][]string{{"pbcopy"}}
-	case "windows":
-		candidates = [][]string{{"clip.exe"}}
-	default:
-		candidates = [][]string{
-			{"wl-copy"},
-			{"xclip", "-selection", "clipboard"},
-			{"xsel", "-b", "-i"},
-		}
-	}
-	for _, c := range candidates {
+	for _, c := range platform.For(goos).Clipboard {
 		if path, err := lookPath(c[0]); err == nil {
 			return append([]string{path}, c[1:]...)
 		}
