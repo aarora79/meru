@@ -4815,9 +4815,10 @@ checks that with `ldd`, then transcribes a clip `pico2wave` speaks. The same
 build on an Ubuntu 24.04 machine heard that clip word for word.
 
 The manifest's launch command is `{pkg}/{binary}`, so each platform runs the
-file it downloaded. Until a run publishes the Linux file and a pull request
-pins its SHA-256, the connector has no Linux download and says so. Windows
-comes later.
+file it downloaded. The first Linux run published `whisper-server-linux-amd64`
+on 2026-10-28, SHA-256
+`396a63f7da5c0874ee591bca58a7fb4f7d15a2128bc7d599ea01d0d565934805`, a
+5.1 MB file that needs only glibc. Windows comes later.
 
 ### The connector
 
@@ -4858,16 +4859,17 @@ took 18.5 seconds and the second 58. A model the user picks later downloads
 beside the first one, which stays until the runtime folder goes. A `model`
 that isn't one of the two is refused before config changes.
 
-The manifest has a download for `darwin_arm64` only. On any other computer
-the connector stays off, switched on or not, and says why: "Speech to text
-isn't available on this computer yet: Meru has no linux_amd64 build of it."
+The manifest has downloads for `darwin_arm64` and `linux_amd64`. On any
+other computer the connector stays off, switched on or not, and says why:
+"Speech to text isn't available on this computer yet: Meru has no
+windows_amd64 build of it."
 The microphone shows the same sentence, so nobody is told to turn on a
 connector that can't run. It never tries an install that can't work.
 
 `TestIntegrationWhisper`, behind the `integration` build tag, installs the
 real connector into a temporary home, starts it through the supervisor, and
-checks that it writes down a clip `say` spoke and that `/inference` and
-`/load` answer 404 without the token.
+checks that it writes down a clip `say` spoke (`pico2wave` on Linux) and
+that `/inference` and `/load` answer 404 without the token.
 
 ### The transcribe op
 
