@@ -8,9 +8,10 @@
 #     silicon by .github/workflows/whisper-server.yml and published on
 #     2026-10-18 as Meru's release whisper-server-v1.9.5. whisper.cpp
 #     publishes no macOS server, so Meru builds it; the SHA-256 is the one
-#     the release's SHA256SUMS lists. The same workflow builds Linux on
-#     x86-64 as its own release, whisper-server-v1.9.5-linux-amd64; it gets
-#     a url_linux_amd64 pin once that release exists. Windows has no build yet.
+#     the release's SHA256SUMS lists. The same workflow built Linux on
+#     x86-64 and published it on 2026-10-28 as its own release,
+#     whisper-server-v1.9.5-linux-amd64, with the SHA-256 that release's
+#     SHA256SUMS lists. Windows has no build yet.
 #   - the models: ggml-base.en.bin and ggml-large-v3-turbo-q5_0.bin from
 #     huggingface.co/ggerganov/whisper.cpp at commit 5359861c, each URL
 #     naming that commit, never main. Each SHA-256 matches the
@@ -27,6 +28,8 @@ type = "binary"
 version = "1.9.5"
 url_darwin_arm64 = "https://github.com/aarora79/meru/releases/download/whisper-server-v1.9.5/whisper-server-darwin-arm64"
 sha256_darwin_arm64 = "8a41d4c21710a0325e35a5a5b66548b9d952e6832e2c13de81ccb64c3a56f2db"
+url_linux_amd64 = "https://github.com/aarora79/meru/releases/download/whisper-server-v1.9.5-linux-amd64/whisper-server-linux-amd64"
+sha256_linux_amd64 = "396a63f7da5c0874ee591bca58a7fb4f7d15a2128bc7d599ea01d0d565934805"
 
 # English only, 148 MB on disk and 445 MB in memory: the lite profile's.
 [[install.files]]
