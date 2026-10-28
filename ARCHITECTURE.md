@@ -3312,7 +3312,10 @@ people who prefer a terminal.
 It downloads the release, checks it against `SHA256SUMS`, and puts `meru` and
 `merud` in `~/.local/bin`. It then offers the desktop app, Ollama through
 Ollama's own script, `meru setup`, and `merud` as a systemd user unit with
-lingering, so it starts at boot. It holds no model table: `meru setup` reads
+lingering, so it starts at boot. On a machine with no systemd running, such
+as a container or WSL, it starts `ollama serve` itself before it pulls the
+models and tells the user to start `merud` by hand; a failed download leaves
+the rest of the install to run. It holds no model table: `meru setup` reads
 the GPU through `internal/platform` and offers the model that fits (see [One
 table of differences](#one-table-of-differences)). The desktop app builds
 with cgo against GTK 4 and WebKitGTK 6.0, so the owner's Mac can't build it.
