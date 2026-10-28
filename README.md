@@ -87,19 +87,36 @@ curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh 
 The script downloads the latest release and checks it against `SHA256SUMS`. It
 puts `meru` and `merud` in `~/.local/bin` and Meru.app in `/Applications`, then
 offers Ollama, the models, `meru setup` and starting `merud` at login, asking
-before each step. [docs/running.md](docs/running.md) covers Linux, Windows and
+before each step. [docs/running.md](docs/running.md) covers Windows and
 [building from source](docs/running.md#build-from-source).
 
 Meru.app talks to `merud`, and `merud` to Ollama, so all three run together.
 Either installer sets up all three; copying Meru.app by hand gives you a window
 with nothing behind it.
 
+## Install on Linux
+
+Tested on Ubuntu 24.04:
+
+```sh
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
+```
+
+The script checks the release against `SHA256SUMS` and puts `meru` and `merud`
+in `~/.local/bin`. It then offers the desktop app, Ollama, `meru setup` and
+`merud` as a systemd user service that starts at boot, asking before each step.
+On a machine with an NVIDIA card, `meru setup` reads the card's memory and
+offers the largest answer model that fits it;
+[docs/running.md](docs/running.md#on-linux-with-an-nvidia-card) has the table.
+The desktop app needs GTK 4 and WebKitGTK 6.0, which the script installs with
+`apt`.
+
 ## What it does
 
 | Capability | What it means |
 | --- | --- |
 | **Local models** | Ollama runs the models on your machine, and `merud` keeps them loaded. |
-| **Voice** | Press the microphone in Meru.app, speak, and press it again: Whisper, run by whisper.cpp on your Mac, turns your words into text in the question box, and you check them before you press Send. The sound never leaves your Mac and Meru keeps no recording. Turn it on in Settings, Connections; `meru transcribe recording.wav` does the same from a terminal. Macs with Apple silicon, for now. |
+| **Voice** | Press the microphone in Meru.app, speak, and press it again: Whisper, run by whisper.cpp on your Mac, turns your words into text in the question box, and you check them before you press Send. The sound never leaves your Mac and Meru keeps no recording. Turn it on in Settings, Connections; `meru transcribe recording.wav` does the same from a terminal. Macs with Apple silicon and Linux on x86-64. |
 | **Search over your files** | Meru searches your notes, docs, PDFs and repos by keyword (BM25) and by meaning, and names the file behind each answer. |
 | **Web search** | The built-in `web_search` tool searches through SearXNG, which you run in Docker; no account or API key. The built-in `web_fetch` tool reads a whole public page, answers a question from it with the fast model, or downloads a file; it asks you before it opens an address no search or question of yours gave. Taking it out of `[builtin] tools` turns it off. [docs/running.md](docs/running.md#web-search) shows the setup. |
 | **MCP tools** | `meru setup` offers two servers: `google` for Gmail, Calendar and Drive, and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |

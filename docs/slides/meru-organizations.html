@@ -329,6 +329,7 @@
     </ul></div>
     <div class="box gold"><h3>What follows</h3><ul>
       <li>A 64 GB Apple silicon Mac runs the full set with room to spare.</li>
+      <li>On Linux, setup reads an NVIDIA card's memory: a 45 GB L40S got <code>qwen3.6:35b</code>.</li>
       <li>Under 32 GB, Meru runs the 2B model and passes fewer questions.</li>
       <li>Meru sizes each answer model's window to fit an eighth of memory.</li>
       <li>The answer model wrote 84 to 93 tokens a second on an M4 Max.</li>
@@ -343,7 +344,7 @@
   <p class="kicker">Rollout today</p>
   <h2>What it takes to put Meru on a machine</h2>
   <ul class="points">
-    <li><b>A Mac installer</b> on a disk image sets up the model server, web search, folders and <code>merud</code> in eleven steps in a window. A one-line installer does the same in a terminal.</li>
+    <li><b>A Mac installer</b> on a disk image sets up the model server, web search, folders and <code>merud</code> in eleven steps in a window. A one-line installer does the same in a terminal, and on Ubuntu a second one adds the desktop app and a systemd service.</li>
     <li><b>One config file per person</b>, <code>~/.meru/config.toml</code>: the models, the folders, the tools and what each may do.</li>
     <li><b>Updates are manual.</b> Meru never checks for them, so the company decides when a new version reaches each machine.</li>
     <li><b>Files are the source of truth.</b> The database can be deleted and rebuilt from the transcripts, memories and config.</li>
@@ -458,7 +459,7 @@
   <h2>A four-week pilot with ten people</h2>
   <table>
     <tr><th style="width:16%">Week</th><th>What happens</th><th style="width:32%">What to look at</th></tr>
-    <tr><td>1</td><td>Pick ten people with Apple silicon Macs of 32 GB or more. Install, add their work folders, connect one system.</td><td>Install time; the controls table checked against the config</td></tr>
+    <tr><td>1</td><td>Pick ten people with Apple silicon Macs of 32 GB or more, or Linux machines with a 27 GB NVIDIA card. Install, add their work folders, connect one system.</td><td>Install time; the controls table checked against the config</td></tr>
     <tr><td>2 and 3</td><td>They use it for real work: questions on their documents, mail, company systems and the web.</td><td>The Usage screen: questions, routes, answer times, tool calls by outcome</td></tr>
     <tr><td>4</td><td>Security reviews the <code>tool_calls</code> rows and the network rules; the ten say what worked.</td><td>Pass or fail against the company's own criteria</td></tr>
   </table>
