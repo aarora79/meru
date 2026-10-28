@@ -256,6 +256,15 @@ script, which downloads the latest release, checks it and asks before each step:
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
 ```
 
+On Linux, tested on Ubuntu 24.04, the Linux script does the same. It puts
+`meru` and `merud` in `~/.local/bin`, then offers the desktop app, Ollama,
+`meru setup`, which offers the answer model that fits an NVIDIA card, and
+`merud` as a systemd user service that starts at boot:
+
+```sh
+curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
+```
+
 To install by hand instead, follow the steps below; `curl -LO` or `gh release
 download` both fetch the files.
 

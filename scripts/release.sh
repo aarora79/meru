@@ -151,8 +151,9 @@ cp "dist/Meru-$version-macos-arm64.dmg" dist/Meru-macos-arm64.dmg
 # ---- 4. Pack ----
 
 # COPYFILE_DISABLE stops macOS tar from adding ._ files that hold Finder
-# metadata. The uid and gid options keep this Mac's user name out of the
-# archive.
+# metadata, and --no-xattrs and --no-mac-metadata keep extended attributes
+# such as com.apple.provenance out, which GNU tar on Linux warns about.
+# The uid and gid options keep this Mac's user name out of the archive.
 export COPYFILE_DISABLE=1
 
 for platform in $platforms; do
@@ -172,7 +173,7 @@ for platform in $platforms; do
   if [ -n "$ext" ]; then
     (cd dist/stage && zip -q -r -X "../$name.zip" "$name")
   else
-    tar -C dist/stage --uid 0 --gid 0 --uname root --gname root -czf "dist/$name.tar.gz" "$name"
+    tar -C dist/stage --no-xattrs --no-mac-metadata --uid 0 --gid 0 --uname root --gname root -czf "dist/$name.tar.gz" "$name"
   fi
 done
 
@@ -215,6 +216,6 @@ gh release create "$version" \
   --title "Meru $version" \
   --verify-tag \
   "${notes_args[@]}" \
-  dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh
+  dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh scripts/install-linux.sh
 
 echo "release: published https://github.com/$repo/releases/tag/$version"
