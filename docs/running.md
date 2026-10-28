@@ -542,12 +542,20 @@ scripts.
 
 ### The desktop app
 
-`meru-desktop` shows the same conversations in a window. It runs on macOS for now,
-and it talks to the `merud` you already run, so start `merud` first.
+`meru-desktop` shows the same conversations in a window, on macOS and Linux. It
+talks to the `merud` you already run, so start `merud` first.
 
 It builds on its own, because its window library, Wails, needs a C compiler and
 the system's WebView. On a Mac, the Xcode command line tools bring both
-(`xcode-select --install`). From the repository:
+(`xcode-select --install`). On Ubuntu 24.04, install GTK 4 and WebKitGTK 6.0
+with their headers, which the pinned Wails needs:
+
+```sh
+sudo apt install gcc pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+```
+
+On Linux the microphone button does nothing yet: the whisper connector ships a
+macOS build only. From the repository:
 
 ```sh
 make desktop            # writes bin/meru-desktop

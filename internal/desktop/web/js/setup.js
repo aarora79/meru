@@ -6,6 +6,7 @@
 
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
+import { here } from "./machine.js";
 import { el, button } from "./turns.js";
 import { catalogCard, count } from "./settings.js";
 
@@ -40,7 +41,7 @@ function draw() {
   brand.append(logo, title);
   head.append(brand);
   root.append(head);
-  root.append(el("p", "section-intro", "Meru runs on this Mac and reads only what you point it at. Four short steps; skip any of them."));
+  root.append(el("p", "section-intro", "Meru runs on " + here() + " and reads only what you point it at. Four short steps; skip any of them."));
 
   const steps = el("ol", "steps");
   STEPS.forEach((s, i) => {
@@ -212,7 +213,7 @@ const QUESTIONS = [
 // about asks the three questions and saves each answer as a memory.
 function about(body, nav) {
   body.append(el("h2", "section-head", "About you"));
-  body.append(el("p", "", "What you write here goes into every answer, and stays in ~/.meru/memory on this Mac. Leave any blank."));
+  body.append(el("p", "", "What you write here goes into every answer, and stays in ~/.meru/memory on " + here() + ". Leave any blank."));
   const inputs = {};
   for (const q of QUESTIONS) {
     const label = el("label", "field-label", q.prompt);

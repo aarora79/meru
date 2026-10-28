@@ -11,6 +11,7 @@
 
 import { bridge, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
+import { here } from "./machine.js";
 import { el, button, seconds } from "./turns.js";
 import { connectorCard } from "./connectors.js";
 
@@ -252,7 +253,7 @@ function connectionCard(body, c, title, key) {
   head.append(el("span", "pill " + look, words));
   card.append(head);
 
-  const where = [c.kind === "mcp" ? "MCP server" : c.kind === "a2a" ? "Agent" : c.kind === "command" ? "Programs on this Mac" : "Inside merud"];
+  const where = [c.kind === "mcp" ? "MCP server" : c.kind === "a2a" ? "Agent" : c.kind === "command" ? "Programs on " + here() : "Inside merud"];
   if (connectorManaged(c)) where[0] = c.kind === "builtin" ? "Inside merud, through SearXNG" : "Connector";
   if (c.connector === "by_hand") where.push("set up by hand");
   if (c.transport) where.push(c.transport === "http" ? "connects to " + c.url : "merud starts it");
@@ -720,7 +721,7 @@ function drawFolders(body, fv) {
   for (const f of fv.folders) {
     const li = el("li", "row");
     li.append(icon("folder", 16), el("span", "row-main", f.path));
-    li.append(el("span", "dim", f.exists ? count(f.files, false) + " in the index" : "not on this Mac now"));
+    li.append(el("span", "dim", f.exists ? count(f.files, false) + " in the index" : "not on " + here() + " now"));
     li.append(button("Remove", {
       className: "text-button",
       onClick: () => bridge.removeFolder(f.path).then(
@@ -804,7 +805,7 @@ function you(body) {
 // form to add one.
 function drawYou(body, mems) {
   body.replaceChildren();
-  intro(body, "What Meru knows about you. All of it goes into every answer, and stays in ~/.meru/memory on this Mac.");
+  intro(body, "What Meru knows about you. All of it goes into every answer, and stays in ~/.meru/memory on " + here() + ".");
   for (const k of KINDS) {
     body.append(el("h2", "section-head", k.label));
     const ul = el("ul", "row-list");
@@ -1217,7 +1218,7 @@ function models(body) {
 // drawModels draws the Models section from m, merud's models reply.
 function drawModels(body, m) {
   body.replaceChildren();
-  intro(body, "The open-weight models Meru runs in Ollama on this Mac. Nothing goes to a model anywhere else.");
+  intro(body, "The open-weight models Meru runs in Ollama on " + here() + ". Nothing goes to a model anywhere else.");
   const loaded = new Set(m.loaded || []);
   const dl = el("dl", "facts");
   const fact = (label, value, note) => {
@@ -1486,7 +1487,7 @@ function usage(body) {
       body.replaceChildren();
       const panels = usageTabs(body);
       const charts = panels.charts;
-      intro(charts, "Counted from the session transcripts on this Mac. A task is one question or request that Meru answered.");
+      intro(charts, "Counted from the session transcripts on " + here() + ". A task is one question or request that Meru answered.");
       charts.append(usageTable(windows || []));
       const more = el("div", "usage-detail");
       more.append(el("p", "panel-note", "Loading the charts…"));
@@ -1833,9 +1834,9 @@ const QUERIES = [
 // Prometheus they run: the address when merud serves /metrics, or the
 // line that turns it on, then the queries, each with a Copy button.
 function prometheusSection(box, metrics) {
-  intro(box, "merud can serve the numbers behind the charts to a Prometheus you run on this Mac, for longer history and your own queries.");
+  intro(box, "merud can serve the numbers behind the charts to a Prometheus you run on " + here() + ", for longer history and your own queries.");
   if (metrics) {
-    box.append(el("p", "panel-note", "merud serves its metrics at this address, on this Mac only. Point a Prometheus you run at it:"));
+    box.append(el("p", "panel-note", "merud serves its metrics at this address, on " + here() + " only. Point a Prometheus you run at it:"));
     box.append(copyBlock(metrics));
   } else {
     box.append(el("p", "panel-note", "To read these numbers in a Prometheus you run, add this line under [observability] in ~/.meru/config.toml and restart merud:"));
@@ -1934,10 +1935,10 @@ function list(lines) {
   return ul;
 }
 
-// ---- The side panel: On this Mac ----
+// ---- The side panel: On this Mac, or On this computer ----
 
 // settingsPanel fills the side panel while Settings shows: the models,
-// the search index, and the line that says nothing leaves this Mac.
+// the search index, and the line that says nothing leaves the machine.
 export function settingsPanel(body, status) {
   const s = status || {};
   const dl = el("dl", "facts");
@@ -1947,7 +1948,7 @@ export function settingsPanel(body, status) {
   fact("Search index", s.up ? count(s.documents || 0, false) + " · " + Number(s.chunks || 0).toLocaleString() + " pieces" : "merud isn't running");
   body.append(dl);
   const p = el("p", "privacy");
-  p.append(icon("lock", 14), document.createTextNode(" No account and no cloud. Meru runs on " + (s.machine || "this Mac") +
+  p.append(icon("lock", 14), document.createTextNode(" No account and no cloud. Meru runs on " + here() +
     ", and its settings live in " + configPath(s.socket) + "."));
   body.append(p);
 }

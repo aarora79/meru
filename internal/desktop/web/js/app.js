@@ -11,6 +11,7 @@
 
 import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
+import { setMachine, here } from "./machine.js";
 import {
   el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
   appendToken, approvalCard, thumb, isWebSource, sourceIcon, sourceName, openSource, drawFooter, tickWorking,
@@ -62,7 +63,6 @@ const state = {
   askingTools: null, // that server's connection, once the Bridge sends it
   status: null,
   setupShown: false, // Setup opened on its own once already
-  machine: "this Mac",
   scope: "auto",
   attachments: [], // the files and images attached to the next question, as the Bridge last sent them
   saves: {}, // open save approval cards, by card ID
@@ -182,7 +182,7 @@ function notice(text, action) {
 // ---- Views: the chat, Settings and Setup ----
 
 // showView shows one of the three screens in the middle column. The side
-// panel follows: what an answer used in the chat, "On this Mac" in the
+// panel follows: what an answer used in the chat, "On this Mac" or "On this computer" in the
 // Settings, and nothing during Setup.
 function showView(view) {
   state.view = view;
@@ -313,7 +313,7 @@ function emptyState() {
   logo.height = 48;
   head.append(logo, el("h2", "", "Ask Meru"));
   box.append(head);
-  box.append(el("p", "", "Answers come from the model on " + state.machine +
+  box.append(el("p", "", "Answers come from the model on " + here() +
     " and from the folders, mail and notes you connected."));
   const ideas = el("div", "ideas");
   for (const q of [
@@ -1011,7 +1011,7 @@ function openSession(s) {
 function loadStatus() {
   bridge.status().then((s) => {
     state.status = s;
-    if (s.machine) state.machine = s.machine;
+    setMachine(s.machine);
     drawStatus();
     if (s.up && s.folders === 0 && s.profile === 0 && !state.setupShown && state.turns.length === 0) {
       state.setupShown = true;
@@ -1136,7 +1136,7 @@ function drawPanel() {
   const body = $("panel-body");
   body.replaceChildren();
   if (state.view === "settings" || state.view === "usage") {
-    $("panel-title").textContent = "On this Mac";
+    $("panel-title").textContent = "On " + here();
     settingsPanel(body, state.status);
     return;
   }
@@ -1274,7 +1274,7 @@ function whyText(v) {
 
 // privacyLine says where the answer's work happened.
 function privacyLine(t) {
-  const start = "The model ran on " + state.machine + ".";
+  const start = "The model ran on " + here() + ".";
   if (t.state === "active") return start;
   const names = t.contacted || [];
   if (names.length === 0) return start + " Nothing else was contacted.";
