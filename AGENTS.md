@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.5.0**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.6.0**. ROADMAP.md ticks every item from v0.1
 to v0.5:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -78,6 +78,9 @@ the transcribe op turns a recording into text the user checks (#143 to #148).
 Since v0.4.19 `merud` sizes the answer model's context window from what
 Ollama reports, a turn keeps its tool rounds inside it, an answer that stopped
 short can Continue, and `web_fetch` can trust a website (#155 to #160).
+Since v0.6.0 Meru runs on Linux: `internal/platform` holds what differs by
+system, `meru setup` picks the answer model by GPU memory, `install-linux.sh`
+installs it with one command, and whisper has a Linux build (#179 to #185).
 Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
