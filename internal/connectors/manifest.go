@@ -425,7 +425,7 @@ func Validate(m Manifest) error {
 	errs = append(errs, checkInstall(m.Kind, m.Install)...)
 	fields, fieldErrs := checkFields(m.Fields)
 	errs = append(errs, fieldErrs...)
-	errs = append(errs, checkLaunch(m.Kind, m.Launch, fields, m.Install.Files)...)
+	errs = append(errs, checkLaunch(m.Kind, m.Install.Type, m.Launch, fields, m.Install.Files)...)
 	if err := checkCommand(m.Install.Type, m.Launch.Command); err != nil {
 		errs = append(errs, err)
 	}
@@ -657,7 +657,7 @@ func checkFields(fields []Field) (map[string]Field, []error) {
 
 // checkLaunch checks the [launch] table for the connector's kind, and each
 // placeholder in it against fields and files, the [[install.files]].
-func checkLaunch(kind string, l Launch, fields map[string]Field, files []File) []error {
+func checkLaunch(kind, installType string, l Launch, fields map[string]Field, files []File) []error {
 	var errs []error
 	add := func(format string, args ...any) {
 		errs = append(errs, fmt.Errorf(format, args...))
@@ -719,7 +719,9 @@ func checkLaunch(kind string, l Launch, fields map[string]Field, files []File) [
 	// A service may also use {token}, in its arguments and base_path, and
 	// {file.<id>}, where <id> is a choice field whose every choice names an
 	// [[install.files]] entry, so any value the user picks has a pinned
-	// download behind it.
+	// download behind it. A binary install may name its program
+	// {pkg}/{binary} in launch.command: {binary} is the file name of this
+	// platform's download, which differs from one platform to the next.
 	check := func(where, value string, onCommandLine bool) {
 		for _, sub := range placeholder.FindAllStringSubmatch(value, -1) {
 			name := sub[1]
@@ -727,6 +729,9 @@ func checkLaunch(kind string, l Launch, fields map[string]Field, files []File) [
 			fileID, isFile := strings.CutPrefix(name, "file.")
 			switch {
 			case name == "pkg" || name == "meru_dir":
+			case name == "binary" && installType == InstallBinary && where == "launch.command":
+			case name == "binary":
+				add("%s: placeholder {binary} is for a binary install's launch.command", where)
 			case name == "token" && kind == KindService && (strings.HasPrefix(where, "launch.args") || where == "launch.base_path"):
 			case name == "token":
 				add("%s: placeholder {token} is for a service's launch.args and launch.base_path", where)
