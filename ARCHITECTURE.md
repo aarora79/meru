@@ -4828,9 +4828,10 @@ beside the first one, which stays until the runtime folder goes. A `model`
 that isn't one of the two is refused before config changes.
 
 The manifest has a download for `darwin_arm64` only. On any other computer
-the connector stays off when turned on, and says why: "Speech to text isn't
-available on this computer yet: Meru has no linux_amd64 build of it." It
-never tries an install that can't work.
+the connector stays off, switched on or not, and says why: "Speech to text
+isn't available on this computer yet: Meru has no linux_amd64 build of it."
+The microphone shows the same sentence, so nobody is told to turn on a
+connector that can't run. It never tries an install that can't work.
 
 `TestIntegrationWhisper`, behind the `integration` build tag, installs the
 real connector into a temporary home, starts it through the supervisor, and
