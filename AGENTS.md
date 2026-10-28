@@ -508,7 +508,9 @@ rewritten for Go and for Meru.
   `docs/architecture/`; update them when the Markdown they mirror changes.
 - **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
 - **`meru-install`** — walk a user through installing, updating or removing Meru
-  on a Mac from a GitHub release, asking before each change.
+  from a GitHub release on a Mac or on Linux: it runs the right installer and
+  checks `merud`, `meru`, `meru chat` and the desktop app until each answers,
+  asking before each change.
 - **`release-notes`** — write `docs/release-notes/vX.Y.Z.md` for a new version
   and open its pull request; `make release` then publishes it. Adapted from the
   skill of the same name in agentic-community/mcp-gateway-registry.

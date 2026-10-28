@@ -10,10 +10,11 @@ data center.
 
 Meru reads it on your machine. Its code has no path to a cloud AI model, not even
 a disabled one. It keeps open-weight models loaded in your computer's memory, so a
-question needs no API key and costs only electricity, and the installer picks the
-model that fits your Mac's memory.
+question needs no API key and costs only electricity. The installer picks the
+model that fits your Mac's memory or your Linux machine's graphics card.
 
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
+[![Install on Linux](https://img.shields.io/badge/Install-on%20Linux-2F6B4F?logo=linux&logoColor=white&style=for-the-badge)](#install-on-linux)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
 **Website:** [aarora79.github.io/meru](https://aarora79.github.io/meru/) ·
@@ -111,6 +112,35 @@ offers the largest answer model that fits it;
 [docs/running.md](docs/running.md#on-linux-with-an-nvidia-card) has the table.
 The desktop app needs GTK 4 and WebKitGTK 6.0, which the script installs with
 `apt`.
+
+## Install with a coding agent
+
+If you use Claude Code or Codex, the `meru-install` skill can do the install
+with you. It finds your system, runs the installer that fits it, and checks
+`merud`, `meru`, `meru chat` and the desktop app until each one answers. It
+asks before it changes anything. Copy the skill into your agent's skills
+folder, then ask the agent to install Meru. The same skill updates or removes
+Meru later.
+
+**Claude Code** reads skills from `~/.claude/skills`. Start `claude` in any
+folder afterwards and type `/meru-install`:
+
+```sh
+d=~/.claude/skills/meru-install; mkdir -p $d
+for f in SKILL.md reference.md; do
+  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" -o $d/$f
+done
+```
+
+**Codex** reads skills from `~/.agents/skills`. Start `codex` afterwards and
+type `$meru-install`:
+
+```sh
+d=~/.agents/skills/meru-install; mkdir -p $d
+for f in SKILL.md reference.md; do
+  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" -o $d/$f
+done
+```
 
 ## What it does
 
