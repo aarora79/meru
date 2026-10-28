@@ -243,14 +243,37 @@ with no audio file left on disk.
 **Done when:** a morning brief lands without you asking. Shipped in v0.5.0: a
 job such as "every weekday at 7, brief me on my calendar" runs in its own chat.
 
-## v0.6 — It tells you, on any machine
-- [ ] Digests, notifications, `meru brief`
-- [ ] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
+## v0.6 — Meru on Linux
+- [x] Meru working end to end on Ubuntu 24.04: an install path, `merud` as a systemd
   user service, answer models picked by GPU memory, and the desktop app
   ([#84](https://github.com/aarora79/meru/issues/84))
 
+**Done when:** one documented command sets up the same Meru on a fresh Ubuntu
+machine. Shipped in v0.6.0: `install-linux.sh` installs Meru, Ollama, the model
+that fits the graphics card, and `merud` as a systemd user service.
+
+## v0.7 — It tells you, and reaches more of your tools
+- [ ] Digests, notifications, `meru brief`
+- [ ] Third-party MCP servers: Meru installs, configures, starts and heals more
+  servers than Google, Obsidian and web search, through the same pinned
+  connector manifests ([#87](https://github.com/aarora79/meru/issues/87))
+- [ ] Read Word, Excel and CSV files, and answer questions about tables
+  ([#184](https://github.com/aarora79/meru/issues/184))
+- [ ] Live transcription: show the words while the user speaks
+  ([#150](https://github.com/aarora79/meru/issues/150))
+- [ ] New built-in tools reach configs that list them by hand
+  ([#123](https://github.com/aarora79/meru/issues/123))
+- [ ] Fixes: text from tool rounds runs together
+  ([#154](https://github.com/aarora79/meru/issues/154)); metrics miss the fixed
+  prompt and the fast and embed calls
+  ([#134](https://github.com/aarora79/meru/issues/134)); profile memories past the
+  cap never reach the prompt ([#132](https://github.com/aarora79/meru/issues/132));
+  incognito text on spans with capture on
+  ([#130](https://github.com/aarora79/meru/issues/130))
+
 **Done when:** a digest of the day's job runs reaches you without opening Meru,
-and one documented command sets up the same Meru on a fresh Ubuntu machine.
+and a third-party MCP server Meru doesn't ship today installs and heals the way
+Google and Obsidian do.
 
 ## Later, maybe
 - Voice beyond speech to text: answers read aloud and a wake word
