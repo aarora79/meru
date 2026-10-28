@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.6.1**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.6.2**. ROADMAP.md ticks every item from v0.1
 to v0.6:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
