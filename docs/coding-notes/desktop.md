@@ -503,6 +503,11 @@ bundler.
 - `js/api.js` calls the Bridge by name, `Call.ByName("github.com/aarora79/meru/internal/desktop.Bridge.Send", ...)`,
   through Wails' runtime, which the app serves at `/wails/runtime.js`. Calling by
   name needs no generated bindings, so no Wails command-line tool either.
+- `js/machine.js` holds the machine's name, "this Mac" or "this computer", which
+  `Status.Machine` carries and [platform](platform.md) picks. `app.js` sets it
+  from each status, and every screen words the machine through `here()`, so no
+  sentence says "this Mac" on Linux. Until the first status arrives it says
+  "this computer", which is true everywhere.
 - `js/app.js` keeps the page's state and wires the rail, the composer, the queue and
   the side panel to the updates. It shows one of three screens in the middle
   column: the chat, Settings or Setup. The rail folds to a column of icons; its
@@ -514,7 +519,8 @@ bundler.
   already says Meru. The side panel starts closed, and the header's button opens
   it; the page stores nothing, so the choice lasts until the window closes. It
   shows what the selected answer used, Remembered included, or "Why Meru is
-  asking" while a card is open, or "On this Mac" in Settings. The approval card
+  asking" while a card is open, or "On this Mac" ("On this computer" off macOS)
+  in Settings. The approval card
   says why Meru asks on its own, with a link to the panel, because the panel may be
   closed. The composer holds the "Where Meru looks" switch, a radio group the
   arrow keys move through, and the attach button. `onAttachments` draws the

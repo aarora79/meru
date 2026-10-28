@@ -52,6 +52,7 @@ Read them in this order; each builds on the ones before it.
 31. [applenotes](applenotes.md): reading the Notes app's database, live and read-only, for the Apple Notes tools
 32. [speech](speech.md): speech to text, a WAV recording to whisper-server and back, for the `transcribe` op
 33. [jobs](jobs.md): the time rules for scheduled jobs: cron schedules as bitmasks, the next run, and catch-up after sleep
+34. [platform](platform.md): what differs between macOS, Linux and Windows, in one table, and reading this machine, GPU included
 
 ### Go basics
 

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/aarora79/meru/internal/platform"
 )
 
 // timeout bounds how long the opener may run. open, xdg-open and rundll32
@@ -79,18 +81,13 @@ func Open(u string) error {
 	return nil
 }
 
-// command returns the program, with its arguments, that opens u on goos:
-// open on macOS, rundll32 with url.dll's FileProtocolHandler on Windows,
-// and xdg-open on Linux and the rest. Each hands the URL to the default
-// program for it, as a double-click would.
+// command returns the program, with its arguments, that opens u on goos,
+// from internal/platform's row: open on macOS, rundll32 with url.dll's
+// FileProtocolHandler on Windows, and xdg-open on Linux and the rest.
+// Each hands the URL to the default program for it, as a double-click
+// would.
 func command(goos, u string) []string {
-	switch goos {
-	case "darwin":
-		return []string{"open", u}
-	case "windows":
-		return []string{"rundll32", "url.dll,FileProtocolHandler", u}
-	}
-	return []string{"xdg-open", u}
+	return append(platform.For(goos).Open, u)
 }
 
 // cut shortens u for an error message, ending it with "…" when it had to

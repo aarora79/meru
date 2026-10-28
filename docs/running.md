@@ -66,6 +66,27 @@ benchmark tasks as the 8-bit build. On the 64 GB test Mac, Ollama held 36 to
 Mac. We measured memory on the 64 GB Mac only. The installer offers the model for your Mac's
 memory.
 
+### On Linux with an NVIDIA card
+
+The models load into the card's own memory, which holds nothing else, so the
+limit is the card's memory, not the computer's. `meru setup` reads it with
+`nvidia-smi` and offers the largest set that loads into it:
+
+| GPU memory | Answer model | Loaded, with the router |
+| --- | --- | --- |
+| under 18 GB | MiniCPM5-2B, the `lite` default | about 3 GB |
+| 18 GB | `gemma4:26b-a4b-it-qat` | about 18 GB |
+| 27 GB | `qwen3.6:35b` | about 27 GB |
+| 47 GB or more | `qwen3.6:35b-a3b-mxfp8` | about 47 GB |
+
+On an Ubuntu 24.04 machine with an NVIDIA L40S, which reports 45 GB, setup
+offered `qwen3.6:35b`, and Ollama held all three models on the card in about
+25 GB. Without an NVIDIA card, setup asks for a profile as before; Ollama then
+runs the models on the processor, where only `lite` answers at a usable speed.
+Install Ollama with its script, `curl -fsSL https://ollama.com/install.sh | sh`;
+it sets Ollama up as a systemd service and finds the card's driver. Step 9 runs
+`merud` as a systemd user unit.
+
 ### Models we tried for answers
 
 In September 2026 we ran a benchmark of 50 tasks on an M4 Max with 64 GB and
@@ -521,12 +542,20 @@ scripts.
 
 ### The desktop app
 
-`meru-desktop` shows the same conversations in a window. It runs on macOS for now,
-and it talks to the `merud` you already run, so start `merud` first.
+`meru-desktop` shows the same conversations in a window, on macOS and Linux. It
+talks to the `merud` you already run, so start `merud` first.
 
 It builds on its own, because its window library, Wails, needs a C compiler and
 the system's WebView. On a Mac, the Xcode command line tools bring both
-(`xcode-select --install`). From the repository:
+(`xcode-select --install`). On Ubuntu 24.04, install GTK 4 and WebKitGTK 6.0
+with their headers, which the pinned Wails needs:
+
+```sh
+sudo apt install gcc pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+```
+
+On Linux the microphone says speech to text isn't available yet: the whisper
+connector ships a build for Apple silicon only. From the repository:
 
 ```sh
 make desktop            # writes bin/meru-desktop

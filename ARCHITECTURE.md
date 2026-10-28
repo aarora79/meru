@@ -122,6 +122,41 @@ Code must not assume one platform: build paths with `filepath`, find the home
 directory with `os.UserHomeDir`, and keep platform-specific code behind Go build tags
 in as few files as possible.
 
+#### One table of differences
+
+`internal/platform` holds what differs between the three systems, one row per
+system, so `merud` and the clients ask it instead of testing `runtime.GOOS`:
+
+| Row field | macOS | Linux | Windows |
+| --- | --- | --- | --- |
+| name, and how a client says "here" | macOS, "this Mac" | Linux, "this computer" | Windows, "this computer" |
+| opens a link | `open` | `xdg-open` | `rundll32 url.dll,FileProtocolHandler` |
+| copies to the clipboard | `pbcopy` | `wl-copy`, `xclip` or `xsel` | `clip.exe` |
+| folders where Docker lands | Homebrew, OrbStack, Docker.app | `/usr/bin`, `/usr/local/bin`, `/snap/bin` | none yet |
+| how to install Ollama | Homebrew or the app | Ollama's install script | the download page |
+| Apple Notes | yes | no | no |
+| GPU shares main memory | yes | no | no |
+
+A row is plain data, and `platform.For(goos)` returns the row for any system,
+so a test on Linux checks the macOS and Windows rows too. Build tags would
+let a test see only the system it runs on. Adding a system means adding a row.
+
+`platform.Describe` reads the machine merud runs on: the system's name and
+version, the processor, main memory, and the GPU with its memory. On a Mac the
+GPU shares main memory. On Linux it reads an NVIDIA card through `nvidia-smi`.
+`platform.ModelMemoryGB` turns that into the memory a model can load into: main
+memory on a Mac, the GPU's memory on Linux with an NVIDIA card, main memory
+without one. `meru setup` sizes the answer model from it with the same table
+the Mac installer uses (see [Model sets](#model-sets)), and the system prompt
+names the GPU, so a model answers a question about GPU use on Linux with
+`nvidia-smi`.
+
+`platform` imports only the standard library, so any package may use it. It
+starts programs, all read-only and with no shell, only from `run.go`, and
+`internal/policy` holds it to that. What exists on one system only, such as
+Apple Notes, Meru.app and the Mac installer, stays in its own package; the
+code checks the row's field instead of the system's name.
+
 **On a cloud server**, Meru still sends no prompt to a model provider,
 but your notes, email and transcripts live on that server. Meru's promise is "a
 machine you control"; where that machine sits is your call. You'd run `meru` over SSH,
@@ -1428,11 +1463,12 @@ bytes a token = (cached heads over all layers) × (key width + value width) × 2
 ```
 
 The window is the model's most, cut to what fits in an eighth of the
-computer's memory, and never less than `[ollama] context_length`, 32768 by
+memory the model loads into, and never less than `[ollama] context_length`, 32768 by
 default. Ollama sets the cache's memory aside for the whole window when the
 model loads, so the cap matters: `qwen3.6:35b` caches heads in one layer of
 four and takes about 20 KB a token, so its full 262,144 tokens cost 5.4 GB and
-fit an eighth of a 64 GB Mac; a dense model of its size can take ten times as
+fit an eighth of a 64 GB Mac. On Linux with an NVIDIA card the memory is the
+card's own (see [One table of differences](#one-table-of-differences)); a dense model of its size can take ten times as
 much a token and gets a smaller window. The fast and embedding models keep
 `context_length`, since they read short prompts. When the fast model is the
 answer model, as on `lite`, it loaded at `context_length` before `merud` sized
@@ -4792,9 +4828,10 @@ beside the first one, which stays until the runtime folder goes. A `model`
 that isn't one of the two is refused before config changes.
 
 The manifest has a download for `darwin_arm64` only. On any other computer
-the connector stays off when turned on, and says why: "Speech to text isn't
-available on this computer yet: Meru has no linux_amd64 build of it." It
-never tries an install that can't work.
+the connector stays off, switched on or not, and says why: "Speech to text
+isn't available on this computer yet: Meru has no linux_amd64 build of it."
+The microphone shows the same sentence, so nobody is told to turn on a
+connector that can't run. It never tries an install that can't work.
 
 `TestIntegrationWhisper`, behind the `integration` build tag, installs the
 real connector into a temporary home, starts it through the supervisor, and

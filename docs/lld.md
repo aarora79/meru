@@ -64,6 +64,7 @@ allows only code inside this repo to import.
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour), with the desktop app's features as slash commands and boxes | `run.go`: `Run`, then `model.go`, `view.go`, `commands.go` and `box.go` |
 | `internal/about` | the tagline, the version and the project's links, for the desktop app and `meru chat` | `about.go`: `Version`, `ShortVersion`, `Links` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |
+| `internal/platform` | what differs between macOS, Linux and Windows, one row per system, and reading this machine, GPU included (see [One table of differences](../ARCHITECTURE.md#one-table-of-differences)) | `platform.go`: `For`, `Current`; `machine.go`: `Describe`, `ModelMemoryGB`; `run.go`: `run` |
 | `internal/mcp` | the MCP client pool: starts or connects to the servers added by hand, asks a connector's supervisor for a session through the `Spawner` hook, keeps allowed tools | `pool.go`: `NewPool`, then `call.go` |
 | `internal/skills` | loads `SKILL.md` folders, installs the built-in skills, and stamps the folder so `merud` sees edits | `skills.go`: `Load`, then `builtin.go` and `stamp.go` |
 | `internal/memory` | one Markdown file per memory under `memory/<kind>/`; `merud` syncs the files into the store, where recall searches them | `memory.go`: `Open`, `Add`, `List` |
@@ -113,7 +114,9 @@ flowchart TD
     engine --> loopback
 ```
 
-`skills`, `memory` and `secrets` import only the standard library. `agent`
+`skills`, `memory`, `secrets` and `platform` import only the standard library;
+`opener`, `tui`, `desktop`, `connectors`, `builtin`, `cmd/merud` and `cmd/meru`
+ask `platform` what differs by system. `agent`
 reads the profile and the skills through them, `builtin` saves memories, and
 `index` copies the memory files into the store. `builtin` imports `index` so the
 file tools apply the indexer's skip rules instead of a copy, and `render` for the

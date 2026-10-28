@@ -1856,8 +1856,9 @@ and `expandHome`.
 
 `windowFitter` returns the function that sizes the answer model's context
 window. It asks the engine's `Details` for the model, passes the answer to
-`engine.FitWindow` with an eighth of the memory `memoryGB` reads
-(`windowMemoryShare`) and `[ollama] context_length` as the fallback, sets the
+`engine.FitWindow` with an eighth of `platform.Machine.ModelMemoryGB`
+(`windowMemoryShare`): main memory on a Mac, the card's own memory on Linux with
+an NVIDIA GPU and `[ollama] context_length` as the fallback, sets the
 result with `SetWindow`, and logs it at info as `answer model window`. `run`
 calls it for the answer model before `StartWarm`, so the model loads once with
 its window, and hands it to the model service, whose `switchMain` calls it
@@ -1868,11 +1869,12 @@ on a turn's prompt uses the same number.
 
 ### merud: machine.go
 
-`machineLine` reads, once at startup, the facts a model needs to give commands and
-paths that fit: the OS and its version (`sw_vers` on macOS, `/etc/os-release` on
-Linux), the processor (`sysctl machdep.cpu.brand_string`, `/proc/cpuinfo`), the
-memory (`hw.memsize`, `/proc/meminfo`), the shell (`$SHELL`) and the time zone
-(`TZ`, else where `/etc/localtime` points). It runs each program with no shell and
-a two-second limit, leaves out any part it can't read, and never includes the host
-or user name. `agent.UseMachine` puts the line after today's date, in the part of
+`run` calls `platform.Describe` once at startup (see [platform](platform.md)), and
+`machineLine` words its facts, the ones a model needs to give commands and paths
+that fit: the OS and its version, the processor, the memory, the GPU and its
+memory when the machine has one of its own, the shell (`$SHELL`) and the time zone
+(`TZ`, else where `/etc/localtime` points). `describeLine` does the wording from
+plain arguments, so a test checks the GPU wording on a machine without a GPU. The
+line leaves out any part `Describe` couldn't read, and never includes the host or
+user name. `agent.UseMachine` puts the line after today's date, in the part of
 the prompt that stays the same from turn to turn. merud also logs it at startup.
