@@ -256,10 +256,10 @@ script, which downloads the latest release, checks it and asks before each step:
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash
 ```
 
-On Linux, tested on Ubuntu 24.04, the Linux script does the same. It puts
+On Linux (tested on Ubuntu 24.04), `install-linux.sh` does the same. It puts
 `meru` and `merud` in `~/.local/bin`, then offers the desktop app, Ollama,
-`meru setup`, which offers the answer model that fits an NVIDIA card, and
-`merud` as a systemd user service that starts at boot:
+`meru setup` (which suggests the answer model that fits an NVIDIA card) and
+`merud` as a systemd user service:
 
 ```sh
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
@@ -302,7 +302,7 @@ xattr -dr com.apple.quarantine /Applications/Meru.app
 
 To install a newer release, run the same commands with the new files, then
 restart `merud` (see [Update to a newer version](#11-update-to-a-newer-version)).
-Meru never checks for updates on its own. If you use Claude Code, the
+Meru never checks for updates on its own. If you use Claude Code or Codex, the
 `meru-install` skill in this repo's `.claude/skills/` finds your system, runs
 the installer that fits it, and checks `merud`, `meru`, `meru chat` and the
 desktop app until each one answers.

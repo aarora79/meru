@@ -48,7 +48,7 @@ systemctl --user stop merud      # stop
 journalctl --user -u merud       # what it printed
 ```
 
-`systemctl --user` starts it at login. To start it at boot, before you log in,
+systemd starts it when you log in. To start it at boot, before you log in,
 run `sudo loginctl enable-linger $USER` once, which the script also offers.
 
 **Which ones need a restart?** Anything you edit by hand in `config.toml`:

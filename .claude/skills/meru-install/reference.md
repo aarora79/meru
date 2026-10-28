@@ -40,7 +40,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 ditto -x -k "Meru-$TAG-macos-arm64.zip" /Applications/
 ```
 
-Meru.app isn't signed or notarized, since the project has no Apple Developer
+The project doesn't sign or notarize Meru.app, since it has no Apple Developer
 account. If `xattr -r /Applications/Meru.app | grep -c com.apple.quarantine`
 prints more than 0, macOS refuses to open it. With a yes, clear the mark with
 `xattr -dr com.apple.quarantine /Applications/Meru.app`, or have the person
@@ -97,9 +97,9 @@ systemctl --user daemon-reload
 systemctl --user enable --now merud
 ```
 
-A user service stops when the person logs out. To start it at boot, before
-anyone logs in, as a server needs: `sudo loginctl enable-linger "$USER"`, with
-a yes.
+A user service stops when the person logs out. A server needs it to start
+at boot, before anyone logs in. With a yes, run
+`sudo loginctl enable-linger "$USER"`.
 
 ## GitHub commands
 
