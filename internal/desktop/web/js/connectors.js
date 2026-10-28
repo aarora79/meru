@@ -12,6 +12,7 @@
 
 import { bridge, errorText } from "./api.js";
 import { el, button } from "./turns.js";
+import { here } from "./machine.js";
 
 // PILLS says each connector state on a card's pill, with the pill's
 // colour: green when nothing needs doing, amber when something does. A
@@ -25,14 +26,19 @@ const PILLS = {
   by_hand: ["ok", "Your setup"],
 };
 
-// KINDS says where each kind of connector runs, under the card's title.
-const KINDS = {
-  stdio: "A program merud installs and starts on this Mac",
-  http: "A server merud installs and starts on this Mac",
-  container: "A container merud runs in Docker",
-  service: "A program merud installs and starts on this Mac when you use it",
-  dependency: "You run it; Meru checks that it answers",
-};
+// kindWords says where a kind of connector runs, under the card's title.
+// It is a function, not a table built at load, because the machine's name
+// arrives with merud's first status, after this file loads.
+function kindWords(kind) {
+  switch (kind) {
+    case "stdio": return "A program merud installs and starts on " + here();
+    case "http": return "A server merud installs and starts on " + here();
+    case "container": return "A container merud runs in Docker";
+    case "service": return "A program merud installs and starts on " + here() + " when you use it";
+    case "dependency": return "You run it; Meru checks that it answers";
+  }
+  return "";
+}
 
 // live maps a connector's ID to the function that shows the next step of
 // its save or fix on its card, while one runs. app.js hands each step to
@@ -160,7 +166,7 @@ export function connectorCard(c, ctx, mark) {
   const [look, words] = PILLS[c.state] || ["down", c.state];
   head.append(el("span", "pill " + look, words));
   card.append(head);
-  card.append(el("p", "card-sub", KINDS[c.kind] || ""));
+  card.append(el("p", "card-sub", kindWords(c.kind)));
   if (c.state === "by_hand") {
     // merud's sentence ends "Optional: meru mcp adopt <id> lets Meru run and
     // restart it."; the card shows the part before as a plain note and
