@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.6.1](v0.6.1.md): the Linux installer says when merud starts, and the docs, slides and poster catch up with v0.6.0
 - [v0.6.0](v0.6.0.md): Meru on Linux with one command, a model sized by the graphics card, and speech to text on Linux
 - [v0.5.0](v0.5.0.md): scheduled jobs, made in Settings, in `meru chat` or by asking, and web pages as an answer's sources
 - [v0.4.20](v0.4.20.md): Meru says when it's still working, and slides for individuals and for organizations
