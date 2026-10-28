@@ -517,8 +517,17 @@ func TestServiceInstallFails(t *testing.T) {
 }
 
 // TestServiceNoBuild checks that a platform the manifest has no download
-// for stays off, says why, and downloads nothing.
+// for stays off, says why, and downloads nothing. It says why whether the
+// connector is switched on or off, so the user isn't told to turn on what
+// can't run.
 func TestServiceNoBuild(t *testing.T) {
+	off, _ := testService(t)
+	off.in.Platform = "linux_amd64"
+	off.Configure(config.Connector{"enabled": false}, nil)
+	if st := waitState(t, off, StateOff); !strings.Contains(st.Sentence, "isn't available on this computer yet") {
+		t.Errorf("switched off: sentence = %q", st.Sentence)
+	}
+
 	s, srv := testService(t)
 	s.in.Platform = "linux_amd64"
 	s.Configure(config.Connector{"enabled": true}, nil)

@@ -2877,7 +2877,7 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 
 <p>The launch is <code>whisper-server --host 127.0.0.1 --port 8178 -m {file.model} --request-path /{token}</code>, so the server listens on this machine only. Turning it on downloads about 160 MB for <code>lite</code> or 580 MB for <code>full</code>: on the development Mac the first took 18.5 seconds and the second 58. A model the user picks later downloads beside the first one, which stays until the runtime folder goes. A <code>model</code> that isn't one of the two is refused before config changes.</p>
 
-<p>The manifest has a download for <code>darwin_arm64</code> only. On any other computer the connector stays off when turned on, and says why: "Speech to text isn't available on this computer yet: Meru has no linux_amd64 build of it." It never tries an install that can't work.</p>
+<p>The manifest has a download for <code>darwin_arm64</code> only. On any other computer the connector stays off, switched on or not, and says why: "Speech to text isn't available on this computer yet: Meru has no linux_amd64 build of it." The microphone shows the same sentence, so nobody is told to turn on a connector that can't run. It never tries an install that can't work.</p>
 
 <p><code>TestIntegrationWhisper</code>, behind the <code>integration</code> build tag, installs the real connector into a temporary home, starts it through the supervisor, and checks that it writes down a clip <code>say</code> spoke and that <code>/inference</code> and <code>/load</code> answer 404 without the token.</p>
 

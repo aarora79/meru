@@ -554,8 +554,8 @@ with their headers, which the pinned Wails needs:
 sudo apt install gcc pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
 ```
 
-On Linux the microphone button does nothing yet: the whisper connector ships a
-macOS build only. From the repository:
+On Linux the microphone says speech to text isn't available yet: the whisper
+connector ships a build for Apple silicon only. From the repository:
 
 ```sh
 make desktop            # writes bin/meru-desktop

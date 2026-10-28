@@ -129,7 +129,9 @@ base_path = "/{token}"
 field's default, so a `lite` Mac downloads the 148 MB English model and a
 `full` one the 574 MB model, unless `[connectors.whisper] model` names the
 other. On a platform with no download, `Service.Configure` keeps it off with
-a sentence that names the platform, and installs nothing.
+a sentence that names the platform, and installs nothing. It checks for the
+download before it checks the switch, so a connector that is switched off
+there still says it has no build, not "turn it on".
 `TestLoadRealManifests` checks that the profiles' models are among its files
 and that its launch keeps `--host 127.0.0.1` and the token path.
 
