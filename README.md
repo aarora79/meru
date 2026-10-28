@@ -113,6 +113,24 @@ offers the largest answer model that fits it;
 The desktop app needs GTK 4 and WebKitGTK 6.0, which the script installs with
 `apt`.
 
+## Install with Claude Code
+
+If you use Claude Code, the `meru-install` skill can do the install with you.
+It finds your system, runs the installer that fits it, and checks `merud`,
+`meru`, `meru chat` and the desktop app until each one answers. It asks before
+it changes anything. Copy the skill into your own skills folder:
+
+```sh
+mkdir -p ~/.claude/skills/meru-install
+for f in SKILL.md reference.md; do
+  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" \
+    -o ~/.claude/skills/meru-install/$f
+done
+```
+
+Then start `claude` in any folder and type `/meru-install`, or ask it to
+install Meru. The same skill updates or removes Meru later.
+
 ## What it does
 
 | Capability | What it means |
