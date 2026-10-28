@@ -1,0 +1,80 @@
+# desktop-linux: builds the desktop app for Linux from a release's tag and
+# adds it to that release. scripts/release.sh runs on the owner's Mac and
+# can't build it: the app links GTK 4 and WebKitGTK 6.0 through cgo, so it
+# builds on the system it runs on. docs/releasing.md says when to run this.
+#
+# The owner runs it by hand after `make release`. It adds two files to the
+# release and changes none: the archive, and SHA256SUMS-desktop-linux,
+# which scripts/install-linux.sh checks the archive against. It refuses to
+# run when the release already has the archive, so a published file never
+# changes under its SHA-256.
+
+name: desktop-linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The release tag to build from and add to, such as v0.5.1"
+        required: true
+
+# Read-only by default; the one job below adds what it needs to publish.
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    name: build and publish (Linux, x86-64)
+    # Ubuntu 24.04 has GTK 4 and WebKitGTK 6.0, which the pinned Wails needs.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write     # add the files to the release
+      id-token: write     # sign the build attestation
+      attestations: write # store the build attestation
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # The tag must be a release that exists and lacks the archive.
+      - name: Check the release
+        run: |
+          case "$VERSION" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::$VERSION isn't a version tag"; exit 1 ;; esac
+          assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name') ||
+            { echo "::error::no release $VERSION; run make release first"; exit 1; }
+          if echo "$assets" | grep -q '^meru-desktop-'; then
+            echo "::error::release $VERSION already has the Linux desktop app; a published file never changes"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.version }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install GTK 4 and WebKitGTK 6.0
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+
+      # The same version stamp scripts/release.sh gives meru and merud.
+      - name: make desktop-linux
+        run: |
+          module=github.com/aarora79/meru
+          make desktop-linux VERSION="$VERSION" \
+            LDFLAGS="-X $module/internal/obs.releaseVersion=$VERSION -X $module/internal/about.releaseVersion=$VERSION"
+
+      - name: Write SHA256SUMS-desktop-linux
+        working-directory: dist
+        run: |
+          sha256sum meru-desktop-*.tar.gz > SHA256SUMS-desktop-linux
+          cat SHA256SUMS-desktop-linux
+
+      - name: Record how it was built
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/meru-desktop-*.tar.gz
+
+      - name: Add to the release
+        run: gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" dist/meru-desktop-*.tar.gz dist/SHA256SUMS-desktop-linux

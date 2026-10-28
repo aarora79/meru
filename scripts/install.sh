@@ -42,7 +42,7 @@ ask() {
   case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
 }
 
-[ "$(uname -s)" = "Darwin" ] || fail "this installer is for macOS; see docs/running.md for Linux and Windows"
+[ "$(uname -s)" = "Darwin" ] || fail "this installer is for macOS; on Linux use install-linux.sh, and see docs/running.md for Windows"
 case "$(uname -m)" in
   arm64) arch="arm64" ;;
   x86_64) arch="amd64" ;;

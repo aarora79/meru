@@ -468,7 +468,11 @@ shape. `npmScript` refuses a script path that would leave the package's folder.
 
 For pip it returns `<dir>/.venv/bin/<name>`, whose first line uv wrote as the
 environment's own Python by absolute path. For a binary it returns the filled-in
-path under `{pkg}`. `fillPlaceholders` fills `{pkg}`, `{meru_dir}` and each
+path under `{pkg}`. A binary's command may say `{binary}`, which `launchCommand`
+replaces first with the last part of this platform's download URL, the name
+`installBinary` saved the file under. whisper's command is `{pkg}/{binary}`,
+so the Mac runs `whisper-server-darwin-arm64` and Linux its own file. Validate
+allows `{binary}` only in a binary install's `launch.command`. `fillPlaceholders` fills `{pkg}`, `{meru_dir}` and each
 `{field.<id>}`; a field with no value and no default fails with
 `ErrMissingField`. For a service it also fills `{token}`, a value the
 supervisor makes for each start, and `{file.<id>}`, the path in the install

@@ -39,7 +39,9 @@ var ErrMissingField = errors.New("a field the connector needs has no value")
 //     environment, and LaunchCommand returns <pkg>/.venv/bin/<name>. uv
 //     writes that script's first line as the environment's own Python,
 //     by absolute path.
-//   - binary: launch.command is a path under {pkg}.
+//   - binary: launch.command is a path under {pkg}. {binary} in it is
+//     the file name of this platform's download, as installBinary saved
+//     it, so one command serves every platform's file.
 //
 // The environment's PATH starts with the runtime's folder, so a program
 // the connector starts in turn, node or python, is the pinned one too.
@@ -80,7 +82,16 @@ func (in *Installer) launchCommand(m Manifest, inst Installed, fields map[string
 		pathDir = filepath.Join(inst.Dir, ".venv", "bin")
 		program = filepath.Join(pathDir, m.Launch.Command)
 	case InstallBinary:
-		p, err := fill(m.Launch.Command)
+		command := m.Launch.Command
+		if strings.Contains(command, "{binary}") {
+			b, ok := m.Install.Binaries[in.Platform]
+			if !ok {
+				return "", nil, nil, fmt.Errorf("connector %s: the manifest has no download for %s", m.ID, in.Platform)
+			}
+			// installBinary names the file for its URL's last part.
+			command = strings.ReplaceAll(command, "{binary}", filepath.Base(b.URL))
+		}
+		p, err := fill(command)
 		if err != nil {
 			return "", nil, nil, err
 		}
