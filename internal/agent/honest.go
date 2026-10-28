@@ -81,6 +81,22 @@ func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 const selfNote = "For questions about yourself or this setup, such as which model you are, " +
 	"what you can reach or which folders you read, call about_meru; don't answer from what you learned in training."
 
+// selfLine returns the line that names Meru and the answer model, which
+// joins the system prompt right after the configured prompt, or "" when
+// model is empty. selfNote alone didn't hold. Asked "who are you" on a
+// search+tools turn, qwen3.6:35b called no tool and answered "I'm Meru",
+// then "My name is Jina. I use a Mistral model." Neither word appears
+// anywhere in Meru. With the name in the prompt, the model has the fact
+// without a tool call. The model changes only on a model switch, which
+// loads a new model, so the line stays with the parts Ollama reuses.
+func selfLine(model string) string {
+	if model == "" {
+		return ""
+	}
+	return "Your name is Meru, and the model " + model + " writes your answers, through Ollama on this computer. " +
+		"Never give yourself another name, and never name another model as yours."
+}
+
 // unbackedNotice is the warning a client shows under an answer that claims
 // an action when no tool call in the turn succeeded.
 const unbackedNotice = "Meru didn't run any tool for this answer, so nothing changed on your computer."

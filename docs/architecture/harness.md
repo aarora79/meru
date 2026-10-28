@@ -514,6 +514,7 @@ flowchart TB
         a1[configured prompt or DefaultSystemPrompt]
         a2[whoIsWho: I, me and my mean the user]
         a3[honestyRule: never claim an action no tool took]
+        a3b[selfLine: Meru's name and the answer model]
         a4[today's date]
         a5[one line on the computer: OS, processor, memory, shell, time zone]
         a6[profile: memories of kind me and preferences]
@@ -539,7 +540,7 @@ flowchart TB
 ```
 
 *Figure 4. The prompt, top to bottom. The system message opens with everything that
-stays the same between turns: the persona and rules, today's date, the computer,
+stays the same between turns: the persona and rules, Meru's name and model, today's date, the computer,
 the user's profile, the folders, what Meru's tools can do, and the lists of tools and
 skills. The note on the file tools comes next, on file turns only. The parts each
 question changes follow: recalled memories, skill instructions, excerpts, and web
@@ -555,6 +556,9 @@ Notes on some parts:
   deleted, changed or scheduled, unless a tool call in this turn did it and
   succeeded." It also forbids claiming a tool call that didn't happen and making up
   what a tool would return.
+- **`selfLine`.** "Your name is Meru, and the model qwen3.6:35b writes your
+  answers, through Ollama on this computer." Asked "who are you", a model that
+  skipped `about_meru` once called itself Jina on a Mistral model.
 - **Today's date and the time.** The date sits among the stable parts, since it
   changes once a day. The time of day goes last. Asked "what's the date and time
   right now", a model once read the date from the prompt and made up the time.
@@ -1016,6 +1020,7 @@ guard below names the failure it answers.
 | "Search my Obsidian vault" routed to `search`, which offers no server's tools | a question that points at a connected tool gets tools | `toolTarget`, `withTools` |
 | A small model read "I" as Meru | `whoIsWho` in every prompt | `agent.go` |
 | A model said it moved a folder that nothing moved | the honesty rule, `canDoNote`, and the check after the answer | `honest.go` |
+| A model called itself Jina on a Mistral model | `selfLine` names Meru and the answer model in every prompt | `honest.go` |
 | A model claimed it called `datetime` and hadn't | the check on claimed tool calls | `honest.go` |
 | A model made up the time of day | the time goes in the prompt, last | `budget.go` |
 | A model called a skill as a tool | the skills list says skills aren't tools; a hint names the real tools | `skills.go` |
