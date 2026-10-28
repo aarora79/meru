@@ -52,7 +52,9 @@ case "$(uname -m)" in
   *) fail "unsupported processor $(uname -m)" ;;
 esac
 command -v curl >/dev/null 2>&1 || fail "curl is missing; install it with: sudo apt install curl"
-command -v systemctl >/dev/null 2>&1 && has_systemd=1 || has_systemd=0
+# A container or WSL may ship systemctl with no systemd running, so look
+# for the folder systemd makes when it boots the machine.
+[ -d /run/systemd/system ] && has_systemd=1 || has_systemd=0
 
 # The latest release's tag: github.com/<repo>/releases/latest redirects to
 # .../releases/tag/<tag>, and curl's url_effective is where it landed.
@@ -202,20 +204,38 @@ else
   fi
 fi
 
+# ollama_up waits up to ten seconds for Ollama's API. Ollama's script starts
+# Ollama as a systemd service; with no systemd, as in a container, nothing
+# starts it, so ollama_up starts `ollama serve` itself, logging to
+# ~/.ollama/serve.log, and waits again.
+ollama_up() {
+  local i
+  for i in $(seq 1 10); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && return 0; sleep 1; done
+  echo "Ollama isn't running; starting ollama serve."
+  mkdir -p "$HOME/.ollama"
+  nohup ollama serve >>"$HOME/.ollama/serve.log" 2>&1 &
+  for i in $(seq 1 30); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && return 0; sleep 1; done
+  echo "Ollama didn't start; see ~/.ollama/serve.log."
+  return 1
+}
+
 say "Setting up Meru"
 # meru setup asks its own questions: the answer model that fits this
 # machine, your folders, web search and about you. It downloads the models
 # it picks. It needs a terminal even when every step says yes.
-if has_tty && command -v ollama >/dev/null 2>&1 && ask "Run meru setup now (models, folders, and questions about you)?"; then
+if has_tty && command -v ollama >/dev/null 2>&1 && ollama_up && ask "Run meru setup now (models, folders, and questions about you)?"; then
   "$bin_dir/meru" setup </dev/tty || echo "meru setup stopped; run 'meru setup' again when you're ready."
 elif command -v ollama >/dev/null 2>&1 && [ ! -f "$HOME/.meru/config.toml" ] && ask "Download the lite models and write a default config?"; then
   # No terminal, as over a pipe with MERU_YES=1: the lite profile's two
-  # models and the config template, which merud starts with.
-  ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M
-  ollama pull embeddinggemma-2:440m
-  mkdir -p "$HOME/.meru"
-  "$bin_dir/meru" config template >"$HOME/.meru/config.toml"
-  echo "Wrote ~/.meru/config.toml. Run 'meru setup' in a terminal to pick a larger answer model."
+  # models and the config template, which merud starts with. A failed
+  # download leaves the rest of the install to run.
+  if ollama_up && ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M && ollama pull embeddinggemma-2:440m; then
+    mkdir -p "$HOME/.meru"
+    "$bin_dir/meru" config template >"$HOME/.meru/config.toml"
+    echo "Wrote ~/.meru/config.toml. Run 'meru setup' in a terminal to pick a larger answer model."
+  else
+    echo "The models didn't download; run 'meru setup' once Ollama runs."
+  fi
 else
   echo "Run 'meru setup' when you're ready."
 fi
