@@ -1855,11 +1855,12 @@ and `expandHome`.
 ### merud: window.go
 
 `windowFitter` returns the function that sizes the answer model's context
-window. It asks the engine's `Details` for the model, passes the answer to
+window. It asks the engine's `Details` for the model and passes the answer to
 `engine.FitWindow` with an eighth of `platform.Machine.ModelMemoryGB`
-(`windowMemoryShare`): main memory on a Mac, the card's own memory on Linux with
-an NVIDIA GPU and `[ollama] context_length` as the fallback, sets the
-result with `SetWindow`, and logs it at info as `answer model window`. `run`
+(`windowMemoryShare`), with `[ollama] context_length` as the fallback. That
+memory is main memory on a Mac, and the card's own on Linux with an NVIDIA
+graphics processor (GPU). It sets the result with `SetWindow` and logs it at
+info as `answer model window`. `run`
 calls it for the answer model before `StartWarm`, so the model loads once with
 its window, and hands it to the model service, whose `switchMain` calls it
 before it loads a new answer model. It returns nil for an engine that isn't an

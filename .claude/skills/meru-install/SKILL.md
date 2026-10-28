@@ -195,8 +195,8 @@ If it can't connect, look at the service and its log:
 
 The log names the problem: a model Ollama doesn't have (pull it with
 `ollama pull`), a config line it refuses, or Ollama down. If no service exists,
-the person said no to that step; ask, then reference.md, "Start merud at
-login" or "Start merud on Linux", has the commands. With no systemd, ask
+the person said no to that step. Ask; with a yes, set it up from reference.md,
+"Start merud at login" or "Start merud on Linux". With no systemd, ask
 them to run `merud &` in a terminal they leave open.
 
 **A question through `meru`.**

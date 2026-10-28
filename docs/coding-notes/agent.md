@@ -236,7 +236,7 @@ Ollama on this computer. Never give yourself another name, and never name
 another model as yours.
 ```
 
-A real turn drove it too. Asked "who are you" on the `search+tools` route,
+A real turn led to this line too. Asked "who are you" on the `search+tools` route,
 `qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
 use a Mistral model." `selfNote` (below) had told it to call `about_meru`, and
 it didn't. A fact in the prompt needs no tool call. `a.Main()` reads the answer

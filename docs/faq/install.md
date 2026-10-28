@@ -60,9 +60,10 @@ It checks the release against `SHA256SUMS`, puts `meru` and `merud` in
   service and finds an NVIDIA card's driver;
 - `meru setup`, which offers the largest answer model that fits an NVIDIA
   card's memory, or `lite` without one;
-- `merud` as a systemd user service, started now and at every boot.
+- `merud` as a systemd user service, started now and at each login, or at boot
+  if you let the script turn on linger.
 
-Speech to text works on Linux on x86-64: turn it on in Settings, Connections,
+Speech to text works on x86-64 Linux: turn it on in Settings, Connections,
 and Meru downloads its own Linux build of whisper.cpp's server.
 
 ## From source

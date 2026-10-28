@@ -518,8 +518,8 @@ func TestServiceInstallFails(t *testing.T) {
 
 // TestServiceNoBuild checks that a platform the manifest has no download
 // for stays off, says why, and downloads nothing. It says why whether the
-// connector is switched on or off, so the user isn't told to turn on what
-// can't run.
+// connector is switched on or off, so Meru never asks the user to turn on
+// what can't run.
 func TestServiceNoBuild(t *testing.T) {
 	off, _ := testService(t)
 	off.in.Platform = "linux_amd64"

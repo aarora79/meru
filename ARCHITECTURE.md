@@ -1970,12 +1970,12 @@ names Meru and the answer model:
 > Ollama on this computer. Never give yourself another name, and never name
 > another model as yours.
 
-A real session drove it. Asked "who are you" on the `search+tools` route,
+The line came from a real session. Asked "who are you" on the `search+tools` route,
 `qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
 use a Mistral model." Neither name appears anywhere in Meru. The prompt already
-told the model to call `about_meru` for questions about itself, and it didn't;
-with the name in the prompt, it needs no call. The model changes only on a
-model switch, which loads another model and starts its cache afresh, so the
+told the model to call `about_meru` for questions about itself, and it didn't.
+With the name in the prompt, it needs no call. The model changes only on a
+model switch, which loads another model with an empty cache, so the
 line keeps its place among the parts that stay the same.
 
 The second part checks the answer. A turn that ended without a full answer,
@@ -3312,17 +3312,15 @@ people who prefer a terminal.
 It downloads the release, checks it against `SHA256SUMS`, and puts `meru` and
 `merud` in `~/.local/bin`. It then offers the desktop app, Ollama through
 Ollama's own script, `meru setup`, and `merud` as a systemd user unit with
-lingering, so it starts at boot. On a machine with no systemd running, such
-as a container or WSL, it starts `ollama serve` itself before it pulls the
-models and tells the user to start `merud` by hand; a failed download leaves
-the rest of the install to run. It holds no model table: `meru setup` reads
+lingering, so it starts at boot. On a machine with no systemd running, such as a container or the Windows Subsystem for Linux (WSL), it starts `ollama serve` itself before it pulls the
+models and tells the user to start `merud` by hand; if a model download fails, the rest of the install still runs. It holds no model table: `meru setup` reads
 the GPU through `internal/platform` and offers the model that fits (see [One
 table of differences](#one-table-of-differences)). The desktop app builds
 with cgo against GTK 4 and WebKitGTK 6.0, so the owner's Mac can't build it.
 The `desktop-linux` workflow, run by hand after a release, builds it on
 Ubuntu 24.04 and adds `meru-desktop-vX.Y.Z-linux-amd64.tar.gz`, with
 `SHA256SUMS-desktop-linux`, to the release; it changes no file the release
-holds. The script installs the program in `~/.local/bin`, a desktop entry in
+holds. The script installs the desktop app in `~/.local/bin`, a desktop entry in
 `~/.local/share/applications` and the icon, and offers GTK 4 and WebKitGTK
 through apt.
 
@@ -4880,11 +4878,11 @@ beside the first one, which stays until the runtime folder goes. A `model`
 that isn't one of the two is refused before config changes.
 
 The manifest has downloads for `darwin_arm64` and `linux_amd64`. On any
-other computer the connector stays off, switched on or not, and says why:
+other computer the connector stays off, even when switched on, and says why:
 "Speech to text isn't available on this computer yet: Meru has no
 windows_amd64 build of it."
-The microphone shows the same sentence, so nobody is told to turn on a
-connector that can't run. It never tries an install that can't work.
+The microphone shows the same sentence, so Meru never asks anyone to turn on a
+connector that can't run, or tries an install that can't work.
 
 `TestIntegrationWhisper`, behind the `integration` build tag, installs the
 real connector into a temporary home, starts it through the supervisor, and

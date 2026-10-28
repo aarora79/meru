@@ -140,7 +140,7 @@ jobs:
   linux-amd64:
     name: build, check and publish (Linux, x86-64)
     if: github.ref == 'refs/heads/main' && (inputs.platform == 'all' || inputs.platform == 'linux-amd64')
-    # Ubuntu 22.04's glibc 2.35 is the oldest the binary then needs, so it
+    # Built on Ubuntu 22.04, the binary needs glibc 2.35 or later, so it
     # runs on 22.04, 24.04 and later.
     runs-on: ubuntu-22.04
     permissions:
@@ -170,8 +170,8 @@ jobs:
           tar xzf src.tar.gz
 
       # A processor build, with no CUDA: CUDA would tie the file to the
-      # CUDA libraries, and the base model hears a minute of speech in
-      # about a second on a server processor. GGML_NATIVE=OFF keeps it off
+      # CUDA libraries, and the base model heard a 4-second clip in 1.4
+      # seconds on a server processor. GGML_NATIVE=OFF keeps it off
       # this runner's newest instructions. Static libraries, no OpenMP, and
       # libstdc++ and libgcc linked in leave it needing only glibc.
       - name: Build

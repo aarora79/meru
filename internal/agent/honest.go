@@ -82,10 +82,10 @@ const selfNote = "For questions about yourself or this setup, such as which mode
 	"what you can reach or which folders you read, call about_meru; don't answer from what you learned in training."
 
 // selfLine returns the line that names Meru and the answer model, which
-// joins the system prompt right after the configured prompt, or "" when
-// model is empty. selfNote alone didn't hold. Asked "who are you" on a
+// joins the system prompt right after honestyRule, or "" when
+// model is empty. selfNote's pointer to about_meru wasn't enough. Asked "who are you" on a
 // search+tools turn, qwen3.6:35b called no tool and answered "I'm Meru",
-// then "My name is Jina. I use a Mistral model." Neither word appears
+// then "My name is Jina. I use a Mistral model." Neither name appears
 // anywhere in Meru. With the name in the prompt, the model has the fact
 // without a tool call. The model changes only on a model switch, which
 // loads a new model, so the line stays with the parts Ollama reuses.
