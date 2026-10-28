@@ -27,7 +27,7 @@ easier to review.
   `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
-- [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.6, shipped in order. Each has a
+- [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.7, shipped in order. Each has a
   "Done when" line that serves as its acceptance test.
 - [docs/lld.md](docs/lld.md) — the low-level design: packages, the interfaces between
   them, and one question traced function by function. Start here before reading code.
