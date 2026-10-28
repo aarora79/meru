@@ -113,23 +113,34 @@ offers the largest answer model that fits it;
 The desktop app needs GTK 4 and WebKitGTK 6.0, which the script installs with
 `apt`.
 
-## Install with Claude Code
+## Install with a coding agent
 
-If you use Claude Code, the `meru-install` skill can do the install with you.
-It finds your system, runs the installer that fits it, and checks `merud`,
-`meru`, `meru chat` and the desktop app until each one answers. It asks before
-it changes anything. Copy the skill into your own skills folder:
+If you use Claude Code or Codex, the `meru-install` skill can do the install
+with you. It finds your system, runs the installer that fits it, and checks
+`merud`, `meru`, `meru chat` and the desktop app until each one answers. It
+asks before it changes anything. Copy the skill into your agent's skills
+folder, then ask the agent to install Meru. The same skill updates or removes
+Meru later.
+
+**Claude Code** reads skills from `~/.claude/skills`. Start `claude` in any
+folder afterwards and type `/meru-install`:
 
 ```sh
-mkdir -p ~/.claude/skills/meru-install
+d=~/.claude/skills/meru-install; mkdir -p $d
 for f in SKILL.md reference.md; do
-  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" \
-    -o ~/.claude/skills/meru-install/$f
+  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" -o $d/$f
 done
 ```
 
-Then start `claude` in any folder and type `/meru-install`, or ask it to
-install Meru. The same skill updates or removes Meru later.
+**Codex** reads skills from `~/.agents/skills`. Start `codex` afterwards and
+type `$meru-install`:
+
+```sh
+d=~/.agents/skills/meru-install; mkdir -p $d
+for f in SKILL.md reference.md; do
+  curl -fsSL "https://raw.githubusercontent.com/aarora79/meru/main/.claude/skills/meru-install/$f" -o $d/$f
+done
+```
 
 ## What it does
 
