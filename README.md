@@ -10,10 +10,11 @@ data center.
 
 Meru reads it on your machine. Its code has no path to a cloud AI model, not even
 a disabled one. It keeps open-weight models loaded in your computer's memory, so a
-question needs no API key and costs only electricity, and the installer picks the
-model that fits your Mac's memory.
+question needs no API key and costs only electricity. The installer picks the
+model that fits your Mac's memory or your Linux machine's graphics card.
 
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
+[![Install on Linux](https://img.shields.io/badge/Install-on%20Linux-2F6B4F?logo=linux&logoColor=white&style=for-the-badge)](#install-on-linux)
 [![Latest release](https://img.shields.io/github/v/release/aarora79/meru?label=latest%20release)](https://github.com/aarora79/meru/releases/latest)
 
 **Website:** [aarora79.github.io/meru](https://aarora79.github.io/meru/) ·
