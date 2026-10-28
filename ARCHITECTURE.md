@@ -1614,7 +1614,9 @@ order.
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, the rule that the model never claims an action no tool took (see
-   [Claims no tool backs](#claims-no-tool-backs)), today's date with a pointer to the `datetime` tool for
+   [Claims no tool backs](#claims-no-tool-backs)), a line that names Meru and
+   the answer model (asked "who are you", a model that skipped `about_meru`
+   once called itself Jina on a Mistral model), today's date with a pointer to the `datetime` tool for
    the time in another place, a weekday or days between dates (a model knows only its
    training data, so without the date a trip that ended last week reads as one
    still to come), one line on your computer that `merud`
@@ -1960,6 +1962,21 @@ sorted. The line lists what config allows, not what one route offers, so it
 stays the same from turn to turn and Ollama reuses its work on it. It speaks only
 of Meru's own tools: an MCP tool such as a mail server's send tool says what it
 changes in its own description.
+
+A model can also make up who it is. Right after the honesty rule, every turn
+names Meru and the answer model:
+
+> Your name is Meru, and the model qwen3.6:35b writes your answers, through
+> Ollama on this computer. Never give yourself another name, and never name
+> another model as yours.
+
+A real session drove it. Asked "who are you" on the `search+tools` route,
+`qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
+use a Mistral model." Neither name appears anywhere in Meru. The prompt already
+told the model to call `about_meru` for questions about itself, and it didn't;
+with the name in the prompt, it needs no call. The model changes only on a
+model switch, which loads another model and starts its cache afresh, so the
+line keeps its place among the parts that stay the same.
 
 The second part checks the answer. A turn that ended without a full answer,
 `bad_output` among them, gets no check, since it ends in Meru's own message.

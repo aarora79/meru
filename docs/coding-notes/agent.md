@@ -227,6 +227,24 @@ conversation, and never make up what a tool would give, such as a time, a
 file's contents or a search result. Asked the time, a model had made one up,
 and then said "I called the `datetime` tool" when asked how it knew.
 
+After `honestyRule` comes `selfLine(a.Main())`, also in `honest.go`, which
+names Meru and the answer model:
+
+```text
+Your name is Meru, and the model qwen3.6:35b writes your answers, through
+Ollama on this computer. Never give yourself another name, and never name
+another model as yours.
+```
+
+A real turn drove it too. Asked "who are you" on the `search+tools` route,
+`qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
+use a Mistral model." `selfNote` (below) had told it to call `about_meru`, and
+it didn't. A fact in the prompt needs no tool call. `a.Main()` reads the answer
+model under its lock, so a model switch shows up on the next turn. The switch
+also loads another model, whose cache starts empty, so the line can sit with
+the parts Ollama reuses. `selfLine` returns "" when no model is set, and `add`
+then leaves the line out.
+
 `New` also keeps `displayDir(home, cfg.Skills.OutputDir)` in `a.outputDir`:
 the folder `write_file` writes in, as the model should read it, such as
 `~/meru-output`. `prompt` hands it to `canDoNote` with every tool config
@@ -321,7 +339,7 @@ facts about who the user is sit side by side. Without them, the 2B model read a
 hotel booking and guessed that you were the other guest it named.
 
 The whole system prompt, in order: the configured prompt, `whoIsWho`,
-`honestyRule`, today's date (`today`), the profile, `filesNote`, the line from
+`honestyRule`, `selfLine`, today's date (`today`), the profile, `filesNote`, the line from
 `canDoNote`, `chatsNote` while the file tools are on, `toolsNote` on a turn
 that offers tools, and the list of skills; then `fileToolsNote` or `exploreNote` on a file turn that offers the
 file tools; then the recalled memories, the picked skills' instructions, the
@@ -2017,7 +2035,8 @@ sentences that are claims ("Done. It's now at ~/Projects/garden", "I've moved
 the folder", "The file has been saved to ~/Projects") and ones that aren't
 ("I can move it if you like", "Want me to save it?", "I couldn't move it
 because…", "Done is better than perfect"). `TestCanDoNote` checks the line on
-what Meru can do, with `selfNote` when `about_meru` is allowed, and
+what Meru can do, with `selfNote` when `about_meru` is allowed, `TestSelfLine`
+the line that names Meru and its model, and
 `TestPromptSaysWhatMeruCanDo` that a search turn's prompt
 holds it with the folder and the command names. `TestUnbackedClaim` runs whole
 turns: a claim with no tool call sends the `notice` between the last token and

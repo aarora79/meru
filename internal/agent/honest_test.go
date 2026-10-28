@@ -92,6 +92,28 @@ func TestCanDoNote(t *testing.T) {
 	}
 }
 
+// TestSelfLine checks the line that names Meru and its answer model, and
+// that no model leaves it out.
+func TestSelfLine(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  string
+	}{
+		{"no model", "", ""},
+		{"a model", "qwen3.6:35b",
+			"Your name is Meru, and the model qwen3.6:35b writes your answers, through Ollama on this computer. " +
+				"Never give yourself another name, and never name another model as yours."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := selfLine(tt.model); got != tt.want {
+				t.Errorf("selfLine(%q) = %q\nwant %q", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPromptSaysWhatMeruCanDo checks that every turn's system prompt holds
 // the honesty rule and the line on what Meru can do, with the output
 // folder and the command names, even on a search turn, which offers
