@@ -52,8 +52,8 @@ usual jobs never see its code. The rest of the app, `internal/desktop`, has no
 tag and runs in the test job. The `desktop-linux` job does the same on
 Ubuntu 24.04, after it installs GTK 4 and WebKitGTK 6.0 with apt, and runs
 `make desktop-linux`, which packs the archive a release carries. A Windows
-(WebView2) job comes later. The Mac installer, `cmd/meru-installer`, is built the same way in the
-same job with `make installer`, and `internal/installer` runs in the test job.
+(WebView2) job comes later. The same job builds the Mac installer, `cmd/meru-installer`,
+with `make installer`, and `internal/installer` runs in the test job.
 
 The end-to-end tests live in `test/e2e/` behind the `e2e` build tag. They build
 the real `merud`, `meru` and `fakeollama` binaries and drive them as separate

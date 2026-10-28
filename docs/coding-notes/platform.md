@@ -9,9 +9,10 @@
 `platform` holds what Meru does differently on macOS, Linux and Windows. Before
 it, eight files each asked `runtime.GOOS`, Go's name for the system (`"darwin"`,
 `"linux"` or `"windows"`), and each kept its own list of Mac programs and folders.
-Now they ask this package. It also reads the machine `merud` runs on, GPU
-included, so `merud` sizes the answer model's context window, and `meru setup`
-suggests an answer model, from the memory the model actually loads into.
+Now they ask this package. It also reads the machine `merud` runs on, its
+graphics processor (GPU) included, so `merud` sizes the answer model's context
+window, and `meru setup` suggests an answer model, from the memory the model
+loads into.
 
 ## The picture
 

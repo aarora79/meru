@@ -419,8 +419,8 @@ and about how much it downloads. `Recommend(memGB)` returns the last row whose
 instead. `Models()` lists the models a row needs, each
 once, which is the list the installer pulls.
 
-A GPU with memory of its own, as on Linux with an NVIDIA card, holds nothing but
-the models, so the Mac rows don't fit it. Each row also carries `LoadGB`, about
+A graphics processor (GPU) with memory of its own, as on Linux with an NVIDIA
+card, holds nothing but the models, so the Mac rows don't fit it. Each row also carries `LoadGB`, about
 how much the set takes once Ollama loads it with the router, and
 `RecommendGPU(gpuGB)` returns the last row whose `LoadGB` fits. A 45 GB NVIDIA
 L40S gets the 4-bit `qwen3.6:35b`, since the 8-bit build peaks at about 47 GB.

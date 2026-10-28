@@ -11,7 +11,7 @@
 // See ARCHITECTURE.md, "Platforms". A row is plain data, so a test on any
 // system checks every row; build tags would let it see only its own.
 //
-// What this package deliberately doesn't do: it imports only the standard
+// What this package doesn't do: it imports only the standard
 // library, so any package, client or daemon, may use it. It starts
 // programs only in run.go, read-only ones with fixed arguments and no
 // shell. It never installs or starts a service, and it holds no feature

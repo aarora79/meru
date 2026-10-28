@@ -5,9 +5,9 @@
 #
 # It downloads the release, checks every file against its SHA256SUMS file,
 # and puts meru and merud in ~/.local/bin. Then it offers the next steps:
-# the desktop app, Ollama, `meru setup`, which suggests the answer model
-# for this machine's GPU and downloads the models, and merud as a systemd
-# user service that starts at boot. It first lists what it will install and
+# the desktop app; Ollama; `meru setup`, which suggests the answer model
+# for this machine's GPU and downloads the models; and merud as a systemd
+# user service, started at login, or at boot with linger. It first lists what it will install and
 # asks once: everything, each step in turn, or quit. MERU_YES=1 answers
 # "everything" without asking. MERU_VERSION=v0.5.1 installs a given release
 # instead of the latest.
@@ -96,9 +96,9 @@ if [ -n "$gpu" ]; then
 else
   echo "    - meru setup, which downloads the lite models, about 2.3 GB, and asks about your folders"
 fi
-[ "$has_systemd" = 1 ] && echo "    - merud, as a systemd user service started now and at every boot"
+[ "$has_systemd" = 1 ] && echo "    - merud, as a systemd user service started now and at each login"
 echo
-echo "  Nothing goes anywhere but the downloads from GitHub, Ollama and your apt mirror."
+echo "  It connects only to GitHub, Ollama and your apt mirror, to download."
 echo
 
 if [ "$all" != 1 ] && has_tty; then
@@ -121,7 +121,7 @@ for f in "$cli" SHA256SUMS; do
 done
 
 say "Checking the downloads against SHA256SUMS"
-(cd "$tmp" && sha256sum -c SHA256SUMS --ignore-missing) || fail "a download doesn't match SHA256SUMS; nothing was installed"
+(cd "$tmp" && sha256sum -c SHA256SUMS --ignore-missing) || fail "a download doesn't match SHA256SUMS; the script installed nothing"
 
 say "Installing meru and merud in $bin_dir"
 mkdir -p "$bin_dir"
@@ -135,7 +135,7 @@ case ":$PATH:" in
     echo "$bin_dir isn't on your PATH."
     if ask "Add it to ~/.bashrc?"; then
       echo 'export PATH="$HOME/.local/bin:$PATH"' >>"$HOME/.bashrc"
-      echo "Added. Open a new terminal for it to take effect."
+      echo "Added. Open a new terminal to use it."
     fi
     export PATH="$bin_dir:$PATH"
     ;;
@@ -145,7 +145,7 @@ if [ "$has_desktop" = 1 ] && ask "Install the desktop app?"; then
   for f in "$desktop" SHA256SUMS-desktop-linux; do
     curl -fsSL -o "$tmp/$f" "$base/$f" || fail "couldn't download $f from $base"
   done
-  (cd "$tmp" && sha256sum -c SHA256SUMS-desktop-linux --ignore-missing) || fail "the desktop app doesn't match SHA256SUMS-desktop-linux; it wasn't installed"
+  (cd "$tmp" && sha256sum -c SHA256SUMS-desktop-linux --ignore-missing) || fail "the desktop app doesn't match SHA256SUMS-desktop-linux; the script didn't install it"
   # The app draws its window with GTK 4 and shows its page in WebKitGTK.
   if command -v apt-get >/dev/null 2>&1; then
     if ! dpkg -s libgtk-4-1 libwebkitgtk-6.0-4 >/dev/null 2>&1; then
@@ -240,7 +240,7 @@ else
   echo "Run 'meru setup' when you're ready."
 fi
 
-if [ "$has_systemd" = 1 ] && ask "Start merud now and at every boot, as a systemd user service?"; then
+if [ "$has_systemd" = 1 ] && ask "Start merud now and at each login, as a systemd user service?"; then
   unit_dir="$HOME/.config/systemd/user"
   mkdir -p "$unit_dir" "$HOME/.meru"
   # The repository's unit runs ~/go/bin/merud, where go install puts it;
@@ -258,9 +258,9 @@ if [ "$has_systemd" = 1 ] && ask "Start merud now and at every boot, as a system
     fi
   fi
   for _ in $(seq 1 30); do "$bin_dir/meru" ping >/dev/null 2>&1 && break; sleep 1; done
-  "$bin_dir/meru" ping || echo "merud didn't answer yet; check: journalctl --user -u merud"
+  "$bin_dir/meru" ping || echo "merud hasn't answered yet; check: journalctl --user -u merud"
 else
-  echo "Start it yourself with: merud &"
+  echo "Start merud yourself with: merud &"
 fi
 
 say "Done"
