@@ -303,8 +303,9 @@ xattr -dr com.apple.quarantine /Applications/Meru.app
 To install a newer release, run the same commands with the new files, then
 restart `merud` (see [Update to a newer version](#11-update-to-a-newer-version)).
 Meru never checks for updates on its own. If you use Claude Code, the
-`meru-install` skill in this repo's `.claude/skills/` walks through all of this,
-Ollama and the models included.
+`meru-install` skill in this repo's `.claude/skills/` finds your system, runs
+the installer that fits it, and checks `merud`, `meru`, `meru chat` and the
+desktop app until each one answers.
 
 ### Build from source
 

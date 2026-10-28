@@ -144,6 +144,8 @@
              margin-top: 64px; scroll-margin-top: 16px;
              background: color-mix(in srgb, var(--meru) 6%, var(--bg)); }
   .install h2 { margin-top: 0; }
+  .install h3 { font-size: 19px; color: var(--ink); margin: 28px 0 8px; scroll-margin-top: 16px; }
+  .install h2 + h3 { margin-top: 8px; }
   .cmd { position: relative; margin: 0 0 20px; }
   .cmd pre { margin: 0; background: var(--code-bg); color: var(--ink); border: 1px solid var(--rule);
              border-radius: 10px; padding: 18px 20px; font-family: var(--mono); font-size: 15.5px;
@@ -438,14 +440,15 @@
 
 <section id="install" class="install" aria-labelledby="install-h">
 <h2 id="install-h">Try it on your computer</h2>
-<p>On a Mac, open Terminal and paste this line:</p>
+<h3>On a Mac</h3>
+<p>Open Terminal and paste this line:</p>
 <div class="cmd">
-  <pre><code><span class="prompt" aria-hidden="true">$ </span><span id="install-cmd">curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash</span></code></pre>
+  <pre><code><span class="prompt" aria-hidden="true">$ </span><span class="install-cmd">curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash</span></code></pre>
   <button class="copy" type="button" hidden aria-label="Copy the install command">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span>Copy</span></button>
 </div>
 <ul class="notes">
-  <li>The script runs on macOS. On a Mac with Apple silicon it also installs Meru.app, the desktop app.</li>
+  <li>On a Mac with Apple silicon it also installs Meru.app, the desktop app.</li>
   <li>It lists what it will install, then asks once: everything, one step at a time, or quit.</li>
   <li>It takes several minutes, most of it downloading the models, about 2 GB.</li>
   <li>It checks every download against the release's checksums. Run it again to update; Meru never checks for updates by itself.</li>
@@ -453,12 +456,21 @@
 <p>Or install in a window: download the disk image below, open it and open "Install Meru.app". The first time, macOS refuses because Apple hasn't checked Meru: click Done, then Open Anyway in System Settings, Privacy &amp; Security. It walks through each step, says what it downloads first, and sets up web search, your folders and Gmail if you want them.</p>
 <div class="more">
   <a class="cta" href="https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg">Download the Mac installer</a>
-  <span>Windows: see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</span>
 </div>
-<p>On Linux, tested on Ubuntu 24.04, paste this line in a terminal instead. It installs <code>meru</code> and <code>merud</code>, then offers the desktop app, Ollama, setup and starting <code>merud</code> at boot. With an NVIDIA card, setup offers the largest model that fits the card's memory.</p>
+<h3 id="linux">On Linux</h3>
+<p>Open a terminal and paste this line:</p>
 <div class="cmd">
-  <pre><code><span class="prompt" aria-hidden="true">$ </span>curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash</code></pre>
+  <pre><code><span class="prompt" aria-hidden="true">$ </span><span class="install-cmd">curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash</span></code></pre>
+  <button class="copy" type="button" hidden aria-label="Copy the Linux install command">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span>Copy</span></button>
 </div>
+<ul class="notes">
+  <li>Tested on Ubuntu 24.04.</li>
+  <li>It installs <code>meru</code> and <code>merud</code>, then offers the desktop app, Ollama, setup and starting <code>merud</code> at boot, asking before each step.</li>
+  <li>With an NVIDIA card, setup offers the largest model that fits the card's memory.</li>
+  <li>Run it again to update; it keeps your settings.</li>
+</ul>
+<p>On Windows, see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</p>
 </section>
 
 <section aria-labelledby="project">
@@ -495,12 +507,14 @@
       if (days >= 0) released.textContent = ago;
     }
 
-    var btn = document.querySelector(".copy");
-    var cmd = document.getElementById("install-cmd");
-    if (btn && cmd) {
+    // Each command box with a Copy button copies its own command.
+    document.querySelectorAll(".cmd").forEach(function (box) {
+      var btn = box.querySelector(".copy");
+      var cmd = box.querySelector(".install-cmd");
+      if (!btn || !cmd) return;
       var label = btn.querySelector("span");
       btn.hidden = false;
-      btn.parentElement.classList.add("has-copy");
+      box.classList.add("has-copy");
       function copied() {
         label.textContent = "Copied";
         btn.classList.add("done");
@@ -526,7 +540,7 @@
           fallback(text);
         }
       });
-    }
+    });
 
     // Theme toggle: the same one as the architecture pages, sharing their saved choice.
     var theme = document.querySelector(".theme");
