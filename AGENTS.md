@@ -313,9 +313,10 @@ internal/
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
-deploy/              launchd/ and systemd/ service files
+deploy/              launchd/ and systemd/ service files, and linux/meru.desktop for the app menu
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
-                     installer; dmg-readme.txt, the read-me on the installer's disk image;
+                     installer, and install-linux.sh, Linux's; dmg-readme.txt, the read-me
+                     on the installer's disk image;
                      bench.sh, which `make bench` runs
 dist/                git-ignored; `make release` packs a release here
 bench/               git-ignored; the private benchmark: tasks.jsonl, results/ and home/
@@ -524,6 +525,7 @@ make cover            # tests with coverage, and the total
 make build            # binaries for five platforms in bin/
 make desktop          # the desktop app for this machine (cgo); make desktop-check vets it
 make desktop-app      # wrap the desktop app in bin/Meru.app (macOS)
+make desktop-linux    # pack the desktop app in dist/meru-desktop-VERSION-linux-ARCH.tar.gz (Linux)
 make installer-app    # the Mac installer, with its payload, in "bin/Install Meru.app"
 make dmg              # pack the installer in dist/Meru-dev-macos-arm64.dmg (Apple silicon)
 make release VERSION=v0.4.1 DRY_RUN=1  # build and pack a release in dist/; drop DRY_RUN to publish
