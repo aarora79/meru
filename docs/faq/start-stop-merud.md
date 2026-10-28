@@ -37,9 +37,19 @@ launchctl bootout gui/$(id -u)/com.meru.merud      # stop and remove
 Under `launchd`, `pkill merud` only makes it start again, so restart with
 `kickstart -k`.
 
-**On Linux**, install the `systemd` user unit and use
-`systemctl --user restart merud`. [deploy/README.md](../../deploy/README.md)
-has the steps.
+**On Linux**, `install-linux.sh` offers to install the `systemd` user unit in
+`~/.config/systemd/user/merud.service`; [deploy/README.md](../../deploy/README.md)
+has the steps by hand. To manage it:
+
+```sh
+systemctl --user status merud    # state
+systemctl --user restart merud   # restart
+systemctl --user stop merud      # stop
+journalctl --user -u merud       # what it printed
+```
+
+`systemctl --user` starts it at login. To start it at boot, before you log in,
+run `sudo loginctl enable-linger $USER` once, which the script also offers.
 
 **Which ones need a restart?** Anything you edit by hand in `config.toml`:
 `[[commands]]`, `[index] folders`, models other than the answer model, and
