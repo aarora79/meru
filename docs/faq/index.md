@@ -5,7 +5,7 @@ steps and links to [running.md](../running.md) for the full story.
 
 ## Get started
 
-- [How do I install Meru on a Mac?](install.md)
+- [How do I install Meru, on a Mac or on Linux?](install.md)
 - [How do I start, stop or restart merud?](start-stop-merud.md)
 - [How do I change a setting?](change-settings.md)
 - [How do I update or uninstall Meru?](update-uninstall.md)

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="author" content="Amit Arora">
-<meta name="description" content="Meru is a personal AI assistant that runs entirely on your own computer. Install it on a Mac with one command.">
+<meta name="description" content="Meru is a personal AI assistant that runs entirely on your own computer. Install it on a Mac or on Linux with one command.">
 <title>Meru: a personal AI assistant that runs on your own computer</title>
 <style>
   /* One file, no external fonts, scripts or trackers, so it opens from disk and
@@ -437,8 +437,8 @@
 </section>
 
 <section id="install" class="install" aria-labelledby="install-h">
-<h2 id="install-h">Try it on your Mac</h2>
-<p>Open Terminal and paste this line:</p>
+<h2 id="install-h">Try it on your computer</h2>
+<p>On a Mac, open Terminal and paste this line:</p>
 <div class="cmd">
   <pre><code><span class="prompt" aria-hidden="true">$ </span><span id="install-cmd">curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash</span></code></pre>
   <button class="copy" type="button" hidden aria-label="Copy the install command">
@@ -453,7 +453,11 @@
 <p>Or install in a window: download the disk image below, open it and open "Install Meru.app". The first time, macOS refuses because Apple hasn't checked Meru: click Done, then Open Anyway in System Settings, Privacy &amp; Security. It walks through each step, says what it downloads first, and sets up web search, your folders and Gmail if you want them.</p>
 <div class="more">
   <a class="cta" href="https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg">Download the Mac installer</a>
-  <span>Linux and Windows: see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</span>
+  <span>Windows: see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</span>
+</div>
+<p>On Linux, tested on Ubuntu 24.04, paste this line in a terminal instead. It installs <code>meru</code> and <code>merud</code>, then offers the desktop app, Ollama, setup and starting <code>merud</code> at boot. With an NVIDIA card, setup offers the largest model that fits the card's memory.</p>
+<div class="cmd">
+  <pre><code><span class="prompt" aria-hidden="true">$ </span>curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash</code></pre>
 </div>
 </section>
 
