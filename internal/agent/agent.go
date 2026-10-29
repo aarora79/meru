@@ -511,6 +511,12 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				notice = strings.TrimSpace(notice + " " + callNotice(tool))
 			}
 		}
+		// An answer that links a file with file:// needs the file to be
+		// there, whatever the turn called. See missingFiles.
+		if missing := missingFiles(rep.text); len(missing) > 0 {
+			unbacked = true
+			notice = strings.TrimSpace(notice + " " + missingNotice(missing))
+		}
 	}
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)

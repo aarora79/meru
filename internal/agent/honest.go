@@ -1,13 +1,18 @@
 // This file holds what keeps Meru honest about what it did: the rule and
 // the line on what Meru can do, which join the system prompt on every turn,
-// and the two checks that run after an answer and warn the user when the
-// answer claims an action no tool took, or a tool call that didn't happen.
-// See ARCHITECTURE.md, "Claims no tool backs".
+// and the three checks that run after an answer and warn the user when the
+// answer claims an action no tool took, a tool call that didn't happen, or
+// links a file that isn't there. See ARCHITECTURE.md, "Claims no tool backs".
 
 package agent
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -370,6 +375,51 @@ func (a *Agent) unbackedToolClaim(ctx context.Context, t *turn, sess *transcript
 	}
 	called = append(called, earlier...)
 	return unbackedCall(claims, called)
+}
+
+// fileLink matches a file:// URL in an answer, up to a space or a mark that
+// ends a Markdown link, such as ")" or "]".
+var fileLink = regexp.MustCompile("file://[^\\s()<>\"'`\\[\\]]+")
+
+// missingFiles returns the path of each file an answer links with a
+// file:// URL that doesn't exist on this computer, each once, in the order
+// the answer gives them. Code blocks are skipped. A real turn showed why.
+// Asked for "a link to the html you generated", qwen3.6:35b called no
+// write_file and answered "Here it is:" with a link into ~/meru-output.
+// No file was there, and the answer used no words claimsAction reads, so
+// only the link itself gave it away.
+//
+// A path os.Stat can't read for another reason, such as a folder the user
+// can't open, counts as there: the check warns only about a file it knows
+// is missing.
+func missingFiles(text string) []string {
+	var out []string
+	for _, link := range fileLink.FindAllString(withoutCode(text), -1) {
+		// A link at the end of a sentence may carry its stop.
+		u, err := url.Parse(strings.TrimRight(link, ".,;:!?"))
+		if err != nil || u.Path == "" {
+			continue
+		}
+		path := u.Path
+		// A Windows link, file:///C:/Users/…, parses to the path /C:/Users/….
+		if len(path) > 2 && path[0] == '/' && path[2] == ':' {
+			path = path[1:]
+		}
+		path = filepath.FromSlash(path)
+		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && !slices.Contains(out, path) {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// missingNotice returns the warning a client shows under an answer that
+// links files that don't exist, from the paths missingFiles returns.
+func missingNotice(paths []string) string {
+	if len(paths) == 1 {
+		return "The answer links " + paths[0] + ", which doesn't exist on this computer."
+	}
+	return "The answer links files that don't exist on this computer: " + strings.Join(paths, ", ") + "."
 }
 
 // shortTool returns the last dot-separated part of a tool name, in lower
