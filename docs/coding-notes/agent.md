@@ -1031,6 +1031,32 @@ prompt must end with the time, and the follow-up "I called the `datetime`
 tool" must get the notice. `TestToolClaimBackedByHistory` checks that a call
 in the earlier turn backs the same claim.
 
+A third check reads the files an answer links. Asked for "a link to the html
+you generated", `qwen3.6:35b` called `web_search` twice and no `write_file`,
+then answered "Here it is:" with a `file://` link into `~/meru-output`. No
+file was there, and no sentence matched a pattern above, so `Handle` also runs
+`missingFiles` on every full answer:
+
+```go
+if missing := missingFiles(rep.text); len(missing) > 0 {
+    unbacked = true
+    notice = strings.TrimSpace(notice + " " + missingNotice(missing))
+}
+```
+
+`missingFiles` finds each `file://` URL with the regular expression `fileLink`,
+outside code blocks, trims a stop that ends the sentence, and parses it with
+`net/url`, which turns `%20` back into a space. `filepath.FromSlash` turns the
+URL's `/` into the system's separator, and a Windows link such as
+`file:///C:/Users/…` loses the `/` before its drive letter. `os.Stat` then
+asks for the file. Only `fs.ErrNotExist` counts, checked with `errors.Is`,
+so a folder the user can't open doesn't raise a false alarm. The notice names
+the path: "The answer links …/dashboard.html, which doesn't exist on this
+computer." `TestMissingFiles` covers links that are there, missing, bare,
+with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
+replays the real turn with a fake model, a `web_search` call and a link to a
+file in a temporary folder.
+
 ### searchFiles
 
 On a file turn, `Handle` calls `searchFiles` between routing and the prompt.
@@ -2043,7 +2069,8 @@ turns: a claim with no tool call sends the `notice` between the last token and
 `done` and writes it to the assistant line; a claim after a `write_file` that
 ended `ok` sends none; a claim after a declined call sends it.
 `TestNoticeInHistory` checks that the next turn's model reads the notice after
-the old answer.
+the old answer. `TestMissingFiles` and `TestMissingFileNotice` check the
+links to files that aren't there.
 
 `tools_test.go` checks the tool rounds with `fakeTools` and a `fakeEngine`
 that scripts one reply per round: which routes offer tools, the event order

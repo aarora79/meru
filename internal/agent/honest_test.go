@@ -1,10 +1,14 @@
 // This file tests honest.go: the claim check on its own, the line on what
-// Meru can do, and whole turns that do or don't warn the user.
+// Meru can do, the check for linked files that aren't there, and whole
+// turns that do or don't warn the user.
 
 package agent
 
 import (
 	"context"
+	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -375,5 +379,67 @@ func TestToolClaimBackedByHistory(t *testing.T) {
 				t.Errorf("notice sent = %v, want %v; events %v", got, tt.want, types(evs))
 			}
 		})
+	}
+}
+
+func TestMissingFiles(t *testing.T) {
+	dir := t.TempDir()
+	there := filepath.Join(dir, "plan.html")
+	if err := os.WriteFile(there, []byte("<h1>Plan</h1>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(dir, "dashboard.html")
+	spaced := filepath.Join(dir, "my notes.html")
+	// toURL writes path as a file:// URL, the way an answer links it.
+	toURL := func(path string) string {
+		return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+	}
+	tests := []struct {
+		name string
+		text string
+		want []string
+	}{
+		{"no links", "The plan is in your notes.", nil},
+		{"a file that is there", "Here it is: [Plan](" + toURL(there) + ")", nil},
+		{"a Markdown link to a missing file", "Here it is:\n\n[Dashboard](" + toURL(gone) + ")", []string{gone}},
+		{"a bare link with a stop", "Open " + toURL(gone) + ".", []string{gone}},
+		{"a link with a space in its name", "[Notes](" + toURL(spaced) + ")", []string{spaced}},
+		{"the same file twice", "[A](" + toURL(gone) + ") and " + toURL(gone), []string{gone}},
+		{"a link in a code block", "```\nopen " + toURL(gone) + "\n```", nil},
+		{"a web link", "See [the docs](https://example.com/dashboard.html).", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := missingFiles(tt.text); !slices.Equal(got, tt.want) {
+				t.Errorf("missingFiles(%q) = %q, want %q", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMissingFileNotice checks a whole turn: an answer that links a file
+// no tool wrote gets the notice, even though it claims nothing in words
+// and the turn called a tool.
+func TestMissingFileNotice(t *testing.T) {
+	cfg := testConfig(t)
+	gone := filepath.Join(t.TempDir(), "dashboard.html")
+	link := (&url.URL{Scheme: "file", Path: filepath.ToSlash(gone)}).String()
+	eng := &fakeEngine{rounds: []fakeRound{
+		{calls: []engine.ToolCall{call(builtin.WebSearch, `{"query":"chart library"}`)}},
+		{pieces: []string{"Here it is:\n\n[Dashboard](" + link + ")"}},
+	}}
+	tools := &fakeTools{specs: []engine.ToolSpec{spec(builtin.WebSearch)}}
+	router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
+	a := New(cfg, eng, router, nil, tools, nil, nil, quietLog())
+	evs, err := run(context.Background(), a, rpc.Request{Text: "give me a link to the html you generated"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	i := slices.IndexFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventNotice })
+	if i < 0 {
+		t.Fatalf("no notice; events %v", types(evs))
+	}
+	if want := missingNotice([]string{gone}); evs[i].Text != want {
+		t.Errorf("notice = %q, want %q", evs[i].Text, want)
 	}
 }

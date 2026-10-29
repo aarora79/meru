@@ -893,8 +893,12 @@ alone didn't stop that, so `honest.go` reads every full answer after it ends.
   tool", "I ran date" and the like, and checks that the named tool has a
   `tool_call` line in this turn or in the turns the history holds, so "how did you
   get that?" can answer about an earlier turn.
+- **Links to missing files.** `missingFiles` takes every `file://` URL in the
+  answer and checks that its file exists. A model once answered "Here it is:" with a
+  link into `~/meru-output` to a page no `write_file` had made, in words neither
+  check above reads.
 
-Either finding sends a `notice` event after the last token and before `done`, such as
+Any finding sends a `notice` event after the last token and before `done`, such as
 "Meru didn't run any tool for this answer, so nothing changed on your computer." The
 assistant line keeps the notice, and the next turn's history carries it. The checks
 read plain English patterns: they miss a claim in words no rule lists, and they flag
@@ -1022,6 +1026,7 @@ guard below names the failure it answers.
 | A model said it moved a folder that nothing moved | the honesty rule, `canDoNote`, and the check after the answer | `honest.go` |
 | A model called itself Jina on a Mistral model | `selfLine` names Meru and the answer model in every prompt | `honest.go` |
 | A model claimed it called `datetime` and hadn't | the check on claimed tool calls | `honest.go` |
+| A model linked an HTML page no tool had written | the check on `file://` links | `missingFiles` |
 | A model made up the time of day | the time goes in the prompt, last | `budget.go` |
 | A model called a skill as a tool | the skills list says skills aren't tools; a hint names the real tools | `skills.go` |
 | A model called `datetime` with no arguments in all eight rounds | repeated calls don't run; tools go after two repeats | `runRound` |

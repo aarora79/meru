@@ -2042,6 +2042,20 @@ This check misses a claim in words no rule lists, such as "I got it by calling
 the datetime tool", and flags "here is the command I used" in a how-to answer,
 where Meru ran no command either.
 
+A third check, also on every full answer, looks at the files the answer links.
+Asked for "a link to the html you generated", `qwen3.6:35b` called
+`web_search` twice, no `write_file`, and answered "Here it is:" with a link to
+`~/meru-output/jordan_reyes_dashboard.html`. No file was there, and the answer
+claimed nothing in words either check reads. So `merud` takes every `file://`
+URL in the answer, outside code blocks, and asks the file system for its path.
+When a path doesn't exist, the same `notice` event says "The answer links
+~/meru-output/jordan_reyes_dashboard.html, which doesn't exist on this
+computer.", with the full path, after any notice the other checks sent. The
+span and log line mark it as `unbacked_claim`. A path the check can't read for
+another reason, such as a folder you can't open, counts as there. It misses a
+missing file named as a plain path, such as "saved to ~/meru-output/plan.html",
+which the first check reads instead when no tool ran.
+
 ### Routing
 
 A small model asked to write its route as JSON (JavaScript Object Notation) fails in
@@ -2279,8 +2293,9 @@ A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision` (see
-[Agent loop](#agent-loop)). It gets a `notice` field only when the answer
-claimed an action and no tool call in the turn succeeded (see
+[Agent loop](#agent-loop)). It gets a `notice` field only when a check on
+the answer warned, such as a claimed action with no successful tool call or a
+link to a file that isn't there (see
 [Claims no tool backs](#claims-no-tool-backs)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
