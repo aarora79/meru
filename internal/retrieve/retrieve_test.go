@@ -348,6 +348,12 @@ func TestCite(t *testing.T) {
 			Chunk: store.Chunk{Heading: heading, StartLine: start, EndLine: end, Page: page},
 		}}
 	}
+	// rows is a chunk of rows from the sheet or file at p, of kind.
+	rows := func(p, kind, heading string, start, end int) Result {
+		r := result(heading, start, end, 0)
+		r.Path, r.Kind = p, kind
+		return r
+	}
 	tests := []struct {
 		name string
 		n    int
@@ -359,6 +365,8 @@ func TestCite(t *testing.T) {
 		{"page", 3, result("", 0, 0, 4), `[3] notes/launch.md, page 4`},
 		{"nothing to locate", 4, result("", 0, 0, 0), `[4] notes/launch.md`},
 		{"quote in heading", 5, result(`The "plan"`, 1, 2, 0), `[5] notes/launch.md, "The \"plan\"", lines 1–2`},
+		{"rows of a sheet", 6, rows("trips/budget.xlsx", KindXLSX, "Invoices", 12, 41), `[6] trips/budget.xlsx, "Invoices", rows 12–41`},
+		{"one row of a csv", 7, rows("trips/trip.csv", KindCSV, "trip", 3, 3), `[7] trips/trip.csv, "trip", row 3`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

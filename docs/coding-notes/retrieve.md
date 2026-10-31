@@ -102,8 +102,9 @@ sets `TopN` alone, to the number of excerpts the model asked for.
 
 `Result` embeds `store.ChunkWithDoc` and adds the RRF score, so `r.Path`,
 `r.Heading` and `r.Text` work directly. `r.IsImage()` says whether the chunk
-is an image's, and `r.CitationKind()` gives the `Kind` its `rpc.Citation`
-carries: `"image"` or empty. `Search` keeps at most `maxImageResults`, two,
+is an image's, `r.IsTable()` whether it holds rows of an Excel sheet or a
+delimited text file, and `r.CitationKind()` gives the `Kind` its
+`rpc.Citation` carries: `"image"`, `"table"` (`SourceTable`) or empty. `Search` keeps at most `maxImageResults`, two,
 images among its results: an image's chunk text is only its name, and the
 answer model sees the picture only if it opens it with `view_image`, so more
 would crowd out text it can use.
@@ -116,7 +117,9 @@ would crowd out text it can use.
 [1] notes/launch.md, "Q3 launch", lines 12–40
 ```
 
-A PDF chunk gets `page 3` instead of lines, an image gets `(image)` and no
+A PDF chunk gets `page 3` instead of lines, rows of a sheet get `rows 12–41`
+under the sheet's name (`[3] trips/budget.xlsx, "Invoices", rows 12–41`), an
+image gets `(image)` and no
 heading, and a chunk with no heading leaves the heading out. `Format` writes a
 one-line instruction ("Cite the ones you use by number") and then each chunk's
 text under its citation line; under an image it says the text is only the

@@ -47,11 +47,15 @@ func (c Citation) String() string {
 	if c.Heading != "" {
 		fmt.Fprintf(&b, ", %q", c.Heading)
 	}
+	line, lines := "line", "lines"
+	if c.Kind == SourceTable {
+		line, lines = "row", "rows"
+	}
 	switch {
 	case c.StartLine > 0 && c.EndLine > c.StartLine:
-		fmt.Fprintf(&b, ", lines %d–%d", c.StartLine, c.EndLine)
+		fmt.Fprintf(&b, ", %s %d–%d", lines, c.StartLine, c.EndLine)
 	case c.StartLine > 0:
-		fmt.Fprintf(&b, ", line %d", c.StartLine)
+		fmt.Fprintf(&b, ", %s %d", line, c.StartLine)
 	case c.Page > 0:
 		fmt.Fprintf(&b, ", page %d", c.Page)
 	}

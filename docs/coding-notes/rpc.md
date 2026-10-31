@@ -349,6 +349,9 @@ way:
   it this way. `Kind` is empty for text, so an older client shows an image as
   any other source. A web page, `Kind` `SourceWeb`, prints as `[5] Release
   History — https://go.dev/doc/devel/release`, from its `Heading` and `URL`.
+  Rows of a sheet, `Kind` `SourceTable`, print as `[6] ~/trips/budget.xlsx,
+  "Invoices", rows 12–41`; an older client prints "lines" for the rows and
+  still opens the file.
 - **`Citation.Link(home)`** is the address a source line links to: a web page's
   `URL`, or the file's `FileURL`.
 - **`Cited(answer, sources)`** finds the `[1]` and `[1, 3]` marks in the

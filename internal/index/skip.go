@@ -39,6 +39,11 @@ const (
 	// [index] images is on and the embedding model takes images. Its
 	// document holds one chunk whose vector comes from the picture.
 	KindImage = "image"
+	// KindDocx is a Word document; KindXLSX an Excel workbook; KindCSV a
+	// delimited text file: .csv, .tsv or .tab.
+	KindDocx = "docx"
+	KindXLSX = "xlsx"
+	KindCSV  = "csv"
 )
 
 // ignoreFiles are the per-folder rule files, read in this order. A later
@@ -64,14 +69,17 @@ var secretNames = []string{
 }
 
 // kinds maps a lower-case file extension to the kind of file it holds.
-// Anything missing here is skipped as unsupported. Office formats come
-// later (see ROADMAP.md).
+// Anything missing here is skipped as unsupported, including the old
+// binary Office formats, .doc and .xls (see docs/design/word-excel-csv.md).
+// A .txt file stays plain text, even when it holds tab-separated columns.
 var kinds = map[string]string{
 	".md": KindMarkdown, ".markdown": KindMarkdown,
 	".txt": KindText, ".rst": KindText, ".org": KindText,
 	".html": KindHTML, ".htm": KindHTML,
-	".pdf": KindPDF,
-	".go":  KindCode, ".py": KindCode, ".js": KindCode, ".ts": KindCode,
+	".pdf":  KindPDF,
+	".docx": KindDocx, ".xlsx": KindXLSX,
+	".csv": KindCSV, ".tsv": KindCSV, ".tab": KindCSV,
+	".go": KindCode, ".py": KindCode, ".js": KindCode, ".ts": KindCode,
 	".tsx": KindCode, ".jsx": KindCode, ".java": KindCode, ".rb": KindCode,
 	".rs": KindCode, ".c": KindCode, ".h": KindCode, ".cpp": KindCode,
 	".cs": KindCode, ".swift": KindCode, ".kt": KindCode, ".sh": KindCode,
@@ -145,6 +153,18 @@ func kindOf(name string) (kind, reason string) {
 	default:
 		return "", ReasonUnsupported
 	}
+}
+
+// sniffs reports whether the NUL-byte test applies to a file of kind. It
+// doesn't to the formats the indexer reads that are binary on purpose:
+// PDFs, images, and Word and Excel files, which are ZIP archives. Their
+// own readers check the bytes instead.
+func sniffs(kind string) bool {
+	switch kind {
+	case KindPDF, KindImage, KindDocx, KindXLSX:
+		return false
+	}
+	return true
 }
 
 // looksBinary reports whether data has a NUL byte in its first 8 KB. Text

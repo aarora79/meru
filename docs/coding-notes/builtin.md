@@ -412,11 +412,17 @@ refused. A path outside every folder fails with a message that lists them. A ski
 indexer's reason in words, such as "secret file" or "ignored by .gitignore,
 .meruignore or [index] ignore". The package copies none of the skip rules; it
 maps each `index.Reason…` constant to a phrase in `reasonText`, and that's all.
+One case gets more words: an old `.xls` or `.doc` file, which `oldOffice` names,
+fails with a line that tells the model to ask the user to save it as `.xlsx` or
+`.docx`, instead of "file type Meru doesn't read".
 
 **`read_file`** calls `index.Indexer.ReadText`, which returns the text the
-chunkers see: Markdown, text and code as written, HTML as its text, and a PDF as
-one string per page. `joinPages` puts a `--- page N ---` line before each PDF
-page. The tool turns the text into runes (`[]rune(full)`), Go's name for
+chunkers see: Markdown, text and code as written, HTML and Word as their text,
+a PDF as one string per page, and an Excel workbook as one string per sheet. A
+sheet or a CSV file comes one row per line, its cells joined by ` | `.
+`joinPages` puts a `--- page N ---` line before each PDF page and a
+`--- sheet Name ---` line before each sheet, and keeps a sheet's blank lines,
+so line N under the header is row N. The tool turns the text into runes (`[]rune(full)`), Go's name for
 characters, so `offset` counts characters and a page never ends halfway through
 an "é". It returns at most 12,000 characters after a header line with the path,
 size and modified date. When text remains, a closing line gives the next
@@ -443,8 +449,9 @@ can fix it.
 
 A `grepRun` holds one search's state. `search` walks each start folder with
 `Walk`, and `file` reads each kept file with `ReadText` and tests it line by
-line. A PDF line reports its page, `path (page N): text`; any other file reports
-its line number, `path:12: text`. `around` keeps each line to 200
+line. A PDF line reports its page, `path (page N): text`; a sheet line its sheet
+and row, `path (sheet Invoices, row 14): text`; a CSV line its row,
+`path (row 14): text`; any other file its line number, `path:12: text`. `around` keeps each line to 200
 characters: a longer line shows the 200 around its first match, with `…` at
 each end it cut. A chat's JSONL line holds a whole answer, thousands of
 characters, and a cut from the start would show its `ts` and `type` fields and

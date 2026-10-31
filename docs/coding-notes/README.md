@@ -83,6 +83,7 @@ Read them in this order; each builds on the ones before it.
 - [embed](go-basics/embed.md)
 - [os.Root](go-basics/os-root.md)
 - [Byte slices](go-basics/byte-slices.md)
+- [XML streaming](go-basics/xml-streaming.md)
 
 ## Rules for writing a note
 

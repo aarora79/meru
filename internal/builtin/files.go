@@ -179,14 +179,22 @@ func (t *Tools) readFile(raw json.RawMessage) (string, error) {
 }
 
 // joinPages returns a file's text as one string. A PDF's pages each start
-// with a "--- page N ---" line, so the model can cite the page.
+// with a "--- page N ---" line, so the model can cite the page, and an
+// Excel workbook's sheets each with a "--- sheet Name ---" line. A sheet
+// keeps its blank lines, since line N under its header is row N.
 func joinPages(text index.Text) string {
-	if text.Kind != index.KindPDF {
-		return strings.Join(text.Pages, "")
-	}
 	var b strings.Builder
-	for i, p := range text.Pages {
-		fmt.Fprintf(&b, "--- page %d ---\n%s\n", i+1, strings.TrimSpace(p))
+	switch text.Kind {
+	case index.KindPDF:
+		for i, p := range text.Pages {
+			fmt.Fprintf(&b, "--- page %d ---\n%s\n", i+1, strings.TrimSpace(p))
+		}
+	case index.KindXLSX:
+		for i, p := range text.Pages {
+			fmt.Fprintf(&b, "--- sheet %s ---\n%s", text.Names[i], p)
+		}
+	default:
+		return strings.Join(text.Pages, "")
 	}
 	return b.String()
 }
@@ -324,8 +332,9 @@ func skippedLine(skipped map[string]int) string {
 }
 
 // grep searches the text of every file the indexer reads under a folder or
-// in one file, and returns the lines that match, each as "path:line: text"
-// or, for a PDF, "path (page N): text". It stops at max_results matches,
+// in one file, and returns the lines that match, each as "path:line: text";
+// for a PDF, "path (page N): text"; for an Excel sheet, "path (sheet S,
+// row N): text"; and for a delimited text file, "path (row N): text". It stops at max_results matches,
 // after grepTime, or after grepFiles files, and says which stopped it. It
 // fails when the pattern is empty or an invalid regular expression, when
 // the path can't be resolved or is skipped, and when ctx ends.
@@ -461,9 +470,16 @@ func (s *grepRun) file(ctx context.Context, p string) error {
 			if !s.re.MatchString(line) {
 				continue
 			}
-			where := fmt.Sprintf("%s:%d", shown, n+1)
-			if text.Kind == index.KindPDF {
+			var where string
+			switch text.Kind {
+			case index.KindPDF:
 				where = fmt.Sprintf("%s (page %d)", shown, i+1)
+			case index.KindXLSX:
+				where = fmt.Sprintf("%s (sheet %s, row %d)", shown, text.Names[i], n+1)
+			case index.KindCSV:
+				where = fmt.Sprintf("%s (row %d)", shown, n+1)
+			default:
+				where = fmt.Sprintf("%s:%d", shown, n+1)
 			}
 			s.lines = append(s.lines, where+": "+around(strings.TrimSpace(line), s.re, maxLineChars))
 			s.files[p] = true
@@ -564,10 +580,26 @@ func (t *Tools) resolve(tool, p string) (index.Checked, error) {
 		return index.Checked{}, fmt.Errorf("%s: %s doesn't exist. List its folder with list_folder to see what is there", tool, p)
 	case err != nil:
 		return index.Checked{}, fmt.Errorf("%s: %s: %v", tool, p, err)
+	case c.Reason == index.ReasonUnsupported && oldOffice(c.Path) != "":
+		return index.Checked{}, fmt.Errorf("%s: %s %s", tool, p, oldOffice(c.Path))
 	case c.Reason != "":
 		return index.Checked{}, fmt.Errorf("%s: %s is off limits: %s. Meru reads only the files it indexes", tool, p, why(c.Reason))
 	}
 	return c, nil
+}
+
+// oldOffice returns what to tell the model about p when it is in an old
+// binary Office format, .xls or .doc, and "" otherwise. Meru doesn't read
+// those formats (docs/design/word-excel-csv.md says why), so the line says
+// how the user can fix it instead of only "file type Meru doesn't read".
+func oldOffice(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".xls":
+		return "is in the old Excel format, which Meru doesn't read. Ask the user to open it in Excel or Numbers and save it as .xlsx"
+	case ".doc":
+		return "is in the old Word format, which Meru doesn't read. Ask the user to open it in Word or Pages and save it as .docx"
+	}
+	return ""
 }
 
 // savedAttachment returns the file in the attachments folder that has the
@@ -727,7 +759,8 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 	return []engine.ToolSpec{
 		{
 			Name: ReadFile,
-			Description: "Reads one of the user's files in full: Markdown, text, code, HTML (as text) and PDF (page by page). " +
+			Description: "Reads one of the user's files in full: Markdown, text, code, HTML (as text), PDF (page by page), " +
+				"Word (.docx, as text), and Excel (.xlsx, sheet by sheet), CSV and TSV files, one row per line with cells joined by \" | \". " +
 				"Use it when the search excerpts aren't enough. It returns up to 12,000 characters per call; " +
 				"when the file is longer, the result ends with the offset to pass next. " + attachments + where,
 			Parameters: mustSchema(map[string]any{
@@ -747,7 +780,8 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 		{
 			Name: Grep,
 			Description: "Finds every line that holds a word or pattern in the user's files, and returns \"path:line: text\" lines " +
-				"(\"path (page N): text\" for PDFs). Use it to find which files mention something. " +
+				"(\"path (page N): text\" for PDFs, \"path (sheet S, row N): text\" for Excel, \"path (row N): text\" for CSV). " +
+				"Use it to find which files mention something. " +
 				"By default it matches plain text, ignoring case, in every folder it may read" + grepChats + where,
 			Parameters: mustSchema(map[string]any{
 				"pattern":        prop("string", "The text to find, or a regular expression when regex is true."),

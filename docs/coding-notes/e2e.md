@@ -1,7 +1,7 @@
 # e2e
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
-`daemon_test.go`, `index_test.go`, `integration_test.go`, `index_integration_test.go`,
+`daemon_test.go`, `index_test.go`, `office_test.go`, `integration_test.go`, `index_integration_test.go`,
 `mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `ollama_test.go`, `race_test.go`, `norace_test.go`),
 `cmd/fakemcp/`
 **Milestone:** v0.1; the notes tests in v0.2
@@ -168,6 +168,7 @@ makes a test slower, not flaky.
 | `TestFilePermissions` | `daemon_test.go` | Session directories 0700; transcript, socket and log 0600 |
 | `TestNoTelemetryByDefault` | `daemon_test.go` | With no `otlp_endpoint`, merud contacts nothing but the fake |
 | `TestAnswerCitesLocalNote` | `index_test.go` | v0.2's "done when": merud indexes a notes folder; the router picks `search`; the main model's prompt holds the garden note's fact under "From your files" and the citation rule; `meru "question"` prints the answer, then `Sources:` with `[1]` and the note's path and nothing it didn't cite; `meru index -status` counts four files (the empty one too, the `.env` never) |
+| `TestAnswerCitesSheetRows` | `office_test.go` | merud indexes a CSV file, a TSV file and a Word document and skips an old `.xls`, so `meru index -status` counts three files; the prompt holds the wine list's rows under `Sheet wine-cellar. Columns: Wine, Year, Note.`, each labelled with its columns; `meru` cites `[1]` with the sheet's name and `rows 2–3` |
 | `TestMCPAddAndRemove` | `mcp_add_test.go` | `meru mcp add stdio` probes `cmd/fakemcp` through a real merud, proposes `search` (read-only) as allowed and `send` and `secret` as asking, writes them, and `meru tools` shows the server with no restart; `meru mcp remove --yes` takes it out of config and out of merud |
 | `TestConnectorLifecycle` | `connectors_test.go` | The Obsidian connector through a real merud, with `cmd/fakemcp` as its program: turned on with no vault it is `needs_config`, and `meru mcp status` says `needs config` and "Set vault_path under [connectors.obsidian]"; with a vault and `mcp_reload` it is ready without running, and `meru tools` offers `obsidian.obsidian_list_vaults`; the first call starts it; after a SIGKILL merud logs the crash, starts it again, and the next call answers from a new process |
 | `TestConnectorSetUpByHand` | `connectors_test.go` | An `[[mcp.servers]]` entry named `obsidian` wins over a connector that is turned on: the connector reports `by_hand` and its sentence, `meru tools` shows only the hand-added server's tools, and `meru mcp status` shows it connected and "set up by hand" |

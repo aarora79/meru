@@ -13,11 +13,12 @@ import (
 //
 //	[1] notes/launch.md, "Q3 launch", lines 12–40
 //	[2] Pictures/plan.png (image)
+//	[3] trips/budget.xlsx, "Invoices", rows 12–41
 //
 // The heading appears when the chunk has one. Text files give a line range
-// (or "line 7" for one line) and PDFs give a page. An image says so, and
-// gives no heading, which would only repeat its name. The path is the one
-// the store holds.
+// (or "line 7" for one line), PDFs give a page, and a sheet gives its rows
+// under its name. An image says so, and gives no heading, which would only
+// repeat its name. The path is the one the store holds.
 func Cite(n int, r Result) string {
 	// strings.Builder collects pieces of a string without copying the whole
 	// thing on each addition.
@@ -30,11 +31,15 @@ func Cite(n int, r Result) string {
 	if r.Heading != "" {
 		fmt.Fprintf(&b, ", %q", r.Heading)
 	}
+	line, lines := "line", "lines"
+	if r.IsTable() {
+		line, lines = "row", "rows"
+	}
 	switch {
 	case r.StartLine > 0 && r.EndLine > r.StartLine:
-		fmt.Fprintf(&b, ", lines %d–%d", r.StartLine, r.EndLine)
+		fmt.Fprintf(&b, ", %s %d–%d", lines, r.StartLine, r.EndLine)
 	case r.StartLine > 0:
-		fmt.Fprintf(&b, ", line %d", r.StartLine)
+		fmt.Fprintf(&b, ", %s %d", line, r.StartLine)
 	case r.Page > 0:
 		fmt.Fprintf(&b, ", page %d", r.Page)
 	}

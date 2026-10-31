@@ -19,6 +19,8 @@ func TestCitationString(t *testing.T) {
 		{Citation{N: 3, Path: "/srv/paper.pdf", Page: 4}, `[3] /srv/paper.pdf, page 4`},
 		{Citation{N: 4, Path: "~/x.txt"}, `[4] ~/x.txt`},
 		{Citation{N: 5, Path: "~/img/shot.png", Heading: "shot.png", Kind: "image"}, `[5] ~/img/shot.png (image)`},
+		{Citation{N: 6, Path: "~/trips/budget.xlsx", Heading: "Invoices", StartLine: 12, EndLine: 41, Kind: SourceTable}, `[6] ~/trips/budget.xlsx, "Invoices", rows 12–41`},
+		{Citation{N: 7, Path: "~/trips/trip.csv", Heading: "trip", StartLine: 3, EndLine: 3, Kind: SourceTable}, `[7] ~/trips/trip.csv, "trip", row 3`},
 	}
 	for _, tt := range tests {
 		if got := tt.c.String(); got != tt.want {

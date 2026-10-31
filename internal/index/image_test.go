@@ -42,8 +42,9 @@ func imageConfig(root string) (cfg config.Index) {
 }
 
 func TestKindImage(t *testing.T) {
-	if KindImage != retrieve.KindImage {
-		t.Fatalf("index.KindImage = %q, retrieve.KindImage = %q; they must match", KindImage, retrieve.KindImage)
+	if KindImage != retrieve.KindImage || KindXLSX != retrieve.KindXLSX || KindCSV != retrieve.KindCSV {
+		t.Fatalf("index kinds %q, %q, %q; retrieve kinds %q, %q, %q; they must match",
+			KindImage, KindXLSX, KindCSV, retrieve.KindImage, retrieve.KindXLSX, retrieve.KindCSV)
 	}
 	on := &Indexer{images: true}
 	off := &Indexer{}

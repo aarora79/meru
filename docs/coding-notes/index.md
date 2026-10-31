@@ -2,8 +2,8 @@
 
 **Code:** `internal/index/` (`doc.go`, `indexer.go`, `skip.go`, `ignore.go`,
 `chunk.go`, `markdown.go`, `code.go`, `html.go`, `pdf.go`, `image.go`, `watch.go`,
-`memories.go`, `files.go`)
-**Milestone:** v0.2; the memory syncer and `files.go` v0.4
+`memories.go`, `files.go`, `ooxml.go`, `docx.go`, `xlsx.go`, `csv.go`, `table.go`)
+**Milestone:** v0.2; the memory syncer and `files.go` v0.4; Word, Excel and CSV v0.7
 **Architecture:** [Storage](../../ARCHITECTURE.md#storage), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
 ## What it does
@@ -24,6 +24,12 @@ folder, `~/.meru/memory`, into the store's `memories` table (see
 [builtin](builtin.md) see the folders the way the indexer does (see
 [files.go](#filesgo) below).
 
+From v0.7 it reads Word (`.docx`), Excel (`.xlsx`) and delimited text (`.csv`,
+`.tsv`, `.tab`) files with readers of its own (see
+[Word, Excel and CSV](#word-excel-and-csv) below).
+[docs/design/word-excel-csv.md](../design/word-excel-csv.md) explains the feature
+from end to end.
+
 ## The picture
 
 ```mermaid
@@ -34,7 +40,7 @@ flowchart TD
     K -- keep --> H["read, SHA-256"]
     H --> U{"same mtime and hash<br/>as the store?"}
     U -- yes --> N["Unchanged"]
-    U -- no --> C["chunk by kind<br/>markdown / code / text / html / pdf"]
+    U -- no --> C["chunk by kind<br/>markdown / code / text / html / pdf<br/>docx / sheet rows"]
     C --> E["Embed, 32 texts per call"]
     E --> P["Sink.ReplaceDocument"]
     W --> D["after the walk: Sink.Paths,<br/>DeleteDocument for files not seen"]
@@ -93,7 +99,9 @@ never store two versions of one file in the wrong order:
 1. Check the size against `max_file_mb`, then read the file. `readFile` checks
    with `os.SameFile` that the file it opened is the one `Lstat` saw, so a file
    swapped for a symlink mid-scan doesn't get read.
-2. Skip it as binary if the first 8 KB hold a NUL byte (PDFs excepted).
+2. Skip it as binary if the first 8 KB hold a NUL byte. `sniffs(kind)` says which
+   kinds the test applies to: not PDFs, images, or Word and Excel files, which
+   are binary on purpose and have their own readers.
 3. Hash it with SHA-256. If the store holds the same hash and the same mtime
    (to the second), stop: the file is unchanged.
 4. Chunk it, number the chunks, embed them 32 at a time, and call
@@ -194,6 +202,8 @@ embedding model's tokenizer, and a chunk a few tokens off target does no harm.
 | other code, text | by blank-line blocks | none | lines |
 | html | by `<h1>`–`<h6>`, then paragraphs | heading path | none |
 | pdf | by page, then paragraphs | none | page |
+| docx | as Markdown, after `DocxText` | heading path | none |
+| xlsx, csv | by rows, each labelled with its column names | the sheet's name | rows, in `StartLine` and `EndLine` |
 
 Markdown treats a fenced code block as one paragraph, blank lines and all, so
 `pack` splits it only when it alone passes the limit. A `#` inside a fence is
@@ -219,6 +229,90 @@ the HTML reading in `readHTML`, which `chunkHTML` shares with `HTMLText`.
 in [builtin](builtin.md), so a page from the web reads the way a file on disk
 does. A PDF with no text layer (a scan) fails the same way. PDF quality is an open
 question for v0.2.
+
+### Word, Excel and CSV
+
+Five files read these formats. None needs a module outside the standard library.
+
+**`ooxml.go`** opens a Word or Excel file. Both are Office Open XML: a ZIP
+archive of XML parts. A file from someone else can be built to hurt the program
+that opens it, so `openOOXML` and `part` check everything:
+
+- A password-protected file starts with the OLE signature (`D0 CF 11 E0 …`),
+  not a ZIP's `PK`, and gets `errEncrypted`. Anything else that isn't a ZIP gets
+  `errNotOOXML`.
+- More than 10,000 entries fails at once.
+- `part(name)` finds an entry by its exact name in the archive's list and reads
+  it into memory through `io.LimitReader`, one byte past its cap, so it can tell
+  a part that hit the cap from one that fills it. A part may unpack to 64 MiB and
+  a file to 256 MiB in all. The caps count the bytes read, never the sizes the
+  ZIP's headers claim, since a ZIP bomb lies in its headers. The caps sit in the
+  struct (`partCap`, `fileCap`) so the tests can lower them.
+- No part ever reaches the disk, so an entry named `../../.zshrc` can't become a
+  file.
+
+**`docx.go`** turns a Word document into Markdown-like text. `headingStyles`
+reads `word/styles.xml` and maps each heading style to its level, by outline
+level or by a name such as "heading 2". `docxBody` walks `word/document.xml`
+one token at a time (see [XML streaming](go-basics/xml-streaming.md)) and writes
+a heading as `#`, a numbered or bulleted paragraph as `- `, other paragraphs as
+plain lines, and each table as one line per row with its cells joined by
+` | `. A table inside a cell joins that cell's text. Deleted text, field codes
+and the fallback copy of a drawing's text stay out; headers, footers and
+footnotes live in other parts, which it never opens. `chunkDocx` then runs the
+Markdown chunker on the text, so a chunk keeps its heading path, and drops the
+line numbers, which count lines of extracted text, not of the file.
+
+**`xlsx.go`** reads a workbook into one `Table` per sheet. `readBook` reads the
+sheet list (names, order, hidden or not, and whether dates count from 1904), the
+relationships that map each sheet to its part, the shared strings, and the
+styles. A style shows a date when its number format is a built-in date (IDs 14
+to 22 and 45 to 47) or a custom code with `d`, `m` or `y` outside quotes and
+brackets; it shows a percentage when its code holds `%`. `readSheet` streams a
+sheet and places each cell by its reference, so `C7` lands in row 7, column 3,
+even after gaps. `cellValue` reads one cell by its type: a shared string, an
+inline string, `TRUE`/`FALSE`, an error such as `#N/A`, a formula's text result,
+or a number. A number shows as a date (`2026-05-03`, or `2026-05-03 15:04` with
+a time), a percentage, or itself in the fewest digits that read back the same,
+so Excel's `84.760000000000005` reads `84.76`. A formula's `<f>` is skipped; the
+value Excel saved with it is the value, and Meru never evaluates a formula.
+
+The limits count only cells that hold a value, because Excel writes empty,
+formatted rows far past the data: a sheet stops at 100,000 rows or 1,024
+columns, and a file at 2,000,000 cells, through one `cellCounter` shared by its
+sheets. Each limit ends in one line that names the sheet: "sheet Log has more
+than 100,000 rows; Meru reads up to 100,000".
+
+**`csv.go`** reads `.csv`, `.tsv` and `.tab` files into one table with
+`encoding/csv`. `decodeText` drops a byte-order mark and reads bytes that
+aren't valid UTF-8 as Windows-1252, the encoding Excel uses on Windows, so `€`
+survives. `pickDelimiter` counts each candidate (comma, tab, semicolon, pipe)
+outside quotes on the first 20 lines and takes the one that appears the same
+number of times on each; a tie goes to tab for `.tsv` and `.tab`, and to comma
+for `.csv`. `LazyQuotes` and `FieldsPerRecord = -1` let a loose export read
+instead of failing over one row. A `.txt` file stays plain text.
+
+**`table.go`** holds what sheets and delimited files share:
+
+- `Table{Name, Rows, Hidden}`, where `Rows[i]` is spreadsheet row i+1, the
+  number a person sees in Excel.
+- `HeaderRow` guesses the row that names the columns: the first of the top 20
+  whose non-empty cells cover at least half the widest row and are mostly not
+  numbers, so a title row such as "Q3 expenses" loses to the names below it.
+  `ColumnNames` takes those names, or `Column D` for an empty or repeated one.
+- `tablesText` renders a table for `read_file` and `grep`, one row per line,
+  so line N is row N.
+- `chunkTable` cuts a table into chunks of rows. Each chunk starts with
+  `Sheet trip-expenses. Columns: Date, City, Amount.`, and each row reads
+  `Row 12: Date 2026-05-03; City Amsterdam; Amount EUR 64.50`, so keyword and
+  vector search both match "food tour in Amsterdam" to it. `Heading` holds the
+  sheet's name, and `StartLine` and `EndLine` its first and last row numbers,
+  which [retrieve](retrieve.md) prints as rows. Search takes the first 10,000
+  rows of a sheet; the last chunk of a longer one says so.
+
+Each reader's entry point, `xlsxTables` and `DocxText`, wraps its work in a
+deferred `recover()`, as `pdfPages` does, so a parser bug turns into an error
+and the file counts as failed.
 
 ### image.go
 
@@ -291,11 +385,18 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error)
   link, and calls `fn` for each entry with its reason. It skips the inside of a
   skipped folder itself; `fn` may return `fs.SkipDir` or `fs.SkipAll`.
 - **`ReadText`** returns a `Text`: the file's kind and its pages. A PDF has one
-  page per PDF page; every other kind has one page, the whole text. HTML comes
-  back as the text `readHTML` pulls out. It opens the file through an `os.Root`
+  page per PDF page, and an Excel workbook one per sheet, with the sheet names
+  in `Names`; every other kind has one page, the whole text. HTML and Word come
+  back as the text their readers pull out, and a sheet or delimited file one row
+  per line with its cells joined by ` | `. It opens the file through an `os.Root`
   on its folder, so `..` or a link swapped in after the check can't lead out,
   and it checks the size and the NUL byte again. `reason` is set when the file
   turns out to be skipped; `err` when it can't be read or a PDF has no text.
+
+`ReadTable(p)` returns the tables of an Excel or delimited text file, through
+the same parse `ReadText` uses, so `grep` and `read_file` can never disagree
+about a row. Both start with `readKind`, which opens the file through the
+`os.Root`, finds its kind and applies the NUL-byte test where `sniffs` says.
 
 **`ReadAlso(dir)`** adds a folder the four methods reach but `Scan` and the
 watcher never see. `builtin.New` adds the `[skills] output_dir` this way, so the
@@ -381,19 +482,24 @@ every file anyway and has no use for a list of changed paths.
 
 ## Go ideas used here
 
-- **filepath.WalkDir and fs.SkipDir** — walking a folder tree and pruning it.
+- **filepath.WalkDir and fs.SkipDir**: walking a folder tree and pruning it.
   More in [go-basics/filepath.md](go-basics/filepath.md).
-- **select** — waiting on several channels at once. More in
+- **select**: waiting on several channels at once. More in
   [go-basics/select.md](go-basics/select.md).
-- **Interfaces defined by the user** — `Sink` lists only what the indexer calls.
+- **Interfaces defined by the user**: `Sink` lists only what the indexer calls.
   More in [go-basics/interfaces.md](go-basics/interfaces.md).
-- **sync.Mutex** — `fileMu` and `rulesMu` each guard the fields declared next to
+- **sync.Mutex**: `fileMu` and `rulesMu` each guard the fields declared next to
   them.
-- **Type switches** — `declName` branches on the kind of Go declaration. More in
+- **Type switches**: `declName` branches on the kind of Go declaration. More in
   [go-basics/type-switches.md](go-basics/type-switches.md).
-- **recover** — a deferred function in `chunkPDF` turns the PDF library's panic
-  into an error.
-- **iota** — numbers the four file outcomes in `indexer.go`.
+- **recover**: a deferred function in `chunkPDF`, `xlsxTables` and `DocxText`
+  turns a parser's panic into an error.
+- **XML streaming**: `xml.Decoder.Token` reads a sheet one tag at a time. More in
+  [go-basics/xml-streaming.md](go-basics/xml-streaming.md).
+- **archive/zip and io.LimitReader**: `ooxml.go` reads ZIP parts into memory,
+  each capped one byte past its limit.
+- **encoding/csv**: `csv.go` sets `Comma` to the delimiter it picked.
+- **iota**: numbers the four file outcomes in `indexer.go`.
 
 ## Try it
 
@@ -430,6 +536,17 @@ file, a secret, a file under a folder a `.meruignore` names, a NUL byte, a file
 over the cap, a link and a path through one, a path outside and a missing one;
 `Walk`'s reasons and its stops; and `ReadText` for each kind of file.
 
+The Office tests build every `.docx` and `.xlsx` in memory with `archive/zip`
+(`zipParts`, `xlsxFile` and `docxFile` in `ooxml_test.go`), so no binary file
+sits in `testdata/`. `ooxml_test.go` checks the signatures and each cap,
+lowered so the test unpacks a few KB; `xlsx_test.go` each kind of cell, dates,
+percentages, a hidden sheet, the row, column and cell limits, and broken files,
+including one whose entity the decoder must refuse; `csv_test.go` each
+delimiter, quotes, encodings and the limits; `docx_test.go` headings, lists,
+tables and the text that stays out; `table_test.go` the header guess and
+chunking; and `office_files_test.go` the new kinds through `Check`, `ReadText`,
+`ReadTable` and a scan.
+
 ## Why it's built this way
 
 - **One grouping rule for every kind.** Each chunker only says where the
@@ -442,6 +559,11 @@ over the cap, a link and a path through one, a path outside and a missing one;
   some files twice and risk loops; following links out of it would break the
   promise that Meru reads only the folders you list. The target of an inside
   link is indexed at its real path anyway.
+- **Our own Office readers.** A library such as excelize reads every corner of
+  Excel, but adds a module and its dependencies to read values, dates and sheet
+  names, which `archive/zip` and `encoding/xml` reach in a few hundred lines.
+  The old `.doc` and `.xls` formats stay out: they need a parser for OLE
+  compound files, the largest parser of hostile input Meru would carry.
 - **Rejected:** a tokenizer for exact token counts (Ollama doesn't expose one),
   a Markdown library (headings and fences are all the chunker needs), and cgo
   PDF libraries such as poppler bindings (Meru builds without a C compiler).

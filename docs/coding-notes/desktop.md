@@ -587,11 +587,13 @@ bundler.
   `pages.openSetup`.
 - `js/turns.js` draws one turn. Each part (work strip, approval card, body,
   sources line, footer) has its own draw function, so a token redraws only the
-  body. A source chip shows an image icon for an image, which `isImageSource`
+  body. A chip for rows of a workbook (`kind` "table") names the sheet too,
+  as "budget.xlsx · Invoices" (`sourceName`), and its hover gives the rows. A
+  source chip shows an image icon for an image, which `isImageSource`
   tells by the citation's `kind`, or, in a past chat whose transcript keeps
   paths only, by the file's ending. A web source (`isWebSource`: `kind` "web"
   with a `url`) shows a globe and the site's host, such as "go.dev", with the
-  page's title on hover, and `openSource` opens it through the Bridge's
+  page's title on hover (`sourceWhere`), and `openSource` opens it through the Bridge's
   `OpenURL` rather than `OpenSource`. The strip's first chip comes from `workLabel`, which reads what the turn
   did: "Used tools" once a `tool_call` event came, "Searched your files" once a
   `sources` event brought a file, not only web pages, both together, "Answered from the model" for a finished
