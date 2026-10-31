@@ -343,7 +343,7 @@ that says which limit and what to do.
 - `internal/connectors/download.go`: `unpackZip` checks each entry's name and
   keeps a running size cap; `internal/applenotes/body.go` reads a gzipped note
   through `io.LimitReader(cap+1)`.
-- Added in #184.
+- Added in #198, for #184.
 
 **What to check.** A new file format or archive: where its size caps sit, whether
 they count bytes read, whether any name from inside the file reaches the disk,
