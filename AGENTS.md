@@ -1,4 +1,4 @@
-# meru — agent guide
+# meru: agent guide
 
 **Meru** is a personal AI assistant that runs entirely on a machine you control: a
 resident daemon (`merud`) that keeps open-weight models warm in Ollama, plus a thin CLI
@@ -13,7 +13,7 @@ easier to review.
 
 ## Read first
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — the design contract (level 300), written ahead
+- [ARCHITECTURE.md](ARCHITECTURE.md): the design contract (level 300), written ahead
   of the code. [docs/architecture/100.md](docs/architecture/100.md) and
   [200.md](docs/architecture/200.md) explain the same design at gentler levels.
   **Change ARCHITECTURE.md first**: its text is the contract. Its figures are
@@ -27,11 +27,11 @@ easier to review.
   `make figures` to redraw them.
   If code and this doc disagree, one of them has a bug. Say which one; don't pick
   without saying so.
-- [ROADMAP.md](ROADMAP.md) — milestones v0.1 → v0.7, shipped in order. Each has a
+- [ROADMAP.md](ROADMAP.md): milestones v0.1 → v0.7, shipped in order. Each has a
   "Done when" line that serves as its acceptance test.
-- [docs/lld.md](docs/lld.md) — the low-level design: packages, the interfaces between
+- [docs/lld.md](docs/lld.md): the low-level design: packages, the interfaces between
   them, and one question traced function by function. Start here before reading code.
-- [docs/coding-notes/](docs/coding-notes/) — plain-English explainers of the code.
+- [docs/coding-notes/](docs/coding-notes/): plain-English explainers of the code.
 
 ## Status
 
@@ -125,12 +125,25 @@ demands it, and say which one in the PR. In practice:
 
 ## Writing
 
-**All prose in this repo follows the `writing` skill** (`.claude/skills/writing/`):
-docs, coding notes, code comments, commit messages, PR descriptions, issue text, HTML
-pages and posters. Load the skill before drafting and run its revision pass before
-committing. In short: short words, active voice with a named actor, no `-ly` padding,
-no stale phrases, acronyms spelled out on first use, and none of the sentence-shape
-tells it lists.
+**Every piece of prose follows the `writing` skill** (`.claude/skills/writing/`):
+README.md, ARCHITECTURE.md and the other docs, coding notes, code comments, commit
+messages, GitHub issues, PR descriptions, PR and review comments, the feedback a
+review gives, release notes, HTML pages and posters. Load the skill before drafting
+and run its revision pass before you commit, post or publish. In short: short words,
+active voice with a named actor, no `-ly` padding, no em-dashes, no stale phrases,
+acronyms spelled out on first use, and none of the sentence-shape tells it lists.
+
+Its scanner checks a file for the phrase-level tells and prints `path:line` for each
+hit; run it on every file you write prose in, and on a scratch file holding an issue
+or a comment before you post it:
+
+```sh
+python3 .claude/skills/writing/prose-scan.py README.md docs/faq/install.md
+```
+
+Each hit is a candidate to read: a ban list or a quotation may use the word on
+purpose. The shape tells, such as parallel sentences and summary beats, still need a
+read by eye.
 
 Examples come from the catalog servers (`google` for mail and calendar, `obsidian`
 for notes) and the built-in `web_search`, and the repository carries no trading or
@@ -139,7 +152,8 @@ personal-finance examples.
 The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
 `explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
-repo tool only and doesn't ship. Update those two built-ins by copying from
+repo tool only and doesn't ship. The built-in `writing` carries `SKILL.md` alone:
+Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/writing/`. Update those two built-ins by copying from
 `my-ai-assets`, never by editing them in place. The other two built-ins,
 `web-research` and `file-research`, are Meru's own; their only copies live in
 `internal/skills/builtin/`.
@@ -493,10 +507,11 @@ read a file top to bottom and understand what it does and why.
 
 In `.claude/skills/`:
 
-- **`writing`** — for all prose: docs, coding notes, comments, PR descriptions.
-- **`new-feature-design`** — design a feature before coding it. Writes an issue, a
+- **`writing`**: for every piece of prose: docs, coding notes, comments, issues, PR
+  descriptions and review comments; `prose-scan.py` beside it scans a file for the tells.
+- **`new-feature-design`**: design a feature before coding it. Writes an issue, a
   low-level design, a review and a test plan to `.scratchpad/`.
-- **`pr-review`** — multi-persona review of a PR, including a Go-mentor check that
+- **`pr-review`**: multi-persona review of a PR, including a Go-mentor check that
   the comments and coding notes explain the change. It blocks a config key or socket
   op that misses a surface, and its `personas/security-patterns.md` lists Meru's
   security guards, which both skills check against.
@@ -504,14 +519,14 @@ In `.claude/skills/`:
 Both skills started as copies of the skills of the same names in
 [agentic-community/mcp-gateway-registry](https://github.com/agentic-community/mcp-gateway-registry),
 rewritten for Go and for Meru.
-- **`explainer`** — build a self-contained HTML explainer. Used for the pages in
+- **`explainer`**: build a self-contained HTML explainer. Used for the pages in
   `docs/architecture/`; update them when the Markdown they mirror changes.
-- **`poster-making`** — make a one-page poster. Output goes in `docs/posters/`.
-- **`meru-install`** — walk a user through installing, updating or removing Meru
+- **`poster-making`**: make a one-page poster. Output goes in `docs/posters/`.
+- **`meru-install`**: walk a user through installing, updating or removing Meru
   from a GitHub release on a Mac or on Linux: it runs the right installer and
   checks `merud`, `meru`, `meru chat` and the desktop app until each answers,
   asking before each change.
-- **`release-notes`** — write `docs/release-notes/vX.Y.Z.md` for a new version
+- **`release-notes`**: write `docs/release-notes/vX.Y.Z.md` for a new version
   and open its pull request; `make release` then publishes it. Adapted from the
   skill of the same name in agentic-community/mcp-gateway-registry.
 
