@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.6.3](v0.6.3.md): Word, Excel and CSV files, exact answers about a sheet with `analyze_table`, and turns that say why they stopped
 - [v0.6.2](v0.6.2.md): the desktop app and the Mac installer build on Wails beta.34
 - [v0.6.1](v0.6.1.md): the Linux installer says when merud starts, and the docs, slides and poster catch up with v0.6.0
 - [v0.6.0](v0.6.0.md): Meru on Linux with one command, a model sized by the graphics card, and speech to text on Linux
