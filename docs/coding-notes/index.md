@@ -303,9 +303,16 @@ instead of failing over one row. A `.txt` file stays plain text.
 - `tablesText` renders a table for `read_file` and `grep`, one row per line,
   so line N is row N.
 - `chunkTable` cuts a table into chunks of rows. Each chunk starts with
-  `Sheet trip-expenses. Columns: Date, City, Amount.`, and each row reads
-  `Row 12: Date 2026-05-03; City Amsterdam; Amount EUR 64.50`, so keyword and
-  vector search both match "food tour in Amsterdam" to it. `Heading` holds the
+  `Sheet trip-expenses in /Users/you/trips/trip-expenses.csv. Columns: Date,
+  City, Amount.`, and each row reads `Row 12: Date 2026-05-03; City Amsterdam;
+  Amount EUR 64.50`, so keyword and vector search both match "food tour in
+  Amsterdam" to it. The path in the first line lets a question that names the
+  folder find a file whose cells don't: a CSV of daily GitHub stars in an
+  `ai-registry` folder holds only dates and numbers (#208).
+- `contentHash` folds `tableChunkFormat` into a table file's stored hash.
+  When `chunkTable`'s text changes, bumping the tag makes the next scan chunk
+  every CSV and workbook again, once; other files keep a hash of their bytes
+  alone. `Heading` holds the
   sheet's name, and `StartLine` and `EndLine` its first and last row numbers,
   which [retrieve](retrieve.md) prints as rows. Search takes the first 10,000
   rows of a sheet; the last chunk of a longer one says so.

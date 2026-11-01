@@ -394,7 +394,48 @@ func (t *Tools) grep(ctx context.Context, raw json.RawMessage) (string, error) {
 	if err := s.search(ctx, starts); err != nil {
 		return "", fmt.Errorf("grep: %w", err)
 	}
+	// A plain-text search that found nothing, for a pattern that reads as
+	// a regular expression, most likely meant one: a model wrote
+	// "mcp-gateway-registry|stargazers" without regex and read "0 matching
+	// lines" as proof the files hold neither word. Run it again as written
+	// and say so. A plain search that matched stays as it is, so "| Amount |"
+	// still finds a Markdown table's row.
+	if !a.Regex && s.empty() && looksLikeRegex(a.Pattern) {
+		expr := a.Pattern
+		if !a.CaseSensitive {
+			expr = "(?i)" + expr
+		}
+		if re2, err := regexp.Compile(expr); err == nil {
+			again := &grepRun{t: t, re: re2, max: a.MaxResults, timeLimit: grepTime, fileLimit: grepFiles,
+				note: "No file held that text as written; the pattern reads as a regular expression, so grep ran it as one."}
+			if err := again.search(ctx, starts); err != nil {
+				return "", fmt.Errorf("grep: %w", err)
+			}
+			s = again
+		}
+	}
 	return s.report(a.Pattern, starts), nil
+}
+
+// looksLikeRegex reports whether pattern reads as a regular expression a
+// model meant as one: alternatives joined by "|" with text in each, or one
+// of ".*", ".+", `\b`, `\d`, `\s` and `\w`. A "|" with an empty side, as in
+// the Markdown table cell "| Amount |", doesn't count.
+func looksLikeRegex(pattern string) bool {
+	for _, tell := range []string{".*", ".+", `\b`, `\d`, `\s`, `\w`} {
+		if strings.Contains(pattern, tell) {
+			return true
+		}
+	}
+	if !strings.Contains(pattern, "|") {
+		return false
+	}
+	for _, part := range strings.Split(pattern, "|") {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // grepRun holds one grep call's settings and progress. The limits sit
@@ -406,12 +447,20 @@ type grepRun struct {
 	timeLimit time.Duration // stop starting new files after this long
 	fileLimit int           // stop after searching this many files
 
+	note string // a line the report puts first, such as why the pattern ran as a regex
+
 	start   time.Time       // when the search began
+	names   []string        // the files whose names match, as shown
 	lines   []string        // the matches so far, formatted
 	files   map[string]bool // the files that matched, by path
 	scanned int             // files searched
 	failed  int             // files that couldn't be read
 	stop    string          // which limit stopped the search; "" while it runs
+}
+
+// empty reports whether the search found nothing, in names or in lines.
+func (s *grepRun) empty() bool {
+	return len(s.names) == 0 && len(s.lines) == 0
 }
 
 // search runs the search over starts, each a file or a folder, in order,
@@ -463,6 +512,12 @@ func (s *grepRun) file(ctx context.Context, p string) error {
 		return nil
 	}
 	s.scanned++
+	// A file's name can say what its contents don't: a CSV of daily stars
+	// holds only dates and numbers. Report a name that matches, at most max
+	// of them, before the lines.
+	if len(s.names) < s.max && s.re.MatchString(filepath.Base(p)) {
+		s.names = append(s.names, s.t.show(p)+" (file name)")
+	}
 	text, reason, err := s.t.files.ReadText(p)
 	if err != nil || reason != "" {
 		s.failed++
@@ -547,9 +602,15 @@ func (s *grepRun) report(pattern string, starts []index.Checked) string {
 		where[i] = s.t.show(c.Path)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "grep %q in %s: %s in %s; searched %s.",
-		pattern, strings.Join(where, ", "), plural(len(s.lines), "matching line"), plural(len(s.files), "file"),
-		plural(s.scanned, "file"))
+	if s.note != "" {
+		b.WriteString(s.note + "\n")
+	}
+	fmt.Fprintf(&b, "grep %q in %s: %s in %s", pattern, strings.Join(where, ", "),
+		plural(len(s.lines), "matching line"), plural(len(s.files), "file"))
+	if len(s.names) > 0 {
+		fmt.Fprintf(&b, ", and %s whose name matches", plural(len(s.names), "file"))
+	}
+	fmt.Fprintf(&b, "; searched %s.", plural(s.scanned, "file"))
 	if s.failed > 0 {
 		fmt.Fprintf(&b, " Couldn't read %s.", plural(s.failed, "file"))
 	}
@@ -557,6 +618,9 @@ func (s *grepRun) report(pattern string, starts []index.Checked) string {
 		fmt.Fprintf(&b, " Stopped early at %s; narrow path or pattern to see the rest.", s.stop)
 	}
 	b.WriteString("\n")
+	for _, l := range s.names {
+		b.WriteString(l + "\n")
+	}
 	for _, l := range s.lines {
 		b.WriteString(l + "\n")
 	}
@@ -785,7 +849,8 @@ func (t *Tools) fileToolSpecs() []engine.ToolSpec {
 			Name: Grep,
 			Description: "Finds every line that holds a word or pattern in the user's files, and returns \"path:line: text\" lines " +
 				"(\"path (page N): text\" for PDFs, \"path (sheet S, row N): text\" for Excel, \"path (row N): text\" for CSV). " +
-				"Use it to find which files mention something. " +
+				"It also lists files whose names match, as \"path (file name)\". " +
+				"Use it to find which files mention something, or a file by part of its name. " +
 				"By default it matches plain text, ignoring case, in every folder it may read" + grepChats + where,
 			Parameters: mustSchema(map[string]any{
 				"pattern":        prop("string", "The text to find, or a regular expression when regex is true."),

@@ -216,6 +216,9 @@ func TestAnalyzeTableRefuses(t *testing.T) {
 			if !res.IsError || !strings.Contains(res.Text, tt.want) {
 				t.Errorf("result = %v %q, want an error with %q", res.IsError, res.Text, tt.want)
 			}
+			if strings.Count(res.Text, "analyze_table:") > 1 {
+				t.Errorf("result names the tool twice: %q", res.Text)
+			}
 		})
 	}
 }

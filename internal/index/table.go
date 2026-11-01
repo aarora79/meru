@@ -36,6 +36,12 @@ const (
 	maxIndexRows = 10_000    // rows per sheet that go into search
 )
 
+// tableChunkFormat names the way chunkTable writes a table. contentHash
+// folds it into a table file's stored hash, so changing it makes the next
+// scan chunk every table again. Change it whenever chunkTable's text
+// changes. "2" put the file's path in each chunk's first line (#208).
+const tableChunkFormat = "table-chunks-2"
+
 // headerScanRows is how many rows from the top the header guess looks at.
 const headerScanRows = 20
 
@@ -258,34 +264,38 @@ func ColumnLetter(j int) string {
 	return s
 }
 
-// chunkTable cuts tables into chunks of rows for search. Each chunk starts
-// with the table's name and its column names, and each row is labelled by
-// its number and its columns:
+// chunkTable cuts tables, the sheets of the file at p, into chunks of rows
+// for search. Each chunk starts with the table's name, the file's path and
+// its column names, and each row is labelled by its number and its columns:
 //
-//	Sheet trip-expenses. Columns: Date, City, Category, Amount.
+//	Sheet trip-expenses in /Users/you/trips/trip-expenses.csv. Columns: Date, City, Category, Amount.
 //	Row 12: Date 2026-05-03; City Amsterdam; Category Food tour; Amount EUR 64.50
 //
 // Labelling each value with its column lets keyword and vector search both
-// match "food tour in Amsterdam" to the row. A chunk's Heading is the
+// match "food tour in Amsterdam" to the row. The path lets them match a
+// question that names the folder, not the file: a CSV of daily GitHub stars
+// in ~/work/ai-registry holds only dates and numbers, and "star history for
+// the AI registry" found it only once its path was in the text, as an image
+// chunk names its folder. A chunk's Heading is the
 // table's name, and StartLine and EndLine hold its first and last row
 // numbers, which the citation prints as rows. Empty rows and the header row
 // are left out, and only the first maxIndexRows rows of a table go in; the
 // last chunk of a longer table says so.
-func chunkTable(tables []Table, lim limits) []store.Chunk {
+func chunkTable(tables []Table, p string, lim limits) []store.Chunk {
 	var out []store.Chunk
 	for _, t := range tables {
-		out = append(out, chunkOneTable(t, lim)...)
+		out = append(out, chunkOneTable(t, p, lim)...)
 	}
 	return out
 }
 
-// chunkOneTable is chunkTable for one table.
-func chunkOneTable(t Table, lim limits) []store.Chunk {
+// chunkOneTable is chunkTable for one table of the file at p.
+func chunkOneTable(t Table, p string, lim limits) []store.Chunk {
 	h := HeaderRow(t)
 	names := ColumnNames(t, h)
-	lead := fmt.Sprintf("Sheet %s. Columns: %s.\n", t.Name, strings.Join(names, ", "))
+	lead := fmt.Sprintf("Sheet %s in %s. Columns: %s.\n", t.Name, p, strings.Join(names, ", "))
 	if h == 0 {
-		lead = fmt.Sprintf("Sheet %s.\n", t.Name)
+		lead = fmt.Sprintf("Sheet %s in %s.\n", t.Name, p)
 	}
 	room := max(lim.max-utf8.RuneCountInString(lead), 80)
 

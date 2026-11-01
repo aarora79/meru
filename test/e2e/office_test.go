@@ -78,7 +78,7 @@ func TestAnswerCitesSheetRows(t *testing.T) {
 	// The rows reached the model labelled with their columns.
 	prompt := lastMainPrompt(t, s.fake)
 	for _, want := range []string{
-		"Sheet wine-cellar. Columns: Wine, Year, Note.",
+		"Sheet wine-cellar in " + filepath.Join(dir, "wine-cellar.csv") + ". Columns: Wine, Year, Note.",
 		"Row 2: Wine Barolo Cannubi; Year 2015; Note set aside for our 15th anniversary",
 	} {
 		if !strings.Contains(prompt, want) {

@@ -185,7 +185,10 @@ func (t *Tools) analyzeTable(ctx context.Context, raw json.RawMessage) (string, 
 	}
 	text, first, last, matched, err := q.run(ctx, tab.Name, rows)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		// The query's own errors already start "analyze_table:"; a sum's
+		// overflow doesn't.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+			strings.HasPrefix(err.Error(), AnalyzeTable+":") {
 			return "", nil, err
 		}
 		return "", nil, fmt.Errorf("analyze_table: %v", err)
