@@ -875,13 +875,18 @@ arguments nor the result.
 | (full answer) | the model answered in text | the answer |
 | `timeout` | `turn_timeout` ran out | the text so far and "[Meru stopped the answer here: the question took longer than its time limit.]", or an apology when no text came |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it reached the length limit, or an apology |
-| `gave_up` | the rounds ended with no text, even after the retry | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `gave_up` | the rounds ended with no text, even after the retry, with rounds still left | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `capped` | the turn used every round and wrote nothing, or only a plan for its next step | "Meru used all 8 rounds of tool calls this question allows and didn't reach an answer. It tried: …" with Continue, or the plan with a note that says so |
 | `bad_output` | Ollama couldn't parse the output, even after the retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." |
 | `no_vision` | the question had pictures and the model can't see | the list of similar images, or a sentence that the model can't look at pictures, with a model set to switch to |
 
 `endTurn` sends these words as ordinary `token` events, so every client shows them as
-the answer with no special case. A turn that used every round and wrote no text also
-counts as **capped**, which `/usage by model` reports per model.
+the answer with no special case. A `capped` turn also sets the assistant line's
+`capped` flag, which `/usage by model` reports per model. Continue in both clients
+takes `capped` along with `cut_off`, `window_full` and `timeout`. Its words name the
+tools it tried from `t.tried`, filled in call order once each round's calls end
+(`plans.go`). Before the cap, a round that only announces its next step, with tools
+on offer, gets one nudge to take it (`nudgesPlan`).
 
 ### Checking the answer
 

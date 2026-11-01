@@ -44,6 +44,8 @@ func TestContinuation(t *testing.T) {
 			hasNot: []string{long, "timed out"}},
 		{name: "timeout counts", lines: []transcript.Line{question, answer(endTimeout)}, has: []string{"It made no tool calls."}},
 		{name: "window_full counts", lines: []transcript.Line{question, answer(endWindowFull)}, has: []string{"It made no tool calls."}},
+		{name: "capped counts, and says why", lines: []transcript.Line{question, answer(endCapped)},
+			has: []string{"ran out of tool rounds", "choose each call with care"}, hasNot: []string{"stopped short"}},
 		{name: "a whole answer", lines: []transcript.Line{question, answer("")}, wantErr: true},
 		{name: "gave up", lines: []transcript.Line{question, answer(endGaveUp)}, wantErr: true},
 		{name: "no answer yet", lines: []transcript.Line{question}, wantErr: true},

@@ -9,6 +9,7 @@ package e2e
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,5 +183,50 @@ func TestToolNotesFollowUpE2E(t *testing.T) {
 	}
 	if strings.Contains(prompt, "Cite this table as") {
 		t.Errorf("turn 2's prompt carries turn 1's citation number:\n%s", prompt)
+	}
+}
+
+func TestCappedTurnE2E(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fakeConfig(f.url, "[agent]\nmax_rounds = 2\n"))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	// Round 1 calls datetime; round 2, the last, offers no tools, and the
+	// model calls it again anyway with no text: the turn hits the cap.
+	calls := func(zone string) fakeollama.Reply {
+		return fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "datetime", Arguments: map[string]any{"zone": zone}}}}
+	}
+	f.enqueue(t, fastModel, toolsRoute())
+	f.enqueue(t, mainModel, calls("Europe/Oslo"), calls("Asia/Tokyo"))
+	first := ask(t, h.socket, "", "what time is it in Oslo and Tokyo?")
+	want := "Meru used all 2 rounds of tool calls this question allows and didn't reach an answer. It tried: datetime."
+	if got := answerOf(first); !strings.HasPrefix(got, want) {
+		t.Errorf("answer = %q\nwant it to start %q", got, want)
+	}
+	done := lastEvent(t, first)
+	if done.Type != rpc.EventDone || done.Outcome != "capped" {
+		t.Errorf("last event = %+v, want done with outcome capped", done)
+	}
+	id := lastEvent(t, eventsOf(first, rpc.EventSession)).Session
+
+	// Continue picks the turn up instead of refusing it.
+	f.enqueue(t, fastModel, toolsRoute())
+	f.enqueue(t, mainModel, fakeollama.Reply{Text: "It is 09:00 in Oslo and 17:00 in Tokyo."})
+	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	defer cancel()
+	var answer strings.Builder
+	for ev, err := range rpc.Do(ctx, h.socket, rpc.Request{Op: rpc.OpAsk, Session: id, Continue: true, Source: rpc.SourceCLI}, nil) {
+		if err != nil {
+			t.Fatalf("continue: %v", err)
+		}
+		if ev.Type == rpc.EventToken {
+			answer.WriteString(ev.Text)
+		}
+	}
+	if !strings.Contains(answer.String(), "09:00 in Oslo") {
+		t.Errorf("continued answer = %q", answer.String())
 	}
 }

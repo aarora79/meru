@@ -70,11 +70,12 @@ func (m Model) scopeCommand(arg string) (tea.Model, tea.Cmd) {
 // transcript and the desktop app record it.
 const continueWords = "Continue"
 
-// stoppedShort reports whether t's answer stopped at the length limit or
-// the turn's time limit, which /continue can pick up.
+// stoppedShort reports whether t's answer stopped at the length limit, the
+// turn's time limit, a full context window or the round cap, which
+// /continue can pick up.
 func stoppedShort(t *exchange) bool {
 	switch t.stats.Outcome {
-	case "cut_off", "window_full", "timeout":
+	case "cut_off", "window_full", "timeout", "capped":
 		return t.state == stateDone
 	}
 	return false

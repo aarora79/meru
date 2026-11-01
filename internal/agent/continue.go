@@ -41,8 +41,8 @@ const (
 // prompt already holds, so the message leaves it out.
 //
 // It fails with errNothingToContinue when the turn has no answer, or its
-// answer ended whole: only "cut_off", "window_full" and "timeout" stop short with work
-// worth keeping.
+// answer ended whole: only "cut_off", "window_full", "timeout" and "capped" stop short with
+// work worth keeping.
 func continuation(lines []transcript.Line) (question, message string, err error) {
 	if len(lines) == 0 {
 		return "", "", errNothingToContinue
@@ -71,7 +71,7 @@ func continuation(lines []transcript.Line) (question, message string, err error)
 			calls[i] += "\n  " + strings.ReplaceAll(clip(l.Result, resultChars), "\n", "\n  ")
 		}
 	}
-	if ended != endCutOff && ended != endWindowFull && ended != endTimeout {
+	if ended != endCutOff && ended != endWindowFull && ended != endTimeout && ended != endCapped {
 		return "", "", errNothingToContinue
 	}
 
@@ -86,7 +86,11 @@ func continuation(lines []transcript.Line) (question, message string, err error)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Continue your answer to my last question: %q\n\n", question)
-	b.WriteString("Your answer above stopped short before it was done. ")
+	if ended == endCapped {
+		b.WriteString("Your answer above ran out of tool rounds before it was done, so choose each call with care. ")
+	} else {
+		b.WriteString("Your answer above stopped short before it was done. ")
+	}
 	if len(calls) == 0 {
 		b.WriteString("It made no tool calls.\n\n")
 	} else {

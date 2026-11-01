@@ -83,8 +83,18 @@ func TestTurnLimits(t *testing.T) {
 			name:        "only tool calls until the rounds run out",
 			maxRounds:   3,
 			replies:     callsEveryRound,
-			wantAnswer:  sorry,
-			wantOutcome: endGaveUp,
+			wantAnswer:  fmt.Sprintf(capAnswer, 3, "weather.now ×2"),
+			wantOutcome: endCapped,
+		},
+		{
+			// The last round offers no tools; the model writes a plan with a
+			// call that can't run, as in the session that led to #201.
+			name:      "a plan on the last round",
+			maxRounds: 3,
+			replies: append(callsEveryRound[:2:2], fakeollama.Reply{Text: "Let me find the specific date with 20 stars.",
+				ToolCalls: []fakeollama.ToolCall{{Name: "weather.now", Arguments: map[string]any{"city": "x"}}}}),
+			wantAnswer:  "Let me find the specific date with 20 stars.\n\n" + fmt.Sprintf(capNote, 3, "weather.now ×2"),
+			wantOutcome: endCapped,
 		},
 	}
 	for _, tt := range tests {
@@ -133,6 +143,90 @@ func TestTurnLimits(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPlanNudge checks that a round which only announces its next step,
+// with tools on offer and rounds left, gets one nudge to take it: the next
+// call carries planNudge and the tools, the user reads both rounds' words,
+// and the transcript holds no nudge. A second plan isn't nudged again.
+func TestPlanNudge(t *testing.T) {
+	cfg := ollamaConfig(t)
+	cfg.Agent.MaxRounds = 5
+	srv := fakeollama.Start(t, fakeollama.Config{})
+	srv.Enqueue(cfg.Models.Main,
+		fakeollama.Reply{Text: "Let me check the weather."},
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "weather.now", Arguments: map[string]any{"city": "Oslo"}}}},
+		fakeollama.Reply{Text: "I'll look again."},
+		fakeollama.Reply{Text: "never asked for"})
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("weather.now")}, results: map[string]fakeResult{"weather.now": {text: "sunny"}}}
+	a := ollamaAgent(t, cfg, srv, "tools", tools)
+
+	evs, err := run(context.Background(), a, rpc.Request{Text: "is it sunny in Oslo?"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	// The second plan ends the turn: one nudge a turn.
+	if got, want := answerOf(evs), "Let me check the weather.\n\nI'll look again."; got != want {
+		t.Errorf("answer = %q, want %q", got, want)
+	}
+	bodies := chatBodies(t, srv, cfg.Models.Main)
+	if len(bodies) != 3 {
+		t.Fatalf("%d main-model calls, want 3", len(bodies))
+	}
+	nudged := bodies[1]
+	if last := nudged.Messages[len(nudged.Messages)-1]; last.Content != planNudge || len(nudged.Tools) == 0 {
+		t.Errorf("the second call ends %q with %d tools; want planNudge with the tools", last.Content, len(nudged.Tools))
+	}
+	for _, l := range readLines(t, cfg, evs[0].Session) {
+		if strings.Contains(l.Text, planNudge) {
+			t.Errorf("the transcript holds the nudge: %+v", l)
+		}
+	}
+}
+
+func TestPlansOnly(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"Let me find the specific date with 20 stars.", true},
+		{"I'll read the top four articles.", true},
+		{"Now I'll check the 2024 sheet.", true},
+		{"let me look that up", true},
+		{"Let me know if you want the 2024 sheet too.", false},
+		{"I'll need the file's path to do that.", false},
+		{"The total is 555.13. Let me know if you need more.", false},
+		{"Let me explain:\n- first\n- second", false},
+		{"Let me show the table: | a | b |", false},
+		{"Let me explain. " + strings.Repeat("The answer goes on. ", 20), false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := plansOnly(tt.text); got != tt.want {
+			t.Errorf("plansOnly(%.50q) = %v, want %v", tt.text, got, tt.want)
+		}
+	}
+}
+
+func TestTried(t *testing.T) {
+	calls := []triedCall{
+		{"web_search", "ok"}, {"web_fetch", "error"}, {"cmd.system-load", "ok"},
+		{"cmd.find-process", "ok"}, {"cmd.find-process", "ok"}, {"grep", "ok"}, {"grep", "declined"},
+	}
+	want := "web_search, web_fetch (failed), cmd.system-load, cmd.find-process ×2, grep ×2 (you said no)"
+	if got := tried(calls); got != want {
+		t.Errorf("tried = %q\nwant   %q", got, want)
+	}
+	if got := tried(nil); got != "no tools" {
+		t.Errorf("tried(nil) = %q", got)
+	}
+	var many []triedCall
+	for i := range maxTried + 3 {
+		many = append(many, triedCall{name: fmt.Sprintf("t%d", i), outcome: "ok"})
+	}
+	if got := tried(many); !strings.HasSuffix(got, ", and 3 more") {
+		t.Errorf("tried of %d tools = %q, want the rest counted", len(many), got)
 	}
 }
 
