@@ -1113,7 +1113,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <h2 id="privacy">The privacy rules</h2>
 
 <ul>
-  <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback.</li>
+  <li>The code has no path to a cloud model. The engine talks only to Ollama on loopback, and refuses Ollama's own cloud models, such as <code>gpt-oss:120b-cloud</code>, which Ollama would run on ollama.com with your whole prompt.</li>
   <li>You allow MCP tools and A2A agent skills one by one. An agent or Streamable HTTP server off this machine needs <code>remote = true</code> in its config entry. That setting covers where <code>merud</code> connects; a loopback server such as <code>google</code> still talks to Google.</li>
   <li>Web search sends your search words through SearXNG to the engines it asks. <code>merud</code> also searches on its own for a question that asks for the web, and for a name your files don't mention, in quotes with a few of your words; never for a question that says "my" or "our", or one about mail, a calendar or notes. <code>web_fetch</code> lets <code>merud</code> fetch public pages off this machine when the model asks, never one on your machine or local network. It asks you first for a URL no search or question of yours gave, and before any download. Taking it out of <code>[builtin] tools</code> turns it off. A page that needs JavaScript loads in a headless Chrome whose every request passes the same check, through a proxy in <code>merud</code>.</li>
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
