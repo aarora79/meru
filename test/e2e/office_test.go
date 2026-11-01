@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/testutil/fakeollama"
 )
 
@@ -139,5 +140,47 @@ func TestAnalyzeTableE2E(t *testing.T) {
 	wantOut := answer + "\n\nSources:\n[2] " + filepath.Join(dir, "trip.csv") + `, "trip", rows 2–4`
 	if !strings.Contains(res.stdout, wantOut) {
 		t.Errorf("stdout = %q\nwant it to hold %q", res.stdout, wantOut)
+	}
+}
+
+func TestToolNotesFollowUpE2E(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "meru-notes-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir, _ = filepath.EvalSymlinks(dir)
+	trip := "Date,City,Amount\n2026-05-02,Amsterdam,64.50\n2026-05-03,Amsterdam,112.25\n2026-05-04,Utrecht,70.00\n"
+	if err := os.WriteFile(filepath.Join(dir, "trip.csv"), []byte(trip), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := startIndexStack(t, dir)
+	waitForStatus(t, s.home, "1 file,", "Scanning:   no")
+
+	// Turn 1 adds up the Amsterdam rows with analyze_table.
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "analyze_table", Arguments: map[string]any{
+			"path":      filepath.Join(dir, "trip.csv"),
+			"where":     []any{map[string]any{"column": "City", "op": "=", "value": "Amsterdam"}},
+			"aggregate": []any{map[string]any{"fn": "sum", "column": "Amount"}},
+		}}}},
+		fakeollama.Reply{Text: "You spent 176.75 in Amsterdam."})
+	first := ask(t, s.home.socket, "", "How much did we spend in Amsterdam?")
+	id := lastEvent(t, eventsOf(first, rpc.EventSession)).Session
+
+	// Turn 2 asks how; its prompt carries turn 1's tool note.
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel, fakeollama.Reply{Text: "I called analyze_table on trip.csv."})
+	ask(t, s.home.socket, id, "how did you get that?")
+	prompt := lastMainPrompt(t, s.fake)
+	for _, want := range []string{"Meru's record of the tools this turn ran", "- analyze_table {", "trip.csv", "| 176.75 |"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("turn 2's prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	if strings.Contains(prompt, "Cite this table as") {
+		t.Errorf("turn 2's prompt carries turn 1's citation number:\n%s", prompt)
 	}
 }

@@ -27,7 +27,8 @@ import (
 //
 // The web section's cap, maxWebChars, lives in webfirst.go with the step
 // that fills it. Each turn's web notes in the history take at most
-// maxWebNoteChars (webnotes.go) of the history's 8,000.
+// maxWebNoteChars (webnotes.go) of the history's 8,000, and the tool notes
+// of the last two turns at most 1,200 each (transcript/toolnotes.go).
 // File excerpts have no cap of their own: a search keeps 10 chunks of about
 // 500 tokens each, so they stay under 5,000 tokens. meru.context.tokens
 // records each section's size per turn, the numbers to tune these by.

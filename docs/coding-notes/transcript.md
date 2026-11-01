@@ -1,6 +1,6 @@
 # transcript
 
-**Code:** `internal/transcript/` (`doc.go`, `transcript.go`, `list.go`)
+**Code:** `internal/transcript/` (`doc.go`, `transcript.go`, `list.go`, `toolnotes.go`)
 **Milestone:** v0.1; tool lines and the assistant line's route, ms and sources in v0.3;
 summary lines and `ReadFrom` in v0.4
 **Architecture:** [Session transcripts](../../ARCHITECTURE.md#session-transcripts)
@@ -143,6 +143,37 @@ made up the product's features. With the notes, a follow-up knows what the page
 said without the page itself. The agent's history budget still applies: it
 drops the oldest turns, notes and all, when the history passes 8,000
 characters.
+
+The answers of the last two turns then get tool notes, from `toolNotes` in
+`toolnotes.go`. While `History` walks the lines it gathers each turn's calls: a
+`tool_call` line starts one, keyed by its `call_id` in a map, and the
+`tool_result` line with the same ID fills it in. The calls of one round run side
+by side, so their results can arrive in any order; the map pairs them anyway. A
+call `merud` made itself before the first round (`caller` is `"meru"`) is left
+out. Once the turns are cut to `n`, the last two get their notes. A follow-up to
+a sum over a sheet then hands the model:
+
+```text
+You spent EUR 1207.00 on food tours in Amsterdam [1].
+
+(Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above; never copy it into an answer. Use it to say how you got that answer; run a tool again for anything it leaves out.)
+- analyze_table {"path":"~/trip.csv","aggregate":[{"fn":"sum","column":"Amount"}]} ok: Matched 3 of 6 rows in trip (rows 4 to 7). | sum(Amount) | | --- | | 1207.00 |
+```
+
+Each line holds the tool's name (with its server, such as `notes.search`, for
+one that isn't `merud`'s), its arguments as compact JSON from `json.Compact`,
+how it ended, and the first 300 characters of the result on one line. Arguments
+a crash tore aren't valid JSON, so `json.Compact` fails, and they go in as they
+stand rather than drop the call. A `web_search` or `web_fetch` line stops after
+the outcome, since the web notes hold what it found. Lines that start "Cite "
+come out, since the next turn numbers its sources afresh. After 6 lines, or
+1,200 characters, the rest of the calls go on one line, "and 4 more: grep ×3,
+list_folder", so "what tools did you use?" still sees all of them.
+
+The notes come from lines the file already holds, so nothing new is stored and
+old chats gain them too. A real session showed why they matter: asked how it
+had added up a sheet, a model whose history held only the questions and
+answers listed six rows that don't exist.
 
 A question with `images` gets one note per image after its text, from
 `imageNotes`:
@@ -316,7 +347,10 @@ go test ./internal/transcript/...
 `TestOpenRejectsBadIDs` tries path-traversal IDs; `TestHistorySkipsTornLines`
 simulates a crash mid-write. `TestHistory`'s "images become notes" case checks
 that a user line with two images comes back with two `[image: ...]` notes and
-no image bytes. `TestReadFromReadsOnlyNewCompleteLines` checks
+no image bytes. `toolnotes_test.go` checks each kind of note line, the cap
+of 6 lines with its count line, and `History` with results out of order, a
+web-first call left out and notes on the last two turns only, on disk and in
+an incognito session. `TestReadFromReadsOnlyNewCompleteLines` checks
 that a half-written line waits and a torn one is skipped.
 
 ## Why it's built this way

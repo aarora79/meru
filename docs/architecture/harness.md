@@ -240,6 +240,13 @@ care:
   A real session showed why: a turn read a product's page and answered well, and
   the next three turns, with only the questions and answers in their history, made
   up the product's features.
+- **Tool notes travel on the last two turns.** History adds a line per tool call
+  after the answers of the two latest turns: the tool, its arguments, how it
+  ended and the first 300 characters of its result, at most 6 lines and 1,200
+  characters a turn (`toolnotes.go` in `internal/transcript`). It builds them
+  from the turn's `tool_call` and `tool_result` lines, so nothing new is stored.
+  Without them, a model asked how it had added up a sheet listed six rows that
+  don't exist, and asked which tools it had used, four steps that never ran.
 - **Images become names.** A question that carried pictures gets a note per
   picture, `[image: receipt.jpg]`, and never the bytes. Each picture costs the model
   hundreds of tokens, and the answer that looked at it sits in the history already.

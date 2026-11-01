@@ -263,15 +263,15 @@ func TestHistory(t *testing.T) {
 		{"unanswered question dropped", []Line{u("q1"), u("q2"), a("a2"), u("q3")}, 10, msgs("q2", "a2")},
 		{"stray answer dropped", []Line{a("a0"), u("q1"), a("a1")}, 10, msgs("q1", "a1")},
 		// A turn that called a tool has its tool lines between the question
-		// and the answer. History leaves them out: the answer already holds
-		// what mattered from the result.
-		{"tool lines left out", []Line{
+		// and the answer. History turns them into a note after the answer,
+		// so a follow-up knows which tools ran (see toolnotes_test.go).
+		{"tool lines become a note", []Line{
 			u("q1"),
 			{Type: TypeToolCall, CallID: "call-1", Kind: "mcp", Server: "notes", Tool: "search"},
 			{Type: TypeApproval, CallID: "call-1", Choice: "once"},
 			{Type: TypeToolResult, CallID: "call-1", Outcome: "ok", OK: true, Result: "raw result"},
 			a("a1"),
-		}, 10, msgs("q1", "a1")},
+		}, 10, msgs("q1", "a1\n\n"+toolNotesHead+"\n- notes.search ok: raw result")},
 		// A question with images gets a note per image, never the bytes.
 		{"images become notes", []Line{
 			{Type: TypeUser, Text: "which shop are these from?", Images: []string{"/home/u/meru-output/uploads/receipt.jpg", "/home/u/meru-output/uploads/garden.png"}},
