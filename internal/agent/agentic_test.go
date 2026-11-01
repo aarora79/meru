@@ -260,6 +260,8 @@ func TestFileToolsNoteFor(t *testing.T) {
 		{"not a file turn, agentic", true, names("web_search", "read_file", "grep"), false, ""},
 		{"file turn with no file tools", false, names("datetime", "cmd.git-log"), true, ""},
 		{"no tools", true, nil, true, ""},
+		{"file turn with analyze_table", false, names("read_file", "analyze_table"), true, fileToolsNote + tableNote},
+		{"agentic with analyze_table", true, names("grep", "analyze_table"), true, exploreNote + tableNote},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

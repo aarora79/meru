@@ -103,7 +103,7 @@ func TestChunkTableSplitsAndStops(t *testing.T) {
 		prev = c.EndLine
 	}
 	last := chunks[len(chunks)-1]
-	if last.EndLine != maxIndexRows || !strings.HasSuffix(last.Text, "left out of search; read_file reads them.") {
+	if last.EndLine != maxIndexRows || !strings.HasSuffix(last.Text, "left out of search; analyze_table and read_file read them.") {
 		t.Errorf("last chunk ends at row %d with %q; want row %d and the note", last.EndLine, last.Text[max(0, len(last.Text)-80):], maxIndexRows)
 	}
 

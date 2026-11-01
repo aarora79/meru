@@ -38,6 +38,14 @@ const toolsNote = "You may call the tools offered with this question when they h
 const fileToolsNote = "When the excerpts below aren't enough, you may read whole files with read_file, " +
 	"list folders with list_folder, find every matching line with grep, and search again in other words with search_files."
 
+// tableNote follows the file tools note on a file turn that offers
+// analyze_table. Search puts a sheet's rows in the prompt as excerpts, and
+// a model that sees "Amount EUR 64.50" on a dozen rows will add them up
+// itself and get the total wrong; the note sends it to the tool, which
+// reads every row and adds exactly.
+const tableNote = " For a total, a count, an average, the largest or the smallest over a CSV or Excel file, " +
+	"call analyze_table; never add up rows yourself."
+
 // exploreNote takes fileToolsNote's place when [index] retrieval is
 // "agentic". No excerpts sit in the prompt, so it tells the model to look
 // for itself, in the order that finds things fastest, and carries the rule
@@ -124,8 +132,8 @@ func offersWebSearch(specs []engine.ToolSpec) bool {
 
 // fileToolsNoteFor returns the note on the file tools for a turn that
 // offers specs: fileToolsNote, or exploreNote with agentic retrieval, when
-// fileTurn is true and specs hold a file tool; "" otherwise. fileTurn comes
-// from aboutFiles.
+// fileTurn is true and specs hold a file tool, with tableNote after it when
+// specs hold analyze_table; "" otherwise. fileTurn comes from aboutFiles.
 //
 // A turn that isn't about files, such as a web question, gets no note even
 // when it offers the file tools. Its prompt stays shorter, and the model
@@ -135,10 +143,14 @@ func (a *Agent) fileToolsNoteFor(specs []engine.ToolSpec, fileTurn bool) string 
 	if !fileTurn || !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return builtin.IsFileTool(s.Name) }) {
 		return ""
 	}
+	note := fileToolsNote
 	if a.agentic {
-		return exploreNote
+		note = exploreNote
 	}
-	return fileToolsNote
+	if slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == builtin.AnalyzeTable }) {
+		note += tableNote
+	}
+	return note
 }
 
 // ToolRunner lists the tools the model may use and runs the calls it makes.

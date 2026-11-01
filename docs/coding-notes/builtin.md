@@ -2,14 +2,15 @@
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
 `about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
-`web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`, and the
-tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
+`web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`,
+`table.go`, `tablequery.go`, and the tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
 `chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
-`webrender_test.go`, `upload_test.go`, `notes_test.go` and
-`images_test.go`, with the PDF in `testdata/`)
+`webrender_test.go`, `upload_test.go`, `notes_test.go`, `office_test.go`,
+`table_test.go`, `tablequery_test.go` and `images_test.go`, with the PDF in
+`testdata/`)
 **Milestone:** v0.3 (`configure`, `web_search`, `web_fetch`), v0.4
 (`remember`, `write_file`, `read_file`, `list_folder`, `grep`,
-`search_files`)
+`search_files`), v0.7 (`analyze_table`)
 **Architecture:** [First run and setup](../../ARCHITECTURE.md#first-run-and-setup),
 [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call),
 [Memory](../../ARCHITECTURE.md#memory),
@@ -25,8 +26,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are seventeen built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all seventeen by default. When you say "connect my Gmail" in chat, the model calls
+There are eighteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all eighteen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -623,6 +624,70 @@ can't decode.
 itself and needs no image index. The agent, not this package, hides it from an
 answer model that can't look at pictures.
 
+### table.go and tablequery.go
+
+`analyze_table` answers questions about an Excel sheet or a delimited text
+file: how much, how many, which is largest. The model fills in fixed fields
+and Meru's code does the arithmetic. The owner ruled out the other road, a
+model that writes SQL or Python for Meru to run: Meru has no sandbox, and code
+composed after reading a hostile page is code nobody meant to run.
+[docs/design/word-excel-csv.md](../design/word-excel-csv.md) explains the
+design.
+
+**The call.** `tableArgs` lists every field the model may send: `path`,
+`sheet`, `header_row`, `where`, `group_by`, `aggregate`, `columns`, `sort` and
+`limit`. `decode` refuses any other key, so `{"sql": "…"}` fails before
+anything runs. `checkTableArgs` then checks what needs no sheet: the operators
+and functions against fixed lists, and a cap on each list (10 conditions, 100
+values for `in`, 3 group columns, 10 aggregates, 20 columns, 3 sort keys).
+Each cap stops a call that a hostile page steered from making every row
+compare against thousands of values. A call over a cap fails with a line that
+names it, and the model can fix the call.
+
+**The sheet.** `analyzeTable` resolves the path with the same `resolve` as
+`read_file`, so it reaches the same files, and asks the indexer for
+`ReadTable`, the parse `read_file` and `grep` share (see [index](index.md)). A
+Word or Markdown file gets `index.ErrNotTable` and a line that says to use
+`read_file`; an old `.xls` gets `oldOffice`'s line. `pickSheet` takes the named
+sheet, ignoring case, or the first shown sheet with data. The header row is
+`header_row`, or `index.HeaderRow`'s guess. `sheetColumns` names each column
+from it, and `dataRows` keeps the rows below it that hold something, each with
+its spreadsheet row number. `typeColumns` marks a column a date or a number
+when nine in ten of its values read as one, and text otherwise.
+
+**Describe first.** With only a path, the tool describes the sheet: the
+file's sheets, the header row it chose and why, each column's type, count,
+range and sample values, and the first five rows. The model looks before it
+asks, and when the header guess is wrong it can pass `header_row`.
+
+**The query.** `compileQuery` finds each named column, by header (ignoring
+case) or by letter, and fails with the list of columns when one isn't there.
+`run` filters with `filterRows`, then either groups the matching rows
+(`groupRows`) and adds each group up, or lists them. It sorts with
+`sortRows`, which puts empty cells last either way, cuts the result to
+`limit`, and writes a Markdown table under a line such as "Matched 3 of 6 rows
+in trip (rows 4 to 7)." A call that matches rows gets one citation, kind
+`rpc.SourceTable`, numbered with `dispatch.CiteNumbers` after the turn's other
+sources. The work checks `ctx` every 10,000 rows, so Stop ends it, and starts
+no goroutine.
+
+**Reading values.** `parseNumber` takes `64.50`, `EUR 64.50`, `€1,234.50`,
+`(12.50)` for a negative and `12.5%`; `1.234,56` stays text. `parseDate` takes
+`2026-05-03` with or without a time, and `03/04/2026`, read day first when the
+column has a date whose first part is above 12. `=` and `in` compare numbers
+by value and dates by date when both sides read that way, and text ignoring
+case and the spaces around it.
+
+**Why money doesn't go in `float64`.** A `float64` holds most decimals only
+nearly: in Go, as in Python, `0.1 + 0.2` is `0.30000000000000004`. Rounded for
+display, a sum of cents looks right most of the time, and the wrong last digit
+shows up on the one total you check. `decimal` keeps a number as whole units of
+its smallest decimal place, so `64.50` is `{6450, 2}`. A sum lines every value
+up to its column's decimal places (`scale`, at most six) and adds `int64`s, so
+`0.1 + 0.2` is `0.3` and a thousand cents add up to `10.00`. An average divides
+once, at the end, with two more places and rounding half away from zero. A sum
+past an `int64` fails with a line that says so instead of wrapping around.
+
 ### search.go
 
 `search_files` needs the store and the embedding model, which live in `merud`.
@@ -1032,6 +1097,11 @@ It returns the bytes, and the agent puts them on the question's message.
 
 ## Go ideas used here
 
+- **Integers for money**: `tablequery.go` adds `int64` units of the smallest
+  decimal place, never `float64`, so a sum of cents is exact. See
+  [table.go and tablequery.go](#tablego-and-tablequerygo).
+- **`slices.SortStableFunc`**: sorts with a comparison function and keeps
+  rows that tie in their order; `sortRows` uses it.
 - **`net/http` clients** — an `http.Client` holds the timeout, the redirect rule
   and the `Transport`, which holds the proxy setting and the dialer. Each web tool
   builds its own, so one tool's rules can't leak into the other's. More in
@@ -1083,7 +1153,17 @@ It returns the bytes, and the agent puts them on the question's message.
 
 ```sh
 go test ./internal/builtin/
+go test -run 'AnalyzeTable|ParseNumber|ExactSums' -v ./internal/builtin/
 ```
+
+`tablequery_test.go` checks the arithmetic alone: each form of number and
+date, column types, exact sums and averages (0.1 + 0.2, a thousand cents, a
+sum past an `int64`), each operator, sorting with empty cells last, and a
+cancelled filter. `table_test.go` runs `analyze_table` through `Call` on a CSV
+file with a title row above its header and a workbook: the description, a
+sum, a group sorted by its sum, a count by group, a list of rows by date, `in`
+with a column letter, a sheet of a workbook, no match, and one refusal per
+check, an unknown field among them.
 
 `web_test.go` never leaves the machine. `TestWebSearch` runs `web_search`
 against an `httptest` server that plays SearXNG: JSON results, the `403` HTML page
@@ -1159,7 +1239,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the seventeen names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the eighteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1252,7 +1332,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all seventeen. `web_fetch` had its own key under `[web]` before; two
+  same way for all eighteen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

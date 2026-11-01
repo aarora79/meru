@@ -1609,7 +1609,11 @@ folders, grep and search again. With agentic retrieval it is `exploreNote`:
 look first with `search_files` or `grep`, then `read_file` what matters, stop
 after two or three rounds, and cite `search_files`' excerpts by number. It
 carries the citing rule that `citeRule` carries when excerpts sit in the
-prompt. A web or mail question gets neither, even though its turn offers the
+prompt. When the turn offers `analyze_table`, `tableNote` follows either one:
+for a total, a count or an average over a CSV or Excel file, call the tool and
+never add up rows yourself. Search puts a sheet's rows in the prompt as
+excerpts, and a model that sees a dozen amounts there will add them itself and
+get the total wrong. A web or mail question gets neither, even though its turn offers the
 file tools: its prompt stays shorter, and the model isn't told to go looking
 in your folders for an answer that lives elsewhere. `prompt` puts this note
 after the list of skills, so a file turn and any other turn share the whole

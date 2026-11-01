@@ -58,13 +58,14 @@ func TestSearchTurnReadsAWholeFile(t *testing.T) {
 		t.Fatalf("tool_result = %+v, want read_file, builtin, ok", result)
 	}
 
-	// The first round offered only the three file tools.
+	// The first round offered only the file tools that need no search
+	// index: the three here and analyze_table.
 	var offered []string
 	for _, s := range eng.calls[0].tools {
 		offered = append(offered, s.Name)
 	}
-	if strings.Join(offered, " ") != "datetime read_file list_folder grep" {
-		t.Errorf("offered %v, want datetime and the three file tools", offered)
+	if strings.Join(offered, " ") != "datetime read_file list_folder grep analyze_table" {
+		t.Errorf("offered %v, want datetime, the three file tools and analyze_table", offered)
 	}
 	// The second round reads the whole file.
 	msgs := eng.lastCall().msgs

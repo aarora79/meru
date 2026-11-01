@@ -831,8 +831,8 @@ explain each step in detail.
 | When the turn ends | the `main` model, with caps | The turn ends when the model answers without calling a tool, or at the round cap (`[agent] max_rounds`, default 8). The last round offers no tools, so the model has to answer. A model that repeats a call twice loses its tools early. Each model call writes at most `[agent] max_output_tokens` (default 8,192, thinking included), and the whole turn has `[agent] turn_timeout` (default 5 minutes). A turn that hits a limit with no answer says sorry instead of going quiet |
 
 The `tools` and `search+tools` routes offer every allowed tool. `search` offers
-`datetime`, `about_meru`, the six read-only file tools, `read_file`, `list_folder`, `grep`,
-`search_files`, `search_images` and `view_image`, and the local commands that don't ask first. A question such as "write about everything
+`datetime`, `about_meru`, the seven read-only file tools, `read_file`, `list_folder`, `grep`,
+`search_files`, `search_images`, `view_image` and `analyze_table`, and the local commands that don't ask first. A question such as "write about everything
 in my work folder" lands on `search`, and ten excerpts can't cover a folder. So
 does "what changed in the meru repo this week?" when `meru` is an indexed folder,
 and a declared `git log` answers it. A command with `confirm = true` changes
@@ -886,9 +886,9 @@ and arguments and offers the choices `merud` sends, from these:
   [builtin]
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
              "read_file", "list_folder", "grep", "search_files",
-             "search_images", "view_image", "web_search",
-             "web_fetch", "search_notes", "list_notes",
-             "read_note", "schedule_job"]   # all seventeen, the default
+             "search_images", "view_image", "analyze_table",
+             "web_search", "web_fetch", "search_notes", "list_notes",
+             "read_note", "schedule_job"]   # all eighteen, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
   ```
 
@@ -908,7 +908,7 @@ and arguments and offers the choices `merud` sends, from these:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
-  clock tool, `datetime`; `about_meru`, which reports this setup; six
+  clock tool, `datetime`; `about_meru`, which reports this setup; seven
   read-only file tools; and three read-only Apple Notes tools. `web_search`, `datetime`, `about_meru` and the file
   tools run without asking unless you list them. `web_fetch` runs without asking for a URL a
   search result or your question gave, and asks otherwise:
@@ -921,6 +921,7 @@ and arguments and offers the choices `merud` sends, from these:
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the text holds only their paths, so the model names and cites them, and one with vision can open them with `view_image`. Offered when the index reads images. |
   | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A picture over 1,536 pixels on its longest side goes as a JPEG scaled down to that, since the model's cost grows with the pixels: a 4,000 by 3,000 phone photo of a bill cost `qwen3.6:35b` 1,756 tokens at 1,536 pixels, and it still read every line. A WebP picture goes as it is, since Go's standard library can't decode it. A turn opens at most 8 pictures; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
+  | `analyze_table` | An Excel sheet's or a CSV, TSV or `.tab` file's rows, filtered, grouped, counted, added up (`sum`, `avg`, `min`, `max`) and sorted, from fixed fields the model fills in: `path`, `sheet`, `header_row`, `where` (`=`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `starts_with`, `empty`, `not_empty`, `in`), `group_by`, `aggregate`, `columns`, `sort` and `limit`. With only a path it describes the sheet: its columns, their types and sample values, the header row it chose and the first rows. Sums add exact decimals, so a column of cents adds up to the cent. It reads every row, up to 100,000, through the indexer's readers and limits; a call takes at most 10 conditions, 100 values for `in`, 3 group columns, 10 aggregates, 20 columns and 3 sort keys, and returns at most 200 rows and 10,000 groups. The result cites the sheet and the rows it drew on. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Web results from SearXNG, numbered after the turn's other sources: title, URL, a snippet and the date when known. Each result joins the turn's `sources` event as a web source. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
@@ -5589,7 +5590,9 @@ transcript lines hold. No level writes question or answer text. With
 - **Not an agent framework.** The loop exists to serve Meru, and we won't package it
   as a library.
 - **Not a shell.** Meru runs programs you declared, with parameters the model fills
-  in. It never runs a command line a model composed, and ships no shell tool.
+  in. It never runs a command line a model composed, and ships no shell tool. A
+  question about a table gets `analyze_table`'s fixed fields, never code: no SQL,
+  no Python and no formula the model writes reaches an interpreter.
 
 ---
 

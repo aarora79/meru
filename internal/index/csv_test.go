@@ -25,6 +25,8 @@ func TestCSVTable(t *testing.T) {
 		{"a tie goes to tab in a .tsv", ".tsv", "a,b\tc\nd,e\tf\n", [][]string{{"a,b", "c"}, {"d,e", "f"}}},
 		{"a tie goes to comma in a .csv", ".csv", "a,b\tc\nd,e\tf\n", [][]string{{"a", "b\tc"}, {"d", "e\tf"}}},
 		{"one column", ".csv", "alpha\nbeta\n", [][]string{{"alpha"}, {"beta"}}},
+		{"a title line above the header", ".csv", "Trip to the Netherlands\nCity,Amount\nRome,3\nOslo,4\n", [][]string{{"Trip to the Netherlands"}, {"City", "Amount"}, {"Rome", "3"}, {"Oslo", "4"}}},
+		{"a semicolon file whose cells hold commas", ".csv", "Name;Note\nA;one, two\nB;three\n", [][]string{{"Name", "Note"}, {"A", "one, two"}, {"B", "three"}}},
 		{"ragged rows and trailing empties", ".csv", "a,b,c\n1\n2,3,,\n\n", [][]string{{"a", "b", "c"}, {"1"}, {"2", "3"}}},
 		{"byte-order mark", ".csv", "\xEF\xBB\xBFCity,Amount\nBern,5\n", [][]string{{"City", "Amount"}, {"Bern", "5"}}},
 		{"Windows-1252", ".csv", "Item,Price\nCaf\xe9,\x8012\n", [][]string{{"Item", "Price"}, {"Café", "€12"}}},

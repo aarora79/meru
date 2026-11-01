@@ -90,3 +90,54 @@ func TestAnswerCitesSheetRows(t *testing.T) {
 		t.Errorf("stdout = %q\nwant it to start with %q", res.stdout, wantOut)
 	}
 }
+
+func TestAnalyzeTableE2E(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "meru-table-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir, _ = filepath.EvalSymlinks(dir)
+	trip := "Date,City,Category,Amount\n" +
+		"2026-05-02,Amsterdam,Food tour,EUR 64.50\n" +
+		"2026-05-02,Amsterdam,Museum,EUR 27.00\n" +
+		"2026-05-03,Amsterdam,Food tour,EUR 112.25\n" +
+		"2026-05-04,Utrecht,Food tour,EUR 70.00\n"
+	if err := os.WriteFile(filepath.Join(dir, "trip.csv"), []byte(trip), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := startIndexStack(t, dir)
+	waitForStatus(t, s.home, "1 file,", "Scanning:   no")
+
+	// The turn's search puts the file's rows in the prompt as [1], so the
+	// table the tool returns takes [2].
+	const answer = "You spent EUR 176.75 on food tours in Amsterdam [2]."
+	s.fake.enqueue(t, fastModel, toolsRoute())
+	s.fake.enqueue(t, mainModel,
+		fakeollama.Reply{ToolCalls: []fakeollama.ToolCall{{Name: "analyze_table", Arguments: map[string]any{
+			"path": filepath.Join(dir, "trip.csv"),
+			"where": []any{
+				map[string]any{"column": "City", "op": "=", "value": "Amsterdam"},
+				map[string]any{"column": "Category", "op": "=", "value": "food tour"},
+			},
+			"aggregate": []any{map[string]any{"fn": "sum", "column": "Amount"}},
+		}}}},
+		fakeollama.Reply{Text: answer})
+	res := runMeru(t, s.home, "How much did we spend on food tours in Amsterdam?")
+	if res.code != 0 {
+		t.Fatalf("meru exited %d:\n%s\nmerud.log:\n%s", res.code, res.stderr, s.home.log())
+	}
+
+	// The model's second round reads the exact sum.
+	prompt := lastMainPrompt(t, s.fake)
+	for _, want := range []string{"Matched 2 of 4 rows in trip (rows 2 to 4).", "| 176.75 |", "Cite this table as [2]."} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("main model's last prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	wantOut := answer + "\n\nSources:\n[2] " + filepath.Join(dir, "trip.csv") + `, "trip", rows 2–4`
+	if !strings.Contains(res.stdout, wantOut) {
+		t.Errorf("stdout = %q\nwant it to hold %q", res.stdout, wantOut)
+	}
+}

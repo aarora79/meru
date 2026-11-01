@@ -257,7 +257,7 @@ that fits the graphics card, and `merud` as a systemd user service.
 - [ ] Third-party MCP servers: Meru installs, configures, starts and heals more
   servers than Google, Obsidian and web search, through the same pinned
   connector manifests ([#87](https://github.com/aarora79/meru/issues/87))
-- [ ] Read Word, Excel and CSV files, and answer questions about tables
+- [x] Read Word, Excel and CSV files, and answer questions about tables
   ([#184](https://github.com/aarora79/meru/issues/184))
 - [ ] Live transcription: show the words while the user speaks
   ([#150](https://github.com/aarora79/meru/issues/150))
