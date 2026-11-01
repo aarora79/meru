@@ -115,6 +115,21 @@ func TestContinue(t *testing.T) {
 	}
 }
 
+// TestContinueOutcomes checks which endings offer /continue, the same
+// list the desktop page's continues(t) holds: the ones that stopped with
+// work worth keeping, the round cap among them.
+func TestContinueOutcomes(t *testing.T) {
+	for outcome, want := range map[string]bool{
+		"cut_off": true, "window_full": true, "timeout": true, "capped": true,
+		"gave_up": false, "bad_output": false, "": false,
+	} {
+		turn := exchange{state: stateDone, stats: rpc.Event{Type: rpc.EventDone, Outcome: outcome}}
+		if got := stoppedShort(&turn); got != want {
+			t.Errorf("stoppedShort after %q = %v, want %v", outcome, got, want)
+		}
+	}
+}
+
 func TestAttach(t *testing.T) {
 	dir := t.TempDir()
 	copyPath := filepath.Join(dir, "garden-plan.pdf")

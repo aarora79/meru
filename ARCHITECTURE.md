@@ -1796,10 +1796,20 @@ order.
    messages plus a user message telling the model to answer now in plain text
    from the tool results, with no tools offered. The empty round's thinking
    stays out, and the nudge lives only in that call, never in the transcript. A
-   turn retries once; a second empty reply ends it `gave_up`. The turn span
+   turn retries once; a second empty reply ends it `gave_up`, or `capped` when
+   the turn has used every round. The turn span
    records the retry as `meru.turn.empty_retry`. In a real turn a thinking
    model got eight good `web_search` results, then wrote 205 tokens of thinking
    and nothing else, and the user read the sorry with seven rounds left.
+
+   A round with tools on offer can end on a plan with no call, such as "Let me
+   check the 2024 sheet." When the turn has a round left, `merud` adds the
+   plan and a user message, "You said what you would do next but didn't do it.
+   Do it now: call the tool, or answer from what you have.", and runs the next
+   round with the same tools. The nudge stays in the turn and never reaches the
+   transcript, and a turn gets one. A real session's last round wrote "Let me
+   find the specific date with 20 stars." and stopped, and `merud` logged it as
+   a full answer.
 
    A round can also fail part way, when Ollama can't parse what the model
    wrote. Ollama then sends an `{"error": ...}` line in the stream after its
@@ -1830,7 +1840,8 @@ ends without a full answer still answers, with an outcome of its own:
 | `timeout` | `turn_timeout` ran out | the text so far and a note that it stopped, or a sorry |
 | `cut_off` | the last call hit `max_output_tokens` | the text so far and a note that it stopped, or a sorry |
 | `window_full` | the tool results filled the context window, so later rounds offered no tools (step 5) | the answer from what it read, then a note naming the window's size and pointing at Continue |
-| `gave_up` | the rounds ended with no text, such as only tool calls, even after the one retry when a round was left for it | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `gave_up` | the rounds ended with no text, even after the one retry, with rounds still left | "Sorry, I couldn't answer that. Try asking again, or rephrase the question." |
+| `capped` | the turn used every round `max_rounds` allows and wrote nothing, or only a plan for its next step, such as "Let me find the date." | with nothing written: "Meru used all 8 rounds of tool calls this question allows and didn't reach an answer. It tried: …", naming each tool once with a count and its failures, and pointing at Continue; with a plan: the plan, then a note that says the same |
 | `bad_output` | Ollama couldn't parse the model's output, even after the one retry | any text so far, then "The model wrote a tool call that Ollama couldn't read, twice. Try asking again, or rephrase the question." (without "twice" when no round was left to retry) |
 | `no_vision` | the question carried images and the main model lacks the `vision` capability | when the index holds images like the first one: "Here are the images in your folders most like the one you attached:", the list, and a line that the model can't look at pictures. Otherwise: "<model> can't look at images, so Meru didn't send it this question." Both end with the suggestion described in [Questions with images](#questions-with-images). |
 
@@ -1841,7 +1852,7 @@ transcript, and in the `done` event's `outcome` field, empty for a full answer.
 
 ### Continuing an answer
 
-An answer that ends `cut_off`, `window_full` or `timeout` stopped with work worth keeping: the
+An answer that ends `cut_off`, `window_full`, `timeout` or `capped` stopped with work worth keeping: the
 pages it read and the calls it made. Asking again would do that work over, so
 both clients offer **Continue** under the chat's newest answer when it stopped
 short: a button in Meru.app and `/continue` in `meru chat`. Either sends an
@@ -1856,7 +1867,9 @@ far. It hands the model, in place of a question, a summary of that turn:
   result, or how it failed; past 8,000 characters the oldest calls drop out,
   since a long summary would fill the window that cut the answer off;
 - a request to pick up where the answer stopped, use these results, call a tool
-  only for what is still missing, and not repeat what it wrote.
+  only for what is still missing, and not repeat what it wrote. After `capped`
+  it says the turn ran out of tool rounds, so the model chooses its calls with
+  care. A Continue turn has `max_rounds` of its own.
 
 The answer so far reaches the model through the history, as every earlier
 answer does. The turn routes, searches and recalls memories on the last
@@ -2312,7 +2325,7 @@ that don't exist, and asked which tools it had used, four steps that never ran.
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
-full answer: `timeout`, `cut_off`, `window_full`, `gave_up`, `bad_output` or `no_vision` (see
+full answer: `timeout`, `cut_off`, `window_full`, `capped`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when a check on
 the answer warned, such as a claimed action with no successful tool call or a
 link to a file that isn't there (see
@@ -5381,7 +5394,7 @@ for the rest.
 | `gen_ai.server.time_per_output_token` | histogram | model, tier | decode speed |
 | `meru.engine.load.duration` | histogram | model | cold loads Ollama had to do (should be ~0) |
 | `meru.route.decisions` | counter | route, outcome (ok/low_confidence/degraded) | how often each route wins, and how often the router is unsure |
-| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/window_full/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
+| `meru.turn.duration` | histogram | route, source (cli/tui/desktop/job), outcome (ok/error/cancelled/timeout/cut_off/window_full/capped/gave_up/bad_output) | end-to-end latency; its sum over `outcome="ok"` is active time |
 | `meru.sessions` | counter | source | sessions started |
 | `meru.turn.tokens` | counter | `gen_ai.token.type` (input/output), route, source | the main model's tokens per answered question, summed over its model calls |
 | `meru.turn.docs` | histogram | route | distinct files each answered question read |

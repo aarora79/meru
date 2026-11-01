@@ -14,10 +14,11 @@ level=INFO msg=turn session=2026-09-24T020539-1f53 route=tools source=tui outcom
 | `timeout` | the question ran past `[agent] turn_timeout` | press Continue, or raise it, such as `"10m"` |
 | `cut_off` | the model hit `[agent] max_output_tokens` | press Continue, or raise it |
 | `window_full` | the tool results filled the answer model's context window, so Meru stopped offering tools and answered from what it had | press Continue. Meru already gives the answer model what fits in an eighth of memory; `merud.log`'s `answer model window` line says how much. A model Ollama can't describe gets `context_length`, which you can raise |
-| `gave_up` | the model only called tools, or wrote nothing twice | ask in other words, or `/new` in `meru chat` |
+| `capped` | the question used every round of tool calls `[agent] max_rounds` allows (8 by default) without a finished answer; the answer names the tools it tried | press Continue for more rounds with what it found, or ask more narrowly, such as naming the file |
+| `gave_up` | the model wrote nothing, twice, with rounds still left | ask in other words, or `/new` in `meru chat` |
 | `bad_output` | Ollama couldn't read the model's tool call, twice | ask again; if it keeps happening, update Ollama or switch models |
 
-**An answer stopped short.** Under an answer that ends `cut_off`, `window_full` or `timeout`,
+**An answer stopped short.** Under an answer that ends `cut_off`, `window_full`, `timeout` or `capped`,
 Meru.app shows a Continue button and `meru chat` a line pointing at
 `/continue`. Continue picks the answer up where it stopped. Meru hands the
 model your question and the tool calls it already made, with the start of

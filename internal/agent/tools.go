@@ -207,6 +207,12 @@ type turn struct {
 	// outcome, for the check on answers that say they called one; see
 	// toolClaims.
 	called []string
+	// tried holds each call the model made, in call order, with how it
+	// ended, for the words of a turn that used every round; see capAnswer.
+	tried []triedCall
+	// planNudged is true once the turn has asked the model to take the step
+	// it announced; see planNudge. A turn gets one nudge.
+	planNudged bool
 	// succeeded counts the calls that ended "ok". A turn where it stays 0
 	// changed nothing, so Handle checks its answer for a claim that it
 	// did; see claimsAction.
@@ -480,6 +486,19 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			if a.retriesEmpty(t, rep) {
 				return a.retryEmpty(ctx, t, msgs, total, emptyNudge)
 			}
+			// A model that had tools and announced a step instead of
+			// taking it gets one nudge, with its tools still on offer.
+			if a.nudgesPlan(t, rep, offer) {
+				t.planNudged = true
+				if err := t.emit(rpc.Event{Type: rpc.EventToken, Text: "\n\n"}); err != nil {
+					return total, err
+				}
+				msgs = append(msgs,
+					engine.Message{Role: engine.RoleAssistant, Content: rep.text},
+					engine.Message{Role: engine.RoleUser, Content: planNudge})
+				a.log.DebugContext(ctx, "the model only planned; asking it to act", "round", t.rounds)
+				continue
+			}
 			// A model whose tools went off still asked for some: its text
 			// is likely a plan, such as "I'll read the top four articles",
 			// with no answer after it. See retriesDropped.
@@ -528,6 +547,15 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 func (a *Agent) retriesEmpty(t *turn, rep reply) bool {
 	return strings.TrimSpace(rep.text) == "" && rep.doneReason != "length" &&
 		!t.emptyRetry && t.rounds < a.maxRounds
+}
+
+// nudgesPlan says whether converse should ask the model to take the step
+// its reply rep only announced: the round offered tools and the model
+// called none, the text only plans (plansOnly), the turn has a round left,
+// and it hasn't been nudged yet.
+func (a *Agent) nudgesPlan(t *turn, rep reply, offer []engine.ToolSpec) bool {
+	return len(offer) > 0 && len(rep.calls) == 0 && !t.planNudged &&
+		t.rounds < a.maxRounds && plansOnly(rep.text)
 }
 
 // retriesDropped says whether converse should ask the model once more
@@ -877,6 +905,11 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 	ran := make([]ranCall, len(calls))
 	for i, o := range outcomes {
 		ran[i] = ranCall{msg: out[i], outcome: o}
+		// The goroutines have all ended, so this loop sees the calls in the
+		// order the model made them.
+		if caller == "" {
+			t.tried = append(t.tried, triedCall{name: calls[i].Name, outcome: o})
+		}
 		if o != dispatch.OutcomeOK {
 			continue
 		}

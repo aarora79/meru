@@ -7,6 +7,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -58,12 +59,14 @@ func TestEmptyReplyRetry(t *testing.T) {
 			wantRetry:   true,
 		},
 		{
-			name:        "thinking only on the last round",
-			route:       "tools",
-			maxRounds:   2,
-			replies:     []fakeollama.Reply{search, thinking, {Text: "never asked for"}},
-			wantAnswer:  sorry,
-			wantOutcome: endGaveUp,
+			name:      "thinking only on the last round",
+			route:     "tools",
+			maxRounds: 2,
+			replies:   []fakeollama.Reply{search, thinking, {Text: "never asked for"}},
+			// Both rounds are spent, so the turn hit the cap: the user reads
+			// what it tried, not a bare apology.
+			wantAnswer:  fmt.Sprintf(capAnswer, 2, "web_search"),
+			wantOutcome: endCapped,
 			wantCalls:   2,
 		},
 	}

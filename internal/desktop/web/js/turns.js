@@ -357,8 +357,10 @@ function outcomeText(outcome) {
       return "This answer hit the length limit and stops short. Continue picks up where it stopped.";
     case "window_full":
       return "Meru stopped reading partway: the prompt filled the model's context window. Continue picks up where it stopped.";
+    case "capped":
+      return "Meru used every round of tool calls this question allows. Continue gives it more rounds with what it found.";
     case "gave_up":
-      return "Meru stopped after too many tool rounds.";
+      return "The model wrote no answer. Try asking again, or rephrase the question.";
   }
   return "";
 }

@@ -303,8 +303,9 @@ it writes the answer line, `Handle` calls `noteModel`, which reads the session's
 last `model_switch` line through `Session.Model` and writes a new one when the
 model differs, so a session's first answer gets one with an empty `from`. The
 answer line then carries `ttft_ms`, `eval_ms`, `bad_calls` and `capped`, and the
-turns row gets the same numbers with the model. A turn is `capped` when it ended
-`gave_up` after using every round `max_rounds` allows.
+turns row gets the same numbers with the model. A turn is `capped` when it
+ended `capped`: it used every round `max_rounds` allows and wrote nothing, or
+only a plan (see "Running out of rounds" below).
 
 **Bad calls (malformed.go).** `malformed` adds one to the turn's `badCalls` and
 to the `meru.model.malformed_calls` metric, and logs why at debug level with a
@@ -922,6 +923,35 @@ and `meru chat` show them with no change:
 - no text yet: `Sorry, I couldn't answer that. Try asking again, or rephrase the question.`
 - some text already streamed: that text stays, and a note follows it, one for
   the deadline and one for the length limit.
+
+**Running out of rounds (plans.go).** After `endOf`, `reachedCap` turns the
+ending into `capped` when the turn used every round and wrote nothing
+(`gave_up`) or a reply that `plansOnly` reads as a plan. `endTurn` then names
+what the turn tried, from `t.tried`:
+
+| The last round held | The user reads | Outcome |
+| --- | --- | --- |
+| a full answer | the answer | `ok` |
+| nothing, with rounds left (after the one retry) | "Sorry, I couldn't answer that…" | `gave_up` |
+| nothing, at the cap | "Meru used all 8 rounds of tool calls… It tried: web_search, grep ×2 (failed)…" | `capped` |
+| only a plan, at the cap | the plan, then `capNote` | `capped` |
+| only a plan, before the cap | nothing yet: the next round runs with `planNudge` | (the turn goes on) |
+
+`plansOnly` reads a reply as a plan when it is under 280 characters, opens on
+"Let me", "I'll", "I'm going to", "Next, I" or "Now I", and holds no list or
+table; "Let me know…" and "I'll need…" don't count. `t.tried` gets one entry per
+call the model made, in call order, filled after a round's goroutines all end,
+so the list never depends on which call finished first. `tried` writes each
+tool once with a count and its failures, such as "grep ×2 (you said no)".
+`nudgesPlan` lets a round with tools on offer that ended on a plan run once
+more: `converse` adds the plan and `planNudge` to the turn's messages and loops.
+The transcript never holds the nudge. A real session's last round wrote "Let
+me find the specific date with 20 stars." and stopped, and the turn was logged
+as a full answer; another spent its 8 rounds on a web search, a refused fetch,
+`top` and `pgrep`, and the user read only the sorry.
+
+Both clients offer Continue after `capped`, and `continuation` tells the model
+the turn ran out of tool rounds, so it chooses its calls with care.
 
 `errors.Is(err, engine.ErrModelOutput)` looks through every error that wraps
 another with `%w` (here `answer` adds `main model …:` in front) and reports

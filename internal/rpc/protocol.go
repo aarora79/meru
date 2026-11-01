@@ -619,9 +619,10 @@ type Event struct {
 	// with no network or routing time in it.
 	TPOTMillis float64 `json:"tpot_ms,omitempty"`
 	// Outcome, on the "done" event, says how a turn ended without a full
-	// answer: "cut_off", "window_full", "timeout", "gave_up", "bad_output" or "no_vision",
-	// as the transcript's assistant line holds it; empty for a full
-	// answer. A client offers Continue after "cut_off", "window_full" and "timeout".
+	// answer: "cut_off", "window_full", "timeout", "capped", "gave_up", "bad_output" or
+	// "no_vision", as the transcript's assistant line holds it; empty for a
+	// full answer. A client offers Continue after "cut_off", "window_full",
+	// "timeout" and "capped".
 	Outcome string `json:"outcome,omitempty"`
 }
 

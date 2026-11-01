@@ -469,9 +469,13 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if ended == "" && t.windowFull {
 		ended = endWindowFull
 	}
-	// A turn that used every round max_rounds allows and still wrote no
-	// text hit the cap; `/usage by model` counts these per model.
-	capped := ended == endGaveUp && t.rounds >= a.maxRounds
+	// A turn that used every round max_rounds allows and wrote nothing, or
+	// only a plan for its next step, hit the cap; `/usage by model` counts
+	// these per model.
+	if a.reachedCap(t, ended, rep.text) {
+		ended = endCapped
+	}
+	capped := ended == endCapped
 	if ended != "" {
 		// err is only ever the deadline, unreadable output or no vision
 		// here, which endTurn answers for.
@@ -882,6 +886,10 @@ const (
 	// far (see window.go).
 	endWindowFull = "window_full"
 	endGaveUp     = "gave_up" // the rounds ended with no text, such as only tool calls
+	// endCapped: the turn used every round max_rounds allows and wrote no
+	// finished answer, only nothing or a plan for its next step. The user
+	// reads what it tried and can Continue (see plans.go).
+	endCapped = "capped"
 	// endBadOutput: Ollama couldn't read what the model wrote, even after
 	// the one retry (see retriesOutput).
 	endBadOutput = "bad_output"
@@ -966,6 +974,10 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 		if streamed {
 			add = "\n\n" + add
 		}
+	case ended == endCapped && streamed:
+		add = "\n\n" + fmt.Sprintf(capNote, a.maxRounds, tried(t.tried))
+	case ended == endCapped:
+		add = fmt.Sprintf(capAnswer, a.maxRounds, tried(t.tried))
 	case ended == endWindowFull && streamed:
 		add = "\n\n" + fmt.Sprintf(windowNote, a.answerWindow())
 	case ended == endWindowFull:
@@ -981,6 +993,16 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 		return "", err
 	}
 	return text + add, nil
+}
+
+// reachedCap says whether a turn that ended as ended, with text as its
+// answer, ran out of rounds: it used every round max_rounds allows and
+// wrote nothing (endGaveUp) or a reply that only plans its next step.
+func (a *Agent) reachedCap(t *turn, ended, text string) bool {
+	if t.rounds < a.maxRounds {
+		return false
+	}
+	return ended == endGaveUp || (ended == "" && plansOnly(text))
 }
 
 // recordUsage writes the turns row for an answered turn and records
