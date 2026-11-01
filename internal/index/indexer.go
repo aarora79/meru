@@ -678,8 +678,7 @@ func (ix *Indexer) indexFileLocked(ctx context.Context, p string, force bool) (f
 		return fileResult{outcome: outSkipped, reason: ReasonBinary}, len(data), kind, nil
 	}
 
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:])
+	hash := contentHash(kind, data)
 	old, ok, err := ix.sink.Document(ctx, p)
 	if err != nil {
 		return fileResult{}, len(data), kind, fmt.Errorf("look up %s: %w", p, err)
@@ -776,6 +775,20 @@ func (ix *Indexer) readFile(p string, info fs.FileInfo, limit int64) ([]byte, er
 	return data, nil
 }
 
+// contentHash returns the hex SHA-256 the store keeps for a file of kind
+// holding data. For a spreadsheet or a delimited text file it hashes
+// tableChunkFormat after the bytes, so a change to how tables chunk makes
+// the next scan chunk every one again, once: the stored hash no longer
+// matches. Every other kind hashes its bytes alone.
+func contentHash(kind string, data []byte) string {
+	h := sha256.New()
+	h.Write(data)
+	if kind == KindXLSX || kind == KindCSV {
+		h.Write([]byte("\x00" + tableChunkFormat))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // chunkFile picks the chunker for kind.
 func chunkFile(kind, p string, data []byte, lim limits) ([]store.Chunk, error) {
 	switch kind {
@@ -794,7 +807,7 @@ func chunkFile(kind, p string, data []byte, lim limits) ([]store.Chunk, error) {
 		if err != nil {
 			return nil, err
 		}
-		return chunkTable(tables, lim), nil
+		return chunkTable(tables, p, lim), nil
 	default:
 		return chunkText(string(data), lim), nil
 	}

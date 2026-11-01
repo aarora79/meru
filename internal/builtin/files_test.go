@@ -393,6 +393,14 @@ func TestGrep(t *testing.T) {
 			[]string{"long.md:4:"}},
 		{"no match", `{"pattern":"zebra"}`,
 			[]string{"0 matching lines in 0 files"}, nil},
+		// A model wrote alternatives without regex and read the empty result
+		// as an answer (#208): grep runs such a pattern again as a regex.
+		{"alternatives without regex run as one", `{"pattern":"Kyoto|Porto"}`,
+			[]string{"grep ran it as one", "japan.md:1: Kyoto in April.", "porto.md:1: Porto."}, nil},
+		{"a pipe with an empty side stays plain text", `{"pattern":"| zebra"}`,
+			[]string{"0 matching lines in 0 files"}, []string{"ran it as one"}},
+		{"a file's name matches", `{"pattern":"lisbon"}`,
+			[]string{"lisbon.md (file name)", "lisbon.md:1: Lisbon orchard tour.", "and 1 file whose name matches"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

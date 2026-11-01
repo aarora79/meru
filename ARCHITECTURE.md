@@ -930,7 +930,7 @@ and arguments and offers the choices `merud` sends, from these:
   | --- | --- |
   | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page, a Word file as text, and an Excel workbook sheet by sheet under a `--- sheet Name ---` line, with a sheet or a CSV file one row per line and its cells joined by ` | `. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
-  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text` (`path (page N)` for a PDF, `path (sheet S, row N)` for an Excel sheet, `path (row N)` for a CSV file), until 50 lines (the model may ask for up to 200), 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
+  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text` (`path (page N)` for a PDF, `path (sheet S, row N)` for an Excel sheet, `path (row N)` for a CSV file), and each file whose name matches as `path (file name)`, until 50 lines (the model may ask for up to 200), 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. A plain-text pattern that finds nothing and reads as a regular expression, such as `a|b` or `x.*y`, runs again as one, and the result says so. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the text holds only their paths, so the model names and cites them, and one with vision can open them with `view_image`. Offered when the index reads images. |
   | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A picture over 1,536 pixels on its longest side goes as a JPEG scaled down to that, since the model's cost grows with the pixels: a 4,000 by 3,000 phone photo of a bill cost `qwen3.6:35b` 1,756 tokens at 1,536 pixels, and it still read every line. A WebP picture goes as it is, since Go's standard library can't decode it. A turn opens at most 8 pictures; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
@@ -2531,7 +2531,7 @@ The indexer cuts each file into chunks along its own structure:
 | HTML | `<h1>` to `<h6>`, then paragraphs; scripts, styles and `<head>` dropped | the heading path | none |
 | PDF | page, then paragraphs; plain text, no layout | none | page |
 | Word (`.docx`) | as Markdown: heading, then paragraphs; a table becomes one line per row, cells joined by ` \| ` | the heading path | the heading |
-| Excel sheet, CSV, TSV | rows, each labelled with its number and its column names, under a line that names the sheet and its columns; the first 10,000 rows of a sheet | the sheet's name, or the file's name without its extension | rows |
+| Excel sheet, CSV, TSV | rows, each labelled with its number and its column names, under a line that names the sheet, the file's path and its columns; the first 10,000 rows of a sheet | the sheet's name, or the file's name without its extension | rows |
 | Image (PNG, JPEG, GIF, WebP) | not split: one chunk whose text names the file and its folder | the file name | the file |
 
 - **Size.** A chunk holds about `chunk_tokens` (500) tokens and repeats the last
@@ -2542,7 +2542,10 @@ The indexer cuts each file into chunks along its own structure:
   line breaks, then between words, and last at a fixed width.
 - **A row carries its column names.** A chunk of a sheet reads `Row 12: Date
   2026-05-03; City Amsterdam; Amount EUR 64.50`, so keyword and vector search both
-  match "food tour in Amsterdam" to the row. The header is the first of the top 20
+  match "food tour in Amsterdam" to the row. Its first line names the sheet and
+  the file's full path, as an image's chunk names its folder: a CSV of daily
+  GitHub stars holds only dates and numbers, and only its path tied it to "the AI
+  registry's star history". The header is the first of the top 20
   rows whose cells span at least half the sheet and are mostly not numbers.
 - **The heading path travels with the text.** Each chunk embeds with its heading
   path as the title in the embedding model's document prefix, `title: Garden >

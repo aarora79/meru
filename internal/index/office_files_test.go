@@ -5,10 +5,15 @@
 package index
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/aarora79/meru/internal/store"
 )
 
 // officeTree writes one file of each new kind, plus a .txt of tab-separated
@@ -101,7 +106,43 @@ func TestScanOfficeFiles(t *testing.T) {
 	}
 	e, _ := sink.entry(filepath.Join(root, "budget.xlsx"))
 	c := e.chunks[0]
-	if c.Heading != "Invoices" || c.StartLine != 2 || c.EndLine != 2 || c.Text != "Sheet Invoices. Columns: City, Amount.\nRow 2: City Amsterdam; Amount 64.5" {
+	if c.Heading != "Invoices" || c.StartLine != 2 || c.EndLine != 2 || c.Text != "Sheet Invoices in "+filepath.Join(root, "budget.xlsx")+". Columns: City, Amount.\nRow 2: City Amsterdam; Amount 64.5" {
 		t.Errorf("first budget.xlsx chunk = %+v", c)
+	}
+}
+
+// TestTableChunkFormatRechunks checks that a table file stored under the
+// hash of an earlier chunk format is chunked again on the next scan, once,
+// while a Markdown file with the same bytes keeps its plain hash (#208).
+func TestTableChunkFormatRechunks(t *testing.T) {
+	data := []byte("City,Amount\nRome,3\n")
+	if contentHash(KindCSV, data) == contentHash(KindMarkdown, data) {
+		t.Fatal("a table's hash doesn't carry tableChunkFormat")
+	}
+	root := tempRoot(t)
+	writeFiles(t, root, map[string]string{"trip.csv": string(data)})
+	ix, sink, _ := newTestIndexer(t, testConfig(root))
+	if _, err := ix.Scan(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, "trip.csv")
+	// Make the store hold the file as an older merud left it: the bytes'
+	// hash alone, and chunks with no path.
+	e, _ := sink.entry(p)
+	sum := sha256.Sum256(data)
+	e.doc.Hash = hex.EncodeToString(sum[:])
+	if err := sink.ReplaceDocument(t.Context(), e.doc, []store.Chunk{{Text: "Sheet trip. Columns: City, Amount."}}, e.vecs[:1]); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := ix.Scan(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _ = sink.entry(p)
+	if rep.Indexed != 1 || !strings.Contains(e.chunks[0].Text, "in "+p) {
+		t.Errorf("scan after a format change = %+v, chunk %q; want the file chunked again with its path", rep, e.chunks[0].Text)
+	}
+	if rep, _ = ix.Scan(t.Context()); rep.Unchanged != 1 || rep.Indexed != 0 {
+		t.Errorf("the scan after that = %+v; want the file unchanged", rep)
 	}
 }

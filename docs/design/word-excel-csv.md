@@ -31,14 +31,14 @@ The Excel and delimited-text readers return a `Table` per sheet: rows of text, w
 
 ### Search
 
-The indexer cuts a Word file by heading, as it cuts Markdown, so a chunk carries its heading path, such as `Term > Renewal`. It cuts a sheet into chunks of rows, each starting with the sheet and its columns, and each row labelled with its number and its column names:
+The indexer cuts a Word file by heading, as it cuts Markdown, so a chunk carries its heading path, such as `Term > Renewal`. It cuts a sheet into chunks of rows, each starting with the sheet, the file's path and its columns, and each row labelled with its number and its column names:
 
 ```text
-Sheet trip-expenses. Columns: Date, City, Category, Amount.
+Sheet trip-expenses in /Users/you/trips/trip-expenses.csv. Columns: Date, City, Category, Amount.
 Row 12: Date 2026-05-03; City Amsterdam; Category Food tour; Amount EUR 64.50
 ```
 
-The column names let both keyword and vector search match "food tour in Amsterdam" to the row. A spreadsheet chunk cites its sheet and its rows, as "trip-expenses.csv, rows 12–41". Search takes the first 10,000 rows of a sheet; `analyze_table` reads all of them, up to 100,000.
+The column names let both keyword and vector search match "food tour in Amsterdam" to the row, and the path lets a question that names the folder find a file whose cells don't mention it. A spreadsheet chunk cites its sheet and its rows, as "trip-expenses.csv, rows 12–41". Search takes the first 10,000 rows of a sheet; `analyze_table` reads all of them, up to 100,000.
 
 ### `analyze_table`
 

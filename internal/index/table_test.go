@@ -65,12 +65,12 @@ func TestChunkTable(t *testing.T) {
 		nil,
 		{"2026-05-04", "Utrecht", "", "EUR 12.00"},
 	}}
-	chunks := chunkTable([]Table{tab}, newLimits(500, 50))
+	chunks := chunkTable([]Table{tab}, "/home/u/trips/trip-expenses.csv", newLimits(500, 50))
 	if len(chunks) != 1 {
 		t.Fatalf("chunkTable = %d chunks, want 1: %+v", len(chunks), chunks)
 	}
 	c := chunks[0]
-	wantText := "Sheet trip-expenses. Columns: Date, City, Category, Amount.\n" +
+	wantText := "Sheet trip-expenses in /home/u/trips/trip-expenses.csv. Columns: Date, City, Category, Amount.\n" +
 		"Row 1: Trip to the Netherlands\n" +
 		"Row 3: Date 2026-05-03; City Amsterdam; Category Food tour; Amount EUR 64.50\n" +
 		"Row 5: Date 2026-05-04; City Utrecht; Amount EUR 12.00"
@@ -85,13 +85,13 @@ func TestChunkTableSplitsAndStops(t *testing.T) {
 		rows = append(rows, []string{fmt.Sprint(i), strings.Repeat("x", 40)})
 	}
 	lim := newLimits(100, 10) // 400 characters a chunk
-	chunks := chunkTable([]Table{{Name: "log", Rows: rows}}, lim)
+	chunks := chunkTable([]Table{{Name: "log", Rows: rows}}, "/home/u/log.csv", lim)
 	if len(chunks) < 2 {
 		t.Fatalf("chunkTable = %d chunks, want many", len(chunks))
 	}
 	prev := 0
 	for _, c := range chunks {
-		if !strings.HasPrefix(c.Text, "Sheet log. Columns: Day, Note.\n") {
+		if !strings.HasPrefix(c.Text, "Sheet log in /home/u/log.csv. Columns: Day, Note.\n") {
 			t.Fatalf("chunk doesn't start with the sheet line: %q", c.Text)
 		}
 		if n := len([]rune(c.Text)); n > lim.max+200 {
@@ -108,7 +108,7 @@ func TestChunkTableSplitsAndStops(t *testing.T) {
 	}
 
 	long := Table{Name: "wide", Rows: [][]string{{"Note"}, {strings.Repeat("y", 5000)}}}
-	got := chunkTable([]Table{long}, lim)
+	got := chunkTable([]Table{long}, "/home/u/wide.csv", lim)
 	if len(got) != 1 || len([]rune(got[0].Text)) > lim.max || !strings.HasSuffix(got[0].Text, "…") {
 		t.Errorf("a long row = %d chunks of %d characters; want one cut chunk", len(got), len([]rune(got[0].Text)))
 	}

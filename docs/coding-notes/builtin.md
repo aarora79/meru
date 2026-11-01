@@ -446,11 +446,18 @@ tool lists the folders it reads: the indexed ones, then the output folder.
 syntax. A plain-text pattern goes through `regexp.QuoteMeta` first, so a `.` or
 a `(` in it matches only itself, and `(?i)` in front makes the match ignore
 case. A bad regular expression comes back with the parse error, so the model
-can fix it.
+can fix it. A plain-text search that finds nothing, for a pattern
+`looksLikeRegex` reads as a regular expression (alternatives joined by `|`
+with text on each side, or `.*`, `.+`, `\b`, `\d`, `\s`, `\w`), runs again as one,
+and the result's first line says so. A model wrote
+`mcp-gateway-registry|stargazers` without `regex` and took "0 matching lines"
+as proof the files held neither word. A search that matched as plain text
+stays as it is, so `| Amount |` still finds a table row.
 
 A `grepRun` holds one search's state. `search` walks each start folder with
-`Walk`, and `file` reads each kept file with `ReadText` and tests it line by
-line. A PDF line reports its page, `path (page N): text`; a sheet line its sheet
+`Walk`, and `file` tests each kept file's name, listing a match as
+`path (file name)` ahead of the lines, then reads the file with `ReadText` and
+tests it line by line. A PDF line reports its page, `path (page N): text`; a sheet line its sheet
 and row, `path (sheet Invoices, row 14): text`; a CSV line its row,
 `path (row 14): text`; any other file its line number, `path:12: text`. `around` keeps each line to 200
 characters: a longer line shows the 200 around its first match, with `…` at
