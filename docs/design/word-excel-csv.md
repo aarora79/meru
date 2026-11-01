@@ -53,7 +53,7 @@ The model sends fixed fields, which the tool checks against a schema that refuse
 | `header_row` | the row that names the columns; found when left out |
 | `where` | conditions that must all hold: `=`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `starts_with`, `empty`, `not_empty`, `in` |
 | `group_by` | up to three columns to group rows by |
-| `aggregate` | `count`, `sum`, `avg`, `min` or `max` of a column, per group |
+| `aggregate` | `count`, `sum`, `avg`, `min`, `max`, `median`, or `percentile` with `p` from 0 to 100, of a column, per group |
 | `columns` | the columns to list, when the call lists rows instead of adding them up |
 | `sort` | a column or an aggregate, ascending or descending |
 | `limit` | rows in the result, 20 by default and 200 at most |

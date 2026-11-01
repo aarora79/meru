@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -47,7 +48,7 @@ const (
 )
 
 // fns are the aggregates analyze_table computes.
-var fns = []string{"count", "sum", "avg", "min", "max"}
+var fns = []string{"count", "sum", "avg", "min", "max", "median", "percentile"}
 
 // tableArgs is the JSON the model sends. decode refuses any key the struct
 // doesn't name, so the model can pass nothing that reads as code.
@@ -56,25 +57,68 @@ type tableArgs struct {
 	Sheet     string      `json:"sheet"`      // .xlsx only; empty means the first sheet with data
 	HeaderRow int         `json:"header_row"` // 0 means find it
 	Where     []condition `json:"where"`      // all must hold
-	GroupBy   []string    `json:"group_by"`
+	GroupBy   stringList  `json:"group_by"`
 	Aggregate []aggArg    `json:"aggregate"`
-	Columns   []string    `json:"columns"` // for a list of rows, without aggregate
+	Columns   stringList  `json:"columns"` // for a list of rows, without aggregate
 	Sort      []sortKey   `json:"sort"`
 	Limit     int         `json:"limit"` // rows in the result; 0 means defaultTableLimit
 }
 
 // condition is one filter. Column is a header name or a column letter.
 type condition struct {
-	Column string   `json:"column"`
-	Op     string   `json:"op"`
-	Value  string   `json:"value"`
-	Values []string `json:"values"` // for "in"
+	Column string     `json:"column"`
+	Op     string     `json:"op"`
+	Value  string     `json:"value"`
+	Values stringList `json:"values"` // for "in"
 }
 
-// aggArg is one figure per group. Column is empty for a count of rows.
+// aggArg is one figure per group. Column is empty for a count of rows. P
+// is the percentile for fn "percentile", 0 to 100; a pointer, so a call
+// that leaves it out can be told from one that passes 0.
 type aggArg struct {
-	Fn     string `json:"fn"`
-	Column string `json:"column"`
+	Fn     string   `json:"fn"`
+	Column string   `json:"column"`
+	P      *float64 `json:"p"`
+}
+
+// stringList is a list of strings that also takes one string, or a string
+// that holds a JSON list. Models send `"group_by": "City"` and
+// `"group_by": "[\"City\"]"` as often as the list the schema asks for, and
+// refusing them costs a round for no gain.
+type stringList []string
+
+// UnmarshalJSON reads a list, a string, or a string holding a list. A
+// method with this name is what encoding/json calls to decode the type.
+func (l *stringList) UnmarshalJSON(b []byte) error {
+	var list []string
+	if err := json.Unmarshal(b, &list); err == nil {
+		*l = list
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("want a list of strings")
+	}
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") && json.Unmarshal([]byte(s), &list) == nil {
+		*l = list
+		return nil
+	}
+	// A list written without quotes, such as [daily] or [City, Year].
+	if inner, ok := strings.CutPrefix(s, "["); ok {
+		inner = strings.TrimSuffix(inner, "]")
+		for _, part := range strings.Split(inner, ",") {
+			if part = strings.Trim(strings.TrimSpace(part), `"'`); part != "" {
+				list = append(list, part)
+			}
+		}
+		*l = list
+		return nil
+	}
+	if s != "" {
+		*l = stringList{s}
+	}
+	return nil
 }
 
 // sortKey orders the result by one of its columns, written as its header
@@ -196,6 +240,9 @@ func checkTableArgs(a *tableArgs) error {
 	for _, g := range a.Aggregate {
 		if !slices.Contains(fns, g.Fn) {
 			return fmt.Errorf("analyze_table: fn %q isn't one of %s", g.Fn, strings.Join(fns, ", "))
+		}
+		if g.Fn == "percentile" && (g.P == nil || *g.P < 0 || *g.P > 100) {
+			return errors.New("analyze_table: percentile needs p, from 0 to 100, such as 25 for the first quartile")
 		}
 	}
 	if a.HeaderRow < 0 {
@@ -453,6 +500,11 @@ func compileQuery(a tableArgs, cols []column) (query, error) {
 	}
 	for _, g := range a.Aggregate {
 		ag := agg{fn: g.Fn}
+		if g.P != nil {
+			// Hundredths of a percent, so p 2.5 is 250 and the arithmetic
+			// stays in integers.
+			ag.p = int64(math.Round(*g.P * 100))
+		}
 		if strings.TrimSpace(g.Column) != "" {
 			col, err := findColumn(cols, g.Column)
 			if err != nil {
@@ -573,7 +625,8 @@ func (q query) run(ctx context.Context, name string, rows []dataRow) (text strin
 	total := len(out)
 	if total > q.limit {
 		out = out[:q.limit]
-		notes += fmt.Sprintf("Showing %d of %d; pass a larger limit (at most %d), or sort, to see others.\n", q.limit, total, maxTableLimit)
+		notes += fmt.Sprintf("Showing %d of %d; the rest are left out. Pass a larger limit (at most %d) to see more, "+
+			"and use aggregate for a figure over every row.\n", q.limit, total, maxTableLimit)
 	}
 	cells := make([][]string, len(out))
 	for i, r := range out {
@@ -613,7 +666,7 @@ func tableSpec() engine.ToolSpec {
 	return engine.ToolSpec{
 		Name: AnalyzeTable,
 		Description: "Answers questions about an Excel (.xlsx), CSV or TSV file exactly: filters, groups, counts, sums, averages, " +
-			"minimums, maximums and sorts its rows. For any total, count or average over a table, call this tool; " +
+			"minimums, maximums, medians and percentiles (IQR is p75 minus p25), and sorts its rows. For any total, count or average over a table, call this tool; " +
 			"never add up rows yourself. Call it with path alone first to see the sheets, columns and sample rows.",
 		Parameters: mustJSON(map[string]any{
 			"type": "object",
@@ -644,6 +697,7 @@ func tableSpec() engine.ToolSpec {
 						"properties": map[string]any{
 							"fn":     map[string]any{"type": "string", "enum": fns},
 							"column": str("The column to add up; leave it out to count rows."),
+							"p":      prop("number", "For percentile: 0 to 100, such as 25 or 75."),
 						},
 						"required": []string{"fn"},
 					},

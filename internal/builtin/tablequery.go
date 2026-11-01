@@ -466,15 +466,21 @@ func compare(v, want string, c column) int {
 type agg struct {
 	fn  string
 	col *column // nil for a count of rows
+	p   int64   // for percentile: hundredths of a percent, 0 to 10,000
 }
 
 // header is the aggregate's column title in the result, such as
-// "sum(Amount)" or "count".
+// "sum(Amount)", "count" or, for a percentile, "p25(Amount)".
 func (a agg) header() string {
-	if a.col == nil {
-		return a.fn
+	fn := a.fn
+	if fn == "percentile" {
+		fn = "p" + formatUnits(a.p, 2)
+		fn = strings.TrimSuffix(strings.TrimRight(fn, "0"), ".")
 	}
-	return a.fn + "(" + a.col.name + ")"
+	if a.col == nil {
+		return fn
+	}
+	return fn + "(" + a.col.name + ")"
 }
 
 // aggState adds up one aggregate for one group as rows arrive.
@@ -486,7 +492,8 @@ type aggState struct {
 	best    decimal // min or max so far, for numbers
 	bestT   time.Time
 	hasBest bool
-	skipped int // non-empty values that weren't numbers (or dates)
+	skipped int       // non-empty values that weren't numbers (or dates)
+	values  []decimal // every number, for median and percentile
 	err     error
 }
 
@@ -521,6 +528,8 @@ func (s *aggState) add(a agg, row []string) {
 		return
 	}
 	switch a.fn {
+	case "median", "percentile":
+		s.values = append(s.values, d)
 	case "sum", "avg":
 		if s.err != nil {
 			return
@@ -581,6 +590,10 @@ func (s *aggState) result(a agg) (string, float64, error) {
 			}
 		}
 		return formatUnits(q, scale), float64(q) / float64(pow10[scale]), nil
+	case "median":
+		return quantile(s.values, 5000)
+	case "percentile":
+		return quantile(s.values, a.p)
 	case "min", "max":
 		if !s.hasBest {
 			return "", math.Inf(-1), nil
@@ -591,6 +604,51 @@ func (s *aggState) result(a agg) (string, float64, error) {
 		return s.best.String(), s.best.float(), nil
 	}
 	return "", 0, nil
+}
+
+// quantile returns the value at p hundredths of a percent through values,
+// so 5,000 is the median and 2,500 the first quartile, with its number for
+// sorting. It sorts values in place. Between two values it interpolates as
+// Python's statistics.quantiles(method="inclusive") and most spreadsheets'
+// PERCENTILE do: the position is (n-1) × p, and a fraction of the way from
+// one value to the next gives that fraction of the gap. The arithmetic stays
+// in integers, four decimal places past the values' own, so the result is
+// exact; trailing zeros come off. It fails when the numbers are too large
+// to line up.
+func quantile(values []decimal, p int64) (string, float64, error) {
+	if len(values) == 0 {
+		return "", math.Inf(-1), nil
+	}
+	slices.SortFunc(values, cmpDecimal)
+	scale := 0
+	for _, v := range values {
+		scale = max(scale, v.scale)
+	}
+	pos := int64(len(values)-1) * p
+	lo, frac := pos/10_000, pos%10_000
+	x, err := values[lo].rescale(scale)
+	if err != nil {
+		return "", 0, err
+	}
+	units, outScale := x, scale
+	if frac > 0 {
+		y, err := values[lo+1].rescale(scale)
+		if err != nil {
+			return "", 0, err
+		}
+		gap := y - x
+		if abs(x) > math.MaxInt64/10_000 || abs(gap) > math.MaxInt64/10_000 {
+			return "", 0, errOverflow
+		}
+		units, outScale = x*10_000+gap*frac, scale+4
+	}
+	// Drop the zeros the interpolation added, keeping the values' own
+	// decimal places: a median of 1 and 2 is 1.5, of 2 and 2 is 2.
+	for outScale > scale && units%10 == 0 {
+		units /= 10
+		outScale--
+	}
+	return formatUnits(units, outScale), float64(units) / float64(pow10[outScale]), nil
 }
 
 // abs returns the absolute value of n.

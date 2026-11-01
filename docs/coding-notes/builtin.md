@@ -688,6 +688,20 @@ up to its column's decimal places (`scale`, at most six) and adds `int64`s, so
 once, at the end, with two more places and rounding half away from zero. A sum
 past an `int64` fails with a line that says so instead of wrapping around.
 
+**Medians and percentiles.** `median` and `percentile` keep every number of
+the group, sort them with `cmpDecimal`, and `quantile` interpolates between the
+two values around the position `(n-1) × p`, as Python's
+`statistics.quantiles(method="inclusive")` and spreadsheets' `PERCENTILE` do.
+`p` arrives as hundredths of a percent (2.5 is 250), so the arithmetic stays in
+integers, four places past the values' own, and the result is exact. An IQR is
+`p75` minus `p25`; the description says so, since a model asked for an IQR
+otherwise reads quartiles off a sorted list by eye.
+
+**Lists sent as strings.** `group_by`, `columns` and `values` are a
+`stringList`, whose `UnmarshalJSON` method takes a list, one string, or a
+string that holds a list, quoted or not (`"[daily]"`). Models send all three,
+and refusing them costs a round.
+
 ### search.go
 
 `search_files` needs the store and the embedding model, which live in `merud`.
@@ -1102,6 +1116,9 @@ It returns the bytes, and the agent puts them on the question's message.
   [table.go and tablequery.go](#tablego-and-tablequerygo).
 - **`slices.SortStableFunc`**: sorts with a comparison function and keeps
   rows that tie in their order; `sortRows` uses it.
+- **A custom `UnmarshalJSON`**: `stringList` decodes a list, a string, or a
+  string that holds a list. More in
+  [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
 - **`net/http` clients** — an `http.Client` holds the timeout, the redirect rule
   and the `Transport`, which holds the proxy setting and the dialer. Each web tool
   builds its own, so one tool's rules can't leak into the other's. More in
@@ -1158,7 +1175,8 @@ go test -run 'AnalyzeTable|ParseNumber|ExactSums' -v ./internal/builtin/
 
 `tablequery_test.go` checks the arithmetic alone: each form of number and
 date, column types, exact sums and averages (0.1 + 0.2, a thousand cents, a
-sum past an `int64`), each operator, sorting with empty cells last, and a
+sum past an `int64`), medians and percentiles against Python's, lists sent as
+strings, each operator, sorting with empty cells last, and a
 cancelled filter. `table_test.go` runs `analyze_table` through `Call` on a CSV
 file with a title row above its header and a workbook: the description, a
 sum, a group sorted by its sum, a count by group, a list of rows by date, `in`

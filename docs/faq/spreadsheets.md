@@ -13,7 +13,9 @@ Excel workbooks (`.xlsx`), and CSV and TSV files (`.csv`, `.tsv`, `.tab`).
 
 The model never adds up rows itself and never writes code. It fills in fixed
 fields: which rows to keep (`City = Amsterdam`), what to group by, and what to
-work out (count, sum, average, smallest, largest). Meru does the rest.
+work out (count, sum, average, smallest, largest, median or a percentile).
+Meru does the rest. For the interquartile range (IQR), ask for it by name: Meru
+takes the 75th percentile minus the 25th.
 
 ## Tips
 
