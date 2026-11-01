@@ -1514,6 +1514,14 @@ type Engine interface {
 loopback and refuses to start if the configured URL points anywhere else. It is the
 codebase's only HTTP client for a model runtime, and it can't reach a cloud model.
 
+Ollama itself can: once signed in to ollama.com, a model whose tag ends in `cloud`,
+such as `gpt-oss:120b-cloud`, answers through the local API while Ollama passes
+the whole prompt to ollama.com. The loopback check can't see that, so Meru refuses
+such a model twice. Config refuses a cloud tag in `[models]` and in every model set
+when it loads. Before its first chat or embedding request for a model, the engine
+asks `/api/show` about it and refuses one whose reply names a remote host, which
+also catches a cloud model copied to a plain name (`ErrCloudModel`).
+
 Each model writes tool calls in its own format; Ollama converts them to structured
 JSON, and the engine converts that JSON to Meru's own types. The agent loop never
 sees a model-specific token. When Ollama's parser rejects what the model wrote,
@@ -5525,7 +5533,8 @@ transcript lines hold. No level writes question or answer text. With
 ## Privacy boundary
 
 - The codebase contains no path to a cloud model. The engine talks only to a model
-  runtime on loopback.
+  runtime on loopback, and refuses Ollama's cloud models, which Ollama would run on
+  ollama.com.
 - You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
   HTTP server needs `remote = true` in its config entry. `remote` says where
   `merud` may connect, not what the server reaches: a loopback server such as

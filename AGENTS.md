@@ -167,7 +167,9 @@ Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/w
 1. **No cloud-model code path.** The code must not contain one at all, whether behind
    a flag or switched off. If you find yourself adding an HTTP client for a model
    provider, stop and raise it instead. The only model HTTP traffic goes to Ollama on
-   loopback.
+   loopback, and never to one of Ollama's cloud models, which Ollama runs on
+   ollama.com: config refuses one by name, and the engine refuses one Ollama
+   describes as remote.
 2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
    Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
    the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
