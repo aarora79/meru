@@ -46,7 +46,7 @@ allows only code inside this repo to import.
 | `internal/router` | picks a route from one token's probabilities | `router.go`: `Decide` |
 | `internal/store` | `meru.db`: documents, chunks, vectors, the keyword index and the `tool_calls` log | `store.go`: `Open`, then `documents.go`, `search.go` and `toolcalls.go` |
 | `internal/retrieve` | hybrid search: vector and keyword, merged by reciprocal-rank fusion | `search.go`: `Search`, then `rrf.go` and `format.go` |
-| `internal/index` | reads `[index] folders` into the store: skip rules, chunking, watching | `indexer.go`: `Scan`, then `skip.go` and `watch.go` |
+| `internal/index` | reads `[index] folders` into the store: skip rules, chunking, watching; Word, Excel and CSV files through readers of its own | `indexer.go`: `Scan`, then `skip.go` and `watch.go`; `table.go` and `xlsx.go` for a sheet |
 | `internal/agent` | runs one turn, from question to answer, with its tool rounds | `agent.go`: `Handle`, then `tools.go`: `converse`, `runTools` |
 | `internal/dispatch` | the one path for every tool call: allowlist, approval, call, transcript lines, `tool_calls` row, metrics, span | `dispatch.go`: `Backend`, then `dispatcher.go`: `Dispatch` |
 | `internal/a2a` | the A2A client: reads agent cards, turns allowed skills into tools, sends messages | `client.go`: `New`, then `call.go`: `Call` |

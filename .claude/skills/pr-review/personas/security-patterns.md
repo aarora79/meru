@@ -14,7 +14,8 @@ or process, and data that leaves the machine.
 
 - **Designing a feature:** read the patterns your change touches. A new outbound
   connection means #1 and #2. A new tool means #3 and #4. A new file path means #5.
-  A new secret means #7. Apply the rule, not only the past fix.
+  A new secret means #7. A new file format means #13. Apply the rule, not only the
+  past fix.
 - **Reviewing a PR:** walk the [review checklist](#review-checklist) at the bottom.
   The `pr-review` Security Engineer and the `new-feature-design` security review both
   use it.
@@ -311,6 +312,47 @@ short piece of standard-library code would do.
 
 ---
 
+## 13. A parser that trusts its input
+
+**The mistake.** Reading a file someone else made as if it were well formed: a ZIP
+archive whose few KB unpack into gigabytes (a ZIP bomb), an entry named
+`../../.zshrc` written to disk, an XML document whose entities expand into each
+other ("billion laughs"), a sheet with one cell in row 1,000,000, or a parser
+library that panics on a broken file and takes `merud` down with it.
+
+**The rule.** Every reader of a file format Meru didn't write caps what it reads by
+the bytes it reads, never by sizes the file claims about itself. Archive parts stay
+in memory, looked up by name, and no entry name becomes a path. XML goes through
+`encoding/xml`'s decoder one token at a time, which refuses entities a document
+defines. Each format's entry point recovers from a panic and returns an error, so
+the file counts as failed and `merud` keeps running. Each limit ends in one line
+that says which limit and what to do.
+
+**Where the code enforces it.**
+
+- `internal/index/ooxml.go`: `part` reads through `io.LimitReader`, one byte past
+  64 MiB a part and 256 MiB a file, and `openOOXML` refuses more than 10,000
+  entries and a password-protected (OLE) file. Tests: `TestOpenOOXML`,
+  `TestPart`, `TestPartLimits`.
+- `internal/index/xlsx.go`, `csv.go`, `table.go`: 100,000 rows and 1,024 columns
+  a sheet and 2,000,000 cells a file, counted on cells that hold a value. Tests:
+  `TestXLSXLimits`, `TestCSVLimits`, and `TestXLSXBroken` for broken XML and a
+  document-defined entity.
+- `internal/index/pdf.go`, `xlsx.go`, `docx.go`: a deferred `recover()` in
+  `pdfPages`, `xlsxTables` and `DocxText`.
+- `internal/connectors/download.go`: `unpackZip` checks each entry's name and
+  keeps a running size cap; `internal/applenotes/body.go` reads a gzipped note
+  through `io.LimitReader(cap+1)`.
+- Added in #198, for #184.
+
+**What to check.** A new file format or archive: where its size caps sit, whether
+they count bytes read, whether any name from inside the file reaches the disk,
+whether a panic in the parser is recovered, and whether a test proves each cap.
+Raising one cap alone, such as cells, while the byte caps stay, keeps memory
+bounded; dropping a byte cap doesn't.
+
+---
+
 ## Review checklist
 
 Any "no" is a blocker until the PR justifies it.
@@ -347,3 +389,7 @@ Any "no" is a blocker until the PR justifies it.
 
 - [ ] SQL uses `?` parameters; keyword search goes through `ftsQuery` (#11)
 - [ ] Each new module has a reason; `make vuln` and `make sec` pass (#12)
+
+**Parsers**
+
+- [ ] A reader of a file format Meru didn't write caps the bytes it reads, keeps archive entries in memory, streams XML, recovers from a panic, and has a test per cap (#13)

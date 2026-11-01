@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/store"
 )
 
@@ -71,6 +72,10 @@ func TestCiteAndFormatImage(t *testing.T) {
 	f := Format([]Result{r})
 	if !strings.Contains(f, "this text is only its name") || strings.Contains(f, "Image shot.png in") {
 		t.Errorf("Format tells the model the wrong thing about an image:\n%s", f)
+	}
+	table := Result{ChunkWithDoc: store.ChunkWithDoc{Kind: KindCSV}}
+	if table.CitationKind() != SourceTable || SourceTable != rpc.SourceTable {
+		t.Errorf("a CSV chunk's CitationKind = %q, want %q (rpc.SourceTable %q)", table.CitationKind(), SourceTable, rpc.SourceTable)
 	}
 	if (Result{}).CitationKind() != "" {
 		t.Error("a text result has a citation kind")

@@ -633,8 +633,9 @@ type Citation struct {
 	// file under the home folder, otherwise the absolute path.
 	Path    string `json:"path"`
 	Heading string `json:"heading,omitempty"` // the heading or symbol the excerpt sits under
-	// StartLine and EndLine locate the excerpt in a text file (1-based);
-	// Page locates it in a PDF. Unused fields are 0.
+	// StartLine and EndLine locate the excerpt in a text file (1-based),
+	// or give the first and last rows of a SourceTable excerpt; Page
+	// locates it in a PDF. Unused fields are 0.
 	StartLine int `json:"start_line,omitempty"`
 	EndLine   int `json:"end_line,omitempty"`
 	Page      int `json:"page,omitempty"`
@@ -642,8 +643,9 @@ type Citation struct {
 	// is better.
 	Score float64 `json:"score,omitempty"`
 	// Kind is "image" when the source is an image file, SourceWeb for a
-	// web page, and empty for text, so a client that predates images shows
-	// it as any other source.
+	// web page, SourceTable for rows of a spreadsheet or a delimited text
+	// file, and empty for text, so a client that predates a kind shows it
+	// as any other source.
 	Kind string `json:"kind,omitempty"`
 	// URL is a web page's address, for a SourceWeb source. Path holds it
 	// too, so a client from before web sources still shows where the
@@ -654,6 +656,12 @@ type Citation struct {
 // SourceWeb is Citation.Kind for a web page: a web_search result or a
 // page web_fetch read. Heading holds its title.
 const SourceWeb = "web"
+
+// SourceTable is Citation.Kind for rows of an Excel sheet or a delimited
+// text file. Heading holds the sheet's name, and StartLine and EndLine the
+// first and last rows. A client that predates it prints "lines" for the
+// rows and still opens the file.
+const SourceTable = "table"
 
 // IndexReport says what one OpIndex run, or merud's startup scan, did.
 type IndexReport struct {

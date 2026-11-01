@@ -51,6 +51,7 @@ call, a file path, a program run, a secret, a tool or a change to the desktop pa
 | 10. The desktop page | {Safe/At risk/N/A} | |
 | 11. SQL and search-query injection | {Safe/At risk/N/A} | |
 | 12. Dependencies | {Safe/At risk/N/A} | |
+| 13. A parser that trusts its input | {Safe/At risk/N/A} | |
 
 ### Vulnerabilities
 1. **{Severity}:** {issue}. `{file:line}`. Pattern #{n}. Fix: {fix}

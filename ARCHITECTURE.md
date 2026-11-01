@@ -915,9 +915,9 @@ and arguments and offers the choices `merud` sends, from these:
 
   | Tool | What it returns |
   | --- | --- |
-  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
+  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page, a Word file as text, and an Excel workbook sheet by sheet under a `--- sheet Name ---` line, with a sheet or a CSV file one row per line and its cells joined by ` | `. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
-  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text`, until 50 lines (the model may ask for up to 200), 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
+  | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text` (`path (page N)` for a PDF, `path (sheet S, row N)` for an Excel sheet, `path (row N)` for a CSV file), until 50 lines (the model may ask for up to 200), 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the text holds only their paths, so the model names and cites them, and one with vision can open them with `view_image`. Offered when the index reads images. |
   | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A picture over 1,536 pixels on its longest side goes as a JPEG scaled down to that, since the model's cost grows with the pixels: a 4,000 by 3,000 phone photo of a bill cost `qwen3.6:35b` 1,756 tokens at 1,536 pixels, and it still read every line. A WebP picture goes as it is, since Go's standard library can't decode it. A turn opens at most 8 pictures; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
@@ -2429,9 +2429,9 @@ and skips it at the first one that matches:
 | 3 | `hidden` | a name that starts with `.` |
 | 4 | `build-folder` | `node_modules`, `.venv`, `venv`, `vendor`, `target`, `dist`, `build`, `__pycache__` |
 | 5 | `ignored` | `[index] ignore`, then each folder's `.gitignore` and `.meruignore`, from the top folder down |
-| 6 | `media`, `binary`, `unsupported` | by extension: audio, video, archives, programs, databases, HEIC and other images Ollama can't embed, any image when `[index] images` is off, and any type with no chunker |
+| 6 | `media`, `binary`, `unsupported` | by extension: audio, video, archives, programs, databases, HEIC and other images Ollama can't embed, any image when `[index] images` is off, and any type with no chunker, such as the old Office formats `.doc` and `.xls` |
 | 7 | `too-large` | over `max_file_mb`, or over 20 MiB for an image |
-| 8 | `binary` | a NUL byte in the first 8 KB (PDFs and images excepted) |
+| 8 | `binary` | a NUL byte in the first 8 KB (PDFs, images, and Word and Excel files excepted) |
 
 - **Secrets sit beyond any ignore file's reach.** No `.gitignore` or `.meruignore`
   line can bring one back, because a key in the index would end up in a prompt.
@@ -2459,6 +2459,20 @@ file as it is. HEIC, which iPhone photos and some Mac screenshots use, stays out
 Ollama refuses it and Go can't decode it. The file tools (`read_file`, `grep` and the
 rest) still see an image as media, since they read text.
 
+**Word, Excel and delimited text.** The indexer reads `.docx`, `.xlsx`, and
+`.csv`, `.tsv` and `.tab` files with readers of its own, built on the standard
+library. A Word or Excel file is a ZIP archive of XML parts; the reader keeps the
+parts in memory, reads each through a cap (64 MiB a part, 256 MiB a file, 10,000
+entries), reads the XML one token at a time, and turns a parser panic into an
+error. A sheet stops at 100,000 rows or 1,024 columns, and a file at 2,000,000
+cells. A cell formatted as a date reads as `2026-05-03`, and a formula as the value
+Excel saved with it; Meru never evaluates one. A delimited file's delimiter, a
+comma, semicolon, tab or pipe, is the one that splits its first 20 lines into the
+same number of fields; a file that isn't UTF-8 reads as Windows-1252. A
+password-protected file, and the old `.doc` and `.xls` formats, stay out. A `.txt`
+file stays plain text. [docs/design/word-excel-csv.md](docs/design/word-excel-csv.md)
+explains the feature end to end.
+
 ### Chunking
 
 The indexer cuts each file into chunks along its own structure:
@@ -2470,6 +2484,8 @@ The indexer cuts each file into chunks along its own structure:
 | other code, plain text | blank-line blocks | none | lines |
 | HTML | `<h1>` to `<h6>`, then paragraphs; scripts, styles and `<head>` dropped | the heading path | none |
 | PDF | page, then paragraphs; plain text, no layout | none | page |
+| Word (`.docx`) | as Markdown: heading, then paragraphs; a table becomes one line per row, cells joined by ` \| ` | the heading path | the heading |
+| Excel sheet, CSV, TSV | rows, each labelled with its number and its column names, under a line that names the sheet and its columns; the first 10,000 rows of a sheet | the sheet's name, or the file's name without its extension | rows |
 | Image (PNG, JPEG, GIF, WebP) | not split: one chunk whose text names the file and its folder | the file name | the file |
 
 - **Size.** A chunk holds about `chunk_tokens` (500) tokens and repeats the last
@@ -2478,6 +2494,10 @@ The indexer cuts each file into chunks along its own structure:
   because Ollama doesn't expose the embedding model's tokenizer.
 - **No chunk passes the limit.** A paragraph too big for one chunk gets split at
   line breaks, then between words, and last at a fixed width.
+- **A row carries its column names.** A chunk of a sheet reads `Row 12: Date
+  2026-05-03; City Amsterdam; Amount EUR 64.50`, so keyword and vector search both
+  match "food tour in Amsterdam" to the row. The header is the first of the top 20
+  rows whose cells span at least half the sheet and are mostly not numbers.
 - **The heading path travels with the text.** Each chunk embeds with its heading
   path as the title in the embedding model's document prefix, `title: Garden >
   Spring | text: …` for `embeddinggemma-2`, so the third chunk of a long section
@@ -2814,7 +2834,8 @@ have access to your files" while it reads excerpts from them, and can't say what
 Meru indexes.
 
 Before the first token, `merud` sends the client a `sources` event that lists each
-excerpt with its number, path (as `~/…`), heading, and line range or PDF page.
+excerpt with its number, path (as `~/…`), heading, and line range, PDF page or rows.
+Rows of a sheet have `kind = "table"`, so a client prints "rows 12–41".
 When `search_files` returns excerpts later in the turn, they take the next
 numbers, ride on the call's `tool_result` event, and `merud` sends a new
 `sources` event that holds every source so far. Clients keep the last one.
@@ -2823,7 +2844,8 @@ takes the next number and joins the list as a web source, with `kind = "web"`,
 its URL in `url` and in `path`, and its title as the heading. A number names one
 thing across the turn, a file excerpt or a page, never both. Meru.app shows a
 web source as a chip with a globe and the site's name that opens the page;
-`meru` and `meru chat` print its title and URL as a link. A reopened chat lists
+`meru` and `meru chat` print its title and URL as a link. A chip for rows of a
+workbook names the sheet too, as `budget.xlsx · Invoices`. A reopened chat lists
 only the files its turns read, since the transcript keeps the web results as
 notes, not as numbered sources. Once
 the answer ends, one-shot `meru` prints a `Sources:` list and `meru chat` shows the

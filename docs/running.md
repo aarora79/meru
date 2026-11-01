@@ -1207,7 +1207,9 @@ file. `meru chat` shows the same list under each answer. A question the router
 answers directly, such as "what is the capital of France?", gets no search and no
 list, unless it names one of your folders, such as "meru" for `~/repos/meru`.
 
-**What it skips.** `merud` reads Markdown, plain text, HTML, PDF and source code.
+**What it skips.** `merud` reads Markdown, plain text, HTML, PDF, source code,
+Word (`.docx`), Excel (`.xlsx`), and CSV and TSV files. It skips the old `.doc` and
+`.xls` formats; save one as `.docx` or `.xlsx` and Meru reads it.
 It never reads symlinks, hidden files and folders, secret files such as `.env`,
 `*.pem` or `id_rsa`, build folders such as `node_modules` or `.venv`, images,
 audio, video, archives, binaries, or files over 5 MB (`max_file_mb`). It also

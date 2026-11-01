@@ -263,7 +263,9 @@ internal/
   retrieve/          hybrid search over files, memories and past sessions: vector + keyword,
                      merged by reciprocal-rank fusion
   index/             reads [index] folders and the memory folder into the store: skip rules,
-                     .gitignore, Markdown, HTML, PDF and code, chunking, watching
+                     .gitignore, Markdown, HTML, PDF and code, chunking, watching; Word,
+                     Excel and CSV files through capped ZIP parts (ooxml.go), docx.go,
+                     xlsx.go, csv.go, and table.go, which chunks a sheet by rows
   dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
                      `meru mcp add` runs before it saves a server
@@ -343,6 +345,9 @@ docs/
                      index.html sends old links to 100.html; img/ holds the figures
                      as PNG files and render.sh, which draws them
   coding-notes/      one note per package, and go-basics/ for Go concepts
+  design/            one high-level design per large feature, Markdown with SVG figures in
+                     img/: how the feature works from end to end, linking back to
+                     ARCHITECTURE.md, which stays the contract
   lld.md             the low-level design
   running.md         how to build and run Meru
   faq/               one page per "how do I…" question, listed in index.md

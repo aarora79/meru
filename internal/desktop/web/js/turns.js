@@ -399,7 +399,9 @@ export function sourceIcon(s) {
 }
 
 // sourceName is the short name a chip shows for s: a web page's host, such
-// as "go.dev", or a file's name.
+// as "go.dev", a file's name, or for rows of a workbook its name and the
+// sheet's, such as "budget.xlsx · Invoices", since a workbook's name alone
+// doesn't say which sheet.
 export function sourceName(s) {
   if (isWebSource(s)) {
     try {
@@ -408,7 +410,21 @@ export function sourceName(s) {
       return s.url;
     }
   }
+  if (s.kind === "table" && s.heading && /\.xlsx$/i.test(s.path || "")) {
+    return baseName(s.path) + " · " + s.heading;
+  }
   return baseName(s.path);
+}
+
+// sourceWhere is the text a chip's hover shows for s: a web page's title
+// and URL, or a file's path, with the rows for rows of a sheet.
+function sourceWhere(s) {
+  if (isWebSource(s)) return s.heading ? s.heading + " — " + s.url : s.url;
+  if (s.kind === "table" && s.start_line > 0) {
+    const rows = s.end_line > s.start_line ? "rows " + s.start_line + "–" + s.end_line : "row " + s.start_line;
+    return s.path + ", " + rows;
+  }
+  return s.path;
 }
 
 // openSource opens s: a web page in the browser, a file in its app.
@@ -448,7 +464,7 @@ export function drawSources(t, h) {
       }, () => {});
     }
     // A web page's title, when it has one, says more than its host.
-    const what = isWebSource(s) ? (s.heading ? s.heading + " — " + s.url : s.url) : s.path;
+    const what = sourceWhere(s);
     chip.title = "Open " + what;
     chip.setAttribute("aria-label", "Open source " + s.n + ", " + what);
     li.append(chip);

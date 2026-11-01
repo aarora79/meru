@@ -673,7 +673,7 @@ func (ix *Indexer) indexFileLocked(ctx context.Context, p string, force bool) (f
 		ix.log.WarnContext(ctx, "index: not an image", "path", p)
 		return fileResult{outcome: outFailed}, len(data), kind, nil
 	}
-	if kind != KindPDF && kind != KindImage && looksBinary(data) {
+	if sniffs(kind) && looksBinary(data) {
 		ix.log.DebugContext(ctx, "index: skip", "path", p, "reason", ReasonBinary)
 		return fileResult{outcome: outSkipped, reason: ReasonBinary}, len(data), kind, nil
 	}
@@ -787,6 +787,14 @@ func chunkFile(kind, p string, data []byte, lim limits) ([]store.Chunk, error) {
 		return chunkHTML(string(data), lim), nil
 	case KindPDF:
 		return chunkPDF(data, lim)
+	case KindDocx:
+		return chunkDocx(data, lim)
+	case KindXLSX, KindCSV:
+		tables, err := readTables(kind, p, data)
+		if err != nil {
+			return nil, err
+		}
+		return chunkTable(tables, lim), nil
 	default:
 		return chunkText(string(data), lim), nil
 	}

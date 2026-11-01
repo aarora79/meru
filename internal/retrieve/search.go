@@ -35,6 +35,18 @@ const (
 // index.KindImage does; the index tests check the two match.
 const KindImage = "image"
 
+// KindXLSX and KindCSV are the kinds the index gives an Excel workbook and
+// a delimited text file, as index.KindXLSX and index.KindCSV do. A chunk
+// of either holds rows, and its StartLine and EndLine are row numbers.
+const (
+	KindXLSX = "xlsx"
+	KindCSV  = "csv"
+)
+
+// SourceTable is the Kind a citation of rows carries, as rpc.SourceTable
+// does; the tests check the two match.
+const SourceTable = "table"
+
 // Options sets the list sizes for one search. The zero value means the
 // defaults: 50 from each search and 10 results.
 type Options struct {
@@ -71,12 +83,19 @@ type Result struct {
 // IsImage reports whether r is an image's chunk rather than text.
 func (r Result) IsImage() bool { return r.Kind == KindImage }
 
+// IsTable reports whether r is a chunk of rows from a spreadsheet or a
+// delimited text file.
+func (r Result) IsTable() bool { return r.Kind == KindXLSX || r.Kind == KindCSV }
+
 // CitationKind is the Kind an rpc.Citation for r carries: "image" for an
-// image, and "" for text, so a client that predates images reads it as
-// any other source.
+// image, "table" for rows of a sheet, and "" for text, so a client that
+// predates a kind reads it as any other source.
 func (r Result) CitationKind() string {
-	if r.IsImage() {
+	switch {
+	case r.IsImage():
 		return KindImage
+	case r.IsTable():
+		return SourceTable
 	}
 	return ""
 }

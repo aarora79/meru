@@ -167,7 +167,7 @@ func (ix *Indexer) locate(p string) (path, root string) {
 }
 
 // contentReason applies the rules that look past a file's name: the
-// max_file_mb cap, and, for anything but a PDF, a NUL byte in the first
+// max_file_mb cap, and, for a kind that sniffs, a NUL byte in the first
 // 8 KB. It returns "" to keep the file. A file it can't open counts as
 // kept; the read that follows reports the real problem.
 func (ix *Indexer) contentReason(p string, info fs.FileInfo) string {
@@ -180,7 +180,7 @@ func (ix *Indexer) contentReason(p string, info fs.FileInfo) string {
 	if info.Size() > ix.maxBytes {
 		return ReasonTooLarge
 	}
-	if kind, _ := kindOf(p); kind == KindPDF {
+	if kind, _ := kindOf(p); !sniffs(kind) {
 		return ""
 	}
 	f, err := os.Open(p) // #nosec G304 -- a path inside an [index] folder that passed skipPath
@@ -257,10 +257,17 @@ func (ix *Indexer) Walk(ctx context.Context, dir string, fn func(p string, info 
 // Text is a file's text as the indexer reads it.
 type Text struct {
 	Kind string // one of the Kind constants, such as KindMarkdown
-	// Pages holds a PDF's pages in order, page 1 first, and for every other
-	// kind one entry with the whole text. Markdown, plain text and code come
-	// as the file holds them; HTML comes as the text the indexer pulls out.
+	// Pages holds a PDF's pages in order, page 1 first, an Excel
+	// workbook's sheets in order, and for every other kind one entry with
+	// the whole text. Markdown, plain text and code come as the file holds
+	// them; HTML and Word come as the text the indexer pulls out. A sheet
+	// or a delimited text file comes one row per line, its cells joined by
+	// " | ", so line N is row N.
 	Pages []string
+	// Names holds the sheet names of an Excel workbook, one per page, so
+	// the file tools can say "sheet Invoices" instead of "page 2". It is
+	// nil for every other kind.
+	Names []string
 }
 
 // ReadText returns the text of the file at p, which Check or Walk kept, the
@@ -271,29 +278,34 @@ type Text struct {
 // reason is set, and Text empty, when the file turns out to be one the
 // indexer skips: it changed into a symlink, grew past max_file_mb, or holds
 // a NUL byte. It fails with ErrOutsideFolders when p sits in no [index]
-// folder, when the file can't be read, and when a PDF can't be parsed or
-// holds no text.
+// folder, when the file can't be read, when a PDF can't be parsed or
+// holds no text, and when a Word, Excel or delimited text file can't be
+// parsed or passes a limit.
+//
+// A sheet's text comes from the same parse as ReadTable's, so grep,
+// read_file and a table's tool can't disagree about a row.
 func (ix *Indexer) ReadText(p string) (text Text, reason string, err error) {
-	root := rootFor(ix.Roots(), p)
-	if root == "" {
-		return Text{}, "", fmt.Errorf("%s: %w", p, ErrOutsideFolders)
-	}
-	rel, err := filepath.Rel(root, p)
-	if err != nil {
-		return Text{}, "", err
-	}
-	data, reason, err := ix.readInRoot(root, rel)
+	data, kind, reason, err := ix.readKind(p)
 	if err != nil || reason != "" {
 		return Text{}, reason, err
 	}
-	kind, why := ix.kindIn(root, p)
-	if why != "" {
-		return Text{}, why, nil
-	}
-	if kind != KindPDF && looksBinary(data) {
-		return Text{}, ReasonBinary, nil
-	}
 	switch kind {
+	case KindDocx:
+		text, err := DocxText(data)
+		if err != nil {
+			return Text{}, "", err
+		}
+		return Text{Kind: kind, Pages: []string{text}}, "", nil
+	case KindXLSX, KindCSV:
+		tables, err := readTables(kind, p, data)
+		if err != nil {
+			return Text{}, "", err
+		}
+		pages, names := tablesText(tables)
+		if kind == KindCSV {
+			names = nil
+		}
+		return Text{Kind: kind, Pages: pages, Names: names}, "", nil
 	case KindPDF:
 		pages, err := PDFText(data)
 		if err != nil {
@@ -306,6 +318,40 @@ func (ix *Indexer) ReadText(p string) (text Text, reason string, err error) {
 	default:
 		return Text{Kind: kind, Pages: []string{string(data)}}, "", nil
 	}
+}
+
+// readKind reads the file at p, which Check or Walk kept, and returns its
+// bytes and kind. It opens the file through an os.Root on its folder,
+// which refuses any path that leads out of the folder, ".." or symlink
+// alike. reason is set, with no bytes, when the file is one the indexer
+// skips: an unsupported kind, a symlink, a file past max_file_mb, or one
+// with a NUL byte where text should be. It fails with ErrOutsideFolders
+// when p sits in no [index] folder, and when the file can't be read.
+func (ix *Indexer) readKind(p string) (data []byte, kind, reason string, err error) {
+	root := rootFor(ix.Roots(), p)
+	if root == "" {
+		return nil, "", "", fmt.Errorf("%s: %w", p, ErrOutsideFolders)
+	}
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return nil, "", "", err
+	}
+	data, reason, err = ix.readInRoot(root, rel)
+	if err != nil || reason != "" {
+		return nil, "", reason, err
+	}
+	kind, why := ix.kindIn(root, p)
+	switch {
+	case why != "":
+		return nil, "", why, nil
+	case kind == KindImage:
+		// The index may hold an image, but the file tools read text, so to
+		// them it stays media, as contentReason says.
+		return nil, "", ReasonMedia, nil
+	case sniffs(kind) && looksBinary(data):
+		return nil, "", ReasonBinary, nil
+	}
+	return data, kind, "", nil
 }
 
 // readInRoot reads rel inside the folder root through an os.Root. Like

@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" role="img" aria-labelledby="t d" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title id="t">The steps of one analyze_table call</title>
+  <desc id="d">The model sends fixed fields. analyze_table checks them and the path, reads the file through the same readers and limits as read_file, picks the sheet, finds the header row and reads each value as a number, a date or text. With no options it describes the table and stops. With options it filters rows, groups them, adds them up, sorts and cuts to the limit, then returns a small Markdown table and one citation for the sheet and rows it used.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3c4043"/></marker>
+  </defs>
+  <rect width="960" height="360" fill="#ffffff"/>
+
+  <!-- input -->
+  <rect x="30" y="20" width="900" height="74" rx="10" fill="#fdf3dc" stroke="#e9a82c" stroke-width="1.5"/>
+  <text x="50" y="43" font-size="13" font-weight="700" fill="#202124">The model's call, fixed fields only</text>
+  <text x="50" y="63" font-family="Menlo, Consolas, monospace" font-size="12" fill="#3c4043">{"path": "trip-expenses.csv", "where": [{"column": "City", "op": "=", "value": "Amsterdam"}],</text>
+  <text x="50" y="81" font-family="Menlo, Consolas, monospace" font-size="12" fill="#3c4043"> "aggregate": [{"fn": "sum", "column": "Amount"}]}</text>
+
+  <!-- row 1 -->
+  <g font-size="13.5" text-anchor="middle">
+    <rect x="30" y="118" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="110" y="144" font-weight="600" fill="#202124">1 Check</text>
+    <text x="110" y="163" font-size="11.5" fill="#5f6368">fields, caps, path</text>
+    <rect x="215" y="118" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="295" y="144" font-weight="600" fill="#202124">2 Read</text>
+    <text x="295" y="163" font-size="11.5" fill="#5f6368">same readers and limits</text>
+    <rect x="400" y="118" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="480" y="144" font-weight="600" fill="#202124">3 Sheet and header</text>
+    <text x="480" y="163" font-size="11.5" fill="#5f6368">named, or found</text>
+    <rect x="585" y="118" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="665" y="144" font-weight="600" fill="#202124">4 Values</text>
+    <text x="665" y="163" font-size="11.5" fill="#5f6368">number, date or text</text>
+    <rect x="770" y="118" width="160" height="62" rx="10" fill="#f1f3f4" stroke="#5f6368"/>
+    <text x="850" y="144" font-weight="600" fill="#202124">No options?</text>
+    <text x="850" y="163" font-size="11.5" fill="#5f6368">describe and stop</text>
+  </g>
+  <path d="M190 149 L211 149" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M375 149 L396 149" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M560 149 L581 149" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M745 149 L766 149" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M110 94 L110 114" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- row 2 -->
+  <g font-size="13.5" text-anchor="middle">
+    <rect x="30" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="110" y="256" font-weight="600" fill="#202124">5 Filter</text>
+    <text x="110" y="275" font-size="11.5" fill="#5f6368">every where must hold</text>
+    <rect x="215" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="295" y="256" font-weight="600" fill="#202124">6 Group</text>
+    <text x="295" y="275" font-size="11.5" fill="#5f6368">up to three columns</text>
+    <rect x="400" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="480" y="256" font-weight="600" fill="#202124">7 Add up</text>
+    <text x="480" y="275" font-size="11.5" fill="#5f6368">count, sum, avg, min, max</text>
+    <rect x="585" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="665" y="256" font-weight="600" fill="#202124">8 Sort and cut</text>
+    <text x="665" y="275" font-size="11.5" fill="#5f6368">20 rows, 200 at most</text>
+    <rect x="770" y="230" width="160" height="62" rx="10" fill="#fdf3dc" stroke="#e9a82c" stroke-width="1.5"/>
+    <text x="850" y="256" font-weight="600" fill="#202124">9 Answer</text>
+    <text x="850" y="275" font-size="11.5" fill="#5f6368">table + one citation</text>
+  </g>
+  <path d="M665 180 L665 205 L110 205 L110 226" stroke="#3c4043" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <path d="M190 261 L211 261" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M375 261 L396 261" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M560 261 L581 261" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M745 261 L766 261" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <text x="30" y="328" font-family="Menlo, Consolas, monospace" font-size="12" fill="#3c4043">Matched 4 of 63 rows (rows 12–41) in trip-expenses.  | sum(Amount) |  277.00 |  Cite this table as [3].</text>
+</svg>
