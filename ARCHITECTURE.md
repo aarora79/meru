@@ -1656,7 +1656,7 @@ order.
    | Skill instructions | 12,000 | the first skill stays whole; the second is cut |
    | Earlier conversations | 2,400 | the lowest-ranked drop |
    | From the web | 8,000 | each call's result is cut to an equal share |
-   | History | 8,000 | the oldest turns drop, each question with its answer; a turn's web notes take at most 1,500 |
+   | History | 8,000 | the oldest turns drop, each question with its answer; a turn's web notes take at most 1,500, and its tool notes, on the last two turns, at most 1,200 |
 
    File excerpts need no cap of their own: a search keeps 10 chunks of about 500
    tokens. The caps keep one part from crowding out the others; a `lite` turn
@@ -2289,6 +2289,25 @@ one line each:
 The line above the notes says who wrote them and that they aren't for the user.
 When the notes were bare `[from the web: …]` lines, a model answering a
 follow-up copied them, run together, onto the end of its answer.
+
+The answers of the last two turns then get tool notes: one line per tool call
+the turn made, in the order the calls ran, with the tool, its arguments cut to
+160 characters, how it ended and the first 300 characters of its result. A
+turn gets at most 6 lines and 1,200 characters; calls past that go on one last
+line by name and count. History builds the notes from the turn's `tool_call`
+and `tool_result` lines, pairing them by `call_id`, so nothing new is stored and
+an incognito chat reads them from memory. A web tool's line names the tool and
+how it ended, since the web notes hold what it found; a call `merud` made
+itself before the first round is left out. Lines that start "Cite " come out of
+the result, since the next turn numbers its sources afresh:
+
+```text
+(Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above; never copy it into an answer. Use it to say how you got that answer; run a tool again for anything it leaves out.)
+- analyze_table {"path":"~/trip.csv","aggregate":[{"fn":"sum","column":"Amount"}]} ok: Matched 3 of 6 rows in trip (rows 4 to 7). | sum(Amount) | | --- | | 1207.00 |
+```
+
+Before the notes, a model asked how it had added up a sheet listed six rows
+that don't exist, and asked which tools it had used, four steps that never ran.
 
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An

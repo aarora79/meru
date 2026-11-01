@@ -265,7 +265,9 @@ func (s *Session) Append(l Line) error {
 // brackets, so the model reads that its claim didn't happen. An answer
 // whose turn read the web gets its web notes after that, under a line
 // that says they aren't part of the answer, so a follow-up still knows
-// what the pages said: see webNotes. A
+// what the pages said: see webNotes. The answers of the last two turns
+// then get their tool notes, a line per tool call with the start of its
+// result, so a follow-up knows how the answer came about: see toolNotes. A
 // question
 // that carried images gets one note per image after its text, such as
 // "[image: receipt.jpg]", and never the image itself: see imageNotes. A
@@ -283,14 +285,35 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 		return nil, err
 	}
 
-	// Pair each user line with the assistant line that follows it.
-	var turns [][2]engine.Message
+	// Pair each user line with the assistant line that follows it, and
+	// gather the tool calls in between. A round's calls run side by side,
+	// so their result lines can come in any order; each pairs with its
+	// call by call_id.
+	type turn struct {
+		msgs  [2]engine.Message
+		calls []toolCall
+	}
+	var turns []turn
 	var question *Line
+	var calls []toolCall
+	index := map[string]int{} // call_id to its place in calls
 	for i := range lines {
 		l := &lines[i]
 		switch l.Type {
 		case TypeUser:
 			question = l // a later user line replaces an unanswered one
+			calls, index = nil, map[string]int{}
+		case TypeToolCall:
+			// A call merud made before the first round (web first) is the
+			// web notes' to describe; the model didn't ask for it.
+			if question != nil && l.Caller == "" {
+				index[l.CallID] = len(calls)
+				calls = append(calls, toolCall{call: *l})
+			}
+		case TypeToolResult:
+			if i, ok := index[l.CallID]; ok {
+				calls[i].result = l
+			}
 		case TypeAssistant:
 			if question != nil {
 				answer := l.Text
@@ -298,11 +321,11 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 					answer += "\n\n[" + l.Notice + "]"
 				}
 				answer += webNotes(l.Web)
-				turns = append(turns, [2]engine.Message{
+				turns = append(turns, turn{msgs: [2]engine.Message{
 					{Role: engine.RoleUser, Content: question.Text + imageNotes(question.Images)},
 					{Role: engine.RoleAssistant, Content: answer},
-				})
-				question = nil
+				}, calls: calls})
+				question, calls, index = nil, nil, map[string]int{}
 			}
 		}
 	}
@@ -311,8 +334,14 @@ func (s *Session) History(maxTurns int) ([]engine.Message, error) {
 		turns = turns[len(turns)-maxTurns:]
 	}
 	msgs := make([]engine.Message, 0, 2*len(turns))
-	for _, t := range turns {
-		msgs = append(msgs, t[0], t[1])
+	for i, t := range turns {
+		// Only the latest turns carry tool notes: a follow-up asks about
+		// what just happened, and older notes would spend the history
+		// budget on turns the user has moved past.
+		if i >= len(turns)-toolNoteTurns {
+			t.msgs[1].Content += toolNotes(t.calls)
+		}
+		msgs = append(msgs, t.msgs[0], t.msgs[1])
 	}
 	return msgs, nil
 }

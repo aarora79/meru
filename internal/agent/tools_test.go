@@ -18,6 +18,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/aarora79/meru/internal/builtin"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/retrieve"
@@ -498,7 +499,8 @@ func TestTranscriptAndHistoryAfterToolTurn(t *testing.T) {
 		t.Errorf("assistant line = %q, want the final round's text", l.Text)
 	}
 
-	// The next turn's history holds the question and the answer only.
+	// The next turn's history holds the question, then the answer with a
+	// note on the tool the turn ran.
 	eng.rounds = nil
 	eng.pieces = []string{"ok"}
 	router.dec = Decision{Route: "direct", Confidence: 1, Outcome: "ok"}
@@ -507,10 +509,22 @@ func TestTranscriptAndHistoryAfterToolTurn(t *testing.T) {
 	}
 	want := []engine.Message{
 		{Role: engine.RoleUser, Content: "find it"},
-		{Role: engine.RoleAssistant, Content: "Found it."},
+		{Role: engine.RoleAssistant, Content: "Found it.\n\n(Meru's record of the tools this turn ran, for later questions. " +
+			"It isn't part of the answer above; never copy it into an answer. " +
+			"Use it to say how you got that answer; run a tool again for anything it leaves out.)\n- notes.search ok: raw result"},
 	}
 	if !reflect.DeepEqual(router.history, want) {
 		t.Errorf("history = %+v\nwant %+v", router.history, want)
+	}
+}
+
+// TestWebToolNames checks that the transcript names the web tools as
+// internal/builtin does: the tool notes leave those two tools' results to
+// the web notes, and transcript can't import builtin to ask.
+func TestWebToolNames(t *testing.T) {
+	if transcript.WebSearchTool != builtin.WebSearch || transcript.WebFetchTool != builtin.WebFetch {
+		t.Errorf("transcript names %q and %q; builtin names %q and %q",
+			transcript.WebSearchTool, transcript.WebFetchTool, builtin.WebSearch, builtin.WebFetch)
 	}
 }
 
