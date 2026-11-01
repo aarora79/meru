@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.6.3**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.6.4**. ROADMAP.md ticks every item from v0.1
 to v0.6:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -84,7 +84,8 @@ installs Meru with one command, and whisper has a Linux build (#179 to #185).
 Since v0.6.3 Meru reads Word, Excel and CSV files, and `analyze_table` answers
 questions about a sheet exactly (#184, #202); follow-ups see the last turns'
 tool calls (#200), a turn that runs out of rounds ends `capped` (#201), and a
-built-in missing from a hand-written list shows as New (#123).
+built-in missing from a hand-written list shows as New (#123). Since v0.6.4
+`merud` refuses Ollama's cloud models, in config and before each request (#211).
 Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
