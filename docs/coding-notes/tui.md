@@ -160,6 +160,12 @@ step the marked tool through Off, Ask and Allow:
   ╰──────────────────────────────────────────────────────────────╯
 ```
 
+A built-in that `merud` marks New, one a later release added that
+`config.toml` neither turns on nor keeps off, gets "· new" after its name, and
+`newToolsLine` adds the line the desktop card shows under the heading: "New
+built-in tools, off until you turn them on: analyze_table." Stepping it to Ask
+or Allow, or back to Off, decides it, and the mark goes (#123).
+
 `/usage` opens a box of the same kind, with one column per window of time:
 
 ```text

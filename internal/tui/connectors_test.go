@@ -246,3 +246,24 @@ type errorString string
 
 // Error returns the text.
 func (e errorString) Error() string { return string(e) }
+
+// TestMCPNewBuiltins checks that /mcp marks a built-in merud calls New, and
+// names the New ones in the line the desktop card shows too (#123).
+func TestMCPNewBuiltins(t *testing.T) {
+	conns := []rpc.Connection{{Name: "meru", Kind: "builtin", State: rpc.MCPConnected, Tools: []rpc.ToolPolicy{
+		{Name: "grep", Policy: rpc.PolicyAllow},
+		{Name: "analyze_table", Policy: rpc.PolicyOff, New: true},
+	}}}
+	merud := &fakeMerud{events: []rpc.Event{{Type: rpc.EventConnections, Connections: conns}}}
+	m, cmd := update(t, testModel(merud.ask, newFakeSender()), tea.WindowSizeMsg{Width: 120, Height: 50}, typeText("/mcp"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	view := m.View()
+	for _, want := range []string{"analyze_table · new", "New built-in tools, off until you turn them on: analyze_table."} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view lacks %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "grep · new") {
+		t.Errorf("a tool in [builtin] tools is marked new:\n%s", view)
+	}
+}

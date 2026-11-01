@@ -182,6 +182,17 @@ func TestToolPolicyOp(t *testing.T) {
 				t.Error("web_fetch still offered after it was turned off")
 			}
 		}
+		// Turned off, it goes in [builtin] off, so it isn't New; turned
+		// back on, it leaves off again.
+		cfg = loadConfig(t, dir)
+		if !slices.Contains(cfg.Builtin.Off, "web_fetch") || slices.Contains(cfg.Builtin.Tools, "web_fetch") {
+			t.Errorf("[builtin] = %+v, want web_fetch in off only", cfg.Builtin)
+		}
+		req.Policy.Policy = rpc.PolicyAllow
+		mustCall(t, d.sock, req)
+		if cfg = loadConfig(t, dir); slices.Contains(cfg.Builtin.Off, "web_fetch") {
+			t.Errorf("[builtin] off = %q after allow, want web_fetch out of it", cfg.Builtin.Off)
+		}
 	})
 
 	refusals := []struct {

@@ -28,10 +28,15 @@ keep your comments, and apply at once.
 | use the larger models | `profile = "full"` |
 | search more folders | `[index] folders` |
 | give long answers more time | `[agent] turn_timeout = "10m"` |
-| turn a built-in tool off | take it out of `[builtin] tools` |
+| turn a built-in tool off | take it out of `[builtin] tools`, and add it to `[builtin] off` so Settings stops calling it New |
 | make a tool ask first | add it to `confirm` |
 | log more | `[log] level = "debug"` |
 | give plain text selection back in `meru chat` | `[chat] mouse_copy = false` |
+
+**A tool marked New.** A built-in that a release after your config added stays
+off until you decide: Settings → Connections marks it New on the Meru card, and
+`/mcp` in `meru chat` shows "· new" after its name. Turn it on, or off, and the
+mark goes. Meru never turns a new tool on by itself in a list you wrote.
 
 **Start over** from the template. This replaces your file, so copy it first:
 

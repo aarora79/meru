@@ -763,7 +763,12 @@ a connector's place gets `Connector = by_hand` and the connector's sentence.
 
 - `handleToolPolicy` checks the change, then `setEntryPolicy` or
   `setBuiltinPolicy` computes the new lists with `newLists` and writes them with
-  `catalog.SetEntryLists` or `catalog.SetTableLists`. A tool must be one the
+  `catalog.SetEntryLists` or `catalog.SetTableLists`. For a built-in,
+  `offList` also puts the tool in `[builtin] off` when it goes off and takes it
+  out when it goes on, and one `SetTableLists` call writes all three lists, so
+  no crash leaves a tool in both `tools` and `off`. `builtinConnection` marks
+  each built-in `config.NewBuiltins` returns as `New`, with a line naming them in
+  the card's `Note`, and `newToolService` logs them at startup. A tool must be one the
   source offers or config names. `allow` is refused for an `always_confirm` tool
   and for `configure`. Then the matching reload runs: `reloadMCP`, `reloadA2A`, or
   `reloadBuiltin`, which hands `bt.SetLists` the new `[builtin]` lists.

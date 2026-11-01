@@ -315,6 +315,13 @@ type Builtin struct {
 	// Confirm lists built-in tools that ask before each call. Each must
 	// also be in Tools. Default ["write_file"].
 	Confirm []string `toml:"confirm"`
+	// Off lists the built-in tools the user chose to keep off. It turns
+	// nothing off by itself: a tool is on only when Tools lists it. Off
+	// tells a tool the user decided on from one Meru shipped after the
+	// config was written, which NewBuiltins returns and both clients mark
+	// New. Settings and /mcp write it when the user turns a tool off.
+	// Default [].
+	Off []string `toml:"off"`
 }
 
 // Web configures web search and how web_fetch reads a page. merud searches

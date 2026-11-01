@@ -331,3 +331,30 @@ func TestWebConnectorRule(t *testing.T) {
 		})
 	}
 }
+
+// TestBuiltinConnectionNew checks the Settings card for a config whose
+// [builtin] tools lacks two built-ins and whose off names one of them:
+// the other is New, and the card's note names it (#123).
+func TestBuiltinConnectionNew(t *testing.T) {
+	var tools []string
+	for _, name := range config.BuiltinTools() {
+		if name != "analyze_table" && name != "web_fetch" {
+			tools = append(tools, name)
+		}
+	}
+	cfg := config.Config{Builtin: config.Builtin{Tools: tools, Off: []string{"web_fetch"}},
+		Web: config.Web{SearXNGURL: "http://127.0.0.1:8888"}}
+	conn := builtinConnection(cfg, connectors.Status{}, "")
+	for _, tp := range conn.Tools {
+		want := tp.Name == "analyze_table"
+		if tp.New != want {
+			t.Errorf("%s New = %v, want %v", tp.Name, tp.New, want)
+		}
+		if tp.New && tp.Policy != rpc.PolicyOff {
+			t.Errorf("a New tool's policy = %q, want off", tp.Policy)
+		}
+	}
+	if conn.Note != "New built-in tools, off until you turn them on: analyze_table." {
+		t.Errorf("note = %q", conn.Note)
+	}
+}

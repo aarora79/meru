@@ -1,7 +1,7 @@
 # e2e
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
-`daemon_test.go`, `index_test.go`, `office_test.go`, `integration_test.go`, `index_integration_test.go`,
+`daemon_test.go`, `index_test.go`, `office_test.go`, `builtins_test.go`, `integration_test.go`, `index_integration_test.go`,
 `mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `ollama_test.go`, `race_test.go`, `norace_test.go`),
 `cmd/fakemcp/`
 **Milestone:** v0.1; the notes tests in v0.2
@@ -169,6 +169,7 @@ makes a test slower, not flaky.
 | `TestNoTelemetryByDefault` | `daemon_test.go` | With no `otlp_endpoint`, merud contacts nothing but the fake |
 | `TestAnswerCitesLocalNote` | `index_test.go` | v0.2's "done when": merud indexes a notes folder; the router picks `search`; the main model's prompt holds the garden note's fact under "From your files" and the citation rule; `meru "question"` prints the answer, then `Sources:` with `[1]` and the note's path and nothing it didn't cite; `meru index -status` counts four files (the empty one too, the `.env` never) |
 | `TestAnswerCitesSheetRows` | `office_test.go` | merud indexes a CSV file, a TSV file and a Word document and skips an old `.xls`, so `meru index -status` counts three files; the prompt holds the wine list's rows under `Sheet wine-cellar. Columns: Wine, Year, Note.`, each labelled with its columns; `meru` cites `[1]` with the sheet's name and `rows 2–3` |
+| `TestNewBuiltinE2E` | `builtins_test.go` | A config whose `[builtin] tools` leaves out `analyze_table`: `connections` marks it New and off, `merud.log` names it, and `tool_policy` allow turns it on, clears the mark and writes it into `config.toml` |
 | `TestAnalyzeTableE2E` | `office_test.go` | The fake model calls `analyze_table` with a `where` on two columns and a sum; `merud` runs it through `dispatch`, the model's next round reads the exact total, 176.75, under "Cite this table as [2]", since the turn's search took [1], and `meru` prints the rows the sum drew on |
 | `TestToolNotesFollowUpE2E` | `office_test.go` | Turn 1 sums rows with `analyze_table`; turn 2, "how did you get that?", sends the main model a prompt whose history holds turn 1's tool note: the header, `analyze_table`, the path and the sum, and no old "Cite this table as" line |
 | `TestMCPAddAndRemove` | `mcp_add_test.go` | `meru mcp add stdio` probes `cmd/fakemcp` through a real merud, proposes `search` (read-only) as allowed and `send` and `secret` as asking, writes them, and `meru tools` shows the server with no restart; `meru mcp remove --yes` takes it out of config and out of merud |

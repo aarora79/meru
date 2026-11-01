@@ -155,6 +155,7 @@ keeps the client thin.
 type Builtin struct {
     Tools   []string `toml:"tools"`   // default: all eighteen, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
+    Off     []string `toml:"off"`     // default []: built-ins the user chose to keep off
 }
 ```
 
@@ -279,10 +280,18 @@ retrieval runs no search before the answer, so `validate` refuses it when
 meaning altogether and keep only `grep` (see
 [Retrieval](../../ARCHITECTURE.md#retrieval)).
 
-`checkBuiltin` adds two rules for `[builtin]`. A name in `tools` must be one of
-the eighteen in `builtinTools`, and the message lists them. A name in `confirm` must
-also be in `tools`; otherwise the confirm line would do nothing, which is
-almost always a typo. `builtinTools` lives here, not in `internal/builtin`,
+`checkBuiltin` adds rules for `[builtin]`. A name in `tools` or `off` must be
+one of the eighteen in `builtinTools`, and the message lists them. A name in
+`confirm` must also be in `tools`; otherwise the confirm line would do nothing,
+which is almost always a typo. A name in both `tools` and `off` says on and off
+at once, so Load refuses it.
+
+`off` turns nothing off by itself: a built-in is on only while `tools` lists
+it. `off` records the tools the user chose to keep off, so `NewBuiltins` can
+return the rest, the built-ins in neither list. Those came with a release after
+the config was written; they stay off, and Settings and `/mcp` mark them New
+until the user decides (#123). A fresh config lists every tool in `tools`, so
+`NewBuiltins` returns nil. `builtinTools` lives here, not in `internal/builtin`,
 because `builtin` imports `config` and Go refuses an import cycle. A test in
 `builtin` checks that the two lists agree. `BuiltinTools()` hands out a copy,
 made with `slices.Clone`, so no caller can change the defaults.

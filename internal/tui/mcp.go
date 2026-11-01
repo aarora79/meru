@@ -186,10 +186,16 @@ func (b *mcpBox) mcpRows() []mcpRow {
 		if c.Fixed && c.Note != "" {
 			rows = append(rows, mcpRow{text: "    " + c.Note, conn: -1, tool: -1, entry: -1, cx: -1})
 		}
+		if line := newToolsLine(c.Tools); line != "" {
+			rows = append(rows, mcpRow{text: "    " + line, conn: -1, tool: -1, entry: -1, cx: -1})
+		}
 		for ti, t := range c.Tools {
 			text := fmt.Sprintf("  %-11s %s", policyWords(t.Policy), t.Name)
 			if t.Missing {
 				text += " · not offered"
+			}
+			if t.New {
+				text += " · new"
 			}
 			rows = append(rows, mcpRow{text: text, act: !c.Fixed, conn: ci, tool: ti, entry: -1, cx: -1})
 		}
@@ -308,6 +314,22 @@ func policyWords(p string) string {
 		return "Always asks"
 	}
 	return p
+}
+
+// newToolsLine names the built-in tools merud marks New, those a later
+// release added that config.toml neither turns on nor keeps off, in the
+// words the desktop card uses, or "" when there are none (#123).
+func newToolsLine(tools []rpc.ToolPolicy) string {
+	var names []string
+	for _, t := range tools {
+		if t.New {
+			names = append(names, t.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "New built-in tools, off until you turn them on: " + strings.Join(names, ", ") + "."
 }
 
 // nextPolicy returns the policy one step left (step -1) or right (+1) of
