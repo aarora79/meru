@@ -46,7 +46,7 @@
     <text x="295" y="275" font-size="11.5" fill="#5f6368">up to three columns</text>
     <rect x="400" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
     <text x="480" y="256" font-weight="600" fill="#202124">7 Add up</text>
-    <text x="480" y="275" font-size="11.5" fill="#5f6368">count, sum, avg, min, max</text>
+    <text x="480" y="275" font-size="11.5" fill="#5f6368">count, sum, avg, median…</text>
     <rect x="585" y="230" width="160" height="62" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
     <text x="665" y="256" font-weight="600" fill="#202124">8 Sort and cut</text>
     <text x="665" y="275" font-size="11.5" fill="#5f6368">20 rows, 200 at most</text>

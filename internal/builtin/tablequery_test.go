@@ -5,7 +5,9 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -161,6 +163,77 @@ func TestExactSums(t *testing.T) {
 	}
 	if _, err := aggregate(t, "sum", big...); !errors.Is(err, errOverflow) {
 		t.Errorf("a sum past int64 = %v, want errOverflow", err)
+	}
+}
+
+func TestQuantile(t *testing.T) {
+	nums := func(values ...string) []decimal {
+		out := make([]decimal, len(values))
+		for i, v := range values {
+			out[i], _ = parseNumber(v)
+		}
+		return out
+	}
+	// The stars file's daily column, 248 days: 88 ones, 70 twos, 38 threes,
+	// 24 fours, 14 fives, 6 sixes, a seven, 4 eights, a ten, a 12 and a 20.
+	var stars []string
+	for _, run := range []struct {
+		value string
+		n     int
+	}{{"1", 88}, {"2", 70}, {"3", 38}, {"4", 24}, {"5", 14}, {"6", 6}, {"7", 1}, {"8", 4}, {"10", 1}, {"12", 1}, {"20", 1}} {
+		for range run.n {
+			stars = append(stars, run.value)
+		}
+	}
+	tests := []struct {
+		name   string
+		values []string
+		p      int64
+		want   string
+	}{
+		{"median of an odd count", []string{"3", "1", "2"}, 5000, "2"},
+		{"median of an even count", []string{"1", "2", "3", "4"}, 5000, "2.5"},
+		{"median keeps the values' places", []string{"2.50", "2.50"}, 5000, "2.50"},
+		{"first quartile", []string{"1", "2", "3", "4"}, 2500, "1.75"},
+		{"p0 and p100", []string{"5", "9"}, 0, "5"},
+		{"p100", []string{"5", "9"}, 10000, "9"},
+		{"one value", []string{"7"}, 2500, "7"},
+		{"stars median", stars, 5000, "2"},
+		{"stars p25", stars, 2500, "1"},
+		{"stars p75", stars, 7500, "3"},
+	}
+	for _, tt := range tests {
+		got, _, err := quantile(nums(tt.values...), tt.p)
+		if err != nil || got != tt.want {
+			t.Errorf("%s: quantile = %q, %v; want %q", tt.name, got, err, tt.want)
+		}
+	}
+	if got, _, _ := quantile(nil, 5000); got != "" {
+		t.Errorf("quantile of nothing = %q, want empty", got)
+	}
+	if h := (agg{fn: "percentile", p: 250, col: &column{name: "Amount"}}).header(); h != "p2.5(Amount)" {
+		t.Errorf("header = %q, want p2.5(Amount)", h)
+	}
+}
+
+func TestStringList(t *testing.T) {
+	tests := map[string][]string{
+		`["City","Year"]`:  {"City", "Year"},
+		`"City"`:           {"City"},
+		`"[\"City\"]"`:     {"City"},
+		`"[daily]"`:        {"daily"},
+		`"[City, 'Year']"`: {"City", "Year"},
+		`""`:               nil,
+	}
+	for in, want := range tests {
+		var got stringList
+		if err := json.Unmarshal([]byte(in), &got); err != nil || !slices.Equal(got, want) {
+			t.Errorf("stringList from %s = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	var got stringList
+	if err := json.Unmarshal([]byte(`7`), &got); err == nil {
+		t.Error("stringList took a number")
 	}
 }
 
