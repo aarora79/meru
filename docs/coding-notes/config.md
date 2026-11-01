@@ -386,6 +386,11 @@ from `[models] think`. It is a plain `bool`, since there left out and `false`
 mean the same thing: thinking off, as the benchmark ran every model.
 `Models.ThinkOff` returns `!Think`.
 
+`checkCloudModels` (`cloudmodel.go`) refuses one of Ollama's cloud models in
+`[models]` or in any set: `CloudModel` reads the tag after the last `:`, and
+`cloud` or a tag ending in `-cloud` means Ollama would run the model on
+ollama.com, prompt and all (#211). The engine checks again before each request.
+
 `checkSets` refuses an entry with no name, a name with anything but letters,
 digits, `.`, `-` and `_`, a name used twice, and a set that names no model. It
 doesn't ask Ollama whether the models exist: `config` never talks to Ollama, and

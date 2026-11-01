@@ -30,6 +30,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/loopback"
 	"github.com/aarora79/meru/internal/obs"
 )
@@ -180,6 +181,28 @@ func (e *APIError) Error() string {
 // error that wraps it with fmt.Errorf's %w.
 var ErrModelOutput = errors.New("ollama couldn't read the model's output")
 
+// ErrCloudModel means a request named one of Ollama's cloud models, which
+// runs on ollama.com and not on this machine. Ollama would pass the whole
+// prompt on, so the engine refuses before it sends anything (AGENTS.md,
+// non-negotiable 1).
+var ErrCloudModel = errors.New("an Ollama cloud model, which runs off this machine; Meru runs models on this machine only")
+
+// localOnly checks that model runs on this machine before a request names
+// it. It refuses a name config.CloudModel marks, and a model whose
+// /api/show reply says it runs on another server, as a cloud model copied
+// to a plain name does. Details caches the reply, so this costs one
+// /api/show per model per process. A model Ollama can't describe passes:
+// the request that follows fails on its own if the model isn't there.
+func (e *OllamaEngine) localOnly(ctx context.Context, model string) error {
+	if config.CloudModel(model) {
+		return fmt.Errorf("%s: %w", model, ErrCloudModel)
+	}
+	if d, err := e.Details(ctx, model); err == nil && d.Remote {
+		return fmt.Errorf("%s: %w", model, ErrCloudModel)
+	}
+	return nil
+}
+
 // Generate sends msgs to opts.Model through POST /api/chat and waits for the
 // whole answer. It fails when the model is empty, the request fails, Ollama
 // answers with a non-2xx status, or the reply isn't valid JSON.
@@ -190,6 +213,9 @@ var ErrModelOutput = errors.New("ollama couldn't read the model's output")
 // The router relies on this (see docs/fast-router.md). opts.NoThink turns
 // thinking off without asking for probabilities.
 func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (Completion, error) {
+	if err := e.localOnly(ctx, opts.Model); err != nil {
+		return Completion{}, err
+	}
 	body, err := e.chatBody(msgs, tools, opts, false)
 	if err != nil {
 		return Completion{}, err
@@ -237,6 +263,9 @@ func (e *OllamaEngine) Generate(ctx context.Context, msgs []Message, tools []Too
 // Chunks with no text and no tool calls are skipped. A thinking model sends
 // those while it reasons, and Delta has nowhere to put the reasoning.
 func (e *OllamaEngine) Stream(ctx context.Context, msgs []Message, tools []ToolSpec, opts Options) (iter.Seq2[Delta, error], error) {
+	if err := e.localOnly(ctx, opts.Model); err != nil {
+		return nil, err
+	}
 	body, err := e.chatBody(msgs, tools, opts, true)
 	if err != nil {
 		return nil, err
@@ -346,6 +375,9 @@ func (e *OllamaEngine) Embed(ctx context.Context, inputs []Input) ([]Vector, err
 	}
 	if e.embedModel == "" {
 		return nil, errors.New("ollama embed: no embedding model configured")
+	}
+	if err := e.localOnly(ctx, e.embedModel); err != nil {
+		return nil, err
 	}
 	items := make([]embedItem, len(inputs))
 	images := 0

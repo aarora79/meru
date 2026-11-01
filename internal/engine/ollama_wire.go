@@ -177,6 +177,10 @@ type showResponse struct {
 	// json.RawMessage keeps each value undecoded, since details reads
 	// only one of them.
 	ModelInfo map[string]json.RawMessage `json:"model_info"`
+	// RemoteHost and RemoteModel are set for one of Ollama's cloud models,
+	// which runs on another server, such as ollama.com, and not here.
+	RemoteHost  string `json:"remote_host"`
+	RemoteModel string `json:"remote_model"`
 }
 
 // details turns the reply into ModelDetails. The context length sits
@@ -188,6 +192,7 @@ func (r showResponse) details() ModelDetails {
 		Capabilities:  r.Capabilities,
 		ParameterSize: r.Details.ParameterSize,
 		Quantization:  r.Details.QuantizationLevel,
+		Remote:        r.RemoteHost != "" || r.RemoteModel != "",
 	}
 	for k, v := range r.ModelInfo {
 		var n int

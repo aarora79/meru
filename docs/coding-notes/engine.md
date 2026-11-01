@@ -185,7 +185,19 @@ cache a token takes (see "Windows per model"). Ollama files the context
 length under the model's architecture, as `qwen35moe.context_length`, so
 `showResponse.details` finds the key by its ending. The reply also holds the
 license and the list of tensors, over 100 KB for a large model; the decoder
-skips every field `showResponse` doesn't name.
+skips every field `showResponse` doesn't name. `Remote` is true when the reply
+names a `remote_host` or `remote_model`, as it does for one of Ollama's cloud
+models.
+
+**No cloud models.** Ollama can run a model on ollama.com and answer for it on
+loopback, so the loopback check alone can't keep a prompt on the machine.
+`Generate`, `Stream` and `Embed` call `localOnly` before they build a request.
+It refuses a model whose name `config.CloudModel` marks, such as
+`gpt-oss:120b-cloud`, and one whose `Details` say `Remote`, which catches a cloud
+model copied to a plain name. Both fail with `ErrCloudModel`, and no request
+goes out. `Details` caches its reply, so the check costs one `/api/show` per
+model per run; a model Ollama can't describe passes, and its request then fails
+on its own if the model isn't there (#211).
 
 `Capabilities(ctx, model)` returns `Details(ctx, model).Capabilities`.
 `Pulled(ctx)` sends `GET /api/tags` and returns the names of the models Ollama

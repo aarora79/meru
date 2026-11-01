@@ -112,8 +112,10 @@ func TestCallsLogAndTrace(t *testing.T) {
 		t.Errorf("log holds message text:\n%s", out)
 	}
 
-	spans := rec.Ended()
-	if len(spans) != 1 || spans[0].Name() != "POST /api/chat" {
+	// The engine asks /api/show about a model once before its first chat
+	// (localOnly); count only the chat's span.
+	spans := spansNamed(rec.Ended(), "POST /api/chat")
+	if len(spans) != 1 {
 		t.Fatalf("spans = %d, want one POST /api/chat", len(spans))
 	}
 	if v, _ := attrOf(spans[0], "http.response.status_code"); v.AsInt64() != 200 {
@@ -141,7 +143,7 @@ func TestFailedCallLogsOllamaError(t *testing.T) {
 	if !strings.Contains(out, `msg="ollama error" path=/api/chat`) || !strings.Contains(out, "model 'nope' not found") {
 		t.Errorf("log lacks the error line with Ollama's message:\n%s", out)
 	}
-	spans := rec.Ended()
+	spans := spansNamed(rec.Ended(), "POST /api/chat")
 	if len(spans) != 1 {
 		t.Fatalf("spans = %d, want 1", len(spans))
 	}
@@ -151,4 +153,15 @@ func TestFailedCallLogsOllamaError(t *testing.T) {
 	if v, _ := attrOf(spans[0], "http.response.status_code"); v.AsInt64() != 404 {
 		t.Errorf("status attribute = %v, want 404", v.AsInt64())
 	}
+}
+
+// spansNamed returns the spans in spans called name, in order.
+func spansNamed(spans []sdktrace.ReadOnlySpan, name string) []sdktrace.ReadOnlySpan {
+	var out []sdktrace.ReadOnlySpan
+	for _, sp := range spans {
+		if sp.Name() == name {
+			out = append(out, sp)
+		}
+	}
+	return out
 }

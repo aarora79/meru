@@ -228,6 +228,9 @@ type ModelDetails struct {
 	// cache, worked out from the model's attention shape; 0 when Ollama
 	// doesn't report the shape. See FitWindow.
 	KVBytesPerToken int64
+	// Remote is true when Ollama says the model runs on another server,
+	// as its cloud models do. The engine refuses to send it anything.
+	Remote bool
 }
 
 // PulledModel is one model the runtime has on disk: its name, such as

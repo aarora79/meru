@@ -334,6 +334,7 @@ func validate(cfg Config) error {
 		add("web.render is %q; it must be %q (render pages that need JavaScript) or %q", r, RenderAuto, RenderOff)
 	}
 
+	errs = append(errs, checkCloudModels(cfg.Models)...)
 	for _, err := range checkSets(cfg.Models.Sets) {
 		add("%w", err)
 	}

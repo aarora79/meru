@@ -47,10 +47,16 @@ from `internal/config/load.go` (Ollama, OTLP), `internal/mcp/config.go` and
 (`TestNoDeniedImports`, `TestGoModRequiresNoDeniedModule`,
 `TestNoProviderHostLiterals`, `TestNoNonLoopbackURLLiterals`) read the deny-lists in
 `internal/policy/testdata/` and the allowed URLs in `allowed_urls.txt`.
+`config.CloudModel` refuses an Ollama cloud model by its tag at load, and
+`localOnly` in `internal/engine/ollama.go` refuses one that `/api/show` calls
+remote before any chat or embedding request (#211): Ollama on loopback would
+otherwise pass the prompt to ollama.com.
 
 **What to check.** A new `http.Client`, `http.NewRequest`, `net.Dial` or URL literal
 outside the packages that own one (`engine`, `obs`, `mcp`, `a2a`, `builtin`'s web
-tools). A new line in `allowed_urls.txt` without a reason. A new module whose
+tools). A new path that names a model to Ollama without going through
+`Generate`, `Stream` or `Embed`, and so past `localOnly`. A new line in
+`allowed_urls.txt` without a reason. A new module whose
 dependencies pull in a network client. A loopback test by string match instead of
 `loopback.CheckURL`.
 
