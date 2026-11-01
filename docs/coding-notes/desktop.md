@@ -545,7 +545,9 @@ bundler.
   number.
 - `js/settings.js` draws the seven sections of Settings: Connections, with an Off /
   Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity
-  and About. It also draws the Usage screen, which the Usage button at the foot
+  and About. On the Meru card, `toolRow` puts a "New" badge, in words as well as
+  color, after a built-in `merud` marks `new`: one a later release added, off
+  until you turn it on or off; the card's note names them (#123). It also draws the Usage screen, which the Usage button at the foot
   of the rail opens: two tabs, Charts and Prometheus queries, built with
   `role="tab"` and arrow-key moves like Settings' own tabs. Charts holds four
   bar charts, drawn as SVG elements one attribute at a time, so the page's

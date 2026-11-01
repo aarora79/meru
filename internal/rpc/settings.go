@@ -141,6 +141,11 @@ type ToolPolicy struct {
 	// Missing is true for a tool config allows but the connected source
 	// doesn't offer, usually a typo or a tool the server dropped.
 	Missing bool `json:"missing,omitempty"`
+	// New is true for a built-in tool that [builtin] tools and off both
+	// leave out: one a later release added, off until the user decides. A
+	// client marks it New. A client from before ignores the field and shows
+	// the tool as off.
+	New bool `json:"new,omitempty"`
 }
 
 // CatalogEntry is one server from Meru's catalog (internal/catalog), with

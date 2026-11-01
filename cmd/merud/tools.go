@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -184,6 +185,13 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// say why, so the user isn't left guessing.
 	for _, off := range bt.Off() {
 		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
+	}
+	// A built-in that [builtin] tools and off both leave out came with a
+	// release after the config was written. It stays off until the user
+	// turns it on; say so, as Settings and /mcp do (#123).
+	if fresh := config.NewBuiltins(cfg); len(fresh) > 0 {
+		log.Info("built-in tools new since config.toml was written, off until you turn them on in Settings or /mcp",
+			"tools", strings.Join(fresh, ","))
 	}
 	// Backend order decides which one keeps a tool name two of them offer:
 	// the built-ins first, so no server can shadow configure, then the

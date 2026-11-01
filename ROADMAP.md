@@ -261,7 +261,7 @@ that fits the graphics card, and `merud` as a systemd user service.
   ([#184](https://github.com/aarora79/meru/issues/184))
 - [ ] Live transcription: show the words while the user speaks
   ([#150](https://github.com/aarora79/meru/issues/150))
-- [ ] New built-in tools reach configs that list them by hand
+- [x] New built-in tools reach configs that list them by hand
   ([#123](https://github.com/aarora79/meru/issues/123))
 - [ ] Fixes: text from tool rounds runs together
   ([#154](https://github.com/aarora79/meru/issues/154)); metrics miss the fixed

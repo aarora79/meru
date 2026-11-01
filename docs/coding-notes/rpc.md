@@ -308,7 +308,9 @@ may look (`auto`, `files`, `mail`, `web`, `talk`), and `Scopes` lists them in th
 order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
 `Policy` constants (`off`, `ask`, `allow`, and `always`, which only `merud`
 reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
-tool source tool by tool, `CatalogEntry` and `CatalogNeed` a catalog server and
+tool source tool by tool; `ToolPolicy.New` marks a built-in that `[builtin]
+tools` and `off` both leave out, one a later release added, which a client marks
+New (#123), and an older client ignores the field, `CatalogEntry` and `CatalogNeed` a catalog server and
 what it needs, `FolderInfo` one folder with its file count, and `ModelsInfo` the
 models. `ModelsInfo.Choices` lists a `ModelChoice` for each model we tried as the
 answer model: its name, label, size, a line on what it does well and one on what

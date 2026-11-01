@@ -174,7 +174,7 @@ remote  = false
 			Images:        true,
 			Retrieval:     RetrievalAgentic,
 		},
-		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}},
+		Builtin: Builtin{Tools: []string{"configure", "grep", "search_files"}, Confirm: []string{"configure"}, Off: []string{}},
 		Web:     Web{SearXNGURL: "http://localhost:8889", MaxResults: 5, Render: RenderOff, TrustedSites: []string{}},
 		Chat:    Chat{MouseCopy: false}, // false in the file beats the default, true
 		MCP: MCP{Servers: []MCPServer{
@@ -683,6 +683,48 @@ func TestCheckTrustedSite(t *testing.T) {
 		"GitHub.com", "1.2.3.4", "printer.local", "app.localhost", "-x.com", "x..com"} {
 		if err := CheckTrustedSite(bad); err == nil {
 			t.Errorf("CheckTrustedSite(%q) = nil, want an error", bad)
+		}
+	}
+}
+
+// TestNewBuiltins checks which built-ins count as new: in neither tools
+// nor off. A fresh config has none; a hand-written list that lacks a tool
+// has it, until off names it.
+func TestNewBuiltins(t *testing.T) {
+	fresh, err := Load(writeConfig(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := NewBuiltins(fresh); got != nil {
+		t.Errorf("a fresh config's new built-ins = %q, want none", got)
+	}
+	old, err := Load(writeConfig(t, "[builtin]\ntools = [\"configure\", \"datetime\"]\nconfirm = []\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := NewBuiltins(old); len(got) != len(builtinTools)-2 || got[0] != "about_meru" {
+		t.Errorf("new built-ins of a short list = %q", got)
+	}
+	decided, err := Load(writeConfig(t, "[builtin]\ntools = [\"configure\", \"datetime\"]\nconfirm = []\noff = [\"about_meru\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := NewBuiltins(decided); slices.Contains(got, "about_meru") {
+		t.Errorf("new built-ins = %q; about_meru is in off", got)
+	}
+}
+
+// TestBuiltinOffChecks checks the two mistakes Load refuses in
+// [builtin] off: a name that isn't a built-in, and one in tools too.
+func TestBuiltinOffChecks(t *testing.T) {
+	tests := map[string]string{
+		"[builtin]\noff = [\"telnet\"]\n":                   `builtin.off: "telnet" is not a built-in tool`,
+		"[builtin]\ntools = [\"grep\"]\noff = [\"grep\"]\n": `builtin.off: "grep" is in builtin.tools too`,
+	}
+	for body, want := range tests {
+		_, err := Load(writeConfig(t, body))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Load(%q) = %v, want %q", body, err, want)
 		}
 	}
 }

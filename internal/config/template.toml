@@ -203,6 +203,12 @@ tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_
 # schedule_job always ask, whatever this says. Add "remember" to approve each memory; take out
 # "write_file" to let it save without asking.
 confirm = ["write_file"]
+# Built-in tools you chose to keep off. This list turns nothing off by
+# itself: a tool is on only when tools lists it. Settings and /mcp in
+# meru chat write it when you turn a tool off. A built-in in neither list
+# came with a later release: it stays off, and Settings and /mcp mark it
+# New until you turn it on or off.
+off = []
 
 [web]
 # Where SearXNG, the search engine behind web_search, answers on this

@@ -128,7 +128,8 @@ func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connec
 }
 
 // builtinConnection lists merud's own tools, every one of them, with its
-// policy from [builtin] tools and confirm. configure always asks. web is
+// policy from [builtin] tools and confirm, and New on each that tools and
+// off both leave out, with a line naming them in Note (#123). configure always asks. web is
 // the SearXNG connector's status, which the Web search card shows in place
 // of a flat "connected". Note says why web_search does nothing yet when
 // [web] searxng_url is empty, and adds notes, the sentence notesNote
@@ -136,16 +137,22 @@ func connectorConnection(sc mcp.ServerConfig, info rpc.ServerInfo, conns *connec
 func builtinConnection(cfg config.Config, web connectors.Status, notes string) rpc.Connection {
 	c := rpc.Connection{Name: "meru", Kind: dispatch.KindBuiltin, State: rpc.MCPConnected,
 		Web: web.State, WebSentence: web.Sentence}
+	fresh := config.NewBuiltins(cfg)
 	for _, name := range config.BuiltinTools() {
 		p := policyOf(name, cfg.Builtin.Tools, cfg.Builtin.Confirm, nil)
 		if builtin.AlwaysAsks(name) && p != rpc.PolicyOff {
 			p = rpc.PolicyAlways
 		}
-		c.Tools = append(c.Tools, rpc.ToolPolicy{Name: name, Description: builtin.Summary(name), Policy: p})
+		c.Tools = append(c.Tools, rpc.ToolPolicy{Name: name, Description: builtin.Summary(name), Policy: p,
+			New: slices.Contains(fresh, name)})
 	}
 	c.Offered = len(c.Tools)
+	// The new tools' line comes first: it asks the user to decide.
+	if len(fresh) > 0 {
+		c.Note = "New built-in tools, off until you turn them on: " + strings.Join(fresh, ", ") + "."
+	}
 	if cfg.Web.SearXNGURL == "" {
-		c.Note = "web_search needs a SearXNG instance on this machine: set [web] searxng_url in config.toml, or run meru setup."
+		c.Note = strings.TrimSpace(c.Note + " web_search needs a SearXNG instance on this machine: set [web] searxng_url in config.toml, or run meru setup.")
 	}
 	if notes != "" {
 		c.Note = strings.TrimSpace(c.Note + " " + notes)
@@ -362,18 +369,34 @@ func (s *toolService) setBuiltinPolicy(p rpc.PolicyChange) error {
 		if builtin.AlwaysAsks(p.Tool) {
 			confirm = slices.DeleteFunc(confirm, func(t string) bool { return t == p.Tool })
 		}
+		off := offList(p.Tool, p.Policy, cfg.Builtin.Off)
 		check := func(next config.Config) error {
-			if !slices.Equal(next.Builtin.Tools, tools) || !slices.Equal(next.Builtin.Confirm, confirm) {
+			if !slices.Equal(next.Builtin.Tools, tools) || !slices.Equal(next.Builtin.Confirm, confirm) ||
+				!slices.Equal(next.Builtin.Off, off) {
 				return errors.New("the [builtin] lists didn't come out as asked; edit config.toml by hand")
 			}
 			return nil
 		}
-		err = catalog.SetTableLists(s.configPath, "builtin", map[string][]string{"tools": tools, "confirm": confirm}, check)
+		// One edit writes all three lists, so no crash can leave a tool in
+		// both tools and off.
+		err = catalog.SetTableLists(s.configPath, "builtin",
+			map[string][]string{"tools": tools, "confirm": confirm, "off": off}, check)
 		if err != nil {
 			return err
 		}
 		return s.reloadBuiltin()
 	})
+}
+
+// offList returns off, [builtin] off, with tool set to policy: turning
+// a built-in off records it there, so Settings stops calling it New, and
+// turning it on takes it out, since tools now lists it.
+func offList(tool, policy string, off []string) []string {
+	out := slices.DeleteFunc(slices.Clone(off), func(t string) bool { return t == tool })
+	if policy == rpc.PolicyOff {
+		out = append(out, tool)
+	}
+	return out
 }
 
 // newLists returns allow and confirm with tool set to policy: off takes it

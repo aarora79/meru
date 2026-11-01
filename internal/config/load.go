@@ -155,7 +155,7 @@ func defaults() Config {
 		// leak data. write_file asks before each call: a file it writes
 		// stays on your disk after the chat ends (ARCHITECTURE.md,
 		// "Approving a tool call").
-		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}},
+		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}, Off: []string{}},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
 		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto, TrustedSites: []string{}},
@@ -451,10 +451,11 @@ func checkIndex(ix Index) []error {
 }
 
 // checkBuiltin checks the [builtin] section and returns one error per
-// problem: a tool name Meru doesn't have, or a confirm entry that tools
-// doesn't list. The second is almost always a typo or a tool taken out of
-// tools and forgotten in confirm; either way the confirm line would do
-// nothing, so Load says so.
+// problem: a tool name Meru doesn't have, in tools or off; a confirm entry
+// that tools doesn't list; or a tool in both tools and off. A confirm entry
+// missing from tools is almost always a typo or a tool taken out of tools
+// and forgotten in confirm; either way the line would do nothing, so Load
+// says so. A tool in both tools and off says on and off at once.
 func checkBuiltin(b Builtin) []error {
 	var errs []error
 	for _, name := range b.Tools {
@@ -468,7 +469,31 @@ func checkBuiltin(b Builtin) []error {
 			errs = append(errs, fmt.Errorf("builtin.confirm: %q isn't in builtin.tools; add it there, or take it out of confirm", name))
 		}
 	}
+	for _, name := range b.Off {
+		switch {
+		case !slices.Contains(builtinTools, name):
+			errs = append(errs, fmt.Errorf("builtin.off: %q is not a built-in tool; the built-in tools are %s",
+				name, strings.Join(builtinTools, ", ")))
+		case slices.Contains(b.Tools, name):
+			errs = append(errs, fmt.Errorf("builtin.off: %q is in builtin.tools too; take it out of one list", name))
+		}
+	}
 	return errs
+}
+
+// NewBuiltins returns the built-in tools that cfg's [builtin] section names
+// in neither tools nor off, in BuiltinTools order: tools a later release
+// added, which the user hasn't turned on or off. They stay off; both
+// clients mark them New. It returns nil for a config whose tools list
+// every built-in, as a fresh one does.
+func NewBuiltins(cfg Config) []string {
+	var out []string
+	for _, name := range builtinTools {
+		if !slices.Contains(cfg.Builtin.Tools, name) && !slices.Contains(cfg.Builtin.Off, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // connectorKey is what a connector ID, and a key in its [connectors.<id>]

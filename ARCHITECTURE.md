@@ -890,6 +890,7 @@ and arguments and offers the choices `merud` sends, from these:
              "web_search", "web_fetch", "search_notes", "list_notes",
              "read_note", "schedule_job"]   # all eighteen, the default
   confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
+  off     = []               # built-ins you chose to keep off; see below
   ```
 
   `tools` lists the built-ins the model may use. Take a name out and `merud`
@@ -901,6 +902,18 @@ and arguments and offers the choices `merud` sends, from these:
   folders`, `write_file` needs `[skills] output_dir`, `web_search` needs
   `[web] searxng_url`, and the Apple Notes tools need a Mac. Without it the tool stays off, and `merud` logs one info
   line at startup that names the tool and the missing setting.
+
+  `off` lists the built-ins you chose to keep off, and turns nothing off by
+  itself: a tool is on only while `tools` lists it. Settings and `/mcp` write it
+  when you turn a built-in off, and take the name out when you turn it on. A
+  built-in in neither list came with a release after your config was written:
+  it stays off, both clients mark it **New** with a line naming it on the Meru
+  card, and `merud` logs it at startup, until you turn it on or off. A name in
+  both lists, or an unknown name in `off`, stops `merud` at load. A list written
+  by hand is an allowlist, and a new tool such as one that reaches outside the
+  machine must never turn on without a yes; before `off`, a new built-in stayed
+  off with nothing to say it existed, and in one session a config without
+  `search_files` couldn't find a CSV file it had indexed.
 
   The built-in tools are `configure` and `schedule_job`, which always ask,
   whatever `confirm` says (see [First run and setup](#first-run-and-setup) and

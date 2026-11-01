@@ -315,6 +315,9 @@ function toolRow(body, c, t) {
   text.append(el("span", "tool-name", t.name));
   if (t.description) text.append(el("span", "tool-desc", firstLine(t.description)));
   if (t.missing) text.append(el("span", "card-error", "The server doesn't offer this tool now."));
+  // A built-in a later release added, off until the user decides (#123).
+  // The badge says "New" in words, not by color alone.
+  if (t.new) text.querySelector(".tool-name").append(" ", el("span", "new-badge", "New"));
   li.append(text);
   if (c.fixed) {
     li.append(el("span", "policy-badge " + t.policy, policyWords(t.policy)));
@@ -324,7 +327,7 @@ function toolRow(body, c, t) {
   const choices = always ? ["off", "always"] : ["off", "ask", "allow"];
   const group = el("div", "segmented");
   group.setAttribute("role", "radiogroup");
-  group.setAttribute("aria-label", t.name);
+  group.setAttribute("aria-label", t.new ? t.name + ", new" : t.name);
   for (const p of choices) {
     const on = t.policy === p || (always && p === "always" && t.policy !== "off");
     const b = button(policyWords(p), { className: "segment" + (on ? " on" : "") });
