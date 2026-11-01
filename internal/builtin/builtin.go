@@ -197,7 +197,7 @@ func (t *Tools) missing(name string) string {
 		if t.outputDir == "" {
 			return "[skills] output_dir is empty"
 		}
-	case ReadFile, ListFolder, Grep, ViewImage:
+	case ReadFile, ListFolder, Grep, ViewImage, AnalyzeTable:
 		if !t.hasFiles() {
 			return "[index] folders is empty"
 		}
@@ -268,7 +268,7 @@ func (t *Tools) Tools() []engine.ToolSpec {
 		if t.imageSearch != nil {
 			specs = append(specs, t.searchImagesSpec())
 		}
-		specs = append(specs, viewImageSpec())
+		specs = append(specs, viewImageSpec(), tableSpec())
 	}
 	specs = append(specs, t.web.toolSpecs(t.saveDir())...)
 	if t.notesOff() == "" {
@@ -405,6 +405,10 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Name:        ViewImage,
 			Description: Summary(ViewImage),
 			Confirm:     t.Confirm(ViewImage) != dispatch.ConfirmNever,
+		}, rpc.ToolInfo{
+			Name:        AnalyzeTable,
+			Description: Summary(AnalyzeTable),
+			Confirm:     t.Confirm(AnalyzeTable) != dispatch.ConfirmNever,
 		})
 	}
 	if on, _ := t.webSearchOn(); on {
@@ -489,6 +493,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, sources, err = t.searchFiles(ctx, args)
 	case name == SearchImages && t.hasFiles() && t.imageSearch != nil:
 		text, sources, err = t.searchImages(ctx, args)
+	case name == AnalyzeTable && t.hasFiles():
+		text, sources, err = t.analyzeTable(ctx, args)
 	case name == WebSearch:
 		// The check can change between the turn's tool list and this
 		// call, so a call that comes while web search is down says why.
@@ -761,6 +767,8 @@ func Summary(name string) string {
 		return "Finds pictures in the indexed folders, by words or like another picture."
 	case ViewImage:
 		return "Shows the answer model a picture in the indexed folders, when the model can see pictures."
+	case AnalyzeTable:
+		return "Filters, counts and adds up the rows of an Excel, CSV or TSV file, exactly."
 	case WebSearch:
 		return "Searches the web through the SearXNG instance [web] searxng_url names."
 	case WebFetch:

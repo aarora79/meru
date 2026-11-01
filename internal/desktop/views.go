@@ -209,6 +209,11 @@ func builtinLabel(tool string, a map[string]any) string {
 			return "Looked at " + f
 		}
 		return "Looked at a picture"
+	case "analyze_table":
+		if f := fileArg(a); f != "" {
+			return "Analyzed " + f
+		}
+		return "Analyzed a table"
 	case "grep", "search_files":
 		return "Searched your files"
 	case "web_search":

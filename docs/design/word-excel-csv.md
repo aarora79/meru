@@ -1,6 +1,6 @@
 # Word, Excel and CSV files
 
-*High-level design. Status: the readers are built; `analyze_table` comes next. Issue: [#184](https://github.com/aarora79/meru/issues/184). Milestone: v0.7.*
+*High-level design. Status: built, in #198 (the readers) and the pull request that adds `analyze_table`. Issue: [#184](https://github.com/aarora79/meru/issues/184). Milestone: v0.7.*
 
 Meru reads `.docx`, `.xlsx`, and delimited text files such as `.csv` and `.tsv`, so search finds a contract in Word and an invoice list in Excel, and the model can answer "how much did we spend on food tours in Amsterdam?" with an exact total. A built-in tool, `analyze_table`, does the arithmetic from fixed fields the model fills in. The model never writes code, and Meru never starts a program to answer a table question.
 

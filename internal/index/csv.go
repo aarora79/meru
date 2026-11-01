@@ -107,12 +107,13 @@ func cp1252(c byte) rune {
 
 // pickDelimiter guesses the delimiter of text, a delimited file with
 // extension ext, from its first sniffLines lines that hold anything. A
-// candidate wins when it appears the same number of times, at least once,
-// outside quotes on every one of those lines. When more than one wins, a
-// tab wins for .tsv and .tab and a comma for .csv, then the order of
-// delimiters. When none wins, the extension's delimiter is used if the
-// first line holds it, since a quoted field with a line break can make
-// the counts differ; otherwise the file reads as one column.
+// candidate counts when at least half the lines hold it outside quotes, so
+// a title line above the header, a quoted field with a line break, or
+// rows of different lengths leave the guess alone. Of those, the one whose
+// most common count the most lines share wins: in "Name;Note" rows whose
+// notes hold commas, every line has one semicolon and the commas vary. A
+// tie goes to tab for .tsv and .tab and to comma for .csv, then to the
+// order of delimiters. With no candidate the file reads as one column.
 func pickDelimiter(text, ext string) rune {
 	preferred := ','
 	if ext == ".tsv" || ext == ".tab" {
@@ -128,38 +129,31 @@ func pickDelimiter(text, ext string) rune {
 			break
 		}
 	}
-	if len(lines) == 0 {
-		return preferred
-	}
-	var winners []rune
+	best, bestLines := noDelimiter, 0
 	for _, d := range delimiters {
-		want := countOutsideQuotes(lines[0], d)
-		if want == 0 {
+		holding, shared := sharedCount(lines, d)
+		if holding == 0 || 2*holding < len(lines) {
 			continue
 		}
-		consistent := true
-		for _, line := range lines[1:] {
-			if countOutsideQuotes(line, d) != want {
-				consistent = false
-				break
-			}
-		}
-		if consistent {
-			winners = append(winners, d)
+		if shared > bestLines || shared == bestLines && d == preferred {
+			best, bestLines = d, shared
 		}
 	}
-	for _, d := range winners {
-		if d == preferred {
-			return d
+	return best
+}
+
+// sharedCount returns how many of lines hold d outside quotes, and how
+// many of those share the most common count of it.
+func sharedCount(lines []string, d rune) (holding, shared int) {
+	tally := map[int]int{}
+	for _, line := range lines {
+		if n := countOutsideQuotes(line, d); n > 0 {
+			holding++
+			tally[n]++
+			shared = max(shared, tally[n])
 		}
 	}
-	if len(winners) > 0 {
-		return winners[0]
-	}
-	if countOutsideQuotes(lines[0], preferred) > 0 {
-		return preferred
-	}
-	return noDelimiter
+	return holding, shared
 }
 
 // countOutsideQuotes counts d in line where it sits outside double quotes.

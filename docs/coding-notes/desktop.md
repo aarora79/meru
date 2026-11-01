@@ -143,7 +143,7 @@ The `Update` struct is the one message type the page receives, on one Wails even
 `stepLabel` turns a tool call into words: `google.search_gmail_messages` becomes
 "Searched mail", `read_file` with `{"path":"~/Notes/lisbon.md"}` becomes "Read
 lisbon.md", and `view_image` with `{"path":"~/trips/amtrak.png"}` becomes "Looked
-at amtrak.png". It reads the tool's name for words such as "mail", "send" or "calendar",
+at amtrak.png", and `analyze_table` on `trip.csv` becomes "Analyzed trip.csv". It reads the tool's name for words such as "mail", "send" or "calendar",
 so it works for servers it has never seen, and falls back to "Used google list
 drive items".
 

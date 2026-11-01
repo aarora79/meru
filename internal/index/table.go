@@ -308,7 +308,7 @@ func chunkOneTable(t Table, lim limits) []store.Chunk {
 		if n > maxIndexRows {
 			flush()
 			if len(out) > 0 {
-				out[len(out)-1].Text += fmt.Sprintf("\nRows after %s are left out of search; read_file reads them.", thousands(maxIndexRows))
+				out[len(out)-1].Text += fmt.Sprintf("\nRows after %s are left out of search; analyze_table and read_file read them.", thousands(maxIndexRows))
 			}
 			return out
 		}
