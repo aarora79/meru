@@ -155,11 +155,12 @@ var (
 	// claimFirst matches "I've moved the folder" and "I sent the email",
 	// with one word allowed between, as in "I just saved".
 	claimFirst = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:moved|saved|sent|deleted|removed|renamed|copied|scheduled)\b`)
-	// claimMade matches "I've created", "I updated" and "I wrote". A model
-	// also creates, updates and writes text in the chat, so these verbs
+	// claimMade matches "I've created", "I updated", "I wrote" and "I've
+	// fixed". A model also creates, updates and fixes text in the chat, so
+	// these verbs
 	// count only when the sentence names a file, a folder, a note, an email,
 	// an event or a path (see namesThing).
-	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written)\b`)
+	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written|fixed|corrected|edited|changed|replaced|added)\b`)
 	// claimOpening matches a sentence that opens with the verb, with no
 	// "I": "Updated the HTML dashboard with a new column." A real turn
 	// said that after it had called no tool, and the rules above, which

@@ -794,7 +794,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// again. The search runs before the route event for this reason: the
 	// rule needs its excerpts.
 	if t.webFirst == "" && t.handoff == "" {
-		if name, ok := a.namedWebFirst(question, target, searched, found.results); ok {
+		if name, ok := a.namedWebFirst(question, target, searched, found.results, history); ok {
 			webCalls = namedCalls(name, question, a.tools.Tools())
 			t.webFirst = webFirstNamed
 			if r, ok := withTools(dec.Route); ok {

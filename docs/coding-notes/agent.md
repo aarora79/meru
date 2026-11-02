@@ -1022,7 +1022,16 @@ that called no tool and answered "Updated the HTML dashboard with a Daily
 Calls column…": no "I", so no rule matched. It wants the verb first, then
 "the", "your", "a", "an", "it" or "them", and a thing `namesThing` knows, which
 now includes a page, a dashboard, a document, a report, a draft and a
-spreadsheet.
+spreadsheet. `claimMade` also takes fixed, corrected, edited, changed, replaced
+and added.
+
+The check runs only when `t.succeeded` is 0, and `runCalls` counts a call
+there only when it ends "ok" and `builtin.ReadOnly` says the tool can change
+something. A real turn ran `grep` three times on a page, wrote nothing, and
+answered "I've fixed all instances … in the HTML file". When every success
+counted, the greps silenced the check, and the next turn built on the false
+claim. A read can't back a claim of a change, so the read-only built-ins no
+longer count; `write_file`, an MCP tool or a command still does.
 
 The warning goes out as a `notice` event, after the last token and before
 `done`, and into the assistant line's `Notice` field. The turn span gets
@@ -1322,7 +1331,7 @@ round.
 | Reason | Test | Calls |
 | --- | --- | --- |
 | `asked` | `askedWebFirst`: the question asks for the web (`asksForWeb`) or gives a URL (`givesURL`), and the tool it needs is on; or, in `respondScoped`, the scope is web | `askedCalls`: `web_fetch` per URL, two at most, or one `web_search` on `webQuery` |
-| `named` | `namedWebFirst`: the turn searched files, no tool is the target, `web_search` is on, the question doesn't say "my" or "our", `namedThing` finds a name, and `filesCover` says the excerpts don't hold it | `namedCalls`: one `web_search` on `namedQuery` |
+| `named` | `namedWebFirst`: the turn searched files, no tool is the target, `web_search` is on, the question doesn't say "my" or "our", `namedThing` finds a name, `filesCover` says the excerpts don't hold it, and `inHistory` finds it in no earlier message of the chat | `namedCalls`: one `web_search` on `namedQuery` |
 
 `asksForWeb` reads the phrases in `webPhrases`, each a list of lower-case
 words matched whole against `words(question)`: "search the web", "look it up",

@@ -34,6 +34,8 @@ func TestClaimsAction(t *testing.T) {
 		{"I have just moved the garden folder to ~/Projects.", true},
 		{"I sent the email to Sam.", true},
 		{"The file has been saved to ~/Projects.", true},
+		{"I've fixed all instances of the name in the HTML file.", true},
+		{"I fixed the typo in the function below.", false},
 		{"Updated the HTML dashboard with a **Daily Calls** column after each row.", true},
 		{"**Added a chart** to the report page.", true},
 		{"Saved your draft as ~/meru-output/letter.md.", true},
@@ -175,13 +177,19 @@ func TestUnbackedClaim(t *testing.T) {
 				{pieces: []string{"I've saved the plan to ~/meru-output/garden/plan.md."}},
 			},
 			want: true},
+		{name: "claim after only a read",
+			rounds: []fakeRound{
+				{calls: []engine.ToolCall{call(builtin.Grep, `{"pattern":"Dana","path":"~/meru-output/report.html"}`)}},
+				{pieces: []string{"I've fixed all instances of the name in the HTML file."}},
+			},
+			want: true},
 		{name: "honest answer with no tool call",
 			rounds: []fakeRound{{pieces: []string{"I can't move folders: Meru has no tool for that. I can write a new copy in ~/meru-output."}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testConfig(t)
-			tools := &fakeTools{specs: []engine.ToolSpec{spec(builtin.WriteFile)}, results: tt.results}
+			tools := &fakeTools{specs: []engine.ToolSpec{spec(builtin.WriteFile), spec(builtin.Grep)}, results: tt.results}
 			router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
 			a := New(cfg, &fakeEngine{rounds: tt.rounds}, router, nil, tools, nil, nil, quietLog())
 			evs, err := run(context.Background(), a, rpc.Request{Text: "move the garden folder to ~/Projects"})

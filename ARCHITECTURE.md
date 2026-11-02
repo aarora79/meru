@@ -2092,7 +2092,7 @@ the full word lists:
 | it, they, or a file, folder, note, email or event "is now at/in" | "It's now at ~/Projects/garden" |
 | "has/have been" and an action | "The file has been saved to ~/Projects" |
 | "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
-| the same with created, updated, wrote or written, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
+| the same with created, updated, wrote, written, fixed, corrected, edited, changed, replaced or added, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
 | a sentence that opens with one of those verbs, or added, changed, edited or replaced, then "the", "your", "a", "an", "it" or "them", when it names such a thing | "Updated the HTML dashboard with a new column" |
 
 A sentence that ends in "?", or that holds words such as "if", "want me", "I
@@ -2112,8 +2112,13 @@ The check reads plain English patterns, so it is easy to test and to explain,
 and it gets some cases wrong. It misses a claim in words no rule lists, such as
 "your folder lives in ~/Projects now", and any claim in another language. It
 flags a "Done." at the top of a poem you asked for, where the note is true but
-not needed. It stays quiet on a turn where any tool call succeeded, even one that
-only read a file, because it can't tell which call backs which claim.
+not needed. A successful call that could change something, such as `write_file`,
+an MCP tool or a command, silences it, because it can't tell which call backs
+which claim. A built-in that only reads (`read_file`, `list_folder`, `grep`,
+`search_files`, `search_images`, `view_image`, `analyze_table`, `web_search`,
+`datetime`, `about_meru` and the Apple Notes tools) doesn't: a real turn ran
+`grep` three times, wrote nothing, and answered "I've fixed all instances in
+the HTML file".
 
 A second check runs on every full answer, whatever its tool calls, and looks for
 a sentence that says Meru called, ran or used a tool or a program:
@@ -4844,7 +4849,7 @@ So `merud` itself searches before the model's first round in two cases:
 | Case | When | What `merud` runs |
 | --- | --- | --- |
 | `asked` | the question holds an http or https URL and `web_fetch` is on; or it holds no URL, asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web, a closing instruction ("and tell me what it is in three lines") and the filler words at either end (see below); a follow-up too short to stand alone gets the earlier question, as a file search does, and one that speaks only of the web searches for the earlier question alone |
-| `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, and the excerpts don't cover it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
+| `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, the excerpts don't cover it, and no earlier turn of the chat names it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
 
 The calls go through `dispatch` like any other. Their `tool_call` lines and
 `tool_calls` rows carry `caller = "meru"`, so `meru log` shows `by meru` in the

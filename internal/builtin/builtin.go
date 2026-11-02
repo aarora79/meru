@@ -784,3 +784,16 @@ func Summary(name string) string {
 	}
 	return ""
 }
+
+// readOnly lists the built-in tools that only read: they look at files,
+// notes, pictures, the web or the clock, and change nothing on the
+// computer. web_fetch isn't here, since it can download a file.
+var readOnly = []string{ReadFile, ListFolder, Grep, SearchFiles, SearchImages, ViewImage, AnalyzeTable,
+	WebSearch, DateTime, AboutMeru, SearchNotes, ListNotes, ReadNote}
+
+// ReadOnly reports whether name is a built-in tool that only reads. The
+// agent's claim check uses it: a turn whose only successful calls read
+// something can't back "I've fixed the file".
+func ReadOnly(name string) bool {
+	return slices.Contains(readOnly, name)
+}

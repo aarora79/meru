@@ -675,3 +675,18 @@ func TestWebFirstLogField(t *testing.T) {
 		})
 	}
 }
+
+// TestInHistory checks the rule that keeps merud from searching the web
+// for a name the chat already used, such as a person in an attached file.
+func TestInHistory(t *testing.T) {
+	history := []engine.Message{
+		{Role: engine.RoleUser, Content: "Summarize Dana's call log in ~/meru-output/uploads/dana-calls.csv"},
+		{Role: engine.RoleAssistant, Content: "Dana made 40 calls in October."},
+	}
+	if !inHistory("Dana", history) || !inHistory("DANA", history) {
+		t.Error("a name from an earlier turn didn't count")
+	}
+	if inHistory("Acme Flow", history) || inHistory("Dana", nil) {
+		t.Error("a name the chat never used counted")
+	}
+}
