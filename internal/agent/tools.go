@@ -923,7 +923,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		if caller == "" && !builtin.ReadOnly(calls[i].Name) {
 			t.succeeded++
 		}
-		if calls[i].Name == builtin.WriteFile {
+		if calls[i].Name == builtin.WriteFile || calls[i].Name == builtin.EditFile {
 			if name, link, ok := builtin.Written(out[i].Content); ok {
 				t.saved = append(t.saved, savedFile{name: name, link: link})
 			}

@@ -39,6 +39,7 @@ func TestStepLabel(t *testing.T) {
 		{"builtin", "web_fetch", ``, "Read a web page"},
 		{"builtin", "remember", ``, "Saved a memory"},
 		{"builtin", "write_file", `{"path":"plan.md"}`, "Wrote plan.md"},
+		{"builtin", "edit_file", `{"path":"reports/oct.html","old":"a","new":"b"}`, "Edited oct.html"},
 		{"builtin", "configure", ``, "Changed settings"},
 		{"builtin", "new_tool", ``, "Used new tool"},
 		{"a2a", "a2a.travel.book_hotel", ``, "Asked travel"},

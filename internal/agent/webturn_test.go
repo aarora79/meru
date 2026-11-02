@@ -352,6 +352,8 @@ func TestNamedWebFirst(t *testing.T) {
 		{"about the user", "when does my Acme Flow plan renew?", "search", nil, web, "", "search"},
 		{"names nothing", "how do I bake bread?", "search", nil, web, "", "search"},
 		{"web_search off", "what is Acme Flow?", "search", nil, names("web_fetch", "read_file"), "", "search"},
+		{"an attached file", "replace Acme Flow with Acme Relay in this page\nRead this file: ~/meru-output/uploads/page.html",
+			"search", nil, web, "", "search"},
 		{"a mail question", "what did the Acme Flow email say?", "tools", nil,
 			append(names("google.search_gmail_messages"), web...), "", "tools"},
 	}

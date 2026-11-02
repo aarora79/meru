@@ -1,7 +1,7 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
-`about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
+`about.go`, `remember.go`, `writefile.go`, `editfile.go`, `files.go`, `chats.go`, `search.go`,
 `web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`,
 `table.go`, `tablequery.go`, and the tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
 `chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
@@ -26,8 +26,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are eighteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all eighteen by default. When you say "connect my Gmail" in chat, the model calls
+There are nineteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all nineteen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -387,6 +387,31 @@ shows as plain text.
 `write_file` asks before each call, because the shipped `[builtin] confirm` is
 `["write_file"]`. A file outlives the chat, so the default is to ask. Take it out
 of the list to let it write without asking.
+
+### editfile.go
+
+`edit_file` replaces exact text in a file in the output folder. It takes
+`path`, `old`, `new` and an optional `all`. Before it, the only way to change
+a saved file was `write_file` with the whole file as content; asked to fix two
+names in a 14 KB page, a model said it couldn't, and another claimed it had.
+
+It shares `write_file`'s guards: `insideOutput` and `cleanRelPath` on the path,
+an `os.Root` on the output folder, no symbolic links, and the 1 MiB cap. Then:
+
+1. It refuses a file that isn't there ("write_file makes a new file") and an
+   empty `old`.
+2. `strings.Count` counts the matches. None fails with "isn't in", so the model
+   reads the file and tries its exact text. More than one fails unless `all`
+   is true, so an edit meant for one place can't change three.
+3. `writeAtomic` saves the file as it was to a hidden `.<name>.bak` beside it,
+   replacing the last one, then writes the edited text the same way.
+
+Every refusal ends "Nothing changed". The result reads "Replaced 2 places in
+/Users/you/meru-output/reports/oct.html." and ends with the same link line as
+`write_file`'s, so `Written` reads it and the agent links an edited file under
+the answer too. `edit_file` asks before each call, since the shipped `confirm`
+list names it, and it is on by default. `ReadOnly` leaves it out, so a
+successful edit backs a claim that the file changed.
 
 ### files.go
 
@@ -1292,7 +1317,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the eighteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the nineteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1385,7 +1410,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all eighteen. `web_fetch` had its own key under `[web]` before; two
+  same way for all nineteen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

@@ -153,7 +153,7 @@ keeps the client thin.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all eighteen, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all nineteen, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
     Off     []string `toml:"off"`     // default []: built-ins the user chose to keep off
 }
@@ -281,7 +281,7 @@ meaning altogether and keep only `grep` (see
 [Retrieval](../../ARCHITECTURE.md#retrieval)).
 
 `checkBuiltin` adds rules for `[builtin]`. A name in `tools` or `off` must be
-one of the eighteen in `builtinTools`, and the message lists them. A name in
+one of the nineteen in `builtinTools`, and the message lists them. A name in
 `confirm` must also be in `tools`; otherwise the confirm line would do nothing,
 which is almost always a typo. A name in both `tools` and `off` says on and off
 at once, so Load refuses it.

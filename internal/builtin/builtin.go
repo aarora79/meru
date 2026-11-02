@@ -193,7 +193,7 @@ func (t *Tools) missing(name string) string {
 		if t.memory == nil {
 			return "merud has no memory folder"
 		}
-	case WriteFile:
+	case WriteFile, EditFile:
 		if t.outputDir == "" {
 			return "[skills] output_dir is empty"
 		}
@@ -258,6 +258,10 @@ func (t *Tools) Tools() []engine.ToolSpec {
 			Name:        WriteFile,
 			Description: writeFileDescription(t.outputDir),
 			Parameters:  writeFileSchema(),
+		}, engine.ToolSpec{
+			Name:        EditFile,
+			Description: editFileDescription(t.outputDir),
+			Parameters:  editFileSchema(),
 		})
 	}
 	if t.hasFiles() {
@@ -373,6 +377,10 @@ func (t *Tools) Status() []rpc.ServerInfo {
 			Name:        WriteFile,
 			Description: "Saves a file in " + t.outputDir + ".",
 			Confirm:     t.Confirm(WriteFile) != dispatch.ConfirmNever,
+		}, rpc.ToolInfo{
+			Name:        EditFile,
+			Description: "Replaces text in a file in " + t.outputDir + ".",
+			Confirm:     t.Confirm(EditFile) != dispatch.ConfirmNever,
 		})
 	}
 	if t.hasFiles() {
@@ -483,6 +491,8 @@ func (t *Tools) Call(ctx context.Context, name string, args json.RawMessage) (di
 		text, err = t.remember(ctx, args)
 	case name == WriteFile && t.outputDir != "":
 		text, err = t.writeFile(args)
+	case name == EditFile && t.outputDir != "":
+		text, err = t.editFile(args)
 	case name == ReadFile && t.hasFiles():
 		text, err = t.readFile(args)
 	case name == ListFolder && t.hasFiles():
@@ -755,6 +765,8 @@ func Summary(name string) string {
 		return "Saves one fact about you to ~/.meru/memory."
 	case WriteFile:
 		return "Saves a file in the output folder, [skills] output_dir."
+	case EditFile:
+		return "Replaces exact text in a file in the output folder, such as a name in a saved page."
 	case ReadFile:
 		return "Reads a whole file in the indexed folders or the output folder."
 	case ListFolder:

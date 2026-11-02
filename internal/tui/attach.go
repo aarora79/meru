@@ -132,7 +132,7 @@ func (m *Model) takeAttachments(text string) outgoing {
 			q.images = append(q.images, a.full)
 			continue
 		}
-		lines.WriteString("\nRead this file: " + a.path)
+		lines.WriteString("\n" + rpc.ReadThisFile + a.path)
 	}
 	if lines.Len() > 0 {
 		q.text += "\n" + lines.String()

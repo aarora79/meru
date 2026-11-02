@@ -242,7 +242,7 @@ func (b *Bridge) withAttachments(q string) string {
 	var s strings.Builder
 	for _, a := range b.attached {
 		if a.Kind != rpc.AttachImage {
-			s.WriteString("\nRead this file: " + a.Path)
+			s.WriteString("\n" + rpc.ReadThisFile + a.Path)
 		}
 	}
 	if s.Len() == 0 {

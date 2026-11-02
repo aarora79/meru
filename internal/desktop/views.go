@@ -230,6 +230,11 @@ func builtinLabel(tool string, a map[string]any) string {
 			return "Wrote " + f
 		}
 		return "Wrote a file"
+	case "edit_file":
+		if f := fileArg(a); f != "" {
+			return "Edited " + f
+		}
+		return "Edited a file"
 	case "configure":
 		return "Changed settings"
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // Why a turn went to the web first. The turn's info log line and span
@@ -587,13 +588,17 @@ func webFirstOf(t *turn) string {
 //   - the question isn't about the user's own life (see aboutTheUser);
 //   - it names a thing (see namedThing), and the excerpts don't cover it
 //     (see filesCover);
-//   - no earlier turn of the chat names it (see inHistory).
+//   - no earlier turn of the chat names it (see inHistory);
+//   - the question carries no attached file: a question with a "Read this
+//     file" line is about that file, as in "replace Dan with Dana in this
+//     page", whose name the web knows nothing about.
 func (a *Agent) namedWebFirst(question, target string, searched bool, results []retrieve.Result, history []engine.Message) (string, bool) {
 	if !searched || target != "" || a.tools == nil || !offersWebSearch(a.tools.Tools()) || aboutTheUser(question) {
 		return "", false
 	}
 	name := namedThing(question)
-	if name == "" || filesCover(name, results) || inHistory(name, history) {
+	if name == "" || filesCover(name, results) || inHistory(name, history) ||
+		strings.Contains(question, "\n"+rpc.ReadThisFile) {
 		return "", false
 	}
 	return name, true

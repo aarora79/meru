@@ -425,7 +425,7 @@ func TestBuiltinToolsSwitch(t *testing.T) {
 		}
 		offTools = append(offTools, o.Tool)
 	}
-	wantOff := []string{AboutMeru, Remember, WriteFile, ReadFile, ListFolder, Grep, SearchFiles, SearchImages, ViewImage, AnalyzeTable, WebSearch, SearchNotes, ListNotes, ReadNote, ScheduleJob}
+	wantOff := []string{AboutMeru, Remember, WriteFile, EditFile, ReadFile, ListFolder, Grep, SearchFiles, SearchImages, ViewImage, AnalyzeTable, WebSearch, SearchNotes, ListNotes, ReadNote, ScheduleJob}
 	if !slices.Equal(offTools, wantOff) {
 		t.Errorf("Off = %v, want %v", offTools, wantOff)
 	}

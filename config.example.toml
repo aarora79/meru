@@ -198,6 +198,8 @@ capture_content  = false   # put question and answer text into spans
 #                 setup has, so it doesn't guess from its training
 #   remember      saves a fact about you under memory/
 #   write_file    saves a file in [skills] output_dir
+#   edit_file     replaces exact text in a file in [skills] output_dir,
+#                 such as a name in a page Meru saved
 #   read_file, list_folder, grep
 #                 read the [index] folders; off while folders is empty
 #   search_files  searches the [index] folders by meaning and by words
@@ -218,11 +220,11 @@ capture_content  = false   # put question and answer text into spans
 #                 merud needs Full Disk Access in System Settings
 #   schedule_job  adds a scheduled job when you ask in chat, such as "every
 #                 weekday at 7, brief me"; see [[jobs]] below
-tools = ["configure", "datetime", "about_meru", "remember", "write_file", "read_file", "list_folder", "grep", "search_files", "search_images", "view_image", "analyze_table", "web_search", "web_fetch", "search_notes", "list_notes", "read_note", "schedule_job"]
+tools = ["configure", "datetime", "about_meru", "remember", "write_file", "edit_file", "read_file", "list_folder", "grep", "search_files", "search_images", "view_image", "analyze_table", "web_search", "web_fetch", "search_notes", "list_notes", "read_note", "schedule_job"]
 # Tools that ask before each call; each must be in tools. configure and
 # schedule_job always ask, whatever this says. Add "remember" to approve each memory; take out
-# "write_file" to let it save without asking.
-confirm = ["write_file"]
+# "write_file" or "edit_file" to let it save or edit without asking.
+confirm = ["write_file", "edit_file"]
 # Built-in tools you chose to keep off. This list turns nothing off by
 # itself: a tool is on only when tools lists it. Settings and /mcp in
 # meru chat write it when you turn a tool off. A built-in in neither list

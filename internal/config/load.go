@@ -35,7 +35,7 @@ const MaxWebResults = 20
 // internal/builtin, which imports this package; a test there checks that
 // each name here is a tool it serves.
 var builtinTools = []string{
-	"configure", "datetime", "about_meru", "remember", "write_file",
+	"configure", "datetime", "about_meru", "remember", "write_file", "edit_file",
 	"read_file", "list_folder", "grep", "search_files", "search_images", "view_image",
 	"analyze_table", "web_search", "web_fetch",
 	"search_notes", "list_notes", "read_note", "schedule_job",
@@ -155,7 +155,7 @@ func defaults() Config {
 		// leak data. write_file asks before each call: a file it writes
 		// stays on your disk after the chat ends (ARCHITECTURE.md,
 		// "Approving a tool call").
-		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file"}, Off: []string{}},
+		Builtin: Builtin{Tools: BuiltinTools(), Confirm: []string{"write_file", "edit_file"}, Off: []string{}},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{}},
 		// web_search runs through a SearXNG the user starts on this port.
 		Web:  Web{SearXNGURL: "http://127.0.0.1:8888", MaxResults: 8, Render: RenderAuto, TrustedSites: []string{}},

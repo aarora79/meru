@@ -886,11 +886,11 @@ and arguments and offers the choices `merud` sends, from these:
   ```toml
   [builtin]
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
-             "read_file", "list_folder", "grep", "search_files",
+             "edit_file", "read_file", "list_folder", "grep", "search_files",
              "search_images", "view_image", "analyze_table",
              "web_search", "web_fetch", "search_notes", "list_notes",
-             "read_note", "schedule_job"]   # all eighteen, the default
-  confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
+             "read_note", "schedule_job"]   # all nineteen, the default
+  confirm = ["write_file", "edit_file"]   # the shipped default; add "remember" to approve each memory
   off     = []               # built-ins you chose to keep off; see below
   ```
 
@@ -900,7 +900,7 @@ and arguments and offers the choices `merud` sends, from these:
   works without it. An unknown name stops `merud` at load, with the valid names
   in the message, and so does a `confirm` entry that `tools` doesn't list. A
   listed tool still needs what it works on: the file tools need `[index]
-  folders`, `write_file` needs `[skills] output_dir`, `web_search` needs
+  folders`, `write_file` and `edit_file` need `[skills] output_dir`, `web_search` needs
   `[web] searxng_url`, and the Apple Notes tools need a Mac. Without it the tool stays off, and `merud` logs one info
   line at startup that names the tool and the missing setting.
 
@@ -920,7 +920,10 @@ and arguments and offers the choices `merud` sends, from these:
   whatever `confirm` says (see [First run and setup](#first-run-and-setup) and
   [Scheduler](#scheduler)); `remember`, which saves a
   memory without asking unless you list it in `confirm`; `write_file`, which asks
-  before each file it saves because the shipped list names it; the two web
+  before each file it saves because the shipped list names it; `edit_file`, which
+  replaces exact text in a file in the output folder, such as a name in a page
+  Meru saved, keeps the file as it was in a hidden `.<name>.bak` beside it, and
+  asks before each edit for the same reason; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
   clock tool, `datetime`; `about_meru`, which reports this setup; seven
   read-only file tools; and three read-only Apple Notes tools. `web_search`, `datetime`, `about_meru` and the file

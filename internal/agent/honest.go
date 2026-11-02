@@ -55,9 +55,12 @@ const honestyRule = "Never say you did something, such as saved, moved, sent, de
 // questions about Meru itself to that tool.
 func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 	write := "You can't write files."
+	edits := slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.EditFile })
 	var cmds []string
 	for _, s := range tools {
 		switch {
+		case s.Name == builtin.WriteFile && outputDir != "" && edits:
+			write = "You can write files only inside " + outputDir + ", with write_file, and change text in them with edit_file."
 		case s.Name == builtin.WriteFile && outputDir != "":
 			write = "You can write files only inside " + outputDir + ", with write_file."
 		case toolKind(s.Name) == dispatch.KindCommand:
