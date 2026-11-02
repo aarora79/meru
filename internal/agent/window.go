@@ -53,7 +53,7 @@ const shortenedNote = "\n\n[Meru shortened this earlier result to keep the promp
 // fit, so the caller stops offering tools and the model answers from what
 // it has. With a window of 0, Ollama's own setting, it does nothing.
 func (a *Agent) fitWindow(ctx context.Context, t *turn, msgs []engine.Message, base, newest, measured int, specs []engine.ToolSpec) bool {
-	window := a.answerWindow()
+	window := a.answerWindow(t.model)
 	if window <= 0 {
 		return false
 	}

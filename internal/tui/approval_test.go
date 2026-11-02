@@ -281,3 +281,50 @@ func TestSiteChoiceText(t *testing.T) {
 		}
 	}
 }
+
+// TestConsentBox checks the question merud asks before a turn goes to an
+// endpoint off this machine: its words, its three keys, and no Edit first.
+func TestConsentBox(t *testing.T) {
+	for _, tt := range []struct {
+		key  string
+		want rpc.Choice
+	}{{"t", rpc.ChoiceOnce}, {"c", rpc.ChoiceSession}, {"n", rpc.ChoiceDeny}, {"e", ""}} {
+		t.Run(tt.key, func(t *testing.T) {
+			ask := &rpc.Approval{ID: "consent-1", Name: "@lab", Kind: rpc.KindConsent, Choices: allChoices,
+				Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "near-edge", Model: "big-model",
+					Carries: []string{"your question", "2 earlier turns of this chat", "1 picture"}}}
+			merud := &fakeMerud{events: []rpc.Event{
+				{Type: rpc.EventSession, Session: "s1"},
+				{Type: rpc.EventApproval, Approval: ask},
+				{Type: rpc.EventToken, Text: "Done."},
+				{Type: rpc.EventDone},
+			}}
+			snd := newFakeSender()
+			m, result := startTurn(t, testModel(merud.ask, snd), "what changed?")
+			m = untilApproval(t, m, snd)
+			view := m.View()
+			for _, w := range []string{"Send this question to @lab (near-edge, model big-model)?",
+				"It carries your question, 2 earlier turns of this chat and 1 picture.", "t this time", "c this chat", "n no"} {
+				if !strings.Contains(view, w) {
+					t.Errorf("view lacks %q:\n%s", w, view)
+				}
+			}
+			if strings.Contains(view, "edit first") {
+				t.Errorf("a consent box offers Edit first:\n%s", view)
+			}
+			m, _ = update(t, m, typeText(tt.key))
+			if tt.want == "" {
+				// e does nothing here: answer with n to finish the turn.
+				if m.approval == nil {
+					t.Fatal("e closed the consent box")
+				}
+				m, _ = update(t, m, typeText("n"))
+				tt.want = rpc.ChoiceDeny
+			}
+			waitDone(t, m, snd, result)
+			if !slices.Equal(merud.choices, []rpc.Choice{tt.want}) {
+				t.Errorf("merud got %v, want [%s]", merud.choices, tt.want)
+			}
+		})
+	}
+}

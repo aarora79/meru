@@ -101,6 +101,7 @@ type sections struct {
 	web         string // what the web-first step found, under "From the web"; "" for none
 	toolsNote   string // toolsNote, with the web lines, when the turn offers tools; "" for none
 	fileTools   string // fileToolsNote or exploreNote on a file turn with the file tools; "" otherwise
+	model       string // the turn's answer model, for the self line and the picture note
 }
 
 // trimHistory drops the oldest messages from history until the rest fits

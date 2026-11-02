@@ -1,6 +1,6 @@
 # A model router, and answer models on other machines
 
-*High-level design. Status: approved; the engines for endpoints on this machine are built, reach, consent and routing are not. Issue: [#78](https://github.com/aarora79/meru/issues/78). Milestone: v0.7.*
+*High-level design. Status: approved; the engines, near-edge and remote reach and the consent question are built, and routing is not. Issue: [#78](https://github.com/aarora79/meru/issues/78). Milestone: v0.7.*
 
 Today the main model writes every answer, even "what is 2 + 2?", and it must run in Ollama on this machine. This design changes both. The router, which already reads each question with the fast model, also picks which model answers: the fast model for easy questions, the main model for the rest, and an optional large model for questions that go wrong or that you send there. And an answer model can run somewhere else: on a machine on your network, or on a hosted service you have a key for. Meru asks before a chat sends anything off the machine.
 

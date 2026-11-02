@@ -292,9 +292,16 @@ each call with that error, and the rest of Meru keeps working.
 
 What the two endpoint engines share:
 
-- `newEndpointAPI` checks that the URL is loopback, as `NewOllama` does, and
-  refuses redirects. Endpoints off the machine wait for the consent prompt in
-  [#78](https://github.com/aarora79/meru/issues/78).
+- `reachClient` builds each endpoint's HTTP client from its reach. `local`
+  needs a loopback URL, as `NewOllama` does. `remote` needs https. `near-edge`
+  gets a `net.Dialer` whose `Control` hook, `nearEdgeOnly`, runs after Go has
+  resolved the host name and before it connects, and refuses any address
+  `loopback.NearEdge` doesn't accept: a public IP, or a name that resolves to
+  one. Off the machine the client sets `Proxy: nil`, since a proxy from the
+  environment would make the connection, and so the check, somewhere else.
+  Every client refuses redirects. `NewOllamaEndpoint` uses the same client
+  for another Ollama. The agent asks the user before a turn reaches one of
+  these (see [agent](agent.md), consent.go).
 - `post` sends one request with its span (`POST /chat/completions`, with a
   `meru.endpoint` attribute) and turns a non-2xx reply into an
   `*EndpointError`, whose message says what to do for a 401 (check the key in

@@ -4,15 +4,17 @@
 // local Ollama, because the router needs token probabilities and search
 // must not send files anywhere (docs/design/model-router.md).
 //
-// For now an endpoint must be on this machine (reach = "local"), such as
-// Ollama's own OpenAI-style API or another model server on loopback.
-// Endpoints off the machine wait for the consent prompt that goes with
-// them.
+// reach says how far its requests may travel: "local" (this machine),
+// "near-edge" (the user's own network) or "remote" (a hosted service). A
+// turn bound for near-edge or remote asks the user first, "this time" or
+// "this chat"; see the agent's consent.go.
 
 package config
 
 import (
 	"fmt"
+	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -95,6 +97,29 @@ func FindEndpoint(eps []Endpoint, name string) (Endpoint, bool) {
 	return eps[i], true
 }
 
+// checkReachURL checks the url of a near-edge or remote endpoint. Both
+// need an http or https URL with a host. A remote one needs https, since
+// its requests cross the internet with the user's prompt and key. A
+// near-edge one given as an IP address must give one NearEdge accepts; a
+// host name passes here, and the engine checks each address it resolves
+// to when it connects, since a name can point anywhere.
+func checkReachURL(reach, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("url %q must be an http or https address with a host", raw)
+	}
+	if reach == ReachRemote && u.Scheme != "https" {
+		return fmt.Errorf("reach is \"remote\", so the url must use https, not %s: the prompt and the key cross the internet", u.Scheme)
+	}
+	if reach == ReachNearEdge {
+		if addr, err := netip.ParseAddr(u.Hostname()); err == nil && !loopback.NearEdge(addr) {
+			return fmt.Errorf("reach is \"near-edge\", but %s is a public address; use reach = \"remote\" "+
+				"for a server on the internet", addr)
+		}
+	}
+	return nil
+}
+
 // checkEndpoints checks the [[endpoints]] entries, and each "@name" in
 // [models] and the sets, and returns one error per problem.
 func checkEndpoints(eps []Endpoint, models Models) []error {
@@ -124,10 +149,11 @@ func checkEndpoints(eps []Endpoint, models Models) []error {
 				add("%s: reach is \"local\", so the url must be on this machine: %w", key, err)
 			}
 		case ReachNearEdge, ReachRemote:
-			add("%s: reach %q isn't available yet; an endpoint must be on this machine (reach = \"local\") "+
-				"until Meru can ask you before a question leaves it", key, e.Reach)
+			if err := checkReachURL(e.Reach, e.URL); err != nil {
+				add("%s: %w", key, err)
+			}
 		default:
-			add("%s: reach %q is unknown; use \"local\"", key, e.Reach)
+			add("%s: reach %q is unknown; use \"local\", \"near-edge\" or \"remote\"", key, e.Reach)
 		}
 		if !slices.Contains(apis, e.API) {
 			add("%s: api %q is unknown; use one of %s", key, e.API, strings.Join(apis, ", "))

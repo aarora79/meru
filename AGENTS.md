@@ -1,6 +1,6 @@
 # meru: agent guide
 
-**Meru** is a personal AI assistant that runs entirely on a machine you control: a
+**Meru** is a personal AI assistant that runs on a machine you control: a
 resident daemon (`merud`) that keeps open-weight models warm in Ollama, plus a thin CLI
 (`meru`) that talks to it over a Unix socket. It is written in **Go**, so it ships as
 native binaries you can redistribute. macOS on Apple silicon is the primary platform;
@@ -165,22 +165,27 @@ Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/w
 
 ## Non-negotiables
 
-1. **No cloud-model code path.** The code must not contain one at all, whether behind
-   a flag or switched off. If you find yourself adding an HTTP client for a model
-   provider, stop and raise it instead. The only model HTTP traffic goes to Ollama on
-   loopback, and never to one of Ollama's cloud models, which Ollama runs on
+1. **No prompt leaves the machine without the user's yes.** The fast model and the
+   embedding model, and everything they do (routing, skill picks, summaries,
+   indexing, search), run on Ollama on loopback. Only an answer model may run
+   elsewhere: an `[[endpoints]]` entry the user names, at the reach it says
+   (`local`, `near-edge` for the user's own network, `remote` over https), and a
+   turn goes there only after the user answers "this time" or "this chat" to the
+   question it asks; never "always". An incognito chat and a scheduled job never
+   leave, and a client that can't ask keeps the turn here. The code holds no
+   provider's address and no provider's SDK: the user types every URL. Model
+   traffic never goes to one of Ollama's cloud models, which Ollama runs on
    ollama.com: config refuses one by name, and the engine refuses one Ollama
-   describes as remote. An answer model in `[[endpoints]]`, a model server
-   that speaks Ollama's, the OpenAI or the Anthropic API, must be on loopback
-   too (`reach = "local"`) until the consent prompt in #78 exists; the user
-   types its URL, and the code holds no provider's address.
+   describes as remote. The owner chose this on 1 November 2026, in place of
+   "no cloud-model code path" (#78, [the design](docs/design/model-router.md)).
 2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
    Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
    the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
    response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
-   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, and
+   except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, to
+   the answer endpoints in `[[endpoints]]` at the reach each names, and
    to public web pages through `web_fetch`, which is on by default and fetches only
    when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
    loopback and private addresses at connect time, and asks the user before it
@@ -311,7 +316,8 @@ internal/
                      file-research
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
   summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
-  agent/             one turn: route, build the prompt within the budget (budget.go), pick a
+  agent/             one turn: ask before an answer endpoint off the machine (consent.go), route,
+                     build the prompt within the budget (budget.go), pick a
                      skill, recall memories and earlier chats, find images like an attached
                      one (similar.go), run tool rounds, stream the answer
   transcript/        append-only JSONL session files, and listing them; meta lines for a
@@ -321,7 +327,8 @@ internal/
                      of every op and event
   obs/               OpenTelemetry metrics and traces, loopback only, the /metrics page
                      for Prometheus (prometheus.go), and the slog handler
-  loopback/          the one rule for "this address is on this machine"
+  loopback/          the one rule for "this address is on this machine", and NearEdge, the rule
+                     for a near-edge endpoint's address (nearedge.go)
   platform/          what differs between macOS, Linux and Windows, one row per system, and
                      reading this machine, GPU included; its one exec site is run.go
   tui/               the Bubble Tea UI behind `meru chat`, with the desktop app's features as

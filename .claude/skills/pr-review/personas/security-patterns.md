@@ -33,8 +33,12 @@ machine: a cloud-model SDK (software development kit) in `go.mod`, an update che
 crash reporter, an OTLP (OpenTelemetry Protocol) endpoint on the network, or a check
 that treats the string `localhost` as proof of loopback.
 
-**The rule.** Model traffic goes only to a model server on loopback: Ollama, or an
-`[[endpoints]]` entry with `reach = "local"`, whose URL the user types. OTLP goes only to a
+**The rule.** No prompt leaves the machine without the user's yes. The fast and
+embedding models talk only to Ollama on loopback. An answer model in `[[endpoints]]`
+may sit at `near-edge` (every address it connects to passes `loopback.NearEdge`) or
+`remote` (https only), and a turn goes there only after `agent.consent` asks "this
+time" or "this chat"; an incognito chat and a scheduled job never leave. The user
+types every URL. OTLP goes only to a
 loopback endpoint, and `merud` refuses to start with any other. An MCP server over
 Streamable HTTP or an A2A agent may reach another machine only when its config entry
 says `remote = true`. `web_fetch` and `web_search` are the other exceptions, and #2
@@ -52,9 +56,18 @@ from `internal/config/load.go` (Ollama, OTLP), `internal/mcp/config.go` and
 `localOnly` in `internal/engine/ollama.go` refuses one that `/api/show` calls
 remote before any chat or embedding request (#211): Ollama on loopback would
 otherwise pass the prompt to ollama.com. `checkEndpoints` in
-`internal/config/endpoints.go` refuses an endpoint off loopback and an `@name`
-for the fast or embed model, and `newEndpointAPI` in
-`internal/engine/endpoint.go` checks the URL again and refuses redirects.
+`internal/config/endpoints.go` checks each endpoint's URL against its reach and
+refuses an `@name` for the fast or embed model. `reachClient` in
+`internal/engine/endpoint.go` checks the URL again, refuses redirects, ignores
+proxy settings off the machine, and for near-edge checks each address it
+connects to with a dialer hook (`nearEdgeOnly`). `agent.consent` in
+`internal/agent/consent.go` asks before a turn goes to an endpoint at near-edge
+or remote, and keeps incognito chats and jobs here.
+
+**What to check (endpoints).** A new path that sends a turn's messages to an
+engine without passing `consent` first, or that reads `a.Main()` mid-turn in
+place of `t.model`. A reach check on the URL's text in place of the resolved
+address. A key, or anything read from `api_key`, in a log line or an error.
 
 **What to check.** A new `http.Client`, `http.NewRequest`, `net.Dial` or URL literal
 outside the packages that own one (`engine`, `obs`, `mcp`, `a2a`, `builtin`'s web

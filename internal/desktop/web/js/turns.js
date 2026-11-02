@@ -253,6 +253,7 @@ export function drawApproval(t, h) {
 // "deny" or "edit". A save's card,
 // which sits above the composer, uses it too.
 export function approvalCard(v, titleId, onChoice) {
+  if (v.consent) return consentCard(v, titleId, onChoice);
   const card = el("div", "approval");
   card.setAttribute("role", "group");
   card.setAttribute("aria-labelledby", titleId);
@@ -290,6 +291,41 @@ export function approvalCard(v, titleId, onChoice) {
   add(mail ? "Don't send" : "Don't allow", "deny", "button secondary");
   card.append(choices);
   return card;
+}
+
+// consentCard is the card merud shows before a turn goes to an answer
+// endpoint off this computer: where the question would go, what it would
+// carry, and This time, This chat or No. No answers on this computer.
+function consentCard(v, titleId, onChoice) {
+  const c = v.consent;
+  const card = el("div", "approval consent");
+  card.setAttribute("role", "group");
+  card.setAttribute("aria-labelledby", titleId);
+  const title = el("p", "approval-title");
+  title.id = titleId;
+  title.append(icon("ask", 16), document.createTextNode(" Send this question to "));
+  title.append(el("strong", "", v.name), document.createTextNode("?"));
+  const where = c.reach === "remote" ? "a hosted service" : "a computer on your own network";
+  card.append(title, el("p", "approval-tool", where + " · model " + c.model));
+  card.append(el("p", "", "It carries " + joinAnd(c.carries || []) + "."));
+  const choices = el("div", "choices");
+  for (const ch of v.choices) {
+    const b = button(ch.label, {
+      className: ch.choice === "once" ? "button ask" : "button secondary",
+      onClick: () => onChoice(ch.choice),
+    });
+    b.dataset.choice = ch.choice;
+    choices.append(b);
+  }
+  card.append(choices);
+  card.append(el("p", "panel-note", "No answers here, on this computer, with the fast model. Meru never remembers a yes past this chat."));
+  return card;
+}
+
+// joinAnd joins items as English does: "a", "a and b", "a, b and c".
+export function joinAnd(items) {
+  if (items.length <= 1) return items.join("");
+  return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
 }
 
 // answeredText says what the user chose on an approval card.
@@ -493,6 +529,11 @@ export function drawFooter(t, h) {
   f.append(actions);
   const stats = statsText(t);
   if (stats) f.append(el("p", "stats", stats));
+  // An answer from an endpoint off this computer says so under it.
+  const s = t.stats;
+  if (s && s.answered_by) {
+    f.append(el("p", "stats answered-by", "Answered by " + s.answered_by + " (" + s.reach + ")"));
+  }
 }
 
 // statsText writes the stats line: time to first token, the model's speed

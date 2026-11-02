@@ -17,7 +17,7 @@ import (
 )
 
 // aboutNote closes the /about box.
-const aboutNote = "The models run on this computer, and Meru has no account to sign in to."
+const aboutNote = "The models run on this computer, an answer model elsewhere only with your yes, and Meru has no account to sign in to."
 
 // aboutBoxView draws the /about box for a pane width columns wide and
 // height rows tall (see boxPaneAt). Each link shows its label and its URL,

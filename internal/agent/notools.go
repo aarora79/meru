@@ -45,7 +45,7 @@ func (a *Agent) offerable(ctx context.Context, t *turn, specs []engine.ToolSpec)
 	if len(specs) == 0 || a.canCallTools == nil {
 		return specs
 	}
-	model := a.Main()
+	model := t.model
 	ok, err := a.canCallTools(ctx, model)
 	if err != nil {
 		a.log.DebugContext(ctx, "couldn't check whether the answer model can call tools", "model", model, "err", err)

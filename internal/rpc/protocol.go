@@ -630,6 +630,13 @@ type Event struct {
 	// full answer. A client offers Continue after "cut_off", "window_full",
 	// "timeout" and "capped".
 	Outcome string `json:"outcome,omitempty"`
+	// AnsweredBy and Reach, on the "done" event, name the answer endpoint
+	// that wrote the answer, as "@lab", and how far it is, "near-edge" or
+	// "remote", when it isn't on this computer. Both stay empty for an
+	// answer written here, so a client says where the answer came from
+	// only when it came from elsewhere.
+	AnsweredBy string `json:"answered_by,omitempty"`
+	Reach      string `json:"reach,omitempty"`
 }
 
 // Citation is one excerpt a turn's prompt held, as the "sources" event lists
@@ -772,6 +779,29 @@ type Approval struct {
 	// "raw.githubusercontent.com", when Choices hold ChoiceSite and
 	// ChoiceSiteAlways; the client names it on those buttons.
 	Site string `json:"site,omitempty"`
+	// Consent, when set, makes this no tool call but a question about the
+	// whole turn: may it go to an answer endpoint off this machine? Kind
+	// is then KindConsent, Name the endpoint as "@lab", and Choices only
+	// ChoiceOnce ("this time"), ChoiceSession ("this chat") and ChoiceDeny.
+	// A client that doesn't know the field shows an approval for "@lab",
+	// and its no keeps the turn on this machine.
+	Consent *ConsentInfo `json:"consent,omitempty"`
+}
+
+// KindConsent is Approval.Kind for a question about sending a turn off
+// this machine; see Approval.Consent.
+const KindConsent = "consent"
+
+// ConsentInfo says where a turn would go and what it would carry, for the
+// question the client asks. See docs/design/model-router.md.
+type ConsentInfo struct {
+	Endpoint string `json:"endpoint"` // the [[endpoints]] name, such as "lab"
+	Reach    string `json:"reach"`    // "near-edge" or "remote"
+	Model    string `json:"model"`    // the model name the endpoint knows
+	// Carries lists, in plain words, what the turn's prompt would hold,
+	// such as "your question", "3 earlier turns of this chat" and "1
+	// picture". The client shows each one.
+	Carries []string `json:"carries"`
 }
 
 // Reply is the line a client writes to answer an "approval" event.

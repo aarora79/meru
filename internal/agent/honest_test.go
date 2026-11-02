@@ -468,11 +468,11 @@ func TestSelfIntroForAnEndpoint(t *testing.T) {
 	a.SetMain("@lab", true)
 	want := "Your name is Meru, and the model big-model writes your answers, through the model server " +
 		"Meru calls @lab on this computer. Never give yourself another name, and never name another model as yours."
-	if got := a.selfIntro(); got != want {
+	if got := a.selfIntro(a.Main()); got != want {
 		t.Errorf("selfIntro() = %q\nwant %q", got, want)
 	}
 	a.SetMain("qwen3.6:35b", true)
-	if got := a.selfIntro(); got != selfLine("qwen3.6:35b") {
+	if got := a.selfIntro(a.Main()); got != selfLine("qwen3.6:35b") {
 		t.Errorf("a local model's selfIntro() = %q", got)
 	}
 }

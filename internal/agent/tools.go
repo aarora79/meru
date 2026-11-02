@@ -176,6 +176,16 @@ type ToolRunner interface {
 // turn holds what the rounds need to know about the turn they run in.
 // Handle fills it in as the turn goes.
 type turn struct {
+	// model is the turn's answer model and noThink its think setting,
+	// picked once when the turn starts: the main model, or a local one when
+	// the user said no to sending the turn off the machine (see
+	// consent.go). Every step of the turn reads these, never a.Main(), so a
+	// model switch during the turn doesn't split it between two models.
+	model   string
+	noThink bool
+	// keptHere, when set, is the notice that the turn answered on this
+	// computer instead of at its endpoint, and why; see consent.go.
+	keptHere string
 	// saved lists the files write_file wrote this turn, in order, for the
 	// links savedLinks adds under the answer.
 	saved  []savedFile
@@ -455,7 +465,7 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			nudge = false
 		}
 		t.offer = offer
-		rep, err := a.answer(ctx, call, offer, t.emit)
+		rep, err := a.answer(ctx, t, call, offer, t.emit)
 		total.add(rep)
 		if err != nil {
 			total.text = rep.text
@@ -607,7 +617,7 @@ func (a *Agent) retryEmpty(ctx context.Context, t *turn, msgs []engine.Message, 
 	start := time.Now()
 	// slices.Concat builds a new slice, so msgs itself doesn't change.
 	nudged := slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: nudge}})
-	rep, err := a.answer(ctx, nudged, nil, t.emit)
+	rep, err := a.answer(ctx, t, nudged, nil, t.emit)
 	total.add(rep)
 	total.text, total.doneReason = rep.text, rep.doneReason
 	if errors.Is(err, engine.ErrModelOutput) {

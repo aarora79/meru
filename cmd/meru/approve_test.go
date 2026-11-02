@@ -180,3 +180,38 @@ func TestSiteChoices(t *testing.T) {
 		}
 	}
 }
+
+// TestAskConsent checks the question meru asks before a turn goes to an
+// answer endpoint off this computer: its words, its three answers, and no
+// on end of input.
+func TestAskConsent(t *testing.T) {
+	turn := func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
+		c, err := approve(ctx, rpc.Approval{ID: "consent-1", Name: "@lab", Kind: rpc.KindConsent, Choices: allChoices,
+			Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "remote", Model: "big-model",
+				Carries: []string{"your question", "2 earlier turns of this chat", "the results of any tools this turn runs"}}})
+		if err != nil {
+			return err
+		}
+		return emit(rpc.Event{Type: rpc.EventToken, Text: "Answer (" + string(c) + ")."})
+	}
+	for _, tt := range []struct{ input, want string }{
+		{"t\n", "once"}, {"this chat\n", "session"}, {"N\n", "deny"}, {"x\nc\n", "session"}, {"", "deny"},
+	} {
+		sock := startServer(t, turn)
+		var out, errOut bytes.Buffer
+		p := newPrompter(strings.NewReader(tt.input), &errOut, true)
+		if err := ask(context.Background(), sock, "q", "", &out, &errOut, p.approve); err != nil {
+			t.Fatalf("%q: ask: %v", tt.input, err)
+		}
+		if want := "Answer (" + tt.want + ").\n"; out.String() != want {
+			t.Errorf("%q: stdout = %q, want %q", tt.input, out.String(), want)
+		}
+		for _, w := range []string{"Meru would send this question to @lab (remote, model big-model).",
+			"It carries your question, 2 earlier turns of this chat and the results of any tools this turn runs.",
+			"Send it? [t]his time  this [c]hat  [n]o, answer here: "} {
+			if !strings.Contains(errOut.String(), w) {
+				t.Errorf("%q: stderr lacks %q:\n%s", tt.input, w, errOut.String())
+			}
+		}
+	}
+}

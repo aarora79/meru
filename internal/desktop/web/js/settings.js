@@ -1867,7 +1867,7 @@ const DOES = [
 // your own machine".
 const WHY = [
   "Your files, mail and questions stay on your computer, so none of it ends up in anyone's training set.",
-  "Meru needs no account, calls no cloud model and sends no usage reports.",
+  "Meru needs no account and sends no usage reports, and no question leaves your computer unless you name a model elsewhere and say yes.",
   "You can read every setting in one file, and each memory and skill is a Markdown file you can edit or delete.",
 ];
 
@@ -1951,7 +1951,7 @@ export function settingsPanel(body, status) {
   fact("Search index", s.up ? count(s.documents || 0, false) + " · " + Number(s.chunks || 0).toLocaleString() + " pieces" : "merud isn't running");
   body.append(dl);
   const p = el("p", "privacy");
-  p.append(icon("lock", 14), document.createTextNode(" No account and no cloud. Meru runs on " + here() +
+  p.append(icon("lock", 14), document.createTextNode(" No account, and no question leaves without your yes. Meru runs on " + here() +
     ", and its settings live in " + configPath(s.socket) + "."));
   body.append(p);
 }

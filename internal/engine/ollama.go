@@ -114,18 +114,36 @@ func NewOllama(baseURL, keepAlive, embedModel string, client *http.Client, log *
 		return errors.New("ollama sent a redirect; Meru doesn't follow redirects")
 	}
 
+	return newOllama(baseURL, ka, embedModel, c, log), nil
+}
+
+// NewOllamaEndpoint returns an engine for an Ollama that answers an
+// [[endpoints]] entry with api = "ollama": another Ollama, on this machine,
+// the user's network or the internet, as cfg.Reach allows (see
+// reachClient). It has no embedding model, since the embedding model runs
+// on the local Ollama, and leaves keep_alive to that Ollama. It fails when
+// cfg's URL breaks its reach's rule.
+func NewOllamaEndpoint(cfg EndpointConfig, log *slog.Logger) (*OllamaEngine, error) {
+	c, err := reachClient(cfg.Reach, cfg.URL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("ollama endpoint %s: %w", cfg.Name, err)
+	}
+	return newOllama(cfg.URL, nil, "", c, log), nil
+}
+
+// newOllama builds an OllamaEngine from checked parts.
+func newOllama(baseURL string, keepAlive json.RawMessage, embedModel string, c *http.Client, log *slog.Logger) *OllamaEngine {
 	if log == nil {
 		log = obs.Discard()
 	}
-
 	return &OllamaEngine{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		keepAlive:  ka,
+		keepAlive:  keepAlive,
 		embedModel: embedModel,
 		client:     c,
 		log:        log,
 		shown:      map[string]ModelDetails{},
-	}, nil
+	}
 }
 
 // keepAliveJSON turns config's keep_alive string into the JSON Ollama

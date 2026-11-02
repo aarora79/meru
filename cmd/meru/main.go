@@ -288,7 +288,8 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, image)
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
-	var notice string // merud's warning about the answer; "" for none
+	var notice string     // merud's warning about the answer; "" for none
+	var answeredBy string // the endpoint off this computer that wrote the answer, and its reach; "" for here
 	endsInNewline := false
 	dim := newLook(stderr).dim
 	// breakLine starts a new line on the terminal before a tool line or a
@@ -327,6 +328,10 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 			midLine = !endsInNewline
 		case rpc.EventNotice:
 			notice = ev.Text
+		case rpc.EventDone:
+			if ev.AnsweredBy != "" {
+				answeredBy = ev.AnsweredBy + " (" + ev.Reach + ")"
+			}
 		case rpc.EventError:
 			if answer.Len() > 0 && !endsInNewline {
 				fmt.Fprintln(stdout)
@@ -339,6 +344,11 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 	}
 	if notice != "" {
 		fmt.Fprintln(stderr, dim.Render("note: "+notice))
+	}
+	// An answer from an endpoint off this computer says where it came
+	// from, on stderr, so stdout stays the answer alone.
+	if answeredBy != "" {
+		fmt.Fprintln(stderr, dim.Render("answered by "+answeredBy))
 	}
 	if cited := rpc.Cited(answer.String(), sources); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")

@@ -155,8 +155,12 @@ description argues for the exception and the Chief Architect accepts it.
 
 **Non-negotiables (AGENTS.md)**
 
-- [ ] **No cloud-model code path.** No HTTP client, SDK or config key that could reach
-      a cloud model, even behind a flag. Model traffic goes only to Ollama on loopback.
+- [ ] **No prompt leaves the machine without the user's yes.** The fast and embedding
+      models stay on Ollama on loopback. Only an answer model in `[[endpoints]]` may run
+      elsewhere, at its reach, after the consent question ("this time" or "this
+      chat"); incognito chats and jobs never leave. No provider SDK or provider
+      address in code, and no path that sends a prompt off the machine without
+      `agent.consent`.
 - [ ] **No telemetry leaves the machine.** No update check, crash report or phone-home.
       OTLP export stays off until config sets an endpoint, and `merud` refuses a
       non-loopback one. Prompt and response text stay out of spans unless
@@ -292,7 +296,7 @@ arguing for it, raise it as a blocker and tell the user.
 
 | Item | Status | Details |
 | --- | --- | --- |
-| No cloud-model code path | {PASS/FAIL} | |
+| No prompt leaves without the user's yes | {PASS/FAIL} | |
 | No telemetry off the machine; OTLP loopback only; no content in spans by default | {PASS/FAIL/N/A} | |
 | Deny-by-default tools and agents; loopback-only `merud` except `remote = true` and `web_fetch` | {PASS/FAIL/N/A} | |
 | Every tool call through `dispatch` and `tool_calls` | {PASS/FAIL/N/A} | |

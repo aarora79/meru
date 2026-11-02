@@ -6,6 +6,7 @@ package desktop
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/aarora79/meru/internal/rpc"
@@ -139,5 +140,24 @@ func TestApprovalView(t *testing.T) {
 				t.Errorf("choices = %+v, want %+v", v.Choices, wantChoices)
 			}
 		})
+	}
+}
+
+// TestConsentView checks the card for the question merud asks before a
+// turn goes to an endpoint off this computer: its three answers in the
+// page's words, the endpoint, and no draft for Edit first.
+func TestConsentView(t *testing.T) {
+	v := approvalView(rpc.Approval{ID: "consent-1", Name: "@lab", Kind: rpc.KindConsent,
+		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny},
+		Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "remote", Model: "big-model", Carries: []string{"your question"}}})
+	var labels []string
+	for _, c := range v.Choices {
+		labels = append(labels, string(c.Choice)+":"+c.Label)
+	}
+	if got, want := strings.Join(labels, " "), "once:This time session:This chat deny:No"; got != want {
+		t.Errorf("choices = %q, want %q", got, want)
+	}
+	if v.Consent == nil || v.Consent.Reach != "remote" || v.Draft != "" || v.Label != "send this question to @lab" {
+		t.Errorf("view = %+v", v)
 	}
 }

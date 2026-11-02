@@ -74,7 +74,7 @@ func (m *Model) closeApproval(choice rpc.Choice) {
 // same as when no box is open.
 func (m *Model) approvalKey(msg tea.KeyMsg) {
 	a := m.approval
-	if !a.save && isKey(msg, editKey) {
+	if !a.save && a.ask.Consent == nil && isKey(msg, editKey) {
 		m.editFirst()
 		return
 	}
@@ -89,7 +89,7 @@ func (m *Model) approvalKey(msg tea.KeyMsg) {
 		m.closeApproval(a.ask.Choices[a.selected])
 	case tea.KeyRunes:
 		for _, c := range a.ask.Choices {
-			if strings.EqualFold(string(msg.Runes), choiceKey(c)) {
+			if strings.EqualFold(string(msg.Runes), keyFor(a.ask, c)) {
 				m.closeApproval(c)
 				return
 			}
@@ -141,6 +141,63 @@ func choiceKey(c rpc.Choice) string {
 	return string(c)[:1]
 }
 
+// keyFor returns the key that picks c in the box for a: choiceKey's, or
+// for a consent question "t" this time, "c" this chat and "n" no.
+func keyFor(a rpc.Approval, c rpc.Choice) string {
+	if a.Consent == nil {
+		return choiceKey(c)
+	}
+	switch c {
+	case rpc.ChoiceOnce:
+		return "t"
+	case rpc.ChoiceSession:
+		return "c"
+	case rpc.ChoiceDeny:
+		return "n"
+	}
+	return choiceKey(c)
+}
+
+// labelFor returns the words the box shows for c in the box for a:
+// choiceLabel's, or for a consent question "this time", "this chat" and
+// "no", the same words as the desktop app's buttons.
+func labelFor(a rpc.Approval, c rpc.Choice) string {
+	if a.Consent == nil {
+		return choiceLabel(c, a.Site)
+	}
+	switch c {
+	case rpc.ChoiceOnce:
+		return "this time"
+	case rpc.ChoiceSession:
+		return "this chat"
+	case rpc.ChoiceDeny:
+		return "no"
+	}
+	return choiceLabel(c, a.Site)
+}
+
+// consentLines returns the question a consent box asks and what the turn
+// would carry, such as
+//
+//	Send this question to @lab (near-edge, model big-model)?
+//	It carries your question, 3 earlier turns of this chat, …
+func consentLines(a rpc.Approval) (title string, body []string) {
+	c := a.Consent
+	title = "Send this question to " + a.Name + " (" + c.Reach + ", model " + c.Model + ")?"
+	return title, []string{"It carries " + joinAnd(c.Carries) + "."}
+}
+
+// joinAnd joins items as English does: "a", "a and b", "a, b and c".
+func joinAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return "nothing"
+	case 1:
+		return items[0]
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
+
 // choiceLabel returns the words the box shows for c. site is the host the
 // call reaches, which the two website choices name.
 func choiceLabel(c rpc.Choice, site string) string {
@@ -180,22 +237,33 @@ func (m *Model) approvalBoxView(width int) string {
 	inner := max(width-4, 1)
 	fit := func(s string) string { return ansi.Truncate(s, inner, "…") }
 
-	lines := []string{fit(m.style.approvalTitle.Render("Run "+a.ask.Name+"?") + "  " + m.style.dim.Render(a.ask.Kind))}
-	for _, l := range rpc.ArgsLines(a.ask.Args, boxArgLines) {
-		lines = append(lines, fit(l))
+	var lines []string
+	if a.ask.Consent != nil {
+		// A consent question is about the whole turn, not a call: it names
+		// where the turn would go and what it would carry, wrapped to fit.
+		title, body := consentLines(a.ask)
+		lines = append(lines, fit(m.style.approvalTitle.Render(title)))
+		for _, b := range body {
+			lines = append(lines, strings.Split(ansi.Wordwrap(b, inner, ""), "\n")...)
+		}
+	} else {
+		lines = append(lines, fit(m.style.approvalTitle.Render("Run "+a.ask.Name+"?")+"  "+m.style.dim.Render(a.ask.Kind)))
+		for _, l := range rpc.ArgsLines(a.ask.Args, boxArgLines) {
+			lines = append(lines, fit(l))
+		}
 	}
 	lines = append(lines, "")
 
 	var choices []string
 	for i, c := range a.ask.Choices {
-		text := choiceKey(c) + " " + choiceLabel(c, a.ask.Site)
+		text := keyFor(a.ask, c) + " " + labelFor(a.ask, c)
 		if i == a.selected {
 			choices = append(choices, m.style.choiceOn.Render("["+text+"]"))
 		} else {
 			choices = append(choices, m.style.choice.Render(" "+text+" "))
 		}
 	}
-	if !a.save {
+	if !a.save && a.ask.Consent == nil {
 		choices = append(choices, m.style.choice.Render(" "+editKey+" edit first "))
 	}
 	lines = append(lines, fit(strings.Join(choices, " ")))

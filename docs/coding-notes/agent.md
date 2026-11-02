@@ -860,6 +860,41 @@ qwen-4bit` in meru chat, or Use for answers in Settings, Models." With none, it
 points to `/model` and Settings, Models. The names come from config, never from
 code.
 
+### Asking before a turn leaves (consent.go)
+
+A turn picks its answer model once, right after it opens the session:
+`t.model, t.noThink = a.mainModel()`. Every later step reads `t.model`, never
+`a.Main()`: the window (`answerWindow(t.model)`), the self line
+(`selfIntro`), the picture note, the vision and tools checks, `answer`
+itself, and the model the transcript names. A model switch during a turn
+then can't split the turn between two models, and a no can swap the model
+for this turn alone.
+
+When `t.model` names an endpoint at `near-edge` or `remote`, `consent` asks
+before the turn builds its prompt. It sends an `rpc.Approval` with
+`Kind: rpc.KindConsent`, the endpoint as `Name`, only the choices once,
+session and deny, and an `rpc.ConsentInfo` that names the endpoint, its
+reach, its model and `carries`: what the prompt holds, "your question", the
+count of earlier turns and pictures, the profile and memories, file excerpts
+and tool results. It goes through `t.approve`, the same channel a tool's
+approval uses, so all three clients and `meru run --json` get it with no new
+op.
+
+- **once** sends this turn; the next asks again.
+- **session** goes in `a.consented`, a map from session and endpoint to
+  true, behind a mutex, held in memory only: a restart asks again.
+- **deny**, or any choice it didn't offer, calls `keepHere`, which puts the
+  fast model in `t.model` and the reason in `t.keptHere`, and `Handle` shows
+  that as the notice: "Answered on this computer by …, since you said no to
+  sending it to @lab."
+
+An incognito chat, a job's run and a turn with no approver never ask: they
+go to `keepHere` with their own reason. Each answer writes a `consent` line
+to the transcript. `offMachine` puts the endpoint and its reach on the
+`done` event when the answer came from one. `consent_test.go` covers each
+answer, "this chat" across turns and chats, the turns that stay here, a
+local endpoint that never asks, and the list.
+
 ### Handle
 
 `Handle` has the signature of `rpc.Handler`, so `merud` passes `a.Handle`

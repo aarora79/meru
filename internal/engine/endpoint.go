@@ -15,8 +15,12 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -45,7 +49,10 @@ const defaultMaxTokens = 8192
 // the key, and the model. merud fills it from a config.Endpoint, with the
 // key already read from secrets.toml.
 type EndpointConfig struct {
-	Name  string // the [[endpoints]] name, for errors and logs
+	Name string // the [[endpoints]] name, for errors and logs
+	// Reach is how far requests may travel: "local", "near-edge" or
+	// "remote", as config names them; "" counts as "local".
+	Reach string
 	URL   string // the API's base, such as http://127.0.0.1:11434/v1
 	Key   string // the API key itself, or "" for none; never logged
 	Model string // the model name the server knows
@@ -65,27 +72,16 @@ type endpointAPI struct {
 // newEndpointAPI checks cfg and returns the API for it. headers go on
 // every request; they hold the key, so nothing here ever logs them.
 //
-// For now an endpoint must be on this machine, so it fails when the URL
-// isn't loopback, the same check NewOllama makes (AGENTS.md,
-// non-negotiable 1). client may be nil, for a plain http.Client with no
-// overall timeout: a long answer can take minutes to stream, so calls end
-// when their context ends.
+// It fails when cfg names no model or its URL breaks its reach's rule
+// (see reachClient). client may be nil, for reachClient's own; a test may
+// pass one for a server on loopback.
 func newEndpointAPI(kind string, cfg EndpointConfig, headers http.Header, client *http.Client, log *slog.Logger) (*endpointAPI, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("%s endpoint %s: no model given", kind, cfg.Name)
 	}
-	if err := loopback.CheckURL(cfg.URL); err != nil {
+	c, err := reachClient(cfg.Reach, cfg.URL, client)
+	if err != nil {
 		return nil, fmt.Errorf("%s endpoint %s: %w", kind, cfg.Name, err)
-	}
-	c := &http.Client{}
-	if client != nil {
-		copied := *client
-		c = &copied
-	}
-	// A redirect could carry the prompt to another host, so none is
-	// followed, as with Ollama.
-	c.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return fmt.Errorf("%s endpoint %s sent a redirect; Meru doesn't follow redirects", kind, cfg.Name)
 	}
 	if log == nil {
 		log = obs.Discard()
@@ -94,6 +90,81 @@ func newEndpointAPI(kind string, cfg EndpointConfig, headers http.Header, client
 		name: cfg.Name, kind: kind, base: strings.TrimRight(cfg.URL, "/"),
 		headers: headers, client: c, log: log,
 	}, nil
+}
+
+// reachClient checks raw, an endpoint's URL, against reach and returns the
+// HTTP client for it, which follows no redirect: a 30x could carry the
+// prompt to another host.
+//
+//   - "local" (or ""): the URL must be loopback, the check NewOllama makes.
+//   - "near-edge": every address the client connects to must pass
+//     loopback.NearEdge. The check runs on the resolved address, inside
+//     the dialer, so a host name that points at the internet fails.
+//   - "remote": the URL must use https; any address is allowed.
+//
+// For near-edge and remote, the client ignores the proxy settings in the
+// environment, since a proxy would make the connection, and the check,
+// elsewhere. base, when not nil, supplies the client for a local endpoint,
+// as tests do; it is copied, never changed.
+//
+// A client with no overall timeout suits a long answer, which can take
+// minutes to stream; each call ends when its context does.
+func reachClient(reach, raw string, base *http.Client) (*http.Client, error) {
+	c := &http.Client{}
+	switch reach {
+	case "", "local":
+		if err := loopback.CheckURL(raw); err != nil {
+			return nil, err
+		}
+		if base != nil {
+			copied := *base
+			c = &copied
+		}
+	case "near-edge", "remote":
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" {
+			return nil, fmt.Errorf("url %q has no host", raw)
+		}
+		if reach == "remote" && u.Scheme != "https" {
+			return nil, fmt.Errorf("url %q: a remote endpoint must use https", raw)
+		}
+		d := &net.Dialer{Timeout: 30 * time.Second}
+		if reach == "near-edge" {
+			d.Control = nearEdgeOnly
+		}
+		c.Transport = &http.Transport{
+			Proxy:               nil,
+			DialContext:         d.DialContext,
+			TLSHandshakeTimeout: 30 * time.Second,
+			ForceAttemptHTTP2:   true,
+		}
+	default:
+		return nil, fmt.Errorf("reach %q is unknown", reach)
+	}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errors.New("the endpoint sent a redirect; Meru doesn't follow redirects")
+	}
+	return c, nil
+}
+
+// nearEdgeOnly is a net.Dialer's Control hook: Go calls it with the
+// address it is about to connect to, after it has resolved any name, and
+// a non-nil error stops the connection. It refuses any address
+// loopback.NearEdge doesn't accept. web_fetch's guard uses the same hook
+// the other way round (see internal/builtin/webguard.go).
+func nearEdgeOnly(network, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return fmt.Errorf("can't read the address %s", host)
+	}
+	if !loopback.NearEdge(addr) {
+		return fmt.Errorf("%s is a public address, and a near-edge endpoint may reach only your own network", addr)
+	}
+	return nil
 }
 
 // EndpointError is a non-2xx reply from an endpoint. Callers can find it

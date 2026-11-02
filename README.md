@@ -1,17 +1,18 @@
-<p align="center"><img src="docs/img/meru-social-preview.png" width="720" alt="Meru मेरु: a personal AI assistant that runs on a machine you control. Local models only."></p>
+<p align="center"><img src="docs/img/meru-social-preview.png" width="720" alt="Meru मेरु: a personal AI assistant that runs on a machine you control, with local models."></p>
 
 # Meru
 
-**A personal AI assistant that runs entirely on your own machine.**
+**A personal AI assistant that runs on your own machine.**
 
 You have years of notes, a full inbox and a folder of repositories. The
 assistants that could help with them want to read all of it in somebody else's
 data center.
 
-Meru reads it on your machine. Its code has no path to a cloud AI model, not even
-a disabled one. It keeps open-weight models loaded in your computer's memory, so a
-question needs no API key and costs only electricity. The installer picks the
-model that fits your Mac's memory or your Linux machine's graphics card.
+Meru reads it on your machine. It keeps open-weight models loaded in your
+computer's memory, so a question needs no API key and costs only electricity. No
+question leaves your computer unless you name a model elsewhere and say yes, chat
+by chat. The installer picks the model that fits your Mac's memory or your Linux
+machine's graphics card.
 
 [![Download the Mac installer](https://img.shields.io/badge/Download-Mac%20installer-2F6B4F?logo=apple&style=for-the-badge)](https://github.com/aarora79/meru/releases/latest/download/Meru-macos-arm64.dmg)
 [![Install on Linux](https://img.shields.io/badge/Install-on%20Linux-2F6B4F?logo=linux&logoColor=white&style=for-the-badge)](#install-on-linux)
@@ -174,8 +175,10 @@ Four reasons, most important first:
    database is a copy Meru rebuilds from them: delete `meru.db` and Meru re-indexes.
    Memories and skills are Markdown files you can read, edit or delete.
 
-Many assistants offer local models as one option next to cloud ones. Meru supports
-local models only.
+Many assistants offer local models as one option next to cloud ones. Meru runs
+local models, and the models that route, search and summarize never leave your
+machine. You may add an answer model on your own network or a hosted service, by
+name; Meru then asks "this time" or "this chat" before a question goes there.
 
 Two kinds of program can reach beyond your machine, and only once you add them to
 config: MCP (Model Context Protocol) servers, such as Gmail and Calendar or your

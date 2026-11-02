@@ -537,6 +537,8 @@ function onApproval(u) {
 // loadAskingTools fetches the connection the open card's call goes to, so
 // the panel can list its tools and their policies.
 function loadAskingTools(v) {
+  // A consent question isn't a tool call: it has no server's tools to list.
+  if (v.consent) return;
   bridge.connections().then(
     (cv) => {
       const kind = v.kind === "builtin" ? "builtin" : v.kind;
@@ -1229,6 +1231,12 @@ function forget(t, m) {
 // asks, what else the server may do, and where the call is logged.
 function drawAsking(body, v) {
   body.append(el("p", "", whyText(v)));
+  if (v.consent) {
+    const log = el("p", "privacy");
+    log.append(icon("lock", 14), document.createTextNode(" The chat's transcript records your answer, never the question's text."));
+    body.append(log);
+    return;
+  }
   const c = state.askingTools;
   body.append(el("h3", "", v.server ? "What " + v.server + " may do" : "Meru's own tools"));
   if (!c) {
@@ -1260,6 +1268,11 @@ function drawAsking(body, v) {
 // whyText says why the call on approval card v waits for the user. The
 // card and the side panel both show it.
 function whyText(v) {
+  if (v.consent) {
+    const far = v.consent.reach === "remote" ? "a hosted service on the internet" : "a computer on your own network";
+    return "The answer model, " + v.name + ", runs on " + far + ", so this question, and what Meru adds to it, " +
+      "would leave this computer. Meru asks first every time; a yes lasts this turn or this chat, never longer.";
+  }
   const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
   const policy = state.askingTools && (state.askingTools.tools.find((p) => p.name === v.tool) || {}).policy;
   if (v.tool === "configure" || policy === "always") {
@@ -1274,7 +1287,10 @@ function whyText(v) {
 
 // privacyLine says where the answer's work happened.
 function privacyLine(t) {
-  const start = "The model ran on " + here() + ".";
+  const s = t.stats;
+  const start = s && s.answered_by
+    ? "The answer came from " + s.answered_by + ", " + (s.reach === "remote" ? "a hosted service" : "a computer on your network") + ", after you allowed it."
+    : "The model ran on " + here() + ".";
   if (t.state === "active") return start;
   const names = t.contacted || [];
   if (names.length === 0) return start + " Nothing else was contacted.";

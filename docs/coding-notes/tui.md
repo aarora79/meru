@@ -355,11 +355,18 @@ help line and the behaviour come from one place.
 | `/exit` then Enter | quit | stop and quit, like Ctrl-D |
 
 While the approval box is open, the keys answer it instead, and typing doesn't reach
-the input:
+the input. The same box asks the consent question before a turn goes to an
+answer endpoint off this computer (`Approval.Consent` set): its title says
+where ("Send this question to @lab (near-edge, model …)?"), a wrapped line says
+what the turn carries, and its keys are t, c and n, with no Edit first.
+`keyFor`, `labelFor` and `consentLines` in `approval.go` pick the words. The
+stats line under an answer from such an endpoint ends "answered by @lab
+(near-edge)".
 
 | Key | What it does |
 |---|---|
 | o, s, d | approve once, approve for this session, deny; only the choices `merud` offers work |
+| t, c, n | on the consent question, send this time, send for this chat, or no: answer here |
 | ← / → then Enter | move the selection, then pick it |
 | Ctrl-C | stop the turn; the call doesn't run |
 | Ctrl-D | quit |
