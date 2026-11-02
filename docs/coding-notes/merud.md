@@ -1888,8 +1888,12 @@ the entry's `api` names: `engine.NewOpenAI`, `engine.NewAnthropic`, or another
 `/api/show` would give, so the checks above treat both alike.
 
 A key missing from `secrets.toml` doesn't stop `merud`: the endpoint goes in
-the map with the reason in `Err`, `merud` logs a warning, and a question for
-that model fails with the secret named. Only a `secrets.toml` that can't be
+the map with `errNoKey` in `Err`, `merud` logs a warning, and a question for
+that model fails with the same sentence: add the `api_key` entry to
+`secrets.toml`. `errNoKey` is a fixed sentence, so nothing read from
+`api_key`, not even the entry's name, reaches a log line or an error.
+CodeQL's check for secrets in logs flagged the first version, which logged
+`Resolve`'s error with the name in it. Only a `secrets.toml` that can't be
 read stops startup.
 
 `switchMain` in `models.go` loads nothing for an endpoint's model, since it

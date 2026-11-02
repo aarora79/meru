@@ -5,6 +5,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,8 +44,8 @@ func TestNewEndpointsKeepsOneWithNoKey(t *testing.T) {
 		t.Errorf("open = %+v", ep)
 	}
 	locked := eps["locked"]
-	if locked.Err == nil || !strings.Contains(locked.Err.Error(), "missing_key") {
-		t.Errorf("locked's error = %v, want the missing secret named", locked.Err)
+	if !errors.Is(locked.Err, errNoKey) {
+		t.Errorf("locked's error = %v, want errNoKey", locked.Err)
 	}
 	if !slices.Equal(locked.Details.Capabilities, []string{"completion", engine.Vision}) {
 		t.Errorf("locked's capabilities = %v; tools = false leaves tools out", locked.Details.Capabilities)

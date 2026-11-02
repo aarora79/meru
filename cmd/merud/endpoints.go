@@ -43,14 +43,21 @@ func newEndpoints(cfg config.Config, log *slog.Logger) (map[string]engine.Endpoi
 	return out, nil
 }
 
+// errNoKey is why an endpoint whose key secrets.toml lacks can't answer.
+// It is a fixed sentence on purpose: nothing read from api_key, not even
+// the entry's name, flows into a log line or an error, so neither can carry
+// a key by mistake.
+var errNoKey = errors.New("the api_key entry it names isn't in secrets.toml; add it there")
+
 // newEndpointEngine builds the engine for one entry, with its key read
-// from sec. It fails when the key's entry is missing from secrets.toml.
+// from sec. It fails with errNoKey when the key's entry is missing from
+// secrets.toml.
 func newEndpointEngine(c config.Endpoint, sec *secrets.Secrets, log *slog.Logger) (engine.Engine, error) {
 	key := ""
 	if c.APIKey != "" {
 		var err error
 		if key, err = sec.Resolve(c.APIKey); err != nil {
-			return nil, fmt.Errorf("api_key: %w", err)
+			return nil, errNoKey
 		}
 	}
 	ec := engine.EndpointConfig{Name: c.Name, URL: c.URL, Key: key, Model: c.Model}

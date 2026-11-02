@@ -1639,7 +1639,9 @@ api_key        = "secret:my_server_key"      # optional; never the key itself
   nothing; the warm-up's prompt holds the profile and memories.
 - **The key.** `merud` reads `api_key` from `secrets.toml` when it starts and
   sends it in the API's own header. An entry whose secret is missing leaves
-  `merud` running; a question for that model fails with the secret named.
+  `merud` running; a question for that model fails with a fixed sentence that
+  says to add the `api_key` entry to `secrets.toml`. Nothing read from `api_key`,
+  not even the entry's name, goes into a log line or an error.
 
 Two engines may come later, behind the same interface:
 
