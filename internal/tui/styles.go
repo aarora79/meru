@@ -185,16 +185,19 @@ type keyList []key.Binding
 
 // newApprovalKeys returns the help line's keys for an approval that offers
 // choices: one key per choice, then e for Edit first when edit is true,
-// then ←/→ with Enter, then Ctrl-C. A turn's box offers Edit first and a
-// save's doesn't; Ctrl-C stops a turn, and with no turn running it quits.
-func newApprovalKeys(choices []rpc.Choice, site string, edit bool) keyList {
+// then ←/→ with Enter, then Ctrl-C. A turn's box offers Edit first, and a
+// save's and a consent question's don't. Ctrl-C stops a turn when turn is
+// true, and with no turn running it quits.
+func newApprovalKeys(a rpc.Approval, edit, turn bool) keyList {
 	var k keyList
-	for _, c := range choices {
-		k = append(k, key.NewBinding(key.WithKeys(choiceKey(c)), key.WithHelp(choiceKey(c), choiceLabel(c, site))))
+	for _, c := range a.Choices {
+		k = append(k, key.NewBinding(key.WithKeys(keyFor(a, c)), key.WithHelp(keyFor(a, c), labelFor(a, c))))
 	}
-	stop := "quit"
 	if edit {
 		k = append(k, key.NewBinding(key.WithKeys(editKey), key.WithHelp(editKey, "edit first")))
+	}
+	stop := "quit"
+	if turn {
 		stop = "stop"
 	}
 	return append(k,

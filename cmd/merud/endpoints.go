@@ -60,7 +60,7 @@ func newEndpointEngine(c config.Endpoint, sec *secrets.Secrets, log *slog.Logger
 			return nil, errNoKey
 		}
 	}
-	ec := engine.EndpointConfig{Name: c.Name, URL: c.URL, Key: key, Model: c.Model}
+	ec := engine.EndpointConfig{Name: c.Name, Reach: c.Reach, URL: c.URL, Key: key, Model: c.Model}
 	switch c.API {
 	case config.APIOpenAI:
 		return engine.NewOpenAI(ec, nil, log)
@@ -69,7 +69,7 @@ func newEndpointEngine(c config.Endpoint, sec *secrets.Secrets, log *slog.Logger
 	case config.APIOllama:
 		// Another Ollama: the same engine as the local one, with no
 		// embedding model and the entry's window on every call.
-		o, err := engine.NewOllama(c.URL, "", "", nil, log)
+		o, err := engine.NewOllamaEndpoint(ec, log)
 		if err != nil {
 			return nil, err
 		}

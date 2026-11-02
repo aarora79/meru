@@ -112,7 +112,7 @@ func (a *Agent) warm(ctx context.Context) {
 			list = skillList(reg, names)
 		}
 	}
-	system, _ := a.stablePart(ctx, noteFor(specs), list)
+	system, _ := a.stablePart(ctx, model, noteFor(specs), list)
 	msgs := buildMessages(system, nil, warmQuestion)
 	a.log.InfoContext(ctx, "loading the answer model", "model", model)
 	if _, err := a.engine.Generate(ctx, msgs, specs, engine.Options{Model: model, MaxTokens: 1, NoThink: noThink}); err != nil {

@@ -38,7 +38,7 @@ func (m Model) View() string {
 	helpLine := m.helpView(m.shortHelp())
 	switch {
 	case m.approval != nil:
-		helpLine = m.helpView(newApprovalKeys(m.approval.ask.Choices, m.approval.ask.Site, !m.approval.save))
+		helpLine = m.helpView(newApprovalKeys(m.approval.ask, !m.approval.save && m.approval.ask.Consent == nil, !m.approval.save))
 	case m.boxOpen() && m.notice == "":
 		helpLine = m.helpView(m.boxKeys())
 	case m.notice != "":
@@ -497,6 +497,10 @@ func statsLine(t *exchange) string {
 	}
 	if s.DurationMillis > 0 {
 		parts = append(parts, seconds(s.DurationMillis))
+	}
+	// An answer from an endpoint off this computer says where it came from.
+	if s.AnsweredBy != "" {
+		parts = append(parts, "answered by "+s.AnsweredBy+" ("+s.Reach+")")
 	}
 	return strings.Join(parts, " · ")
 }

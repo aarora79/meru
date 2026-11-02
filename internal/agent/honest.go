@@ -117,8 +117,7 @@ func endpointSelfLine(name, model string) string {
 
 // selfIntro returns the self line for the answer model now: selfLine for a
 // model on the local Ollama, endpointSelfLine for one named "@name".
-func (a *Agent) selfIntro() string {
-	model := a.Main()
+func (a *Agent) selfIntro(model string) string {
 	if name, ok := config.EndpointRef(model); ok {
 		if ep, found := config.FindEndpoint(a.endpoints, name); found {
 			return endpointSelfLine(name, ep.Model)

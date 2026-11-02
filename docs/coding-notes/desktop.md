@@ -136,6 +136,13 @@ goroutine.
 
 ### views.go
 
+`consentView` builds the card for a consent question: the endpoint, what the
+turn carries, and the answers "This time", "This chat" and "No", with no
+Edit first. The page's `consentCard` in `turns.js` draws it; the side panel
+says why Meru asks; and an answer from an endpoint off this computer gets
+"Answered by @lab (near-edge)" in its footer, and a privacy line that says
+where it came from, from the `done` event's `answered_by` and `reach`.
+
 The `Update` struct is the one message type the page receives, on one Wails event,
 `meru:update`. Its `Kind` says which fields matter: `start`, `event`, `approval`,
 `end` or `queue`.

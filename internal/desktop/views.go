@@ -338,6 +338,25 @@ type ApprovalView struct {
 	// arguments written as a request the user can change and send, since
 	// merud runs a call with the arguments it asked about and no others.
 	Draft string `json:"draft"`
+	// Consent, when set, makes the card the question merud asks before a
+	// turn goes to an answer endpoint off this computer: where it would go
+	// and what it would carry. Such a card has no Edit first.
+	Consent *rpc.ConsentInfo `json:"consent,omitempty"`
+}
+
+// consentView builds the card for a consent question: the endpoint, what
+// the turn would carry, and the three answers in the words the page shows,
+// "This time", "This chat" and "No". It has no arguments and no draft.
+func consentView(a rpc.Approval) ApprovalView {
+	v := ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Tool: a.Name,
+		Label: "send this question to " + a.Name, Consent: a.Consent}
+	words := map[rpc.Choice]string{rpc.ChoiceOnce: "This time", rpc.ChoiceSession: "This chat", rpc.ChoiceDeny: "No"}
+	for _, c := range a.Choices {
+		if w, ok := words[c]; ok {
+			v.Choices = append(v.Choices, ChoiceView{Choice: c, Label: w})
+		}
+	}
+	return v
 }
 
 // Field is one labelled argument on an approval card.
@@ -357,6 +376,9 @@ type ChoiceView struct {
 // shows the rest as indented JSON. Arguments that aren't a JSON object
 // show as they came.
 func approvalView(a rpc.Approval) (v ApprovalView) {
+	if a.Consent != nil {
+		return consentView(a)
+	}
 	server, tool := splitName(a.Kind, a.Name)
 	v = ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Server: server, Tool: tool, Label: stepLabel(a.Kind, server, tool, a.Args)}
 	for _, c := range a.Choices {

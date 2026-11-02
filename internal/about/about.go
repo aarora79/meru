@@ -12,7 +12,7 @@ import (
 
 // Tagline says in one line what Meru is. The desktop app's title bar, its
 // rail and its About section show it, and so does the chat's /about box.
-const Tagline = "A personal AI assistant that runs entirely on your own computer"
+const Tagline = "A personal AI assistant that runs on your own computer"
 
 // License names the license Meru's code is under, as the LICENSE file at
 // the top of the repository gives it.

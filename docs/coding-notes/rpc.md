@@ -60,6 +60,14 @@ clients offer Continue after the first two. A request asks for that with
 `merud` then picks up the session's last answer (see [agent](agent.md),
 "Continue").
 
+`answered_by` and `reach` on `done` name the answer endpoint off this computer
+that wrote the answer, and stay empty for one written here. An `approval` with
+`kind: "consent"` and a `consent` object asks before a turn goes to such an
+endpoint: `consent` names the endpoint, its reach, its model and what the turn
+carries, and the choices are only once, session and deny. A client that
+doesn't know the field shows an ordinary approval, and its no keeps the turn
+on this computer (see [agent](agent.md)).
+
 v0.2 added, without changing anything older clients read:
 
 | Addition | What it carries |

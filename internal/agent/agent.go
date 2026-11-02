@@ -37,7 +37,7 @@ import (
 const defaultTurnTimeout = 5 * time.Minute
 
 // DefaultSystemPrompt is the system prompt when config sets none.
-const DefaultSystemPrompt = "You are Meru, a personal assistant that runs entirely on the user's own computer. " +
+const DefaultSystemPrompt = "You are Meru, a personal assistant that runs on the user's own computer. " +
 	"Answer clearly and briefly. If you don't know something, say so."
 
 // citeRule joins the system prompt on turns that search the user's files.
@@ -155,6 +155,7 @@ type Agent struct {
 	agentic     bool              // [index] retrieval = "agentic": no search before the answer
 	models      config.Models     // the models as config named them at startup; Main says which model answers now
 	endpoints   []config.Endpoint // the [[endpoints]] entries, for the self line of an "@name" model
+	consented   consents          // the chats that said "this chat" to an endpoint; see consent.go
 	folderNames []string          // last part of each [index] folder, lower case; see namesFolder
 	// folders, when set by UseFolders, returns the [index] folders as they
 	// are now, and a turn builds folderNames and filesNote from it.
@@ -432,6 +433,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		}
 	}
 	t.job, t.skill = req.Job, req.Skill
+	t.model, t.noThink = a.mainModel()
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
@@ -454,6 +456,11 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// the transcript gets the same time as the row written live. It names
 	// the question's images by path and never holds their bytes.
 	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, Images: imagePaths, Job: req.Job, TraceID: traceID}); err != nil {
+		return err
+	}
+	// A turn bound for an endpoint off this machine asks first, before it
+	// builds its prompt, so a no can switch it to a local model.
+	if err := a.consent(tctx, t, len(history)/2); err != nil {
 		return err
 	}
 
@@ -545,6 +552,9 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
 	}
+	if t.keptHere != "" {
+		notice = strings.TrimSpace(t.keptHere + " " + notice)
+	}
 	// A full answer that names pictures the answer model can't look at
 	// says so, and how to switch to a model that can. See images.go.
 	if ended == "" && t.blind != "" && namesImages(rep.text, rpc.Cited(rep.text, t.sources)) {
@@ -561,7 +571,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// model can't read.
 	model := rep.model
 	if model == "" {
-		model = a.Main()
+		model = t.model
 	}
 	if err := a.noteModel(ctx, sess, model, traceID); err != nil {
 		return err
@@ -594,6 +604,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	a.recordUsage(ctx, sessionID, source, t.job, start, model, answer, t.calls, sess.Incognito())
 	done := doneEvent(start, rep)
 	done.Outcome = ended
+	done.AnsweredBy, done.Reach = a.offMachine(model)
 	return emit(done)
 }
 
@@ -605,13 +616,14 @@ func (a *Agent) UseWindow(windowOf func(model string) int) {
 	a.windowOf = windowOf
 }
 
-// answerWindow returns the context window of the answer model now: the
-// one UseWindow's function gives it, or [ollama] context_length.
-func (a *Agent) answerWindow() int {
+// answerWindow returns the context window of model, a turn's answer
+// model: the one UseWindow's function gives it, or [ollama]
+// context_length.
+func (a *Agent) answerWindow(model string) int {
 	if a.windowOf == nil {
 		return a.window
 	}
-	return a.windowOf(a.Main())
+	return a.windowOf(model)
 }
 
 // noteModel writes a model_switch line to the session before an answer
@@ -885,6 +897,7 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
+		model: t.model,
 	})
 	// The images ride on this turn's question alone; see withImages.
 	msgs = withImages(msgs, t.images)
@@ -982,9 +995,9 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	switch {
 	case ended == endNoVision:
 		sets := a.suggestSets(ctx)
-		add = similarAnswer(a.Main(), t.similar, sets)
+		add = similarAnswer(t.model, t.similar, sets)
 		if add == "" {
-			add = noVisionAnswer(a.Main(), sets)
+			add = noVisionAnswer(t.model, sets)
 		}
 	case ended == endBadOutput:
 		add = badOutputOnce
@@ -999,9 +1012,9 @@ func (a *Agent) endTurn(ctx context.Context, t *turn, ended, text string) (strin
 	case ended == endCapped:
 		add = fmt.Sprintf(capAnswer, a.maxRounds, tried(t.tried))
 	case ended == endWindowFull && streamed:
-		add = "\n\n" + fmt.Sprintf(windowNote, a.answerWindow())
+		add = "\n\n" + fmt.Sprintf(windowNote, a.answerWindow(t.model))
 	case ended == endWindowFull:
-		add = sorry + "\n\n" + fmt.Sprintf(windowNote, a.answerWindow())
+		add = sorry + "\n\n" + fmt.Sprintf(windowNote, a.answerWindow(t.model))
 	case !streamed:
 		add = sorry
 	case ended == endTimeout:
@@ -1541,7 +1554,7 @@ func (a *Agent) canDo() string {
 func (a *Agent) prompt(ctx context.Context, history []engine.Message, question string, sec sections) []engine.Message {
 	ctx, span := obs.Tracer().Start(ctx, "meru.prompt")
 	defer span.End()
-	system, profile := a.stablePart(ctx, sec.toolsNote, sec.skillList)
+	system, profile := a.stablePart(ctx, sec.model, sec.toolsNote, sec.skillList)
 	// add appends one section, leaving out an empty one.
 	add := func(part string) {
 		if part != "" {
@@ -1589,7 +1602,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 // returns the profile on its own as well, for the memory metric. prompt
 // builds on it, and so does the startup warm-up (see warm.go), so the warm-up
 // prompt starts the way a real one does.
-func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (system, profile string) {
+func (a *Agent) stablePart(ctx context.Context, model, toolsNote, skillList string) (system, profile string) {
 	system = a.system
 	// add appends one section, leaving out an empty one.
 	add := func(part string) {
@@ -1597,14 +1610,14 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 			system += "\n\n" + part
 		}
 	}
-	add(a.selfIntro())
+	add(a.selfIntro(model))
 	add(today(time.Now()))
 	add(a.machine)
 	profile = a.profileSection(ctx)
 	add(profile)
 	add(a.currentFilesNote())
 	add(a.canDo())
-	add(a.seeNote(ctx))
+	add(a.seeNote(ctx, model))
 	add(a.chatsNote())
 	add(toolsNote)
 	add(skillList)
@@ -1617,13 +1630,13 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 // the first token's arrival time. It records one gen_ai.chat span, with a
 // first_token event, and the model-call metrics. Each round of a turn calls
 // it once.
-func (a *Agent) answer(ctx context.Context, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
+func (a *Agent) answer(ctx context.Context, t *turn, msgs []engine.Message, tools []engine.ToolSpec, emit func(rpc.Event) error) (reply, error) {
 	// A question that comes while merud still loads the answer model at
 	// startup waits for that load rather than start a second one.
 	if err := a.WaitWarm(ctx); err != nil {
 		return reply{}, fmt.Errorf("wait for the answer model to load: %w", err)
 	}
-	model, noThink := a.mainModel()
+	model, noThink := t.model, t.noThink
 	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
 	defer span.End()
 

@@ -43,6 +43,11 @@ const (
 	// holds the whole state, so the newest one wins, and a line with no
 	// folder or no tags means the chat has none. See MetaOf.
 	TypeMeta = "meta"
+	// TypeConsent records the user's answer when a turn would send its
+	// prompt to an answer endpoint off this machine: Tool names the
+	// endpoint, as "@lab", Reach is "near-edge" or "remote", and Choice is
+	// "once", "session" or "deny". It never holds the prompt.
+	TypeConsent = "consent"
 )
 
 // Line is one event in a transcript. Only the fields that matter for its Type
@@ -80,9 +85,12 @@ type Line struct {
 	Tool   string `json:"tool,omitempty"`
 	// Args holds the call's arguments as JSON, secrets redacted.
 	Args json.RawMessage `json:"args,omitempty"`
-	// Choice is the user's answer on an approval line: "once", "session"
-	// or "deny".
+	// Choice is the user's answer on an approval or consent line: "once",
+	// "session" or "deny".
 	Choice string `json:"choice,omitempty"`
+	// Reach is how far a consent line's endpoint is: "near-edge" or
+	// "remote".
+	Reach string `json:"reach,omitempty"`
 	// Outcome is how a call ended, on a tool_result line: "ok", "error",
 	// "denied", "declined", "cancelled" or "timeout". OK repeats
 	// Outcome == "ok" so the line reads plainly with grep. On an

@@ -1,23 +1,23 @@
 Meru मेरु v0.4.3 lite · minicpm5:2b           ● connected  aarora79.github.io/meru
 ────────────────────────────────────────────────────────────────────────────────
 
-  ╭───────────────────────────────────────────────────────────────────────────╮
-  │ About Meru                                                                │
-  │                                                                           │
-  │ A personal AI assistant that runs entirely on your own computer           │
-  │                                                                           │
-  │ version  v0.4.3                                                           │
-  │ license  Apache License 2.0                                               │
-  │ config   ~/.meru/config.toml                                              │
-  │ folder   ~/.meru                                                          │
-  │                                                                           │
-  │ Meru's website         https://aarora79.github.io/meru/                   │
-  │ Source code on GitHub  https://github.com/aarora79/meru                   │
-  │ Read the design                                                           │
-  │ ↓ more                                                                    │
-  │                                                                           │
-  │ The models run on this computer, and Meru has no account to sign in to.   │
-  ╰───────────────────────────────────────────────────────────────────────────╯
+  ╭────────────────────────────────────────────────────────────────────────────╮
+  │ About Meru                                                                 │
+  │                                                                            │
+  │ A personal AI assistant that runs on your own computer                     │
+  │                                                                            │
+  │ version  v0.4.3                                                            │
+  │ license  Apache License 2.0                                                │
+  │ config   ~/.meru/config.toml                                               │
+  │ folder   ~/.meru                                                           │
+  │                                                                            │
+  │ Meru's website         https://aarora79.github.io/meru/                    │
+  │ Source code on GitHub  https://github.com/aarora79/meru                    │
+  │ ↓ more                                                                     │
+  │                                                                            │
+  │ The models run on this computer, an answer model elsewhere only with your  │
+  │ yes, and Meru has no account to sign in to.                                │
+  ╰────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ Ask Meru anything…                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯

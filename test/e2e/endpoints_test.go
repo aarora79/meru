@@ -8,10 +8,13 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/testutil/fakeollama"
 	"github.com/aarora79/meru/internal/transcript"
 )
@@ -122,5 +125,91 @@ func TestEndpointToolRound(t *testing.T) {
 	// The tool ran on this machine, through dispatch, as any call does.
 	if out := runMeru(t, h, "log"); !strings.Contains(out.stdout, "datetime") {
 		t.Errorf("meru log doesn't list the datetime call:\n%s", out.stdout)
+	}
+}
+
+// TestEndpointConsent runs a near-edge endpoint through real binaries. The
+// fake's /v1 listens on loopback, which a near-edge endpoint may reach, so
+// the turn asks first: "this time" sends it to the endpoint, a no answers
+// with the fast model on this computer, and meru with no terminal can't ask,
+// so it answers here too.
+func TestEndpointConsent(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, strings.Replace(endpointConfig(f.url), `reach = "local"`, `reach = "near-edge"`, 1))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	// askWith asks question and answers merud's question with choice.
+	askWith := func(question string, choice rpc.Choice) ([]rpc.Event, []rpc.Approval) {
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		defer cancel()
+		var asked []rpc.Approval
+		approve := func(_ context.Context, a rpc.Approval) (rpc.Choice, error) {
+			asked = append(asked, a)
+			return choice, nil
+		}
+		var events []rpc.Event
+		for ev, err := range rpc.Do(ctx, h.socket, rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceTUI}, approve) {
+			if err != nil {
+				t.Fatalf("ask %q: %v", question, err)
+			}
+			events = append(events, ev)
+		}
+		return events, asked
+	}
+
+	f.enqueue(t, fastModel, directRoute())
+	f.enqueue(t, servedModel, fakeollama.Reply{Text: "From the lab."})
+	events, asked := askWith("What is the capital of France?", rpc.ChoiceOnce)
+	if len(asked) != 1 || asked[0].Consent == nil || asked[0].Consent.Reach != "near-edge" {
+		t.Fatalf("asked = %+v, want one consent question", asked)
+	}
+	done := lastEvent(t, events)
+	if answerOf(events) != "From the lab." || done.AnsweredBy != "@v1" || done.Reach != "near-edge" {
+		t.Errorf("answer %q, done %+v", answerOf(events), done)
+	}
+
+	// No: the fast model answers, and the endpoint gets nothing more.
+	before := len(v1Requests(t, f))
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "From here."})
+	events, _ = askWith("And of Spain?", rpc.ChoiceDeny)
+	if got := answerOf(events); got != "From here." {
+		t.Errorf("answer after no = %q\nlog:\n%s", got, h.log())
+	}
+	notices := eventsOf(events, rpc.EventNotice)
+	if len(notices) != 1 || !strings.Contains(notices[0].Text, "Answered on this computer by "+fastModel) {
+		t.Errorf("notices = %+v", notices)
+	}
+	if after := len(v1Requests(t, f)); after != before {
+		t.Errorf("the endpoint got %d more requests after a no", after-before)
+	}
+
+	// meru with no terminal can't ask, so the turn stays here.
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Still here."})
+	res := runMeru(t, h, "And of Italy?")
+	if res.code != 0 || res.stdout != "Still here.\n" || !strings.Contains(res.stderr, "Answered on this computer") {
+		t.Errorf("meru exited %d, stdout %q, stderr %q", res.code, res.stdout, res.stderr)
+	}
+	if after := len(v1Requests(t, f)); after != before {
+		t.Error("meru with no terminal sent the turn to the endpoint")
+	}
+
+	// The transcript records each answer, never the question.
+	var consents []string
+	for _, file := range sessionFiles(t, h) {
+		for _, l := range readTranscript(t, file) {
+			if l.Type == transcript.TypeConsent {
+				consents = append(consents, l.Choice)
+				if l.Text != "" {
+					t.Errorf("a consent line holds text: %q", l.Text)
+				}
+			}
+		}
+	}
+	slices.Sort(consents)
+	if !slices.Equal(consents, []string{"deny", "deny", "once"}) {
+		t.Errorf("consent lines = %v, want once, deny, and meru's deny", consents)
 	}
 }

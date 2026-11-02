@@ -1098,6 +1098,13 @@ Last scan:  2026-09-23T10:15:00-04:00, 3 files indexed (5 chunks), 9 unchanged, 
 
 ### meru: approve.go
 
+A consent question, an approval with `Consent` set, takes its own prompt,
+`consent`: "Meru would send this question to @lab (remote, model …).", what
+it carries, then "Send it? [t]his time  this [c]hat  [n]o, answer here:".
+`consentAnswers` maps t, c and n, or the words, to the choices; end of input
+says no. An answer from an endpoint off this computer ends with a dim
+"answered by @lab (remote)" line on stderr.
+
 `toolLine` writes each tool event as one dim line on standard error: `→` when a
 call starts, an indented `web_fetch · <line>` for a `progress` event such as
 "Installing Meru's page reader (about 95 MB, once)", and `✓` or `✗` when it ends.

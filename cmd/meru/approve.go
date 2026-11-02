@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/aarora79/meru/internal/rpc"
@@ -69,6 +70,9 @@ func (p *prompter) approve(ctx context.Context, a rpc.Approval) (rpc.Choice, err
 		return rpc.ChoiceDeny, nil
 	}
 
+	if a.Consent != nil {
+		return p.consent(ctx, a)
+	}
 	fmt.Fprintf(p.out, "Meru wants to run %s (%s)", p.look.bold.Render(a.Name), a.Kind)
 	if lines := rpc.ArgsLines(a.Args, maxArgLines); len(lines) > 0 {
 		fmt.Fprintln(p.out, " with:")
@@ -96,6 +100,46 @@ func (p *prompter) approve(ctx context.Context, a rpc.Approval) (rpc.Choice, err
 			return rpc.ChoiceDeny, nil
 		}
 	}
+}
+
+// consentAnswers maps what the user may type at the consent question to
+// the choice it picks: a key or the words, in any case.
+var consentAnswers = map[string]rpc.Choice{
+	"t": rpc.ChoiceOnce, "this time": rpc.ChoiceOnce,
+	"c": rpc.ChoiceSession, "this chat": rpc.ChoiceSession,
+	"n": rpc.ChoiceDeny, "no": rpc.ChoiceDeny,
+}
+
+// consent asks whether the turn may go to the answer endpoint a names, off
+// this computer: where it would go, what it would carry, and "[t]his time
+// this [c]hat [n]o". End of input says no, which keeps the turn here. It
+// fails only when ctx ends.
+func (p *prompter) consent(ctx context.Context, a rpc.Approval) (rpc.Choice, error) {
+	c := a.Consent
+	fmt.Fprintf(p.out, "Meru would send this question to %s (%s, model %s).\n", p.look.bold.Render(a.Name), c.Reach, c.Model)
+	fmt.Fprintf(p.out, "It carries %s.\n", joinAnd(c.Carries))
+	for {
+		fmt.Fprint(p.out, "Send it? [t]his time  this [c]hat  [n]o, answer here: ")
+		line, err := p.readLine(ctx)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if choice, ok := consentAnswers[strings.ToLower(strings.TrimSpace(line))]; ok && slices.Contains(a.Choices, choice) {
+			return choice, nil
+		}
+		if err != nil {
+			fmt.Fprintln(p.out)
+			return rpc.ChoiceDeny, nil
+		}
+	}
+}
+
+// joinAnd joins items as English does: "a", "a and b", "a, b and c".
+func joinAnd(items []string) string {
+	if len(items) <= 1 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
 // readLine reads one line of input, or gives up when ctx ends.

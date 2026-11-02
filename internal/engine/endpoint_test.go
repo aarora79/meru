@@ -239,3 +239,39 @@ func newHoldingServer(t *testing.T, release <-chan struct{}, first string) *http
 	t.Cleanup(srv.Close)
 	return srv
 }
+
+// TestReach checks each reach's rule. A near-edge endpoint reaches a
+// server on loopback, and the dialer refuses a public address before it
+// connects, so the test sends nothing off the machine.
+func TestReach(t *testing.T) {
+	f := newFakeEndpoint(t, http.StatusOK, `{"choices":[{"message":{"content":"near"}}]}`)
+	ctx := context.Background()
+	q := []Message{{Role: RoleUser, Content: "hi"}}
+
+	near, err := NewOpenAI(EndpointConfig{Name: "lab", Reach: "near-edge", URL: f.srv.URL, Model: "m"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, err := near.Generate(ctx, q, nil, Options{}); err != nil || c.Text != "near" {
+		t.Errorf("near-edge on loopback: %q, %v", c.Text, err)
+	}
+
+	public, err := NewOpenAI(EndpointConfig{Name: "lab", Reach: "near-edge", URL: "http://8.8.8.8:9/v1", Model: "m"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := public.Generate(ctx, q, nil, Options{}); err == nil || !strings.Contains(err.Error(), "public address") {
+		t.Errorf("near-edge to a public address: err = %v, want a refusal", err)
+	}
+
+	if _, err := NewAnthropic(EndpointConfig{Name: "far", Reach: "remote", URL: "http://models.example.com/v1", Model: "m"}, nil, nil); err == nil ||
+		!strings.Contains(err.Error(), "https") {
+		t.Errorf("remote over http: err = %v, want a refusal", err)
+	}
+	if _, err := NewOpenAI(EndpointConfig{Name: "far", Reach: "remote", URL: "https://models.example.com/v1", Model: "m"}, nil, nil); err != nil {
+		t.Errorf("remote over https: %v", err)
+	}
+	if _, err := NewOllamaEndpoint(EndpointConfig{Name: "box", Reach: "nowhere", URL: f.srv.URL}, nil); err == nil {
+		t.Error("an unknown reach passed")
+	}
+}

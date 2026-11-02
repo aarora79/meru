@@ -119,14 +119,14 @@ const pictureNote = "You can look at pictures in the user's folders: call view_i
 // is never told it can. The vision check reads the engine's cached
 // /api/show answer, and the result changes only when the model does, so
 // the line sits with the parts of the prompt Ollama reuses.
-func (a *Agent) seeNote(ctx context.Context) string {
+func (a *Agent) seeNote(ctx context.Context, model string) string {
 	if a.tools == nil || a.vision == nil {
 		return ""
 	}
 	if !slices.ContainsFunc(a.tools.Tools(), func(s engine.ToolSpec) bool { return s.Name == builtin.ViewImage }) {
 		return ""
 	}
-	if ok, err := a.vision(ctx, a.Main()); err != nil || !ok {
+	if ok, err := a.vision(ctx, model); err != nil || !ok {
 		return ""
 	}
 	return pictureNote
@@ -139,7 +139,7 @@ func (a *Agent) seeNote(ctx context.Context) string {
 // tool is worth nothing to a model that might not see. Without UseImages
 // there is no check at all, so the tool goes and no notice follows.
 func (a *Agent) withoutViewing(ctx context.Context, t *turn, specs []engine.ToolSpec) []engine.ToolSpec {
-	model := a.Main()
+	model := t.model
 	if a.vision != nil {
 		ok, err := a.vision(ctx, model)
 		if err != nil {
@@ -210,7 +210,7 @@ func (a *Agent) loadImages(req rpc.Request) ([]string, [][]byte, error) {
 // fails when the check itself fails, as when Ollama is down or the model
 // isn't pulled, or when emit fails.
 func (a *Agent) checkVision(ctx context.Context, t *turn) error {
-	model := a.Main()
+	model := t.model
 	ok, err := a.vision(ctx, model)
 	if err != nil {
 		return fmt.Errorf("check whether %s can look at images: %w", model, err)
